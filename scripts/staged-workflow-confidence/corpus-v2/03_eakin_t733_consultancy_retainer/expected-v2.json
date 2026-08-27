@@ -1,0 +1,889 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "03_eakin_t733_consultancy_retainer",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_weekly.docx",
+    "sha256": "c4ea1e57efbd26dec4ceafca6d9d129d1a711b6bd7d4873953d35c01f22a8f13",
+    "sourceUnitCount": 130
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Technical file review",
+      "meetingTitle": "T733/T817 Eakin Healthcare Consultancy Retainer - Client project checkin for TF24"
+    },
+    "summary": {
+      "meetingPurpose": "Review TF24 technical-file remediation status and agree next actions across risk, software, subcontractors, usability, testing and PMS.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Review tracker movement and key priorities.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_9_unit_3",
+              "speaker": "Jacqui Fox",
+              "quote": "Okay.Um...So I did a quick review this morning in terms of the status on the tracker.",
+              "similarity": 0.578
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Confirm risk and cybersecurity updates.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_17_unit_4",
+              "speaker": "Jacqui Fox",
+              "quote": "It's kind of focused really now on that cybersecurity update.",
+              "similarity": 0.5992
+            },
+            {
+              "sourceId": "line_9_unit_17",
+              "speaker": "Jacqui Fox",
+              "quote": "Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to",
+              "similarity": 0.4807
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Review alarm, language and software-version changes.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_23_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "And then from the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
+              "similarity": 0.7244
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Track electrical compliance testing and subcontractor documentation.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_27_unit_4",
+              "speaker": "Jacqui Fox",
+              "quote": "And again, Rebecca and Andrew did a review last week and determined that all of the required electrical compliance testing they can now do in house.",
+              "similarity": 0.5635
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Review usability, process maps, marketing, accelerated testing, biocomp, PMS and TF03 submission dependencies.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_69_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "And I know we haven't talked about it in a while, just in terms of the accelerated and the biocom testing, just conscious of like the accelerated testing due to finish week three in July.",
+              "similarity": 0.4149
+            },
+            {
+              "sourceId": "line_13_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "In terms of theTech file summary document you are, Rebecca, we're also working on processing through feedback previously from Colm and Louise to just to close that out.",
+              "similarity": 0.392
+            },
+            {
+              "sourceId": "line_73_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "Okay, and biocomp all fine.",
+              "similarity": 0.39
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The TF24 weekly check-in reviewed progress against the technical-file remediation tracker. Key priorities remained risk/software, subcontractors and usability. Software alarm changes were largely complete but needed mute-button, clinical and usability review; language changes and versioning work remained in progress; and electrical compliance testing would now be completed in-house. The meeting also covered risk management, cybersecurity, subcontractor justifications, usability study planning, process maps, marketing, accelerated testing, biocomp, PMS comments and the TF03 MDR findings submission."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "The tracker has moved positively, with fewer documents in the 20 to 39 percent completion band.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Tracker status"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay.Um...So I did a quick review this morning in terms of the status on the tracker.",
+            "similarity": 0.5306
+          },
+          {
+            "sourceId": "line_71_unit_2",
+            "speaker": "Rebecca Gill",
+            "quote": "So yeah, we're still on track.",
+            "similarity": 0.4328
+          },
+          {
+            "sourceId": "line_9_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "Things have moved again a little bit as well, so that's all positive.",
+            "similarity": 0.4232
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "The main technical-file priorities remain risk and software.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk and software priority"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_15",
+            "speaker": "Jacqui Fox",
+            "quote": "The focus still remains on risk and software.",
+            "similarity": 0.6395
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Cybersecurity updates are needed because of USB ports on the back of the CPAP machine.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "USB cybersecurity risk"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "some cybersecurity stuff as a result of the USB ports that's on the back of the CPAP machine and how we effectively deal with that.and any changes that may come as a consequence to ensure that you're, you know, you're mitigating off that risk.",
+            "similarity": 0.7766
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Rebecca is updating the risk management plan and matrix, including more detail on FMEAs across software, hardware and related areas.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk management plan updates"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_2",
+            "speaker": "Rebecca Gill",
+            "quote": "And then the second one, I just kind of put a bit more detail into the use of kind of FMEAs to, as a way of measuring risk across software, hardware and various different things.",
+            "similarity": 0.6031
+          },
+          {
+            "sourceId": "line_9_unit_17",
+            "speaker": "Jacqui Fox",
+            "quote": "Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to",
+            "similarity": 0.5126
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Andrew has progressed alarm-related software changes across sound, flash and colour.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm coding changes"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then from the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
+            "similarity": 0.7847
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "The remaining alarm issue is how the mute button affects the flash sequence.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm coding changes"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "The alarm changes seem to have gone through successfully.Across the three parameters, which are sound, flash, and color, and...So there is one outstanding point, I suppose, really in terms of the mute button or the mute function or what happens in terms of the flash sequence that exists in your current setup.",
+            "similarity": 0.8198
+          },
+          {
+            "sourceId": "line_23_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "When you press the mute button, maybe now takes the sameapproach as one of the actual alarm signals.",
+            "similarity": 0.7072
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Clinical review with Janine and Adil is needed to confirm whether the alarm changes are acceptable in the field.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Clinical and usability alarm review",
+          "Alarm coding changes"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So Janine, and I think Adil, you're involved in that as well next week, just to look at that from a clinician side point at those changes in terms of whatthat would look like in the field and any would it cause any issues and is that change acceptable and therefore kind of effectively boxed off from a change request perspective that's raised as well and I believe from talking to you guys on Monday that that's processing through the review team.the end of this week.",
+            "similarity": 0.523
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "The alarm changes are expected to be handled through a change request review.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm coding changes"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then from the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
+            "similarity": 0.5664
+          },
+          {
+            "sourceId": "line_23_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "The alarm changes seem to have gone through successfully.Across the three parameters, which are sound, flash, and color, and...So there is one outstanding point, I suppose, really in terms of the mute button or the mute function or what happens in terms of the flash sequence that exists in your current setup.",
+            "similarity": 0.5566
+          },
+          {
+            "sourceId": "line_23_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So Janine, and I think Adil, you're involved in that as well next week, just to look at that from a clinician side point at those changes in terms of whatthat would look like in the field and any would it cause any issues and is that change acceptable and therefore kind of effectively boxed off from a change request perspective that's raised as well and I believe from talking to you guys on Monday that that's processing through the review team.the end of this week.",
+            "similarity": 0.5239
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "The firmware appears to have capacity for the 12 additional languages.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language updates"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "And in terms of the languages, Andrew has been able to prove that the memory capacity within the firmware exists to accommodate those 12 additional languages.He said, now the next steps are, sorry, one glitch that might be identified is some.incompatibility in terms of the symbols for specific languages that are simple focus, i.e. specifically Arabic, Vietnamese, Greek.",
+            "similarity": 0.8103
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "Arabic, Vietnamese and Greek may need symbol or font support before the translated GUI files can be fully loaded.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language updates"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_9",
+            "speaker": "Jacqui Fox",
+            "quote": "Andrew is off at the moment, so we'll get the.Bottomed out by the end of the week, hopefully, and that the GUIs for the full translation files of those 12 languages are available, and so therefore, once the symbol issue is resolved, we should be in a position to fully upload the true translations into the software.So in effect, the two code changes that were needed should be completed in total by the end of next week.",
+            "similarity": 0.6433
+          },
+          {
+            "sourceId": "line_23_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "And in terms of the languages, Andrew has been able to prove that the memory capacity within the firmware exists to accommodate those 12 additional languages.He said, now the next steps are, sorry, one glitch that might be identified is some.incompatibility in terms of the symbols for specific languages that are simple focus, i.e. specifically Arabic, Vietnamese, Greek.",
+            "similarity": 0.5824
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "The alarm and language updates will produce a new software version.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language updates",
+          "Alarm coding changes"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then from the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
+            "similarity": 0.7203
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "The new software version should also document the retrospective update from version 1.01 to 1.02.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language updates"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "documents that new version of the software to also include the retrospective update that happened between your original version of version 1.01 to version 1.02 and that new what that new version will be including those changes and those two changes and that and that retrospective change.In relation to that retrospective change, David is working at the moment, just to the feedback from your third party vendor was that there were 17 changes that happened between the version 101 to 102.",
+            "similarity": 0.7728
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "David is tracing the 17 historical software changes from version 1.01 to 1.02 and identifying any test-scenario gaps.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Biocomp testing",
+          "Accelerated testing",
+          "Technical file summary"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "documents that new version of the software to also include the retrospective update that happened between your original version of version 1.01 to version 1.02 and that new what that new version will be including those changes and those two changes and that and that retrospective change.In relation to that retrospective change, David is working at the moment, just to the feedback from your third party vendor was that there were 17 changes that happened between the version 101 to 102.",
+            "similarity": 0.701
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "Retrospective test scenarios may be needed where changes cannot be supported from existing traceability.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Accelerated testing",
+          "Electrical compliance testing",
+          "Biocomp testing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "It's to trace through the actual software code to see exactlywhere within the code those changes are evident and to understand that we have test scenarios to support each of those changes and where there may be gaps that there may be retrospective test scenarios that will need to be generated to provide you with justification for thefor the change from a traceability perspective.",
+            "similarity": 0.6736
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "Electrical compliance testing will be completed in-house and is expected to finish in the second-last week of July.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Electrical compliance testing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "And again, Rebecca and Andrew did a review last week and determined that all of the required electrical compliance testing they can now do in house.",
+            "similarity": 0.7384
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "Subcontractor documentation is mostly available, with missing items to be handled through justifications or further actions.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Subcontractor spreadsheet",
+          "Technical file summary"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "I don't think there's anything needed at the moment, Rebecca, from a subcontractor point of view, but I do think you probably still need feedback on it.",
+            "similarity": 0.5521
+          }
+        ]
+      },
+      {
+        "id": "fact_017",
+        "text": "Formative usability study timing is expected to fall after the initial August submission but before notified body review.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Formative study timing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_45_unit_2",
+            "speaker": "Rebecca Gill",
+            "quote": "I presumed that the formative would be ready for submission and then to follow up with the summative.",
+            "similarity": 0.4298
+          },
+          {
+            "sourceId": "line_39_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "One thing I did want to follow up on just was around that date, Rebecca and Adil in relation to the formative studies and just to get that bottomed out in terms of dates and how that aligns with your actual MDR submission and does it feed into that kind of gap between the physical submission date and the review date by the NB?So I know in Rebecca, you kind of identified the 13th of August based on the kind of matrix that you'd give me, but from seeing emails from Colm, it was looking more like the discussion point between himself and Adil was more like September.",
+            "similarity": 0.4078
+          },
+          {
+            "sourceId": "line_27_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So Andrew will be starting to work through that with a view to completing the bulk of thattesting kind of this second last week of July, which would line up in time for your MDR submission dates.",
+            "similarity": 0.4016
+          }
+        ]
+      },
+      {
+        "id": "fact_018",
+        "text": "Task analysis is mostly complete and Adil is planning how to execute the study.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Task analysis"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_55_unit_1",
+            "speaker": "Adil Kauim",
+            "quote": "Yeah, so I've managed to get through the task analysis with Alan and Abby and Andrew yesterday, last week.",
+            "similarity": 0.4735
+          },
+          {
+            "sourceId": "line_55_unit_3",
+            "speaker": "Adil Kauim",
+            "quote": "Now it's kind of just thinking about how to execute the study.",
+            "similarity": 0.4455
+          },
+          {
+            "sourceId": "line_13_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "In terms of theTech file summary document you are, Rebecca, we're also working on processing through feedback previously from Colm and Louise to just to close that out.",
+            "similarity": 0.3603
+          }
+        ]
+      },
+      {
+        "id": "fact_019",
+        "text": "Operational process maps and procedures are awaiting finalisation with Christina.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Process maps"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "And then from the process map perspective, I know Rebecca last week you kind of mentioned to Kevin rather that there had been some operational procedures for electromed medical devices that are still being finalized.",
+            "similarity": 0.4903
+          },
+          {
+            "sourceId": "line_63_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "No, just waiting for Christina to come back to kind of like finalise those, but that should be quick.",
+            "similarity": 0.467
+          },
+          {
+            "sourceId": "line_83_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "summary documents, so once they are finalized, they...",
+            "similarity": 0.3829
+          }
+        ]
+      },
+      {
+        "id": "fact_020",
+        "text": "PMS comments from David need to feed into the relevant summary or PMS documentation.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "PMS comments"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_73_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "And then Ciaran, just in terms of PMS, I pinged you there, I think it was Monday, where David has just reviewed the PMS from a software perspective and added some comments to it.So, for you to just kind of check in on those, if did did you get that from me?",
+            "similarity": 0.6827
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Rebecca",
+        "action": "Update the risk management plan and matrix, including the cybersecurity and FMEA detail.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_17_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "It's kind of focused really now on that cybersecurity update.",
+            "similarity": 0.5558
+          },
+          {
+            "sourceId": "line_9_unit_17",
+            "speaker": "Jacqui Fox",
+            "quote": "Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to",
+            "similarity": 0.5191
+          },
+          {
+            "sourceId": "line_19_unit_2",
+            "speaker": "Rebecca Gill",
+            "quote": "And then the second one, I just kind of put a bit more detail into the use of kind of FMEAs to, as a way of measuring risk across software, hardware and various different things.",
+            "similarity": 0.5183
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "David",
+        "action": "Review Rebecca's updated risk-management wording and confirm it is on the right lines.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_17_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "And David, you obviously had reviewed their risk management plan.",
+            "similarity": 0.5793
+          },
+          {
+            "sourceId": "line_9_unit_17",
+            "speaker": "Jacqui Fox",
+            "quote": "Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to",
+            "similarity": 0.4967
+          },
+          {
+            "sourceId": "line_125_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, yeah, so your main focus, I think, Rebecca, risk and electrical compliance and working through with David and Andrew.",
+            "similarity": 0.4669
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Andrew",
+        "action": "Confirm the mute-button flash behaviour and progress the clinical review of the alarm changes with Janine and Adil.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "The alarm changes seem to have gone through successfully.Across the three parameters, which are sound, flash, and color, and...So there is one outstanding point, I suppose, really in terms of the mute button or the mute function or what happens in terms of the flash sequence that exists in your current setup.",
+            "similarity": 0.6269
+          },
+          {
+            "sourceId": "line_23_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "When you press the mute button, maybe now takes the sameapproach as one of the actual alarm signals.",
+            "similarity": 0.5518
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Andrew",
+        "action": "Resolve symbol or font issues for Arabic, Vietnamese and Greek so the translated language files can be loaded.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_9",
+            "speaker": "Jacqui Fox",
+            "quote": "Andrew is off at the moment, so we'll get the.Bottomed out by the end of the week, hopefully, and that the GUIs for the full translation files of those 12 languages are available, and so therefore, once the symbol issue is resolved, we should be in a position to fully upload the true translations into the software.So in effect, the two code changes that were needed should be completed in total by the end of next week.",
+            "similarity": 0.6825
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "David",
+        "action": "Trace the 17 software changes from version 1.01 to 1.02 and identify where retrospective test scenarios are needed.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "It's to trace through the actual software code to see exactlywhere within the code those changes are evident and to understand that we have test scenarios to support each of those changes and where there may be gaps that there may be retrospective test scenarios that will need to be generated to provide you with justification for thefor the change from a traceability perspective.",
+            "similarity": 0.6573
+          },
+          {
+            "sourceId": "line_27_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "documents that new version of the software to also include the retrospective update that happened between your original version of version 1.01 to version 1.02 and that new what that new version will be including those changes and those two changes and that and that retrospective change.In relation to that retrospective change, David is working at the moment, just to the feedback from your third party vendor was that there were 17 changes that happened between the version 101 to 102.",
+            "similarity": 0.6507
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "Andrew",
+        "action": "Work through the in-house electrical compliance testing so outputs are available for David's final software and technical-file deliverables.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "And again, Rebecca and Andrew did a review last week and determined that all of the required electrical compliance testing they can now do in house.",
+            "similarity": 0.6089
+          },
+          {
+            "sourceId": "line_27_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "So the completion of that testing will then give David the opportunity to review the outputs of that testing and update any final documents that he needs to from his deliverable point standpoint to ensurethat you're from your self or perspective, your compliance and from a tech file perspective.",
+            "similarity": 0.6022
+          },
+          {
+            "sourceId": "line_125_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, yeah, so your main focus, I think, Rebecca, risk and electrical compliance and working through with David and Andrew.",
+            "similarity": 0.5263
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "Rebecca",
+        "action": "Work through subcontractor documentation gaps and agree any justifications or further actions with Louise.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "unresolved_prerequisite",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "I don't think there's anything needed at the moment, Rebecca, from a subcontractor point of view, but I do think you probably still need feedback on it.",
+            "similarity": 0.6264
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Adil",
+        "action": "Plan execution of the formative usability study and align the timing with the MDR submission and notified body review window.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So Andrew will be starting to work through that with a view to completing the bulk of thattesting kind of this second last week of July, which would line up in time for your MDR submission dates.",
+            "similarity": 0.4925
+          },
+          {
+            "sourceId": "line_39_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "One thing I did want to follow up on just was around that date, Rebecca and Adil in relation to the formative studies and just to get that bottomed out in terms of dates and how that aligns with your actual MDR submission and does it feed into that kind of gap between the physical submission date and the review date by the NB?So I know in Rebecca, you kind of identified the 13th of August based on the kind of matrix that you'd give me, but from seeing emails from Colm, it was looking more like the discussion point between himself and Adil was more like September.",
+            "similarity": 0.4498
+          },
+          {
+            "sourceId": "line_45_unit_2",
+            "speaker": "Rebecca Gill",
+            "quote": "I presumed that the formative would be ready for submission and then to follow up with the summative.",
+            "similarity": 0.424
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Kevin and Christina",
+        "action": "Finalise the operational process maps and procedures once Christina returns.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "And then from the process map perspective, I know Rebecca last week you kind of mentioned to Kevin rather that there had been some operational procedures for electromed medical devices that are still being finalized.",
+            "similarity": 0.4769
+          },
+          {
+            "sourceId": "line_63_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "No, just waiting for Christina to come back to kind of like finalise those, but that should be quick.",
+            "similarity": 0.4659
+          },
+          {
+            "sourceId": "line_83_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "summary documents, so once they are finalized, they...",
+            "similarity": 0.433
+          }
+        ]
+      },
+      {
+        "id": "action_010",
+        "owner": "Ciaran",
+        "action": "Review David's PMS comments and incorporate them into the relevant PMS or summary documentation.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_73_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "And then Ciaran, just in terms of PMS, I pinged you there, I think it was Monday, where David has just reviewed the PMS from a software perspective and added some comments to it.So, for you to just kind of check in on those, if did did you get that from me?",
+            "similarity": 0.563
+          },
+          {
+            "sourceId": "line_79_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "Just wanna say, I think about some of the comments, David.",
+            "similarity": 0.5283
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "So moving in the right direction, I would say."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_3",
+            "speaker": "Rebecca Gill",
+            "quote": "So I've kind of put the detail a wee bit more in there.I don't know, David, if you want to maybe have a pop in, have an RV look at that, just make sure I'm along the right lines."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "When you press the mute button, maybe now takes the sameapproach as one of the actual alarm signals."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So Janine, and I think Adil, you're involved in that as well next week, just to look at that from a clinician side point at those changes in terms of whatthat would look like in the field and any would it cause any issues and is that change acceptable and therefore kind of effectively boxed off from a change request perspective that's raised as well and I believe from talking to you guys on Monday that that's processing through the review team.the end of this week."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "And David has kind of suggested A workaround to Andrew as to how we could maybe update that."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_9",
+            "speaker": "Jacqui Fox",
+            "quote": "Andrew is off at the moment, so we'll get the.Bottomed out by the end of the week, hopefully, and that the GUIs for the full translation files of those 12 languages are available, and so therefore, once the symbol issue is resolved, we should be in a position to fully upload the true translations into the software.So in effect, the two code changes that were needed should be completed in total by the end of next week."
+          }
+        ]
+      }
+    ]
+  }
+}

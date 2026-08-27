@@ -1,0 +1,813 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "04_eakin_t733_tech_file_weekly",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_Eakin_T733_Tech_File_review_weekly_NEW.docx",
+    "sha256": "4b15cddada7bd65a15dc06fde82cbf2d419702f0c622dddbae1021d2830911e9",
+    "sourceUnitCount": 76
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Technical file review",
+      "meetingTitle": "Client Eakin T733 Tech File review weekly"
+    },
+    "summary": {
+      "meetingPurpose": "Review the following week’s TF24 technical-file status and keep priority workstreams moving before holiday and submission deadlines.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Review risk, software, contract-management, subcontractor and usability priorities.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_9_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "Key priorities continue to remain risk and software, Christina, contract management and subcontractors.",
+              "similarity": 0.5899
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Confirm alarm change status and language update progress.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_13_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "that will give you the new version of software now in the field that will be will be in the field to that has those alarm updates in it.",
+              "similarity": 0.5654
+            },
+            {
+              "sourceId": "line_9_unit_8",
+              "speaker": "Jacqui Fox",
+              "quote": "In terms of the software updates, in terms of the alarms thatAndrew has successfully managed to make all those updates.",
+              "similarity": 0.5145
+            },
+            {
+              "sourceId": "line_13_unit_5",
+              "speaker": "Jacqui Fox",
+              "quote": "And that's similarly all of those language updates will form part of the new version of software that you will release.",
+              "similarity": 0.5102
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Review electrical testing timeline and impact on software workstream dates.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_13_unit_9",
+              "speaker": "Jacqui Fox",
+              "quote": "So that evidently will all push out.this software work stream end date to the end of July now because the testing output will feed into some of the deliverables from a software perspective.",
+              "similarity": 0.5967
+            },
+            {
+              "sourceId": "line_13_unit_6",
+              "speaker": "Jacqui Fox",
+              "quote": "So it could be thetimes plus the languages.Then in relation to electrical compliance testing, confirm that that will all be done in-house.",
+              "similarity": 0.5294
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Check subcontractor, usability, process map and PMS documentation progress.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_59_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "And in terms of the feedback that David had given in relation to the PMS file that's in the SharePoint right now, did you get a chance and opportunity to review that?",
+              "similarity": 0.5424
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Prompt the team to progress and share documentation for review quickly.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_67_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you.",
+              "similarity": 0.5822
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The meeting confirmed continued TF24 remediation priorities, with risk, software, contract management, subcontractors and usability still central. Alarm updates had been completed and clinically reviewed, language changes were ongoing, and in-house electrical testing would push the software workstream to the end of July. The team also reviewed subcontractor procedure updates, formative study planning, process-map responses, PMS alignment and the need to move documentation quickly because timelines were tightening."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Documentation tracker movement is expected, with priorities remaining risk, software, contract management, subcontractors and usability.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Documentation tracker"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So I haven't had a chance to review the tracker this morning but as of last week there was some slight movement in terms of updates in terms of status of the documentation.So I expect that we're kind of going to see fairly reasonable movement from here on out.",
+            "similarity": 0.6372
+          },
+          {
+            "sourceId": "line_67_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you.",
+            "similarity": 0.521
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Risk-management updates are continuing after David's feedback, including ratings, the risk matrix and cybersecurity mitigations for the USB port.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk management updates"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "And she's also working on the risk matrix and then there's some ongoing updates in relation to cybersecurity around the USB port and how you will handle that going forward and what the mitigations around that are.",
+            "similarity": 0.6589
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Alarm software updates have been completed and clinically reviewed as acceptable for field use.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm updates completed"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "In terms of the software updates, in terms of the alarms thatAndrew has successfully managed to make all those updates.",
+            "similarity": 0.6795
+          },
+          {
+            "sourceId": "line_13_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "that will give you the new version of software now in the field that will be will be in the field to that has those alarm updates in it.",
+            "similarity": 0.673
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "The alarm changes can proceed through the change request and will form part of the new software version.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm updates completed",
+          "New software version"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "that will give you the new version of software now in the field that will be will be in the field to that has those alarm updates in it.",
+            "similarity": 0.8417
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Language updates are ongoing, with several languages loaded and others blocked by minor or more substantial symbol issues.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language symbol issues"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "And that's similarly all of those language updates will form part of the new version of software that you will release.",
+            "similarity": 0.6716
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "The language updates will also form part of the new software release.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "New software version"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "And that's similarly all of those language updates will form part of the new version of software that you will release.",
+            "similarity": 0.9364
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Electrical compliance testing will be completed in-house and is expected to finish in the second-last week of July.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Electrical compliance testing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "With the view to we anticipate that the completion of all of that testing will be done by this second last week of July.",
+            "similarity": 0.6374
+          },
+          {
+            "sourceId": "line_13_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "So it could be thetimes plus the languages.Then in relation to electrical compliance testing, confirm that that will all be done in-house.",
+            "similarity": 0.5888
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "The software workstream end date is pushed to the end of July because electrical testing outputs feed into software deliverables.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Software workstream timing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_9",
+            "speaker": "Jacqui Fox",
+            "quote": "So that evidently will all push out.this software work stream end date to the end of July now because the testing output will feed into some of the deliverables from a software perspective.",
+            "similarity": 0.7958
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Subcontractor and contract-management documentation is being finalised, including feedback and missing documentation.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Subcontractor documentation"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_11",
+            "speaker": "Jacqui Fox",
+            "quote": "I know that the update from Rebecca kind of last week was that you were finalising a lot of the feedback and the missing documentation and the justifications.",
+            "similarity": 0.5403
+          },
+          {
+            "sourceId": "line_67_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you.",
+            "similarity": 0.4703
+          },
+          {
+            "sourceId": "line_65_unit_0",
+            "speaker": "Ciaran Ryan",
+            "quote": "The summary document.",
+            "similarity": 0.4296
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "The contractor GSOP has been updated to include Louise's feedback and other site-audit updates.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Contractor GSOP"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_3",
+            "speaker": "Christina McLean",
+            "quote": "So I'm wondering maybe should I just pop that into a folder for Louise just to cheque through to make sure that I haven't missed anything or there's nothing else outstanding for the GSOP at least.",
+            "similarity": 0.5189
+          },
+          {
+            "sourceId": "line_19_unit_1",
+            "speaker": "Christina McLean",
+            "quote": "There were other updates that needed to be made for one of the other sites audits.",
+            "similarity": 0.4867
+          },
+          {
+            "sourceId": "line_13_unit_11",
+            "speaker": "Jacqui Fox",
+            "quote": "I know that the update from Rebecca kind of last week was that you were finalising a lot of the feedback and the missing documentation and the justifications.",
+            "similarity": 0.4714
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "Formative usability study outputs are expected after the initial August submission but before notified body review in November.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Formative study protocol"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "No problem.Excellent, thanks.Okay, and then Adil from a usability perspective, I know that you, the task analysis were done and you were looking into the plan and the execution of the study.I did have a conversation with Rebecca around the formative, the dates, the timelines in relation to the results of the formative study will likely be after your initial submission in August with a view to having that window until it's pulled for review in November to allow the",
+            "similarity": 0.5645
+          },
+          {
+            "sourceId": "line_31_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "the formative, completed formative study information to be updated into it.",
+            "similarity": 0.5234
+          },
+          {
+            "sourceId": "line_13_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "With the view to we anticipate that the completion of all of that testing will be done by this second last week of July.",
+            "similarity": 0.4664
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "Adil is preparing the formative study protocol while balancing mini-masking-problem protocol work.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Formative study protocol",
+          "Mini masking problems protocol"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_33_unit_1",
+            "speaker": "Adil Kauim",
+            "quote": "I'm trying to get as much as I can sort of done this week, because next week I'll be focusing on the protocol prep for the mini masking problems, because I'll be executing that study in the first week of July.",
+            "similarity": 0.4829
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "Kevin is responding to comments and rewriting process-map related documents.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Process maps",
+          "Documentation urgency"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_35_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay.Cool.Okay, then down to process maps, I know last we spoke, Kevin, you were, I think the plan was a catch up with Christina again when she returned around finalising the process maps.",
+            "similarity": 0.587
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "TFO3 has been submitted, and PMS-related documents now need to be adapted to TF24 specifics.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "PMS and TF24 documents"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_57_unit_3",
+            "speaker": "Ciaran Ryan",
+            "quote": "So they're trying to flip them now that they're DF24 specific and that's the case of just seeing what's in the client folder and applying any comments and see how we get on over the next few weeks.Yeah.",
+            "similarity": 0.4632
+          },
+          {
+            "sourceId": "line_59_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And in terms of the feedback that David had given in relation to the PMS file that's in the SharePoint right now, did you get a chance and opportunity to review that?",
+            "similarity": 0.3835
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "David's PMS comments include straightforward alignment items such as confirming Rule 9 across the documentation.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Rule 9 alignment"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_1",
+            "speaker": "Ciaran Ryan",
+            "quote": "Rule 9, that's just the case of making sure that's across the board, but again, as I said last week, it was it must be a alignment piece anyway on the Bible that we're using.",
+            "similarity": 0.635
+          },
+          {
+            "sourceId": "line_61_unit_0",
+            "speaker": "Ciaran Ryan",
+            "quote": "Yeah, I think I think it's mostly straightforward stuff, just like confirming the correct rule and things like that, which I think now we know that that's been confirmed anyway.",
+            "similarity": 0.5438
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "The team is running short on time, so documentation should be progressed and shared for review as soon as possible.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Documentation urgency",
+          "Documentation tracker"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_67_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you.",
+            "similarity": 0.6243
+          },
+          {
+            "sourceId": "line_9_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So I haven't had a chance to review the tracker this morning but as of last week there was some slight movement in terms of updates in terms of status of the documentation.So I expect that we're kind of going to see fairly reasonable movement from here on out.",
+            "similarity": 0.5505
+          },
+          {
+            "sourceId": "line_13_unit_11",
+            "speaker": "Jacqui Fox",
+            "quote": "I know that the update from Rebecca kind of last week was that you were finalising a lot of the feedback and the missing documentation and the justifications.",
+            "similarity": 0.5254
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Rebecca",
+        "action": "Continue updating the risk management plan, ratings, matrix and USB-port cybersecurity mitigations.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "And she's also working on the risk matrix and then there's some ongoing updates in relation to cybersecurity around the USB port and how you will handle that going forward and what the mitigations around that are.",
+            "similarity": 0.6957
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Andrew",
+        "action": "Continue resolving language symbol issues and complete the language updates for the new software version.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "And that's similarly all of those language updates will form part of the new version of software that you will release.",
+            "similarity": 0.6794
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Andrew",
+        "action": "Continue in-house electrical compliance testing, targeting completion in the second-last week of July.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_8",
+            "speaker": "Jacqui Fox",
+            "quote": "With the view to we anticipate that the completion of all of that testing will be done by this second last week of July.",
+            "similarity": 0.6098
+          },
+          {
+            "sourceId": "line_13_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "So it could be thetimes plus the languages.Then in relation to electrical compliance testing, confirm that that will all be done in-house.",
+            "similarity": 0.5676
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Christina",
+        "action": "Put the updated contractor GSOP into a folder for Louise to check.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_3",
+            "speaker": "Christina McLean",
+            "quote": "So I'm wondering maybe should I just pop that into a folder for Louise just to cheque through to make sure that I haven't missed anything or there's nothing else outstanding for the GSOP at least.",
+            "similarity": 0.6014
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Christina",
+        "action": "Check in with Rebecca before the end of the week on missing subcontractor or contract-management updates.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_10",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, and then Lauren, sorry, Christina to subcontract.contractor points.",
+            "similarity": 0.3954
+          },
+          {
+            "sourceId": "line_13_unit_11",
+            "speaker": "Jacqui Fox",
+            "quote": "I know that the update from Rebecca kind of last week was that you were finalising a lot of the feedback and the missing documentation and the justifications.",
+            "similarity": 0.3868
+          },
+          {
+            "sourceId": "line_19_unit_1",
+            "speaker": "Christina McLean",
+            "quote": "There were other updates that needed to be made for one of the other sites audits.",
+            "similarity": 0.3748
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "Jacqui",
+        "action": "Follow up on Louise's review of the updated contractor GSOP.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_3",
+            "speaker": "Christina McLean",
+            "quote": "So I'm wondering maybe should I just pop that into a folder for Louise just to cheque through to make sure that I haven't missed anything or there's nothing else outstanding for the GSOP at least.",
+            "similarity": 0.5188
+          },
+          {
+            "sourceId": "line_15_unit_3",
+            "speaker": "Christina McLean",
+            "quote": "So that was taken into account a lot of Louise's feedback.",
+            "similarity": 0.4469
+          },
+          {
+            "sourceId": "line_13_unit_10",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, and then Lauren, sorry, Christina to subcontract.contractor points.",
+            "similarity": 0.4378
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "Adil",
+        "action": "Progress the formative study protocol and agree with Colm and Grace how the study will be distributed across part one and part two.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_31_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "the formative, completed formative study information to be updated into it.",
+            "similarity": 0.719
+          },
+          {
+            "sourceId": "line_33_unit_3",
+            "speaker": "Adil Kauim",
+            "quote": "SoThis week, I'm just trying to get what I can done and then get Colm and Grace to kind of go through how to actually distribute the study from part one to part 2 and so on.So, yeah, this is not bad.",
+            "similarity": 0.614
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Kevin",
+        "action": "Finish responses and rewrites on process-map documents, then email Colm and Louise for review.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_37_unit_2",
+            "speaker": "Kevin Beattie",
+            "quote": "I've got some on some other replied to some of that other feedback that Colm and Louise put on the other documents as well, so that's work in progress, like, so yeah.",
+            "similarity": 0.5002
+          },
+          {
+            "sourceId": "line_67_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you.",
+            "similarity": 0.4922
+          },
+          {
+            "sourceId": "line_49_unit_0",
+            "speaker": "Kevin Beattie",
+            "quote": "Abby, that that's us, yeah, and then then you can write 'cause I'm reviewing or rewriting the documents on there, so yeah, and reword a few things like so, so, so hopefully that makes makes sense, like so, yeah.",
+            "similarity": 0.4785
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Ciaran",
+        "action": "Convert the relevant submitted documents into TF24-specific versions and apply client-folder comments.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_57_unit_3",
+            "speaker": "Ciaran Ryan",
+            "quote": "So they're trying to flip them now that they're DF24 specific and that's the case of just seeing what's in the client folder and applying any comments and see how we get on over the next few weeks.Yeah.",
+            "similarity": 0.579
+          }
+        ]
+      },
+      {
+        "id": "action_010",
+        "owner": "Ciaran",
+        "action": "Incorporate David's PMS comments, including alignment on Rule 9 and summary-document consistency.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_65_unit_0",
+            "speaker": "Ciaran Ryan",
+            "quote": "The summary document.",
+            "similarity": 0.5454
+          },
+          {
+            "sourceId": "line_61_unit_1",
+            "speaker": "Ciaran Ryan",
+            "quote": "Rule 9, that's just the case of making sure that's across the board, but again, as I said last week, it was it must be a alignment piece anyway on the Bible that we're using.",
+            "similarity": 0.5091
+          },
+          {
+            "sourceId": "line_37_unit_2",
+            "speaker": "Kevin Beattie",
+            "quote": "I've got some on some other replied to some of that other feedback that Colm and Louise put on the other documents as well, so that's work in progress, like, so yeah.",
+            "similarity": 0.488
+          }
+        ]
+      },
+      {
+        "id": "action_011",
+        "owner": "Team",
+        "action": "Progress documentation quickly and share anything that needs Trinzo review.",
+        "deadline": "Not stated",
+        "importance": "major",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_67_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you.",
+            "similarity": 0.6163
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "So it could be thetimes plus the languages.Then in relation to electrical compliance testing, confirm that that will all be done in-house."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_2",
+            "speaker": "Christina McLean",
+            "quote": "So that has been done now."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_19_unit_3",
+            "speaker": "Christina McLean",
+            "quote": "So I'm wondering maybe should I just pop that into a folder for Louise just to cheque through to make sure that I haven't missed anything or there's nothing else outstanding for the GSOP at least."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_1",
+            "speaker": "Christina McLean",
+            "quote": "And I'll cheque in with Rebecca before the end of this week, just so that we have more updates for next week for anything else that's maybe missing."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_31_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "the formative, completed formative study information to be updated into it."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_45_unit_0",
+            "speaker": "Kevin Beattie",
+            "quote": "Yeah, well, I've sort of, yeah, if they don't mind, once I get, once I get finished, I'm sorry, yeah, I'll sure, maybe I'll...A message to you, but want some."
+          }
+        ]
+      }
+    ]
+  }
+}

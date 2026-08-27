@@ -1,0 +1,898 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "05_m204_webinar_rehearsal",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_M204_Larkfield_MK_Thursday_session_1.docx",
+    "sha256": "e5dd3c2fbad660a3b5045c1ee61a41017249372a3c64ecbf2db066a5c0c54248",
+    "sourceUnitCount": 187
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Webinar rehearsal",
+      "meetingTitle": "Client M204 Larkfield MK - Thursday session"
+    },
+    "summary": {
+      "meetingPurpose": "Rehearse the webinar flow and agree final presenter, Q&A, timing and technical-contingency arrangements.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Practise the opening and handover from Priya to Tom.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_415_unit_0",
+              "speaker": "Tom Whitfield",
+              "quote": "And that's, thank you, and I'll pass back to Priya to take some of your questions.",
+              "similarity": 0.4964
+            },
+            {
+              "sourceId": "line_151_unit_0",
+              "speaker": "Nadia Okonkwo",
+              "quote": "Yeah, one hundred percent practise the handover.",
+              "similarity": 0.4812
+            },
+            {
+              "sourceId": "line_619_unit_1",
+              "speaker": "Priya Sethi",
+              "quote": "Just the open and the first handover, we don't need the whole thing again.",
+              "similarity": 0.4693
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Check screen-sharing and case-study handovers.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_151_unit_0",
+              "speaker": "Nadia Okonkwo",
+              "quote": "Yeah, one hundred percent practise the handover.",
+              "similarity": 0.574
+            },
+            {
+              "sourceId": "line_659_unit_0",
+              "speaker": "Priya Sethi",
+              "quote": "And I'm doing the open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers.",
+              "similarity": 0.4591
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Agree timing controls for content and Q&A.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_269_unit_0",
+              "speaker": "Priya Sethi",
+              "quote": "So can we say, the content is done by thirty-five minutes, hard stop, and then the last, we've got a full twenty for questions.",
+              "similarity": 0.4723
+            },
+            {
+              "sourceId": "line_249_unit_0",
+              "speaker": "Priya Sethi",
+              "quote": "Okay, so let's talk timings, because last time we, the whole thing overran and we didn't get to questions properly.",
+              "similarity": 0.431
+            },
+            {
+              "sourceId": "line_399_unit_1",
+              "speaker": "Tom Whitfield",
+              "quote": "The content's the content.",
+              "similarity": 0.354
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Plan chat moderation and backup questions.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_639_unit_0",
+              "speaker": "Nadia Okonkwo",
+              "quote": "Yeah, I'll write the three backup questions tonight and send them round so everyone knows what might come up, and I'm on the chat throughout.",
+              "similarity": 0.6125
+            },
+            {
+              "sourceId": "line_43_unit_0",
+              "speaker": "Priya Sethi",
+              "quote": "So the plan is I open it, I do the housekeeping bit, welcome everyone in, tell them mics are off, tell them to drop questions in the chat and I'll bring them in at the end.",
+              "similarity": 0.5349
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Confirm recording, closing slide and technical fallback arrangements.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_515_unit_0",
+              "speaker": "Priya Sethi",
+              "quote": "So I think I close, I do a proper thank you, I say the recording's coming, I say if you want to talk to us here's how, and one clear next step.",
+              "similarity": 0.5187
+            },
+            {
+              "sourceId": "line_427_unit_0",
+              "speaker": "Priya Sethi",
+              "quote": "Perfect, so I go, great question, yes, everybody will get the recording and the slides by email tomorrow, so don't worry about frantically taking notes.",
+              "similarity": 0.4985
+            },
+            {
+              "sourceId": "line_535_unit_1",
+              "speaker": "Callum Reid",
+              "quote": "Okay, QR code and the link, I'll do the closing slide.",
+              "similarity": 0.4125
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The team rehearsed the webinar opening, handovers, Q&A flow and contingency plan. They agreed that Priya would handle the opening, housekeeping, handovers and close; Tom would keep his intro and answers tight; Nadia would manage questions and timing prompts; and Callum would handle technical safety-net duties, recording and the closing slide. A short warm-up was agreed for 08:30 before the live 11:00 session."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Priya will open the webinar with housekeeping, muted microphones, cameras off and questions in chat.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Webinar opening"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_547_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "Yeah, I start it, so my job is, the second Priya opens her mouth I hit the button, and I check it says recording top left, and I screenshot it as proof.",
+            "similarity": 0.5102
+          },
+          {
+            "sourceId": "line_415_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "And that's, thank you, and I'll pass back to Priya to take some of your questions.",
+            "similarity": 0.5045
+          },
+          {
+            "sourceId": "line_221_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "So the audience just sees Priya reading out a nice tidy question.",
+            "similarity": 0.5032
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Tom should wait for Priya's handover cue before starting.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter handover",
+          "Case-study handover"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_63_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "I'll say, and I'll hand over to Tom now, and that's your cue.",
+            "similarity": 0.5646
+          },
+          {
+            "sourceId": "line_327_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Okay, I think we've got a good crowd now, so, without further ado, I'm going to hand over to Tom, who's going to take you through it.",
+            "similarity": 0.4577
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Slide-two animation has been removed and needs to be restored.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Slide animation issue"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_627_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Callum, you're putting the animation back on the three-things slide.",
+            "similarity": 0.6526
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Priya will take over briefly for the case study and then hand back to Tom.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Case-study handover"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_415_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "And that's, thank you, and I'll pass back to Priya to take some of your questions.",
+            "similarity": 0.5585
+          },
+          {
+            "sourceId": "line_221_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "So the audience just sees Priya reading out a nice tidy question.",
+            "similarity": 0.4668
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "The screen-sharing handover creates a short dead-air risk, so Priya will cover the gap verbally.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Screen-share dead air",
+          "Presenter handover",
+          "Case-study handover"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_221_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "So the audience just sees Priya reading out a nice tidy question.",
+            "similarity": 0.529
+          },
+          {
+            "sourceId": "line_131_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "Okay, so I talk through the three, and then, Priya, this is the point where you said you wanted to jump in, is that right, on the second one?",
+            "similarity": 0.4795
+          },
+          {
+            "sourceId": "line_415_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "And that's, thank you, and I'll pass back to Priya to take some of your questions.",
+            "similarity": 0.4633
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Nadia will monitor and group chat questions, then feed Priya the best questions privately.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Chat question moderation"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_635_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Nadia, you're doing the planted questions and grouping the chat on the day.",
+            "similarity": 0.6925
+          },
+          {
+            "sourceId": "line_491_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "See this is why Nadia runs the show really.",
+            "similarity": 0.6387
+          },
+          {
+            "sourceId": "line_205_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "Where's Nadia coming in?",
+            "similarity": 0.6247
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Callum will act as technical safety net on a separate connection.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter drop-off contingency"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_233_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "And Callum, you're the safety net on the tech, so if the whole thing drops, if Tom's connection dies, you're the one who comes on and says bear with us.",
+            "similarity": 0.6637
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "Content should finish by 35 minutes, leaving 20 minutes for questions.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Timing and Q&A split"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_269_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "So can we say, the content is done by thirty-five minutes, hard stop, and then the last, we've got a full twenty for questions.",
+            "similarity": 0.8125
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Nadia will message Tom a five-minute warning while he is presenting.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter drop-off contingency",
+          "Presenter handover"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_205_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "Where's Nadia coming in?",
+            "similarity": 0.5957
+          },
+          {
+            "sourceId": "line_491_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "See this is why Nadia runs the show really.",
+            "similarity": 0.5724
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "The opening script should mention the speech-bubble icon for mobile attendees.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Mobile chat instruction"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_387_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Right, I'll say, tap the little speech bubble icon.",
+            "similarity": 0.7214
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "The team will spot-check the joins and question section rather than rerun all content.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter drop-off contingency"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_395_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Let's just nail the joins and the questions bit.",
+            "similarity": 0.5599
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "Q&A should open with an easy question, such as whether the recording and slides will be sent afterwards.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Recording process",
+          "Closing slide and QR code"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_427_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Perfect, so I go, great question, yes, everybody will get the recording and the slides by email tomorrow, so don't worry about frantically taking notes.",
+            "similarity": 0.6273
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "Nadia will prepare planted questions in case the live audience does not ask any.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter drop-off contingency"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_205_unit_1",
+            "speaker": "Tom Whitfield",
+            "quote": "Where's Nadia coming in?",
+            "similarity": 0.6568
+          },
+          {
+            "sourceId": "line_491_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "See this is why Nadia runs the show really.",
+            "similarity": 0.6473
+          },
+          {
+            "sourceId": "line_635_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Nadia, you're doing the planted questions and grouping the chat on the day.",
+            "similarity": 0.627
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "Priya will close with a clear thank-you, recording/slides follow-up, contact route and next step.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Closing slide and QR code",
+          "Recording process"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_515_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "So I think I close, I do a proper thank you, I say the recording's coming, I say if you want to talk to us here's how, and one clear next step.",
+            "similarity": 0.6091
+          },
+          {
+            "sourceId": "line_547_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "Yeah, I start it, so my job is, the second Priya opens her mouth I hit the button, and I check it says recording top left, and I screenshot it as proof.",
+            "similarity": 0.5437
+          },
+          {
+            "sourceId": "line_415_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "And that's, thank you, and I'll pass back to Priya to take some of your questions.",
+            "similarity": 0.4933
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "A closing slide should include the booking link and QR code.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Closing slide and QR code"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_523_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "I can make that slide, do you want the booking link as a QR code as well for the phone lot?",
+            "similarity": 0.7864
+          },
+          {
+            "sourceId": "line_535_unit_1",
+            "speaker": "Callum Reid",
+            "quote": "Okay, QR code and the link, I'll do the closing slide.",
+            "similarity": 0.767
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "Callum will start recording as Priya begins, confirm the red recording indicator and take a screenshot.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Recording process"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_547_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "Yeah, I start it, so my job is, the second Priya opens her mouth I hit the button, and I check it says recording top left, and I screenshot it as proof.",
+            "similarity": 0.6457
+          }
+        ]
+      },
+      {
+        "id": "fact_017",
+        "text": "If Tom drops off, Priya will fill verbally while Callum contacts Tom and can take over sharing from a backup deck.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter drop-off contingency"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_233_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "And Callum, you're the safety net on the tech, so if the whole thing drops, if Tom's connection dies, you're the one who comes on and says bear with us.",
+            "similarity": 0.4743
+          },
+          {
+            "sourceId": "line_189_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Which is why on the day I'll cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap.",
+            "similarity": 0.453
+          },
+          {
+            "sourceId": "line_327_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Okay, I think we've got a good crowd now, so, without further ado, I'm going to hand over to Tom, who's going to take you through it.",
+            "similarity": 0.4224
+          }
+        ]
+      },
+      {
+        "id": "fact_018",
+        "text": "A short warm-up run of the opening and first handover is planned for 08:30 before the 11:00 live session.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Presenter handover",
+          "Case-study handover",
+          "Morning warm-up"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_619_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Just the open and the first handover, we don't need the whole thing again.",
+            "similarity": 0.5825
+          },
+          {
+            "sourceId": "line_675_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "So, half eight tomorrow for the warm-up, and then we're on at, it's eleven, isn't it, the live one.",
+            "similarity": 0.4756
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Callum",
+        "action": "Restore the animation on the three-things slide.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_627_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Callum, you're putting the animation back on the three-things slide.",
+            "similarity": 0.8268
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Callum",
+        "action": "Build the closing slide with the booking link and QR code, then re-share the deck.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_631_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "Yep, and building the closing slide with the QR code and the link, and I'll re-share the deck once it's done.",
+            "similarity": 0.7984
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Nadia",
+        "action": "Write three backup questions tonight and circulate them to the team.",
+        "deadline": "Not stated",
+        "importance": "major",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_639_unit_0",
+            "speaker": "Nadia Okonkwo",
+            "quote": "Yeah, I'll write the three backup questions tonight and send them round so everyone knows what might come up, and I'm on the chat throughout.",
+            "similarity": 0.7155
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Nadia",
+        "action": "Monitor and group the chat questions during the webinar.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_635_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Nadia, you're doing the planted questions and grouping the chat on the day.",
+            "similarity": 0.4929
+          },
+          {
+            "sourceId": "line_327_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "If you've got a question at any point, pop it in the chat box, don't be shy, and we'll get to as many as we can at the end.",
+            "similarity": 0.4663
+          },
+          {
+            "sourceId": "line_209_unit_0",
+            "speaker": "Nadia Okonkwo",
+            "quote": "Yeah, so I'm not on camera at all, I'm just watching the chat the whole way through, and I'm sort of, I'm collecting the questions and grouping them so at the end we're not scrabbling.",
+            "similarity": 0.4584
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Nadia",
+        "action": "Send Tom a private five-minute timing warning during the webinar.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_567_unit_0",
+            "speaker": "Nadia Okonkwo",
+            "quote": "One more, sorry, what's the, what do we actually do if Tom completely drops off, like his screen freezes, what's the words.",
+            "similarity": 0.5553
+          },
+          {
+            "sourceId": "line_233_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "And Callum, you're the safety net on the tech, so if the whole thing drops, if Tom's connection dies, you're the one who comes on and says bear with us.",
+            "similarity": 0.484
+          },
+          {
+            "sourceId": "line_419_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Lovely, thank you Tom.",
+            "similarity": 0.4587
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "Tom",
+        "action": "Keep the personal introduction to about 30 seconds.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_47_unit_0",
+            "speaker": "Tom Whitfield",
+            "quote": "And that's roughly, what, two minutes for the intro?",
+            "similarity": 0.4765
+          },
+          {
+            "sourceId": "line_85_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Yeah, thirty seconds on you, don't do the whole CV.",
+            "similarity": 0.4052
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "Tom",
+        "action": "Keep Q&A answers concise and avoid overrunning.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_249_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Okay, so let's talk timings, because last time we, the whole thing overran and we didn't get to questions properly.",
+            "similarity": 0.4008
+          },
+          {
+            "sourceId": "line_419_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Right, we've had some brilliant questions come in, keep them coming.",
+            "similarity": 0.3849
+          },
+          {
+            "sourceId": "line_407_unit_0",
+            "speaker": "Nadia Okonkwo",
+            "quote": "Can we do the end though, the questions, because that's the bit that's never been practised and it always shows.",
+            "similarity": 0.3591
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Tom",
+        "action": "Drop the not-see-you joke from the opening.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_337_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Don't do the not see you joke on the day.",
+            "similarity": 0.6427
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Priya",
+        "action": "Use the opening housekeeping script, including the tap-the-speech-bubble instruction for mobile attendees.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_387_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Right, I'll say, tap the little speech bubble icon.",
+            "similarity": 0.6652
+          },
+          {
+            "sourceId": "line_659_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "And I'm doing the open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers.",
+            "similarity": 0.5607
+          }
+        ]
+      },
+      {
+        "id": "action_010",
+        "owner": "Priya",
+        "action": "Cover dead air during screen-sharing handovers and handle the closing.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_659_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "And I'm doing the open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers.",
+            "similarity": 0.5707
+          }
+        ]
+      },
+      {
+        "id": "action_011",
+        "owner": "Callum",
+        "action": "Start recording when Priya begins, check the red recording indicator, take a screenshot and monitor the recording.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_547_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "Yeah, I start it, so my job is, the second Priya opens her mouth I hit the button, and I check it says recording top left, and I screenshot it as proof.",
+            "similarity": 0.7494
+          }
+        ]
+      },
+      {
+        "id": "action_012",
+        "owner": "Team",
+        "action": "Run a short warm-up at 08:30 covering the opening and first handover.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_619_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Just the open and the first handover, we don't need the whole thing again.",
+            "similarity": 0.5815
+          },
+          {
+            "sourceId": "line_151_unit_0",
+            "speaker": "Nadia Okonkwo",
+            "quote": "Yeah, one hundred percent practise the handover.",
+            "similarity": 0.4827
+          },
+          {
+            "sourceId": "line_659_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "And I'm doing the open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers.",
+            "similarity": 0.479
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_51_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Two, maybe three if a lot of them are still filtering in."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_123_unit_0",
+            "speaker": "Priya Sethi",
+            "quote": "Sorry, yeah, if you could."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_375_unit_0",
+            "speaker": "Callum Reid",
+            "quote": "Yeah, honestly it was fine, the only thing is when you said pop it in the chat, on mobile the chat's a bit hidden, so maybe say tap the speech bubble."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_411_unit_1",
+            "speaker": "Priya Sethi",
+            "quote": "Okay, so pretend Tom's just finished, he's done his last slide, and he throws to me."
+          }
+        ]
+      }
+    ]
+  }
+}

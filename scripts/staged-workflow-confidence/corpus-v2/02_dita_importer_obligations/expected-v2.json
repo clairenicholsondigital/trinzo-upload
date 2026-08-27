@@ -1,0 +1,981 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "02_dita_importer_obligations",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_DITA_T819_Importer_Obligations_Client_connect.docx",
+    "sha256": "95620ce6f633a954d30a2efa22771a11ff7d8d33b032005fd38d4563106dca41",
+    "sourceUnitCount": 374
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Importer obligations review",
+      "meetingTitle": "T819 DITA Eyewear Importer Obligations - Client connect"
+    },
+    "summary": {
+      "meetingPurpose": "Clarify DITA importer-obligation processes, business workflows and regulatory gaps so Trinzo can build usable compliance documents and follow-up actions.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Review the draft QMS manual and how it should align to DITA processes.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_191_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "OK, this is the QMS manual.",
+              "similarity": 0.6024
+            },
+            {
+              "sourceId": "line_109_unit_2",
+              "speaker": "Mark Kelleher",
+              "quote": "You've got a really robust process which Disa understands and is bought into and can use and is lined up to the existing processes.",
+              "similarity": 0.5155
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Understand product flow, warehouse, order, picking and packing processes.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_219_unit_0",
+              "speaker": "Orla Skally",
+              "quote": "Accounts, then a product allocates to the sales order, and it goes into a shipping queue here in the warehouse, and we print a shipping list, which is a series of barcodes which details the sales order number, the total number of units to be picked, all the products.When it comes in from Japan, you know, we do some checks, but it's not as thorough as it should be, I'll be honest.",
+              "similarity": 0.5492
+            },
+            {
+              "sourceId": "line_205_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "from a product perspective, but also from an information flow perspective.",
+              "similarity": 0.5419
+            },
+            {
+              "sourceId": "line_101_unit_4",
+              "speaker": "Mark Kelleher",
+              "quote": "Is this the flow of products?",
+              "similarity": 0.5142
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Clarify UDI, EUDAMED, MedEnvoy and importer verification responsibilities.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_13_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "and required documents from a compliance point of view in relation to the importer obligations.",
+              "similarity": 0.6467
+            },
+            {
+              "sourceId": "line_377_unit_0",
+              "speaker": "Colm O'Rourke",
+              "quote": "And practically speaking, like it's data Ireland or deals responsibility, one of the important responsibilities to check is the data in Udemed.",
+              "similarity": 0.601
+            },
+            {
+              "sourceId": "line_311_unit_1",
+              "speaker": "Jenny Gough",
+              "quote": "The legal manufacturer, which is Data Inc. as far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
+              "similarity": 0.5623
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Discuss labels, lot numbering, IFU/MIN and DoC requirements.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_235_unit_0",
+              "speaker": "Orla Skally",
+              "quote": "Yeah.Yes, yeah.Yeah, so we're working currently working on lot numbering right now.",
+              "similarity": 0.5461
+            },
+            {
+              "sourceId": "line_483_unit_0",
+              "speaker": "Orla Skally",
+              "quote": "So yeah, I would like to think in the next two to three weeks, we'll have a proper kind of system to implement lot numbering and adding it to the label.",
+              "similarity": 0.5093
+            },
+            {
+              "sourceId": "line_239_unit_2",
+              "speaker": "Orla Skally",
+              "quote": "So we're hoping by early July we will have lot numbering process.",
+              "similarity": 0.4913
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Identify follow-up actions for scope, languages, HPRA fees and internal working sessions.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_595_unit_1",
+              "speaker": "Orla Skally",
+              "quote": "The HPRA have sent me a bill.",
+              "similarity": 0.4728
+            },
+            {
+              "sourceId": "line_357_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "And shoot up.And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand",
+              "similarity": 0.4373
+            },
+            {
+              "sourceId": "line_109_unit_0",
+              "speaker": "Mark Kelleher",
+              "quote": "business processes and obviously make it as easy as possible for you to use.",
+              "similarity": 0.4367
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The client call clarified DITA’s product and information flow from Japanese suppliers through Netherlands fiscal clearance to Park West storage and European dispatch. The team discussed how QMS procedures should match real business processes, and reviewed UDI, lot numbering, label design, EUDAMED responsibilities, MedEnvoy oversight, DoCs, language considerations and HPRA fees. The internal follow-up added scope clarity around sunglasses/PPE, working-session planning, site-visit planning and the need for client clarification questions."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "The QMS manual is being used as a building block for importer-obligation compliance documents.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "QMS manual"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "and required documents from a compliance point of view in relation to the importer obligations.",
+            "similarity": 0.646
+          },
+          {
+            "sourceId": "line_123_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And order to the point of the document that Mark is sharing in the and this is the kind of the QMS manual that he had sent through and Friday, do you have any opportunity to read that yet or go through it at any high level or?",
+            "similarity": 0.6266
+          },
+          {
+            "sourceId": "line_191_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "OK, this is the QMS manual.",
+            "similarity": 0.6132
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "DITA's product flow involves goods purchased from suppliers in Japan, fiscally cleared in the Netherlands and then shipped to Dublin.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Goods movement from Japan to Dublin"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_65_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "transaction that goes down and the goods are shipped from Japan via Netherlands where they're fiscally cleared.",
+            "similarity": 0.679
+          },
+          {
+            "sourceId": "line_61_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "So, you know, the goods are purchased by DD Inc. from directly from the supplier in Japan, and there's a buy-sell.",
+            "similarity": 0.5871
+          },
+          {
+            "sourceId": "line_31_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So to kind of kick off, I suppose initially it's around clarifying that third party.Warehousing scenario, and I've talked to the guys through about how it product comes in from your suppliers is.lands in the Netherlands and is processed through Europe from a financial perspective, the financial clearinghouse in the Netherlands, but the product, in my understanding, doesn't necessarily stay in a warehouse in the Netherlands at any point, and then it moves on to Ireland.",
+            "similarity": 0.5677
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "The Netherlands step is a short customs or airport clearance hold rather than substantive warehousing.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Netherlands fiscal clearance"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_31_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So to kind of kick off, I suppose initially it's around clarifying that third party.Warehousing scenario, and I've talked to the guys through about how it product comes in from your suppliers is.lands in the Netherlands and is processed through Europe from a financial perspective, the financial clearinghouse in the Netherlands, but the product, in my understanding, doesn't necessarily stay in a warehouse in the Netherlands at any point, and then it moves on to Ireland.",
+            "similarity": 0.5827
+          },
+          {
+            "sourceId": "line_65_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "So their first ports of arrival in Europe is in Netherlands, whereby they're cleared by a third party.",
+            "similarity": 0.5812
+          },
+          {
+            "sourceId": "line_65_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "transaction that goes down and the goods are shipped from Japan via Netherlands where they're fiscally cleared.",
+            "similarity": 0.5792
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Final storage takes place at DITA's Park West warehouse in Dublin.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Park West warehouse"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "Yeah, and so the goods are ultimately stored here in Dublin.",
+            "similarity": 0.5736
+          },
+          {
+            "sourceId": "line_65_unit_2",
+            "speaker": "Orla Skally",
+            "quote": "And then so they're literally held maybe for one day in the airport.the paperwork is sent for clearance, brokerage, and then it's released and the goods then go on to Dublin, to Deta here in Dublin.",
+            "similarity": 0.5306
+          },
+          {
+            "sourceId": "line_71_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And is that warehousing facility in Park West?",
+            "similarity": 0.4837
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "The Park West warehouse is mostly manual, with scanners and RF Smart handheld devices used for picking.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Manual warehouse picking",
+          "Park West warehouse"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_95_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "Paula, can I just, sorry, can I just ask while Mark's sharing screen, is the warehouse automated at all or is it a fully manual warehouse?",
+            "similarity": 0.5992
+          },
+          {
+            "sourceId": "line_97_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "We have scanners for picking, but yeah, it's all human operators.",
+            "similarity": 0.5703
+          },
+          {
+            "sourceId": "line_71_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And is that warehousing facility in Park West?",
+            "similarity": 0.5501
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Customer orders can come through B2B, sales reps or customer service and are processed through ERP and warehouse picking flows.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Manual warehouse picking",
+          "Business-process alignment"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_215_unit_3",
+            "speaker": "Orla Skally",
+            "quote": "But generally they place the order either through B2B, it's mainly through our B2B platform and submits it and it goes into a pending approval queue whereby our customer service team review the order and check any.",
+            "similarity": 0.7149
+          },
+          {
+            "sourceId": "line_215_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "They can order via a B2B platform, or they can contact a sales rep within the region who places the order on their behalf.",
+            "similarity": 0.6253
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Products are picked, packed into branded cases, labelled, invoiced and dispatched through DHL to stores.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Repacking and customer-facing labelling",
+          "Manual warehouse picking",
+          "HPRA invoice"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_223_unit_5",
+            "speaker": "Orla Skally",
+            "quote": "And then we ship and invoice the goods using DHL and insert a hard copy of the invoice inside the box.Yeah, and the goods are dispatched pretty much same day or next day, and we have next day delivery in Europe, so, and delivered directly to the store.It's very high level.",
+            "similarity": 0.7172
+          },
+          {
+            "sourceId": "line_223_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "The goods are taken out of the poly bag and inserted into our branded case and packaging.",
+            "similarity": 0.5993
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "The QMS and procedures need to reflect both regulatory requirements and DITA's actual business processes.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "QMS manual",
+          "Business-process alignment"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_105_unit_1",
+            "speaker": "Mark Kelleher",
+            "quote": "Does the understanding the applicable reg requirements, so MDR and so on, and making sure that they're incorporated in the procedure, but also for it to be meaningful and usable for DISA, we have to understand how the business works so that we fit in as much as possible into your existing.",
+            "similarity": 0.5854
+          },
+          {
+            "sourceId": "line_101_unit_9",
+            "speaker": "Mark Kelleher",
+            "quote": "So, I guess from our perspective, the in terms of establishing QMS.",
+            "similarity": 0.5397
+          },
+          {
+            "sourceId": "line_109_unit_2",
+            "speaker": "Mark Kelleher",
+            "quote": "You've got a really robust process which Disa understands and is bought into and can use and is lined up to the existing processes.",
+            "similarity": 0.515
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Orla had not received the QMS manual email, so it needs to be resent to her.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "QMS manual"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_191_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "OK, this is the QMS manual.",
+            "similarity": 0.5784
+          },
+          {
+            "sourceId": "line_9_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Yeah, it was around the QMS manual or that.",
+            "similarity": 0.5484
+          },
+          {
+            "sourceId": "line_123_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And order to the point of the document that Mark is sharing in the and this is the kind of the QMS manual that he had sent through and Friday, do you have any opportunity to read that yet or go through it at any high level or?",
+            "similarity": 0.4936
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "Current barcode use is UPC-based, with lot numbering and UDI-related updates being implemented.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "UPC and lot numbering"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_245_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "So will you be changing the barcodes at that time to like 2D data matrix barcode including the lot number in there?",
+            "similarity": 0.6777
+          },
+          {
+            "sourceId": "line_229_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "With the barcodes that they put on there, are they your actual UDI barcodes?",
+            "similarity": 0.6743
+          },
+          {
+            "sourceId": "line_247_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "Hmm.Yes.I believe so, but you know, I have a colleague in the US who's managing the barcode design, and yeah, the label design, the barcode format.",
+            "similarity": 0.6209
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "New products must be registered in EUDAMED immediately and existing products by 28 November.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "EUDAMED registration"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_285_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "Sorry, just to go back, Jenny, when you were saying there's no the new product is not in EU, registering product in EU, is that registering all the SKUs?",
+            "similarity": 0.6465
+          },
+          {
+            "sourceId": "line_253_unit_3",
+            "speaker": "Jenny Gough",
+            "quote": "Obviously, for new products, they have to go into Udimed immediately.",
+            "similarity": 0.5886
+          },
+          {
+            "sourceId": "line_399_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Go immediately into and any existing products.",
+            "similarity": 0.5503
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "Importer and authorised representative obligations include checking that manufacturer product data is present in EUDAMED.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "EUDAMED registration",
+          "Manufacturer information notes and IFU rationale"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_311_unit_1",
+            "speaker": "Jenny Gough",
+            "quote": "The legal manufacturer, which is Data Inc. as far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
+            "similarity": 0.7535
+          },
+          {
+            "sourceId": "line_13_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "and required documents from a compliance point of view in relation to the importer obligations.",
+            "similarity": 0.6786
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "MedEnvoy may be handling EUDAMED device registration for the manufacturer, but DITA needs oversight of the plan and timelines.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "EUDAMED registration",
+          "MedEnvoy responsibilities"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_361_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So to the point that the devices need to be registered within you to med and that lies with that med envoy if they're acting on behalf of the manufacturer actor in relation to TD Inc.",
+            "similarity": 0.6176
+          },
+          {
+            "sourceId": "line_317_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And to that point, Jenny, as MedEnvoy or a representative or registered as the actor for manufacturer, it is therefore with MedEnvoy working with T Inc to upload the devices into Udimed.",
+            "similarity": 0.5738
+          },
+          {
+            "sourceId": "line_443_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "So I suppose from that perspective, OReilly, it probably impresses back to not only should we have oversight of their timeline in relation to that, you do, given that the responsibility of the importer is to ensure that devices are registered within Udemed.",
+            "similarity": 0.5591
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "US FDA GUDID records may also need to be checked for distributed US products.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "US FDA GUDID"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_277_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "The other thing is, and I know we're looking at Europe, but I had a quick look at the good idea, the US FDA good idea, and there's no products in there at all.",
+            "similarity": 0.4934
+          },
+          {
+            "sourceId": "line_277_unit_2",
+            "speaker": "Jenny Gough",
+            "quote": "So you need, I just recommend that you look at that side of things as well for distribution in the US.",
+            "similarity": 0.4537
+          },
+          {
+            "sourceId": "line_311_unit_1",
+            "speaker": "Jenny Gough",
+            "quote": "The legal manufacturer, which is Data Inc. as far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
+            "similarity": 0.4502
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "Label updates should include production information, potentially through a 2D data matrix barcode and lot number.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Repacking and customer-facing labelling",
+          "UPC and lot numbering"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_483_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "So yeah, I would like to think in the next two to three weeks, we'll have a proper kind of system to implement lot numbering and adding it to the label.",
+            "similarity": 0.5918
+          },
+          {
+            "sourceId": "line_475_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "I think, yeah, my main question on the label was sort of around the production information going into the barcode, but we've discussed that, so yes, that's fine.",
+            "similarity": 0.5629
+          },
+          {
+            "sourceId": "line_245_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "So will you be changing the barcodes at that time to like 2D data matrix barcode including the lot number in there?",
+            "similarity": 0.5594
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "Manufacturer information notes or warranty booklets are used, but the team discussed whether any IFU justification is needed from the manufacturer.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Manufacturer information notes and IFU rationale"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_495_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "Yeah, so we have the manufacturer's information notes or what we internally call a warranty booklet.",
+            "similarity": 0.6974
+          }
+        ]
+      },
+      {
+        "id": "fact_017",
+        "text": "Class I glasses may not need IFUs if justified, but the manufacturer needs the rationale if no IFU is provided.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Manufacturer information notes and IFU rationale"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_525_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "And I think from point of view of an IFU on glasses, it's one of them.",
+            "similarity": 0.7402
+          },
+          {
+            "sourceId": "line_507_unit_2",
+            "speaker": "Colm O'Rourke",
+            "quote": "But a class one doesn't have to have an IFU.",
+            "similarity": 0.6639
+          },
+          {
+            "sourceId": "line_493_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "And my recollection is that you don't currently have IFUs.",
+            "similarity": 0.6267
+          }
+        ]
+      },
+      {
+        "id": "fact_018",
+        "text": "Declaration of conformity updates may need to include sunglasses and risk rationale for both EU MDR and PPE Category I.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "DoCs for MDR and PPE",
+          "SOW scope for sunglasses"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_571_unit_0",
+            "speaker": "John-Paul Hughes",
+            "quote": "So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those.",
+            "similarity": 0.7847
+          }
+        ]
+      },
+      {
+        "id": "fact_019",
+        "text": "DOC translation and country/language coverage need to be clarified based on where products are shipped.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Country and language requirements"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_561_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And I suppose to that point, you probably probably could do with just a list of all of the country, one list of all of the countries that you do ship to, from a language perspective.",
+            "similarity": 0.6551
+          },
+          {
+            "sourceId": "line_547_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "DOCs and translations.",
+            "similarity": 0.6221
+          }
+        ]
+      },
+      {
+        "id": "fact_020",
+        "text": "The HPRA authorised representative invoice and SRN registration correspondence need to be reviewed before payment.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "HPRA invoice"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_595_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "The HPRA have sent me a bill.",
+            "similarity": 0.5583
+          },
+          {
+            "sourceId": "line_327_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "Okay, so you've got a contract, like a mandate in place to say that the authorized rep will do it on behalf of the manufacturer.",
+            "similarity": 0.451
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Jacqui",
+        "action": "Resend the QMS manual to Orla.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_191_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "OK, this is the QMS manual.",
+            "similarity": 0.6805
+          },
+          {
+            "sourceId": "line_9_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "Yeah, it was around the QMS manual or that.",
+            "similarity": 0.6096
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Orla",
+        "action": "Review the QMS manual this week and raise any questions.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_191_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "OK, this is the QMS manual.",
+            "similarity": 0.8327
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Orla",
+        "action": "Speak to Cody about the MedEnvoy task list, EUDAMED registration plan and who is responsible for each activity.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_357_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And shoot up.And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand",
+            "similarity": 0.5941
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Orla",
+        "action": "Share or confirm the list of countries DITA ships to so language and DOC translation requirements can be checked.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_561_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And I suppose to that point, you probably probably could do with just a list of all of the country, one list of all of the countries that you do ship to, from a language perspective.",
+            "similarity": 0.7577
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Orla",
+        "action": "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_483_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "So yeah, I would like to think in the next two to three weeks, we'll have a proper kind of system to implement lot numbering and adding it to the label.",
+            "similarity": 0.7454
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "Jenny",
+        "action": "Review label or barcode details if DITA wants a regulatory check on the proposed format.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_475_unit_0",
+            "speaker": "Jenny Gough",
+            "quote": "I think, yeah, my main question on the label was sort of around the production information going into the barcode, but we've discussed that, so yes, that's fine.",
+            "similarity": 0.5734
+          },
+          {
+            "sourceId": "line_247_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "Hmm.Yes.I believe so, but you know, I have a colleague in the US who's managing the barcode design, and yeah, the label design, the barcode format.",
+            "similarity": 0.5445
+          },
+          {
+            "sourceId": "line_261_unit_2",
+            "speaker": "Jenny Gough",
+            "quote": "You should be sort of shown to be the importer for DITA Inc.",
+            "similarity": 0.4793
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "John-Paul",
+        "action": "Update declarations of conformity for sunglasses to include the required risk rationale for EU MDR and PPE Category I where applicable.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_571_unit_0",
+            "speaker": "John-Paul Hughes",
+            "quote": "So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those.",
+            "similarity": 0.7923
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Orla",
+        "action": "Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_595_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "The HPRA have sent me a bill.",
+            "similarity": 0.5604
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Jacqui and Colm",
+        "action": "Review the HPRA invoice and SRN correspondence with Liam before payment guidance is given.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_595_unit_1",
+            "speaker": "Orla Skally",
+            "quote": "The HPRA have sent me a bill.",
+            "similarity": 0.5452
+          }
+        ]
+      },
+      {
+        "id": "action_010",
+        "owner": "Jacqui",
+        "action": "Arrange a follow-up call with Orla for the following week.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_161_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "I will, I will flick this over to Orla.",
+            "similarity": 0.5835
+          },
+          {
+            "sourceId": "line_357_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And shoot up.And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand",
+            "similarity": 0.4776
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "as a Trinzo perspective, maybe talked about these previously, but just so that they hear from your standpoint as opposed to just my standpoint in terms of getting the clarity around how the structure works."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "Yeah, like I can come back to you with something maybe written formally, but like verbally, I suppose, just high level, we have kind of a complicated intercompany structure."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_65_unit_2",
+            "speaker": "Orla Skally",
+            "quote": "And then so they're literally held maybe for one day in the airport.the paperwork is sent for clearance, brokerage, and then it's released and the goods then go on to Dublin, to Deta here in Dublin."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_65_unit_3",
+            "speaker": "Orla Skally",
+            "quote": "So like storage, there is none really, they're just kept aside while the goods are being cleared, maybe a day or two depending actually."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_139_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "Maybe I'm wrong."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_149_unit_0",
+            "speaker": "Orla Skally",
+            "quote": "Maybe on this."
+          }
+        ]
+      }
+    ]
+  }
+}

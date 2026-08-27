@@ -1,0 +1,941 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "01_abbott_audit_kickoff",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_Abbott_T796_Audit_kick_off_Sylmar_NEW.docx",
+    "sha256": "ecb9e1f3f65b8383341f715d1d13e95a6353082c6bf5cdd36759c73ac43758c2",
+    "sourceUnitCount": 330
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Audit kick-off / planning",
+      "meetingTitle": "Client Abbott T796 - Audit kick off Sylmar"
+    },
+    "summary": {
+      "meetingPurpose": "Plan the Abbott T796 Sylmar surveillance audit and clarify Niamh’s specialist software audit role, preparation needs and logistics.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Confirm audit timing, location and travel arrangements.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_253_unit_2",
+              "speaker": "Smith, Stuart M",
+              "quote": "And then audit preparation meeting.",
+              "similarity": 0.6443
+            },
+            {
+              "sourceId": "line_231_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "Normally what I've heard is after the audit planning meeting is probably the more accurate time to sign those that line up with your.",
+              "similarity": 0.5791
+            },
+            {
+              "sourceId": "line_183_unit_1",
+              "speaker": "Smith, Stuart M",
+              "quote": "I follow, I did the second, I did the follow up audit in Penang after you and Teresa were there and I did that audit.",
+              "similarity": 0.5711
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Clarify audit scope, product context and applicable standards.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_21_unit_6",
+              "speaker": "Jacqui Fox",
+              "quote": "In terms of the audit training around reviewing standards for the attestation,",
+              "similarity": 0.5691
+            },
+            {
+              "sourceId": "line_131_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance.",
+              "similarity": 0.5185
+            },
+            {
+              "sourceId": "line_25_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "Presumably, once your scope is determined, that will form that list of standards.",
+              "similarity": 0.5116
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Define Niamh’s value-add and software audit focus.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_247_unit_4",
+              "speaker": "Jacqui Fox",
+              "quote": "And then in terms of our site, obviously site are aware and it provides documents that can be reviewed, which is what Niamh discussed at the start.",
+              "similarity": 0.4682
+            },
+            {
+              "sourceId": "line_131_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance.",
+              "similarity": 0.4325
+            },
+            {
+              "sourceId": "line_79_unit_1",
+              "speaker": "Niamh Lynch",
+              "quote": "Okay, and in terms of...The value add, what are you hoping to get best value from me given that you already have a, is it an independent oversight?",
+              "similarity": 0.427
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Plan document access, training and confidentiality requirements.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_365_unit_6",
+              "speaker": "Smith, Stuart M",
+              "quote": "And guidance documents, there will be some job aids in terms of requirements that you might need.",
+              "similarity": 0.5922
+            },
+            {
+              "sourceId": "line_327_unit_1",
+              "speaker": "Smith, Stuart M",
+              "quote": "And we'll share the risk analysis with you before you arrive so you can see the information, but just remember that will be under strict and confidential requirements, which is why I need the confidentiality and I need the code of conduct in place before I share that.",
+              "similarity": 0.5068
+            },
+            {
+              "sourceId": "line_231_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "the training attestation, the codes of conduct and stuff like that.",
+              "similarity": 0.4881
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Discuss audit execution, trackers, SBOMs, CVE review and reporting approach.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_131_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance.",
+              "similarity": 0.5794
+            },
+            {
+              "sourceId": "line_323_unit_0",
+              "speaker": "Niamh Lynch",
+              "quote": "And Jacqui, to that question, I think because other audits, I would usually do the risk analysis and then give it to the co-auditor.",
+              "similarity": 0.5689
+            },
+            {
+              "sourceId": "line_253_unit_2",
+              "speaker": "Smith, Stuart M",
+              "quote": "And then audit preparation meeting.",
+              "similarity": 0.5385
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The group planned the Sylmar surveillance audit, including timing, hotel and site logistics, training, document access and Niamh’s specialist software role. Stuart described the device context, expected standards and risk areas, and confirmed the audit would be a full routine surveillance audit with findings. Niamh’s work is expected to focus on software management, validation, purchasing controls, SBOMs, version rollout and related software risks, with final logistics depending on Stuart’s risk analysis and document access arrangements."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Audit logistics, including hotel reservation, site attendance and travel arrangements for the Sylmar audit.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Audit logistics"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_131_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance.",
+            "similarity": 0.5271
+          },
+          {
+            "sourceId": "line_253_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And then audit preparation meeting.",
+            "similarity": 0.4732
+          },
+          {
+            "sourceId": "line_109_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And we'll have to get you external access to the SharePoint that we use during the audit.",
+            "similarity": 0.4352
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Training and preparation work is due to start the following Monday, ahead of the on-site audit from the 20th.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Training and preparation timeline"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_17_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "with the training and prep work due to start as of kind of next Monday.",
+            "similarity": 0.6777
+          },
+          {
+            "sourceId": "line_233_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "Then you will have the training attestation, which I will need before the audit formally starts.",
+            "similarity": 0.6265
+          },
+          {
+            "sourceId": "line_21_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So kind of from next week in the week and the following week is that kind of prep and training work to be done.",
+            "similarity": 0.5751
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Report writing is planned after the return to Ireland, from 27 July to 7 August.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "AI-assisted report writing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_21_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "So then obviously just being on site on the 20th and that's the five days on site in summer and then obviously the report writingTo follow up.post a return to Ireland on the 27th through to the 7th of August.",
+            "similarity": 0.7752
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Stuart is leading the audit with Karen, while Niamh will provide specialist software audit support.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Audit logistics",
+          "Audit tracker and findings",
+          "Audit scope and standards"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_359_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And just in terms then of the details of the audit execution of it, just around the audit tools, the checklists and I suppose where the record sampling and the findings, they're all in logs and just from a perspective of who owns that and I think that'sprobably to your point, Niamh, given that Stuart and Karen are there already, that you're Stuart nearly owning that audit findings tracker and coordinating kind of the feedback from corporate that's coming in on that in terms of queries as a result of findings that are being added to it.",
+            "similarity": 0.5163
+          },
+          {
+            "sourceId": "line_21_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So sure, you're the lead with Karen as well, obviously, Niamh.",
+            "similarity": 0.4912
+          },
+          {
+            "sourceId": "line_109_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And we'll have to get you external access to the SharePoint that we use during the audit.",
+            "similarity": 0.4373
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "The audited products include pacemakers, data controllers and bedside transmitters with embedded software and automated monitoring.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Audit tracker and findings",
+          "Audit logistics"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_4",
+            "speaker": "Smith, Stuart M",
+            "quote": "So they make pacemakers just to give you some information that's got embedded software inside of them.And then there's also data controllers and transmitters, which have the bedside monitoring of the values themselves.",
+            "similarity": 0.7932
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Initial risk areas include transmission, software rollout, software versions, cybersecurity and related regulatory requirements.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk assessment and audit plan",
+          "Product and software context",
+          "Audit scope and standards"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_9",
+            "speaker": "Smith, Stuart M",
+            "quote": "Now, I'm starting to go through the risk analysis, but I'll share that with you once I've got some more information because I've identified some risks in terms of transmission, software, rollout, versions, cybersecurity, various bits and pieces.And then once I've got that, then that will give me the regulations that go with it.",
+            "similarity": 0.7245
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "No AI claim is expected for the product; the system appears to interpret data through programmed logic and display rather than AI.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "No AI claim expected"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_37_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "There's no claim for AI on this one.",
+            "similarity": 0.6975
+          },
+          {
+            "sourceId": "line_43_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "It shouldn't be an AI one, it should be just a direct program interpretation and then a visual display.",
+            "similarity": 0.6192
+          },
+          {
+            "sourceId": "line_37_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "No, no AI on this one, as far as I know.",
+            "similarity": 0.6159
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "The audit is a routine surveillance audit with full findings and ratings, not an assessment-style audit.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Routine surveillance audit",
+          "Audit tracker and findings"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_131_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "Is that that's not necessary for review on this audit based on the type of audit that you're doing being it surveillance?",
+            "similarity": 0.6476
+          },
+          {
+            "sourceId": "line_59_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "So it's routine audit.",
+            "similarity": 0.6316
+          },
+          {
+            "sourceId": "line_49_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "Is it a normal audit, not like the assessment audit that I was on last week or the week before?",
+            "similarity": 0.6041
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Stuart's main value from Niamh is a deep dive into the software management system.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Software management deep dive"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_81_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "So it's a deep dive into their software management system.",
+            "similarity": 0.5741
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "Software audit areas may include software development, validation, purchasing controls, software of unknown provenance, SBOMs and rollout of new versions.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Audit scope and standards",
+          "Audit tracker and findings",
+          "Audit logistics"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_89_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "But when it comes to software, then we'll probably do software development, validation, purchasing controls associated with those.",
+            "similarity": 0.5458
+          },
+          {
+            "sourceId": "line_131_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance.",
+            "similarity": 0.5215
+          },
+          {
+            "sourceId": "line_365_unit_5",
+            "speaker": "Smith, Stuart M",
+            "quote": "I don't believe in checklist auditing, but there you go.",
+            "similarity": 0.486
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "Document access may require secure sharing or external access to Abbott's audit SharePoint because Niamh is not on the Abbott network.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Document access and SharePoint"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "But if need be, we can probably upload them because you're not on the Abbott network, then we'll just have to work out a way of securely transmitting information to you.",
+            "similarity": 0.5539
+          },
+          {
+            "sourceId": "line_109_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And we'll have to get you external access to the SharePoint that we use during the audit.",
+            "similarity": 0.5271
+          },
+          {
+            "sourceId": "line_247_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "And then in terms of our site, obviously site are aware and it provides documents that can be reviewed, which is what Niamh discussed at the start.",
+            "similarity": 0.4439
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "Code of conduct and training attestation must be completed before confidential audit material is shared or before the audit formally starts.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Code of conduct and training attestation"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_233_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "Then you will have the training attestation, which I will need before the audit formally starts.",
+            "similarity": 0.7398
+          },
+          {
+            "sourceId": "line_21_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "In terms of the audit training around reviewing standards for the attestation,",
+            "similarity": 0.6409
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "Stuart's risk assessment will feed into the audit plan and is needed before the Wednesday planning meeting.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk assessment and audit plan"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_321_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "So I've got to do the risk assessment to develop the audit plan and the audit plan I'm trying to, I'm getting ready for Wednesday.",
+            "similarity": 0.7032
+          },
+          {
+            "sourceId": "line_321_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "So my risk assessment, so my risk assessment forms an input into the audit plan, so they go sequentially.",
+            "similarity": 0.6248
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "Audit findings and queries will be managed through the audit tracker rather than checklist auditing.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Audit tracker and findings"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_365_unit_5",
+            "speaker": "Smith, Stuart M",
+            "quote": "I don't believe in checklist auditing, but there you go.",
+            "similarity": 0.6988
+          },
+          {
+            "sourceId": "line_359_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And just in terms then of the details of the audit execution of it, just around the audit tools, the checklists and I suppose where the record sampling and the findings, they're all in logs and just from a perspective of who owns that and I think that'sprobably to your point, Niamh, given that Stuart and Karen are there already, that you're Stuart nearly owning that audit findings tracker and coordinating kind of the feedback from corporate that's coming in on that in terms of queries as a result of findings that are being added to it.",
+            "similarity": 0.6627
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "SBOM review and CVE/threat checks may depend on what is available on site and on corporate threat-monitoring processes.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "SBOM and CVE considerations"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_403_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "And you would assume that they would have the up-to-date SBOM, provided the SBOM is correct, because that requires maintaining.",
+            "similarity": 0.5501
+          },
+          {
+            "sourceId": "line_377_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "Yeah.OKOK.Will you be searching up, you know, when you have the SBOM, will you guys be looking up the SV, the CVEs for the various versions that they're using, or is that part of your prep?",
+            "similarity": 0.5418
+          },
+          {
+            "sourceId": "line_323_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "And Jacqui, to that question, I think because other audits, I would usually do the risk analysis and then give it to the co-auditor.",
+            "similarity": 0.4445
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "Niamh may run a separate software track during the second week, depending on Stuart's risk analysis and audit logistics.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Separate software track"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_121_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And from the sound of that, that will kind of Stuart determine kind of a calendar of activity over the next two weeks in terms of that training and prep stuff.",
+            "similarity": 0.4483
+          },
+          {
+            "sourceId": "line_253_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "So that's scheduled for Wednesday as the first version.",
+            "similarity": 0.4099
+          },
+          {
+            "sourceId": "line_127_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, I suppose I'm just conscious that obviously, because it's 20 hours and 20 hours, Niamh is obviously all the stuff that she's working on so that it's, that she's able to kind of plan out her time to be able to support the prep for it is really where we're going with that.",
+            "similarity": 0.3994
+          }
+        ]
+      },
+      {
+        "id": "fact_017",
+        "text": "End-of-day audit coordination is expected to happen after site time or during travel back to the hotel.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Audit logistics",
+          "End-of-day coordination",
+          "Routine surveillance audit"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_253_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And then audit preparation meeting.",
+            "similarity": 0.5447
+          },
+          {
+            "sourceId": "line_411_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And then just in terms of end of day connections, that was kind of like finish on site and then connect after the hotel.",
+            "similarity": 0.5231
+          },
+          {
+            "sourceId": "line_109_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And we'll have to get you external access to the SharePoint that we use during the audit.",
+            "similarity": 0.4976
+          }
+        ]
+      },
+      {
+        "id": "fact_018",
+        "text": "AI prompts may be used by the audit team to help speed report writing and locate standards clauses.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "AI-assisted report writing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_415_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And Stuart, I know from previous ones that you kind of been using AI and prompts within AI to help you build out that report.",
+            "similarity": 0.6394
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Stuart",
+        "action": "Build the audit scope, standards list, classifications, product overview and risk assessment to support the audit plan.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_321_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "So I've got to do the risk assessment to develop the audit plan and the audit plan I'm trying to, I'm getting ready for Wednesday.",
+            "similarity": 0.6854
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Stuart",
+        "action": "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_253_unit_3",
+            "speaker": "Smith, Stuart M",
+            "quote": "We will have to meet Niamh before I go for the first week just to go through information and because I'll be there from the",
+            "similarity": 0.5782
+          },
+          {
+            "sourceId": "line_247_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "And then in terms of our site, obviously site are aware and it provides documents that can be reviewed, which is what Niamh discussed at the start.",
+            "similarity": 0.5336
+          },
+          {
+            "sourceId": "line_21_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "help Niamh understand kind of what key areas she's to focus in.",
+            "similarity": 0.4695
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Stuart",
+        "action": "Arrange secure document sharing or external SharePoint access for Niamh if needed.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_247_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "And then in terms of our site, obviously site are aware and it provides documents that can be reviewed, which is what Niamh discussed at the start.",
+            "similarity": 0.4798
+          },
+          {
+            "sourceId": "line_321_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "Now I may not share it before Wednesday because we need to run it through the site in advance to make sure they're in alignment with it.And any other requirements, but I think that's the plan.",
+            "similarity": 0.3926
+          },
+          {
+            "sourceId": "line_247_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So you're going to figure out a way if either get her access or sharing whatever.",
+            "similarity": 0.3902
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Niamh",
+        "action": "Complete the code of conduct and training attestation before audit material is shared and before the audit starts.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_233_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "Then you will have the training attestation, which I will need before the audit formally starts.",
+            "similarity": 0.7694
+          },
+          {
+            "sourceId": "line_21_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "In terms of the audit training around reviewing standards for the attestation,",
+            "similarity": 0.6515
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Jacqui",
+        "action": "Send the code of conduct to Niamh today.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_533_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "If you need anything else, let me know, and I have that code of conduct, so I'll get that over to you today as well, Niamh.",
+            "similarity": 0.6542
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "Jacqui and Niamh",
+        "action": "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_323_unit_1",
+            "speaker": "Niamh Lynch",
+            "quote": "But in this case, Stuart and Karen are going to be there the week before, so they need to have it done anyway, you know.",
+            "similarity": 0.4861
+          },
+          {
+            "sourceId": "line_253_unit_3",
+            "speaker": "Smith, Stuart M",
+            "quote": "We will have to meet Niamh before I go for the first week just to go through information and because I'll be there from the",
+            "similarity": 0.4651
+          },
+          {
+            "sourceId": "line_465_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "Yeah, so we'll have to plan for that, right, Stuart?",
+            "similarity": 0.4636
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "Stuart",
+        "action": "Share the risk analysis, audit tracker and available data such as complaints, CAPA and deviations once confidentiality requirements are in place.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_327_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "And we'll share the risk analysis with you before you arrive so you can see the information, but just remember that will be under strict and confidential requirements, which is why I need the confidentiality and I need the code of conduct in place before I share that.",
+            "similarity": 0.6478
+          },
+          {
+            "sourceId": "line_323_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "And Jacqui, to that question, I think because other audits, I would usually do the risk analysis and then give it to the co-auditor.",
+            "similarity": 0.5948
+          },
+          {
+            "sourceId": "line_339_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "Yeah.And then there will also be data as well, as well, data as well that I can share for complaints, Kappa, deviations, that sort of thing that we've got in advance.",
+            "similarity": 0.5766
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Stuart and Niamh",
+        "action": "Hold a face-to-face catch-up at the hotel before Niamh starts the on-site audit week.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_253_unit_2",
+            "speaker": "Smith, Stuart M",
+            "quote": "And then audit preparation meeting.",
+            "similarity": 0.5407
+          },
+          {
+            "sourceId": "line_321_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "So I've got to do the risk assessment to develop the audit plan and the audit plan I'm trying to, I'm getting ready for Wednesday.",
+            "similarity": 0.4916
+          },
+          {
+            "sourceId": "line_87_unit_1",
+            "speaker": "Niamh Lynch",
+            "quote": "So you guys are on site the first week because it is, I do recall it was a two-week audit.",
+            "similarity": 0.4604
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Stuart",
+        "action": "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_321_unit_1",
+            "speaker": "Smith, Stuart M",
+            "quote": "So I've got to do the risk assessment to develop the audit plan and the audit plan I'm trying to, I'm getting ready for Wednesday.",
+            "similarity": 0.5021
+          },
+          {
+            "sourceId": "line_323_unit_0",
+            "speaker": "Niamh Lynch",
+            "quote": "And Jacqui, to that question, I think because other audits, I would usually do the risk analysis and then give it to the co-auditor.",
+            "similarity": 0.4967
+          },
+          {
+            "sourceId": "line_131_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance.",
+            "similarity": 0.4705
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_13_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "There is another person is also staying in the hotel that would be a part of the audit, which is Karen.and I'm not going to even attempt to say her surname, who's also joining and since she's from Costa Rica based in the US."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_175_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "8.30 start till 5 P.m. finished."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_179_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "I would say, I would say when it comes to the actual device, it might be worth you going down and having a look to see the point of programming of putting the software on the device itself, because the other one is a remote unit that's built."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_193_unit_1",
+            "speaker": "Niamh Lynch",
+            "quote": "And I mean, some of the main, there were concerns on that site, but nothing that you could really, without being the design owner, you couldn't follow it through fully."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_215_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So I would imagine it makes for a motor audit because you kind of have a background to what you're doing."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_245_unit_0",
+            "speaker": "Smith, Stuart M",
+            "quote": "20th.Seventeenth, I would say."
+          }
+        ]
+      }
+    ]
+  }
+}

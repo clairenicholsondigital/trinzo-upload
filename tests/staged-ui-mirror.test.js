@@ -48,6 +48,9 @@ test('UI mirror diagnostics are explicit opt-in', () => {
   const sequence = sequenceFixture();
   const output = api.stagedEvaluation.buildStagedUiMirror(sequence, {}, { includeDiagnostics: true });
   assert.deepEqual(output.diagnostics.trace, sequence.trace);
+  assert.match(output.diagnostics.servingRevision, /^(?:dev|[a-f0-9]{7,12})$/);
+  assert.equal(output.diagnostics.contractVersion, output.contractVersion);
+  assert.equal(output.diagnostics.pipelineMode, 'shared_staged_workflow');
 });
 
 test('UI mirror route is authenticated and uses the real staged sequence', () => {

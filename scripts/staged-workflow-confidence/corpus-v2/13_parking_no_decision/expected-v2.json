@@ -1,0 +1,439 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "13_parking_no_decision",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Weakness3_parking_no_decision_transcript.docx",
+    "sha256": "004b7aef67c156977f9c7f9f78af0401f9875c8ee10e2cf4bcd5a85708be04b6",
+    "sourceUnitCount": 80
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Decision meeting",
+      "meetingTitle": "Residents Association - parking"
+    },
+    "summary": {
+      "meetingPurpose": "Discuss the residents association visitor-parking problem and consider possible solutions.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Describe the visitor-parking issue.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_9_unit_5",
+              "speaker": "Trevor Nutall",
+              "quote": "The visitor parking situation.",
+              "similarity": 0.9253
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Consider a permit scheme.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_65_unit_0",
+              "speaker": "Trevor Nutall",
+              "quote": "So permits, but there's an enforcement problem.",
+              "similarity": 0.7189
+            },
+            {
+              "sourceId": "line_169_unit_2",
+              "speaker": "Trevor Nutall",
+              "quote": "So we've got permits, enforcement problem.",
+              "similarity": 0.688
+            },
+            {
+              "sourceId": "line_49_unit_0",
+              "speaker": "Sandra Wexford",
+              "quote": "Well I think permits.",
+              "similarity": 0.6602
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Consider marked visitor bays.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_69_unit_1",
+              "speaker": "Rex Fournier",
+              "quote": "Mark out proper visitor bays in a different colour so it's obvious.",
+              "similarity": 0.8174
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Consider barrier or gated access.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_133_unit_0",
+              "speaker": "Trevor Nutall",
+              "quote": "So a barrier's, the barrier's got issues too.",
+              "similarity": 0.5806
+            },
+            {
+              "sourceId": "line_109_unit_1",
+              "speaker": "Trevor Nutall",
+              "quote": "So maybe a barrier?",
+              "similarity": 0.5597
+            },
+            {
+              "sourceId": "line_169_unit_4",
+              "speaker": "Trevor Nutall",
+              "quote": "Barrier, too dear and visitors can't get in.",
+              "similarity": 0.5497
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Consider council adoption or further communication.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_189_unit_0",
+              "speaker": "Trevor Nutall",
+              "quote": "Somebody could ask the council I suppose.",
+              "similarity": 0.6481
+            }
+          ]
+        },
+        {
+          "id": "objective_006",
+          "text": "Decide whether any option should be progressed.",
+          "support": "review_pending",
+          "evidence": [
+            {
+              "sourceId": "line_213_unit_1",
+              "speaker": "Sandra Wexford",
+              "quote": "Every option's got a hole in it.",
+              "similarity": 0.3579
+            },
+            {
+              "sourceId": "line_137_unit_0",
+              "speaker": "Baljit Sanghera",
+              "quote": "Everything's got issues because the real problem is a handful of households, and none of these ideas actually deal with that, they just, they add machinery.",
+              "similarity": 0.2873
+            },
+            {
+              "sourceId": "line_17_unit_1",
+              "speaker": "Trevor Nutall",
+              "quote": "So let's, let's try and, you know, make some progress tonight.",
+              "similarity": 0.2873
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The group discussed several possible responses to residents using visitor parking spaces, including permits, marked bays, barriers, reminder letters and asking the council to adopt the road. Each option had practical drawbacks, especially around enforcement, cost or effectiveness. No solution, decision or owner was agreed, and the issue was effectively deferred until the following month."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Residents using visitor parking spaces.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Residents using visitor spaces"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_5",
+            "speaker": "Trevor Nutall",
+            "quote": "The visitor parking situation.",
+            "similarity": 0.8189
+          },
+          {
+            "sourceId": "line_29_unit_1",
+            "speaker": "Baljit Sanghera",
+            "quote": "So my thing is, the visitor spaces get taken by residents who've got three cars, and then actual visitors have got nowhere to go.",
+            "similarity": 0.7133
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Permit scheme proposed, but no practical enforcement mechanism.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Permit scheme"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_65_unit_0",
+            "speaker": "Trevor Nutall",
+            "quote": "So permits, but there's an enforcement problem.",
+            "similarity": 0.5901
+          },
+          {
+            "sourceId": "line_169_unit_2",
+            "speaker": "Trevor Nutall",
+            "quote": "So we've got permits, enforcement problem.",
+            "similarity": 0.4817
+          },
+          {
+            "sourceId": "line_49_unit_0",
+            "speaker": "Sandra Wexford",
+            "quote": "Well I think permits.",
+            "similarity": 0.4796
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Clearly marked visitor bays proposed, but considered ineffective without enforcement.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Marked visitor bays"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_1",
+            "speaker": "Rex Fournier",
+            "quote": "Mark out proper visitor bays in a different colour so it's obvious.",
+            "similarity": 0.6403
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Barrier/gated access proposed, but rejected as expensive and problematic for visitors.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Barrier or gated access"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_169_unit_4",
+            "speaker": "Trevor Nutall",
+            "quote": "Barrier, too dear and visitors can't get in.",
+            "similarity": 0.7023
+          },
+          {
+            "sourceId": "line_133_unit_1",
+            "speaker": "Trevor Nutall",
+            "quote": "Cost, and the visitor access thing.",
+            "similarity": 0.6407
+          },
+          {
+            "sourceId": "line_133_unit_0",
+            "speaker": "Trevor Nutall",
+            "quote": "So a barrier's, the barrier's got issues too.",
+            "similarity": 0.6001
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "General reminder letters considered ineffective based on previous experience.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Reminder letters"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_161_unit_0",
+            "speaker": "Rex Fournier",
+            "quote": "I'm just saying letters don't work.",
+            "similarity": 0.4932
+          },
+          {
+            "sourceId": "line_149_unit_1",
+            "speaker": "Trevor Nutall",
+            "quote": "A letter to everyone reminding them of the, the one-space etiquette?",
+            "similarity": 0.4391
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Possibility of asking the council to adopt the road.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Council adoption"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_177_unit_0",
+            "speaker": "Angela Rimmer",
+            "quote": "Maybe we ask the council if they'd adopt the road, then it's their problem to enforce?",
+            "similarity": 0.8442
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Recognition that the underlying issue concerns a small number of households rather than the physical parking setup.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Small number of households causing the issue",
+          "Deferred parking discussion"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_137_unit_0",
+            "speaker": "Baljit Sanghera",
+            "quote": "Everything's got issues because the real problem is a handful of households, and none of these ideas actually deal with that, they just, they add machinery.",
+            "similarity": 0.6159
+          },
+          {
+            "sourceId": "line_9_unit_5",
+            "speaker": "Trevor Nutall",
+            "quote": "The visitor parking situation.",
+            "similarity": 0.5593
+          },
+          {
+            "sourceId": "line_45_unit_0",
+            "speaker": "Trevor Nutall",
+            "quote": "Let's not, let's not get into specific, specific households.",
+            "similarity": 0.4979
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "No solution agreed. Parking discussion deferred until next month.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Deferred parking discussion"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_5",
+            "speaker": "Trevor Nutall",
+            "quote": "The visitor parking situation.",
+            "similarity": 0.5771
+          },
+          {
+            "sourceId": "line_73_unit_0",
+            "speaker": "Baljit Sanghera",
+            "quote": "But that doesn't stop anyone parking in them, does it?",
+            "similarity": 0.5322
+          },
+          {
+            "sourceId": "line_241_unit_4",
+            "speaker": "Trevor Nutall",
+            "quote": "And, and think about parking.",
+            "similarity": 0.4752
+          }
+        ]
+      }
+    ],
+    "actions": [],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "critical",
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_0",
+            "speaker": "Angela Rimmer",
+            "quote": "Ha, you would as well."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "critical",
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_1",
+            "speaker": "Trevor Nutall",
+            "quote": "So maybe a barrier?"
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "critical",
+        "evidence": [
+          {
+            "sourceId": "line_177_unit_0",
+            "speaker": "Angela Rimmer",
+            "quote": "Maybe we ask the council if they'd adopt the road, then it's their problem to enforce?"
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "critical",
+        "evidence": [
+          {
+            "sourceId": "line_189_unit_0",
+            "speaker": "Trevor Nutall",
+            "quote": "Somebody could ask the council I suppose."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "critical",
+        "evidence": [
+          {
+            "sourceId": "line_197_unit_1",
+            "speaker": "Trevor Nutall",
+            "quote": "We could, yeah."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "critical",
+        "evidence": [
+          {
+            "sourceId": "line_217_unit_0",
+            "speaker": "Trevor Nutall",
+            "quote": "So shall we, shall we all just have a think about it, and, and maybe come back next month with, you know, our best idea, and we'll take it from there."
+          }
+        ]
+      },
+      {
+        "id": "negative_007",
+        "type": "forbidden_claim",
+        "reason": "no decision or follow-up was agreed in this meeting",
+        "importance": "critical",
+        "claim": "Publish any meeting action or confirmed parking decision.",
+        "evidence": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "2026-08-27-v1",
+  "remoteRoot": "https://assets.helixscribe.cloud/Transcripts",
+  "cases": [
+    {
+      "caseId": "01_abbott_audit_kickoff",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/01_abbott_audit_kickoff/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/01_abbott_audit_kickoff/expected-v2.json",
+      "transcriptSha256": "ecb9e1f3f65b8383341f715d1d13e95a6353082c6bf5cdd36759c73ac43758c2",
+      "legacyExpectedSha256": "449f45092117af7980a00377706356b93afc9e08fbf9dad30df54e5914a7e31a",
+      "remote": {
+        "folder": "Client_Abbott_T796_Audit_kick_off_Sylmar_NEW",
+        "expectedSha256": "449f45092117af7980a00377706356b93afc9e08fbf9dad30df54e5914a7e31a",
+        "docxSha256": "b5b2ef90dff6255be13f52cfd462a74b08ce011dc112a26b65891ff289d6763d"
+      }
+    },
+    {
+      "caseId": "02_dita_importer_obligations",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/02_dita_importer_obligations/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/02_dita_importer_obligations/expected-v2.json",
+      "transcriptSha256": "95620ce6f633a954d30a2efa22771a11ff7d8d33b032005fd38d4563106dca41",
+      "legacyExpectedSha256": "e75f1f069748f7797393ba71f44758fecae1990ad915d6493bbc9d0b1fe9c40d",
+      "remote": {
+        "folder": "Client_DITA_T819_Importer_Obligations_Client_connect",
+        "expectedSha256": "e75f1f069748f7797393ba71f44758fecae1990ad915d6493bbc9d0b1fe9c40d",
+        "docxSha256": "046acfe8f9cbc3821fa20b6a6260f3dc5cc33d50f9a0cebddca759f110a76bc5"
+      }
+    },
+    {
+      "caseId": "03_eakin_t733_consultancy_retainer",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/03_eakin_t733_consultancy_retainer/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/03_eakin_t733_consultancy_retainer/expected-v2.json",
+      "transcriptSha256": "c4ea1e57efbd26dec4ceafca6d9d129d1a711b6bd7d4873953d35c01f22a8f13",
+      "legacyExpectedSha256": "01c3dab2f02366563768651372d3ef742325be2d1604f93d8f8582f3465182aa",
+      "remote": {
+        "folder": "Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_weekly",
+        "expectedSha256": "01c3dab2f02366563768651372d3ef742325be2d1604f93d8f8582f3465182aa",
+        "docxSha256": "9b05fa32d6bbd0159fc02553d519991ab7c1bd101422c391f1cc21d1dc6cf35f"
+      }
+    },
+    {
+      "caseId": "04_eakin_t733_tech_file_weekly",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/04_eakin_t733_tech_file_weekly/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/04_eakin_t733_tech_file_weekly/expected-v2.json",
+      "transcriptSha256": "4b15cddada7bd65a15dc06fde82cbf2d419702f0c622dddbae1021d2830911e9",
+      "legacyExpectedSha256": "5a2837cd43e3c35a3e21a0d73624fd45853e4e44e7239e6a3273fd468b0dffef",
+      "remote": {
+        "folder": "Client_Eakin_T733_Tech_File_review_weekly_NEW",
+        "expectedSha256": "5a2837cd43e3c35a3e21a0d73624fd45853e4e44e7239e6a3273fd468b0dffef",
+        "docxSha256": "968f09f5a12ce7f86442b8a79c29d353f5d23805f9ac60b780c5a03decf67555"
+      }
+    },
+    {
+      "caseId": "05_m204_webinar_rehearsal",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/05_m204_webinar_rehearsal/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/05_m204_webinar_rehearsal/expected-v2.json",
+      "transcriptSha256": "e5dd3c2fbad660a3b5045c1ee61a41017249372a3c64ecbf2db066a5c0c54248",
+      "legacyExpectedSha256": "1470fec89f045de65a20d7a48d60a9e24b47f48eff9da65713f3ab361b89da7e",
+      "remote": {
+        "folder": "Client_M204_Larkfield_MK_Thursday_session_1",
+        "expectedSha256": "1470fec89f045de65a20d7a48d60a9e24b47f48eff9da65713f3ab361b89da7e",
+        "docxSha256": "4949b9fa42ae550fbd0b7758a2230f32dd010c5abfa9f2454990f4d650080117"
+      }
+    },
+    {
+      "caseId": "06_t761_eakin_sw_weekly",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/06_t761_eakin_sw_weekly/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/06_t761_eakin_sw_weekly/expected-v2.json",
+      "transcriptSha256": "7add55456d5d974078580c9b8af0d8d82757cfa4614933f5c37e52b87e06c326",
+      "legacyExpectedSha256": "80544dae926faf9522be757b9561ffc8bb2884f1c5fa71fd14f79768ef4eef45",
+      "remote": {
+        "folder": "Client_T761_Eakin_SW_weekly_checkin_NEW",
+        "expectedSha256": "80544dae926faf9522be757b9561ffc8bb2884f1c5fa71fd14f79768ef4eef45",
+        "docxSha256": "edbb375d391decf05049d7334a61cf1af186b6552dd72d138452cb12414e9950"
+      }
+    },
+    {
+      "caseId": "07_t761_eakin_tech_file_weekly",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/07_t761_eakin_tech_file_weekly/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/07_t761_eakin_tech_file_weekly/expected-v2.json",
+      "transcriptSha256": "26ab99868de18bbe4c70e3b434e6cc55d6a71c67a1b636e3b5e7f05890ff04b0",
+      "legacyExpectedSha256": "c43665f5b13a0e175d845143663bc0cf5e3f39db8fde67f572b03e49927ad5e3",
+      "remote": {
+        "folder": "Client_T761_Eakin_Tech_File_SW_Weekly_checkin",
+        "expectedSha256": "c43665f5b13a0e175d845143663bc0cf5e3f39db8fde67f572b03e49927ad5e3",
+        "docxSha256": "5970ca748c88534409ccc67e9bfd1529907b6dc961fa3aaa37f574fcdfb16393"
+      }
+    },
+    {
+      "caseId": "08_allotment_society",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/08_allotment_society/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/08_allotment_society/expected-v2.json",
+      "transcriptSha256": "301ea23b48a8b84d5b796875b88a259fa200a4c122721813d002d52048331706",
+      "legacyExpectedSha256": "badad506fb8c6c4ccc26566cd20da2b884cd6317f36b8cfc0b27fcf23eae9d5c",
+      "remote": {
+        "folder": "Random1_allotment_society_transcript",
+        "expectedSha256": "badad506fb8c6c4ccc26566cd20da2b884cd6317f36b8cfc0b27fcf23eae9d5c",
+        "docxSha256": "13b0b333d06a7e08e0dcef565bf512a04465a6fbec5031db71726457bb7f18ef"
+      }
+    },
+    {
+      "caseId": "09_pantomime_society",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/09_pantomime_society/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/09_pantomime_society/expected-v2.json",
+      "transcriptSha256": "4a0996a40d30c91647d976ab922daac9ab45e4ffc397858b1d14d878d07795bf",
+      "legacyExpectedSha256": "e568175dbbc9d231001aa65524b7f53fd08a587447dc673fe7bfb9eac50328fd",
+      "remote": {
+        "folder": "Random2_pantomime_society_transcript",
+        "expectedSha256": "e568175dbbc9d231001aa65524b7f53fd08a587447dc673fe7bfb9eac50328fd",
+        "docxSha256": "7906a9b2de942c4c301485d3ea717fd77dabb35baba0610fbebb653dfae530e6"
+      }
+    },
+    {
+      "caseId": "10_lean_generation_pipeline_review",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/10_lean_generation_pipeline_review/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/10_lean_generation_pipeline_review/expected-v2.json",
+      "transcriptSha256": "d7c39f57653a4d8b8327eaf773465b87db64258abfe78f40c5fc435a4eaa7f43",
+      "legacyExpectedSha256": "cf2bd3a3b421167736c23b68a8ed2280b6c683b636ffb58f45d91054497ea76f",
+      "remote": {
+        "folder": "Review_Lean_Generation_Pipeline_Meeting_Transcript_2",
+        "expectedSha256": "cf2bd3a3b421167736c23b68a8ed2280b6c683b636ffb58f45d91054497ea76f",
+        "docxSha256": "c57e584c63965a5351ef04cc352be20d6e44667a13fd63954031fd93e96657b5"
+      }
+    },
+    {
+      "caseId": "11_brewery_numbers",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/11_brewery_numbers/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/11_brewery_numbers/expected-v2.json",
+      "transcriptSha256": "a74a7b59bfd93a7987dd7bb230eba36678a2c62b040f6bfa6a671336a730e7d4",
+      "legacyExpectedSha256": "477b632d34103bd603ad2b2f5221096f2044107293eabaaa4317d8e12822e233",
+      "remote": {
+        "folder": "Weakness1_brewery_numbers_transcript",
+        "expectedSha256": "477b632d34103bd603ad2b2f5221096f2044107293eabaaa4317d8e12822e233",
+        "docxSha256": "ea2c397e45ee181b6c4e8cf3e84886ef3b70f30a0990c4ac084cd1085c13b134"
+      }
+    },
+    {
+      "caseId": "12_race_committee_two_jos",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/12_race_committee_two_jos/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/12_race_committee_two_jos/expected-v2.json",
+      "transcriptSha256": "c43c7cca3f1e3132e583d4feb55ac37a8b2732b7f6efe54dd9ede9b2504c3595",
+      "legacyExpectedSha256": "484051e29201ba3752b82be373af1591416142f80ed8b048d7e49d0a516841d4",
+      "remote": {
+        "folder": "Weakness2_two_Jos_nameclash_transcript",
+        "expectedSha256": "484051e29201ba3752b82be373af1591416142f80ed8b048d7e49d0a516841d4",
+        "docxSha256": "1980d37bbccddcd9bd9cab934fb1a2047be297afb5e3fda1701cb8172cab30d8"
+      }
+    },
+    {
+      "caseId": "13_parking_no_decision",
+      "transcriptPath": "scripts/staged-scorecard-fixtures/13_parking_no_decision/transcript.txt",
+      "expectedV2Path": "scripts/staged-workflow-confidence/corpus-v2/13_parking_no_decision/expected-v2.json",
+      "transcriptSha256": "004b7aef67c156977f9c7f9f78af0401f9875c8ee10e2cf4bcd5a85708be04b6",
+      "legacyExpectedSha256": "6b43b0c962dcc40da1e5e47e917df5884bb4011de836a0ad9f8f9e1c41eafe81",
+      "remote": {
+        "folder": "Weakness3_parking_no_decision_transcript",
+        "expectedSha256": "6b43b0c962dcc40da1e5e47e917df5884bb4011de836a0ad9f8f9e1c41eafe81",
+        "docxSha256": "1ec83b12e90a50371343067b28f520450c3bcd40923b89fe3a2e88a0eb14e6a9"
+      }
+    }
+  ]
+}

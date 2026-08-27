@@ -1,0 +1,524 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "09_pantomime_society",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Random2_pantomime_society_transcript.docx",
+    "sha256": "4a0996a40d30c91647d976ab922daac9ab45e4ffc397858b1d14d878d07795bf",
+    "sourceUnitCount": 94
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Decision meeting",
+      "meetingTitle": "Panto Society planning"
+    },
+    "summary": {
+      "meetingPurpose": "Choose the pantomime production and agree the main planning actions for rehearsal, casting, publicity, technical setup and performances.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Decide between Cinderella and Aladdin.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_21_unit_0",
+              "speaker": "Tom Hardacre",
+              "quote": "I still say Aladdin.",
+              "similarity": 0.716
+            },
+            {
+              "sourceId": "line_61_unit_0",
+              "speaker": "Sylvia Reeve",
+              "quote": "So that's, what, me and Gerald and Nadeem leaning Cinderella, Tom's Aladdin, Fiona?",
+              "similarity": 0.7073
+            },
+            {
+              "sourceId": "line_17_unit_3",
+              "speaker": "Gerald Pemberton",
+              "quote": "It's between Cinderella and Aladdin, and we need to land it tonight because the rights take weeks.",
+              "similarity": 0.6773
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Confirm budget and licensing implications.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_81_unit_2",
+              "speaker": "Gerald Pemberton",
+              "quote": "I know the licensing lot.",
+              "similarity": 0.5363
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Agree rehearsal-night arrangements.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_89_unit_2",
+              "speaker": "Gerald Pemberton",
+              "quote": "The church hall's our usual, but the Brownies have moved to Wednesdays, which is our rehearsal night.",
+              "similarity": 0.5271
+            },
+            {
+              "sourceId": "line_237_unit_0",
+              "speaker": "Gerald Pemberton",
+              "quote": "Alright, so we're agreed, tickets at eight pounds, five concessions, and we'll do the two performances, the Saturday matinee and evening, like always.",
+              "similarity": 0.5017
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Discuss casting risks and understudy needs.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_137_unit_1",
+              "speaker": "Gerald Pemberton",
+              "quote": "Now, casting, and this is delicate.",
+              "similarity": 0.5144
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Plan publicity, sound checks, ticket pricing and performance schedule.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_217_unit_0",
+              "speaker": "Sylvia Reeve",
+              "quote": "What about tickets, are we pricing the same?",
+              "similarity": 0.511
+            },
+            {
+              "sourceId": "line_237_unit_0",
+              "speaker": "Gerald Pemberton",
+              "quote": "Alright, so we're agreed, tickets at eight pounds, five concessions, and we'll do the two performances, the Saturday matinee and evening, like always.",
+              "similarity": 0.4405
+            },
+            {
+              "sourceId": "line_101_unit_0",
+              "speaker": "Tom Hardacre",
+              "quote": "Is there anything that hall isn't booked for?",
+              "similarity": 0.4367
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The group selected Cinderella over Aladdin because it was lower risk, more affordable and likely to sell better locally. They agreed follow-up actions for rights, hall booking, casting discussions, poster preparation and sound checks. The production plan also covered ticket pricing, two Saturday performances and contingency around the Prince role and faulty radio microphone."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Choice between Cinderella and Aladdin, with Cinderella selected.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Prince understudy"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_0",
+            "speaker": "Sylvia Reeve",
+            "quote": "So that's, what, me and Gerald and Nadeem leaning Cinderella, Tom's Aladdin, Fiona?",
+            "similarity": 0.6794
+          },
+          {
+            "sourceId": "line_21_unit_0",
+            "speaker": "Tom Hardacre",
+            "quote": "I still say Aladdin.",
+            "similarity": 0.6561
+          },
+          {
+            "sourceId": "line_33_unit_0",
+            "speaker": "Sylvia Reeve",
+            "quote": "I think Cinderella.",
+            "similarity": 0.6534
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Production budget constraints.",
+        "importance": "major",
+        "support": "review_pending",
+        "acceptableTopicFamilies": [
+          "Budget constraints"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_45_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "Which isn't a lot when you factor the hall, the rights, the costumes, the printing.",
+            "similarity": 0.3456
+          },
+          {
+            "sourceId": "line_45_unit_0",
+            "speaker": "Gerald Pemberton",
+            "quote": "We've got about six hundred to play with for the whole production.",
+            "similarity": 0.3375
+          },
+          {
+            "sourceId": "line_221_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "Last year was seven pounds, five concessions.",
+            "similarity": 0.3192
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Performing rights and script licensing.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Script and rights licensing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_77_unit_0",
+            "speaker": "Sylvia Reeve",
+            "quote": "Someone needs to actually get the rights though, they sell out of the good scripts.",
+            "similarity": 0.725
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Rehearsal-night conflict at the church hall and switch to Tuesdays.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Rehearsal venue and Tuesday-night booking"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_89_unit_2",
+            "speaker": "Gerald Pemberton",
+            "quote": "The church hall's our usual, but the Brownies have moved to Wednesdays, which is our rehearsal night.",
+            "similarity": 0.647
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Casting concerns around Malcolm's availability for the Prince role.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Prince understudy"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_137_unit_2",
+            "speaker": "Gerald Pemberton",
+            "quote": "Malcolm wants to be the prince again.",
+            "similarity": 0.7829
+          },
+          {
+            "sourceId": "line_173_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "Right, so, we hold auditions in September, but I flag now, we need an understudy for the prince this year, given the Malcolm situation, so we're not caught out.",
+            "similarity": 0.6965
+          },
+          {
+            "sourceId": "line_165_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "So I think we note that as a real risk, the leading man's availability, and I'll have a quiet word with Malcolm about maybe taking Baron Hardup instead, smaller, and we find a younger prince.",
+            "similarity": 0.6904
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Need for a Prince understudy.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Prince understudy"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_161_unit_0",
+            "speaker": "Nadeem Chaudhry",
+            "quote": "We can't have the prince missing the dress runs.",
+            "similarity": 0.5386
+          },
+          {
+            "sourceId": "line_173_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "Right, so, we hold auditions in September, but I flag now, we need an understudy for the prince this year, given the Malcolm situation, so we're not caught out.",
+            "similarity": 0.5235
+          },
+          {
+            "sourceId": "line_137_unit_2",
+            "speaker": "Gerald Pemberton",
+            "quote": "Malcolm wants to be the prince again.",
+            "similarity": 0.4793
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Cinderella poster and publicity.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Poster and publicity"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_185_unit_1",
+            "speaker": "Fiona Alcott",
+            "quote": "I'll do a draft poster for Cinderella once you give me the final show dates, and bring it to the next meeting for everyone to pick apart.",
+            "similarity": 0.6605
+          },
+          {
+            "sourceId": "line_245_unit_2",
+            "speaker": "Gerald Pemberton",
+            "quote": "Cinderella, Tuesdays booked, rights ordered, poster and sound in hand.",
+            "similarity": 0.6492
+          },
+          {
+            "sourceId": "line_65_unit_0",
+            "speaker": "Fiona Alcott",
+            "quote": "Oh, Cinderella, I think, if the costumes are there.",
+            "similarity": 0.5967
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "Faulty radio microphone and sound-system reliability.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Radio microphone reliability"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_197_unit_1",
+            "speaker": "Nadeem Chaudhry",
+            "quote": "I'll test all four mics and the desk before October and either fix or replace the dodgy one.",
+            "similarity": 0.6037
+          },
+          {
+            "sourceId": "line_197_unit_0",
+            "speaker": "Nadeem Chaudhry",
+            "quote": "Yeah, one of the radio mics is on its way out.",
+            "similarity": 0.5175
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Ticket pricing, agreed at GBP 8 adults and GBP 5 concessions.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Ticket pricing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_237_unit_0",
+            "speaker": "Gerald Pemberton",
+            "quote": "Alright, so we're agreed, tickets at eight pounds, five concessions, and we'll do the two performances, the Saturday matinee and evening, like always.",
+            "similarity": 0.6793
+          },
+          {
+            "sourceId": "line_217_unit_0",
+            "speaker": "Sylvia Reeve",
+            "quote": "What about tickets, are we pricing the same?",
+            "similarity": 0.6293
+          },
+          {
+            "sourceId": "line_221_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "Last year was seven pounds, five concessions.",
+            "similarity": 0.5664
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "Two performances, Saturday matinee and evening.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Rehearsal venue and Tuesday-night booking"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_237_unit_0",
+            "speaker": "Gerald Pemberton",
+            "quote": "Alright, so we're agreed, tickets at eight pounds, five concessions, and we'll do the two performances, the Saturday matinee and evening, like always.",
+            "similarity": 0.5838
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Gerald",
+        "action": "Order the Cinderella script and performing rights this week.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_81_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "I'll order the Cinderella script and performing rights this week, before anyone else in the county nabs the slot.",
+            "similarity": 0.8411
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Fiona",
+        "action": "Contact Deborah tomorrow and book the church hall for Tuesday evenings, October through January.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_125_unit_0",
+            "speaker": "Fiona Alcott",
+            "quote": "I am, I'll ring Deborah tomorrow and book us in for Tuesday evenings from, when do we start, September?",
+            "similarity": 0.6044
+          },
+          {
+            "sourceId": "line_133_unit_0",
+            "speaker": "Fiona Alcott",
+            "quote": "Right, I'll sort that with Deborah tomorrow.",
+            "similarity": 0.5113
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Gerald",
+        "action": "Speak to Malcolm about taking the smaller Baron Hardup role instead of the Prince.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_165_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "So I think we note that as a real risk, the leading man's availability, and I'll have a quiet word with Malcolm about maybe taking Baron Hardup instead, smaller, and we find a younger prince.",
+            "similarity": 0.8005
+          },
+          {
+            "sourceId": "line_137_unit_2",
+            "speaker": "Gerald Pemberton",
+            "quote": "Malcolm wants to be the prince again.",
+            "similarity": 0.7178
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Fiona",
+        "action": "Draft the Cinderella poster once the final show dates are confirmed, for review at the next meeting.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_185_unit_1",
+            "speaker": "Fiona Alcott",
+            "quote": "I'll do a draft poster for Cinderella once you give me the final show dates, and bring it to the next meeting for everyone to pick apart.",
+            "similarity": 0.8612
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Nadeem",
+        "action": "Test all four radio mics and the sound desk before October, then provide the exact replacement cost if a mic needs replacing.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_197_unit_1",
+            "speaker": "Nadeem Chaudhry",
+            "quote": "I'll test all four mics and the desk before October and either fix or replace the dodgy one.",
+            "similarity": 0.7616
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_21_unit_1",
+            "speaker": "Tom Hardacre",
+            "quote": "We've got the flying carpet rig from when the school did it, we could borrow that."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_165_unit_1",
+            "speaker": "Gerald Pemberton",
+            "quote": "So I think we note that as a real risk, the leading man's availability, and I'll have a quiet word with Malcolm about maybe taking Baron Hardup instead, smaller, and we find a younger prince."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "meeting_logistics",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_185_unit_1",
+            "speaker": "Fiona Alcott",
+            "quote": "I'll do a draft poster for Cinderella once you give me the final show dates, and bring it to the next meeting for everyone to pick apart."
+          }
+        ]
+      }
+    ]
+  }
+}

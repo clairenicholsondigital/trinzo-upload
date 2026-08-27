@@ -1,0 +1,450 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "08_allotment_society",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Random1_allotment_society_transcript.docx",
+    "sha256": "301ea23b48a8b84d5b796875b88a259fa200a4c122721813d002d52048331706",
+    "sourceUnitCount": 99
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Internal follow-up",
+      "meetingTitle": "Allotment Society committee"
+    },
+    "summary": {
+      "meetingPurpose": "Review Allotment Society site issues, agree practical maintenance tasks and confirm upcoming administration and event arrangements.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Confirm repair action for the broken water butt tap.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_17_unit_2",
+              "speaker": "Barbara Finch",
+              "quote": "First thing, the water butt by the top gate, the tap's snapped clean off and everyone's been moaning they can't fill their cans up there.",
+              "similarity": 0.4819
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Address the damaged railway-side boundary fence and related safety concern.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_49_unit_0",
+              "speaker": "Wesley Boothroyd",
+              "quote": "So the boundary fence along the railway side, the council still haven't been out, it's been what, three months now?",
+              "similarity": 0.6081
+            },
+            {
+              "sourceId": "line_57_unit_1",
+              "speaker": "Wesley Boothroyd",
+              "quote": "But it's a proper hazard now, if a child wandered through there onto the, near the tracks.",
+              "similarity": 0.5015
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Agree plot-fee and waiting-list administration updates.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_109_unit_0",
+              "speaker": "Barbara Finch",
+              "quote": "So are we agreed, we put the annual plot fee up from twenty-five to thirty pounds, starting the new membership year in January?",
+              "similarity": 0.5128
+            },
+            {
+              "sourceId": "line_133_unit_1",
+              "speaker": "Barbara Finch",
+              "quote": "While we're on you, the waiting list.",
+              "similarity": 0.3929
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Plan annual show arrangements and publicity.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_157_unit_1",
+              "speaker": "Barbara Finch",
+              "quote": "Now, the annual show.",
+              "similarity": 0.6501
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Discuss the shed break-in and improve site security.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_205_unit_0",
+              "speaker": "Barbara Finch",
+              "quote": "The communal shed, go on.",
+              "similarity": 0.5737
+            },
+            {
+              "sourceId": "line_241_unit_0",
+              "speaker": "Barbara Finch",
+              "quote": "So we should note that as a risk really, the break-ins, because if it keeps happening we may need to think about the whole site security, cameras, that sort of thing, which is a bigger job.",
+              "similarity": 0.5674
+            },
+            {
+              "sourceId": "line_201_unit_0",
+              "speaker": "Ken Ogden",
+              "quote": "Can I raise the shed?",
+              "similarity": 0.4732
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The committee worked through a set of operational site issues and agreed several practical follow-up tasks. Maintenance actions were assigned for the water butt, boundary fence and shed security. Administrative updates were also agreed for plot fees and waiting-list allocation, alongside planning for the annual show. The main risk left open is continued site-security exposure if break-ins persist."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Broken water butt tap.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Water butt repair"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_17_unit_2",
+            "speaker": "Barbara Finch",
+            "quote": "First thing, the water butt by the top gate, the tap's snapped clean off and everyone's been moaning they can't fill their cans up there.",
+            "similarity": 0.5929
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Damaged railway-side boundary fence and associated safety risk.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Boundary fence safety risk"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_49_unit_0",
+            "speaker": "Wesley Boothroyd",
+            "quote": "So the boundary fence along the railway side, the council still haven't been out, it's been what, three months now?",
+            "similarity": 0.5677
+          },
+          {
+            "sourceId": "line_57_unit_1",
+            "speaker": "Wesley Boothroyd",
+            "quote": "But it's a proper hazard now, if a child wandered through there onto the, near the tracks.",
+            "similarity": 0.4911
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Increase in annual plot fees from GBP 25 to GBP 30.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Plot fee increase"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_0",
+            "speaker": "Barbara Finch",
+            "quote": "So are we agreed, we put the annual plot fee up from twenty-five to thirty pounds, starting the new membership year in January?",
+            "similarity": 0.6541
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Allocation of three vacant plots from the waiting list.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Waiting-list plot allocation"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_137_unit_0",
+            "speaker": "Priyanka Das",
+            "quote": "Yes, so we've got three plots come free, the two down the bottom and old Frank's, sadly.",
+            "similarity": 0.4737
+          },
+          {
+            "sourceId": "line_145_unit_1",
+            "speaker": "Priyanka Das",
+            "quote": "So I'll go down the list in order and email the top three, offer them a plot, give them a fortnight to say yes or they go to the back.",
+            "similarity": 0.4272
+          },
+          {
+            "sourceId": "line_133_unit_1",
+            "speaker": "Barbara Finch",
+            "quote": "While we're on you, the waiting list.",
+            "similarity": 0.4246
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Annual show date, categories and publicity.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Annual show planning"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_157_unit_1",
+            "speaker": "Barbara Finch",
+            "quote": "Now, the annual show.",
+            "similarity": 0.6699
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "GBP 50 budget for show prizes and rosettes.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Show prizes and rosettes budget"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_189_unit_1",
+            "speaker": "Wesley Boothroyd",
+            "quote": "Oh, and can we have a bit of budget for the rosettes and the little prizes?",
+            "similarity": 0.6705
+          },
+          {
+            "sourceId": "line_193_unit_2",
+            "speaker": "Barbara Finch",
+            "quote": "We'll do up to fifty pounds for prizes and rosettes, keep the receipts and we'll reimburse you.",
+            "similarity": 0.5935
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Communal shed break-in and stolen equipment.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Shed break-in"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_205_unit_0",
+            "speaker": "Barbara Finch",
+            "quote": "The communal shed, go on.",
+            "similarity": 0.6687
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "Improved shed security.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Shed security improvements"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_205_unit_0",
+            "speaker": "Barbara Finch",
+            "quote": "The communal shed, go on.",
+            "similarity": 0.6212
+          },
+          {
+            "sourceId": "line_201_unit_0",
+            "speaker": "Ken Ogden",
+            "quote": "Can I raise the shed?",
+            "similarity": 0.5578
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Ongoing site-security risk if break-ins continue.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Ongoing site security risk"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_241_unit_0",
+            "speaker": "Barbara Finch",
+            "quote": "So we should note that as a risk really, the break-ins, because if it keeps happening we may need to think about the whole site security, cameras, that sort of thing, which is a bigger job.",
+            "similarity": 0.8079
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Ken",
+        "action": "Replace the broken water butt tap on Saturday.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_17_unit_2",
+            "speaker": "Barbara Finch",
+            "quote": "First thing, the water butt by the top gate, the tap's snapped clean off and everyone's been moaning they can't fill their cans up there.",
+            "similarity": 0.5529
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Barbara",
+        "action": "Photograph the damaged boundary fence and write to the council this week, copying in the councillor.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_1",
+            "speaker": "Barbara Finch",
+            "quote": "So that's me writing to the council about the fence, with a photo, this week.",
+            "similarity": 0.7766
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Priyanka",
+        "action": "Update the renewal letter to reflect the GBP 30 annual plot fee from January.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_0",
+            "speaker": "Barbara Finch",
+            "quote": "So are we agreed, we put the annual plot fee up from twenty-five to thirty pounds, starting the new membership year in January?",
+            "similarity": 0.6257
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Priyanka",
+        "action": "Email the top three people on the waiting list by the end of the week, giving them 14 days to accept a plot.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_145_unit_1",
+            "speaker": "Priyanka Das",
+            "quote": "So I'll go down the list in order and email the top three, offer them a plot, give them a fortnight to say yes or they go to the back.",
+            "similarity": 0.7019
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Wesley",
+        "action": "Prepare the annual show schedule, categories and entry form, and publish them on the noticeboard and Facebook by mid-August.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_169_unit_1",
+            "speaker": "Wesley Boothroyd",
+            "quote": "I'll put the schedule together, the categories and the entry form, and get it up on the noticeboard and the Facebook by, let's say, mid-August, so people have time to grow for it.",
+            "similarity": 0.7753
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "Ken",
+        "action": "Buy and fit a new hasp, padlock and solar alarm on Saturday, keeping spend under GBP 50.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_229_unit_1",
+            "speaker": "Barbara Finch",
+            "quote": "Buy the hasp, the padlock and the alarm, keep it under fifty, and fit it when you do the water butt Saturday.",
+            "similarity": 0.707
+          },
+          {
+            "sourceId": "line_217_unit_2",
+            "speaker": "Ken Ogden",
+            "quote": "We want a proper hasp and a decent padlock, and maybe one of those solar alarm things.",
+            "similarity": 0.6883
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_85_unit_1",
+            "speaker": "Priyanka Das",
+            "quote": "Even thirty would still be the cheapest site in the borough."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_217_unit_2",
+            "speaker": "Ken Ogden",
+            "quote": "We want a proper hasp and a decent padlock, and maybe one of those solar alarm things."
+          }
+        ]
+      }
+    ]
+  }
+}

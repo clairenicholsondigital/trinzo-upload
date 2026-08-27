@@ -1,0 +1,519 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "11_brewery_numbers",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Weakness1_brewery_numbers_transcript.docx",
+    "sha256": "a74a7b59bfd93a7987dd7bb230eba36678a2c62b040f6bfa6a671336a730e7d4",
+    "sourceUnitCount": 80
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Project review (general)",
+      "meetingTitle": "Brew schedule planning"
+    },
+    "summary": {
+      "meetingPurpose": "Plan the next two weeks of brewery production, including brew schedule, ingredient ordering, festival supply and equipment risk.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Confirm fermenter availability and brew timing.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_9_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "Right, brew schedule for the next fortnight, let's get it nailed.",
+              "similarity": 0.5617
+            },
+            {
+              "sourceId": "line_17_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "So my thinking is we brew the pale ale first, that's the four point two, in fermenter one, twelve hundred litres, and get it going Thursday.",
+              "similarity": 0.5187
+            },
+            {
+              "sourceId": "line_181_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "We're brewing the pale ale first, decided, twelve hundred litres in fermenter one Thursday.",
+              "similarity": 0.5149
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Agree pale ale and IPA batch volumes and expected yields.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_17_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "So my thinking is we brew the pale ale first, that's the four point two, in fermenter one, twelve hundred litres, and get it going Thursday.",
+              "similarity": 0.6439
+            },
+            {
+              "sourceId": "line_125_unit_1",
+              "speaker": "Mick Dolan",
+              "quote": "That's the pale ale presumably, cask conditioned?",
+              "similarity": 0.6183
+            },
+            {
+              "sourceId": "line_181_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "We're brewing the pale ale first, decided, twelve hundred litres in fermenter one Thursday.",
+              "similarity": 0.6151
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Confirm hop and malt requirements.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_81_unit_0",
+              "speaker": "Josie Kaur",
+              "quote": "What about malt, are we okay on malt?",
+              "similarity": 0.5045
+            },
+            {
+              "sourceId": "line_165_unit_0",
+              "speaker": "Dan Threlfall",
+              "quote": "More, with the hops in it.",
+              "similarity": 0.4385
+            },
+            {
+              "sourceId": "line_73_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "Ravi, order the full hop bill, the thirteen kilos, get it in Monday so it's here before the fifteenth.",
+              "similarity": 0.4333
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Correct the festival order into the right cask quantity and delivery plan.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_9_unit_3",
+              "speaker": "Dan Threlfall",
+              "quote": "We've got the festival order to fit in as well, so it's a bit of a jigsaw.",
+              "similarity": 0.5903
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Address glycol chiller reliability before the IPA brew.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_173_unit_1",
+              "speaker": "Dan Threlfall",
+              "quote": "Chiller serviced before the fifteenth or the IPA waits.",
+              "similarity": 0.6613
+            },
+            {
+              "sourceId": "line_153_unit_0",
+              "speaker": "Mick Dolan",
+              "quote": "Yeah, the glycol chiller's been cutting out.",
+              "similarity": 0.6196
+            },
+            {
+              "sourceId": "line_169_unit_1",
+              "speaker": "Mick Dolan",
+              "quote": "I'll get the chiller serviced before we pitch the IPA on the fifteenth, non-negotiable.",
+              "similarity": 0.5843
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The brewery team agreed a two-week production plan around fermenter availability, with a 1,200-litre pale ale batch followed by a 1,200-litre IPA batch. They confirmed hop and malt ordering needs, corrected the festival order from kegs to 15 nine-gallon casks and identified glycol chiller servicing as a critical dependency before the IPA brew. Clear actions were assigned to Ravi, Dan, Josie and Mick."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Two-week brewing schedule and fermenter availability.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Two-week brew schedule"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "Right, brew schedule for the next fortnight, let's get it nailed.",
+            "similarity": 0.6357
+          },
+          {
+            "sourceId": "line_17_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "So my thinking is we brew the pale ale first, that's the four point two, in fermenter one, twelve hundred litres, and get it going Thursday.",
+            "similarity": 0.5854
+          },
+          {
+            "sourceId": "line_181_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "We're brewing the pale ale first, decided, twelve hundred litres in fermenter one Thursday.",
+            "similarity": 0.556
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "1,200-litre pale ale batch and expected usable yield.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Pale ale batch and yield"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_181_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "We're brewing the pale ale first, decided, twelve hundred litres in fermenter one Thursday.",
+            "similarity": 0.7303
+          },
+          {
+            "sourceId": "line_17_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "So my thinking is we brew the pale ale first, that's the four point two, in fermenter one, twelve hundred litres, and get it going Thursday.",
+            "similarity": 0.6999
+          },
+          {
+            "sourceId": "line_125_unit_1",
+            "speaker": "Mick Dolan",
+            "quote": "That's the pale ale presumably, cask conditioned?",
+            "similarity": 0.642
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "1,200-litre IPA batch from the 15th.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "IPA batch timing",
+          "Pale ale batch and yield"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_181_unit_2",
+            "speaker": "Dan Threlfall",
+            "quote": "Then the IPA in three from the fifteenth, dry hop up to six grams a litre.",
+            "similarity": 0.7683
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Increasing IPA dry hopping from 4 g/L to 6 g/L.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Dry hopping increase"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_181_unit_2",
+            "speaker": "Dan Threlfall",
+            "quote": "Then the IPA in three from the fifteenth, dry hop up to six grams a litre.",
+            "similarity": 0.7337
+          },
+          {
+            "sourceId": "line_45_unit_0",
+            "speaker": "Mick Dolan",
+            "quote": "The IPA's the dry-hopped one.",
+            "similarity": 0.6141
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Hop requirements, availability and cost.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Hop cost and availability"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_165_unit_0",
+            "speaker": "Dan Threlfall",
+            "quote": "More, with the hops in it.",
+            "similarity": 0.5424
+          },
+          {
+            "sourceId": "line_69_unit_1",
+            "speaker": "Ravi Menon",
+            "quote": "So the dry hop alone's roughly two hundred quid, and the whole hop order's coming in around, three hundred and forty, three hundred and fifty pounds.",
+            "similarity": 0.4851
+          },
+          {
+            "sourceId": "line_61_unit_1",
+            "speaker": "Ravi Menon",
+            "quote": "So I need to order, seven point two for the IPA dry hop, plus the bittering and the pale ale hops.",
+            "similarity": 0.4348
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Maris Otter stock shortage and additional malt requirement.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Malt stock shortage"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_97_unit_0",
+            "speaker": "Mick Dolan",
+            "quote": "Six sacks of Maris Otter.",
+            "similarity": 0.4499
+          },
+          {
+            "sourceId": "line_81_unit_0",
+            "speaker": "Josie Kaur",
+            "quote": "What about malt, are we okay on malt?",
+            "similarity": 0.4347
+          },
+          {
+            "sourceId": "line_85_unit_0",
+            "speaker": "Dan Threlfall",
+            "quote": "We've got, Mick, how many sacks of the Maris Otter left?",
+            "similarity": 0.4179
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Festival order corrected from the originally requested 40 kegs to 15 nine-gallon firkins/casks.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Festival order correction"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_121_unit_1",
+            "speaker": "Josie Kaur",
+            "quote": "So I got them down to, we agreed fifteen casks, not kegs, casks, the nine-gallon firkins, because it's a real ale festival.",
+            "similarity": 0.798
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "Festival delivery on the 22nd.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Festival delivery terms"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_0",
+            "speaker": "Dan Threlfall",
+            "quote": "Now the festival.",
+            "similarity": 0.5884
+          },
+          {
+            "sourceId": "line_9_unit_3",
+            "speaker": "Dan Threlfall",
+            "quote": "We've got the festival order to fit in as well, so it's a bit of a jigsaw.",
+            "similarity": 0.5549
+          },
+          {
+            "sourceId": "line_189_unit_0",
+            "speaker": "Dan Threlfall",
+            "quote": "Fifteen of the pale go to the festival as casks on the twenty-second.",
+            "similarity": 0.47
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Glycol chiller reliability as a major production risk.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Glycol chiller servicing risk"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_153_unit_0",
+            "speaker": "Mick Dolan",
+            "quote": "Yeah, the glycol chiller's been cutting out.",
+            "similarity": 0.667
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "IPA brew conditional on the chiller being serviced first.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "IPA batch timing",
+          "Glycol chiller servicing risk"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_173_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "Chiller serviced before the fifteenth or the IPA waits.",
+            "similarity": 0.8202
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Ravi",
+        "action": "Order the full 13 kg hop bill on Monday morning.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_73_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "Ravi, order the full hop bill, the thirteen kilos, get it in Monday so it's here before the fifteenth.",
+            "similarity": 0.8385
+          },
+          {
+            "sourceId": "line_77_unit_0",
+            "speaker": "Ravi Menon",
+            "quote": "Monday, yep, I'll place the hop order Monday morning, all thirteen kilos.",
+            "similarity": 0.7635
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Dan",
+        "action": "Order six sacks of Maris Otter malt today.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_97_unit_0",
+            "speaker": "Mick Dolan",
+            "quote": "Six sacks of Maris Otter.",
+            "similarity": 0.7837
+          },
+          {
+            "sourceId": "line_101_unit_2",
+            "speaker": "Dan Threlfall",
+            "quote": "Leave the malt with me, I'll order six sacks today.",
+            "similarity": 0.7435
+          },
+          {
+            "sourceId": "line_85_unit_0",
+            "speaker": "Dan Threlfall",
+            "quote": "We've got, Mick, how many sacks of the Maris Otter left?",
+            "similarity": 0.6775
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Josie",
+        "action": "Email the festival today confirming 15 casks of 4.2% pale ale for delivery on the 22nd, with terms.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_189_unit_0",
+            "speaker": "Dan Threlfall",
+            "quote": "Fifteen of the pale go to the festival as casks on the twenty-second.",
+            "similarity": 0.5753
+          },
+          {
+            "sourceId": "line_125_unit_1",
+            "speaker": "Mick Dolan",
+            "quote": "That's the pale ale presumably, cask conditioned?",
+            "similarity": 0.5653
+          },
+          {
+            "sourceId": "line_145_unit_0",
+            "speaker": "Josie Kaur",
+            "quote": "Yeah, I'll email them today to confirm the fifteen casks for the twenty-second, with our terms.",
+            "similarity": 0.5534
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Mick",
+        "action": "Contact the refrigeration engineer today and arrange for the glycol chiller to be serviced before the IPA brew on the 15th.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_173_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "Chiller serviced before the fifteenth or the IPA waits.",
+            "similarity": 0.7033
+          },
+          {
+            "sourceId": "line_169_unit_1",
+            "speaker": "Mick Dolan",
+            "quote": "I'll get the chiller serviced before we pitch the IPA on the fifteenth, non-negotiable.",
+            "similarity": 0.6089
+          },
+          {
+            "sourceId": "line_153_unit_0",
+            "speaker": "Mick Dolan",
+            "quote": "Yeah, the glycol chiller's been cutting out.",
+            "similarity": 0.597
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_157_unit_1",
+            "speaker": "Dan Threlfall",
+            "quote": "If the chiller dies during the IPA ferment we could lose the whole twelve hundred litres."
+          }
+        ]
+      }
+    ]
+  }
+}

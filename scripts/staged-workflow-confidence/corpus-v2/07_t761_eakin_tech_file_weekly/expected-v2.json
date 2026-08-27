@@ -1,0 +1,1139 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "07_t761_eakin_tech_file_weekly",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_T761_Eakin_Tech_File_SW_Weekly_checkin.docx",
+    "sha256": "26ab99868de18bbe4c70e3b434e6cc55d6a71c67a1b636e3b5e7f05890ff04b0",
+    "sourceUnitCount": 369
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Technical file review",
+      "meetingTitle": "T761 Eakin Healthcare Tech File SW review - SW coding changes"
+    },
+    "summary": {
+      "meetingPurpose": "Review T761 Eakin software coding changes and related technical-file dependencies for alarms, languages, versioning, electrical safety and cybersecurity.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Review completed alarm sound, colour and flash changes.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_155_unit_0",
+              "speaker": "David Didsbury",
+              "quote": "I think it's flashing when you raise the alarm and then when it's triggered and then goes solid on someone sounding them on someone putting the mute on, but I might have misinterpreted the software.",
+              "similarity": 0.5725
+            },
+            {
+              "sourceId": "line_91_unit_0",
+              "speaker": "David Didsbury",
+              "quote": "I was about to say, compare the, okay, now we know you've got free sounds, compare the existing, what, medium, the existing alarm to the high priority alarm.",
+              "similarity": 0.5599
+            },
+            {
+              "sourceId": "line_561_unit_3",
+              "speaker": "David Didsbury",
+              "quote": "One on alarm should sound, right?",
+              "similarity": 0.5595
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Confirm remaining mute-button and clinical-review actions.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_187_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "One of them was to do with a mini review with the clinicians around that audible sound as to whether that would be acceptable in the field.",
+              "similarity": 0.5219
+            },
+            {
+              "sourceId": "line_135_unit_1",
+              "speaker": "Andrew Kane",
+              "quote": "Um, I really looked at when you press the mute button.",
+              "similarity": 0.5102
+            },
+            {
+              "sourceId": "line_659_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "I can't even remember that mini review that needs to happen from a clinician's point of view in relation to the three changes that have that have now been done within the coding and Andrew to just confirm in terms of the mute button button and what that what happens to the flash in relation to that.And then to continue the upgrade, or sorry, the update to the 12, the 12 additional languages.that needs still to be done and then the electrical compliance testing has started or will start shortly with a view to be within the 23rd of July dates.",
+              "similarity": 0.4941
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Plan debug-command and code-review work.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_49_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "How are you getting on with the debug?",
+              "similarity": 0.5874
+            },
+            {
+              "sourceId": "line_207_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "And one of the things was around debug.",
+              "similarity": 0.5224
+            },
+            {
+              "sourceId": "line_269_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "So that's whereby there is a list of what the software says is available from a debug perspective and you just need to get confirmation based on that command what is physically seen on the screen.",
+              "similarity": 0.5063
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Track language-change and software-versioning dependencies.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_295_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "Just from my perspective, that change request does it list all three of the changes, i.e. the alarm code changes, the language changes, and the retrospective from version 101 to 102.",
+              "similarity": 0.6512
+            },
+            {
+              "sourceId": "line_423_unit_0",
+              "speaker": "Jacqui Fox",
+              "quote": "further side of the software changes in relation to all the alarm stuff and to look then at the languages as the next step.",
+              "similarity": 0.6196
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Confirm electrical compliance testing approach and timeline.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_401_unit_3",
+              "speaker": "Jacqui Fox",
+              "quote": "You're effectively taking all that electrical compliance testing in-house.",
+              "similarity": 0.7005
+            }
+          ]
+        },
+        {
+          "id": "objective_006",
+          "text": "Review cybersecurity risks and mitigation options.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_683_unit_0",
+              "speaker": "Andrew Kane",
+              "quote": "Yeah, and the cybersecurity one might give a bit of guidance about what we're talking about there.",
+              "similarity": 0.5347
+            },
+            {
+              "sourceId": "line_693_unit_0",
+              "speaker": "Andrew Kane",
+              "quote": "The cyber security one might give a bit of guidance about what we've been talking about there.",
+              "similarity": 0.5306
+            },
+            {
+              "sourceId": "line_529_unit_1",
+              "speaker": "David Didsbury",
+              "quote": "So, yeah, cyber security is one of those avenues in, right?",
+              "similarity": 0.4899
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The meeting reviewed software changes for the Eakin technical file, with alarm changes largely completed and language changes underway. Remaining work included mute-button behaviour, clinical review, debug testing, traceability for the 17 historic software changes, and possible retrospective test data. Electrical compliance testing will be completed in-house, while cybersecurity discussion focused on USB-port and GUI controls, including whether physical locks, software controls or benefit-risk rationale are appropriate."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Andrew has implemented and demonstrated alarm sound changes for low, medium and high priority alarms.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm code changes",
+          "Alarm code review"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_91_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "I was about to say, compare the, okay, now we know you've got free sounds, compare the existing, what, medium, the existing alarm to the high priority alarm.",
+            "similarity": 0.6122
+          },
+          {
+            "sourceId": "line_561_unit_3",
+            "speaker": "David Didsbury",
+            "quote": "One on alarm should sound, right?",
+            "similarity": 0.5855
+          },
+          {
+            "sourceId": "line_103_unit_2",
+            "speaker": "Andrew Kane",
+            "quote": "So it's all lining up all right for those.Then, visually.So the existing alarm, there's the wrong priority.",
+            "similarity": 0.551
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Low, medium and high priority alarm visuals have been updated with colour and LED flash behaviour.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm code changes"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_103_unit_5",
+            "speaker": "Andrew Kane",
+            "quote": "So I figured it's the biggest contrast is if we do blue for the low priority, yellow for the medium priority, and red for the high priority.No, I've done the LEDs flashing.",
+            "similarity": 0.6537
+          },
+          {
+            "sourceId": "line_103_unit_2",
+            "speaker": "Andrew Kane",
+            "quote": "So it's all lining up all right for those.Then, visually.So the existing alarm, there's the wrong priority.",
+            "similarity": 0.595
+          },
+          {
+            "sourceId": "line_115_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "So, a low priority has a cyan blue screen and a solid LED, and the yellow and the medium is a yellow flashing 0.6 Hertz LED with a yellow screen that's a solid, and then the high priority is red screen, but it's...",
+            "similarity": 0.588
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "The remaining alarm question is what happens to the LED flashing behaviour when the mute button is pressed.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Mute button LED behaviour"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_125_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "I thought when you pressed the mute button at the moment, right, to mute the alarm, the LED went solid, but you're going to leave that as flashing now, are we?",
+            "similarity": 0.792
+          },
+          {
+            "sourceId": "line_159_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "OK, I I haven't looked at the mute button, like how it like how the LED acts in that scenario, so that's probably something I need to look at.",
+            "similarity": 0.7815
+          },
+          {
+            "sourceId": "line_109_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "So, there's an alarm LED, say the alarm mute button.",
+            "similarity": 0.727
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "A clinician mini-review of the audible alarm changes has been pushed to next week because clinical staff are unavailable.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm code review",
+          "Alarm code changes",
+          "Clinical and usability review"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_187_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "One of them was to do with a mini review with the clinicians around that audible sound as to whether that would be acceptable in the field.",
+            "similarity": 0.5671
+          },
+          {
+            "sourceId": "line_195_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "That's been pushed out until next week, because all our clinical nurses or clinical guys are out in the field at the minute or off on leave.",
+            "similarity": 0.4949
+          },
+          {
+            "sourceId": "line_659_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "I can't even remember that mini review that needs to happen from a clinician's point of view in relation to the three changes that have that have now been done within the coding and Andrew to just confirm in terms of the mute button button and what that what happens to the flash in relation to that.And then to continue the upgrade, or sorry, the update to the 12, the 12 additional languages.that needs still to be done and then the electrical compliance testing has started or will start shortly with a view to be within the 23rd of July dates.",
+            "similarity": 0.4693
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Feedback from clinicians and Adil may determine whether a longer-term usability update is needed.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Clinical and usability review"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_203_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then the other piece to that, further on from the clinicians as to whether there is an update needed from a usability perspective long term to check with the deal.",
+            "similarity": 0.7488
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "David wants to confirm which debug commands are physically visible or effective before test scripts are written.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Debug commands"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_269_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "So that's whereby there is a list of what the software says is available from a debug perspective and you just need to get confirmation based on that command what is physically seen on the screen.",
+            "similarity": 0.5745
+          },
+          {
+            "sourceId": "line_207_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "And that David is documenting around the debug, but I know that David, you had some questions around what you were, what was",
+            "similarity": 0.5629
+          },
+          {
+            "sourceId": "line_221_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "If the debug program that Andrew was running actually had those commands in, and he sent me a screenshot of the...",
+            "similarity": 0.5476
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "The software change request has been submitted and is expected to be reviewed on Wednesday.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Change request"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_295_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Just from my perspective, that change request does it list all three of the changes, i.e. the alarm code changes, the language changes, and the retrospective from version 101 to 102.",
+            "similarity": 0.5053
+          },
+          {
+            "sourceId": "line_287_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then, Andrew, I know that we had looked at starting to document that change within the on a change request form.",
+            "similarity": 0.4901
+          },
+          {
+            "sourceId": "line_353_unit_2",
+            "speaker": "David Didsbury",
+            "quote": "They, you know, they ask for the devices to the device, and we've changed the software versions and we don't really have, you know, the current documentation.Um, would just ask, would just lead an auditor to ask loads of questions.",
+            "similarity": 0.4626
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "The change request covers alarm code changes, language changes and the retrospective software version change from 1.01 to 1.02.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm code changes"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_295_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Just from my perspective, that change request does it list all three of the changes, i.e. the alarm code changes, the language changes, and the retrospective from version 101 to 102.",
+            "similarity": 0.8394
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "A further software release will be needed after the change request work is complete.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Change request"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_287_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then, Andrew, I know that we had looked at starting to document that change within the on a change request form.",
+            "similarity": 0.577
+          },
+          {
+            "sourceId": "line_349_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Well, it should confirm what the first change was, because the documentation that we have currently from going from, whether it's version one, which I think is what the software says, to 102.",
+            "similarity": 0.5547
+          },
+          {
+            "sourceId": "line_301_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And again, for me to understand the output of that will be that there is a final version, a further version of the software released.",
+            "similarity": 0.5059
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "The change is expected to be treated as non-significant or non-substantial through the regulatory process.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Change request"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_339_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "It's that it's a non-significant change.",
+            "similarity": 0.6638
+          },
+          {
+            "sourceId": "line_335_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Yeah, yeah, because a check we made, and once we have it documented, then someone, I presume in your regulatory team, will go through and confirm that it's a non-substantial change, will they?",
+            "similarity": 0.6056
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "The 17 historic software changes from version 1.01 to 1.02 need a gap assessment to confirm what changed and whether they are visible in code.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "IEC 60601-1 gap review",
+          "Software versioning"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_343_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And just on that then, I know David, when we talked this morning that there was that gap assessment being done on that 17 changes that appeared for our communicated from Merturian to yourself via Andrew Barr that it's from version 1.01 to 1.02 is the 17 changes, but to understand where they are within the code or can they be",
+            "similarity": 0.731
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "If the 17 changes are not all battery-related, additional explanation or retrospective test data may be needed for traceability.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm code changes",
+          "Electrical compliance testing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_371_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "So, so what I had said was that the...If changes are not all battery related to explanation documentation required for any unauthorized changes, worst case test data may need to be generated.",
+            "similarity": 0.7401
+          },
+          {
+            "sourceId": "line_375_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "to that point is said that we at this point do not know if all 17 really all relate to battery or if they relate to others and",
+            "similarity": 0.6548
+          },
+          {
+            "sourceId": "line_367_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "I know, again, when we also talked earlier on, David, that is that there is...An indicator, the hope that some or the vast majority of those changes potentially are to do with changes to the battery, but there are others that it may be.",
+            "similarity": 0.6229
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "Electrical compliance testing is being brought in-house and is expected to complete by around 23 July in the conservative timeline.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Electrical compliance testing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_401_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "You're effectively taking all that electrical compliance testing in-house.",
+            "similarity": 0.6725
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "Andrew has started reviewing the 60601-1 compliance document and identifying possible test gaps.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "IEC 60601-1 gap review",
+          "Electrical compliance testing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_417_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "Yeah, yeah, I started going through the...First step was going through that, the big 60601-1 compliance document and went through that based off of the one we did for the MDD and just to find why we'd meet everything.",
+            "similarity": 0.5582
+          },
+          {
+            "sourceId": "line_417_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "So that's the big first bit that we'll see if.We have like gaps in testing that we need to address, but.",
+            "similarity": 0.4959
+          },
+          {
+            "sourceId": "line_413_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "You know, best case is kind of like 4 weeks, so it could be slightly earlier, but I wanted to give Andrew a wee bit of grace period in case there was anything that kind of came from that kind of first action of like further testing and what information needs to then be fed through to Adil.",
+            "similarity": 0.4868
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "The additional language work can load 18 language files, but Arabic, Vietnamese and Greek may require character or font support.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language capacity and font limitations"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_437_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "I got, so I put 18 language files in there, and it's able to take 18 language files, but they don't have, you know, they don't have the latest translated, but those translations yet.",
+            "similarity": 0.6979
+          },
+          {
+            "sourceId": "line_443_unit_3",
+            "speaker": "Andrew Kane",
+            "quote": "So there's three languages in particular might be a problem is Arabic, Vietnamese and Greek.",
+            "similarity": 0.6818
+          },
+          {
+            "sourceId": "line_443_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "the symbols that are needed for some of those languages.",
+            "similarity": 0.5903
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "Cybersecurity and risk discussion covered USB port access, screen access, unauthorised interference, therapy-mode changes and whether a lock, password or benefit-risk rationale is appropriate.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "USB port lock"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_503_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, and then lastly, I think the other thing that had come up last week was around the cybersecurity concern, in particular in relation to the USB port.",
+            "similarity": 0.6621
+          },
+          {
+            "sourceId": "line_509_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "I was in the middle of inputting it onto the risk management file, but we were talking about initial risks and kind of control measures.We're looking at for two elements, one port lock for the USB on the back of the device, you know, how you, I was gonna say, how you...stringent do you make that over the fact that the screen element can also be accessed?",
+            "similarity": 0.6278
+          },
+          {
+            "sourceId": "line_509_unit_2",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "And if the attempt is to put any USB, you know, to overwrite the software in so much way that it becomes harmful, you know, likewise, there would be maybe somecontrol needed on the screen to prevent somebody increasing, you know, oxygen concentration flows, flow rates or something passed and approved or for the matter of swapping from a neonatal to like an adult therapy, which would then cause harm.",
+            "similarity": 0.6142
+          }
+        ]
+      },
+      {
+        "id": "fact_017",
+        "text": "Password protection may introduce clinical usability risk if clinicians need to intervene quickly.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Clinical and usability review",
+          "GUI security",
+          "Cybersecurity controls"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_645_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "Yeah, and also...And this way your benefit risk analysis, you can negate the need for a password by saying that a clinician may need to intervene quickly and therefore typing in a password.particularly on a touch screen, which if, you know, with calibration slightly off means you could be hitting the wrong buttons, I might not be able to stop the therapy as quickly as they'd like.",
+            "similarity": 0.7308
+          }
+        ]
+      },
+      {
+        "id": "fact_018",
+        "text": "Risk scoring for third-party interference may have high severity in neonatal scenarios but low occurrence based on field experience.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Benefit-risk analysis"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_617_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "I think from neonatal to adult, it'd be like a quite high severe severity rating, but a low occurrence.",
+            "similarity": 0.4965
+          },
+          {
+            "sourceId": "line_617_unit_3",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "So again, I think it's just more around that neonatal.patient population where disparity would be higher.",
+            "similarity": 0.4853
+          },
+          {
+            "sourceId": "line_559_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "There's NCPAP for neonatals and then adult and yeah.",
+            "similarity": 0.4676
+          }
+        ]
+      },
+      {
+        "id": "fact_019",
+        "text": "Rebecca is updating the risk management file and has purchased standards that may inform cybersecurity and nebuliser-port assessment.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Cybersecurity controls"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_623_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "There's one to, obviously, as you say, Rebecca, you're updating the risk at the moment, so you're considering that.",
+            "similarity": 0.621
+          },
+          {
+            "sourceId": "line_659_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "I've shared that over to Ciaran, whereas comments have been added andAny feedback, Rebecca, from you in terms of the updates that David has had put in last week to the risk management plan?",
+            "similarity": 0.5114
+          }
+        ]
+      },
+      {
+        "id": "fact_020",
+        "text": "Fan logic and PMS/risk-management plan updates were also reviewed as part of the technical-file follow-up.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm code review"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_659_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "AndYou're continuing to review the USB port side of things and David did sent on today two documents, one in relation to the fan logic, Andrew, that he shared with you.",
+            "similarity": 0.4718
+          },
+          {
+            "sourceId": "line_659_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "I've shared that over to Ciaran, whereas comments have been added andAny feedback, Rebecca, from you in terms of the updates that David has had put in last week to the risk management plan?",
+            "similarity": 0.4507
+          },
+          {
+            "sourceId": "line_661_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "No, I've responded to those two comments that David had put in and kind of was a bit more specific than in the plan around the kind of method that were taken for risk management.",
+            "similarity": 0.4059
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Andrew",
+        "action": "Confirm what happens to the alarm LED flashing behaviour when the mute button is pressed.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_125_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "I thought when you pressed the mute button at the moment, right, to mute the alarm, the LED went solid, but you're going to leave that as flashing now, are we?",
+            "similarity": 0.8097
+          },
+          {
+            "sourceId": "line_159_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "OK, I I haven't looked at the mute button, like how it like how the LED acts in that scenario, so that's probably something I need to look at.",
+            "similarity": 0.7578
+          },
+          {
+            "sourceId": "line_109_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "So, there's an alarm LED, say the alarm mute button.",
+            "similarity": 0.7239
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Rebecca and clinical team",
+        "action": "Complete the clinician mini-review of the alarm sound changes next week, including any usability input from Adil.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_91_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "I was about to say, compare the, okay, now we know you've got free sounds, compare the existing, what, medium, the existing alarm to the high priority alarm.",
+            "similarity": 0.5426
+          },
+          {
+            "sourceId": "line_561_unit_3",
+            "speaker": "David Didsbury",
+            "quote": "One on alarm should sound, right?",
+            "similarity": 0.5187
+          },
+          {
+            "sourceId": "line_187_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "One of them was to do with a mini review with the clinicians around that audible sound as to whether that would be acceptable in the field.",
+            "similarity": 0.4802
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "David",
+        "action": "Send or agree further debug commands for Andrew to test against the software.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_221_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "If the debug program that Andrew was running actually had those commands in, and he sent me a screenshot of the...",
+            "similarity": 0.7467
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Andrew",
+        "action": "Test the additional debug commands and confirm what is physically visible or produced on screen.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_269_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "So that's whereby there is a list of what the software says is available from a debug perspective and you just need to get confirmation based on that command what is physically seen on the screen.",
+            "similarity": 0.6161
+          },
+          {
+            "sourceId": "line_49_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "How are you getting on with the debug?",
+            "similarity": 0.5649
+          },
+          {
+            "sourceId": "line_231_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "I sent you on a screenshot of the debug menu, yeah.",
+            "similarity": 0.5641
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Rebecca",
+        "action": "Progress the submitted change request through the Wednesday review and gather the required close-out information.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_287_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then, Andrew, I know that we had looked at starting to document that change within the on a change request form.",
+            "similarity": 0.5975
+          },
+          {
+            "sourceId": "line_291_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "Yeah, so I submitted that last week, so I think they're going to discuss that in their meeting on Wednesday.So, I don't know, Rebecca, what the process is.",
+            "similarity": 0.4826
+          },
+          {
+            "sourceId": "line_389_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "We've referenced the other changes in that change control.And then I'll just compile them all together as part of design changes or changes throughout the tech file in the summary report.",
+            "similarity": 0.4815
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "David",
+        "action": "Complete the gap assessment of the 17 changes from software version 1.01 to 1.02 and identify where they are visible in the code.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_343_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And just on that then, I know David, when we talked this morning that there was that gap assessment being done on that 17 changes that appeared for our communicated from Merturian to yourself via Andrew Barr that it's from version 1.01 to 1.02 is the 17 changes, but to understand where they are within the code or can they be",
+            "similarity": 0.7369
+          },
+          {
+            "sourceId": "line_349_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Well, it should confirm what the first change was, because the documentation that we have currently from going from, whether it's version one, which I think is what the software says, to 102.",
+            "similarity": 0.6392
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "Rebecca",
+        "action": "Incorporate David's output on the 17 software changes into the design-change or technical-file summary.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_393_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, so you will take David's output and incorporate it into...David's output in terms of that review of the 17 changes and where they are visible within the code.",
+            "similarity": 0.6695
+          },
+          {
+            "sourceId": "line_389_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "We've referenced the other changes in that change control.And then I'll just compile them all together as part of design changes or changes throughout the tech file in the summary report.",
+            "similarity": 0.629
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Andrew",
+        "action": "Continue the electrical compliance testing review and flag any support needed from David.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_401_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "You're effectively taking all that electrical compliance testing in-house.",
+            "similarity": 0.6124
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Andrew",
+        "action": "Continue the additional-language update, including character or font support for Arabic, Vietnamese and Greek, and load the translated files.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_437_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "I got, so I put 18 language files in there, and it's able to take 18 language files, but they don't have, you know, they don't have the latest translated, but those translations yet.",
+            "similarity": 0.5857
+          },
+          {
+            "sourceId": "line_443_unit_3",
+            "speaker": "Andrew Kane",
+            "quote": "So there's three languages in particular might be a problem is Arabic, Vietnamese and Greek.",
+            "similarity": 0.5662
+          },
+          {
+            "sourceId": "line_489_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "To look at the addition of any.specific language characters based on what David has said, but also then to load the fully translated.",
+            "similarity": 0.5453
+          }
+        ]
+      },
+      {
+        "id": "action_010",
+        "owner": "Rebecca",
+        "action": "Update the risk management file with USB port and screen-interference risks and proposed controls by Wednesday.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_509_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "I was in the middle of inputting it onto the risk management file, but we were talking about initial risks and kind of control measures.We're looking at for two elements, one port lock for the USB on the back of the device, you know, how you, I was gonna say, how you...stringent do you make that over the fact that the screen element can also be accessed?",
+            "similarity": 0.6664
+          },
+          {
+            "sourceId": "line_515_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "Yeah, I was.I said to just Andrew that I go away and see what, if anything, other devices have around kind of controlling that kind of element.But I'm in the middle of tidying up the risk management file sheet to share back to you guys to have a look at that and then I'll add those in.",
+            "similarity": 0.5776
+          },
+          {
+            "sourceId": "line_509_unit_2",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "And if the attempt is to put any USB, you know, to overwrite the software in so much way that it becomes harmful, you know, likewise, there would be maybe somecontrol needed on the screen to prevent somebody increasing, you know, oxygen concentration flows, flow rates or something passed and approved or for the matter of swapping from a neonatal to like an adult therapy, which would then cause harm.",
+            "similarity": 0.5735
+          }
+        ]
+      },
+      {
+        "id": "action_011",
+        "owner": "Andrew",
+        "action": "Review David's fan-logic document and decide whether it needs to be added to Cognidocs.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_659_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "So just for that need, that needs to probably be reviewed from your perspective and if that needs to be added to your Cognidocs perspective.just not sure if it does.",
+            "similarity": 0.4803
+          },
+          {
+            "sourceId": "line_659_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "AndYou're continuing to review the USB port side of things and David did sent on today two documents, one in relation to the fan logic, Andrew, that he shared with you.",
+            "similarity": 0.4732
+          },
+          {
+            "sourceId": "line_393_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, so you will take David's output and incorporate it into...David's output in terms of that review of the 17 changes and where they are visible within the code.",
+            "similarity": 0.4272
+          }
+        ]
+      },
+      {
+        "id": "action_012",
+        "owner": "Rebecca",
+        "action": "Email the purchased standards, including 81001-5-1 and 27427, for assessment.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_673_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "So I purchased 2 standards, 81001-5-1, which was the health software and health IT system safety, effectiveness and security.",
+            "similarity": 0.5912
+          }
+        ]
+      },
+      {
+        "id": "action_013",
+        "owner": "Jacqui",
+        "action": "Follow up with Colm to review whether the 27427 standard is applicable.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_677_unit_0",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "Opponents, I think Colm had mentioned about looking at that standard to see if it was applicable.With regards to the nebulizing port, so Andrew, I'll send that on and we can maybe just get an assessment of that.",
+            "similarity": 0.4458
+          },
+          {
+            "sourceId": "line_673_unit_1",
+            "speaker": "Rebecca Cuckoo",
+            "quote": "So I purchased 2 standards, 81001-5-1, which was the health software and health IT system safety, effectiveness and security.",
+            "similarity": 0.4251
+          },
+          {
+            "sourceId": "line_349_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Well, it should confirm what the first change was, because the documentation that we have currently from going from, whether it's version one, which I think is what the software says, to 102.",
+            "similarity": 0.384
+          }
+        ]
+      },
+      {
+        "id": "action_014",
+        "owner": "Jacqui",
+        "action": "Add Rebecca to the regular Tuesday follow-up call.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_701_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "And Rebecca, I'll add you to that as well.",
+            "similarity": 0.5958
+          },
+          {
+            "sourceId": "line_291_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "Yeah, so I submitted that last week, so I think they're going to discuss that in their meeting on Wednesday.So, I don't know, Rebecca, what the process is.",
+            "similarity": 0.56
+          },
+          {
+            "sourceId": "line_623_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "There's one to, obviously, as you say, Rebecca, you're updating the risk at the moment, so you're considering that.",
+            "similarity": 0.5413
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_29_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Anyway.Well, at this stage, at the moment, David, it is kind of maybe three times a day, to be fair."
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_139_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "We could look at that."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_187_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "One of them was to do with a mini review with the clinicians around that audible sound as to whether that would be acceptable in the field."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_211_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "from it within the software what the debug looked like and we were hoping that as a result of of Andrew doing debug on the first change he made to the sound that that would we'd be in a position to kind of fully understand what he's seeing because you can't physically access it to see."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "completed_history",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_291_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "Yeah, so I submitted that last week, so I think they're going to discuss that in their meeting on Wednesday.So, I don't know, Rebecca, what the process is."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_353_unit_2",
+            "speaker": "David Didsbury",
+            "quote": "They, you know, they ask for the devices to the device, and we've changed the software versions and we don't really have, you know, the current documentation.Um, would just ask, would just lead an auditor to ask loads of questions."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,661 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "10_lean_generation_pipeline_review",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Review_Lean_Generation_Pipeline_Meeting_Transcript_2.docx",
+    "sha256": "d7c39f57653a4d8b8327eaf773465b87db64258abfe78f40c5fc435a4eaa7f43",
+    "sourceUnitCount": 82
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Workshop",
+      "meetingTitle": "Review Lean Generation Pipeline"
+    },
+    "summary": {
+      "meetingPurpose": "Sense-check a proposed lean lead-generation pipeline before running a manual test and potential AI-supported pilot.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Validate the proposed lead-generation process with sales and client-delivery stakeholders.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_69_unit_0",
+              "speaker": "Keon Fox",
+              "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+              "similarity": 0.696
+            },
+            {
+              "sourceId": "line_63_unit_2",
+              "speaker": "Kathryn Cullen",
+              "quote": "There's some which I would, if I had felt there was a really hot lead that I was involved in, I would put a task in Salesforce for either for sales to look at or for sales to have a call with the actual client.and incentivizing, we did look at that and we have socialized that with a lot of clients as they onboard, but it's never been utilized yet, I would say.",
+              "similarity": 0.5959
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Identify likely signal sources and triage needs.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_27_unit_5",
+              "speaker": "Conor Flynn",
+              "quote": "But you've got to remember, we're going to automate an awful lot of these stages.So if you think about it, the first step is to capture the signal.",
+              "similarity": 0.455
+            },
+            {
+              "sourceId": "line_53_unit_0",
+              "speaker": "Conor Flynn",
+              "quote": "So before we give you your feedback, Keon, so just to reiterate there, capture signal means collect all the information we have and anything we can find.",
+              "similarity": 0.4253
+            },
+            {
+              "sourceId": "line_27_unit_6",
+              "speaker": "Conor Flynn",
+              "quote": "And that could be a signal coming from inbound, from a referral, from client deliveries team, from an event that we're at.",
+              "similarity": 0.4142
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Discuss how client-delivery leads are currently captured.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_59_unit_0",
+              "speaker": "Keon Fox",
+              "quote": "Okay, so one question I have is, now I know that we're in the, like more or less the building phase of this, but in that first capture stage, there's client delivery in there.",
+              "similarity": 0.6752
+            },
+            {
+              "sourceId": "line_69_unit_0",
+              "speaker": "Keon Fox",
+              "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+              "similarity": 0.644
+            },
+            {
+              "sourceId": "line_63_unit_1",
+              "speaker": "Kathryn Cullen",
+              "quote": "There are projects where we are providing resources to clients and we would have a monthly check-in with them and those meetings are recorded and any ideas orAny leads that are coming out of those are sent on to Liam via e-mail.I would say that they're probably not always tracked in Salesforce.",
+              "similarity": 0.5896
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Define what needs to happen before a pilot.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_23_unit_2",
+              "speaker": "Conor Flynn",
+              "quote": "We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you.",
+              "similarity": 0.3839
+            },
+            {
+              "sourceId": "line_27_unit_5",
+              "speaker": "Conor Flynn",
+              "quote": "But you've got to remember, we're going to automate an awful lot of these stages.So if you think about it, the first step is to capture the signal.",
+              "similarity": 0.3378
+            },
+            {
+              "sourceId": "line_45_unit_1",
+              "speaker": "Conor Flynn",
+              "quote": "And then that sales and execution person, along with whoever was going to be chasing it, would make out the plan, which could be emails or call them or meet them at a conference.",
+              "similarity": 0.2836
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Confirm whether the approach could produce useful lead quality and volume.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_69_unit_0",
+              "speaker": "Keon Fox",
+              "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+              "similarity": 0.5097
+            },
+            {
+              "sourceId": "line_23_unit_2",
+              "speaker": "Conor Flynn",
+              "quote": "We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you.",
+              "similarity": 0.4897
+            },
+            {
+              "sourceId": "line_59_unit_3",
+              "speaker": "Keon Fox",
+              "quote": "Or are we now through this process going to basicallyencourage our folks on the ground to really push like lead like lead generation that we we don't want them to turn into salespeople, just just more or less feedback and lead generation.",
+              "similarity": 0.4562
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The team reviewed a proposed pipeline for turning market and client-delivery signals into qualified sales opportunities for Keon and Liam. The process would capture signals, triage noise, check Salesforce, create opportunity packs, prioritise opportunities with sales input, plan outreach and feed results back into the funnel. Keon confirmed that client delivery is likely the strongest lead source, while Jack emphasised the need to define ICP criteria and build quality into the process before automation."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Lead-generation process designed to produce sufficiently qualified leads for Keon and Liam.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Lead-generation pipeline"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+            "similarity": 0.6012
+          },
+          {
+            "sourceId": "line_9_unit_3",
+            "speaker": "Conor Flynn",
+            "quote": "This is just to generateleads of a sufficient quality to be put in front of Keon and Liam.",
+            "similarity": 0.5935
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Need to sense-check the proposed process against real sales practice before scaling it.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_45_unit_2",
+            "speaker": "Conor Flynn",
+            "quote": "I don't know what a sales plan would be.",
+            "similarity": 0.5068
+          },
+          {
+            "sourceId": "line_23_unit_5",
+            "speaker": "Conor Flynn",
+            "quote": "But what's going to happen once we start manually doing it is we're going to notice that a lot of the meetings you have in sales at the moment are at the wrong time, in the wrong place, on the wrong subject.if you know what I mean.",
+            "similarity": 0.476
+          },
+          {
+            "sourceId": "line_59_unit_3",
+            "speaker": "Keon Fox",
+            "quote": "Or are we now through this process going to basicallyencourage our folks on the ground to really push like lead like lead generation that we we don't want them to turn into salespeople, just just more or less feedback and lead generation.",
+            "similarity": 0.4118
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Client delivery is expected to be a strong source of high-quality leads because consultants are close to active customer needs.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Client-delivery lead capture",
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+            "similarity": 0.6963
+          },
+          {
+            "sourceId": "line_9_unit_5",
+            "speaker": "Conor Flynn",
+            "quote": "Is that what real life would, if we did that, would it be a good thing?And from Kathryn, because we believe that the best leads probably come from her and client delivery because they're talking with customers on live projects who are currently buying and happy with us.",
+            "similarity": 0.6254
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Proposed phased approach: small manual slice, four-week mixed manual and AI pilot, then automation if quality and volume are acceptable.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Manual slice and four-week pilot"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_2",
+            "speaker": "Conor Flynn",
+            "quote": "We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you.",
+            "similarity": 0.7213
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Signal sources include inbound enquiries, referrals, client delivery, events, ZoomInfo, client websites, newsletters and market news.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Signal capture sources"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_6",
+            "speaker": "Conor Flynn",
+            "quote": "And that could be a signal coming from inbound, from a referral, from client deliveries team, from an event that we're at.",
+            "similarity": 0.5908
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Need to triage noisy signal sources and manually clean or filter low-quality information.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Noise triage",
+          "Signal capture sources"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_11",
+            "speaker": "Conor Flynn",
+            "quote": "It needs to look at the output ofpulling all of that information into one place and to kind of clean up the noise manually.",
+            "similarity": 0.5343
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "ICP fit criteria need to be defined clearly to reduce poor inputs at the start of the process.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "ICP fit criteria"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_10",
+            "speaker": "Conor Flynn",
+            "quote": "ICP means the ideal client profile.",
+            "similarity": 0.5586
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "Salesforce matching and checking is needed before opportunity packs are generated.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "AI opportunity packs"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_12",
+            "speaker": "Conor Flynn",
+            "quote": "Then what they would do is they'd match and check what we already have in Salesforce around that.",
+            "similarity": 0.3769
+          },
+          {
+            "sourceId": "line_31_unit_0",
+            "speaker": "Conor Flynn",
+            "quote": "And then they would use AI in order to generate a pack for any opportunities that look like good opportunities.",
+            "similarity": 0.3665
+          },
+          {
+            "sourceId": "line_59_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "Okay, so one question I have is, now I know that we're in the, like more or less the building phase of this, but in that first capture stage, there's client delivery in there.",
+            "similarity": 0.2981
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "AI-generated opportunity packs would support prioritisation of tiered opportunities.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "AI opportunity packs"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_31_unit_0",
+            "speaker": "Conor Flynn",
+            "quote": "And then they would use AI in order to generate a pack for any opportunities that look like good opportunities.",
+            "similarity": 0.6837
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "Keon, Liam, Kathryn and a BD representative would review opportunities and decide which to pursue.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_31_unit_4",
+            "speaker": "Conor Flynn",
+            "quote": "There'd be then Keon, Liam, Kate, and this operations sales person.",
+            "similarity": 0.5597
+          },
+          {
+            "sourceId": "line_9_unit_0",
+            "speaker": "Conor Flynn",
+            "quote": "gets information to Keon and Liam in a state at a time that is valuable for them to bring forward from there.",
+            "similarity": 0.5577
+          },
+          {
+            "sourceId": "line_57_unit_0",
+            "speaker": "Conor Flynn",
+            "quote": "Bring that information to you and Liam so that we can reprioritize and decide what we're going to go after, what our plan for the different ones are.",
+            "similarity": 0.5126
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "Opportunity planning may include known contacts, LinkedIn connections, email, calls or conference outreach.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Opportunity prioritisation",
+          "AI opportunity packs",
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_45_unit_1",
+            "speaker": "Conor Flynn",
+            "quote": "And then that sales and execution person, along with whoever was going to be chasing it, would make out the plan, which could be emails or call them or meet them at a conference.",
+            "similarity": 0.4774
+          },
+          {
+            "sourceId": "line_41_unit_3",
+            "speaker": "Conor Flynn",
+            "quote": "And we'd look through LinkedIn to see.",
+            "similarity": 0.4313
+          },
+          {
+            "sourceId": "line_63_unit_1",
+            "speaker": "Kathryn Cullen",
+            "quote": "There are projects where we are providing resources to clients and we would have a monthly check-in with them and those meetings are recorded and any ideas orAny leads that are coming out of those are sent on to Liam via e-mail.I would say that they're probably not always tracked in Salesforce.",
+            "similarity": 0.4121
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "Outcomes from pursued opportunities should feed back into the funnel so the process can improve.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Opportunity prioritisation",
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_57_unit_1",
+            "speaker": "Conor Flynn",
+            "quote": "Build out a plan for whatever we're going after, go after them and feed back into the funnel again, the result of that so that we can get better at it.",
+            "similarity": 0.6503
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "Current client-delivery leads are sometimes emailed to Liam or logged as Salesforce tasks, but tracking is inconsistent.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Client-delivery lead capture"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_63_unit_1",
+            "speaker": "Kathryn Cullen",
+            "quote": "There are projects where we are providing resources to clients and we would have a monthly check-in with them and those meetings are recorded and any ideas orAny leads that are coming out of those are sent on to Liam via e-mail.I would say that they're probably not always tracked in Salesforce.",
+            "similarity": 0.6758
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "Incentivising consultants for lead generation has been considered but has not yet been used and may not change behaviour.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+            "similarity": 0.5044
+          },
+          {
+            "sourceId": "line_59_unit_3",
+            "speaker": "Keon Fox",
+            "quote": "Or are we now through this process going to basicallyencourage our folks on the ground to really push like lead like lead generation that we we don't want them to turn into salespeople, just just more or less feedback and lead generation.",
+            "similarity": 0.467
+          },
+          {
+            "sourceId": "line_63_unit_2",
+            "speaker": "Kathryn Cullen",
+            "quote": "There's some which I would, if I had felt there was a really hot lead that I was involved in, I would put a task in Salesforce for either for sales to look at or for sales to have a call with the actual client.and incentivizing, we did look at that and we have socialized that with a lot of clients as they onboard, but it's never been utilized yet, I would say.",
+            "similarity": 0.4518
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "Keon confirms that the strongest leads are likely to come from client delivery on the ground.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Client-delivery lead capture",
+          "Lead-generation pipeline",
+          "Consultant incentives"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+            "similarity": 0.6746
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Conor and Jack",
+        "action": "Take a small manual slice of the proposed lead-generation process and test whether it produces the required lead quality.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_69_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+            "similarity": 0.5189
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Conor and Jack",
+        "action": "Run a four-week mixed manual and AI pilot if the manual test produces useful volume and quality.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_2",
+            "speaker": "Conor Flynn",
+            "quote": "We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you.",
+            "similarity": 0.7406
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Team",
+        "action": "Define the ICP fit criteria so poor-quality signals can be filtered earlier in the process.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_10",
+            "speaker": "Conor Flynn",
+            "quote": "ICP means the ideal client profile.",
+            "similarity": 0.5498
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Sales and client-delivery team",
+        "action": "Clarify how client-delivery lead signals should be captured and tracked, including whether they should be recorded consistently in Salesforce.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_63_unit_1",
+            "speaker": "Kathryn Cullen",
+            "quote": "There are projects where we are providing resources to clients and we would have a monthly check-in with them and those meetings are recorded and any ideas orAny leads that are coming out of those are sent on to Liam via e-mail.I would say that they're probably not always tracked in Salesforce.",
+            "similarity": 0.5369
+          },
+          {
+            "sourceId": "line_63_unit_2",
+            "speaker": "Kathryn Cullen",
+            "quote": "There's some which I would, if I had felt there was a really hot lead that I was involved in, I would put a task in Salesforce for either for sales to look at or for sales to have a call with the actual client.and incentivizing, we did look at that and we have socialized that with a lot of clients as they onboard, but it's never been utilized yet, I would say.",
+            "similarity": 0.49
+          },
+          {
+            "sourceId": "line_69_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
+            "similarity": 0.4867
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_1",
+            "speaker": "Conor Flynn",
+            "quote": "So, Jack and I have been working on this in terms of, well, what would a good process work like?"
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_9_unit_5",
+            "speaker": "Conor Flynn",
+            "quote": "Is that what real life would, if we did that, would it be a good thing?And from Kathryn, because we believe that the best leads probably come from her and client delivery because they're talking with customers on live projects who are currently buying and happy with us."
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_23_unit_3",
+            "speaker": "Conor Flynn",
+            "quote": "And then if that worked, we could look at automating it."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_25_unit_0",
+            "speaker": "Keon Fox",
+            "quote": "Yeah, I would agree."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_6",
+            "speaker": "Conor Flynn",
+            "quote": "And that could be a signal coming from inbound, from a referral, from client deliveries team, from an event that we're at."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_27_unit_7",
+            "speaker": "Conor Flynn",
+            "quote": "It could come from Zoom info, or we want to set up agents scraping clients' websites and newsletters and news sources in order to identify opportunities in the broader market.But of course, what this is likely to do is it's going to flood a lot of nonsense information."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -3841,7 +3841,14 @@ function buildStagedUiMirror(sequence = {}, metadata = {}, options = {}) {
     },
     visibleOutput: sequence.visibleOutput || stagedEvaluationVisibleOutput(state),
     reviewExperience,
-    ...(options.includeDiagnostics ? { diagnostics: { trace: sequence.trace || [] } } : {})
+    ...(options.includeDiagnostics ? {
+      diagnostics: {
+        servingRevision: servingRevision(),
+        contractVersion: 'staged-meeting-minutes-ui-mirror-v2',
+        pipelineMode: 'shared_staged_workflow',
+        trace: sequence.trace || []
+      }
+    } : {})
   };
 }
 

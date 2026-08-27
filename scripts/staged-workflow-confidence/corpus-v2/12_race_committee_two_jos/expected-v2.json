@@ -1,0 +1,547 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "12_race_committee_two_jos",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Weakness2_two_Jos_nameclash_transcript.docx",
+    "sha256": "c43c7cca3f1e3132e583d4feb55ac37a8b2732b7f6efe54dd9ede9b2504c3595",
+    "sourceUnitCount": 83
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Project review (general)",
+      "meetingTitle": "10K committee catch-up"
+    },
+    "summary": {
+      "meetingPurpose": "Review planning status for the 10K event and assign responsibilities for safety, route, medals and promotion.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Confirm race date and entry fee.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_157_unit_2",
+              "speaker": "Deepa Sharma",
+              "quote": "I'll do a proper push, a post every couple of days from now till race day, and get the entry link out everywhere.",
+              "similarity": 0.5019
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Resolve marshal and first-aid coverage gaps.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_85_unit_0",
+              "speaker": "Jo Bennett",
+              "quote": "Marshals is her, first aid is me.",
+              "similarity": 0.6124
+            },
+            {
+              "sourceId": "line_61_unit_0",
+              "speaker": "Jo Bennett",
+              "quote": "And what about first aid?",
+              "similarity": 0.6039
+            },
+            {
+              "sourceId": "line_33_unit_0",
+              "speaker": "Jo Marsh",
+              "quote": "The big worry for me is marshals.",
+              "similarity": 0.4999
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Review route and road-closure dependencies.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_173_unit_3",
+              "speaker": "Deepa Sharma",
+              "quote": "Alan, road-closure application in this week and check the towpath.",
+              "similarity": 0.521
+            },
+            {
+              "sourceId": "line_93_unit_2",
+              "speaker": "Alan Pryce",
+              "quote": "And there's the road-closure order for the first half mile on the main road.",
+              "similarity": 0.5189
+            },
+            {
+              "sourceId": "line_109_unit_1",
+              "speaker": "Alan Pryce",
+              "quote": "So I'll get the road-closure application in this week, no later, and confirm the towpath's reopened.",
+              "similarity": 0.48
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Choose medals or shirts and confirm ordering quantity.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_125_unit_0",
+              "speaker": "Deepa Sharma",
+              "quote": "We did medals last year, not shirts.",
+              "similarity": 0.6247
+            },
+            {
+              "sourceId": "line_133_unit_1",
+              "speaker": "Deepa Sharma",
+              "quote": "So we're agreed, medals again, not shirts.",
+              "similarity": 0.6096
+            },
+            {
+              "sourceId": "line_141_unit_1",
+              "speaker": "Deepa Sharma",
+              "quote": "I'll reorder the medals, same as last year, we need, if we're expecting three hundred runners, I'll order three hundred and fifty to be safe.",
+              "similarity": 0.5802
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Agree the social media push needed to support entries.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_157_unit_2",
+              "speaker": "Deepa Sharma",
+              "quote": "I'll do a proper push, a post every couple of days from now till race day, and get the entry link out everywhere.",
+              "similarity": 0.5097
+            },
+            {
+              "sourceId": "line_149_unit_1",
+              "speaker": "Deepa Sharma",
+              "quote": "And the social media, we've been rubbish at it this year, we've barely posted.",
+              "similarity": 0.4521
+            },
+            {
+              "sourceId": "line_157_unit_1",
+              "speaker": "Deepa Sharma",
+              "quote": "I'll take the social media.",
+              "similarity": 0.4331
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The committee confirmed the 10K date and entry fee, then focused on practical event risks. Marshal recruitment and first-aid cover were identified as priorities, with Jo Marsh and Jo Bennett taking separate responsibilities. The group also discussed road-closure timing, the need for a Plan B route, medal ordering and increased social media activity to reach the break-even entry level."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "Race date and GBP 15 entry fee.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Race date",
+          "Entry fee"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_157_unit_2",
+            "speaker": "Deepa Sharma",
+            "quote": "I'll do a proper push, a post every couple of days from now till race day, and get the entry link out everywhere.",
+            "similarity": 0.4307
+          },
+          {
+            "sourceId": "line_25_unit_0",
+            "speaker": "Deepa Sharma",
+            "quote": "So the date's locked, the twenty-eighth of September, and we said fifteen pounds entry, that hasn't changed?",
+            "similarity": 0.4302
+          },
+          {
+            "sourceId": "line_41_unit_0",
+            "speaker": "Jo Marsh",
+            "quote": "For that route, properly, fourteen.",
+            "similarity": 0.3176
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Marshal shortage and requirement for 14 marshals.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Marshal shortage"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_49_unit_1",
+            "speaker": "Jo Marsh",
+            "quote": "I'll sort the marshals, I've got the list from last year and I'll ring round and get us up to fourteen.",
+            "similarity": 0.6467
+          },
+          {
+            "sourceId": "line_45_unit_0",
+            "speaker": "Alan Pryce",
+            "quote": "So who's chasing marshals?",
+            "similarity": 0.6172
+          },
+          {
+            "sourceId": "line_33_unit_0",
+            "speaker": "Jo Marsh",
+            "quote": "The big worry for me is marshals.",
+            "similarity": 0.6143
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "Inadequate first-aid coverage and need for two crews.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "First-aid coverage"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_61_unit_0",
+            "speaker": "Jo Bennett",
+            "quote": "And what about first aid?",
+            "similarity": 0.6867
+          },
+          {
+            "sourceId": "line_173_unit_2",
+            "speaker": "Deepa Sharma",
+            "quote": "Jo Bennett, first aid, quote from St John's for two crews.",
+            "similarity": 0.5723
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "Route status and resurfaced towpath.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Route and towpath status"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_93_unit_1",
+            "speaker": "Alan Pryce",
+            "quote": "So the route's basically last year's, but they've resurfaced part of the towpath and I need to check it's open.",
+            "similarity": 0.6586
+          },
+          {
+            "sourceId": "line_173_unit_3",
+            "speaker": "Deepa Sharma",
+            "quote": "Alan, road-closure application in this week and check the towpath.",
+            "similarity": 0.6028
+          },
+          {
+            "sourceId": "line_109_unit_1",
+            "speaker": "Alan Pryce",
+            "quote": "So I'll get the road-closure application in this week, no later, and confirm the towpath's reopened.",
+            "similarity": 0.5719
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "Road-closure application and risk of it not being approved in time.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Road-closure application"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_1",
+            "speaker": "Alan Pryce",
+            "quote": "So I'll get the road-closure application in this week, no later, and confirm the towpath's reopened.",
+            "similarity": 0.6346
+          },
+          {
+            "sourceId": "line_173_unit_3",
+            "speaker": "Deepa Sharma",
+            "quote": "Alan, road-closure application in this week and check the towpath.",
+            "similarity": 0.6276
+          },
+          {
+            "sourceId": "line_189_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "And the big risk we're all watching is the road-closure permit, because no permit, no start.",
+            "similarity": 0.5717
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "Need for a Plan B route if the permit is unresolved two weeks before the race.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Plan B route"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_113_unit_2",
+            "speaker": "Deepa Sharma",
+            "quote": "If it's not confirmed by, say, two weeks out, we need a plan B route.",
+            "similarity": 0.5938
+          },
+          {
+            "sourceId": "line_189_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "And the big risk we're all watching is the road-closure permit, because no permit, no start.",
+            "similarity": 0.4826
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "Medals versus shirts, with medals selected.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Medals versus shirts"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_133_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "So we're agreed, medals again, not shirts.",
+            "similarity": 0.7845
+          },
+          {
+            "sourceId": "line_125_unit_0",
+            "speaker": "Deepa Sharma",
+            "quote": "We did medals last year, not shirts.",
+            "similarity": 0.7617
+          },
+          {
+            "sourceId": "line_125_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "Medals are cheaper and people love them.",
+            "similarity": 0.7015
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "Order quantity of 350 medals for an expected 300 runners.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Medal order quantity"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_141_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "I'll reorder the medals, same as last year, we need, if we're expecting three hundred runners, I'll order three hundred and fifty to be safe.",
+            "similarity": 0.7006
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "Low social-media activity and its possible effect on entries.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Social media promotion"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_149_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "And the social media, we've been rubbish at it this year, we've barely posted.",
+            "similarity": 0.4991
+          },
+          {
+            "sourceId": "line_153_unit_1",
+            "speaker": "Jo Marsh",
+            "quote": "Entries are down on this point last year because of it, I reckon.",
+            "similarity": 0.4389
+          },
+          {
+            "sourceId": "line_157_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "I'll take the social media.",
+            "similarity": 0.4267
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "Need for roughly 280 entries to break even.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Break-even entry numbers"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_161_unit_1",
+            "speaker": "Jo Bennett",
+            "quote": "He was saying, the treasurer, that we need about two-eighty entries to break even after costs.",
+            "similarity": 0.4552
+          },
+          {
+            "sourceId": "line_37_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "How many do we need?",
+            "similarity": 0.3897
+          },
+          {
+            "sourceId": "line_153_unit_1",
+            "speaker": "Jo Marsh",
+            "quote": "Entries are down on this point last year because of it, I reckon.",
+            "similarity": 0.3635
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Jo Marsh",
+        "action": "Recruit enough marshals to reach 14.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_173_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "Jo Marsh, marshals, getting us to fourteen.",
+            "similarity": 0.6592
+          },
+          {
+            "sourceId": "line_49_unit_1",
+            "speaker": "Jo Marsh",
+            "quote": "I'll sort the marshals, I've got the list from last year and I'll ring round and get us up to fourteen.",
+            "similarity": 0.6468
+          },
+          {
+            "sourceId": "line_41_unit_0",
+            "speaker": "Jo Marsh",
+            "quote": "For that route, properly, fourteen.",
+            "similarity": 0.5427
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "Jo Bennett",
+        "action": "Get a quote from St John Ambulance for two first-aid crews, then confirm once the cost is approved.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_73_unit_2",
+            "speaker": "Jo Bennett",
+            "quote": "I'll get a quote from St John Ambulance for two crews for the day, and confirm it once you're all happy with the cost.",
+            "similarity": 0.7975
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Alan",
+        "action": "Submit the road-closure application this week and confirm the towpath has reopened.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_109_unit_1",
+            "speaker": "Alan Pryce",
+            "quote": "So I'll get the road-closure application in this week, no later, and confirm the towpath's reopened.",
+            "similarity": 0.9107
+          },
+          {
+            "sourceId": "line_173_unit_3",
+            "speaker": "Deepa Sharma",
+            "quote": "Alan, road-closure application in this week and check the towpath.",
+            "similarity": 0.7993
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Deepa",
+        "action": "Reorder 350 medals.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_173_unit_4",
+            "speaker": "Deepa Sharma",
+            "quote": "Me, reorder three hundred and fifty medals and run the social media.",
+            "similarity": 0.6623
+          },
+          {
+            "sourceId": "line_141_unit_1",
+            "speaker": "Deepa Sharma",
+            "quote": "I'll reorder the medals, same as last year, we need, if we're expecting three hundred runners, I'll order three hundred and fifty to be safe.",
+            "similarity": 0.6543
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "Deepa",
+        "action": "Run the social media push, posting every couple of days through to race day and distributing the entry link.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_157_unit_2",
+            "speaker": "Deepa Sharma",
+            "quote": "I'll do a proper push, a post every couple of days from now till race day, and get the entry link out everywhere.",
+            "similarity": 0.8201
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "meeting_logistics",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_213_unit_0",
+            "speaker": "Deepa Sharma",
+            "quote": "Thanks everyone, bye."
+          }
+        ]
+      }
+    ]
+  }
+}

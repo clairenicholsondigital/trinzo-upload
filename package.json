@@ -6,6 +6,10 @@
   "scripts": {
     "test": "python3 scripts/run_python_regression_tests.py && CANONICAL_MINILM_DISK_CACHE=${CANONICAL_MINILM_DISK_CACHE:-.minilm-cache} node --test tests/*.test.js",
     "test:meeting-minutes-drift": "python3 -m unittest tests.test_minilm_comparison -v",
+    "test:staged-confidence": "node --test tests/staged-workflow-confidence.test.js tests/staged-ui-mirror.test.js",
+    "benchmark:staged-confidence": "node scripts/staged-workflow-confidence/benchmark.js run",
+    "benchmark:staged-confidence:validate": "node scripts/staged-workflow-confidence/benchmark.js validate",
+    "benchmark:staged-confidence:browser": "node scripts/staged-workflow-confidence/browser_smoke.js",
     "test:project-update-golden": "python3 scripts/run_project_update_golden_eval.py --mode all --skip-minilm",
     "start": "node server.js"
   },

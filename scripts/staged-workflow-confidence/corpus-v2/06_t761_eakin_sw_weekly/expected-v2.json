@@ -1,0 +1,1033 @@
+{
+  "schemaVersion": 2,
+  "corpusVersion": "2026-08-27-v1",
+  "caseId": "06_t761_eakin_sw_weekly",
+  "transcript": {
+    "file": "transcript.txt",
+    "sourceDocument": "Client_T761_Eakin_SW_weekly_checkin_NEW.docx",
+    "sha256": "7add55456d5d974078580c9b8af0d8d82757cfa4614933f5c37e52b87e06c326",
+    "sourceUnitCount": 236
+  },
+  "curation": {
+    "annotator": "legacy human expectation audit aligned with MiniLM evidence",
+    "omissionScan": "independent transcript-unit semantic scan",
+    "verifier": "exact source quote and speaker resolver",
+    "productionOutputSeen": false
+  },
+  "expected": {
+    "details": {
+      "meetingType": "Technical file review",
+      "meetingTitle": "Client T761 Eakin SW - weekly checkin"
+    },
+    "summary": {
+      "meetingPurpose": "Follow up on T761 software technical-file risks, standards applicability, alarm change close-out, language updates and cybersecurity controls.",
+      "objectives": [
+        {
+          "id": "objective_001",
+          "text": "Clarify risk probability justification in the risk plan.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_27_unit_0",
+              "speaker": "David Didsbury",
+              "quote": "In the risk matrix.",
+              "similarity": 0.5429
+            },
+            {
+              "sourceId": "line_51_unit_1",
+              "speaker": "David Didsbury",
+              "quote": "And, you know, because around that, there should be a discussion and it should be in the risk management plan, right?It is one in 100.",
+              "similarity": 0.4933
+            },
+            {
+              "sourceId": "line_25_unit_0",
+              "speaker": "Rebecca Gill",
+              "quote": "Oh, um, yeah, yeah, in the risk matrix, sorry.",
+              "similarity": 0.4699
+            }
+          ]
+        },
+        {
+          "id": "objective_002",
+          "text": "Agree the preferred format for the software list.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_77_unit_4",
+              "speaker": "Jacqui Fox",
+              "quote": "So the software list is currently in this format of an Excel.",
+              "similarity": 0.7707
+            }
+          ]
+        },
+        {
+          "id": "objective_003",
+          "text": "Review standards applicability for cybersecurity and nebulizer flow.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_195_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "They've just popped into the chat there that the ISO scope statement of the standards, what it is around general purpose nebulizing and electrically powered nebulizers and what the user manual says in relation to the use.",
+              "similarity": 0.5102
+            },
+            {
+              "sourceId": "line_149_unit_0",
+              "speaker": "Rebecca Gill",
+              "quote": "Is it flow for a nebulizer?",
+              "similarity": 0.4175
+            },
+            {
+              "sourceId": "line_243_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "And then once we know that, we can review, David and Colm can review the standard again, just to understand, is that flow rate within the range of applicability within the standard?",
+              "similarity": 0.4088
+            }
+          ]
+        },
+        {
+          "id": "objective_004",
+          "text": "Close out alarm mute and change-request status.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_269_unit_0",
+              "speaker": "Andrew Kane",
+              "quote": "So, I think that button goes up, that I that goes off totally when the alarm is acknowledged.Is it not muted anymore?",
+              "similarity": 0.6762
+            },
+            {
+              "sourceId": "line_259_unit_0",
+              "speaker": "David Didsbury",
+              "quote": "And that ramping up and down, that's what people have learned over time means it's been muted, the alarm's been muted.",
+              "similarity": 0.5912
+            }
+          ]
+        },
+        {
+          "id": "objective_005",
+          "text": "Track debug, language, electrical testing and software-version traceability actions.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_293_unit_2",
+              "speaker": "Jacqui Fox",
+              "quote": "And then in terms of the next one was around the debug commands on the screen.",
+              "similarity": 0.4841
+            },
+            {
+              "sourceId": "line_97_unit_0",
+              "speaker": "David Didsbury",
+              "quote": "Well, if you remember, if you remember back, Andrew, this came up when we did our first sort of software software analysis with the clinical team.",
+              "similarity": 0.4232
+            },
+            {
+              "sourceId": "line_335_unit_1",
+              "speaker": "Jacqui Fox",
+              "quote": "And then David has been working through the tracing the software changes between version 101 to 102 of those 17 listed ones from Marturion to document them.",
+              "similarity": 0.4227
+            }
+          ]
+        },
+        {
+          "id": "objective_006",
+          "text": "Document the USB and GUI cybersecurity approach.",
+          "support": "transcript_supported",
+          "evidence": [
+            {
+              "sourceId": "line_411_unit_3",
+              "speaker": "Jacqui Fox",
+              "quote": "And Rebecca, then you're just going to update any of the risk files like plan and matrix around the decision that you guys go with from a cybersecurity USB port lock position.",
+              "similarity": 0.6525
+            },
+            {
+              "sourceId": "line_335_unit_3",
+              "speaker": "Jacqui Fox",
+              "quote": "And then around the USB port lock and the GUI security controls.I know, Rebecca, you were looking at possibly the competitors controls and how they got round it.Han.Did you get anything of substance from that that might give you a steer on approach?You're muted.The.",
+              "similarity": 0.5639
+            },
+            {
+              "sourceId": "line_379_unit_0",
+              "speaker": "David Didsbury",
+              "quote": "No, I mean, you know, they've done a...They've done, well, they've done an inverted comma cyber security threat analysis and said the only threat is, you know, there's only one that someone plugging the device into the USB socket and trying to take control of the software.",
+              "similarity": 0.5347
+            }
+          ]
+        }
+      ],
+      "executiveSummaryReference": "The team clarified several technical-file points for the T761 software workstream. David challenged the justification behind probability ratings, and the team agreed the software list could remain in Excel with explanatory context. The group considered standards applicability, especially 81001-5-1 and ISO 27427, reviewed the approved alarm change and clinical feedback, and tracked remaining language, debug, electrical testing and version-traceability work. Cybersecurity discussion focused on documenting a proportionate USB and GUI-control approach without creating clinical usability risk."
+    },
+    "discussionFacts": [
+      {
+        "id": "fact_001",
+        "text": "David queried how the probability-table numbers in the risk management plan are justified, including what one event represents.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk probability justification"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_15_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "In the probability table.",
+            "similarity": 0.5562
+          },
+          {
+            "sourceId": "line_31_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "So those numbers, so that justification is your justification for giving either a severity or a probability score, right?",
+            "similarity": 0.5124
+          },
+          {
+            "sourceId": "line_27_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "In the risk matrix.",
+            "similarity": 0.4675
+          }
+        ]
+      },
+      {
+        "id": "fact_002",
+        "text": "Rebecca needs to add clarity to the risk rationale while updating the risk documentation.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Risk probability justification"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_103_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "I think that's maybe covered as a mitigation in the risk analysis.",
+            "similarity": 0.5648
+          },
+          {
+            "sourceId": "line_359_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "Yeah.So the risk-benefit analysis of that would not be valuable.",
+            "similarity": 0.4821
+          },
+          {
+            "sourceId": "line_51_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "And, you know, because around that, there should be a discussion and it should be in the risk management plan, right?It is one in 100.",
+            "similarity": 0.4811
+          }
+        ]
+      },
+      {
+        "id": "fact_003",
+        "text": "The software list can remain in Excel, with a front page explaining the tabs and folder structure for the auditor.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Software list format"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_77_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "So the software list is currently in this format of an Excel.",
+            "similarity": 0.7484
+          }
+        ]
+      },
+      {
+        "id": "fact_004",
+        "text": "The real-time clock battery alarm issue may already be covered in the risk analysis but should be checked.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Real-time clock risk capture"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_97_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "They said there was a fault around the real time clock and it was.",
+            "similarity": 0.5145
+          },
+          {
+            "sourceId": "line_103_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "A lot of real-time clock alarms, because the battery of the real-time clock circuit was failing early, so it moved that.Yeah, so they changed that so that...So the service interval was less.",
+            "similarity": 0.5076
+          },
+          {
+            "sourceId": "line_91_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, and then where is my other questions?Second question is around, I know previously we had looked at the fan logic battery alarms and the kind of justification around those.",
+            "similarity": 0.4716
+          }
+        ]
+      },
+      {
+        "id": "fact_005",
+        "text": "IEC 81001-5-1 is not considered applicable to TF24 because IEC 62304 already covers the relevant medical device software lifecycle.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "IEC 60601-1 review",
+          "81001-5-1 applicability"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_121_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "So, in relation to the um, IEC, AC, cricky, I can't remember what it was, IEC AC1001, um.The review both Colm and Andrew have, sorry, David have come to the conclusion that because it's for the life cycle requirements for the development and maintenance of the health software to support conformance, they don't think that it's necessarily applicable to TF24.",
+            "similarity": 0.7209
+          }
+        ]
+      },
+      {
+        "id": "fact_006",
+        "text": "ISO 27427 applicability depends on whether the standard covers gas supplied to a nebulizer and whether FD140i's six-litre flow falls within scope.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "ISO 27427 nebulizer applicability"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_175_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Yeah, so, so...So the question is, with that standard.Does it does it include the specification for the input of the gas to the nebulizer?",
+            "similarity": 0.6514
+          },
+          {
+            "sourceId": "line_163_unit_2",
+            "speaker": "David Didsbury",
+            "quote": "I mean, I haven't read the standard in full depth, but the question we've got to ask ourselves is, does the standard cover the supply of gas to a nebulizer?",
+            "similarity": 0.6164
+          },
+          {
+            "sourceId": "line_137_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And then in relation to, thanks David for that, and then in relation to the second one, which is the ISO 27427 2023, it's more around the nebulization.",
+            "similarity": 0.5801
+          }
+        ]
+      },
+      {
+        "id": "fact_007",
+        "text": "The FD140i supplies flow to a connected nebulizer but does not itself nebulize.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Nebulizer flow specification"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_137_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So we're just trying to get clarity to understandhow the FD140i may work in terms of nebulizing.",
+            "similarity": 0.6842
+          },
+          {
+            "sourceId": "line_149_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "Is it flow for a nebulizer?",
+            "similarity": 0.6827
+          },
+          {
+            "sourceId": "line_147_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "It provides flow for a nebulizer.",
+            "similarity": 0.6481
+          }
+        ]
+      },
+      {
+        "id": "fact_008",
+        "text": "The alarm mute-button behaviour has been reviewed, with a proposed approach where unmuted alarms show priority-specific flash behaviour and muted alarms use the familiar slow ramp.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Alarm mute-button behaviour"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_253_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "So at the minute the mute button, the mute alarm LED flashes, so it's solid whenever there's an alarm and then it flashes whenever you've pressed the mute alarm button.So my proposal was then that I would...When it's not pressed, it would flash at the rate that shows what kind of alarm it is.",
+            "similarity": 0.7343
+          },
+          {
+            "sourceId": "line_251_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "The status of the mute button on the flash sequence.",
+            "similarity": 0.6412
+          },
+          {
+            "sourceId": "line_269_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "So, I think that button goes up, that I that goes off totally when the alarm is acknowledged.Is it not muted anymore?",
+            "similarity": 0.6203
+          }
+        ]
+      },
+      {
+        "id": "fact_009",
+        "text": "The clinical team reviewed the alarm changes and considered them acceptable or an upgrade.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Clinical alarm review"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_391_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "He's also reviewing the alarm code coding, the changes that have done, so just reviewing that code, but noting that that's for the alarms only and then we probably have to do that again for the languages once the languages areComplete it.",
+            "similarity": 0.4825
+          },
+          {
+            "sourceId": "line_277_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay.So then by the sounds of it, Andrew, in relation to the clinical review that happens already this week.",
+            "similarity": 0.4517
+          },
+          {
+            "sourceId": "line_335_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "So they're now his kind of priority action for the remainder of this week.Um, so, and if software can change and to the point if...through that review, it's identified that there is no visibility of that change within the code, that we will have to generate the retrospective test data to support the change.",
+            "similarity": 0.449
+          }
+        ]
+      },
+      {
+        "id": "fact_010",
+        "text": "The alarm change request has been approved.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Clinical alarm review"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_391_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "He's also reviewing the alarm code coding, the changes that have done, so just reviewing that code, but noting that that's for the alarms only and then we probably have to do that again for the languages once the languages areComplete it.",
+            "similarity": 0.5935
+          },
+          {
+            "sourceId": "line_269_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "So, I think that button goes up, that I that goes off totally when the alarm is acknowledged.Is it not muted anymore?",
+            "similarity": 0.5616
+          },
+          {
+            "sourceId": "line_259_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "And that ramping up and down, that's what people have learned over time means it's been muted, the alarm's been muted.",
+            "similarity": 0.5223
+          }
+        ]
+      },
+      {
+        "id": "fact_011",
+        "text": "David still needs to provide debug command letters so Andrew can confirm what happens in the debug screen.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Debug command testing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_293_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "So I think David is going to reach out to you on some additional command letters to understand when you use those command letters in the debug screen.",
+            "similarity": 0.8884
+          },
+          {
+            "sourceId": "line_403_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then last action for you this week, prioritise wise, David, is the debug commands, debug command letters through to Andrew so he can come back to you on it.",
+            "similarity": 0.7695
+          }
+        ]
+      },
+      {
+        "id": "fact_012",
+        "text": "Five additional languages have been added, while the remaining languages need character or font-driver work.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Language font-driver issues"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_305_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "Yeah, so I've added five of those languages that didn't have any issues into the code.",
+            "similarity": 0.7292
+          },
+          {
+            "sourceId": "line_303_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "I know that there are the languages themselves in the test ones uploaded and the translated files I believe are uploaded, but you had some restrictions around characters in relation to three of the languages and that the possible solution was toto review the graphics driver in relation to fonts for Greek, Arabic and Vietnamese.",
+            "similarity": 0.622
+          }
+        ]
+      },
+      {
+        "id": "fact_013",
+        "text": "Access to a font-creator tool is blocked by the firewall and has been raised with IT.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Font creator tool access"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_309_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "So, I've been looking at that code, and I think those were generated using this tool, that font creator.",
+            "similarity": 0.5438
+          },
+          {
+            "sourceId": "line_313_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "Their website is blocked by our firewall here at the minute, but I've raised that with IT, just have a look at that, 'cause I got so we would generate the new drivers.",
+            "similarity": 0.4698
+          }
+        ]
+      },
+      {
+        "id": "fact_014",
+        "text": "Andrew is part-way through the IEC 60601-1 versus MDD documentation review and the testing scope is still being defined.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "IEC 60601-1 review"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_323_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So the next one was around the review of the IEC 6061-1 standard compared to MDD documentation outline what testing needs to be completed for the electrical compliance testing.",
+            "similarity": 0.783
+          },
+          {
+            "sourceId": "line_407_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "create those two language characterization situations, complete your review of the MDD documentation in relation to IEC 6060 and the testing, presumably early next week to start the testing at least.",
+            "similarity": 0.6951
+          }
+        ]
+      },
+      {
+        "id": "fact_015",
+        "text": "Electrical compliance testing remains on track, with existing UL testing covering some of the reviewed areas.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Electrical compliance testing"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_327_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And to that point, then, that's still defining the parameters of the testing for the compliance, electrical compliance testing.",
+            "similarity": 0.5677
+          },
+          {
+            "sourceId": "line_323_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So the next one was around the review of the IEC 6061-1 standard compared to MDD documentation outline what testing needs to be completed for the electrical compliance testing.",
+            "similarity": 0.559
+          },
+          {
+            "sourceId": "line_329_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "No, so the stuff I've covered so far is, yeah, it's covered by the testing that was done previously.The U.L. like drill testing, so I'm not, yeah, I haven't done it since.",
+            "similarity": 0.4763
+          }
+        ]
+      },
+      {
+        "id": "fact_016",
+        "text": "David is prioritising traceability for the 17 software changes between versions 1.01 and 1.02.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Version 1.01 to 1.02 traceability"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_335_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then David has been working through the tracing the software changes between version 101 to 102 of those 17 listed ones from Marturion to document them.",
+            "similarity": 0.7546
+          }
+        ]
+      },
+      {
+        "id": "fact_017",
+        "text": "If a software change has no visible code trace, retrospective test data may need to be generated.",
+        "importance": "major",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "Version 1.01 to 1.02 traceability",
+          "Debug command testing"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_335_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "So they're now his kind of priority action for the remainder of this week.Um, so, and if software can change and to the point if...through that review, it's identified that there is no visibility of that change within the code, that we will have to generate the retrospective test data to support the change.",
+            "similarity": 0.6331
+          }
+        ]
+      },
+      {
+        "id": "fact_018",
+        "text": "Cybersecurity discussion focused on USB port access, GUI access, possible port locks, password controls and the risk of introducing usability delays.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "USB and GUI cybersecurity controls"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_411_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "And Rebecca, then you're just going to update any of the risk files like plan and matrix around the decision that you guys go with from a cybersecurity USB port lock position.",
+            "similarity": 0.6973
+          }
+        ]
+      },
+      {
+        "id": "fact_019",
+        "text": "A password may help software access control but could introduce clinical risk if it delays therapy changes.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "USB and GUI cybersecurity controls"
+        ],
+        "preserveUncertainty": true,
+        "evidence": [
+          {
+            "sourceId": "line_345_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "It wouldn't necessarily, the password wouldn't be needed by clinicians on a day-to-day basis.",
+            "similarity": 0.7141
+          }
+        ]
+      },
+      {
+        "id": "fact_020",
+        "text": "Cybersecurity controls need to be documented clearly in the risk plan and matrix.",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "acceptableTopicFamilies": [
+          "USB and GUI cybersecurity controls"
+        ],
+        "preserveUncertainty": false,
+        "evidence": [
+          {
+            "sourceId": "line_411_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "And Rebecca, then you're just going to update any of the risk files like plan and matrix around the decision that you guys go with from a cybersecurity USB port lock position.",
+            "similarity": 0.4964
+          },
+          {
+            "sourceId": "line_373_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Oh my god, I can't remember the words that I'm trying to say right now.rate them, sorry, to rate those risks and it would be in view to mitigating any cybersecurity risk.",
+            "similarity": 0.4777
+          },
+          {
+            "sourceId": "line_103_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "I think that's maybe covered as a mitigation in the risk analysis.",
+            "similarity": 0.4756
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "action_001",
+        "owner": "Rebecca",
+        "action": "Add clarity to the risk management plan around probability-table number justification and what counts as an event.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_31_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "So those numbers, so that justification is your justification for giving either a severity or a probability score, right?",
+            "similarity": 0.5556
+          },
+          {
+            "sourceId": "line_51_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "And, you know, because around that, there should be a discussion and it should be in the risk management plan, right?It is one in 100.",
+            "similarity": 0.5398
+          },
+          {
+            "sourceId": "line_15_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "In the probability table.",
+            "similarity": 0.5247
+          }
+        ]
+      },
+      {
+        "id": "action_002",
+        "owner": "David",
+        "action": "Add a front page to the software-list Excel explaining what each tab represents and the purpose of the file.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_77_unit_4",
+            "speaker": "Jacqui Fox",
+            "quote": "So the software list is currently in this format of an Excel.",
+            "similarity": 0.6483
+          },
+          {
+            "sourceId": "line_81_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Yeah, I mean...I could put front page in saying that each of the tab represents the main the main folders within the software.",
+            "similarity": 0.6166
+          },
+          {
+            "sourceId": "line_77_unit_5",
+            "speaker": "Jacqui Fox",
+            "quote": "So with each tab kind of relevant to each area.But in terms of the format that you want to have this file in overall, is it okay to stay in an Excel?",
+            "similarity": 0.6155
+          }
+        ]
+      },
+      {
+        "id": "action_003",
+        "owner": "Jacqui",
+        "action": "Check whether the real-time clock battery alarm issue is captured in the risk analysis.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_91_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "Okay, and then where is my other questions?Second question is around, I know previously we had looked at the fan logic battery alarms and the kind of justification around those.",
+            "similarity": 0.4895
+          },
+          {
+            "sourceId": "line_103_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "A lot of real-time clock alarms, because the battery of the real-time clock circuit was failing early, so it moved that.Yeah, so they changed that so that...So the service interval was less.",
+            "similarity": 0.4641
+          },
+          {
+            "sourceId": "line_97_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "They said there was a fault around the real time clock and it was.",
+            "similarity": 0.4539
+          }
+        ]
+      },
+      {
+        "id": "action_004",
+        "owner": "Andrew",
+        "action": "Confirm the nebulizer flow-rate specification so David and Colm can assess ISO 27427 applicability.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_175_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Yeah, so, so...So the question is, with that standard.Does it does it include the specification for the input of the gas to the nebulizer?",
+            "similarity": 0.6444
+          },
+          {
+            "sourceId": "line_137_unit_0",
+            "speaker": "Jacqui Fox",
+            "quote": "And then in relation to, thanks David for that, and then in relation to the second one, which is the ISO 27427 2023, it's more around the nebulization.",
+            "similarity": 0.6328
+          },
+          {
+            "sourceId": "line_195_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "They've just popped into the chat there that the ISO scope statement of the standards, what it is around general purpose nebulizing and electrically powered nebulizers and what the user manual says in relation to the use.",
+            "similarity": 0.615
+          }
+        ]
+      },
+      {
+        "id": "action_005",
+        "owner": "David and Colm",
+        "action": "Review ISO 27427 again once Andrew confirms the nebulizer flow-rate specification.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_409_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "I was thinking of the nebulizer spec, was it?",
+            "similarity": 0.6689
+          },
+          {
+            "sourceId": "line_149_unit_0",
+            "speaker": "Rebecca Gill",
+            "quote": "Is it flow for a nebulizer?",
+            "similarity": 0.6468
+          },
+          {
+            "sourceId": "line_147_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "It provides flow for a nebulizer.",
+            "similarity": 0.6353
+          }
+        ]
+      },
+      {
+        "id": "action_006",
+        "owner": "David",
+        "action": "Send additional debug command letters to Andrew.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_403_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then last action for you this week, prioritise wise, David, is the debug commands, debug command letters through to Andrew so he can come back to you on it.",
+            "similarity": 0.6817
+          },
+          {
+            "sourceId": "line_293_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "So I think David is going to reach out to you on some additional command letters to understand when you use those command letters in the debug screen.",
+            "similarity": 0.6409
+          }
+        ]
+      },
+      {
+        "id": "action_007",
+        "owner": "Andrew",
+        "action": "Test the debug commands and report what happens on the debug screen.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_293_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "And then in terms of the next one was around the debug commands on the screen.",
+            "similarity": 0.6162
+          },
+          {
+            "sourceId": "line_293_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "So I think David is going to reach out to you on some additional command letters to understand when you use those command letters in the debug screen.",
+            "similarity": 0.5422
+          }
+        ]
+      },
+      {
+        "id": "action_008",
+        "owner": "Andrew",
+        "action": "Resolve the remaining language character and font-driver issues, including access to the font-creator tool.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_303_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "I know that there are the languages themselves in the test ones uploaded and the translated files I believe are uploaded, but you had some restrictions around characters in relation to three of the languages and that the possible solution was toto review the graphics driver in relation to fonts for Greek, Arabic and Vietnamese.",
+            "similarity": 0.6213
+          }
+        ]
+      },
+      {
+        "id": "action_009",
+        "owner": "Andrew",
+        "action": "Complete the IEC 60601-1 versus MDD documentation review and define the remaining electrical compliance testing.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_323_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "So the next one was around the review of the IEC 6061-1 standard compared to MDD documentation outline what testing needs to be completed for the electrical compliance testing.",
+            "similarity": 0.896
+          }
+        ]
+      },
+      {
+        "id": "action_010",
+        "owner": "David",
+        "action": "Review the alarm code changes and later repeat the review for the language-selection software changes.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_391_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "He's also reviewing the alarm code coding, the changes that have done, so just reviewing that code, but noting that that's for the alarms only and then we probably have to do that again for the languages once the languages areComplete it.",
+            "similarity": 0.7968
+          }
+        ]
+      },
+      {
+        "id": "action_011",
+        "owner": "David",
+        "action": "Prioritise tracing the 17 software changes from version 1.01 to 1.02 and identify any retrospective test-data needs.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "ongoing_work",
+        "evidence": [
+          {
+            "sourceId": "line_335_unit_1",
+            "speaker": "Jacqui Fox",
+            "quote": "And then David has been working through the tracing the software changes between version 101 to 102 of those 17 listed ones from Marturion to document them.",
+            "similarity": 0.6092
+          },
+          {
+            "sourceId": "line_335_unit_2",
+            "speaker": "Jacqui Fox",
+            "quote": "So they're now his kind of priority action for the remainder of this week.Um, so, and if software can change and to the point if...through that review, it's identified that there is no visibility of that change within the code, that we will have to generate the retrospective test data to support the change.",
+            "similarity": 0.5589
+          }
+        ]
+      },
+      {
+        "id": "action_012",
+        "owner": "Rebecca",
+        "action": "Update the risk files, plan and matrix with the agreed cybersecurity and USB-port-lock approach.",
+        "deadline": "Not stated",
+        "importance": "critical",
+        "support": "transcript_supported",
+        "basis": "explicit_commitment",
+        "evidence": [
+          {
+            "sourceId": "line_411_unit_3",
+            "speaker": "Jacqui Fox",
+            "quote": "And Rebecca, then you're just going to update any of the risk files like plan and matrix around the decision that you guys go with from a cybersecurity USB port lock position.",
+            "similarity": 0.8964
+          }
+        ]
+      }
+    ],
+    "negativeControls": [
+      {
+        "id": "negative_001",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_77_unit_6",
+            "speaker": "Jacqui Fox",
+            "quote": "Would it be preferable to be in Word?"
+          }
+        ]
+      },
+      {
+        "id": "negative_002",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_77_unit_7",
+            "speaker": "Jacqui Fox",
+            "quote": "From my perspective, reading it, I would have assumed the Excel might be an easier format forAn order to follow Bush.So I'm happy to send this over and you can have a look at it to see and I don't know if you have a predetermined format as to what that should look like.That okay?"
+          }
+        ]
+      },
+      {
+        "id": "negative_003",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_81_unit_0",
+            "speaker": "David Didsbury",
+            "quote": "Yeah, I mean...I could put front page in saying that each of the tab represents the main the main folders within the software."
+          }
+        ]
+      },
+      {
+        "id": "negative_004",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_103_unit_1",
+            "speaker": "Andrew Kane",
+            "quote": "I think that's maybe covered as a mitigation in the risk analysis."
+          }
+        ]
+      },
+      {
+        "id": "negative_005",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_113_unit_0",
+            "speaker": "Andrew Kane",
+            "quote": "Yeah, yeah, I'm not sure for this, but definitely could be."
+          }
+        ]
+      },
+      {
+        "id": "negative_006",
+        "type": "non_action",
+        "reason": "hypothetical_or_question",
+        "importance": "major",
+        "evidence": [
+          {
+            "sourceId": "line_127_unit_1",
+            "speaker": "David Didsbury",
+            "quote": "If you were plugged, if your product was plugged in full-time into the hospital infrastructure IT system, then that would then then that standard."
+          }
+        ]
+      }
+    ]
+  }
+}
