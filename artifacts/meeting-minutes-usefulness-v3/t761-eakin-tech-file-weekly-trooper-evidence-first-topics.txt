@@ -1,0 +1,284 @@
+{
+  "topics": [
+    {
+      "heading": "Alarm System Configuration and Visual/Audible Feedback",
+      "evidence": [
+        {
+          "statement": "Andrew reported on debugging, stating he had an alarm software load that seemed to be working.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "He played an existing alarm, confirming that every alarm was signed out.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "He demonstrated the different alarm types: a single chirp for low priority stops, a medium priority, and a high priority.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "He confirmed these were all working.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "Rebecca emphasized the high priority alarm as FD140.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Andrew acknowledged an error and confirmed he had changed a slide, noting that linking the alarms within PowerPoint allowed them to play, but they could not be turned off.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Andrew explained that the chirps appeared on the scope, allowing measurement of distance.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "He implemented color coding: cyan, blue, or yellow for low priority; blue for low priority, yellow for medium priority, and red for high priority.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Andrew also implemented LED flashing, preferring this method so the screen remained solid.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "The configuration was: low priority had a cyan blue screen and a solid LED; medium priority had a yellow flashing 0.6 Hertz LED with a solid yellow screen; and high priority had a red screen flashing at 2 Hertz.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Rebecca noted that she had previously used flashing at 2 Hertz.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David questioned whether pressing the mute button to mute the alarm resulted in a solid LED, as he had previously observed, but Andrew was unsure of the current behavior.",
+          "type": "direct_evidence",
+          "status": "questioned"
+        },
+        {
+          "statement": "Andrew stated that when the mute button was pressed, the alarm was flashing, and pressing mute caused it to go solid.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Jacqui summarized that the color and flash changes for low, medium, and high codes appeared to be made and working, with the only outstanding confirmation being what happens when the mute button is pressed regarding the LED flash.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        }
+      ],
+      "context": "Discussion covered the implementation and testing of alarm types, color coding, LED flashing configurations for low, medium, and high priority alarms, and the behavior of the mute button on the LED."
+    },
+    {
+      "heading": "Software Debugging and Change Request Documentation",
+      "evidence": [
+        {
+          "statement": "David was documenting the debug process.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David expressed curiosity about the software debug, hoping that Andrew's debugging of the first sound change would provide a full understanding, as physical access to the software was limited.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David inquired if the debug program Andrew was running contained the necessary commands, referencing a screenshot Andrew had sent of the debug menu for an O2 sensor.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Andrew confirmed sending the screenshot.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "Rebecca noted that the audio debug menu did not appear on the screen but that executing a specific command (C or capital C, as instructed in the test plan) would cause it to work, though it was not visible.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David sought confirmation that if Andrew entered the letters, a result would be physically seen.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Rebecca clarified that there was a list of available debug options based on the software's description, requiring confirmation based on the command entered.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Andrew confirmed submission [of documentation] last week, anticipating discussion in a meeting on Wednesday.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "Rebecca indicated that Ciaran Ryan from her team would attend the meeting to approve the change, and Andrew would track the actions as the change owner.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Jacqui noted that the change request listed the three changes: alarm code changes, language changes, and the retrospective from version 101 to 102, confirming it listed all three.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "Jacqui interpreted the output of this change request as the release of a final version of the software, Version 1.03.",
+          "type": "direct_evidence",
+          "status": "suggested"
+        },
+        {
+          "statement": "David suggested the final version might be called 1.1.5 or 2.0, with Rebecca favoring 2.0.",
+          "type": "direct_evidence",
+          "status": "suggested"
+        },
+        {
+          "statement": "Rebecca confirmed that the regulatory team would confirm if it was a non-substantial change, as required by the form.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David noted that the current documentation lacked the necessary granularity for the MDR device file history, which could lead to auditor questions.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Jacqui stated that if changes are not all battery-related, explanation documentation for any unauthorized changes, or worst-case test data, might need to be generated for traceability.",
+          "type": "direct_evidence",
+          "status": "conditional"
+        },
+        {
+          "statement": "Jacqui instructed that David incorporate his output regarding the review of the 17 changes and their visibility within the code into David's documentation.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        }
+      ],
+      "context": "Details on debugging procedures, the structure of the change request (including alarm code, language, and version retrospective), and documentation requirements for regulatory traceability."
+    },
+    {
+      "heading": "Language Implementation and Memory Capacity",
+      "evidence": [
+        {
+          "statement": "Andrew reported that he had begun learning the languages, successfully testing the system with 18 language files, which confirmed the system could handle 18 files, although the latest translations were not yet available.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "A potential roadblock was identified concerning the symbols required for certain languages, specifically noting that Arabic, Vietnamese, and Greek might present issues due to the variety of characters.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David suggested that a particular font could potentially be added for those countries, as the current default font was noted as Arial.",
+          "type": "direct_evidence",
+          "status": "suggested"
+        },
+        {
+          "statement": "Jacqui confirmed that the replicated 12 languages had been tested to assess memory capacity, suggesting the memory capacity was sufficient.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        },
+        {
+          "statement": "The next steps were twofold: examining the addition of specific language characters based on David's input and loading the fully translated languages received from Jacqui.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "This was anticipated to be completed the following week.",
+          "type": "direct_evidence",
+          "status": "reported"
+        }
+      ],
+      "context": "Progress on language testing, system capacity for language files, potential character set issues for specific languages, and planned next steps for language implementation."
+    },
+    {
+      "heading": "Cybersecurity and Device Interference Controls",
+      "evidence": [
+        {
+          "statement": "The team discussed considering a port lock [for the USB port].",
+          "type": "direct_evidence",
+          "status": "suggested"
+        },
+        {
+          "statement": "Andrew and Rebecca had reviewed options, including a port lock for the USB on the back of the device, and considerations for stringent controls to prevent the screen element from being accessed.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Potential controls discussed included measures to prevent software overwrites that could cause harm, such as controls on the screen to prevent changes to oxygen concentration flows or flow rates, or preventing swaps between neonatal and adult therapy settings that could cause harm.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "The focus was considered to be on preventing unwarranted interference with the device.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David further elaborated on the risk, citing an example where an individual might adjust settings on the LED screen in a neonatal setting to cause harm.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "David suggested that the system should have high and low defined limits, and that two outcomes should occur if limits were exceeded: an alarm sounding, and the potential to lock the setting at a defined limit.",
+          "type": "direct_evidence",
+          "status": "suggested"
+        },
+        {
+          "statement": "Andrew noted that current settings make it difficult to exceed certain limits, requiring a mode change.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Rebecca suggested that if a therapy were stopped and switched to an adult therapy for a neonate, the overpressure valves for the neonatal therapy would still engage.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "The severity rating for a potential incident involving a switch from neonatal to adult therapy was assessed as a high severity rating with low occurrence, with severity potentially being lower for the adult scenario, noting issues related to back-to-somber pressure valves.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "It was concluded that based on no reported incidences of third-party interaction, the overall benefit-risk was deemed acceptable.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        }
+      ],
+      "context": "Discussion around cybersecurity measures for the USB port, controls to prevent harmful software overwrites, setting limits, and the benefit-risk analysis related to therapy setting changes."
+    },
+    {
+      "heading": "Compliance Testing and Documentation Timeline",
+      "evidence": [
+        {
+          "statement": "Rebecca was handling all electrical compliance testing in-house.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Jacqui interpreted the final piece of testing to be around July 23rd, which would align with the end of July, providing David bandwidth to review the output and results for his final documents.",
+          "type": "direct_evidence",
+          "status": "suggested"
+        },
+        {
+          "statement": "Rebecca noted that this timeline accounted for worst-case scenarios, with a best-case of four weeks, but she provided a grace period for potential further testing information to be fed to Adil.",
+          "type": "direct_evidence",
+          "status": "reported"
+        },
+        {
+          "statement": "Andrew was set up to start the testing, having reviewed the 60601-1 compliance document against the MDD testing.",
+          "type": "direct_evidence",
+          "status": "confirmed"
+        }
+      ],
+      "context": "Status of electrical compliance testing, the timeline for final testing completion, and Andrew's preparation to begin testing against compliance documents."
+    }
+  ]
+}
