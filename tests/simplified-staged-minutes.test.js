@@ -215,6 +215,30 @@ test('malformed action editor response fails open and reports the degradation', 
   assert.match(result.telemetry.editor.reason, /no decisions array/i);
 });
 
+test('production publication pass uses the local MiniLM classifier and preserves the UI action shape', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'We need to verify the release evidence before closure.' },
+    { id: 'line_2_unit_0', speaker: 'Alex Smith', text: 'We will archive the old notes.' }
+  ];
+  const fetchImpl = async () => response({ actions: [
+    { owner: 'Not stated', action: 'Verify the release evidence', deadline: 'Not stated', evidenceIds: ['line_1_unit_0'] },
+    { owner: 'Not stated', action: 'Archive the old notes', deadline: 'Not stated', evidenceIds: ['line_2_unit_0'] }
+  ] });
+  const result = await simplified.generateActions('transcript', ['Release verification'], {
+    apiKey: 'test', fetchImpl, prepared: actionPrepared, useActionSuitabilityFilter: true,
+    actionSuitabilityRunner: async (candidates) => ({
+      ok: true, modelSchemaVersion: 2, embeddingModel: 'all-MiniLM-L6-v2', threshold: 0.16,
+      decisions: candidates.map((candidate, index) => ({ id: candidate.id, keep: index === 0, showProbability: index === 0 ? 0.81 : 0.08 }))
+    })
+  });
+  assert.deepEqual(result.actions, [{ owner: 'Not stated', action: 'Verify the release evidence.', deadline: 'Not stated' }]);
+  assert.equal(result.telemetry.editor.provider, 'minilm');
+  assert.equal(result.telemetry.editor.removedCount, 1);
+  assert.equal(result.telemetry.calls, 1, 'the local classifier does not add a Trooper call');
+  assert.deepEqual(Object.keys(result.actions[0]), ['owner', 'action', 'deadline']);
+});
+
 test('action publication gate accepts ongoing work, unresolved prerequisites and accepted proposals', () => {
   assert.equal(simplified.actionCommitmentSupported([
     { speaker: 'Andrew Kane', text: 'I am currently working on the electrical compliance testing.' }

@@ -9,6 +9,7 @@ const fetch = require('node-fetch');
 const { trooperFetch } = require('./trooperTransport');
 
 const DEFAULT_MODEL = path.join(__dirname, '..', 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
+const DEFAULT_ACTION_SUITABILITY_MODEL = path.join(__dirname, '..', 'artifacts', 'action-minutes-suitability-experimental-v1', 'classifier.joblib');
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_TROOPER_MODEL = 'eu_liv_000099';
 const preparedCache = new Map();
@@ -576,6 +577,62 @@ async function editActionsForPublication(actions, evidenceById, options = {}) {
       text: row.text
     }))
   }));
+  const useMiniLM = options.useActionSuitabilityFilter ?? !options.fetchImpl;
+  if (useMiniLM) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-action-suitability-'));
+    const inputPath = path.join(tempDir, 'actions.json');
+    try {
+      const run = options.actionSuitabilityRunner || (async (payload) => {
+        await fs.writeFile(inputPath, JSON.stringify({ actions: payload }), 'utf8');
+        return spawnJson(
+          process.env.PYTHON_BIN || 'python3',
+          [
+            path.join(__dirname, '..', 'scripts', 'action_minutes_suitability_filter.py'),
+            inputPath,
+            '--model', process.env.STAGED_ACTION_SUITABILITY_MODEL || DEFAULT_ACTION_SUITABILITY_MODEL
+          ],
+          { timeoutMs: Number(process.env.STAGED_ACTION_SUITABILITY_TIMEOUT_MS || 120000) }
+        );
+      });
+      const result = await run(candidates);
+      if (!result?.ok || !Array.isArray(result.decisions)) throw new Error(result?.reason || 'MiniLM action filter returned no decisions.');
+      const decisions = new Map();
+      for (const decision of result.decisions) {
+        const id = clean(decision?.id);
+        if (!/^action_\d+$/.test(id) || typeof decision?.keep !== 'boolean' || decisions.has(id)) continue;
+        decisions.set(id, decision);
+      }
+      if (decisions.size !== candidates.length || candidates.some((candidate) => !decisions.has(candidate.id))) {
+        throw new Error('MiniLM action filter did not decide every candidate.');
+      }
+      const kept = actions.filter((_item, index) => decisions.get(`action_${index + 1}`).keep);
+      return {
+        actions: kept,
+        telemetry: {
+          attempted: true, used: true, provider: 'minilm', reason: '', inputCount: actions.length,
+          keptCount: kept.length, removedCount: actions.length - kept.length,
+          modelSchemaVersion: result.modelSchemaVersion || null,
+          embeddingModel: result.embeddingModel || null,
+          threshold: result.threshold ?? null,
+          scores: candidates.map((candidate) => ({
+            id: candidate.id,
+            keep: decisions.get(candidate.id).keep,
+            showProbability: decisions.get(candidate.id).showProbability ?? null
+          }))
+        }
+      };
+    } catch (error) {
+      return {
+        actions,
+        telemetry: {
+          attempted: true, used: false, provider: 'minilm', reason: error?.message || 'MiniLM action filter failed.',
+          inputCount: actions.length, keptCount: actions.length, removedCount: 0
+        }
+      };
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  }
   try {
     const call = await retryJsonGenerationOnce(actionEditorPrompt(candidates), options, 900);
     if (!Array.isArray(call.output?.decisions)) throw new Error('Action editor returned no decisions array.');
@@ -594,6 +651,7 @@ async function editActionsForPublication(actions, evidenceById, options = {}) {
       telemetry: {
         attempted: true,
         used: true,
+        provider: 'trooper',
         reason: '',
         inputCount: actions.length,
         keptCount: kept.length,
@@ -609,6 +667,7 @@ async function editActionsForPublication(actions, evidenceById, options = {}) {
       telemetry: {
         attempted: true,
         used: false,
+        provider: 'trooper',
         reason: error?.message || 'Action editor failed.',
         inputCount: actions.length,
         keptCount: actions.length,
@@ -733,7 +792,7 @@ async function generateActions(transcriptText, topics, options = {}) {
       denoiser: denoiserTelemetry(prepared),
       topicCount: topicList.length,
       mode: 'whole_transcript_action_sweep',
-      calls: calls.length + (edited.telemetry.attempted ? 1 : 0),
+      calls: calls.length + (edited.telemetry.provider === 'trooper' && edited.telemetry.attempted ? 1 : 0),
       retrievalCalls: calls.length,
       actionCount: edited.actions.length,
       evidenceCount: evidence.length,
