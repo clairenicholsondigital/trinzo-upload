@@ -1,0 +1,260 @@
+{
+  "topics": [
+    {
+      "heading": "1. Alarm system changes and clinical review",
+      "evidence": [
+        {
+          "text": "Jacqui raised two questions: one about a mini-review with clinicians regarding the acceptability of the audible sound in the field, and another about a long-term usability update needed from a usability perspective to check with the deal, which was presumed to be dependent on clinician feedback.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca confirmed that the clinician review had been postponed until the following week because clinical nurses were currently in the field or on leave.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca confirmed that the change would be approved on Wednesday, followed by gathering information to close out.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Key forward items included a mini-review from a clinician's perspective on three coding changes, Andrew confirming the mute button and flash behavior, continuing the update of the 12 additional languages, and the commencement or scheduling of electrical compliance testing for the 23rd of July.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "2. Debug and software verification",
+      "evidence": [
+        {
+          "text": "Andrew reported that the alarm software load seemed to be working.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "He played an existing alarm, confirming that every alarm was signed out.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "He tested three alarms on the scope, and although no test report was available, they appeared satisfactory.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "He demonstrated different alarm types: a single chirp for low priority stops, a medium priority, and a high priority, confirming these were all working.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew acknowledged an error and confirmed he had changed a slide, noting that linking the alarms within PowerPoint allowed them to play, but they could not be turned off.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "He explained that the chirps appeared on the scope, allowing measurement of distance.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew implemented color coding: cyan, blue, or yellow for low priority; blue for low priority, yellow for medium priority, and red for high priority.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "He also implemented LED flashing, preferring this method so the screen remained solid.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "The configuration was: low priority had a cyan blue screen and a solid LED; medium priority had a yellow flashing 0.6 Hertz LED with a solid yellow screen; and high priority had a red screen flashing at 2 Hertz.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew confirmed the high priority alarm was different [than the medium alarm].",
+          "kind": "minimal_restatement"
+        },
+        {
+          "text": "Andrew explained that when the mute button was pressed, the alarm was flashing, and pressing mute caused it to go solid.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui summarized that the color and flash changes for low, medium, and high codes appeared to be made and working, with the only outstanding confirmation being what happens when the mute button is pressed regarding the LED flash.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "David inquired if the debug program Andrew was running contained the necessary commands, referencing a screenshot Andrew had sent of the debug menu for an O2 sensor.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew confirmed sending the screenshot.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "3. Software change control, versioning and traceability",
+      "evidence": [
+        {
+          "text": "Jacqui noted that the change request listed three changes: alarm code changes, language changes, and the retrospective from version 101 to 102, confirming all three were listed.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui interpreted the output of this change request as the release of a final version of the software, Version 1.03.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "David suggested the final version might be called 1.1.5 or 2.0, with Rebecca favouring 2.0.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca confirmed that the regulatory team would confirm if the change was non-substantial, as required by the form.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Regarding the gap assessment of the 17 changes between version 1.01 and 1.02, David noted that the current documentation lacked the necessary granularity for the MDR device file history, which could lead to auditor questions.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui stated that if changes are not all battery-related, explanation documentation for any unauthorized changes, or worst-case test data, might need to be generated for traceability.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca confirmed they had referenced the other changes in the change control and would compile them as design changes or changes throughout the tech file in the summary report.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui instructed that David incorporate his output regarding the review of the 17 changes and their visibility within the code into David's documentation.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "4. Language implementation and character support",
+      "evidence": [
+        {
+          "text": "Andrew reported that he had started learning the languages and successfully tested the system with 18 language files, confirming the system could handle 18 files, although the latest translations were not yet available.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "It was confirmed that the memory capacity was sufficient after Jacqui tested the replicated 12 languages.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "A potential roadblock was identified concerning the symbols required for Arabic, Vietnamese, and Greek, as these might present issues due to the variety of characters.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "David suggested that a particular font could potentially be added for those countries, noting that the current default font was Arial.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew indicated that this symbol issue might be the only roadblock for that specific language implementation, as the structure was believed to be in place.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "The next steps involve examining the addition of specific language characters based on David's input and loading the fully translated languages received from Jacqui.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "5. Electrical compliance testing",
+      "evidence": [
+        {
+          "text": "Jacqui received an update from Rebecca stating that Rebecca was handling all electrical compliance testing in-house.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui interpreted the final piece of testing to be around July 23rd, which would align with the end of July, allowing David bandwidth to review the output and results for his final documents.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca noted that this timeline accounted for worst-case scenarios, with a best-case of four weeks, but she provided a grace period for potential further testing information to be fed to Adil.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew confirmed that he would start by reviewing the 60601-1 compliance document based on the MDD test.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "6. Cybersecurity, device access and risk assessment",
+      "evidence": [
+        {
+          "text": "Regarding cybersecurity concerns about the USB port, the team discussed considering a port lock.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew and Rebecca reviewed options, including a port lock for the USB on the back of the device, and considerations for stringent controls to prevent access to the screen element.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Potential controls discussed included measures to prevent software overwrites that could cause harm, such as controls on the screen to prevent changes to oxygen concentration flows or flow rates, or preventing swaps between neonatal and adult therapy settings that could cause harm.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "David elaborated on the risk, citing an example where an individual might adjust settings on the LED screen in a neonatal setting to cause harm.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "David suggested that the system should have high and low defined limits, and that two outcomes should occur if limits were exceeded: an alarm sounding, and the potential to lock the setting at a defined limit.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew noted that current settings make it difficult to exceed certain limits, requiring a mode change.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca suggested that if a therapy were stopped and switched to an adult therapy for a neonate, the overpressure valves for the neonatal therapy would still engage.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "The severity rating for a potential incident involving a switch from neonatal to adult therapy was assessed as a high severity rating with low occurrence, noting that severity might be lower for the adult scenario due to issues related to back-to-somber pressure valves.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "The team discussed the benefit-risk analysis, suggesting that if risk remained high after implementing controls, a benefit-risk analysis would determine if benefits outweighed risks, potentially negating the need for a password if clinicians could intervene quickly.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "It was concluded that based on no reported incidences of third-party interaction, the overall benefit-risk was deemed acceptable.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "7. Standards and regulatory applicability",
+      "evidence": [
+        {
+          "text": "Rebecca confirmed that she had responded to David's comments on the risk management plan and had purchased two standards: 81001-5-1 (health software and health IT system safety, effectiveness and security) and 27427 (anaesthetic and respiratory equipment and nebulizing systems).",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Rebecca planned to send the 27427 standard to Andrew for assessment regarding the nebulizing port.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui would follow up with Colm regarding the standards.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    },
+    {
+      "heading": "8. Supporting technical records and Cognidocs",
+      "evidence": [
+        {
+          "text": "David noted that the current documentation lacked the necessary granularity for the MDR device file history, which could result in auditor questions.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui stated that if changes are not all battery-related, explanation documentation for any unauthorised changes, or worst-case test data, might need to be generated for traceability.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "David expressed a desire to physically see the results and indicated he did not want to commit to writing a test script based on what he found in the software code.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Jacqui instructed David to incorporate his output regarding the review of the 17 changes and their visibility within the code into his documentation.",
+          "kind": "direct_excerpt"
+        },
+        {
+          "text": "Andrew was tasked with reviewing documents sent by David concerning fan logic to determine if they needed inclusion in Cognidocs, following David's review from a PMS perspective.",
+          "kind": "direct_excerpt"
+        }
+      ]
+    }
+  ]
+}
