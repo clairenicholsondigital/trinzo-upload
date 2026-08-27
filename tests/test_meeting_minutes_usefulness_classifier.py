@@ -36,6 +36,16 @@ class UsefulnessClassifierTests(unittest.TestCase):
         rows = MODULE.parse_transcript("Jacqui Fox 0:03 We should review the plan.\nJacqui Fox stopped transcription\n")
         self.assertEqual(len(rows), 1)
 
+    def test_marker_free_render_removes_speaker_and_time_markers(self):
+        rows = [
+            {"speaker": "Rebecca Cuckoo", "timestamp": "33:30", "text": "The risk remains under review."},
+            {"speaker": "Andrew Kane", "timestamp": "34:06", "text": "I will check the test result."},
+        ]
+        rendered = MODULE.render_marker_free_transcript(rows)
+        self.assertEqual(rendered, "The risk remains under review.\n---\nI will check the test result.")
+        self.assertNotIn("Rebecca Cuckoo", rendered)
+        self.assertNotIn("34:06", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

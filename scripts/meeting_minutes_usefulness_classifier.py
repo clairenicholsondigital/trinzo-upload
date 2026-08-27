@@ -168,6 +168,11 @@ def write_review_csv(path: Path, rows: list[dict]) -> None:
             writer.writerow({field: row.get(field, "") for field in fields})
 
 
+def render_marker_free_transcript(rows: list[dict], separator: str = "\n---\n") -> str:
+    """Render retained/uncertain units without speaker or timestamp markers."""
+    return separator.join(compact(row.get("text", "")) for row in rows if compact(row.get("text", "")))
+
+
 def train(args: argparse.Namespace) -> int:
     joblib, np, SentenceTransformer, LogisticRegression, classification_report, GroupShuffleSplit = load_dependencies()
     transcript_paths = discover_transcripts(Path(args.transcripts))
@@ -255,7 +260,8 @@ def classify(args: argparse.Namespace) -> int:
         results.append({**row, "classification": effective, "confidence": round(confidence, 4), "probabilities": {str(label): round(float(prob), 4) for label, prob in zip(model.classes_, probs)}})
     kept = [row for row in results if row["classification"] != "remove"]
     cleaned = "\n".join(f"{row['speaker']} {row['timestamp']} {row['text']}" for row in kept)
-    output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned}
+    marker_free = render_marker_free_transcript(kept)
+    output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned, "marker_free_transcript": marker_free}
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
 
