@@ -5,6 +5,12 @@ const assert = require('node:assert/strict');
 
 const benchmark = require('../scripts/staged-workflow-confidence/benchmark');
 
+test('the benchmark can select one case without changing the three-run default', () => {
+  const options = benchmark.parseArgs(['run', '--case', '01_abbott_audit_kickoff']);
+  assert.equal(options.caseId, '01_abbott_audit_kickoff');
+  assert.equal(options.runs, 3);
+});
+
 test('the confidence corpus contains 13 evidence-resolving v2 cases', () => {
   const corpus = benchmark.loadCorpus();
   const result = benchmark.validateCorpus(corpus, { verifyCloud: true });

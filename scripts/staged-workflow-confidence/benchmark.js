@@ -40,6 +40,7 @@ function parseArgs(argv) {
     baseUrl: process.env.STAGED_BENCHMARK_BASE_URL || DEFAULT_BASE_URL,
     output: '',
     resume: '',
+    caseId: '',
     cooldownMs: Number(process.env.STAGED_BENCHMARK_COOLDOWN_MS || 5000),
     reliabilityRetries: Number(process.env.STAGED_BENCHMARK_RELIABILITY_RETRIES || 3)
   };
@@ -50,12 +51,14 @@ function parseArgs(argv) {
     else if (value === '--base-url') options.baseUrl = argv[++index];
     else if (value === '--output') options.output = argv[++index];
     else if (value === '--resume') options.resume = argv[++index];
+    else if (value === '--case') options.caseId = argv[++index];
     else if (value === '--cooldown-ms') options.cooldownMs = Number(argv[++index]);
     else if (value === '--reliability-retries') options.reliabilityRetries = Number(argv[++index]);
     else if (value.startsWith('--runs=')) options.runs = Number(value.slice(7));
     else if (value.startsWith('--base-url=')) options.baseUrl = value.slice(11);
     else if (value.startsWith('--output=')) options.output = value.slice(9);
     else if (value.startsWith('--resume=')) options.resume = value.slice(9);
+    else if (value.startsWith('--case=')) options.caseId = value.slice(7);
     else if (value.startsWith('--cooldown-ms=')) options.cooldownMs = Number(value.slice(14));
     else if (value.startsWith('--reliability-retries=')) options.reliabilityRetries = Number(value.slice(22));
     else if (index !== 0 || !['run', 'validate', 'score'].includes(value)) throw new Error(`Unknown argument: ${value}`);
@@ -292,7 +295,7 @@ function classifyVerdict(metrics) {
   return 'Guided review';
 }
 
-function scoreRecords(corpus, records) {
+function scoreRecords(corpus, records, options = {}) {
   const { requests, calibration: calibrationData } = requestSet(corpus.cases, records);
   const matrices = semanticMatrices(requests);
   const calibration = calibrateThreshold(matrices.get(calibrationData.id), calibrationData.rows);
@@ -360,7 +363,8 @@ function scoreRecords(corpus, records) {
     metrics.verdict = classifyVerdict(metrics);
     return { id: record.id, caseId: record.caseId, run: record.run, durationMs: record.durationMs, metrics };
   });
-  const byCase = corpus.cases.map((item) => {
+  const selectedCaseIds = new Set(Array.isArray(options.caseIds) ? options.caseIds : []);
+  const byCase = corpus.cases.filter((item) => !selectedCaseIds.size || selectedCaseIds.has(item.caseId)).map((item) => {
     const runs = scored.filter((row) => row.caseId === item.caseId);
     const actionExpectations = supported(item.expected.expected.actions);
     const stability = actionExpectations.map((action) => ({
@@ -561,15 +565,20 @@ async function main() {
     : await verifyCloudAssets(corpus);
   if (!cloud.ok) throw new Error(`Cloud asset validation failed:\n- ${cloud.errors.join('\n- ')}`);
   if (options.command === 'validate') { console.log(JSON.stringify({ ...validation, cloud }, null, 2)); return; }
+  const selectedCases = options.caseId
+    ? corpus.cases.filter((item) => item.caseId === options.caseId)
+    : corpus.cases;
+  if (options.caseId && !selectedCases.length) throw new Error(`Unknown benchmark case: ${options.caseId}`);
+  const runCorpus = { ...corpus, cases: selectedCases };
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outputDir = path.resolve(options.resume || options.output || path.join(DEFAULT_RESULTS_ROOT, stamp));
   await fsp.mkdir(outputDir, { recursive: true });
-  const records = options.command === 'score' ? loadRecords(outputDir) : await runRemote(options, corpus, outputDir);
-  const expectedRunCount = corpus.cases.length * options.runs;
+  const records = options.command === 'score' ? loadRecords(outputDir) : await runRemote(options, runCorpus, outputDir);
+  const expectedRunCount = selectedCases.length * options.runs;
   if (records.length !== expectedRunCount) throw new Error(`Incomplete benchmark: ${records.length}/${expectedRunCount} records. No report was written.`);
   const revisions = new Set(records.map((record) => compact(record.servingRevision || record.payload?.diagnostics?.servingRevision)));
   if (revisions.size !== 1 || revisions.has('')) throw new Error(`Benchmark records span invalid revisions: ${[...revisions].join(', ')}`);
-  const report = scoreRecords(corpus, records);
+  const report = scoreRecords(corpus, records, { caseIds: selectedCases.map((item) => item.caseId) });
   const paths = await writeReport(outputDir, report);
   console.log(JSON.stringify({ ok: true, outputDir, ...paths, summary: report.summary }, null, 2));
 }
