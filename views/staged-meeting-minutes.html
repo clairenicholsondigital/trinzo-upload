@@ -1569,12 +1569,20 @@ td select {
       var bulletPoints = [card.whatWasDiscussed, card.currentPosition, card.decisionOrAgreement, card.dependencyOrRisk, card.nextStep].concat(points).filter(Boolean);
       var seen = {};
       var bullets = bulletPoints.map(cleanDiscussionDisplayText).filter(function (point) { var key = point.toLowerCase(); if (!point || seen[key]) return false; seen[key] = true; return true; });
-      if (!bullets.length) bullets = ['Review this section against the transcript.'];
+      // An empty card stays empty. This used to inject "Review this section against the
+      // transcript." as a POINT - written into the textarea below, harvested straight back
+      // out by discussionRowsFromReview, and published into the client's minutes and the
+      // PDF. A reviewer-confirmed heading with no evidence allocated to it is a deliberate,
+      // legitimate state: the planner keeps the card, grounding preserves it, and the flag
+      // machinery names it for the reviewer to fill or remove. Three mechanisms exist to
+      // protect that state and this line defeated all of them by filling the card with an
+      // instruction written to ourselves. Guidance now lives in the textarea's placeholder,
+      // which the reviewer sees and nothing can harvest.
       var pointRefs = bullets.map(function (point, pointIndex) {
         var supplied = Array.isArray(card.pointRefs) ? card.pointRefs[pointIndex] : null;
         return { text: point, evidenceIds: supplied && Array.isArray(supplied.evidenceIds) ? supplied.evidenceIds : [] };
       });
-      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '" data-topic-id="' + escapeHtml(card.topicId || '') + '" data-evidence-ids="' + escapeHtml(JSON.stringify(Array.isArray(card.evidenceIds) ? card.evidenceIds : [])) + '" data-point-refs="' + escapeHtml(JSON.stringify(pointRefs)) + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
+      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '" data-topic-id="' + escapeHtml(card.topicId || '') + '" data-evidence-ids="' + escapeHtml(JSON.stringify(Array.isArray(card.evidenceIds) ? card.evidenceIds : [])) + '" data-point-refs="' + escapeHtml(JSON.stringify(pointRefs)) + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" placeholder="No transcript evidence was allocated to this heading. Add points, or remove the section." aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
     }).join('');
     renderIcons();
     applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || 'discussion');
@@ -2288,9 +2296,60 @@ td select {
     meetingTitleHelp.style.color = thin ? '#a2601f' : '';
   }
 
+  // A check earns a banner only when it tells the reviewer something this screen cannot
+  // already show them.
+  //
+  // Every flag the pipeline emits used to render, unbounded, in arrival order. Several
+  // describe the very thing the reviewer is looking at: "4 actions have no owner" sits
+  // above a table whose owner cells already read "Add owner" and open a dropdown of
+  // attendees; the wording warnings sit above rows that already carry an inline
+  // "Transcript wording - rephrase before sharing" marker. Restating those turns a
+  // two-second edit into a warning banner and makes finished work look unfinished, which
+  // is the burden itself rather than a report of it.
+  //
+  // Suppressed here at the point of DISPLAY, not at the point of emission: the payload
+  // keeps every flag, so the evaluation harness, the resume state and anything counting
+  // blocking work are all unchanged. Only the banner list gets shorter.
+  var SELF_EVIDENT_FLAGS = {
+    // The owner cell is a dropdown showing "Add owner". Naming a count adds nothing.
+    actions_need_an_owner: true,
+    uncertain_action_owner: true,
+    // The row itself carries the inline rephrase marker, and the text is editable in place.
+    action_wording_needs_review: true,
+    discussion_wording_needs_review: true,
+    // An empty actions table is its own announcement.
+    no_actions_detected: true
+  };
+  // Work we already did, reported one line at a time. Collapsed into a single line so the
+  // reviewer can see it was done without reading five separate banners about it.
+  var ALREADY_TIDIED_FLAGS = {
+    attendee_name_corrected: true,
+    attendee_entity_normalised: true,
+    duplicate_section: true,
+    raw_transcript_discussion_points_removed: true,
+    confirmed_actions_kept: true,
+    summary_machine_composed: true
+  };
+
+  function flagIsSelfEvident(flag) {
+    if (!flag || flag.blocking) return false;
+    // Anything offering a one-click add/dismiss or a jump-to-field is actionable, whatever
+    // its type: never suppress a flag the reviewer can act on from the banner.
+    if (flag.repairCandidates && flag.repairCandidates.length) return false;
+    if (flag.discussionSuggestion || flag.fieldPath) return false;
+    return Boolean(SELF_EVIDENT_FLAGS[flag.type]);
+  }
+
   function renderValidationFlags(flags, stage, payloadCandidates) {
     if (!stageValidationFlags) return;
-    var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
+    var allFlags = Array.isArray(flags) ? flags.filter(Boolean) : [];
+    var tidiedFlags = allFlags.filter(function (flag) {
+      return flag && !flag.blocking && ALREADY_TIDIED_FLAGS[flag.type]
+        && !(flag.repairCandidates && flag.repairCandidates.length) && !flag.discussionSuggestion && !flag.fieldPath;
+    });
+    var list = allFlags.filter(function (flag) {
+      return !flagIsSelfEvident(flag) && tidiedFlags.indexOf(flag) === -1;
+    });
     currentValidationFlags = list;
     currentValidationStage = stage || stageForScreen(activeIndex) || '';
     var fromPayload = collectActionCandidatesFromPayload(payloadCandidates);
@@ -2317,7 +2376,7 @@ td select {
     });
     reconcileUnresolvedWorkstreamFlags();
     stageValidationFlags.innerHTML = '';
-    if (!list.length) {
+    if (!list.length && !tidiedFlags.length) {
       stageValidationFlags.hidden = true;
       clearReviewFlagAnnotations();
       renderActionReviewGroups();
@@ -2329,6 +2388,17 @@ td select {
     heading.className = 'stage-validation-heading';
     heading.textContent = isFinalReviewScreen() ? 'Before you finish' : 'Editorial checks (review before moving on)';
     stageValidationFlags.appendChild(heading);
+    // Tidying we already did, in one line. Six separate banners saying a name was
+    // corrected, a duplicate section dropped and the summary composed from evidence is
+    // six things to read and dismiss before reaching the checks that need a decision.
+    if (tidiedFlags.length) {
+      var tidied = document.createElement('p');
+      tidied.className = 'stage-validation-howto';
+      tidied.textContent = 'Already tidied for you: ' + tidiedFlags.map(function (flag) {
+        return String(flag.message || '').replace(/\s+/g, ' ').trim();
+      }).filter(Boolean).join(' ');
+      stageValidationFlags.appendChild(tidied);
+    }
     // Said once here rather than repeated at the end of every check.
     if (list.some(function (flag) { return flag && flag.detail && flag.detail.quote; })) {
       var howTo = document.createElement('p');

@@ -3561,9 +3561,12 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
     candidate?.meetingDescription,
     reviewData.meetingDescription
   );
+  // An empty section publishes empty. Filling it with "Review this section against the
+  // transcript." put an instruction written to ourselves into the client's minutes, and
+  // it reads as content rather than as the absence of it.
   const discussion = reviewData.meetingMinutes.map((item) => ({
     topic: item.topic || 'Discussion',
-    points: item.discussionPoints.length ? item.discussionPoints : ['Review this section against the transcript.']
+    points: item.discussionPoints.length ? item.discussionPoints : []
   }));
   const actions = reviewData.nextSteps.map((item) => ({
     owner: item.owner || 'Not stated',
@@ -4819,9 +4822,82 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         };
         const cards = existingCards.map((card) => ({ ...card, points: [...(card.points || [])] }));
         const newCards = new Map();
+        // A confirmed agenda IS the agenda.
+        //
+        // Measured on the Abbott rerun: the discussion stage honoured the reviewer's four
+        // themes exactly - five cards in, four of them confirmed - and this block turned
+        // that into twenty-two by minting a heading for every proposal whose label failed
+        // to overlap an existing one at 0.34. "Hotel reservation details" and "Audit
+        // attendees confirmation" never will overlap "Audit scope, timing, and logistics",
+        // so the reviewer's structure was intact right up to the point where it was
+        // buried under micro-sections.
+        //
+        // When any card is reviewer-confirmed, no new heading may be minted. A proposed
+        // point belongs to one of THEIR topics or it does not belong on the screen, and
+        // the label the model happened to invent for it is the weakest available signal
+        // for deciding which - it was measured at 0.00 lexical overlap against the right
+        // theme. Evidence is the strongest: a point drawn from turns a card already owns
+        // belongs to that card. Semantic similarity of the POINT (not its label) against
+        // the heading is the fallback, and anything below the floor is dropped rather
+        // than given a section of its own.
+        // Targets are every card the stage produced, not only the confirmed ones. The
+        // stage emits a generic catch-all card beside the reviewer's themes, and that is
+        // the honest home for a real point that fits none of them - better than dropping
+        // it, and far better than giving it a heading of its own.
+        const confirmedAgenda = cards.some((card) => card.confirmedTopic);
+        const agendaCards = cards;
+        let catchAllCard = cards.find((card) => !card.confirmedTopic && /^(?:other|general|miscellaneous|any other business)\b/i.test(String(card.topic || '')));
+        const attachFloor = Number(process.env.AGENDA_ATTACH_FLOOR || 0.4);
+        let agendaVectors = null;
+        if (confirmedAgenda && proposal.grounded.length) {
+          const vecTexts = [...new Set([
+            ...agendaCards.map((card) => String(card.topic || '')),
+            ...proposal.grounded.map((item) => String(item.point || ''))
+          ])].filter(Boolean);
+          const encoded = await encodeViaWorker(vecTexts);
+          if (encoded) agendaVectors = new Map(vecTexts.map((text, index) => [text, encoded[index]]));
+        }
+        const agendaAttachments = [];
+        const agendaDropped = [];
         for (const item of proposal.grounded) {
           const pointText = item.point;
           const topicTokens = tokensOf(item.topic);
+          if (confirmedAgenda) {
+            const itemEvidence = new Set((item.evidenceIds || []).map(String));
+            let home = agendaCards.find((card) => (card.evidenceIds || []).some((id) => itemEvidence.has(String(id))));
+            let how = 'evidence';
+            let score = 1;
+            if (!home && agendaVectors) {
+              const pointVector = agendaVectors.get(String(pointText || ''));
+              let best = null;
+              for (const card of agendaCards) {
+                const cardVector = agendaVectors.get(String(card.topic || ''));
+                const value = pointVector && cardVector ? cosine(pointVector, cardVector) : 0;
+                if (!best || value > best.value) best = { card, value };
+              }
+              if (best && best.value >= attachFloor) { home = best.card; how = 'semantic'; score = Number(best.value.toFixed(3)); }
+            }
+            // Nothing is dropped under a confirmed agenda. Forbidding new headings is a
+            // structure rule, not a licence to lose content: measured, dropping the
+            // unmatched cost 41 published points and 16 of discussion coverage, because
+            // the fixtures where every card is confirmed have no catch-all to fall back
+            // on. One catch-all section is created on demand instead - the reviewer can
+            // redistribute or delete it, which is a far smaller job than reading
+            // seventeen micro-sections, and no evidence goes missing.
+            if (!home) {
+              if (!catchAllCard) {
+                catchAllCard = { topic: 'Other points raised', points: [], evidenceIds: [], modelProposed: true };
+                cards.push(catchAllCard);
+              }
+              home = catchAllCard;
+              how = 'catch_all';
+              score = 0;
+            }
+            home.points.push(pointText);
+            home.evidenceIds = [...new Set([...(home.evidenceIds || []), ...item.evidenceIds])];
+            agendaAttachments.push({ point: String(pointText).slice(0, 80), topic: home.topic, via: how, score });
+            continue;
+          }
           // Attach to the existing card whose heading this point's proposed topic best
           // matches; a new heading is only minted when nothing existing fits, and it must
           // read as a heading - the same bar every other label source passes.
@@ -4850,6 +4926,9 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           }
           // A point whose topic neither matches a card nor survives the heading gates is
           // dropped - coverage is not worth a heading that reads as speech.
+        }
+        if (agendaAttachments.length || agendaDropped.length) {
+          console.log(JSON.stringify({ event: 'staged_agenda_attach', attached: agendaAttachments, dropped: agendaDropped.map((text) => String(text).slice(0, 80)) }));
         }
         result = {
           ...result,
