@@ -543,6 +543,81 @@ function actionEvidenceChunks(evidence, size = 32, overlap = 8) {
   return chunks;
 }
 
+function actionEditorPrompt(candidates) {
+  return [
+    'Act as a conservative final editor for an official meeting-minutes Actions table.',
+    'This is pruning only. Do not rewrite an action, add an action, change an owner or deadline, or combine rows.',
+    'For every supplied candidate ID, decide KEEP or REMOVE using only that candidate’s cited evidence.',
+    'KEEP a concrete outstanding action when the evidence supports an explicit commitment, assignment or accepted request.',
+    'Also KEEP an unresolved prerequisite only when the evidence clearly shows both that the concrete step is necessary and that it remains outstanding.',
+    'Also KEEP clearly ongoing work only when a concrete deliverable or step is explicitly still incomplete.',
+    'REMOVE general discussion, background, status without outstanding work, unaccepted suggestions, hypothetical possibilities, completed history, rejected work, meeting administration, vague intentions, and actions that add a deliverable not supported by the evidence.',
+    'When the evidence is ambiguous, REMOVE. The human reviewer can add a genuinely missing action more safely than deleting an invented commitment from official minutes.',
+    'Return one decision for every candidate ID. Return JSON only:',
+    '{"decisions":[{"id":"action_1","keep":true,"reason":"explicit_commitment"}]}',
+    '',
+    'CANDIDATES:',
+    JSON.stringify(candidates)
+  ].join('\n');
+}
+
+async function editActionsForPublication(actions, evidenceById, options = {}) {
+  if (!Array.isArray(actions) || !actions.length) {
+    return { actions: [], telemetry: { attempted: false, used: false, reason: 'no_candidates', inputCount: 0, keptCount: 0, removedCount: 0 } };
+  }
+  const candidates = actions.map((item, index) => ({
+    id: `action_${index + 1}`,
+    owner: item.owner,
+    action: item.action,
+    deadline: item.deadline,
+    evidence: (item.evidenceIds || []).map((id) => evidenceById.get(id)).filter(Boolean).slice(0, 4).map((row) => ({
+      id: row.id,
+      speaker: row.speaker,
+      text: row.text
+    }))
+  }));
+  try {
+    const call = await retryJsonGenerationOnce(actionEditorPrompt(candidates), options, 900);
+    if (!Array.isArray(call.output?.decisions)) throw new Error('Action editor returned no decisions array.');
+    const decisions = new Map();
+    for (const decision of call.output.decisions) {
+      const id = clean(decision?.id);
+      if (!/^action_\d+$/.test(id) || typeof decision?.keep !== 'boolean' || decisions.has(id)) continue;
+      decisions.set(id, decision.keep);
+    }
+    if (decisions.size !== candidates.length || candidates.some((candidate) => !decisions.has(candidate.id))) {
+      throw new Error('Action editor did not decide every candidate.');
+    }
+    const kept = actions.filter((_item, index) => decisions.get(`action_${index + 1}`));
+    return {
+      actions: kept,
+      telemetry: {
+        attempted: true,
+        used: true,
+        reason: '',
+        inputCount: actions.length,
+        keptCount: kept.length,
+        removedCount: actions.length - kept.length,
+        timingMs: call.timingMs,
+        tokenUsage: call.usage || null,
+        transport: call.transport || null
+      }
+    };
+  } catch (error) {
+    return {
+      actions,
+      telemetry: {
+        attempted: true,
+        used: false,
+        reason: error?.message || 'Action editor failed.',
+        inputCount: actions.length,
+        keptCount: actions.length,
+        removedCount: 0
+      }
+    };
+  }
+}
+
 async function generateDiscussion(transcriptText, topics, options = {}) {
   const startedAt = Date.now();
   assertTrooperConfigured(options);
@@ -650,19 +725,23 @@ async function generateActions(transcriptText, topics, options = {}) {
       if (existing.deadline === 'Not stated' && candidate.deadline !== 'Not stated') existing.deadline = candidate.deadline;
     }
   }
+  const evidenceById = new Map(evidence.map((item) => [clean(item.id), item]));
+  const edited = await editActionsForPublication(actions, evidenceById, options);
   return {
-    actions: actions.map(({ owner, action, deadline }) => ({ owner, action, deadline })),
+    actions: edited.actions.map(({ owner, action, deadline }) => ({ owner, action, deadline })),
     telemetry: {
       denoiser: denoiserTelemetry(prepared),
       topicCount: topicList.length,
       mode: 'whole_transcript_action_sweep',
-      calls: calls.length,
-      actionCount: actions.length,
+      calls: calls.length + (edited.telemetry.attempted ? 1 : 0),
+      retrievalCalls: calls.length,
+      actionCount: edited.actions.length,
       evidenceCount: evidence.length,
       evidenceWindowCount: evidenceChunks.length,
       rawCandidateCount: calls.reduce((sum, item) => sum + item.output.actions.length, 0),
       acceptedCandidateCount: accepted.length,
       rejected,
+      editor: edited.telemetry,
       perWindow: calls.map((item) => ({
         window: item.index + 1,
         evidenceCount: item.evidence.length,
@@ -672,7 +751,7 @@ async function generateActions(transcriptText, topics, options = {}) {
         tokenUsage: item.usage || null,
         transport: item.transport || null
       })),
-      tokenUsage: calls.map((item) => item.usage).filter(Boolean),
+      tokenUsage: [...calls.map((item) => item.usage), edited.telemetry.tokenUsage].filter(Boolean),
       timingMs: Date.now() - startedAt
     }
   };

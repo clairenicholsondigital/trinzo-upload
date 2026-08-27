@@ -89,6 +89,9 @@ test('actions scan all denoised evidence even when reviewer-organised groups omi
   ];
   const fetchImpl = async (_url, options) => {
     const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('conservative final editor')) {
+      return response({ decisions: [{ id: 'action_1', keep: true, reason: 'explicit_commitment' }] });
+    }
     assert.match(prompt, /line_8_unit_0/);
     assert.match(prompt, /line_9_unit_0/);
     return response({ actions: [{ owner: 'Christina McLean', action: 'Put the revised GSOP in the folder', deadline: 'Not stated', evidenceIds: ['line_9_unit_0'] }] });
@@ -108,6 +111,12 @@ test('actions use one whole-transcript call and reject unsupported owner and dea
   const fetchImpl = async (_url, options) => {
     calls += 1;
     const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('conservative final editor')) {
+      return response({ decisions: [
+        { id: 'action_1', keep: true, reason: 'explicit_commitment' },
+        { id: 'action_2', keep: true, reason: 'explicit_commitment' }
+      ] });
+    }
     assert.match(prompt, /REVIEWER TOPIC GROUPS/);
     assert.ok(topics.every((topic) => prompt.includes(topic)));
     return response({ actions: [
@@ -116,7 +125,7 @@ test('actions use one whole-transcript call and reject unsupported owner and dea
     ] });
   };
   const result = await simplified.generateActions('transcript', topics, { apiKey: 'test', fetchImpl, prepared: testPrepared });
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(result.telemetry.mode, 'whole_transcript_action_sweep');
   assert.equal(result.actions.length, 2);
   assert.deepEqual(result.actions[0], {
@@ -138,17 +147,72 @@ test('a 422 action window is split and retried without falling back the whole st
     calls += 1;
     if (calls === 1) return { ok: false, status: 422, json: async () => ({ error: 'json_generation_failed' }) };
     const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('conservative final editor')) {
+      return response({ decisions: [{ id: 'action_1', keep: true, reason: 'explicit_commitment' }] });
+    }
     const evidenceId = prompt.match(/line_\d+_unit_0/)?.[0];
     return response({ actions: [{ owner: 'Alex Smith', action: `Verify the release item supported by ${evidenceId}`, deadline: 'tomorrow', evidenceIds: [evidenceId] }] });
   };
   const result = await simplified.generateActions('transcript', ['Release verification'], {
     apiKey: 'test', fetchImpl, prepared: actionPrepared
   });
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
   assert.equal(result.telemetry.evidenceWindowCount, 1);
   assert.equal(result.telemetry.perWindow.length, 2);
   assert.ok(result.telemetry.perWindow.every((window) => window.splitDepth === 1));
   assert.equal(result.actions.length, 1, 'overlapping split results are still deduplicated after recovery');
+});
+
+test('one conservative editor pass removes discussion-shaped candidates and keeps supported outstanding work', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'We need to verify the release evidence before the file can be closed.' },
+    { id: 'line_2_unit_0', speaker: 'Alex Smith', text: 'I completed the release notes last week.' }
+  ];
+  let calls = 0;
+  const fetchImpl = async (_url, options) => {
+    calls += 1;
+    const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('conservative final editor')) {
+      assert.match(prompt, /Verify the release evidence/);
+      assert.match(prompt, /Archive obsolete notes/);
+      return response({ decisions: [
+        { id: 'action_1', keep: true, reason: 'unresolved_prerequisite' },
+        { id: 'action_2', keep: false, reason: 'completed_history' }
+      ] });
+    }
+    return response({ actions: [
+      { owner: 'Not stated', action: 'Verify the release evidence', deadline: 'Not stated', evidenceIds: ['line_1_unit_0'] },
+      { owner: 'Not stated', action: 'Archive obsolete notes', deadline: 'Not stated', evidenceIds: ['line_1_unit_0', 'line_2_unit_0'] }
+    ] });
+  };
+  const result = await simplified.generateActions('transcript', ['Release verification'], { apiKey: 'test', fetchImpl, prepared: actionPrepared });
+  assert.equal(calls, 2);
+  assert.deepEqual(result.actions, [{ owner: 'Not stated', action: 'Verify the release evidence.', deadline: 'Not stated' }]);
+  assert.equal(result.telemetry.editor.attempted, true);
+  assert.equal(result.telemetry.editor.used, true);
+  assert.equal(result.telemetry.editor.reason, '');
+  assert.equal(result.telemetry.editor.inputCount, 2);
+  assert.equal(result.telemetry.editor.keptCount, 1);
+  assert.equal(result.telemetry.editor.removedCount, 1);
+  assert.deepEqual(result.telemetry.editor.tokenUsage, { total_tokens: 10 });
+});
+
+test('malformed action editor response fails open and reports the degradation', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [{ id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'I will verify the release evidence.' }];
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('conservative final editor')) return response({ unexpected: [] });
+    return response({ actions: [
+      { owner: 'Alex Smith', action: 'Verify the release evidence', deadline: 'Not stated', evidenceIds: ['line_1_unit_0'] }
+    ] });
+  };
+  const result = await simplified.generateActions('transcript', ['Release verification'], { apiKey: 'test', fetchImpl, prepared: actionPrepared });
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.telemetry.editor.attempted, true);
+  assert.equal(result.telemetry.editor.used, false);
+  assert.match(result.telemetry.editor.reason, /no decisions array/i);
 });
 
 test('action publication gate accepts ongoing work, unresolved prerequisites and accepted proposals', () => {
