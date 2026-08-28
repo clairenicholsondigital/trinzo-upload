@@ -701,6 +701,11 @@ const STAGED_KNOWN_CLIENT_ATTENDEES = [
   'Abby Lennon'
 ];
 
+// Whether the known-people registry may overrule a surname the transcript gives.
+// Off: an unverifiable surname is reported to the reviewer instead of rewritten.
+// See canonicalKnownStagedPersonName for why.
+const STAGED_APPLY_KNOWN_SURNAME_CORRECTION = false;
+
 const STAGED_ATTENDEE_BUCKET_BY_NAME = new Map([
   ...STAGED_KNOWN_INTERNAL_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'internal', name }]),
   ...STAGED_KNOWN_CLIENT_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'client', name }])
@@ -741,18 +746,27 @@ function canonicalKnownStagedPersonName(value) {
   // A transcription that gets the first name right and invents the surname.
   //
   // Teams wrote "Rebecca Cuckoo" 388 times across this corpus where the attendee is
-  // Rebecca Gill, and the existing check only WARNED about it
-  // (possible_attendee_name_mismatch) - the correction was detected and never applied, so
-  // the invented surname travelled into owners, discussion prose and the final document.
-  // The first name is the anchor and the known-people registry is the authority.
+  // Rebecca Gill, and the first fix for that let the known-people registry overrule the
+  // transcript whenever the first name matched.
   //
-  // The ambiguity guard is already built into that registry: it stores null when two known
-  // people share a first name, so a shared first name resolves to nothing and the
-  // transcript's own spelling stands rather than one person being renamed into another.
-  const parts = stagedKnownAttendeeKey(cleaned).split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
-    if (byFirstName) return byFirstName;
+  // That rewrite cannot tell an invented surname from a real person we have not met.
+  // Christina McLean chairs a workstream on the T733 weekly and is not in the registry,
+  // so she was recorded as "Christina Cargan" on the details screen while the actions
+  // stage went on calling her McLean - one person, two surnames, both in the client PDF,
+  // and both offered as separate people in the owner list. Speaker labels do not separate
+  // the two cases either: "Rebecca Cuckoo" is a speaker label too.
+  //
+  // So the registry no longer overrules the transcript. An unverifiable surname is put to
+  // the reviewer on the details screen - the screen that already asks "Is this the right
+  // meeting?" - with the known name offered as a one-click swap. A wrong name that looks
+  // wrong gets noticed and fixed; a wrong name that looks right does not, which is what
+  // makes the transcript's own spelling the safer thing to show.
+  if (STAGED_APPLY_KNOWN_SURNAME_CORRECTION) {
+    const parts = stagedKnownAttendeeKey(cleaned).split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
+      if (byFirstName) return byFirstName;
+    }
   }
   return cleaned;
 }
@@ -998,21 +1012,18 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     if (parts.length < 2 || STAGED_ATTENDEE_BUCKET_BY_NAME.has(stagedKnownAttendeeKey(name))) return [];
     const knownFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
     if (!knownFirstName) return [];
-    // The message has to describe what the document now says, not what the transcript
-    // said. This flag used to read "Check attendee name X, the surname differs" while the
-    // attendee list already showed the corrected name - so the reviewer was asked to fix
-    // something that was not there, against a name that appeared nowhere on the screen.
-    // Now the correction is applied, the flag reports the decision and offers the way back.
-    const corrected = canonicalKnownStagedPersonName(name);
-    if (corrected && stagedKnownAttendeeKey(corrected) !== stagedKnownAttendeeKey(name)) {
-      return [{
-        type: 'attendee_name_corrected',
-        severity: 'info',
-        blocking: false,
-        message: `The transcript says “${name}”, which is not a known participant. It has been recorded as “${corrected}” because the first name matches. Edit the attendee if that is wrong.`
-      }];
-    }
-    return [{ type: 'possible_attendee_name_mismatch', severity: 'warning', blocking: false, message: `Check attendee name “${name}”. The first name matches known participant “${knownFirstName}”, but the transcript surname differs.` }];
+    // The name is kept as the transcript spells it and the doubt is handed to the
+    // reviewer, because the alternative - rewriting the surname from the registry - put
+    // two spellings of one person into the same client document. The known name rides
+    // along as nameSuggestion so accepting it is one click rather than a retype.
+    return [{
+      type: 'attendee_name_unverified',
+      severity: 'warning',
+      blocking: false,
+      resolutionKey: `attendee-name:${stagedKnownAttendeeKey(name)}`,
+      message: `The transcript calls this attendee “${name}”. We have a “${knownFirstName}” on record, but no “${name}”. The name has been left exactly as the transcript spells it — change it below if it is wrong.`,
+      nameSuggestion: { from: name, to: knownFirstName }
+    }];
   });
 
   // The title decides the type when it can. When it cannot - the title-only inference

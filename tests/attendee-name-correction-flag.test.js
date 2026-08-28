@@ -7,64 +7,68 @@ const path = require('node:path');
 
 const api = require('../routes/api');
 
-// The flag has to describe what the document now says.
+// An unverifiable surname is the reviewer's decision, not ours.
 //
-// The attendee list and the action owners were both corrected to "Rebecca Gill" while this
-// flag went on reading "Check attendee name Rebecca Cuckoo... the transcript surname
-// differs" - asking the reviewer to fix something that was not on the screen, against a
-// name that appeared nowhere in the output. A warning that contradicts the document is
-// worse than no warning: it costs the reviewer time proving it wrong.
+// This file used to assert the opposite: that the known-people registry rewrote a surname
+// whenever the first name matched, so "Rebecca Cuckoo" was recorded as "Rebecca Gill"
+// everywhere. That rewrite cannot tell a mistranscribed surname from a real person who is
+// simply not on the roster - it renamed Christina McLean, who chairs a workstream on the
+// T733 weekly, to "Christina Cargan", while the actions stage went on calling her McLean.
+// One person, two surnames, both in the same client PDF and both offered as separate
+// people in the owner list.
+//
+// A wrong name that looks wrong ("Cuckoo") gets noticed and fixed in a second. A wrong
+// name that looks right ("Cargan") does not get noticed at all. So the transcript's own
+// spelling is what the screen shows, and the registry's candidate is offered beside it as
+// a one-click swap.
 
 const transcriptPath = path.resolve(__dirname, '../scripts/staged-scorecard-fixtures/07_t761_eakin_tech_file_weekly/transcript.txt');
 
-test('a corrected attendee name is applied everywhere the reviewer looks', () => {
+test('the transcript spelling is what the reviewer is shown', () => {
   const details = api.stagedEvaluation
     .extractStagedDetailsFromTranscript(fs.readFileSync(transcriptPath, 'utf8'), 't761.txt')
     .screens.details;
-  // The transcript says "Rebecca Cuckoo" 388 times across this corpus; the attendee is
-  // Rebecca Gill, and the details screen is where the reviewer first sees either.
-  assert.ok(details.clientAttendees.includes('Rebecca Gill'));
-  assert.ok(!JSON.stringify(details).includes('Cuckoo'), 'no screen field may carry the transcript spelling');
+  // The transcript says "Rebecca Cuckoo"; the roster knows a Rebecca Gill. Nothing is
+  // renamed behind the reviewer's back, so the attendee list still reads as recorded.
+  assert.ok(details.clientAttendees.includes('Rebecca Cuckoo'));
+  assert.ok(!details.clientAttendees.includes('Rebecca Gill'), 'the roster does not overrule the transcript');
 });
 
-test('the flag reports the correction rather than asking for one', () => {
+test('one person never appears under two surnames', () => {
+  // The failure this replaces: the details screen said "Christina Cargan" while the
+  // actions stage said "Christina McLean", and the owner dropdown offered both.
+  const details = api.stagedEvaluation
+    .extractStagedDetailsFromTranscript(fs.readFileSync(transcriptPath, 'utf8'), 't761.txt')
+    .screens.details;
+  const firstNames = [...details.internalAttendees, ...details.clientAttendees]
+    .map((name) => String(name).trim().split(/\s+/)[0].toLowerCase());
+  assert.equal(new Set(firstNames).size, firstNames.length, 'no first name is listed twice under different surnames');
+});
+
+test('the flag puts the choice to the reviewer and carries the alternative', () => {
   const output = api.stagedEvaluation
     .extractStagedDetailsFromTranscript(fs.readFileSync(transcriptPath, 'utf8'), 't761.txt');
   const flag = (output.validationFlags || []).find((item) => /attendee/i.test(item.type));
-  assert.ok(flag, 'the reviewer is still told a name was changed');
-  assert.equal(flag.type, 'attendee_name_corrected');
-  assert.equal(flag.severity, 'info');
-  // Both names appear: the one the transcript used and the one now recorded, so the
-  // reviewer can see exactly what was decided and undo it.
+  assert.ok(flag, 'the reviewer is still told the surname could not be verified');
+  assert.equal(flag.type, 'attendee_name_unverified');
+  assert.equal(flag.severity, 'warning');
+  assert.equal(flag.blocking, false);
+  // Both names appear, so the reviewer can see what was found and what was kept.
   assert.match(flag.message, /Rebecca Cuckoo/);
   assert.match(flag.message, /Rebecca Gill/);
-  assert.match(flag.message, /Edit the attendee if that is wrong/);
-  assert.equal(flag.blocking, false);
+  assert.match(flag.message, /left exactly as the transcript spells it/);
+  // The registry's candidate rides along so accepting it is one click, not a retype.
+  assert.deepEqual(flag.nameSuggestion, { from: 'Rebecca Cuckoo', to: 'Rebecca Gill' });
 });
 
-test('an unresolvable name still asks the reviewer to check it', () => {
-  // The corrected wording must not swallow the original warning: when the first name is
-  // shared by two known people the registry declines to choose, nothing is corrected, and
-  // "check this" remains the honest message.
-  const source = api.stagedEvaluation.extractStagedDetailsFromTranscript.toString();
-  assert.match(source, /possible_attendee_name_mismatch/);
-});
-
-test('entityNames itself is corrected at the source, not just the owner column', () => {
-  // entityNames is built from raw Teams speaker labels (liveStages.js) and is the
-  // reference list every downstream consumer works from: the repeated_person_name
-  // detector, the "people" list threaded into every repair/polish call, and the
-  // discussion/action prose sweep. Correcting the owner column alone left this list
-  // itself saying "Rebecca Cuckoo" - so a sweep over discussion prose using entityNames
-  // as its reference had nothing correct to check against, and "Rebecca Cuckoo" kept
-  // reappearing in discussion text even after owners were fixed.
+test('a first name shared by two known people raises nothing at all', () => {
+  // The registry stores null when two known people share a first name, so it declines to
+  // suggest - and with nothing to suggest there is no doubt worth interrupting for.
   const output = api.stagedEvaluation
     .extractStagedDetailsFromTranscript(fs.readFileSync(transcriptPath, 'utf8'), 't761.txt');
-  // extractStagedDetailsFromTranscript predates canonicalStagedResponse's entityNames
-  // correction, so this only re-asserts the details screen is still right; the live
-  // entityNames fix is exercised end-to-end via canonicalStagedResponse in the
-  // discussion/action integration tests below.
-  assert.ok(output.screens.details.clientAttendees.includes('Rebecca Gill'));
+  for (const flag of (output.validationFlags || []).filter((item) => /attendee/i.test(item.type))) {
+    assert.ok(flag.nameSuggestion && flag.nameSuggestion.to, 'an attendee flag without a candidate is not worth raising');
+  }
 });
 
 test('a residents meeting with two Jos keeps both spellings distinct in entityNames', async () => {

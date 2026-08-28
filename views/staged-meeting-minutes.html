@@ -229,6 +229,9 @@ td input, td textarea { min-height:0; background:#091224; }
 td textarea { min-height:68px; }
 .final-document { background:#ffffff; color:#1f2937; border-radius:8px; padding:1.25rem; border:1px solid #d9e1e8; }
 .final-document h2, .final-document h3 { color:#02173B; }
+/* The shared sheet makes every th sticky, which suits a data grid and not a document:
+   the column headings detached and floated over the minutes as the reviewer scrolled. */
+.final-document th { position:static; }
 .final-document .section { border-top:1px solid #d9e1e8; padding-top:.75rem; margin-top:.75rem; }
 .review-status { margin-top:.8rem; min-height:1.5rem; color:var(--muted); font-weight:500; }
 .review-status.error { color:#fecaca; }
@@ -275,6 +278,7 @@ td textarea { min-height:68px; }
 .stage-decision-card .terminology-qa,
 .stage-decision-card .resolved-checks { margin:0; }
 .stage-autosave-bottom { justify-self:end; margin-top:-.25rem; opacity:.86; }
+.stage-validation-flags[hidden] { display:none; }
 .stage-validation-flags {
   margin-top:1rem;
   border:1px solid #e3d4a6;
@@ -672,7 +676,7 @@ td select {
           </div>
           <div class="actions" style="margin-top:.85rem;">
             <button id="generateStagedMinutesBtn" type="button">Generate meeting details</button>
-            <span id="stagedGenerationStatus" class="note" role="status" aria-live="polite">No transcript has been generated for this staged draft yet.</span>
+            <span id="stagedGenerationStatus" class="note" role="status" aria-live="polite">Add a transcript to begin.</span>
           </div>
         </div>
         <div class="form-grid review-only">
@@ -786,7 +790,8 @@ td select {
           </div>
           <div class="screen-header-meta"><span class="progress-pill">4 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
-        <p><strong id="confirmedActionCount">0 confirmed actions</strong></p>
+        <p><strong id="confirmedActionCount">No actions yet</strong></p>
+          <p class="note" id="actionCompletenessNote">These are the actions we are confident the transcript supports. It is normal for a meeting to contain more — please add anything missing.</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -843,7 +848,7 @@ td select {
         <div class="stage-decision-actions">
           <div class="secondary-group">
             <button id="previousScreenBtn" class="secondary" type="button">Go back</button>
-            <button id="regenerateScreenBtn" class="secondary" type="button">Re-run AI generation step</button>
+            <button id="regenerateScreenBtn" class="secondary" type="button">Start this screen again</button>
           </div>
           <button id="nextScreenBtn" type="button">Yes, move on</button>
         </div>
@@ -1325,7 +1330,7 @@ td select {
     var prefix = isRegeneration ? 'AI generation step re-run complete. ' : '';
     if (stage === 'details') return prefix + 'Meeting details generated. Review or edit this screen before continuing.';
     if (stage === 'summary') return prefix + 'Objectives and summary generated. Review or edit them before continuing.';
-    if (stage === 'discussion') return prefix + 'Discussion draft generated. Review the connected account before optionally organising its paragraphs into topics.';
+    if (stage === 'discussion') return prefix + 'Discussion draft written. Read it through — you can group it into topics afterwards if you want to.';
     if (stage === 'actions') return prefix + 'Actions generated. Check owners and dates before continuing.';
     return prefix + 'This staged screen has been generated.';
   }
@@ -1386,6 +1391,28 @@ td select {
       var name = chip.querySelector('.attendee-name');
       return name ? name.textContent.trim() : '';
     }).filter(Boolean);
+  }
+
+  // Accepting a name suggestion from the details-screen checks. The transcript's spelling
+  // is what the screen shows, so the swap happens here rather than in the response, and it
+  // goes through attendeeStateChanged so the owner list and the final document move with
+  // it - the split that previously left one person spelled two ways.
+  function renameAttendee(fromName, toName) {
+    var from = String(fromName || '').trim().toLowerCase();
+    var to = String(toName || '').trim();
+    if (!from || !to) return false;
+    var changed = false;
+    [internalAttendeesRow, clientAttendeesRow].forEach(function (row) {
+      if (!row) return;
+      Array.prototype.slice.call(row.querySelectorAll('.chip .attendee-name')).forEach(function (nameEl) {
+        if (nameEl.textContent.trim().toLowerCase() === from) {
+          nameEl.textContent = to;
+          changed = true;
+        }
+      });
+    });
+    if (changed) attendeeStateChanged();
+    return changed;
   }
 
   function attendeeOwnerNames() {
@@ -1605,7 +1632,7 @@ td select {
       discussionList.innerHTML = '<section class="discussion-narrative-shell" data-topic-id="discussion-narrative" data-paragraph-refs="' + escapeHtml(JSON.stringify(narrativeRefs)) + '">' +
         '<label for="discussionNarrativeInput">Meeting discussion</label>' +
         '<textarea id="discussionNarrativeInput" class="discussion-narrative-input" aria-label="Meeting discussion draft">' + escapeHtml(narrativePoints.join('\n\n')) + '</textarea>' +
-        '<span class="discussion-narrative-help">Review this as a connected account. Keep a blank line between paragraphs. Topic organisation is optional and will not rewrite your wording.</span>' +
+        '<span class="discussion-narrative-help">This is written to read as one continuous account. Edit it freely, and keep a blank line between paragraphs. Grouping it into topics is optional and will never reword what you have written.</span>' +
       '</section>';
       applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || 'discussion');
       return;
@@ -2176,7 +2203,9 @@ td select {
   function updateConfirmedActionCount() {
     if (!confirmedActionCount) return;
     var count = actionsFromReview().length;
-    confirmedActionCount.textContent = count + ' confirmed action' + (count === 1 ? '' : 's');
+    confirmedActionCount.textContent = count === 0
+      ? 'No actions found'
+      : (count === 1 ? '1 action found' : count + ' actions found');
   }
 
   function resolveReviewItem(message, element, key) {
@@ -2590,6 +2619,18 @@ td select {
           focusReviewFlagTarget(flag);
         });
         actions.appendChild(targetButton);
+      }
+      if (flag && flag.nameSuggestion && flag.nameSuggestion.from && flag.nameSuggestion.to) {
+        var nameButton = document.createElement('button');
+        nameButton.type = 'button';
+        nameButton.className = 'secondary stage-validation-add';
+        nameButton.textContent = 'Use \u201C' + flag.nameSuggestion.to + '\u201D';
+        nameButton.addEventListener('click', function () {
+          if (renameAttendee(flag.nameSuggestion.from, flag.nameSuggestion.to)) {
+            resolveGroupedReviewItems(text.textContent, row, groupedReviewKeys);
+          }
+        });
+        actions.appendChild(nameButton);
       }
       var finalTargetIndex = isFinalReviewScreen() ? finalReviewTargetScreenIndex(flag) : null;
       if (finalTargetIndex !== null) {
@@ -3128,7 +3169,7 @@ td select {
       ''
     ).trim();
     if (draftTranscriptSha256 && payloadTranscriptSha256 && draftTranscriptSha256 !== payloadTranscriptSha256) {
-      throw new Error('This result belongs to a different transcript. Start a new staged draft from the transcript upload step.');
+      throw new Error('This result belongs to a different transcript. Go back to the transcript step and start again.');
     }
     if (payloadTranscriptSha256) draftTranscriptSha256 = payloadTranscriptSha256;
     var screensPayload = payload && payload.screens ? payload.screens : {};
@@ -3356,7 +3397,7 @@ td select {
         stage: stage,
         reason: 'missing_transcript_source'
       }, { source: 'stage_request', immediate: true });
-      setReviewStatus('This staged draft does not have a stored transcript source yet. Start from the transcript upload step again so the AI can use the full transcript plus the confirmed stage details.', true);
+      setReviewStatus('These minutes do not have a stored transcript yet. Go back to the transcript step and add it again, so the next screen can use the full transcript alongside what you have confirmed.', true);
       return false;
     }
     stageInFlight = stage;
@@ -3505,7 +3546,7 @@ td select {
       return;
     }
     var confirmed = window.confirm(
-      'Re-run AI generation step for ' + labelForStage(stage) + '?\n\nThis will overwrite everything currently on this screen. If you want to keep the current wording, copy it before continuing.'
+      'Start ' + labelForStage(stage) + ' again?\n\nThis replaces everything currently on this screen. If you want to keep any of the current wording, copy it first.'
     );
     if (!confirmed) return;
     await requestStagedStage(stage, activeIndex, { regenerate: true });
@@ -3872,7 +3913,7 @@ td select {
     setReviewStarted(false);
     showScreen(0);
     renderFinalDocument();
-    setStatus('New transcript selected. Generate meeting details to begin a separate staged draft.', false);
+    setStatus('New transcript selected. Generate the meeting details to start a fresh set of minutes.', false);
   }
 
   function saveDraft() {
@@ -4489,7 +4530,7 @@ td select {
       generateButton.disabled = true;
       setStatus('Generating meeting details from your transcript…', false);
       var queued = await requestStagedStage('details', 0).catch(function (error) {
-        setStatus(error && error.message ? error.message : 'The staged draft could not be queued.', true);
+        setStatus(error && error.message ? error.message : 'These minutes could not be queued.', true);
         return false;
       });
       if (!queued) generateButton.disabled = false;
