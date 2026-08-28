@@ -565,24 +565,16 @@
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_17_unit_4",
-            "speaker": "Jacqui Fox",
-            "quote": "It's kind of focused really now on that cybersecurity update.",
-            "similarity": 0.5558
-          },
-          {
-            "sourceId": "line_9_unit_17",
-            "speaker": "Jacqui Fox",
-            "quote": "Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to",
-            "similarity": 0.5191
-          },
-          {
-            "sourceId": "line_19_unit_2",
-            "speaker": "Rebecca Gill",
-            "quote": "And then the second one, I just kind of put a bit more detail into the use of kind of FMEAs to, as a way of measuring risk across software, hardware and various different things.",
-            "similarity": 0.5183
-          }
+      {
+        "sourceId": "line_13_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "So Rebecca is kind of managing that through with Andrew."
+      },
+      {
+        "sourceId": "line_19_unit_2",
+        "speaker": "Rebecca Gill",
+        "quote": "And then I'm working on the matrix at the moment."
+      }
         ]
       },
       {
@@ -594,24 +586,16 @@
         "support": "transcript_supported",
         "basis": "ongoing_work",
         "evidence": [
-          {
-            "sourceId": "line_17_unit_5",
-            "speaker": "Jacqui Fox",
-            "quote": "And David, you obviously had reviewed their risk management plan.",
-            "similarity": 0.5793
-          },
-          {
-            "sourceId": "line_9_unit_17",
-            "speaker": "Jacqui Fox",
-            "quote": "Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to",
-            "similarity": 0.4967
-          },
-          {
-            "sourceId": "line_125_unit_1",
-            "speaker": "Jacqui Fox",
-            "quote": "Okay, yeah, so your main focus, I think, Rebecca, risk and electrical compliance and working through with David and Andrew.",
-            "similarity": 0.4669
-          }
+      {
+        "sourceId": "line_19_unit_2",
+        "speaker": "Rebecca Gill",
+        "quote": "I don't know, David, if you want to maybe have a pop in, have an RV look at that, just make sure I'm along the right lines."
+      },
+      {
+        "sourceId": "line_21_unit_0",
+        "speaker": "David Didsbury",
+        "quote": "Okay."
+      }
         ]
       },
       {
@@ -681,7 +665,7 @@
         "id": "action_006",
         "owner": "Andrew",
         "action": "Work through the in-house electrical compliance testing so outputs are available for David's final software and technical-file deliverables.",
-        "deadline": "Not stated",
+        "deadline": "Second last week of July",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "ongoing_work",
@@ -709,99 +693,90 @@
       {
         "id": "action_007",
         "owner": "Rebecca",
-        "action": "Work through subcontractor documentation gaps and agree any justifications or further actions with Louise.",
+    "action": "Discuss the subcontractor-documentation gaps with Louise and determine whether justifications or additional testing are required.",
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "unresolved_prerequisite",
         "evidence": [
-          {
-            "sourceId": "line_27_unit_8",
-            "speaker": "Jacqui Fox",
-            "quote": "I don't think there's anything needed at the moment, Rebecca, from a subcontractor point of view, but I do think you probably still need feedback on it.",
-            "similarity": 0.6264
-          }
+      {
+        "sourceId": "line_29_unit_0",
+        "speaker": "Rebecca Gill",
+        "quote": "Lauren has provided me the summary of everything that's kind of missing for each of them."
+      },
+      {
+        "sourceId": "line_33_unit_0",
+        "speaker": "Rebecca Gill",
+        "quote": "I'll discuss it with Louise and see what she says on a lot of it."
+      }
         ]
       },
       {
         "id": "action_008",
         "owner": "Adil",
-        "action": "Plan execution of the formative usability study and align the timing with the MDR submission and notified body review window.",
+    "action": "Plan execution of the formative usability study with Grace and Colm.",
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_27_unit_5",
-            "speaker": "Jacqui Fox",
-            "quote": "So Andrew will be starting to work through that with a view to completing the bulk of thattesting kind of this second last week of July, which would line up in time for your MDR submission dates.",
-            "similarity": 0.4925
-          },
-          {
-            "sourceId": "line_39_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "One thing I did want to follow up on just was around that date, Rebecca and Adil in relation to the formative studies and just to get that bottomed out in terms of dates and how that aligns with your actual MDR submission and does it feed into that kind of gap between the physical submission date and the review date by the NB?So I know in Rebecca, you kind of identified the 13th of August based on the kind of matrix that you'd give me, but from seeing emails from Colm, it was looking more like the discussion point between himself and Adil was more like September.",
-            "similarity": 0.4498
-          },
-          {
-            "sourceId": "line_45_unit_2",
-            "speaker": "Rebecca Gill",
-            "quote": "I presumed that the formative would be ready for submission and then to follow up with the summative.",
-            "similarity": 0.424
-          }
+      {
+        "sourceId": "line_55_unit_0",
+        "speaker": "Adil Kauim",
+        "quote": "Now it's kind of just thinking about how to execute the study. It's going to take a while to think about all of that, probably have a few meetings with Grace and Colm."
+      }
         ]
       },
       {
         "id": "action_009",
-        "owner": "Kevin and Christina",
-        "action": "Finalise the operational process maps and procedures once Christina returns.",
+    "owner": "Rebecca",
+    "action": "Schedule a call with Kevin once Christina returns to review and finalise the operational procedures.",
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_61_unit_2",
-            "speaker": "Jacqui Fox",
-            "quote": "And then from the process map perspective, I know Rebecca last week you kind of mentioned to Kevin rather that there had been some operational procedures for electromed medical devices that are still being finalized.",
-            "similarity": 0.4769
-          },
-          {
-            "sourceId": "line_63_unit_0",
-            "speaker": "Rebecca Gill",
-            "quote": "No, just waiting for Christina to come back to kind of like finalise those, but that should be quick.",
-            "similarity": 0.4659
-          },
-          {
-            "sourceId": "line_83_unit_0",
-            "speaker": "Rebecca Gill",
-            "quote": "summary documents, so once they are finalized, they...",
-            "similarity": 0.433
-          }
+      {
+        "sourceId": "line_61_unit_2",
+        "speaker": "Jacqui Fox",
+        "quote": "there had been some operational procedures for electromed medical devices that are still being finalized."
+      },
+      {
+        "sourceId": "line_63_unit_0",
+        "speaker": "Rebecca Gill",
+        "quote": "So I said to Kevin, we'll schedule a call for as soon as Christina's back."
+      },
+      {
+        "sourceId": "line_67_unit_0",
+        "speaker": "Rebecca Gill",
+        "quote": "to walk through that and make sure that we're all aligned where that's at."
+      }
         ]
       },
       {
         "id": "action_010",
         "owner": "Ciaran",
-        "action": "Review David's PMS comments and incorporate them into the relevant PMS or summary documentation.",
+    "action": "Review David's PMS comments and feed the finalised material into the relevant PMS or summary documentation.",
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_73_unit_2",
-            "speaker": "Jacqui Fox",
-            "quote": "And then Ciaran, just in terms of PMS, I pinged you there, I think it was Monday, where David has just reviewed the PMS from a software perspective and added some comments to it.So, for you to just kind of check in on those, if did did you get that from me?",
-            "similarity": 0.563
-          },
-          {
-            "sourceId": "line_79_unit_0",
-            "speaker": "Rebecca Gill",
-            "quote": "Just wanna say, I think about some of the comments, David.",
-            "similarity": 0.5283
-          }
+      {
+        "sourceId": "line_73_unit_2",
+        "speaker": "Jacqui Fox",
+        "quote": "where David has just reviewed the PMS from a software perspective and added some comments to it.So, for you to just kind of check in on those"
+      },
+      {
+        "sourceId": "line_81_unit_0",
+        "speaker": "Ciaran Ryan",
+        "quote": "in relation to probably the summary document. So once they're all finalized, they can feed on through then the..."
+      },
+      {
+        "sourceId": "line_89_unit_0",
+        "speaker": "Ciaran Ryan",
+        "quote": "focus on TFO3 this week. Once that's done, then I can start."
+      }
         ]
       }
     ],

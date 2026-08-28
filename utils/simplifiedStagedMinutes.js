@@ -1175,6 +1175,13 @@ async function generateActions(transcriptText, topics, options = {}) {
       rejected,
       recallRescue: recalled.telemetry,
       editor: edited.telemetry,
+      publishedActionEvidence: edited.actions.map((item) => ({
+        owner: item.owner,
+        action: item.action,
+        deadline: item.deadline,
+        evidenceIds: uniqueStrings(item.evidenceIds, 20),
+        wordingUnresolved: Boolean(item.wordingUnresolved)
+      })),
       perWindow: calls.map((item) => ({
         window: item.index + 1,
         evidenceCount: item.evidence.length,

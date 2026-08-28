@@ -710,19 +710,12 @@
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
-        "evidence": [
-          {
-            "sourceId": "line_191_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "OK, this is the QMS manual.",
-            "similarity": 0.6805
-          },
-          {
-            "sourceId": "line_9_unit_2",
-            "speaker": "Jacqui Fox",
-            "quote": "Yeah, it was around the QMS manual or that.",
-            "similarity": 0.6096
-          }
+    "evidence": [
+      {
+        "sourceId": "line_161_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "I will, I will flick this over to Orla."
+      }
         ]
       },
       {
@@ -734,29 +727,47 @@
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_191_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "OK, this is the QMS manual.",
-            "similarity": 0.8327
-          }
+      {
+        "sourceId": "line_185_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "Yeah, no problem. I'll take a look at us. Yeah."
+      },
+      {
+        "sourceId": "line_189_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "This week."
+      },
+      {
+        "sourceId": "line_191_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "OK, this is the QMS manual."
+      }
         ]
       },
       {
         "id": "action_003",
         "owner": "Orla",
-        "action": "Speak to Cody about the MedEnvoy task list, EUDAMED registration plan and who is responsible for each activity.",
+    "action": "Follow up with Cody about the MedEnvoy task list, EUDAMED registration plan and responsibility for each activity.",
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_357_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "And shoot up.And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand",
-            "similarity": 0.5941
-          }
+      {
+        "sourceId": "line_345_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "so I can go back to Cody of course and ask, but I wouldn't be up to date or in those meetings."
+      },
+      {
+        "sourceId": "line_357_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "either the project plan or the task list from med envoy in relation to their activities, because that will help us understand"
+      },
+      {
+        "sourceId": "line_467_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "What Trinzo should be doing, or what invoice should be doing? So, yeah, OK, so I can follow up."
+      }
         ]
       },
       {
@@ -768,29 +779,37 @@
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_561_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "And I suppose to that point, you probably probably could do with just a list of all of the country, one list of all of the countries that you do ship to, from a language perspective.",
-            "similarity": 0.7577
-          }
+      {
+        "sourceId": "line_561_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "And I suppose to that point, you probably probably could do with just a list of all of the country, one list of all of the countries that you do ship to, from a language perspective."
+      },
+      {
+        "sourceId": "line_563_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "Yeah.Yeah, med envoy are asking the same thing. Yeah.OK."
+      }
         ]
       },
       {
         "id": "action_005",
         "owner": "Orla",
         "action": "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks.",
-        "deadline": "Not stated",
+    "deadline": "Next two to three weeks",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_483_unit_0",
-            "speaker": "Orla Skally",
-            "quote": "So yeah, I would like to think in the next two to three weeks, we'll have a proper kind of system to implement lot numbering and adding it to the label.",
-            "similarity": 0.7454
-          }
+      {
+        "sourceId": "line_477_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "Yeah, it's in motion at the moment. So, and I've reached out to all the factories, our Japanese suppliers."
+      },
+      {
+        "sourceId": "line_483_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "So yeah, I would like to think in the next two to three weeks, we'll have a proper kind of system to implement lot numbering and adding it to the label."
+      }
         ]
       },
       {
@@ -798,9 +817,9 @@
         "owner": "Jenny",
         "action": "Review label or barcode details if DITA wants a regulatory check on the proposed format.",
         "deadline": "Not stated",
-        "importance": "critical",
-        "support": "transcript_supported",
-        "basis": "explicit_commitment",
+    "importance": "major",
+    "support": "review_pending",
+    "basis": "unresolved_prerequisite",
         "evidence": [
           {
             "sourceId": "line_475_unit_0",
@@ -824,19 +843,23 @@
       },
       {
         "id": "action_007",
-        "owner": "John-Paul",
-        "action": "Update declarations of conformity for sunglasses to include the required risk rationale for EU MDR and PPE Category I where applicable.",
+    "owner": "Cody",
+    "action": "Continue updating the declarations of conformity for sunglasses, including the applicable EU MDR and PPE Category I risk rationale.",
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_571_unit_0",
-            "speaker": "John-Paul Hughes",
-            "quote": "So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those.",
-            "similarity": 0.7923
-          }
+      {
+        "sourceId": "line_571_unit_0",
+        "speaker": "John-Paul Hughes",
+        "quote": "So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those."
+      },
+      {
+        "sourceId": "line_583_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "he had to update the declarations as well. So I think that's in process at the moment."
+      }
         ]
       },
       {
@@ -848,12 +871,16 @@
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_595_unit_1",
-            "speaker": "Orla Skally",
-            "quote": "The HPRA have sent me a bill.",
-            "similarity": 0.5604
-          }
+      {
+        "sourceId": "line_595_unit_1",
+        "speaker": "Orla Skally",
+        "quote": "I can send a copy."
+      },
+      {
+        "sourceId": "line_607_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "Send it on to myself, Colm. We can have a look at it and talk to Liam here as well"
+      }
         ]
       },
       {
@@ -865,12 +892,16 @@
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_595_unit_1",
-            "speaker": "Orla Skally",
-            "quote": "The HPRA have sent me a bill.",
-            "similarity": 0.5452
-          }
+      {
+        "sourceId": "line_607_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "Send it on to myself, Colm. We can have a look at it and talk to Liam here as well and try and get some direction as to what that's about."
+      },
+      {
+        "sourceId": "line_613_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "just before we pay us"
+      }
         ]
       },
       {
@@ -882,18 +913,16 @@
         "support": "transcript_supported",
         "basis": "explicit_commitment",
         "evidence": [
-          {
-            "sourceId": "line_161_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "I will, I will flick this over to Orla.",
-            "similarity": 0.5835
-          },
-          {
-            "sourceId": "line_357_unit_0",
-            "speaker": "Jacqui Fox",
-            "quote": "And shoot up.And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand",
-            "similarity": 0.4776
-          }
+      {
+        "sourceId": "line_589_unit_0",
+        "speaker": "Jacqui Fox",
+        "quote": "look at another call in the diary with you next week or if that's okay."
+      },
+      {
+        "sourceId": "line_591_unit_0",
+        "speaker": "Orla Skally",
+        "quote": "and I'll review that document as well."
+      }
         ]
       }
     ],

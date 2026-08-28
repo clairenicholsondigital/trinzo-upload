@@ -87,6 +87,7 @@ test('shared workflow serves simplified Actions directly with self-consistent te
           topicCount: 1,
           calls: 1,
           actionCount: 1,
+          publishedActionEvidence: [{ ...actions[0], evidenceIds: ['line_1_unit_0'] }],
           tokenUsage: [{ prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 }]
         }
       })
@@ -95,6 +96,8 @@ test('shared workflow serves simplified Actions directly with self-consistent te
   assert.equal(output.pipeline, 'simplified_staged_minilm_trooper_v1');
   assert.deepEqual(output.screens.actions, actions);
   assert.deepEqual(output.pipelineHealth.actionAccounting, { supplied: 1, published: 1 });
+  assert.deepEqual(output.telemetryPreview.simplifiedPipeline.publishedActionEvidence, [{ ...actions[0], evidenceIds: ['line_1_unit_0'] }]);
+  assert.equal(Object.hasOwn(output.screens.actions[0], 'evidenceIds'), false);
   assert.deepEqual(output.telemetryPreview.trooper.usage, { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 });
   assert.equal(output.telemetryPreview.simplifiedPipeline.fallback, false);
 });

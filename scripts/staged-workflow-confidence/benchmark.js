@@ -254,26 +254,34 @@ function extractReliability(record) {
   };
 }
 
-function calibrationRequest(cases) {
-  const rows = cases.flatMap((item) => supported(item.expected.expected.discussionFacts).map((fact) => ({ caseId: item.caseId, text: fact.text })));
-  return { id: 'calibration::cross_case', left: rows.map((item) => item.text), right: rows.map((item) => item.text), rows };
+function calibrationRequest(cases, collection = 'discussion') {
+  const rows = cases.flatMap((item) => {
+    const expected = item.expected.expected;
+    const values = collection === 'actions' ? supported(expected.actions) : supported(expected.discussionFacts);
+    return values.map((row) => ({ caseId: item.caseId, text: collection === 'actions' ? row.action : row.text }));
+  });
+  return { id: `calibration::cross_case::${collection}`, left: rows.map((item) => item.text), right: rows.map((item) => item.text), rows };
 }
 
-function calibrateThreshold(matrix, rows) {
+function calibrateThreshold(matrix, rows, options = {}) {
   const negatives = [];
   for (let left = 0; left < rows.length; left += 1) for (let right = 0; right < rows.length; right += 1) {
     if (rows[left].caseId !== rows[right].caseId) negatives.push(Number(matrix[left]?.[right] || 0));
   }
   negatives.sort((a, b) => a - b);
   const percentile = negatives[Math.max(0, Math.ceil(negatives.length * 0.99) - 1)] || 0.6;
-  const threshold = Math.min(0.75, Math.max(0.60, percentile + 0.001));
+  const threshold = Math.min(0.75, Math.max(Number(options.minimum ?? 0.60), percentile + 0.001));
   return { threshold: round(threshold, 4), targetFalsePositiveRate: 0.01, observedCrossMeetingFalsePositiveRate: round(ratio(negatives.filter((score) => score >= threshold).length, negatives.length), 4), negativePairCount: negatives.length };
 }
 
 function requestSet(cases, records) {
   const requests = [];
-  const calibration = calibrationRequest(cases);
-  requests.push({ id: calibration.id, left: calibration.left, right: calibration.right });
+  const discussionCalibration = calibrationRequest(cases, 'discussion');
+  const actionCalibration = calibrationRequest(cases, 'actions');
+  requests.push(
+    { id: discussionCalibration.id, left: discussionCalibration.left, right: discussionCalibration.right },
+    { id: actionCalibration.id, left: actionCalibration.left, right: actionCalibration.right }
+  );
   for (const record of records) {
     const item = cases.find((entry) => entry.caseId === record.caseId);
     const output = extractOutput(record.payload);
@@ -286,7 +294,7 @@ function requestSet(cases, records) {
       { id: `${record.id}::negative_actions`, left: (expected.negativeControls || []).flatMap((row) => (row.evidence || []).map((ev) => ev.quote)), right: output.actions.map((row) => row.action) }
     );
   }
-  return { requests, calibration };
+  return { requests, discussionCalibration, actionCalibration };
 }
 
 function classifyVerdict(metrics) {
@@ -296,9 +304,16 @@ function classifyVerdict(metrics) {
 }
 
 function scoreRecords(corpus, records, options = {}) {
-  const { requests, calibration: calibrationData } = requestSet(corpus.cases, records);
+  const { requests, discussionCalibration, actionCalibration } = requestSet(corpus.cases, records);
   const matrices = semanticMatrices(requests);
-  const calibration = calibrateThreshold(matrices.get(calibrationData.id), calibrationData.rows);
+  const discussionThreshold = calibrateThreshold(matrices.get(discussionCalibration.id), discussionCalibration.rows);
+  const actionThreshold = calibrateThreshold(matrices.get(actionCalibration.id), actionCalibration.rows, { minimum: 0.50 });
+  const calibration = {
+    ...discussionThreshold,
+    actionThreshold: actionThreshold.threshold,
+    actionObservedCrossMeetingFalsePositiveRate: actionThreshold.observedCrossMeetingFalsePositiveRate,
+    actionNegativePairCount: actionThreshold.negativePairCount
+  };
   const threshold = calibration.threshold;
   const scored = records.map((record) => {
     const item = corpus.cases.find((entry) => entry.caseId === record.caseId);
@@ -309,7 +324,7 @@ function scoreRecords(corpus, records, options = {}) {
     const actionsExpected = supported(expected.actions);
     const objectives = matchCollection(objectivesExpected, output.summary.objectives || [], matrices.get(`${record.id}::objectives`) || [], threshold);
     const discussion = matchCollection(factsExpected, output.discussionPoints, matrices.get(`${record.id}::discussion`) || [], threshold);
-    const actions = matchCollection(actionsExpected, output.actions, matrices.get(`${record.id}::actions`) || [], threshold);
+    const actions = matchCollection(actionsExpected, output.actions, matrices.get(`${record.id}::actions`) || [], actionThreshold.threshold);
     const criticalFacts = factsExpected.filter((row) => row.importance === 'critical');
     const matchedCriticalFacts = discussion.pairs.filter((pair) => pair.expected.importance === 'critical').length;
     discussion.criticalRecall = round(ratio(matchedCriticalFacts, criticalFacts.length));

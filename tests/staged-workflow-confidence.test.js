@@ -46,6 +46,17 @@ test('threshold calibration limits cross-meeting false matches to one percent', 
   assert.ok(result.observedCrossMeetingFalsePositiveRate <= 0.01);
 });
 
+test('action calibration can use its independent 0.50 floor without changing discussion calibration', () => {
+  const rows = [{ caseId: 'a' }, { caseId: 'b' }, { caseId: 'c' }];
+  const result = benchmark.calibrateThreshold([
+    [1, 0.48, 0.21],
+    [0.22, 1, 0.31],
+    [0.20, 0.29, 1]
+  ], rows, { minimum: 0.50 });
+  assert.equal(result.threshold, 0.5);
+  assert.equal(result.observedCrossMeetingFalsePositiveRate, 0);
+});
+
 test('deployed mirror validation rejects malformed payloads and revision drift', () => {
   assert.throws(() => benchmark.validateMirrorPayload({}, 200), /Malformed UI-mirror/);
   assert.throws(() => benchmark.validateMirrorPayload({ ok: true, contractVersion: 'staged-meeting-minutes-ui-mirror-v2', diagnostics: {} }, 200), /serving revision/);
