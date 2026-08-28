@@ -148,6 +148,23 @@ test('discussion narrative returns contextual paragraphs without sentence-level 
   assert.doesNotMatch(simplified.cleanPublicDiscussionPoint('A supported paragraph (line_293_unit_1, line_293_unit_2).'), /line_293/i);
 });
 
+test('discussion narrative scales its paragraph budget for medium and long meetings', () => {
+  const medium = simplified._private.narrativeParagraphPlan(Array.from({ length: 30 }, (_, index) => ({
+    id: `line_${index + 1}_unit_0`, speaker: 'Alex Smith', text: 'A substantive workstream update remained under detailed review. '.repeat(4)
+  })));
+  assert.equal(medium.chunks.length, 2);
+  assert.deepEqual(medium.chunks.map((chunk) => chunk.length), [15, 15]);
+  assert.deepEqual([medium.paragraphMin, medium.paragraphMax], [4, 6]);
+
+  const long = simplified._private.narrativeParagraphPlan(Array.from({ length: 120 }, (_, index) => ({
+    id: `line_${index + 1}_unit_0`, speaker: 'Alex Smith', text: 'A substantive workstream update remained under detailed review. '.repeat(4)
+  })));
+  assert.equal(long.chunks.length, 4);
+  assert.deepEqual([long.paragraphMin, long.paragraphMax], [8, 12]);
+  assert.equal(long.chunks.flat().length, 120);
+  assert.deepEqual(long.chunks.flat().map((unit) => unit.id), Array.from({ length: 120 }, (_, index) => `line_${index + 1}_unit_0`));
+});
+
 test('optional discussion organisation classifies reviewed paragraphs without rewriting them', async () => {
   const paragraphs = [
     { id: 'paragraph_1', text: 'The exact reviewed alarm paragraph remains unchanged.', evidenceIds: ['line_1_unit_0'] },

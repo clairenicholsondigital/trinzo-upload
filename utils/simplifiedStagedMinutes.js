@@ -429,10 +429,12 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
 }
 
 function discussionNarrativePrompt(evidence, meetingContext = {}, segment = {}) {
+  const paragraphMin = Math.max(1, Number(segment.paragraphMin || 2));
+  const paragraphMax = Math.max(paragraphMin, Number(segment.paragraphMax || 3));
   return [
     'Write coherent, highly factual Discussion paragraphs suitable for official meeting minutes from this contiguous section of the meeting.',
     `This is section ${Number(segment.index || 0) + 1} of ${Number(segment.total || 1)}. Do not mention sections, chunks or processing in the output.`,
-    'Return 2 to 3 substantial paragraphs, using one paragraph per related cluster of workstreams where practical. Each paragraph should contain enough context that a reviewer who was not present can understand what was being discussed.',
+    `Return ${paragraphMin} to ${paragraphMax} substantial paragraphs for this section, using one paragraph per related cluster of workstreams where practical. This range is a coverage budget, not a reason to pad or repeat content. Each paragraph should contain enough context that a reviewer who was not present can understand what was being discussed.`,
     'Comprehensively cover every substantive workstream in the supplied evidence. Before returning, scan the complete supplied section again for omitted technical, operational, compliance, risk, documentation, decision and unresolved-verification material.',
     'Do not turn the transcript into isolated sentence-level facts. Connect related turns and resolve conversational references only when the evidence makes the referent clear.',
     'Never publish vague fragments such as "a change was made", "she would add herself to that" or "it was discussed" without identifying the supported change, call, document, system or workstream.',
@@ -472,21 +474,70 @@ function narrativeEvidenceChunks(units = [], maxRows = 130, maxChars = 28000) {
   return chunks;
 }
 
+function narrativeParagraphPlan(units = []) {
+  const evidence = Array.isArray(units) ? units : [];
+  if (!evidence.length) return { chunks: [], budgets: [], totalChars: 0, paragraphMin: 0, paragraphMax: 0 };
+
+  const sizes = evidence.map((unit) => clean(unit?.text).length + clean(unit?.speaker).length + 8);
+  const totalChars = sizes.reduce((sum, size) => sum + size, 0);
+  // A single three-paragraph call was over-compressing medium meetings. Scale the
+  // number of contiguous sections mechanically, without adding a topic-discovery
+  // call or exposing sentence-level fragments to the reviewer.
+  const sectionCount = Math.min(4, Math.max(
+    1,
+    Math.ceil(evidence.length / 50),
+    Math.ceil(totalChars / 7000)
+  ));
+  const chunks = [];
+  let current = [];
+  let currentWeight = 0;
+  let consumedWeight = 0;
+  let nextBoundary = totalChars / sectionCount;
+  for (let index = 0; index < evidence.length; index += 1) {
+    current.push(evidence[index]);
+    currentWeight += sizes[index];
+    const sectionsRemaining = sectionCount - chunks.length - 1;
+    const unitsRemaining = evidence.length - index - 1;
+    if (sectionsRemaining > 0 && unitsRemaining >= sectionsRemaining && consumedWeight + currentWeight >= nextBoundary) {
+      chunks.push(current);
+      consumedWeight += currentWeight;
+      current = [];
+      currentWeight = 0;
+      nextBoundary = totalChars * (chunks.length + 1) / sectionCount;
+    }
+  }
+  if (current.length) chunks.push(current);
+
+  const budgets = chunks.map((chunk) => {
+    const chars = chunk.reduce((sum, unit) => sum + clean(unit?.text).length + clean(unit?.speaker).length + 8, 0);
+    const compact = chunk.length < 8 || chars < 1200;
+    return { paragraphMin: compact ? 1 : 2, paragraphMax: compact ? 2 : 3, evidenceCount: chunk.length, chars };
+  });
+  return {
+    chunks,
+    budgets,
+    totalChars,
+    paragraphMin: budgets.reduce((sum, budget) => sum + budget.paragraphMin, 0),
+    paragraphMax: budgets.reduce((sum, budget) => sum + budget.paragraphMax, 0)
+  };
+}
+
 async function generateDiscussionNarrative(transcriptText, options = {}) {
   assertTrooperConfigured(options);
   const prepared = options.prepared || await prepareTranscript(transcriptText, [], options);
   const evidence = Array.isArray(prepared.units) ? prepared.units : [];
   if (!evidence.length) throw new Error('Simplified discussion narrative had no retained transcript evidence.');
-  const chunks = narrativeEvidenceChunks(evidence);
+  const plan = narrativeParagraphPlan(evidence);
+  const chunks = plan.chunks;
   const calls = await mapBounded(chunks, (chunk, index) => retryJsonGenerationOnce(
-    discussionNarrativePrompt(chunk, options.meetingContext, { index, total: chunks.length }),
+    discussionNarrativePrompt(chunk, options.meetingContext, { index, total: chunks.length, ...plan.budgets[index] }),
     options,
     2400
   ).then((call) => ({ ...call, evidence: chunk, index })), { ...options, concurrency: Math.min(3, chunks.length) });
   const paragraphs = [];
   for (const call of calls) {
     if (!Array.isArray(call.output.paragraphs)) throw new Error(`Malformed discussion narrative response for section ${call.index + 1}.`);
-    for (const candidate of call.output.paragraphs.slice(0, 6)) {
+    for (const candidate of call.output.paragraphs.slice(0, plan.budgets[call.index].paragraphMax)) {
       const text = cleanPublicDiscussionPoint(candidate?.text);
       const cited = citedEvidence(candidate, call.evidence);
       if (!text || text.length < 60 || !cited.ids.length) continue;
@@ -513,6 +564,13 @@ async function generateDiscussionNarrative(transcriptText, options = {}) {
       paragraphCount: paragraphs.length,
       calls: calls.length,
       sectionCount: chunks.length,
+      paragraphBudget: {
+        strategy: 'retained_length_and_turn_density',
+        requestedMin: plan.paragraphMin,
+        requestedMax: plan.paragraphMax,
+        retainedChars: plan.totalChars,
+        perSection: plan.budgets
+      },
       contextApplied: {
         meetingType: Boolean(context.meetingType),
         meetingPurpose: Boolean(context.meetingPurpose),
@@ -520,7 +578,15 @@ async function generateDiscussionNarrative(transcriptText, options = {}) {
       },
       tokenUsage: calls.map((call) => call.usage).filter(Boolean),
       timingMs: Math.max(...calls.map((call) => Number(call.timingMs || 0))),
-      perSection: calls.map((call) => ({ section: call.index + 1, evidenceCount: call.evidence.length, timingMs: call.timingMs, tokenUsage: call.usage || null, transport: call.transport || null }))
+      perSection: calls.map((call) => ({
+        section: call.index + 1,
+        evidenceCount: call.evidence.length,
+        paragraphMin: plan.budgets[call.index].paragraphMin,
+        paragraphMax: plan.budgets[call.index].paragraphMax,
+        timingMs: call.timingMs,
+        tokenUsage: call.usage || null,
+        transport: call.transport || null
+      }))
     }
   };
 }
@@ -1038,5 +1104,5 @@ module.exports = {
   deadlineIsSupported,
   duplicateAction,
   clearPreparedCache,
-  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks, narrativeEvidenceChunks, actionEvidenceChunks }
+  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks, narrativeEvidenceChunks, narrativeParagraphPlan, actionEvidenceChunks }
 };
