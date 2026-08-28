@@ -6,6 +6,19 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class StagedMeetingMinutesContractTest(unittest.TestCase):
+    def test_discussion_review_starts_with_contextual_narrative_before_optional_topics(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn('<h2>Discussion draft</h2>', page)
+        self.assertIn('id="discussionNarrativeInput"', page)
+        self.assertIn('id="organizeDiscussionBtn"', page)
+        self.assertIn("Organise reviewed paragraphs into topics", page)
+        self.assertIn("Topic organisation is optional and will not rewrite your wording", page)
+        self.assertIn("/api/staged-meeting-minutes/organize-discussion", page)
+        self.assertIn("generateSimplifiedDiscussionNarrative", api)
+        self.assertIn("simplified_contextual_discussion_narrative_v3", api)
+
     def test_discussion_point_editor_reserves_primary_width_for_review_text(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

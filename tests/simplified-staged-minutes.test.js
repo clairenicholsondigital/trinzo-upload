@@ -113,6 +113,60 @@ test('blank meeting context leaves simplified prompts unchanged', async () => {
   assert.deepEqual(result.telemetry.contextApplied, { meetingType: false, meetingPurpose: false, scope: 'grouping_only' });
 });
 
+test('discussion narrative returns contextual paragraphs without sentence-level topic assignment', async () => {
+  const narrativePrepared = prepared([]);
+  narrativePrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Jacqui Fox', text: 'I will add myself to the clinical review call about the alarm configuration.' },
+    { id: 'line_2_unit_0', speaker: 'Andrew Kane', text: 'The mute-button LED behaviour still needs to be verified.' }
+  ];
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    assert.match(prompt, /coherent, highly factual Discussion paragraphs/i);
+    assert.match(prompt, /Do not turn the transcript into isolated sentence-level facts/i);
+    assert.match(prompt, /she would add herself to that/i);
+    assert.match(prompt, /COMPLETE DENOISED TRANSCRIPT EVIDENCE/);
+    return response({ paragraphs: [{
+      text: 'The team discussed the alarm configuration and the unresolved mute-button LED behaviour. Jacqui Fox said she would join the clinical review call, while the actual LED behaviour still required verification.',
+      evidenceIds: ['line_1_unit_0', 'line_2_unit_0']
+    }] });
+  };
+  const result = await simplified.generateDiscussionNarrative('transcript', {
+    apiKey: 'test', fetchImpl, prepared: narrativePrepared,
+    meetingContext: { meetingType: 'Technical file review', meetingPurpose: 'Review alarm changes.' }
+  });
+  assert.equal(result.telemetry.mode, 'contextual_discussion_narrative');
+  assert.equal(result.discussion.length, 1);
+  assert.equal(result.discussion[0].topic, 'Discussion');
+  assert.equal(result.discussion[0].narrative, true);
+  assert.equal(result.discussion[0].points.length, 1);
+  assert.deepEqual(result.discussion[0].pointRefs[0].evidenceIds, ['line_1_unit_0', 'line_2_unit_0']);
+  assert.deepEqual(
+    simplified._private.narrativeEvidenceChunks(Array.from({ length: 131 }, (_, index) => ({ speaker: 'Alex', text: `Evidence ${index}` }))).map((chunk) => chunk.length),
+    [130, 1]
+  );
+  assert.doesNotMatch(simplified.cleanPublicDiscussionPoint('A supported paragraph. [line_293_unit_1, line_293_2]'), /line_293/i);
+  assert.doesNotMatch(simplified.cleanPublicDiscussionPoint('A supported paragraph (line_293_unit_1, line_293_unit_2).'), /line_293/i);
+});
+
+test('optional discussion organisation classifies reviewed paragraphs without rewriting them', async () => {
+  const paragraphs = [
+    { id: 'paragraph_1', text: 'The exact reviewed alarm paragraph remains unchanged.', evidenceIds: ['line_1_unit_0'] },
+    { id: 'paragraph_2', text: 'The exact reviewed software paragraph remains unchanged.', evidenceIds: ['line_2_unit_0'] }
+  ];
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    assert.match(prompt, /classification only/i);
+    assert.match(prompt, /Do not rewrite, split, merge, shorten or omit/i);
+    return response({ groups: [
+      { topic: 'Alarm configuration', paragraphIds: ['paragraph_1'] },
+      { topic: 'Software verification', paragraphIds: ['paragraph_2'] }
+    ] });
+  };
+  const result = await simplified.organizeDiscussionParagraphs(paragraphs, { apiKey: 'test', fetchImpl });
+  assert.deepEqual(result.discussion.map((card) => card.topic), ['Alarm configuration', 'Software verification']);
+  assert.deepEqual(result.discussion.flatMap((card) => card.points), paragraphs.map((paragraph) => paragraph.text));
+});
+
 test('actions scan all denoised evidence even when reviewer-organised groups omit it', async () => {
   const actionPrepared = prepared([]);
   actionPrepared.units = [
@@ -181,9 +235,9 @@ test('shared staged workflow passes reviewer-confirmed type and purpose to discu
   const confirmedDetails = { meetingType: 'Reviewer edited technical review' };
   const confirmedSummary = { meetingPurpose: 'Reviewer edited purpose.', overallTopics: [] };
   await api.stagedEvaluation.stagedWorkflowResponse('discussion', transcript, { confirmedDetails, confirmedSummary }, {
-    generateDiscussionInventory: async (_text, options) => {
+    generateDiscussionNarrative: async (_text, options) => {
       seen.push({ stage: 'discussion', context: options.meetingContext });
-      return { discussion: [{ topic: 'Release evidence', points: ['Evidence was reviewed.'] }], telemetry: { tokenUsage: [] } };
+      return { discussion: [{ topic: 'Discussion', points: ['Evidence was reviewed in context.'], narrative: true }], telemetry: { tokenUsage: [] } };
     }
   });
   await api.stagedEvaluation.stagedWorkflowResponse('actions', transcript, {

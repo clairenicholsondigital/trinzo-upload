@@ -67,6 +67,8 @@ const {
   generateTopics: generateSimplifiedTopics,
   generateDiscussion: generateSimplifiedDiscussion,
   generateDiscussionInventory: generateSimplifiedDiscussionInventory,
+  generateDiscussionNarrative: generateSimplifiedDiscussionNarrative,
+  organizeDiscussionParagraphs: organizeSimplifiedDiscussionParagraphs,
   generateActions: generateSimplifiedActions
 } = require('../utils/simplifiedStagedMinutes');
 const {
@@ -3675,7 +3677,7 @@ function stagedEvaluationVisibleOutput(state = {}) {
 function stagedNoEditStageMessage(stage) {
   if (stage === 'details') return 'Meeting details generated. Review or edit this screen before continuing.';
   if (stage === 'summary') return 'Objectives and summary generated. Review or edit them before continuing.';
-  if (stage === 'discussion') return 'Discussion points grouped from the complete denoised transcript for reviewer organisation.';
+  if (stage === 'discussion') return 'A coherent evidence-grounded Discussion draft was generated for review before optional topic organisation.';
   if (stage === 'actions') return 'Actions generated. Check owners and dates before continuing.';
   return 'This staged screen has been generated.';
 }
@@ -4024,7 +4026,7 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
     }
 
     if (stage === 'discussion') {
-      const generated = await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, {
+      const generated = await (options.generateDiscussionNarrative || options.generateDiscussionInventory || generateSimplifiedDiscussionNarrative)(transcript.text, {
         ...options,
         meetingContext: confirmedMeetingContextForSimplifiedStage(confirmed)
       });
@@ -4032,7 +4034,7 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
         result: {
           ...result,
           pipeline: 'simplified_staged_minilm_trooper_v1',
-          strategy: 'simplified_discussion_inventory_v2',
+          strategy: 'simplified_contextual_discussion_narrative_v3',
           screens: { ...(result.screens || {}), discussion: generated.discussion },
           validationFlags: validationFlagsAfterSimplifiedOverride(result.validationFlags, stage, generated.discussion)
         },
@@ -4101,7 +4103,7 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
   const meetingContext = confirmedMeetingContextForSimplifiedStage(confirmed);
   try {
     const generated = stage === 'discussion'
-      ? await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, { ...options, meetingContext })
+      ? await (options.generateDiscussionNarrative || options.generateDiscussionInventory || generateSimplifiedDiscussionNarrative)(transcript.text, { ...options, meetingContext })
       : await (async () => {
           if (!topics.length) throw new Error('No reviewer-organised discussion groups were available for the simplified actions stage.');
           return (options.generateActions || generateSimplifiedActions)(transcript.text, topics, {
@@ -4140,7 +4142,7 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
       fileName: transcript.fileName || null,
       transcriptLength: transcript.text.length,
       pipeline: 'simplified_staged_minilm_trooper_v1',
-      strategy: stage === 'discussion' ? 'simplified_discussion_inventory_v2' : 'simplified_per_reviewed_group_actions_v2',
+      strategy: stage === 'discussion' ? 'simplified_contextual_discussion_narrative_v3' : 'simplified_per_reviewed_group_actions_v2',
       stagedStage: stage,
       screens: { [stage]: output },
       validationFlags: validationFlagsAfterSimplifiedOverride([], stage, output),
@@ -4157,10 +4159,10 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
         trooper: {
           used: true,
           reason: stage === 'discussion'
-            ? `${output.reduce((sum, card) => sum + (card.points || []).length, 0)} grounded discussion point(s) returned as a whole-transcript inventory.`
+            ? `${output.reduce((sum, card) => sum + (card.points || []).length, 0)} grounded contextual discussion paragraph(s) returned from the denoised transcript.`
             : `${output.length} grounded action(s) returned across ${topics.length} reviewer-organised group call(s).`,
           usage,
-          input: stage === 'discussion' ? 'whole_denoised_transcript_inventory' : 'reviewer_organised_evidence'
+          input: stage === 'discussion' ? 'whole_denoised_transcript_narrative' : 'reviewer_organised_evidence'
         }
       }
     };
@@ -6760,6 +6762,42 @@ router.post('/staged-meeting-minutes/canonical-no-edit-pass', requireAuth, withT
     return sendTestError(res, error);
   }
 }));
+
+router.post('/staged-meeting-minutes/organize-discussion', requireAuth, async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const confirmedDiscussion = parseStagedJsonArray(req.body?.confirmedDiscussion);
+    const paragraphs = [];
+    confirmedDiscussion.forEach((card) => {
+      const points = Array.isArray(card?.points) ? card.points : [];
+      const refs = Array.isArray(card?.pointRefs) ? card.pointRefs : [];
+      points.forEach((text, index) => paragraphs.push({
+        id: `paragraph_${paragraphs.length + 1}`,
+        text,
+        evidenceIds: Array.isArray(refs[index]?.evidenceIds) ? refs[index].evidenceIds : []
+      }));
+    });
+    const meetingContext = confirmedMeetingContextForSimplifiedStage({
+      details: parseStagedJsonObject(req.body?.confirmedDetails),
+      summary: parseStagedJsonObject(req.body?.confirmedSummary)
+    });
+    const generated = await organizeSimplifiedDiscussionParagraphs(paragraphs, { meetingContext });
+    console.info(JSON.stringify({
+      event: 'staged_discussion_paragraphs_organized',
+      paragraphCount: paragraphs.length,
+      topicCount: generated.discussion.length,
+      durationMs: Date.now() - startedAt
+    }));
+    return res.json({
+      ok: true,
+      screens: { discussion: generated.discussion },
+      telemetry: generated.telemetry
+    });
+  } catch (error) {
+    safeLogError('[Staged discussion paragraph organisation failed]', error);
+    return sendTestError(res, error);
+  }
+});
 
 router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, res) => {
   const startedAt = Date.now();

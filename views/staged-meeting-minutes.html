@@ -167,7 +167,12 @@ textarea { min-height:110px; resize:vertical; }
 .discussion-point-tools button { padding:.4rem .55rem; font-size:.78rem; }
 .discussion-organizer-note { margin:0 0 .75rem; padding:.7rem .8rem; border:1px solid #b9dde4; border-radius:10px; background:#f8fcfd; color:#334752; font-size:.9rem; }
 .discussion-controls { display:flex; gap:.5rem; justify-content:flex-end; margin-bottom:.75rem; flex-wrap:wrap; }
+.discussion-controls[hidden] { display:none; }
 .discussion-controls button { padding:.45rem .7rem; }
+.discussion-narrative-shell { display:grid; gap:.55rem; padding:.85rem; border:1px solid #cbd7df; border-radius:12px; background:#fbfdfe; color:#27323a; }
+.discussion-narrative-shell label { color:#02173B; }
+.discussion-narrative-input { min-height:32rem; background:#fff !important; color:#17222c !important; border-color:#b8c7d2 !important; line-height:1.65; }
+.discussion-narrative-help { color:#596875; font-size:.86rem; }
 .action-review-groups { display:grid; gap:.7rem; margin-top:1rem; }
 .action-review-group { border:1px solid #d9e1e8; border-radius:10px; background:#fff; color:#27323a; overflow:hidden; }
 .action-review-group summary { cursor:pointer; padding:.7rem .8rem; font-weight:700; background:#f8fafc; }
@@ -756,17 +761,20 @@ td select {
       <article class="screen" data-screen="2">
         <div class="screen-header">
           <div>
-            <h2>Key discussion points</h2>
-            <p class="intro">Did we capture the important conversation properly?</p>
+            <h2>Discussion draft</h2>
+            <p class="intro">Does this give an accurate, understandable account of the important conversation?</p>
           </div>
           <div class="screen-header-meta"><span class="progress-pill">3 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
-        <div class="discussion-controls">
+        <div id="discussionNarrativeControls" class="discussion-controls" hidden>
+          <button id="organizeDiscussionBtn" class="secondary" type="button">Organise reviewed paragraphs into topics</button>
+        </div>
+        <div id="discussionOrganizerControls" class="discussion-controls">
           <button id="addDiscussionTopicBtn" class="secondary" type="button">Add topic</button>
           <button id="expandDiscussionBtn" class="secondary" type="button">Expand all</button>
           <button id="collapseDiscussionBtn" class="secondary" type="button">Collapse all</button>
         </div>
-        <p class="discussion-organizer-note"><strong>First-pass grouping:</strong> rename the suggested topics, drag points between groups, or use each point's “Move to” menu. Anything uncertain stays visible under Unassigned until you place it.</p>
+        <p id="discussionOrganizerNote" class="discussion-organizer-note"><strong>Topic organisation:</strong> rename the suggested topics, drag paragraphs between groups, or use each paragraph's “Move to” menu. Anything not confidently grouped stays visible under Unassigned.</p>
         <div id="discussionList" class="discussion-list"></div>
       </article>
 
@@ -894,6 +902,10 @@ td select {
   var expandDiscussionButton = document.getElementById('expandDiscussionBtn');
   var collapseDiscussionButton = document.getElementById('collapseDiscussionBtn');
   var addDiscussionTopicButton = document.getElementById('addDiscussionTopicBtn');
+  var organizeDiscussionButton = document.getElementById('organizeDiscussionBtn');
+  var discussionNarrativeControls = document.getElementById('discussionNarrativeControls');
+  var discussionOrganizerControls = document.getElementById('discussionOrganizerControls');
+  var discussionOrganizerNote = document.getElementById('discussionOrganizerNote');
   var discussionList = document.getElementById('discussionList');
   var actionsTableBody = document.getElementById('actionsTableBody');
   var addActionRowButton = document.getElementById('addActionRowBtn');
@@ -1303,7 +1315,7 @@ td select {
     if (stage === 'details') return prefix + 'meeting details are being refreshed.';
     if (stage === 'summary' && !isRegeneration) return 'Generating objectives and summary with AI';
     if (stage === 'summary') return prefix + 'objectives and summary are being written.';
-    if (stage === 'discussion') return prefix + 'a complete discussion inventory is being grouped.';
+    if (stage === 'discussion') return prefix + 'a coherent, evidence-grounded discussion draft is being written.';
     if (stage === 'actions') return prefix + 'actions, owners and dates are being checked.';
     return prefix + 'this staged screen is being generated.';
   }
@@ -1312,7 +1324,7 @@ td select {
     var prefix = isRegeneration ? 'AI generation step re-run complete. ' : '';
     if (stage === 'details') return prefix + 'Meeting details generated. Review or edit this screen before continuing.';
     if (stage === 'summary') return prefix + 'Objectives and summary generated. Review or edit them before continuing.';
-    if (stage === 'discussion') return prefix + 'Discussion points grouped for review. Assign or move anything that needs a different topic.';
+    if (stage === 'discussion') return prefix + 'Discussion draft generated. Review the connected account before optionally organising its paragraphs into topics.';
     if (stage === 'actions') return prefix + 'Actions generated. Check owners and dates before continuing.';
     return prefix + 'This staged screen has been generated.';
   }
@@ -1535,7 +1547,7 @@ td select {
     if (stage === 'details') stagedState.details = detailsFromDom();
     if (stage === 'summary') stagedState.summary = summaryFromDom();
     if (stage === 'discussion') stagedState.discussion = discussionRowsFromReview().map(function (item) {
-      return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs };
+      return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs, narrative: Boolean(item.narrative) };
     });
     if (stage === 'actions') stagedState.actions = actionsFromReview();
   }
@@ -1579,6 +1591,27 @@ td select {
   function renderDiscussionCards(cards) {
     if (!discussionList) return;
     var items = Array.isArray(cards) ? cards.slice() : [];
+    var narrativeCard = items.length === 1 && items[0] && items[0].narrative === true ? items[0] : null;
+    if (narrativeCard) {
+      var narrativePoints = (Array.isArray(narrativeCard.points) ? narrativeCard.points : []).map(cleanDiscussionDisplayText).filter(Boolean);
+      var narrativeRefs = narrativePoints.map(function (_point, index) {
+        var supplied = Array.isArray(narrativeCard.pointRefs) ? narrativeCard.pointRefs[index] : null;
+        return { evidenceIds: supplied && Array.isArray(supplied.evidenceIds) ? supplied.evidenceIds : [] };
+      });
+      if (discussionNarrativeControls) discussionNarrativeControls.hidden = false;
+      if (discussionOrganizerControls) discussionOrganizerControls.hidden = true;
+      if (discussionOrganizerNote) discussionOrganizerNote.hidden = true;
+      discussionList.innerHTML = '<section class="discussion-narrative-shell" data-topic-id="discussion-narrative" data-paragraph-refs="' + escapeHtml(JSON.stringify(narrativeRefs)) + '">' +
+        '<label for="discussionNarrativeInput">Meeting discussion</label>' +
+        '<textarea id="discussionNarrativeInput" class="discussion-narrative-input" aria-label="Meeting discussion draft">' + escapeHtml(narrativePoints.join('\n\n')) + '</textarea>' +
+        '<span class="discussion-narrative-help">Review this as a connected account. Keep a blank line between paragraphs. Topic organisation is optional and will not rewrite your wording.</span>' +
+      '</section>';
+      applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || 'discussion');
+      return;
+    }
+    if (discussionNarrativeControls) discussionNarrativeControls.hidden = true;
+    if (discussionOrganizerControls) discussionOrganizerControls.hidden = false;
+    if (discussionOrganizerNote) discussionOrganizerNote.hidden = false;
     if (!items.some(function (card) { return /^unassigned$/i.test(String(card && card.topic || '').trim()); })) {
       items.push({ topic: 'Unassigned', topicId: 'unassigned', points: [], pointRefs: [], suggested: false });
     }
@@ -1745,6 +1778,27 @@ td select {
   }
 
   function discussionRowsFromReview() {
+    var narrativeShell = discussionList && discussionList.querySelector('.discussion-narrative-shell');
+    if (narrativeShell) {
+      var narrativeInput = narrativeShell.querySelector('.discussion-narrative-input');
+      var paragraphs = String(narrativeInput ? narrativeInput.value : '').split(/\n\s*\n+/).map(cleanDiscussionDisplayText).filter(Boolean);
+      var suppliedRefs = [];
+      try { suppliedRefs = JSON.parse(narrativeShell.getAttribute('data-paragraph-refs') || '[]'); } catch (_error) { suppliedRefs = []; }
+      var narrativePointRefs = paragraphs.map(function (_paragraph, index) {
+        var supplied = Array.isArray(suppliedRefs) ? suppliedRefs[index] : null;
+        return { evidenceIds: supplied && Array.isArray(supplied.evidenceIds) ? supplied.evidenceIds : [] };
+      });
+      var narrativeEvidenceIds = [];
+      narrativePointRefs.forEach(function (ref) { (ref.evidenceIds || []).forEach(function (id) { if (!narrativeEvidenceIds.includes(id)) narrativeEvidenceIds.push(id); }); });
+      return paragraphs.length ? [{
+        topic: 'Discussion',
+        bullets: paragraphs,
+        topicId: 'discussion-narrative',
+        evidenceIds: narrativeEvidenceIds,
+        pointRefs: narrativePointRefs,
+        narrative: true
+      }] : [];
+    }
     return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-card') : []).map(function (card) {
       var topicInput = card.querySelector('.discussion-topic-input');
       var pointItems = Array.prototype.slice.call(card.querySelectorAll('.discussion-point-item'));
@@ -3113,7 +3167,7 @@ td select {
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {
       renderDiscussionCards(screensPayload.discussion);
       stagedState.discussion = discussionRowsFromReview().map(function (item) {
-        return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs };
+        return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs, narrative: Boolean(item.narrative) };
       });
       generatedStageVersions.discussion = cloneReviewValue(stagedState.discussion);
     }
@@ -4084,6 +4138,45 @@ td select {
       Array.prototype.slice.call(document.querySelectorAll('.discussion-card')).forEach(function (card) { card.open = false; });
     });
   }
+  if (organizeDiscussionButton) {
+    organizeDiscussionButton.addEventListener('click', async function () {
+      var reviewed = discussionRowsFromReview();
+      if (!reviewed.length || !reviewed[0].narrative) return;
+      commitStageState('discussion');
+      organizeDiscussionButton.disabled = true;
+      organizeDiscussionButton.textContent = 'Organising reviewed paragraphs…';
+      setReviewStatus('Organising the paragraphs into topics without rewriting them…', false);
+      try {
+        var payload = await fetchJson('/api/staged-meeting-minutes/organize-discussion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            confirmedDetails: stagedState.details || detailsFromDom(),
+            confirmedSummary: stagedState.summary || summaryFromDom(),
+            confirmedDiscussion: stagedState.discussion
+          })
+        });
+        var grouped = payload && payload.screens && Array.isArray(payload.screens.discussion) ? payload.screens.discussion : [];
+        if (!grouped.length) throw new Error('No topic groups were returned.');
+        renderDiscussionCards(grouped);
+        stagedState.discussion = discussionRowsFromReview().map(function (item) {
+          return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs, narrative: false };
+        });
+        recordWorkflowInteraction('discussion_paragraphs_organized', {
+          paragraphCount: reviewed[0].bullets.length,
+          topicCount: stagedState.discussion.length
+        }, { source: 'discussion_narrative' });
+        renderFinalDocument();
+        saveDraft();
+        setReviewStatus('Reviewed paragraphs organised into topics. Their wording has been preserved.', false);
+      } catch (error) {
+        setReviewStatus(error && error.message ? error.message : 'The paragraphs could not be organised. Your reviewed draft is unchanged.', true);
+      } finally {
+        organizeDiscussionButton.disabled = false;
+        organizeDiscussionButton.textContent = 'Organise reviewed paragraphs into topics';
+      }
+    });
+  }
   if (addDiscussionTopicButton) {
     addDiscussionTopicButton.addEventListener('click', function () {
       var topic = window.prompt('Name the new discussion topic:');
@@ -4379,7 +4472,7 @@ td select {
       recordWorkflowInteraction('stage_continue_blocked', {
         reason: 'unresolved_workstreams'
       }, { source: 'next_button', immediate: true });
-      setReviewStatus('Resolve each missing substantive workstream before moving on: add it to a discussion group, leave it in Unassigned for review, or intentionally omit it.', true);
+      setReviewStatus('Resolve each missing substantive workstream before moving on: include it in the discussion draft or intentionally omit it.', true);
       drawAttentionToEditorialChecks();
       return;
     }

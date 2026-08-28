@@ -25,7 +25,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const PAGE_PATH = path.join(REPO_ROOT, 'views', 'staged-meeting-minutes.html');
 const TRANSCRIPT_PATH = path.join(REPO_ROOT, 'scripts', 'transcript-tests', '001_status_review', 'transcript.txt');
 
-function startStubServer() {
+function startStubServer(options = {}) {
   const api = require('../routes/api').stagedEvaluation;
   const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 
@@ -66,6 +66,22 @@ function startStubServer() {
     let payload;
     if (stage === 'details') {
       payload = api.extractStagedDetailsFromTranscript(text, '');
+    } else if (stage === 'discussion' && options.narrativeDiscussion) {
+      payload = {
+        stagedStage: 'discussion',
+        screens: {
+          discussion: [{
+            topic: 'Discussion',
+            narrative: true,
+            points: [
+              'The alarm behaviour remained under review, including the unresolved mute-button indication.',
+              'The software documentation was reviewed in the context of the outstanding verification work.'
+            ],
+            pointRefs: [{ evidenceIds: ['line_1_unit_0'] }, { evidenceIds: ['line_2_unit_0'] }]
+          }]
+        },
+        validationFlags: []
+      };
     } else {
       // The live stage, not canonicalStagedResponse: the LLM polish is a network call and
       // this test must be deterministic and offline.
@@ -95,6 +111,21 @@ function startStubServer() {
   app.post('/api/staged-meeting-minutes/review-events', (req, res) => {
     recordedReviewEvents.push(req.body || {});
     res.json({ success: true });
+  });
+  app.post('/api/staged-meeting-minutes/organize-discussion', (req, res) => {
+    const card = Array.isArray(req.body.confirmedDiscussion) ? req.body.confirmedDiscussion[0] : null;
+    const points = Array.isArray(card?.points) ? card.points : [];
+    const refs = Array.isArray(card?.pointRefs) ? card.pointRefs : [];
+    res.json({
+      ok: true,
+      screens: {
+        discussion: points.map((point, index) => ({
+          topic: index === 0 ? 'Alarm verification' : 'Software documentation',
+          points: [point],
+          pointRefs: [refs[index] || { evidenceIds: [] }]
+        }))
+      }
+    });
   });
   app.post('/api/staged-meeting-minutes/terminology-qa/suggestions', (req, res) => res.json({ success: true, suggestions: [] }));
   app.post('/api/staged-meeting-minutes/terminology-qa/decision', (req, res) => res.json({ success: true }));
@@ -214,5 +245,36 @@ test('a reviewer can walk the staged flow and see their corrections acknowledged
   // arrive must be well-formed.
   for (const event of recordedReviewEvents) {
     assert.ok(event.draftId, 'a review event names its draft');
+  }
+});
+
+test('contextual discussion paragraphs are reviewed whole before optional topic organisation', async () => {
+  const transcriptText = fs.readFileSync(TRANSCRIPT_PATH, 'utf8');
+  const { server, port } = await startStubServer({ narrativeDiscussion: true });
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error)));
+  try {
+    await page.goto(`http://127.0.0.1:${port}/staged-meeting-minutes`);
+    await page.fill('#stagedTranscriptText', transcriptText);
+    await page.click('#generateStagedMinutesBtn');
+    await page.waitForFunction(() => document.getElementById('meetingTitle')?.value, null, { timeout: 120000 });
+    await page.click('#nextScreenBtn');
+    await page.waitForFunction(() => document.getElementById('meetingPurpose')?.value, null, { timeout: 300000 });
+    await page.click('#nextScreenBtn');
+    await page.waitForSelector('#discussionNarrativeInput', { timeout: 300000 });
+    assert.equal(await page.locator('#discussionOrganizerControls').isHidden(), true);
+    assert.equal(await page.locator('#discussionNarrativeControls').isVisible(), true);
+    const reviewedFirstParagraph = 'The reviewer-confirmed alarm paragraph keeps enough context to explain the unresolved mute-button indication.';
+    await page.fill('#discussionNarrativeInput', `${reviewedFirstParagraph}\n\nThe software documentation remained linked to the outstanding verification work.`);
+    await page.click('#organizeDiscussionBtn');
+    await page.waitForSelector('.discussion-card');
+    assert.equal(await page.locator('.discussion-point-input').first().inputValue(), reviewedFirstParagraph);
+    assert.equal(await page.locator('#discussionOrganizerControls').isVisible(), true);
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await browser.close();
+    server.close();
   }
 });

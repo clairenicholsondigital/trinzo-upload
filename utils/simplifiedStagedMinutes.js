@@ -428,6 +428,162 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
   };
 }
 
+function discussionNarrativePrompt(evidence, meetingContext = {}, segment = {}) {
+  return [
+    'Write coherent, highly factual Discussion paragraphs suitable for official meeting minutes from this contiguous section of the meeting.',
+    `This is section ${Number(segment.index || 0) + 1} of ${Number(segment.total || 1)}. Do not mention sections, chunks or processing in the output.`,
+    'Return 2 to 3 substantial paragraphs, using one paragraph per related cluster of workstreams where practical. Each paragraph should contain enough context that a reviewer who was not present can understand what was being discussed.',
+    'Comprehensively cover every substantive workstream in the supplied evidence. Before returning, scan the complete supplied section again for omitted technical, operational, compliance, risk, documentation, decision and unresolved-verification material.',
+    'Do not turn the transcript into isolated sentence-level facts. Connect related turns and resolve conversational references only when the evidence makes the referent clear.',
+    'Never publish vague fragments such as "a change was made", "she would add herself to that" or "it was discussed" without identifying the supported change, call, document, system or workstream.',
+    'Keep each paragraph focused on related subject matter so it can optionally be organised under a topic later, but do not add headings or topic labels now.',
+    'Preserve uncertainty, questions, disagreement, conditional reasoning, current status and responsibility attribution. Never upgrade a possibility, assumption or unresolved question into a fact.',
+    'Keep options, considerations and proposed controls explicitly tentative unless the evidence clearly records acceptance. Do not describe a control as being implemented merely because it was discussed.',
+    'Include exact figures, dates, codes, frequencies or version numbers only when the cited evidence states them unambiguously; omit the exact value when the conversation is conflicting or unclear.',
+    'Keep each person’s responsibility distinct. Do not transfer reviewing, incorporating, approving, testing or documenting work from one participant to another.',
+    'When work is deliberately deferred until something is checked, preserve the unresolved prerequisite and sequence; do not misstate that caution as rejection of the later work.',
+    'Describe completed work when it materially explains the current position. Do not extract or label a separate action or follow-up list, add deadlines, or invent decisions and conclusions.',
+    'Use polished third-person meeting-minutes prose. Avoid transcript fragments, timestamps, filler and repetitive speaker-by-speaker narration; name a speaker only when attribution or responsibility matters.',
+    'Evidence IDs must appear only in evidenceIds, never inside paragraph text.',
+    'Every paragraph must cite the supplied evidence IDs that support it. Return JSON only:',
+    '{"paragraphs":[{"text":"...","evidenceIds":["line_1_unit_0"]}]}',
+    '',
+    ...meetingContextPromptLines(meetingContext),
+    'COMPLETE DENOISED TRANSCRIPT EVIDENCE:',
+    JSON.stringify(evidence)
+  ].join('\n');
+}
+
+function narrativeEvidenceChunks(units = [], maxRows = 130, maxChars = 28000) {
+  const chunks = [];
+  let current = [];
+  let chars = 0;
+  for (const unit of Array.isArray(units) ? units : []) {
+    const size = clean(unit?.text).length + clean(unit?.speaker).length + 80;
+    if (current.length && (current.length >= maxRows || chars + size > maxChars)) {
+      chunks.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(unit);
+    chars += size;
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+async function generateDiscussionNarrative(transcriptText, options = {}) {
+  assertTrooperConfigured(options);
+  const prepared = options.prepared || await prepareTranscript(transcriptText, [], options);
+  const evidence = Array.isArray(prepared.units) ? prepared.units : [];
+  if (!evidence.length) throw new Error('Simplified discussion narrative had no retained transcript evidence.');
+  const chunks = narrativeEvidenceChunks(evidence);
+  const calls = await mapBounded(chunks, (chunk, index) => retryJsonGenerationOnce(
+    discussionNarrativePrompt(chunk, options.meetingContext, { index, total: chunks.length }),
+    options,
+    2400
+  ).then((call) => ({ ...call, evidence: chunk, index })), { ...options, concurrency: Math.min(3, chunks.length) });
+  const paragraphs = [];
+  for (const call of calls) {
+    if (!Array.isArray(call.output.paragraphs)) throw new Error(`Malformed discussion narrative response for section ${call.index + 1}.`);
+    for (const candidate of call.output.paragraphs.slice(0, 6)) {
+      const text = cleanPublicDiscussionPoint(candidate?.text);
+      const cited = citedEvidence(candidate, call.evidence);
+      if (!text || text.length < 60 || !cited.ids.length) continue;
+      paragraphs.push({ text, evidenceIds: cited.ids });
+    }
+  }
+  if (!paragraphs.length) throw new Error('Simplified discussion narrative returned no grounded contextual paragraphs.');
+  const evidenceIds = uniqueStrings(paragraphs.flatMap((paragraph) => paragraph.evidenceIds), 80);
+  const context = normaliseMeetingContext(options.meetingContext);
+  return {
+    discussion: [{
+      topic: 'Discussion',
+      topicId: 'discussion-narrative',
+      points: paragraphs.map((paragraph) => paragraph.text),
+      pointRefs: paragraphs.map((paragraph) => ({ evidenceIds: paragraph.evidenceIds })),
+      evidenceIds,
+      narrative: true,
+      suggested: false
+    }],
+    telemetry: {
+      denoiser: denoiserTelemetry(prepared),
+      mode: 'contextual_discussion_narrative',
+      retainedEvidenceCount: evidence.length,
+      paragraphCount: paragraphs.length,
+      calls: calls.length,
+      sectionCount: chunks.length,
+      contextApplied: {
+        meetingType: Boolean(context.meetingType),
+        meetingPurpose: Boolean(context.meetingPurpose),
+        scope: 'soft_framing'
+      },
+      tokenUsage: calls.map((call) => call.usage).filter(Boolean),
+      timingMs: Math.max(...calls.map((call) => Number(call.timingMs || 0))),
+      perSection: calls.map((call) => ({ section: call.index + 1, evidenceCount: call.evidence.length, timingMs: call.timingMs, tokenUsage: call.usage || null, transport: call.transport || null }))
+    }
+  };
+}
+
+function discussionParagraphGroupingPrompt(paragraphs, meetingContext = {}) {
+  return [
+    'Organise the reviewer-confirmed meeting-minutes paragraphs into concise substantive topic groups.',
+    'This is classification only. Assign every paragraph ID exactly once. Do not rewrite, split, merge, shorten or omit any paragraph.',
+    'Use 2 to 8 concrete transcript-derived workstream headings where the paragraphs support that many distinct groups. Do not force unrelated paragraphs together.',
+    'Exclude headings called General, Miscellaneous, Actions, Follow-ups, Meeting administration or Status update.',
+    'Return JSON only:',
+    '{"groups":[{"topic":"...","paragraphIds":["paragraph_1"]}]}',
+    '',
+    ...meetingContextPromptLines(meetingContext),
+    'REVIEWER-CONFIRMED PARAGRAPHS:',
+    JSON.stringify(paragraphs.map(({ id, text }) => ({ id, text })))
+  ].join('\n');
+}
+
+async function organizeDiscussionParagraphs(input = [], options = {}) {
+  assertTrooperConfigured(options);
+  const paragraphs = (Array.isArray(input) ? input : []).slice(0, 12).map((item, index) => ({
+    id: clean(item?.id) || `paragraph_${index + 1}`,
+    text: clean(item?.text),
+    evidenceIds: uniqueStrings(item?.evidenceIds, 20)
+  })).filter((item) => item.text);
+  if (!paragraphs.length) throw new Error('No reviewed discussion paragraphs were supplied for organisation.');
+  const call = await retryJsonGenerationOnce(discussionParagraphGroupingPrompt(paragraphs, options.meetingContext), options, 1200);
+  if (!Array.isArray(call.output.groups)) throw new Error('Malformed discussion paragraph organisation response.');
+  const byId = new Map(paragraphs.map((paragraph) => [paragraph.id, paragraph]));
+  const assigned = new Set();
+  const discussion = [];
+  for (const candidate of call.output.groups) {
+    const topic = validTopic(candidate?.topic);
+    if (!topic) continue;
+    const grouped = uniqueStrings(candidate?.paragraphIds, paragraphs.length)
+      .filter((id) => byId.has(id) && !assigned.has(id))
+      .map((id) => { assigned.add(id); return byId.get(id); });
+    if (!grouped.length) continue;
+    discussion.push({
+      topic,
+      topicId: crypto.createHash('sha1').update(topic).digest('hex').slice(0, 12),
+      points: grouped.map((paragraph) => paragraph.text),
+      pointRefs: grouped.map((paragraph) => ({ evidenceIds: paragraph.evidenceIds })),
+      evidenceIds: uniqueStrings(grouped.flatMap((paragraph) => paragraph.evidenceIds), 80),
+      suggested: true
+    });
+  }
+  const omitted = paragraphs.filter((paragraph) => !assigned.has(paragraph.id));
+  if (omitted.length) {
+    discussion.push({
+      topic: 'Unassigned',
+      topicId: 'unassigned',
+      points: omitted.map((paragraph) => paragraph.text),
+      pointRefs: omitted.map((paragraph) => ({ evidenceIds: paragraph.evidenceIds })),
+      evidenceIds: uniqueStrings(omitted.flatMap((paragraph) => paragraph.evidenceIds), 80),
+      suggested: false
+    });
+  }
+  if (!discussion.length) throw new Error('Discussion paragraph organisation returned no valid groups.');
+  return { discussion, telemetry: { mode: 'reviewed_paragraph_grouping', calls: 1, paragraphCount: paragraphs.length, groupCount: discussion.length, tokenUsage: [call.usage].filter(Boolean), timingMs: call.timingMs } };
+}
+
 function actionPrompt(topics, evidence, meetingContext = {}) {
   return [
     'Read the complete denoised meeting transcript evidence and extract all explicit or strongly supported outstanding follow-up actions suitable for official meeting minutes.',
@@ -526,6 +682,8 @@ function publishableActionText(value) {
 
 function cleanPublicDiscussionPoint(value) {
   return clean(value)
+    .replace(/\s*\[\s*line_[^\]]*\]/gi, '')
+    .replace(/\s*\(\s*line_[^\)]*\)/gi, '')
     .replace(/\s*\[(?:line_\d+_unit_\d+)(?:\s*,\s*line_\d+_unit_\d+)*\]/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -870,6 +1028,8 @@ module.exports = {
   generateTopics,
   generateDiscussion,
   generateDiscussionInventory,
+  generateDiscussionNarrative,
+  organizeDiscussionParagraphs,
   generateActions,
   ownerIsSupported,
   actionCommitmentSupported,
@@ -878,5 +1038,5 @@ module.exports = {
   deadlineIsSupported,
   duplicateAction,
   clearPreparedCache,
-  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks, actionEvidenceChunks }
+  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks, narrativeEvidenceChunks, actionEvidenceChunks }
 };
