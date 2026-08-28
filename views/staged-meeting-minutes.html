@@ -2206,6 +2206,13 @@ td select {
     confirmedActionCount.textContent = count === 0
       ? 'No actions found'
       : (count === 1 ? '1 action found' : count + ' actions found');
+    // "These are the actions we are confident of" says nothing useful about none of them.
+    var completenessNote = document.getElementById('actionCompletenessNote');
+    if (completenessNote) {
+      completenessNote.textContent = count === 0
+        ? 'We could not find an action this transcript clearly supports. Some meetings genuinely end without one — add any the meeting agreed.'
+        : 'These are the actions we are confident the transcript supports. It is normal for a meeting to contain more — please add anything missing.';
+    }
   }
 
   function resolveReviewItem(message, element, key) {
