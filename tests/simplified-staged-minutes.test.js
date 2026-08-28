@@ -377,6 +377,52 @@ test('production publication pass uses the local MiniLM classifier and preserves
   assert.deepEqual(Object.keys(result.actions[0]), ['owner', 'action', 'deadline']);
 });
 
+test('production defaults to conservative publication without running recall rescue', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [{ id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'I will verify the release evidence.' }];
+  let recallCalls = 0;
+  const result = await simplified.generateActions('transcript', ['Release verification'], {
+    apiKey: 'test', prepared: actionPrepared,
+    fetchImpl: async () => response({ actions: [{ owner: 'Alex Smith', action: 'Verify the release evidence', deadline: 'Not stated', evidenceIds: ['line_1_unit_0'] }] }),
+    useActionSuitabilityFilter: true,
+    actionRecallRunner: async () => { recallCalls += 1; return { ok: true, decisions: [] }; },
+    actionSuitabilityRunner: async (candidates) => ({
+      ok: true, threshold: 0.35,
+      decisions: candidates.map((candidate) => ({ id: candidate.id, keep: true, showProbability: 0.8 }))
+    })
+  });
+  assert.equal(recallCalls, 0);
+  assert.equal(result.telemetry.recallRescue.attempted, false);
+  assert.equal(result.telemetry.recallRescue.reason, 'disabled');
+});
+
+test('only borderline actions with concrete uncertainty are marked for wording review', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'If that is required, I will update it, but the exact change is unclear.' },
+    { id: 'line_2_unit_0', speaker: 'Alex Smith', text: 'I will verify the release evidence before closure.' },
+    { id: 'line_3_unit_0', speaker: 'Alex Smith', text: 'I will issue the final report tomorrow.' }
+  ];
+  const result = await simplified.generateActions('transcript', ['Release verification'], {
+    apiKey: 'test', prepared: actionPrepared,
+    fetchImpl: async () => response({ actions: [
+      { owner: 'Alex Smith', action: 'Update the change', deadline: 'Not stated', evidenceIds: ['line_1_unit_0'] },
+      { owner: 'Alex Smith', action: 'Verify the release evidence', deadline: 'Not stated', evidenceIds: ['line_2_unit_0'] },
+      { owner: 'Alex Smith', action: 'Issue the final report', deadline: 'tomorrow', evidenceIds: ['line_3_unit_0'] }
+    ] }),
+    useActionSuitabilityFilter: true,
+    actionSuitabilityRunner: async (candidates) => ({
+      ok: true, threshold: 0.35,
+      decisions: candidates.map((candidate, index) => ({
+        id: candidate.id, keep: true, showProbability: [0.39, 0.39, 0.82][index]
+      }))
+    })
+  });
+  assert.equal(result.actions[0].wordingUnresolved, true);
+  assert.equal(Object.hasOwn(result.actions[1], 'wordingUnresolved'), false, 'a concrete unresolved verification is not highlighted by itself');
+  assert.equal(Object.hasOwn(result.actions[2], 'wordingUnresolved'), false, 'high-confidence wording is not highlighted');
+});
+
 test('recall classifier nominates an uncovered window for targeted recovery before the publication gate', async () => {
   const actionPrepared = prepared([]);
   actionPrepared.units = [

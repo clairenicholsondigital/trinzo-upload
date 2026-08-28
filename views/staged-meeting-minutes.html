@@ -381,6 +381,7 @@ tr.wording-unresolved td:first-child { box-shadow:inset 3px 0 0 #d9a514; }
 .considered-options li { margin-bottom:.35rem; font-size:.88rem; }
 .considered-options .considered-by { color:#4a5560; font-size:.8rem; }
 .wording-unresolved-note { display:inline-block; margin-bottom:4px; padding:1px 8px; border-radius:6px; background:#f5e2b8; color:#7a5b12; font-size:0.72rem; font-weight:600; }
+.action-remove-button { min-height:1.85rem; padding:.25rem .5rem; white-space:nowrap; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
 @media (max-width:760px) {
   .stage-validation-flag { grid-template-columns:1fr; }
@@ -1761,9 +1762,9 @@ td select {
     var unresolved = Boolean(action.wordingUnresolved);
     return '<tr' + (unresolved ? ' class="wording-unresolved"' : '') + '>' +
       '<td><select class="action-owner-select" data-owner="' + escapeHtml(validReviewerOwner(action.owner)) + '" aria-label="Action owner">' + actionOwnerOptions(action.owner) + '</select></td>' +
-      '<td>' + (unresolved ? '<span class="wording-unresolved-note">Transcript wording — rephrase before sharing</span>' : '') + '<textarea placeholder="Describe the action…">' + escapeHtml(actionText) + '</textarea></td>' +
+      '<td>' + (unresolved ? '<span class="wording-unresolved-note">Check wording against transcript</span>' : '') + '<textarea placeholder="Describe the action…">' + escapeHtml(actionText) + '</textarea></td>' +
       '<td><input value="' + escapeHtml(capitaliseInitial(action.deadline)) + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
-      '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
+      '<td><button class="secondary action-remove-button" type="button" data-action-row="remove" aria-label="Remove action">Remove</button></td>' +
     '</tr>';
   }
 
@@ -4347,13 +4348,8 @@ td select {
       var row = button.closest('tr');
       if (!row) return;
       var action = button.getAttribute('data-action-row');
-      if (action === 'duplicate') {
-        row.insertAdjacentHTML('afterend', renderActionRow(actionFromRow(row)));
-        recordWorkflowInteraction('action_row_duplicated', {
-          ownerPresent: Boolean(actionFromRow(row).owner && actionFromRow(row).owner !== 'Not stated')
-        }, { source: 'action_row_control' });
-      } else if (action === 'delete') {
-        recordWorkflowInteraction('action_row_deleted', {
+      if (action === 'remove') {
+        recordWorkflowInteraction('action_row_removed', {
           ownerPresent: Boolean(actionFromRow(row).owner && actionFromRow(row).owner !== 'Not stated'),
           deadlinePresent: Boolean(actionFromRow(row).deadline)
         }, { source: 'action_row_control' });

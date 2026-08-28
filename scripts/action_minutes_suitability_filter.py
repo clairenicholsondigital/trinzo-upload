@@ -61,6 +61,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input_json")
     parser.add_argument("--model", required=True)
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        help="Override the model bundle publication threshold for deployment calibration.",
+    )
     args = parser.parse_args()
     payload = json.loads(Path(args.input_json).read_text(encoding="utf-8"))
     rows = list(payload.get("actions") or [])
@@ -75,7 +80,9 @@ def main() -> int:
     classifier = bundle["classifier"]
     probabilities = classifier.predict_proba(features(embedder, rows))
     show_index = list(classifier.classes_).index(1)
-    threshold = float(bundle["show_threshold"])
+    threshold = float(args.threshold if args.threshold is not None else bundle["show_threshold"])
+    if not 0 <= threshold <= 1:
+        raise ValueError("Publication threshold must be between 0 and 1.")
     decisions = [{
         "id": compact(row.get("id")) or f"action_{index + 1}",
         "keep": float(probability[show_index]) >= threshold,

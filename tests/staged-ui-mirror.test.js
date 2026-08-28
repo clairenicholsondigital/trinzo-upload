@@ -61,6 +61,16 @@ test('UI mirror route is authenticated and uses the real staged sequence', () =>
   assert.match(source, /if \(stage === 'actions'\) input\.confirmedDiscussion = state\.discussion/);
 });
 
+test('Actions editor uses one-click Remove and a restrained uncertainty label', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'views', 'staged-meeting-minutes.html'), 'utf8');
+  assert.match(source, /data-action-row="remove"[^>]*aria-label="Remove action"/);
+  assert.doesNotMatch(source, /data-action-row="duplicate"/);
+  assert.doesNotMatch(source, /data-action-row="delete"/);
+  assert.match(source, /Check wording against transcript/);
+  assert.match(source, /row\.remove\(\)/);
+  assert.doesNotMatch(source, /confirm\([^)]*Remove action/i);
+});
+
 test('shared workflow serves simplified Actions directly with self-consistent telemetry', async () => {
   const actions = [{ owner: 'Alex Smith', action: 'Complete release verification.', deadline: 'Friday' }];
   const output = await api.stagedEvaluation.stagedWorkflowResponse(

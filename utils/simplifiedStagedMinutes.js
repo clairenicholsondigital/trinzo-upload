@@ -12,6 +12,7 @@ const { buildActionRecallWindows, selectUncoveredRecallWindows } = require('./ac
 const DEFAULT_MODEL = path.join(__dirname, '..', 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
 const DEFAULT_ACTION_SUITABILITY_MODEL = path.join(__dirname, '..', 'artifacts', 'action-minutes-suitability-experimental-v1', 'classifier.joblib');
 const DEFAULT_ACTION_RECALL_MODEL = path.join(__dirname, '..', 'artifacts', 'action-recall-experimental-v5', 'classifier.joblib');
+const DEFAULT_ACTION_SUITABILITY_THRESHOLD = 0.35;
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_TROOPER_MODEL = 'eu_liv_000099';
 const preparedCache = new Map();
@@ -697,7 +698,10 @@ function targetedActionRecallPrompt(topics, evidence, meetingContext = {}) {
 }
 
 async function recoverMissedActions(evidence, existingActions, topics, options = {}) {
-  const enabled = options.useActionRecallRescue ?? !options.fetchImpl;
+  // Recall rescue remains available for isolated experiments, but the reviewer-facing
+  // workflow deliberately favours a shorter, higher-trust list. A missed action is
+  // easier to add than a plausible-looking false action is to diagnose and rewrite.
+  const enabled = options.useActionRecallRescue ?? false;
   const base = { attempted: enabled, used: false, reason: enabled ? '' : 'disabled', windowCount: 0, nominatedCount: 0, selectedCount: 0, calls: 0, recoveredCount: 0 };
   if (!enabled) return { actions: [], telemetry: base, usage: [] };
   const windows = buildActionRecallWindows(evidence);
@@ -896,6 +900,17 @@ function actionEditorPrompt(candidates) {
   ].join('\n');
 }
 
+function actionWordingUnresolved(candidate, probability, threshold) {
+  if (!Number.isFinite(probability) || !Number.isFinite(threshold)) return false;
+  if (probability < threshold || probability > threshold + 0.10) return false;
+  const evidence = (candidate?.evidence || []).map((row) => clean(row?.text)).filter(Boolean).join(' ');
+  const action = clean(candidate?.action);
+  if (!evidence || !action) return false;
+  const evidenceUncertainty = /\?|\b(?:if|whether|unless|depending on|subject to|provided that|assuming|not sure|unclear|need(?:s)? clarif|to be confirm(?:ed)?|yet to be (?:agreed|confirmed|decided|defined))\b/i.test(evidence);
+  const vagueReference = /\b(?:this|that|it|those|these|the same|the issue|the item|the thing|the change)\b/i.test(action);
+  return evidenceUncertainty || vagueReference;
+}
+
 async function editActionsForPublication(actions, evidenceById, options = {}) {
   if (!Array.isArray(actions) || !actions.length) {
     return { actions: [], telemetry: { attempted: false, used: false, reason: 'no_candidates', inputCount: 0, keptCount: 0, removedCount: 0 } };
@@ -923,7 +938,8 @@ async function editActionsForPublication(actions, evidenceById, options = {}) {
           [
             path.join(__dirname, '..', 'scripts', 'action_minutes_suitability_filter.py'),
             inputPath,
-            '--model', process.env.STAGED_ACTION_SUITABILITY_MODEL || DEFAULT_ACTION_SUITABILITY_MODEL
+            '--model', process.env.STAGED_ACTION_SUITABILITY_MODEL || DEFAULT_ACTION_SUITABILITY_MODEL,
+            '--threshold', String(Number(process.env.STAGED_ACTION_SUITABILITY_THRESHOLD || DEFAULT_ACTION_SUITABILITY_THRESHOLD))
           ],
           { timeoutMs: Number(process.env.STAGED_ACTION_SUITABILITY_TIMEOUT_MS || 120000) }
         );
@@ -939,7 +955,15 @@ async function editActionsForPublication(actions, evidenceById, options = {}) {
       if (decisions.size !== candidates.length || candidates.some((candidate) => !decisions.has(candidate.id))) {
         throw new Error('MiniLM action filter did not decide every candidate.');
       }
-      const kept = actions.filter((_item, index) => decisions.get(`action_${index + 1}`).keep);
+      const threshold = Number(result.threshold);
+      const kept = actions.flatMap((item, index) => {
+        const id = `action_${index + 1}`;
+        const decision = decisions.get(id);
+        if (!decision.keep) return [];
+        const candidate = candidates[index];
+        const wordingUnresolved = actionWordingUnresolved(candidate, Number(decision.showProbability), threshold);
+        return [{ ...item, ...(wordingUnresolved ? { wordingUnresolved: true } : {}) }];
+      });
       return {
         actions: kept,
         telemetry: {
@@ -1127,7 +1151,9 @@ async function generateActions(transcriptText, topics, options = {}) {
   const evidenceById = new Map(evidence.map((item) => [clean(item.id), item]));
   const edited = await editActionsForPublication(actions, evidenceById, options);
   return {
-    actions: edited.actions.map(({ owner, action, deadline }) => ({ owner, action, deadline })),
+    actions: edited.actions.map(({ owner, action, deadline, wordingUnresolved }) => ({
+      owner, action, deadline, ...(wordingUnresolved ? { wordingUnresolved: true } : {})
+    })),
     telemetry: {
       denoiser: denoiserTelemetry(prepared),
       topicCount: topicList.length,
