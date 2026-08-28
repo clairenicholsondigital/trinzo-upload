@@ -7,9 +7,11 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fetch = require('node-fetch');
 const { trooperFetch } = require('./trooperTransport');
+const { buildActionRecallWindows, selectUncoveredRecallWindows } = require('./actionRecallRescue');
 
 const DEFAULT_MODEL = path.join(__dirname, '..', 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
 const DEFAULT_ACTION_SUITABILITY_MODEL = path.join(__dirname, '..', 'artifacts', 'action-minutes-suitability-experimental-v1', 'classifier.joblib');
+const DEFAULT_ACTION_RECALL_MODEL = path.join(__dirname, '..', 'artifacts', 'action-recall-experimental-v5', 'classifier.joblib');
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_TROOPER_MODEL = 'eu_liv_000099';
 const preparedCache = new Map();
@@ -676,6 +678,89 @@ function actionPrompt(topics, evidence, meetingContext = {}) {
   ].join('\n');
 }
 
+function targetedActionRecallPrompt(topics, evidence, meetingContext = {}) {
+  return [
+    'Review this bounded transcript window only for a concrete outstanding follow-up that the main meeting-wide action pass may have missed.',
+    'Return an action only for an explicit commitment or assignment, accepted proposal, clearly incomplete ongoing deliverable, or necessary unresolved prerequisite.',
+    'Do not turn completed history, general discussion, unaccepted suggestions, hypotheticals, status-only material or meeting administration into an action.',
+    'Do not infer work from the topic labels. Use only the supplied evidence and preserve separate owners, deliverables and deadlines.',
+    'Begin each action with a clear verb. Use Not stated for an unsupported owner or deadline.',
+    'Every action must cite supplied evidence IDs. Return JSON only:',
+    '{"actions":[{"owner":"Not stated","action":"...","deadline":"Not stated","evidenceIds":["line_1_unit_0"]}]}',
+    '',
+    ...meetingContextPromptLines(meetingContext),
+    'REVIEWER TOPIC GROUPS (context only):',
+    JSON.stringify(uniqueStrings(topics, 24)),
+    'BOUNDED EVIDENCE:',
+    JSON.stringify(evidence)
+  ].join('\n');
+}
+
+async function recoverMissedActions(evidence, existingActions, topics, options = {}) {
+  const enabled = options.useActionRecallRescue ?? !options.fetchImpl;
+  const base = { attempted: enabled, used: false, reason: enabled ? '' : 'disabled', windowCount: 0, nominatedCount: 0, selectedCount: 0, calls: 0, recoveredCount: 0 };
+  if (!enabled) return { actions: [], telemetry: base, usage: [] };
+  const windows = buildActionRecallWindows(evidence);
+  base.windowCount = windows.length;
+  if (!windows.length) return { actions: [], telemetry: { ...base, reason: 'no_windows' }, usage: [] };
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-action-recall-'));
+  const inputPath = path.join(tempDir, 'windows.json');
+  try {
+    const payload = windows.map(({ id, text }) => ({ id, text }));
+    const runner = options.actionRecallRunner || (async (rows) => {
+      await fs.writeFile(inputPath, JSON.stringify({ windows: rows }), 'utf8');
+      return spawnJson(
+        process.env.PYTHON_BIN || 'python3',
+        [path.join(__dirname, '..', 'scripts', 'action_recall_window_filter.py'), inputPath,
+          '--model', process.env.STAGED_ACTION_RECALL_MODEL || DEFAULT_ACTION_RECALL_MODEL],
+        { timeoutMs: Number(process.env.STAGED_ACTION_RECALL_TIMEOUT_MS || 120000) }
+      );
+    });
+    const result = await runner(payload);
+    if (!result?.ok || !Array.isArray(result.decisions)) throw new Error(result?.reason || 'MiniLM action recall classifier returned no decisions.');
+    const decisionById = new Map(result.decisions.map((row) => [clean(row?.id), row]));
+    if (decisionById.size !== windows.length || windows.some((window) => typeof decisionById.get(window.id)?.rescue !== 'boolean')) {
+      throw new Error('MiniLM action recall classifier did not decide every window.');
+    }
+    base.nominatedCount = result.decisions.filter((row) => row.rescue).length;
+    const selected = selectUncoveredRecallWindows(windows, result.decisions, existingActions, Number(process.env.STAGED_ACTION_RECALL_MAX_WINDOWS || 1));
+    base.selectedCount = selected.length;
+    if (!selected.length) {
+      return { actions: [], telemetry: { ...base, used: true, provider: 'minilm', reason: 'no_uncovered_windows', modelSchemaVersion: result.modelSchemaVersion || null, threshold: result.threshold ?? null }, usage: [] };
+    }
+    const calls = await mapBounded(selected, async (window) => {
+      const call = await callTrooper(targetedActionRecallPrompt(topics, window.evidence, options.meetingContext), { ...options, maxTokens: 700 });
+      if (!Array.isArray(call.output?.actions)) throw new Error(`Malformed targeted action recovery response for ${window.id}.`);
+      return { ...call, window };
+    }, options);
+    const recovered = [];
+    for (const call of calls) {
+      for (const candidate of call.output.actions.slice(0, 1)) {
+        const action = publishableActionText(clean(candidate?.action).replace(/[.]+$/, ''));
+        const cited = citedEvidence(candidate, call.window.evidence);
+        if (!action || !cited.ids.length || !actionCommitmentSupported(cited.rows)) continue;
+        const proposedOwner = clean(candidate.owner) || 'Not stated';
+        const proposedDeadline = clean(candidate.deadline) || 'Not stated';
+        recovered.push({
+          owner: ownerIsSupported(proposedOwner, cited.rows) ? proposedOwner : 'Not stated',
+          action: action.charAt(0).toUpperCase() + action.slice(1) + '.',
+          deadline: deadlineIsSupported(proposedDeadline, cited.rows) ? proposedDeadline : 'Not stated',
+          evidenceIds: cited.ids
+        });
+      }
+    }
+    return {
+      actions: recovered,
+      telemetry: { ...base, used: true, provider: 'minilm_then_trooper', reason: '', calls: calls.length, recoveredCount: recovered.length, modelSchemaVersion: result.modelSchemaVersion || null, embeddingModel: result.embeddingModel || null, threshold: result.threshold ?? null },
+      usage: calls.map((call) => call.usage).filter(Boolean)
+    };
+  } catch (error) {
+    return { actions: [], telemetry: { ...base, reason: error?.message || 'Action recall rescue failed.' }, usage: [] };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 function citedEvidence(candidate, evidence) {
   const allowed = new Map(evidence.map((item) => [clean(item.id), item]));
   const ids = uniqueStrings(candidate?.evidenceIds, 12).map((id) => {
@@ -1033,6 +1118,12 @@ async function generateActions(transcriptText, topics, options = {}) {
       if (existing.deadline === 'Not stated' && candidate.deadline !== 'Not stated') existing.deadline = candidate.deadline;
     }
   }
+  const recalled = await recoverMissedActions(evidence, actions, topicList, options);
+  for (const candidate of recalled.actions) {
+    const existing = actions.find((item) => duplicateAction(item, candidate));
+    if (!existing) actions.push(candidate);
+    else existing.evidenceIds = uniqueStrings([...(existing.evidenceIds || []), ...(candidate.evidenceIds || [])], 20);
+  }
   const evidenceById = new Map(evidence.map((item) => [clean(item.id), item]));
   const edited = await editActionsForPublication(actions, evidenceById, options);
   return {
@@ -1041,7 +1132,7 @@ async function generateActions(transcriptText, topics, options = {}) {
       denoiser: denoiserTelemetry(prepared),
       topicCount: topicList.length,
       mode: 'whole_transcript_action_sweep',
-      calls: calls.length + (edited.telemetry.provider === 'trooper' && edited.telemetry.attempted ? 1 : 0),
+      calls: calls.length + recalled.telemetry.calls + (edited.telemetry.provider === 'trooper' && edited.telemetry.attempted ? 1 : 0),
       retrievalCalls: calls.length,
       actionCount: edited.actions.length,
       contextApplied: {
@@ -1053,6 +1144,7 @@ async function generateActions(transcriptText, topics, options = {}) {
       rawCandidateCount: calls.reduce((sum, item) => sum + item.output.actions.length, 0),
       acceptedCandidateCount: accepted.length,
       rejected,
+      recallRescue: recalled.telemetry,
       editor: edited.telemetry,
       perWindow: calls.map((item) => ({
         window: item.index + 1,
@@ -1063,7 +1155,7 @@ async function generateActions(transcriptText, topics, options = {}) {
         tokenUsage: item.usage || null,
         transport: item.transport || null
       })),
-      tokenUsage: [...calls.map((item) => item.usage), edited.telemetry.tokenUsage].filter(Boolean),
+      tokenUsage: [...calls.map((item) => item.usage), ...recalled.usage, edited.telemetry.tokenUsage].filter(Boolean),
       timingMs: Date.now() - startedAt
     }
   };

@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "evaluation": "leave_one_meeting_out",
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "dataset": {
+    "rows": 431,
+    "positive": 344,
+    "negative": 87,
+    "excluded": {
+      "action_evidence": 105,
+      "uncertain": 51
+    }
+  },
+  "folds": [
+    {
+      "heldOut": "01_abbott_audit_kickoff",
+      "trainRows": 393,
+      "testRows": 38
+    },
+    {
+      "heldOut": "02_dita_importer_obligations",
+      "trainRows": 396,
+      "testRows": 35
+    },
+    {
+      "heldOut": "03_eakin_t733_consultancy_retainer",
+      "trainRows": 387,
+      "testRows": 44
+    },
+    {
+      "heldOut": "04_eakin_t733_tech_file_weekly",
+      "trainRows": 401,
+      "testRows": 30
+    },
+    {
+      "heldOut": "05_m204_webinar_rehearsal",
+      "trainRows": 389,
+      "testRows": 42
+    },
+    {
+      "heldOut": "06_t761_eakin_sw_weekly",
+      "trainRows": 372,
+      "testRows": 59
+    },
+    {
+      "heldOut": "07_t761_eakin_tech_file_weekly",
+      "trainRows": 355,
+      "testRows": 76
+    },
+    {
+      "heldOut": "08_allotment_society",
+      "trainRows": 410,
+      "testRows": 21
+    },
+    {
+      "heldOut": "09_pantomime_society",
+      "trainRows": 414,
+      "testRows": 17
+    },
+    {
+      "heldOut": "10_lean_generation_pipeline_review",
+      "trainRows": 420,
+      "testRows": 11
+    },
+    {
+      "heldOut": "11_brewery_numbers",
+      "trainRows": 406,
+      "testRows": 25
+    },
+    {
+      "heldOut": "12_race_committee_two_jos",
+      "trainRows": 408,
+      "testRows": 23
+    },
+    {
+      "heldOut": "13_parking_no_decision",
+      "trainRows": 421,
+      "testRows": 10
+    }
+  ],
+  "selected": {
+    "threshold": 0.46,
+    "rows": 431,
+    "tp": 259,
+    "fp": 34,
+    "fn": 85,
+    "tn": 53,
+    "precision": 0.8839590443686007,
+    "recall": 0.752906976744186,
+    "specificity": 0.6091954022988506,
+    "expectedActionCoverage": 0.9705882352941176,
+    "criticalActionCoverage": 0.97,
+    "cases": [
+      {
+        "caseId": "01_abbott_audit_kickoff",
+        "selectedWindows": 25,
+        "negativeWindowsSelected": 3,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "02_dita_importer_obligations",
+        "selectedWindows": 24,
+        "negativeWindowsSelected": 2,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "03_eakin_t733_consultancy_retainer",
+        "selectedWindows": 41,
+        "negativeWindowsSelected": 6,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "04_eakin_t733_tech_file_weekly",
+        "selectedWindows": 27,
+        "negativeWindowsSelected": 1,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "05_m204_webinar_rehearsal",
+        "selectedWindows": 27,
+        "negativeWindowsSelected": 0,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "06_t761_eakin_sw_weekly",
+        "selectedWindows": 40,
+        "negativeWindowsSelected": 10,
+        "actionCoverage": 0.9166666666666666
+      },
+      {
+        "caseId": "07_t761_eakin_tech_file_weekly",
+        "selectedWindows": 43,
+        "negativeWindowsSelected": 3,
+        "actionCoverage": 0.9285714285714286
+      },
+      {
+        "caseId": "08_allotment_society",
+        "selectedWindows": 16,
+        "negativeWindowsSelected": 3,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "09_pantomime_society",
+        "selectedWindows": 12,
+        "negativeWindowsSelected": 0,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "10_lean_generation_pipeline_review",
+        "selectedWindows": 7,
+        "negativeWindowsSelected": 1,
+        "actionCoverage": 0.75
+      },
+      {
+        "caseId": "11_brewery_numbers",
+        "selectedWindows": 11,
+        "negativeWindowsSelected": 0,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "12_race_committee_two_jos",
+        "selectedWindows": 16,
+        "negativeWindowsSelected": 1,
+        "actionCoverage": 1.0
+      },
+      {
+        "caseId": "13_parking_no_decision",
+        "selectedWindows": 4,
+        "negativeWindowsSelected": 4,
+        "actionCoverage": 1.0
+      }
+    ]
+  },
+  "qualityGate": {
+    "passed": true,
+    "checks": {
+      "expectedActionCoverageAtLeast95Percent": true,
+      "criticalActionCoverageAtLeast97Percent": true,
+      "negativeSpecificityAtLeast55Percent": true,
+      "parkingNegativeSelectionsAtMostFour": true
+    }
+  }
+}

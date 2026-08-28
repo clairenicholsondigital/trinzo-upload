@@ -377,6 +377,62 @@ test('production publication pass uses the local MiniLM classifier and preserves
   assert.deepEqual(Object.keys(result.actions[0]), ['owner', 'action', 'deadline']);
 });
 
+test('recall classifier nominates an uncovered window for targeted recovery before the publication gate', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'I will verify the release evidence tomorrow.' },
+    { id: 'line_2_unit_0', speaker: 'Jo Jones', text: 'The language file remains incomplete.' },
+    { id: 'line_3_unit_0', speaker: 'Jo Jones', text: 'I will load the translated language file next week.' },
+    { id: 'line_4_unit_0', speaker: 'Alex Smith', text: 'That is all from me.' },
+    { id: 'line_5_unit_0', speaker: 'Jo Jones', text: 'Thanks.' }
+  ];
+  let targetedCalls = 0;
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('bounded transcript window only')) {
+      targetedCalls += 1;
+      return response({ actions: [{ owner: 'Jo Jones', action: 'Load the translated language file', deadline: 'next week', evidenceIds: ['line_3_unit_0'] }] });
+    }
+    return response({ actions: [{ owner: 'Alex Smith', action: 'Verify the release evidence', deadline: 'tomorrow', evidenceIds: ['line_1_unit_0'] }] });
+  };
+  const result = await simplified.generateActions('transcript', ['Release verification'], {
+    apiKey: 'test', fetchImpl, prepared: actionPrepared, useActionRecallRescue: true, useActionSuitabilityFilter: true,
+    actionRecallRunner: async (windows) => ({
+      ok: true, modelSchemaVersion: 1, embeddingModel: 'all-MiniLM-L6-v2', threshold: 0.46,
+      decisions: windows.map((window) => ({ id: window.id, rescue: true, actionProbability: 0.82 }))
+    }),
+    actionSuitabilityRunner: async (candidates) => ({
+      ok: true, modelSchemaVersion: 2, embeddingModel: 'all-MiniLM-L6-v2', threshold: 0.16,
+      decisions: candidates.map((candidate) => ({ id: candidate.id, keep: true, showProbability: 0.9 }))
+    })
+  });
+  assert.equal(targetedCalls, 1);
+  assert.deepEqual(result.actions, [
+    { owner: 'Alex Smith', action: 'Verify the release evidence.', deadline: 'tomorrow' },
+    { owner: 'Jo Jones', action: 'Load the translated language file.', deadline: 'next week' }
+  ]);
+  assert.equal(result.telemetry.recallRescue.selectedCount, 1);
+  assert.equal(result.telemetry.recallRescue.recoveredCount, 1);
+  assert.equal(result.telemetry.editor.inputCount, 2);
+});
+
+test('malformed recall-classifier output skips rescue without failing the existing action path', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'I will verify the release evidence.' },
+    { id: 'line_2_unit_0', speaker: 'Alex Smith', text: 'The rest is background.' },
+    { id: 'line_3_unit_0', speaker: 'Alex Smith', text: 'No further update.' }
+  ];
+  const fetchImpl = async () => response({ actions: [{ owner: 'Alex Smith', action: 'Verify the release evidence', deadline: 'Not stated', evidenceIds: ['line_1_unit_0'] }] });
+  const result = await simplified.generateActions('transcript', ['Release verification'], {
+    apiKey: 'test', fetchImpl, prepared: actionPrepared, useActionRecallRescue: true,
+    actionRecallRunner: async () => ({ ok: true, decisions: [] })
+  });
+  assert.deepEqual(result.actions, [{ owner: 'Alex Smith', action: 'Verify the release evidence.', deadline: 'Not stated' }]);
+  assert.equal(result.telemetry.recallRescue.used, false);
+  assert.match(result.telemetry.recallRescue.reason, /did not decide every window/i);
+});
+
 test('action publication gate accepts ongoing work, unresolved prerequisites and accepted proposals', () => {
   assert.equal(simplified.actionCommitmentSupported([
     { speaker: 'Andrew Kane', text: 'I am currently working on the electrical compliance testing.' }
