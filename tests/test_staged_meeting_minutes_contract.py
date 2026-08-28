@@ -6,6 +6,17 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class StagedMeetingMinutesContractTest(unittest.TestCase):
+    def test_discussion_point_editor_reserves_primary_width_for_review_text(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "grid-template-columns:auto minmax(0,1fr) minmax(10rem,14rem)",
+            page,
+        )
+        self.assertIn(".discussion-point-tools { display:grid; gap:.35rem; min-width:0; width:100%; }", page)
+        self.assertIn(".discussion-point-tools select { min-width:0; width:100%;", page)
+        self.assertIn(".discussion-point-item { grid-template-columns:1fr; }", page)
+
     def test_later_staged_steps_use_canonical_pipeline_and_confirmed_state(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
