@@ -737,3 +737,59 @@ test('relative deadlines the meeting actually used still pass', () => {
     assert.equal(simplified.deadlineIsSupported(phrase, rows), true, `${phrase} must still pass`);
   }
 });
+
+// The reviewer's spelling has to reach the stages that never watched them fix it.
+//
+// The details screen shows the transcript's spelling and offers the known name as a swap.
+// The simplified discussion and actions stages read the raw transcript and are handed only
+// the meeting type and purpose, so accepting "Rebecca Gill" on screen 1 produced an
+// attendee list saying Gill and an actions table saying Cuckoo in the same document.
+const fsNames = require('node:fs');
+const pathNames = require('node:path');
+const transcriptFor = (name) => fsNames.readFileSync(
+  pathNames.resolve(__dirname, `../scripts/staged-scorecard-fixtures/${name}/transcript.txt`), 'utf8'
+);
+
+test('a surname the reviewer settled is carried into the simplified stages', () => {
+  const corrections = api.stagedEvaluation.reviewerSpeakerNameCorrections(
+    transcriptFor('07_t761_eakin_tech_file_weekly'),
+    ['Jacqui Fox', 'David Didsbury', 'Andrew Kane', 'Rebecca Gill']
+  );
+  assert.equal(corrections.get('Rebecca Cuckoo'), 'Rebecca Gill');
+  const actions = api.stagedEvaluation.applyReviewerNamesDeep(
+    [{ owner: 'Rebecca Cuckoo', action: 'Send the purchased standards.', deadline: 'Not stated' }], corrections
+  );
+  assert.equal(actions[0].owner, 'Rebecca Gill');
+});
+
+test('a spelling the reviewer kept is left exactly alone', () => {
+  const corrections = api.stagedEvaluation.reviewerSpeakerNameCorrections(
+    transcriptFor('07_t761_eakin_tech_file_weekly'),
+    ['Jacqui Fox', 'David Didsbury', 'Andrew Kane', 'Rebecca Cuckoo']
+  );
+  assert.equal(corrections.size, 0, 'the reviewer decided nothing, so nothing changes');
+});
+
+test('two attendees sharing a first name are never merged', () => {
+  // Jo Bennett takes first aid and Jo Marsh takes marshals; a first name that resolves to
+  // two people resolves to neither.
+  const corrections = api.stagedEvaluation.reviewerSpeakerNameCorrections(
+    transcriptFor('12_race_committee_two_jos'),
+    ['Deepa Sharma', 'Jo Bennett', 'Jo Marsh', 'Alan Pryce']
+  );
+  assert.equal(corrections.size, 0);
+});
+
+test('someone mentioned in the room but never speaking in it is not absorbed', () => {
+  // "Andrew Barr" sent the 17 changes and is not Andrew Kane. Anchoring the mapping to
+  // transcript speakers is what keeps the two apart.
+  const corrections = api.stagedEvaluation.reviewerSpeakerNameCorrections(
+    transcriptFor('07_t761_eakin_tech_file_weekly'),
+    ['Jacqui Fox', 'David Didsbury', 'Andrew Kane', 'Rebecca Gill']
+  );
+  const prose = api.stagedEvaluation.applyReviewerNamesDeep(
+    'Rebecca Cuckoo confirmed that Andrew Barr sent the 17 changes.', corrections
+  );
+  assert.match(prose, /Rebecca Gill/);
+  assert.match(prose, /Andrew Barr/, 'a non-speaker keeps his own name');
+});

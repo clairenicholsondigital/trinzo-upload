@@ -4103,6 +4103,61 @@ function simplifiedConfirmedCollections(confirmed = {}) {
   };
 }
 
+// The reviewer's spelling of a name, carried into the stages that never watched them fix it.
+//
+// The details screen shows the transcript's spelling and offers the known name as a swap,
+// so the reviewer settles a surname on screen 1. The simplified discussion and actions
+// stages are given the meeting type and purpose and nothing else - they read the raw
+// transcript - so they went on publishing the recorder's spelling. Accepting "Rebecca
+// Gill" on screen 1 produced an attendee list saying Gill and an actions table saying
+// Cuckoo, in the same document: the same contradiction the details fix set out to end.
+//
+// The mapping comes from the reviewer, never from the roster. A transcript SPEAKER whose
+// name they did not keep is matched to the confirmed name sharing its first name, which is
+// exactly the relationship they asserted by making the change. Anchoring to speakers is
+// what keeps "Andrew Barr", mentioned in the T761 room but never a speaker in it, from
+// being absorbed into "Andrew Kane". Two confirmed people sharing a first name - Jo Bennett
+// and Jo Marsh - resolve to nothing and are left alone.
+function reviewerSpeakerNameCorrections(transcriptText, confirmedNames) {
+  const confirmed = (Array.isArray(confirmedNames) ? confirmedNames : [])
+    .map((name) => cleanStagedGeneratedLine(name))
+    .filter((name) => name && name.trim().split(/\s+/).length >= 2);
+  if (!confirmed.length) return new Map();
+  const confirmedKeys = new Set(confirmed.map((name) => stagedKnownAttendeeKey(name)));
+  const byFirstName = new Map();
+  for (const name of confirmed) {
+    const first = stagedKnownAttendeeKey(name).split(/\s+/)[0];
+    byFirstName.set(first, byFirstName.has(first) ? null : name);
+  }
+  const corrections = new Map();
+  for (const speaker of extractTeamsSpeakerNames(transcriptText)) {
+    const source = cleanStagedGeneratedLine(speaker);
+    if (!source) continue;
+    const parts = stagedKnownAttendeeKey(source).split(/\s+/).filter(Boolean);
+    // Kept by the reviewer, or not a full name: nothing was decided, so nothing changes.
+    if (parts.length < 2 || confirmedKeys.has(stagedKnownAttendeeKey(source))) continue;
+    const target = byFirstName.get(parts[0]);
+    if (target && stagedKnownAttendeeKey(target) !== stagedKnownAttendeeKey(source)) corrections.set(source, target);
+  }
+  return corrections;
+}
+
+function applyReviewerNamesDeep(value, corrections) {
+  if (!corrections.size) return value;
+  if (typeof value === 'string') {
+    let output = value;
+    for (const [from, to] of corrections) {
+      output = output.replace(new RegExp(`\\b${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), to);
+    }
+    return output;
+  }
+  if (Array.isArray(value)) return value.map((item) => applyReviewerNamesDeep(item, corrections));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, applyReviewerNamesDeep(item, corrections)]));
+  }
+  return value;
+}
+
 async function stagedWorkflowResponse(stage, transcript, input = {}, options = {}) {
   const startedAt = Date.now();
   const simplifiedEnabled = process.env.STAGED_SIMPLIFIED_PIPELINE !== '0';
@@ -4123,7 +4178,11 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
             meetingContext
           });
         })();
-    const output = stage === 'discussion' ? generated.discussion : generated.actions;
+    const nameCorrections = reviewerSpeakerNameCorrections(
+      transcript.text,
+      confirmed.details?.participants || confirmed.details?.allAttendees || []
+    );
+    const output = applyReviewerNamesDeep(stage === 'discussion' ? generated.discussion : generated.actions, nameCorrections);
     if (!Array.isArray(output) || (stage === 'discussion' && !output.length)) {
       throw new Error(`Simplified ${stage} generation returned no valid output.`);
     }
@@ -4161,6 +4220,7 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
         architecture: 'simplified_primary_with_canonical_fallback',
         humanConfirmedInputIsAuthoritative: true,
         confirmedCollections: simplifiedConfirmedCollections(confirmed),
+        reviewerNameCorrections: [...nameCorrections].map(([from, to]) => ({ from, to })),
         actionAccounting
       },
       pipelineHealth,
@@ -8320,6 +8380,8 @@ router.stagedEvaluation = {
   stagedNoEditReviewExperience,
   canonicalStagedResponse,
   stagedWorkflowResponse,
+  reviewerSpeakerNameCorrections,
+  applyReviewerNamesDeep,
   extractStagedDetailsFromTranscript,
   buildStagedActionsResponse,
   buildPreparedTranscriptForStagedAI,
