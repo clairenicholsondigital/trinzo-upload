@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const simplified = require('../utils/simplifiedStagedMinutes');
 const api = require('../routes/api');
+const { buildActionRecallWindows, mergeSelectedActionWindows } = require('../utils/actionRecallRescue');
 
 function prepared(topics) {
   return {
@@ -244,6 +245,113 @@ test('actions use one whole-transcript call and reject unsupported owner and dea
   assert.equal(result.actions[1].owner, 'Not stated');
   assert.equal(result.actions[1].deadline, 'Not stated');
   assert.deepEqual(result.telemetry.contextApplied, { meetingType: true, meetingPurpose: true });
+});
+
+test('evidence-first actions select and merge MiniLM windows before one Trooper synthesis pass', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'I will verify the release evidence tomorrow.' },
+    { id: 'line_2_unit_0', speaker: 'Alex Smith', text: 'The release evidence concerns the new package.' },
+    { id: 'line_3_unit_0', speaker: 'Jo Brown', text: 'The package was discussed.' },
+    { id: 'line_4_unit_0', speaker: 'Jo Brown', text: 'There was no other update.' },
+    { id: 'line_5_unit_0', speaker: 'Jo Brown', text: 'The current status was noted.' },
+    { id: 'line_6_unit_0', speaker: 'Jo Brown', text: 'The meeting continued.' },
+    { id: 'line_7_unit_0', speaker: 'Jo Brown', text: 'The session ended.' }
+  ];
+  let trooperCalls = 0;
+  const fetchImpl = async (_url, options) => {
+    trooperCalls += 1;
+    const prompt = JSON.parse(options.body).messages[1].content;
+    assert.match(prompt, /local classifier selected this evidence/i);
+    assert.match(prompt, /apparently garbled or nonsensical phrase/i);
+    assert.match(prompt, /cited evidence must itself name the action object/i);
+    assert.match(prompt, /silently inspect every supplied evidence row/i);
+    assert.match(prompt, /line_1_unit_0/);
+    assert.doesNotMatch(prompt, /line_7_unit_0/);
+    return response({ actions: [{ owner: 'Alex Smith', action: 'Verify the release evidence', deadline: 'tomorrow (implied)', evidenceIds: ['line_1_unit_0'] }] });
+  };
+  const result = await simplified.generateActionsEvidenceFirst('transcript', {
+    apiKey: 'test', fetchImpl, prepared: actionPrepared,
+    actionRecallRunner: async (windows) => ({
+      ok: true, threshold: 0.46,
+      decisions: windows.map((window, index) => ({ id: window.id, rescue: index === 0, actionProbability: index === 0 ? 0.9 : 0.1 }))
+    })
+  });
+  assert.equal(trooperCalls, 1);
+  assert.deepEqual(result.actions, [{ owner: 'Alex Smith', action: 'Verify the release evidence.', deadline: 'tomorrow' }]);
+  assert.equal(result.telemetry.mode, 'minilm_evidence_then_trooper');
+  assert.equal(result.telemetry.selector.selectedWindowCount, 1);
+});
+
+test('evidence-first actions publish nothing and skip Trooper when MiniLM selects no windows', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = Array.from({ length: 7 }, (_, index) => ({ id: `line_${index + 1}_unit_0`, speaker: 'Alex Smith', text: `Background point ${index + 1}.` }));
+  const result = await simplified.generateActionsEvidenceFirst('transcript', {
+    apiKey: 'test', prepared: actionPrepared,
+    fetchImpl: async () => { throw new Error('Trooper must not run.'); },
+    actionRecallRunner: async (windows) => ({ ok: true, decisions: windows.map((window) => ({ id: window.id, rescue: false, actionProbability: 0.1 })) })
+  });
+  assert.deepEqual(result.actions, []);
+  assert.equal(result.telemetry.calls, 0);
+});
+
+test('evidence-first actions batch long selected evidence within the same synthesis stage', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = Array.from({ length: 90 }, (_, index) => ({
+    id: `line_${index + 1}_unit_0`, speaker: 'Alex Smith', text: `I will verify release evidence item ${index + 1}.`
+  }));
+  let calls = 0;
+  const result = await simplified.generateActionsEvidenceFirst('transcript', {
+    apiKey: 'test', prepared: actionPrepared, primaryActionEvidenceBatchSize: 80,
+    actionRecallRunner: async (windows) => ({ ok: true, decisions: windows.map((window) => ({ id: window.id, rescue: true })) }),
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      const prompt = JSON.parse(options.body).messages[1].content;
+      const ids = [...prompt.matchAll(/line_\d+_unit_0/g)].map((match) => match[0]);
+      const id = ids.at(-1);
+      return response({ actions: [{ owner: 'Alex Smith', action: `Verify release evidence batch ${calls}`, deadline: 'Not stated', evidenceIds: [id] }] });
+    }
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.telemetry.evidenceBatchCount, 2);
+  assert.equal(result.telemetry.acceptedCandidateCount, 2);
+  assert.equal(result.actions.length, 1);
+});
+
+test('selected action windows merge overlapping evidence without duplicating rows', () => {
+  const windows = buildActionRecallWindows(Array.from({ length: 9 }, (_, index) => ({ id: `line_${index + 1}`, speaker: 'Alex', text: `Point ${index + 1}` })));
+  const decisions = windows.map((window, index) => ({ id: window.id, rescue: index < 2 }));
+  const packs = mergeSelectedActionWindows(windows, decisions);
+  assert.equal(packs.length, 1);
+  assert.deepEqual(packs[0].evidence.map((row) => row.id), ['line_1', 'line_2', 'line_3', 'line_4', 'line_5', 'line_6', 'line_7']);
+});
+
+test('evidence-first grounding rejects process descriptions and keeps supported plans', () => {
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: 'It needs to look at the output and clean up the noise.' }
+  ]), false);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: 'Check that the information is correct.' }
+  ]), false);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: 'The remaining evidence still needs to be verified.' }
+  ]), true);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: 'What we want to do is test a small manual sample.' },
+    { speaker: 'Alex Smith', text: "We're going to test it." }
+  ]), true);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: "So shall we all just have a think about it and maybe come back next month with our best idea, and we'll take it from there." }
+  ]), false);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: 'The criteria would need to be defined before the process can operate.' }
+  ]), true);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Alex Smith', text: 'We do a four-week pilot to test volume and quality.' }
+  ]), true);
+  assert.equal(simplified._private.evidenceFirstCommitmentSupported([
+    { speaker: 'Jacqui Fox', text: 'David is working through the code changes and traceability evidence.' }
+  ]), true);
 });
 
 test('shared staged workflow passes reviewer-confirmed type and purpose to discussion and actions', async () => {
@@ -514,6 +622,18 @@ test('action publication gate accepts ongoing work, unresolved prerequisites and
     [32, 32, 22]
   );
   assert.equal(simplified.publishableActionText('Send an email'), '');
+  assert.equal(simplified.publishableActionText('Make changes to the coding and languages'), '');
+  assert.equal(simplified.publishableActionText('Pop the relevant item into a folder for review'), '');
+  assert.equal(simplified.publishableActionText('Check whether anything else is missing'), '');
+  assert.equal(simplified.publishableActionText('Focus solely on protocol preparation for masking problems'), '');
+  assert.equal(simplified.publishableActionText('Go through how to distribute the study'), '');
+  assert.equal(simplified.publishableActionText('Resolve symbol issues for four items'), '');
+  assert.equal(simplified.publishableActionText('Conduct thinking in parallel about sales meetings'), '');
+  assert.equal(simplified.publishableActionText('Bring the information to the leadership team'), '');
+  assert.equal(simplified.publishableActionText('Bring the collected information to the leadership team'), '');
+  assert.equal(simplified.publishableActionText('Get Colm and Grace to go through how to distribute the study'), 'Ask Colm and Grace to review how to distribute the study');
+  assert.equal(simplified.publishableActionText('Have a call to review the response and load documents'), '');
+  assert.equal(simplified.publishableActionText('Schedule a call with Kevin to review the procedures'), 'Schedule a call with Kevin to review the procedures');
   assert.equal(simplified.duplicateAction(
     { owner: 'Not stated', action: 'Complete feedback and rewrite the documents', evidenceIds: ['line_1_unit_0'] },
     { owner: 'Kevin', action: 'Review and rewrite documents', evidenceIds: ['line_1_unit_0'] }

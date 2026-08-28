@@ -51,4 +51,33 @@ function selectUncoveredRecallWindows(windows, decisions, publishedActions, limi
   return selected;
 }
 
-module.exports = { buildActionRecallWindows, selectUncoveredRecallWindows, overlapRatio };
+function mergeSelectedActionWindows(windows, decisions) {
+  const byId = new Map((decisions || []).map((row) => [clean(row?.id), row]));
+  const selected = (windows || [])
+    .filter((window) => byId.get(window.id)?.rescue === true)
+    .sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
+  const packs = [];
+  for (const window of selected) {
+    const start = Number(window.start || 0);
+    const end = start + (window.evidence || []).length;
+    const prior = packs[packs.length - 1];
+    if (!prior || start > prior.end) {
+      packs.push({ start, end, windows: [window.id], evidence: [...(window.evidence || [])] });
+      continue;
+    }
+    prior.end = Math.max(prior.end, end);
+    prior.windows.push(window.id);
+    const seen = new Set(prior.evidence.map((row) => clean(row.id)));
+    for (const row of window.evidence || []) if (!seen.has(clean(row.id))) {
+      prior.evidence.push(row);
+      seen.add(clean(row.id));
+    }
+  }
+  return packs.map((pack, index) => ({
+    id: `action_pack_${index + 1}`,
+    sourceWindowIds: pack.windows,
+    evidence: pack.evidence
+  }));
+}
+
+module.exports = { buildActionRecallWindows, selectUncoveredRecallWindows, mergeSelectedActionWindows, overlapRatio };

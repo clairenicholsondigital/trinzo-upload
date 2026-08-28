@@ -503,15 +503,29 @@
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
-        "basis": "explicit_commitment",
-        "evidence": [
-          {
-            "sourceId": "line_69_unit_0",
-            "speaker": "Keon Fox",
-            "quote": "all great lead generation, but the biggest leads come from our client delivery on the ground.",
-            "similarity": 0.5189
-          }
-        ]
+      "basis": "explicit_commitment",
+      "evidence": [
+        {
+          "sourceId": "line_23_unit_0",
+          "speaker": "Conor Flynn",
+          "quote": "Okay, so the way that Jack and I are going to go about this is, we've come up with an idea, we want to check it with you guys."
+        },
+        {
+          "sourceId": "line_23_unit_1",
+          "speaker": "Conor Flynn",
+          "quote": "If you guys say that's not stupid, what we want to do is take a really, really small slice and manually do it, and then if that is successful in producing what we want it to.produce."
+        },
+        {
+          "sourceId": "line_25_unit_0",
+          "speaker": "Keon Fox",
+          "quote": "Yeah, I would agree."
+        },
+        {
+          "sourceId": "line_27_unit_1",
+          "speaker": "Conor Flynn",
+          "quote": "And then we're going to test it."
+        }
+      ]
       },
       {
         "id": "action_002",
@@ -521,14 +535,18 @@
         "importance": "critical",
         "support": "transcript_supported",
         "basis": "explicit_commitment",
-        "evidence": [
-          {
-            "sourceId": "line_23_unit_2",
-            "speaker": "Conor Flynn",
-            "quote": "We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you.",
-            "similarity": 0.7406
-          }
-        ]
+      "evidence": [
+        {
+          "sourceId": "line_23_unit_1",
+          "speaker": "Conor Flynn",
+          "quote": "If you guys say that's not stupid, what we want to do is take a really, really small slice and manually do it, and then if that is successful in producing what we want it to.produce."
+        },
+        {
+          "sourceId": "line_23_unit_2",
+          "speaker": "Conor Flynn",
+          "quote": "We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you."
+        }
+      ]
       },
       {
         "id": "action_003",
@@ -537,24 +555,28 @@
         "deadline": "Not stated",
         "importance": "critical",
         "support": "transcript_supported",
-        "basis": "explicit_commitment",
-        "evidence": [
-          {
-            "sourceId": "line_27_unit_10",
-            "speaker": "Conor Flynn",
-            "quote": "ICP means the ideal client profile.",
-            "similarity": 0.5498
-          }
-        ]
+      "basis": "explicit_commitment",
+      "evidence": [
+        {
+          "sourceId": "line_51_unit_0",
+          "speaker": "Jack Cunningham",
+          "quote": "No, I would say like the important things for me and there's something that would need to be defined as a team is exactly how we set the criteria for the ICP fit in that so that we mitigate too much nonsense coming in the front end."
+        },
+        {
+          "sourceId": "line_51_unit_3",
+          "speaker": "Jack Cunningham",
+          "quote": "But no, I think, yeah, just that there's a bit of...upstream work that needs to be defined in order to enable this to run, but that's in the plan too."
+        }
+      ]
       },
       {
         "id": "action_004",
-        "owner": "Sales and client-delivery team",
+      "owner": "Not stated",
         "action": "Clarify how client-delivery lead signals should be captured and tracked, including whether they should be recorded consistently in Salesforce.",
         "deadline": "Not stated",
-        "importance": "critical",
-        "support": "transcript_supported",
-        "basis": "explicit_commitment",
+      "importance": "major",
+      "support": "review_pending",
+      "basis": "unresolved_prerequisite",
         "evidence": [
           {
             "sourceId": "line_63_unit_1",

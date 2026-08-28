@@ -11,35 +11,64 @@ const ROOT = path.resolve(__dirname, '..');
 
 function supported(rows) { return (rows || []).filter((row) => row.support === 'transcript_supported'); }
 
+function screen(payload, key) {
+  return (payload?.ui?.screens || []).find((item) => item?.key === key)?.data;
+}
+
+async function browserContext(item, baselineRoot) {
+  if (!baselineRoot) return null;
+  try {
+    const file = path.join(baselineRoot, 'raw', 'run-01', `${item.caseId}.json`);
+    const record = JSON.parse(await fsp.readFile(file, 'utf8'));
+    const details = screen(record.payload, 'details') || {};
+    const summary = screen(record.payload, 'summary') || {};
+    const discussion = screen(record.payload, 'discussion') || [];
+    return {
+      meetingContext: { meetingType: details.meetingType || '', meetingPurpose: summary.meetingPurpose || '' },
+      topics: [...new Set(discussion.map((row) => String(row?.topic || '').trim()).filter(Boolean))]
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const outputDir = path.resolve(process.argv[2] || path.join(ROOT, 'benchmark-results', 'two-classifier-actions-local'));
   const casesDir = path.join(outputDir, 'cases');
   await fsp.mkdir(casesDir, { recursive: true });
   const corpus = benchmark.loadCorpus();
+  const requestedCaseIds = String(process.env.ACTION_EXPERIMENT_CASES || '').split(',').map((value) => value.trim()).filter(Boolean);
+  const selectedCases = requestedCaseIds.length ? corpus.cases.filter((item) => requestedCaseIds.includes(item.caseId)) : corpus.cases;
+  if (selectedCases.length !== (requestedCaseIds.length || corpus.cases.length)) throw new Error('One or more ACTION_EXPERIMENT_CASES values were not found.');
+  const runs = Math.max(1, Number(process.env.ACTION_EXPERIMENT_RUNS || 1));
+  const baselineRoot = String(process.env.ACTION_EXPERIMENT_BASELINE_RAW || '').trim();
   const generated = [];
-  for (const item of corpus.cases) {
-    const casePath = path.join(casesDir, `${item.caseId}.json`);
+  for (let run = 1; run <= runs; run += 1) for (const item of selectedCases) {
+    const casePath = path.join(casesDir, `run-${String(run).padStart(2, '0')}`, `${item.caseId}.json`);
     try {
       const saved = JSON.parse(await fsp.readFile(casePath, 'utf8'));
       generated.push(saved);
-      process.stderr.write(`${item.caseId}: resumed ${saved.actions.length} action(s)\n`);
+      process.stderr.write(`run ${run} ${item.caseId}: resumed ${saved.actions.length} action(s)\n`);
       continue;
     } catch {}
     const startedAt = Date.now();
     const expected = item.expected.expected;
-    const result = await simplified.generateActions(item.transcript, [], {
-      meetingContext: { meetingType: expected.details?.meetingType || '', meetingPurpose: expected.summary?.meetingPurpose || '' }
+    const confirmed = await browserContext(item, baselineRoot);
+    const meetingContext = confirmed?.meetingContext || { meetingType: expected.details?.meetingType || '', meetingPurpose: expected.summary?.meetingPurpose || '' };
+    const result = await simplified.generateActionsEvidenceFirst(item.transcript, {
+      meetingContext, skipCache: true
     });
-    const record = { caseId: item.caseId, durationMs: Date.now() - startedAt, actions: result.actions, telemetry: result.telemetry };
+    const record = { caseId: item.caseId, run, durationMs: Date.now() - startedAt, actions: result.actions, telemetry: result.telemetry, meetingContext, topics: confirmed?.topics || [] };
+    await fsp.mkdir(path.dirname(casePath), { recursive: true });
     await fsp.writeFile(casePath, `${JSON.stringify(record, null, 2)}\n`);
     generated.push(record);
-    process.stderr.write(`${item.caseId}: ${record.actions.length} action(s), ${record.telemetry.recallRescue?.recoveredCount || 0} recovered in ${record.durationMs}ms\n`);
+    process.stderr.write(`run ${run} ${item.caseId}: ${record.actions.length} action(s) from ${record.telemetry.selector?.selectedWindowCount || 0} selected window(s) in ${record.durationMs}ms\n`);
   }
   const records = generated.map((record) => {
     const item = corpus.cases.find((entry) => entry.caseId === record.caseId);
     const expected = item.expected.expected;
     return {
-      id: `local-two-classifier::${record.caseId}`, caseId: record.caseId, run: 1, durationMs: record.durationMs,
+      id: `local-action-first::run-${record.run}::${record.caseId}`, caseId: record.caseId, run: record.run, durationMs: record.durationMs,
       payload: {
         ui: { screens: [
           { key: 'details', data: expected.details },
