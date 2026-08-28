@@ -65,15 +65,18 @@ test('discussion-first inventory groups grounded points without requiring confir
   ];
   const fetchImpl = async (_url, options) => {
     const prompt = JSON.parse(options.body).messages[1].content;
-    assert.match(prompt, /CONFIRMED MEETING CONTEXT/);
-    assert.match(prompt, /Technical file review/);
-    assert.match(prompt, /Confirm software verification and traceability readiness/);
-    assert.match(prompt, /not transcript evidence/i);
-    assert.match(prompt, /omit an unexpected but substantive matter/i);
-    if (prompt.includes('Organise the supplied factual')) return response({
-      groups: [{ topic: 'Language support', pointIds: ['point_1'] }],
-      unassignedPointIds: ['point_2']
-    });
+    if (prompt.includes('Organise the supplied factual')) {
+      assert.match(prompt, /CONFIRMED MEETING CONTEXT/);
+      assert.match(prompt, /Technical file review/);
+      assert.match(prompt, /Confirm software verification and traceability readiness/);
+      assert.match(prompt, /not transcript evidence/i);
+      assert.match(prompt, /omit an unexpected but substantive matter/i);
+      return response({
+        groups: [{ topic: 'Language support', pointIds: ['point_1'] }],
+        unassignedPointIds: ['point_2']
+      });
+    }
+    assert.doesNotMatch(prompt, /CONFIRMED MEETING CONTEXT/);
     return response({ discussionPoints: [
       { text: 'Language-symbol issues remained under review.', evidenceIds: ['line_1_unit_0'] },
       { text: 'Christina would place the revised procedure in the review folder.', evidenceIds: ['line_2_unit_0'] }
@@ -90,7 +93,7 @@ test('discussion-first inventory groups grounded points without requiring confir
   assert.equal(result.organizer.pointCount, 2);
   assert.equal(result.organizer.unassignedCount, 1);
   assert.deepEqual(result.discussion[1].pointRefs[0].evidenceIds, ['line_2_unit_0']);
-  assert.deepEqual(result.telemetry.contextApplied, { meetingType: true, meetingPurpose: true });
+  assert.deepEqual(result.telemetry.contextApplied, { meetingType: true, meetingPurpose: true, scope: 'grouping_only' });
 });
 
 test('blank meeting context leaves simplified prompts unchanged', async () => {
@@ -107,7 +110,7 @@ test('blank meeting context leaves simplified prompts unchanged', async () => {
     apiKey: 'test', fetchImpl, prepared: inventoryPrepared, meetingContext: { meetingType: ' ', meetingPurpose: '' }
   });
   assert.ok(prompts.every((prompt) => !prompt.includes('CONFIRMED MEETING CONTEXT')));
-  assert.deepEqual(result.telemetry.contextApplied, { meetingType: false, meetingPurpose: false });
+  assert.deepEqual(result.telemetry.contextApplied, { meetingType: false, meetingPurpose: false, scope: 'grouping_only' });
 });
 
 test('actions scan all denoised evidence even when reviewer-organised groups omit it', async () => {

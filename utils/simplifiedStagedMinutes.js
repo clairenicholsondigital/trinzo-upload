@@ -239,7 +239,7 @@ function meetingContextPromptLines(value = {}) {
   ];
 }
 
-function discussionInventoryPrompt(evidence, meetingContext = {}) {
+function discussionInventoryPrompt(evidence) {
   return [
     'Create a complete first-pass inventory of substantive discussion points from the supplied denoised transcript evidence.',
     'Do not group or categorise the points yet. A later step will do that without being allowed to remove them.',
@@ -252,7 +252,6 @@ function discussionInventoryPrompt(evidence, meetingContext = {}) {
     'Each point must cite one or more supplied evidence IDs. Return JSON only:',
     '{"discussionPoints":[{"text":"...","evidenceIds":["line_1_unit_0"]}]}',
     '',
-    ...meetingContextPromptLines(meetingContext),
     'DENOISED TRANSCRIPT EVIDENCE:',
     JSON.stringify(evidence)
   ].join('\n');
@@ -337,7 +336,7 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
   if (!chunks.length) throw new Error('Simplified discussion inventory had no retained transcript evidence.');
   const calls = (await mapBounded(chunks, (evidence) => callEvidenceWithAdaptiveSplit(
     evidence,
-    (rows) => discussionInventoryPrompt(rows, options.meetingContext),
+    discussionInventoryPrompt,
     options,
     2400
   ), options)).flat();
@@ -410,7 +409,8 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
       unassignedCount,
       contextApplied: {
         meetingType: Boolean(normaliseMeetingContext(options.meetingContext).meetingType),
-        meetingPurpose: Boolean(normaliseMeetingContext(options.meetingContext).meetingPurpose)
+        meetingPurpose: Boolean(normaliseMeetingContext(options.meetingContext).meetingPurpose),
+        scope: 'grouping_only'
       },
       calls: calls.length + 1,
       perChunk: calls.map((call, index) => ({
