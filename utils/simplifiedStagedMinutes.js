@@ -12,7 +12,10 @@ const { buildActionRecallWindows, selectUncoveredRecallWindows } = require('./ac
 const DEFAULT_MODEL = path.join(__dirname, '..', 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
 const DEFAULT_ACTION_SUITABILITY_MODEL = path.join(__dirname, '..', 'artifacts', 'action-minutes-suitability-experimental-v1', 'classifier.joblib');
 const DEFAULT_ACTION_RECALL_MODEL = path.join(__dirname, '..', 'artifacts', 'action-recall-experimental-v5', 'classifier.joblib');
-const DEFAULT_ACTION_SUITABILITY_THRESHOLD = 0.35;
+// Calibrated on the deployed 13-transcript workflow: 0.35 retained too many
+// plausible-but-unhelpful rows (46.8% precision, four negative controls). At 0.60
+// the same outputs reached 60.3% precision, one negative control and 49.0% recall.
+const DEFAULT_ACTION_SUITABILITY_THRESHOLD = 0.60;
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_TROOPER_MODEL = 'eu_liv_000099';
 const preparedCache = new Map();

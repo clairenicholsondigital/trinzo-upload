@@ -396,6 +396,12 @@ test('production defaults to conservative publication without running recall res
   assert.equal(result.telemetry.recallRescue.reason, 'disabled');
 });
 
+test('deployment uses the calibrated conservative action threshold without adding a model pass', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'utils', 'simplifiedStagedMinutes.js'), 'utf8');
+  assert.match(source, /DEFAULT_ACTION_SUITABILITY_THRESHOLD = 0\.60/);
+  assert.match(source, /STAGED_ACTION_SUITABILITY_THRESHOLD \|\| DEFAULT_ACTION_SUITABILITY_THRESHOLD/);
+});
+
 test('only borderline actions with concrete uncertainty are marked for wording review', async () => {
   const actionPrepared = prepared([]);
   actionPrepared.units = [

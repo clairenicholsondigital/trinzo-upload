@@ -83,13 +83,14 @@ test('verdict bands keep critical false actions and low recall in major edit', (
   assert.equal(benchmark.classifyVerdict({ ...base, negativeControlActions: 1 }), 'Major edit');
 });
 
-test('dashboard is standalone and does not reference the staged reviewer UI', () => {
+test('dashboard is standalone and tolerates an older report without comparable summary metrics', () => {
   const html = benchmark.renderDashboard({
     corpusVersion: 'v2', servingRevision: 'abc', runCount: 39,
     calibration: { threshold: 0.62 },
     summary: { discussionRecallMean: 0.9, actionRecallMean: 0.8, actionPrecisionMean: 0.9, totalFallbacks: 0, totalNegativeControlActions: 0, verdicts: {} },
     cases: []
-  });
+  }, { schemaVersion: 1, servingRevision: 'older' });
   assert.match(html, /Thirteen-transcript workflow confidence/);
+  assert.match(html, /No earlier compatible report/);
   assert.doesNotMatch(html, /\/staged-meeting-minutes/);
 });
