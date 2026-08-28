@@ -7,6 +7,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fetch = require('node-fetch');
 const { trooperFetch } = require('./trooperTransport');
+const { convertSpokenNumbers } = require('./spokenNumbers');
+const { normaliseDatePhrases } = require('./spokenForms');
 const { buildActionRecallWindows, selectUncoveredRecallWindows, mergeSelectedActionWindows } = require('./actionRecallRescue');
 
 const DEFAULT_MODEL = path.join(__dirname, '..', 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
@@ -1046,12 +1048,61 @@ function cleanPublicDiscussionPoint(value) {
     .trim();
 }
 
+// A date the meeting said out loud rather than wrote down.
+//
+// "The date's locked, the twenty-eighth of September" is how a committee says it, and the
+// deadline column wants "28 September" - which matched nothing, because the substring
+// check compares the two literally and the calendar-token fallback only recognises digits
+// and month names. So a date stated plainly in the meeting was dropped as unsupported.
+//
+// convertSpokenNumbers already handles cardinals ("fifteen" -> 15) and normaliseDatePhrases
+// already reshapes digit ordinals ("23rd of July" -> "23rd July"); neither converts a
+// spelled-out ordinal, which is the form a spoken date almost always takes. This adds that
+// one step and then puts both sides through the same normalisation before comparing.
+const SPOKEN_ORDINAL_UNITS = new Map([
+  ['first', 1], ['second', 2], ['third', 3], ['fourth', 4], ['fifth', 5], ['sixth', 6],
+  ['seventh', 7], ['eighth', 8], ['ninth', 9], ['tenth', 10], ['eleventh', 11], ['twelfth', 12],
+  ['thirteenth', 13], ['fourteenth', 14], ['fifteenth', 15], ['sixteenth', 16], ['seventeenth', 17],
+  ['eighteenth', 18], ['nineteenth', 19], ['twentieth', 20], ['thirtieth', 30]
+]);
+const SPOKEN_ORDINAL_PATTERN = new RegExp(
+  '\\b(?:(twenty|thirty)[-\\s])?(' + [...SPOKEN_ORDINAL_UNITS.keys()].join('|') + ')\\b', 'gi'
+);
+
+function spokenOrdinalsToDigits(value) {
+  return String(value || '').replace(SPOKEN_ORDINAL_PATTERN, (match, tens, unit) => {
+    const base = SPOKEN_ORDINAL_UNITS.get(String(unit).toLowerCase());
+    if (!base) return match;
+    if (!tens) return String(base);
+    // "twenty-twentieth" is not a date; leave anything that does not compose alone.
+    if (base >= 20) return match;
+    return String((String(tens).toLowerCase() === 'twenty' ? 20 : 30) + base);
+  });
+}
+
+// Both sides of the comparison, reduced to the same shape: digits for spoken numbers, no
+// ordinal suffix, and none of the little words that differ between how a date is said and
+// how it is written down.
+function comparableDeadlineText(value) {
+  const spoken = spokenOrdinalsToDigits(String(value || '').toLowerCase());
+  const cardinals = convertSpokenNumbers(spoken);
+  const dated = normaliseDatePhrases(typeof cardinals === 'string' ? cardinals : cardinals.text);
+  return String(typeof dated === 'string' ? dated : dated.text)
+    .toLowerCase()
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/g, '$1')
+    .replace(/\b(?:the|of|by|on|before|no later than)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function deadlineIsSupported(deadline, rows) {
   const value = clean(deadline);
   if (!value || /^not stated$/i.test(value)) return true;
   const corpus = rows.map((row) => clean(row.text).toLowerCase()).join(' ');
   const exact = value.toLowerCase().replace(/^(?:by|on)\s+/, '');
   if (corpus.includes(exact)) return true;
+  const comparableValue = comparableDeadlineText(value);
+  if (comparableValue && comparableDeadlineText(corpus).includes(comparableValue)) return true;
   const tokens = exact.match(/\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|\d{1,2}(?:st|nd|rd|th)?|january|february|march|april|may|june|july|august|september|october|november|december|20\d{2})\b/gi) || [];
   return tokens.length > 0 && tokens.every((token) => corpus.includes(token.toLowerCase()));
 }

@@ -707,3 +707,33 @@ test('T761-shaped output keeps debug and traceability separate and prevents cros
   assert.doesNotMatch(byTopic[topics[2]], /fan-logic|Cognidocs/i);
   assert.match(byTopic[topics[7]], /fan-logic.*Cognidocs/i);
 });
+
+// A date the meeting said out loud rather than wrote down.
+//
+// "The date's locked, the twenty-eighth of September" is how the race committee fixes a
+// date, and the deadline column wants "28 September". The literal substring check missed
+// it and the calendar-token fallback only knows digits and month names, so a date stated
+// plainly in the meeting was published as "Not stated".
+test('a deadline spoken as words is supported by the transcript that spoke it', () => {
+  const rows = [{ text: "So the date's locked, the twenty-eighth of September, and we said fifteen pounds entry, that hasn't changed?" }];
+  assert.equal(simplified.deadlineIsSupported('28 September', rows), true);
+  assert.equal(simplified.deadlineIsSupported('28th September', rows), true);
+  assert.equal(simplified.deadlineIsSupported('The twenty-eighth of September', rows), true);
+});
+
+test('the spoken-date reading never invents support for a date nobody gave', () => {
+  const rows = [{ text: "So the date's locked, the twenty-eighth of September, and we said fifteen pounds entry." }];
+  for (const absent of ['31 December', 'Next Tuesday', '15 March 2027', 'By the end of Q3', '27 September']) {
+    assert.equal(simplified.deadlineIsSupported(absent, rows), false, `${absent} is not in the transcript`);
+  }
+});
+
+test('relative deadlines the meeting actually used still pass', () => {
+  // The widened reading is additive; none of the phrasings that already worked may stop.
+  const rows = [{ text: "I'll get the road-closure application in this week, no later, and confirm the towpath's reopened." },
+    { text: 'And I will cheque in with Rebecca before the end of this week.' },
+    { text: 'We anticipate that the completion of all of that testing will be done by this second last week of July.' }];
+  for (const phrase of ['This week', 'Before the end of this week', 'Second last week of July', 'End of July']) {
+    assert.equal(simplified.deadlineIsSupported(phrase, rows), true, `${phrase} must still pass`);
+  }
+});
