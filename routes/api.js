@@ -3974,6 +3974,13 @@ function confirmedTopicsForSimplifiedStage(stage, confirmed = {}) {
   return stringListFromAny(confirmed.summary?.overallTopics, ['topic', 'text', 'title']).slice(0, 8);
 }
 
+function confirmedMeetingContextForSimplifiedStage(confirmed = {}) {
+  return {
+    meetingType: cleanStagedGeneratedLine(confirmed.details?.meetingType).slice(0, 120),
+    meetingPurpose: cleanStagedGeneratedLine(confirmed.summary?.meetingPurpose).slice(0, 1000)
+  };
+}
+
 function validationFlagsAfterSimplifiedOverride(flags, stage, output = []) {
   const existing = Array.isArray(flags) ? flags : [];
   const filtered = existing.filter((flag) => {
@@ -4017,7 +4024,10 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
     }
 
     if (stage === 'discussion') {
-      const generated = await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, options);
+      const generated = await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, {
+        ...options,
+        meetingContext: confirmedMeetingContextForSimplifiedStage(confirmed)
+      });
       return {
         result: {
           ...result,
@@ -4034,7 +4044,8 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
     if (!topics.length) throw new Error(`No reviewer-confirmed topics were available for the simplified ${stage} stage.`);
     const generated = await (options.generateActions || generateSimplifiedActions)(transcript.text, topics, {
       ...options,
-      discussionGroups: confirmed.discussion
+      discussionGroups: confirmed.discussion,
+      meetingContext: confirmedMeetingContextForSimplifiedStage(confirmed)
     });
     return {
       result: {
@@ -4087,14 +4098,16 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
   }
   const confirmed = canonicalConfirmedStages(input);
   const topics = stage === 'discussion' ? [] : confirmedTopicsForSimplifiedStage(stage, confirmed);
+  const meetingContext = confirmedMeetingContextForSimplifiedStage(confirmed);
   try {
     const generated = stage === 'discussion'
-      ? await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, options)
+      ? await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, { ...options, meetingContext })
       : await (async () => {
           if (!topics.length) throw new Error('No reviewer-organised discussion groups were available for the simplified actions stage.');
           return (options.generateActions || generateSimplifiedActions)(transcript.text, topics, {
             ...options,
-            discussionGroups: confirmed.discussion
+            discussionGroups: confirmed.discussion,
+            meetingContext
           });
         })();
     const output = stage === 'discussion' ? generated.discussion : generated.actions;

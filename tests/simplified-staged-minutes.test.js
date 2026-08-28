@@ -65,6 +65,11 @@ test('discussion-first inventory groups grounded points without requiring confir
   ];
   const fetchImpl = async (_url, options) => {
     const prompt = JSON.parse(options.body).messages[1].content;
+    assert.match(prompt, /CONFIRMED MEETING CONTEXT/);
+    assert.match(prompt, /Technical file review/);
+    assert.match(prompt, /Confirm software verification and traceability readiness/);
+    assert.match(prompt, /not transcript evidence/i);
+    assert.match(prompt, /omit an unexpected but substantive matter/i);
     if (prompt.includes('Organise the supplied factual')) return response({
       groups: [{ topic: 'Language support', pointIds: ['point_1'] }],
       unassignedPointIds: ['point_2']
@@ -74,11 +79,35 @@ test('discussion-first inventory groups grounded points without requiring confir
       { text: 'Christina would place the revised procedure in the review folder.', evidenceIds: ['line_2_unit_0'] }
     ] });
   };
-  const result = await simplified.generateDiscussionInventory('transcript', { apiKey: 'test', fetchImpl, prepared: inventoryPrepared });
+  const result = await simplified.generateDiscussionInventory('transcript', {
+    apiKey: 'test', fetchImpl, prepared: inventoryPrepared,
+    meetingContext: {
+      meetingType: 'Technical file review',
+      meetingPurpose: 'Confirm software verification and traceability readiness.'
+    }
+  });
   assert.deepEqual(result.discussion.map((card) => card.topic), ['Language support', 'Unassigned']);
   assert.equal(result.organizer.pointCount, 2);
   assert.equal(result.organizer.unassignedCount, 1);
   assert.deepEqual(result.discussion[1].pointRefs[0].evidenceIds, ['line_2_unit_0']);
+  assert.deepEqual(result.telemetry.contextApplied, { meetingType: true, meetingPurpose: true });
+});
+
+test('blank meeting context leaves simplified prompts unchanged', async () => {
+  const inventoryPrepared = prepared([]);
+  inventoryPrepared.units = [{ id: 'line_1_unit_0', speaker: 'Alex Smith', text: 'Release evidence remained under review.' }];
+  const prompts = [];
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    prompts.push(prompt);
+    if (prompt.includes('Organise the supplied factual')) return response({ groups: [{ topic: 'Release evidence', pointIds: ['point_1'] }], unassignedPointIds: [] });
+    return response({ discussionPoints: [{ text: 'Release evidence remained under review.', evidenceIds: ['line_1_unit_0'] }] });
+  };
+  const result = await simplified.generateDiscussionInventory('transcript', {
+    apiKey: 'test', fetchImpl, prepared: inventoryPrepared, meetingContext: { meetingType: ' ', meetingPurpose: '' }
+  });
+  assert.ok(prompts.every((prompt) => !prompt.includes('CONFIRMED MEETING CONTEXT')));
+  assert.deepEqual(result.telemetry.contextApplied, { meetingType: false, meetingPurpose: false });
 });
 
 test('actions scan all denoised evidence even when reviewer-organised groups omit it', async () => {
@@ -118,13 +147,20 @@ test('actions use one whole-transcript call and reject unsupported owner and dea
       ] });
     }
     assert.match(prompt, /REVIEWER TOPIC GROUPS/);
+    assert.match(prompt, /CONFIRMED MEETING CONTEXT/);
+    assert.match(prompt, /Project review/);
+    assert.match(prompt, /Review release readiness/);
+    assert.match(prompt, /infer an action from it/i);
     assert.ok(topics.every((topic) => prompt.includes(topic)));
     return response({ actions: [
       { owner: 'Andrew Kane', action: 'Verify the debug command', deadline: 'Wednesday', evidenceIds: ['line_1_unit_0'] },
       { owner: 'Invented Person', action: 'Load the translated language files', deadline: 'Friday', evidenceIds: ['line_2_0'] }
     ] });
   };
-  const result = await simplified.generateActions('transcript', topics, { apiKey: 'test', fetchImpl, prepared: testPrepared });
+  const result = await simplified.generateActions('transcript', topics, {
+    apiKey: 'test', fetchImpl, prepared: testPrepared,
+    meetingContext: { meetingType: 'Project review', meetingPurpose: 'Review release readiness.' }
+  });
   assert.equal(calls, 2);
   assert.equal(result.telemetry.mode, 'whole_transcript_action_sweep');
   assert.equal(result.actions.length, 2);
@@ -133,6 +169,34 @@ test('actions use one whole-transcript call and reject unsupported owner and dea
   });
   assert.equal(result.actions[1].owner, 'Not stated');
   assert.equal(result.actions[1].deadline, 'Not stated');
+  assert.deepEqual(result.telemetry.contextApplied, { meetingType: true, meetingPurpose: true });
+});
+
+test('shared staged workflow passes reviewer-confirmed type and purpose to discussion and actions', async () => {
+  const seen = [];
+  const transcript = { text: 'A sufficiently long transcript for the staged workflow test.', source: 'test', fileName: 'test.txt' };
+  const confirmedDetails = { meetingType: 'Reviewer edited technical review' };
+  const confirmedSummary = { meetingPurpose: 'Reviewer edited purpose.', overallTopics: [] };
+  await api.stagedEvaluation.stagedWorkflowResponse('discussion', transcript, { confirmedDetails, confirmedSummary }, {
+    generateDiscussionInventory: async (_text, options) => {
+      seen.push({ stage: 'discussion', context: options.meetingContext });
+      return { discussion: [{ topic: 'Release evidence', points: ['Evidence was reviewed.'] }], telemetry: { tokenUsage: [] } };
+    }
+  });
+  await api.stagedEvaluation.stagedWorkflowResponse('actions', transcript, {
+    confirmedDetails,
+    confirmedSummary,
+    confirmedDiscussion: [{ topic: 'Release evidence', points: ['Evidence was reviewed.'] }]
+  }, {
+    generateActions: async (_text, _topics, options) => {
+      seen.push({ stage: 'actions', context: options.meetingContext });
+      return { actions: [{ owner: 'Not stated', action: 'Verify the evidence.', deadline: 'Not stated' }], telemetry: { tokenUsage: [] } };
+    }
+  });
+  assert.deepEqual(seen, [
+    { stage: 'discussion', context: { meetingType: 'Reviewer edited technical review', meetingPurpose: 'Reviewer edited purpose.' } },
+    { stage: 'actions', context: { meetingType: 'Reviewer edited technical review', meetingPurpose: 'Reviewer edited purpose.' } }
+  ]);
 });
 
 test('a 422 action window is split and retried without falling back the whole stage', async () => {
