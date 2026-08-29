@@ -793,3 +793,28 @@ test('someone mentioned in the room but never speaking in it is not absorbed', (
   assert.match(prose, /Rebecca Gill/);
   assert.match(prose, /Andrew Barr/, 'a non-speaker keeps his own name');
 });
+
+test('a recorder that writes the name backwards still resolves to one person', () => {
+  // Teams labels the Abbott audit lead "Smith, Stuart M". The details screen resolves that
+  // alias to "Stuart Smith"; the simplified stages read the transcript as recorded, so
+  // seven of ten action owners said "Smith, Stuart M" against an attendee list saying
+  // Stuart Smith. The first-name anchor cannot connect them - "smith" is not "stuart".
+  const corrections = api.stagedEvaluation.reviewerSpeakerNameCorrections(
+    transcriptFor('01_abbott_audit_kickoff'), ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch']
+  );
+  assert.equal(corrections.get('Smith, Stuart M'), 'Stuart Smith');
+  const owners = api.stagedEvaluation.applyReviewerNamesDeep(
+    [{ owner: 'Smith, Stuart M', action: 'Share the audit findings tracker.' }], corrections
+  );
+  assert.equal(owners[0].owner, 'Stuart Smith');
+});
+
+test('a meeting of strangers to the roster rewrites nothing', () => {
+  // The residents association is on no roster and needed no corrections; a transcript the
+  // reviewer has not touched must come through exactly as it was said.
+  const corrections = api.stagedEvaluation.reviewerSpeakerNameCorrections(
+    transcriptFor('13_parking_no_decision'),
+    ['Trevor Nutall', 'Angela Rimmer', 'Baljit Sanghera', 'Sandra Wexford', 'Rex Fournier']
+  );
+  assert.equal(corrections.size, 0);
+});

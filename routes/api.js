@@ -4139,6 +4139,25 @@ function reviewerSpeakerNameCorrections(transcriptText, confirmedNames) {
     const target = byFirstName.get(parts[0]);
     if (target && stagedKnownAttendeeKey(target) !== stagedKnownAttendeeKey(source)) corrections.set(source, target);
   }
+
+  // A recorder that writes the name backwards. Teams labels the Abbott audit lead
+  // "Smith, Stuart M", and extractTeamsSpeakerNames resolves that alias before it returns,
+  // so the loop above only ever sees "Stuart Smith" and finds nothing to do. The simplified
+  // stages read the transcript as it was recorded, so the attendee list said Stuart Smith
+  // while seven of ten action owners said "Smith, Stuart M" - one person, two forms, and
+  // the first-name anchor cannot connect them because "smith" is not "stuart".
+  //
+  // So the labels are read again unresolved, and any whose alias the reviewer is already
+  // carrying is mapped back to their spelling.
+  const rawLabel = /^[ \t]*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+,?(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*){1,4})[ \t]+(?:\d{1,2}:)?\d{1,2}:\d{2}/gm;
+  for (const match of String(transcriptText || '').matchAll(rawLabel)) {
+    const source = cleanStagedGeneratedLine(match[1]);
+    if (!source || confirmedKeys.has(stagedKnownAttendeeKey(source)) || corrections.has(source)) continue;
+    const alias = cleanStagedGeneratedLine(canonicalStagedAttendeeAlias(source));
+    if (!alias || stagedKnownAttendeeKey(alias) === stagedKnownAttendeeKey(source)) continue;
+    const target = confirmed.find((name) => stagedKnownAttendeeKey(name) === stagedKnownAttendeeKey(alias));
+    if (target) corrections.set(source, target);
+  }
   return corrections;
 }
 
