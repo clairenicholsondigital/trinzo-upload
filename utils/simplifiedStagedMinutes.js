@@ -1013,9 +1013,24 @@ function actionCommitmentSupported(rows) {
   return hasProposal && hasAcceptance;
 }
 
+// A placeholder the model could not resolve, shown to the reviewer as a finished action.
+//
+// The DITA call produced "Speak to [unspecified party] next week." - the model saying out
+// loud that it could not work out who, published as a row. Every other rejection in this
+// function names a specific phrasing that failed once ("have a think", "the relevant
+// items"), which is a list that only ever grows one incident at a time. This one is
+// structural: brackets round a phrase, or a bare TODO, mean the sentence is unfinished
+// whatever it says.
+//
+// Nothing legitimate is caught. No expected action text in the 13-case corpus contains a
+// bracketed span or a TODO marker. The angle-bracket form requires a letter after the "<"
+// so a numeric comparison ("<5 units") is left alone.
+const UNRESOLVED_PLACEHOLDER = /\[[^\]\n]{1,60}\]|<[A-Za-z][^>\n]{0,58}>|\b(?:TODO|TBC|TBD|XXX)\b/i;
+
 function publishableActionText(value) {
   const text = normaliseActionWording(value);
   if (!text || text.split(/\s+/).length < 3 || text.split(/\s+/).length > 32) return '';
+  if (UNRESOLVED_PLACEHOLDER.test(text)) return '';
   if (/^(?:just\s+)?(?:send|write)\s+(?:an?\s+)?(?:e-?mail|message)\.?$/i.test(text)) return '';
   if (/\b(?:track the actions?|review the meeting|schedule the (?:meeting|call)|add .* to the (?:meeting|call))\b/i.test(text)) return '';
   if (/\b(?:learn the languages?|put \d+ .* files? in|look at the languages?)\b/i.test(text)) return '';
@@ -1095,9 +1110,37 @@ function comparableDeadlineText(value) {
     .trim();
 }
 
+// A date that has already been and gone is not a deadline.
+//
+// The DITA call published "Last week" in the Date/deadline column, because the check asks
+// only whether the meeting said the words - and it did, in "I did follow up with him last
+// week", which is Jacqui reporting something already done. Past and future were
+// indistinguishable to a substring test.
+//
+// The match is against the WHOLE value, never a substring, because "Second last week of
+// July" is a real deadline in this corpus and contains "last week" inside it. Anchoring is
+// the whole safety of this rule.
+const PAST_DEADLINE = new RegExp(
+  '^(?:yesterday'
+  + '|last\\s+(?:week|month|year|night|monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
+  + '|(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+)\\s+(?:day|days|week|weeks|month|months|year|years)\\s+ago'
+  + ')$', 'i'
+);
+
+function deadlineAlreadyPassed(value) {
+  const bare = clean(value)
+    .replace(/^(?:by|on|before|due|due\s+by)\s+/i, '')
+    .replace(/[.,;]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return PAST_DEADLINE.test(bare);
+}
+
 function deadlineIsSupported(deadline, rows) {
   const value = clean(deadline);
   if (!value || /^not stated$/i.test(value)) return true;
+  // Reported as false so the caller writes "Not stated"; that boolean is its only lever.
+  if (deadlineAlreadyPassed(value)) return false;
   const corpus = rows.map((row) => clean(row.text).toLowerCase()).join(' ');
   const exact = value.toLowerCase().replace(/^(?:by|on)\s+/, '');
   if (corpus.includes(exact)) return true;
@@ -1486,6 +1529,7 @@ module.exports = {
   publishableActionText,
   cleanPublicDiscussionPoint,
   deadlineIsSupported,
+  deadlineAlreadyPassed,
   duplicateAction,
   clearPreparedCache,
   _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks, narrativeEvidenceChunks, narrativeParagraphPlan, actionEvidenceChunks, selectPrimaryActionEvidence, evidenceFirstCommitmentSupported }

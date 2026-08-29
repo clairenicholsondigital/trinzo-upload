@@ -818,3 +818,46 @@ test('a meeting of strangers to the roster rewrites nothing', () => {
   );
   assert.equal(corrections.size, 0);
 });
+
+// An unresolved placeholder is the model saying it could not finish the sentence.
+test('a bracketed placeholder is never published as an action', () => {
+  for (const text of [
+    'Speak to [unspecified party] next week.',
+    'Confirm the plan with [name] tomorrow.',
+    'Send the pack to <the client> on Friday.',
+    'Update the TODO document next week.',
+    'Chase the supplier TBC before Friday.'
+  ]) {
+    assert.equal(simplified.publishableActionText(text), '', `${text} is unfinished`);
+  }
+});
+
+test('the placeholder rule leaves real action wording alone', () => {
+  // Including a numeric comparison, which is why the angle-bracket form needs a letter
+  // after the "<" rather than matching any "<...>" span.
+  for (const text of [
+    'Order the full hop bill, including thirteen kilos across both brews.',
+    'Reduce the dose to <5 grams per litre and above >2 kilos total.',
+    'Email them today to confirm the fifteen casks for the twenty-second, with our terms.',
+    'Ring the refrigeration engineer to service the glycol chiller.'
+  ]) {
+    assert.ok(simplified.publishableActionText(text), `${text} must survive`);
+  }
+});
+
+// A date that has already been and gone is not a deadline.
+test('a deadline in the past is not supported by the meeting that mentioned it', () => {
+  const rows = [{ speaker: 'Jacqui Fox', text: 'I did ask Cody to get an overview and did follow up with him last week.' }];
+  for (const past of ['Last week', 'By last week', 'Yesterday', 'Last Monday', 'Three weeks ago', '2 days ago']) {
+    assert.equal(simplified.deadlineIsSupported(past, rows), false, `${past} has already gone`);
+  }
+});
+
+test('a real deadline containing the words "last week" survives', () => {
+  // "Second last week of July" is an expected deadline in this corpus and contains "last
+  // week" inside it. Whole-value anchoring is the entire safety of the past-date rule.
+  for (const real of ['Second last week of July', 'The last week of July', 'Last week of August']) {
+    assert.equal(simplified.deadlineAlreadyPassed(real), false, `${real} is still to come`);
+  }
+  assert.equal(simplified.deadlineAlreadyPassed('Not stated'), false);
+});
