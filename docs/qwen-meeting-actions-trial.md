@@ -11,7 +11,7 @@ It does not change or fall back to the normal `/staged-meeting-minutes` workflow
 
 ## Pinned models
 
-- Adapter: `clairenicholson078/qwen3-06b-meeting-actions-lora` at `0361e1efb3b6158ee2e5cb868405ded4402f48b3`
+- Adapter: `clairenicholson078/qwen3-06b-meeting-actions-multiaction-v1` at `511773a88fbf0c0b45f6a619f69c53771403c4c0`
 - Base: `Qwen/Qwen3-0.6B` at `c1899de289a04d12100db370d81485cdf75e47ca`
 
 The adapter repository contains a PEFT LoRA adapter, not a complete model. The

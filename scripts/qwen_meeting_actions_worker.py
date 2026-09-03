@@ -23,15 +23,15 @@ BASE_MODEL = Path(os.environ.get("QWEN_ACTIONS_BASE_MODEL", ROOT / ".models/qwen
 ADAPTER_MODEL = Path(
     os.environ.get(
         "QWEN_ACTIONS_ADAPTER_MODEL",
-        ROOT / ".models/qwen3-0.6b-meeting-actions-lora",
+        ROOT / ".models/qwen3-0.6b-meeting-actions-multiaction-v1",
     )
 )
 MAX_BODY_BYTES = int(os.environ.get("QWEN_ACTIONS_MAX_BODY_BYTES", str(4 * 1024 * 1024)))
 MAX_NEW_TOKENS = int(os.environ.get("QWEN_ACTIONS_MAX_NEW_TOKENS", "1024"))
 MAX_ACTIONS = int(os.environ.get("QWEN_ACTIONS_MAX_ACTIONS", "100"))
 
-MODEL_ID = "clairenicholson078/qwen3-06b-meeting-actions-lora"
-ADAPTER_REVISION = "0361e1efb3b6158ee2e5cb868405ded4402f48b3"
+MODEL_ID = "clairenicholson078/qwen3-06b-meeting-actions-multiaction-v1"
+ADAPTER_REVISION = "511773a88fbf0c0b45f6a619f69c53771403c4c0"
 BASE_MODEL_ID = "Qwen/Qwen3-0.6B"
 BASE_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
 

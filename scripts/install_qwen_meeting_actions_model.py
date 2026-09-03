@@ -12,11 +12,11 @@ from huggingface_hub import snapshot_download
 ROOT = Path(__file__).resolve().parents[1]
 BASE_REPO = "Qwen/Qwen3-0.6B"
 BASE_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
-ADAPTER_REPO = "clairenicholson078/qwen3-06b-meeting-actions-lora"
-ADAPTER_REVISION = "0361e1efb3b6158ee2e5cb868405ded4402f48b3"
+ADAPTER_REPO = "clairenicholson078/qwen3-06b-meeting-actions-multiaction-v1"
+ADAPTER_REVISION = "511773a88fbf0c0b45f6a619f69c53771403c4c0"
 EXPECTED = {
     ROOT / ".models/qwen3-0.6b/model.safetensors": "f47f71177f32bcd101b7573ec9171e6a57f4f4d31148d38e382306f42996874b",
-    ROOT / ".models/qwen3-0.6b-meeting-actions-lora/adapter_model.safetensors": "cc45e0e3f524357de3f4507d72afd27213eb8a8f32bfbbe08a8e261a182d44ab",
+    ROOT / ".models/qwen3-0.6b-meeting-actions-multiaction-v1/adapter_model.safetensors": "dadb473dfc637d72d150136a71776aec29d09da70b1ae4d4509dcf70ab53239f",
 }
 
 
@@ -47,7 +47,7 @@ def main() -> None:
     snapshot_download(
         repo_id=ADAPTER_REPO,
         revision=ADAPTER_REVISION,
-        local_dir=ROOT / ".models/qwen3-0.6b-meeting-actions-lora",
+        local_dir=ROOT / ".models/qwen3-0.6b-meeting-actions-multiaction-v1",
         allow_patterns=[
             "adapter_config.json",
             "adapter_model.safetensors",
