@@ -47,8 +47,7 @@ Do not use a person merely because they requested the work, were mentioned, or r
 If the owner is not explicit, use \"Not stated\".
 
 Use exactly this shape:
-{\"actions\":[{\"action\":\"Clear task wording\",\"owner\":\"Person name or Not stated\"}]}
-If there are no confirmed outstanding actions, return {\"actions\":[]}."""
+{\"actions\":[{\"action\":\"Clear task wording\",\"owner\":\"Person name or Not stated\"}]}"""
 
 
 def extract_json_object(raw: str) -> dict[str, Any]:
