@@ -48,13 +48,14 @@
 <main>
   <div class="topline"><strong>Trinzo experimental workspace</strong><a href="/staged-meeting-minutes">Open current staged workflow</a></div>
   <p class="eyebrow">Isolated finetune trial</p>
-  <h1>Transcript → denoised transcript → action list</h1>
-  <p class="lede">Upload a Word transcript or paste its text. This experimental route runs the live MiniLM denoiser v3 first, then gives the complete denoised transcript to the local Qwen meeting-actions LoRA in one prompt.</p>
+  <h1>Transcript → discussion → validated actions</h1>
+  <p class="lede">Upload a Word transcript or paste its text. This experimental route uses the live deterministic transcript preparation, MiniLM denoiser v3, and a staged Trooper discussion and action review.</p>
   <div class="pipeline" aria-label="Processing pipeline">
     <span class="step">DOCX / transcript</span><span class="arrow">→</span>
     <span class="step">MiniLM denoiser v3</span><span class="arrow">→</span>
-    <span class="step">Qwen3 0.6B + LoRA</span><span class="arrow">→</span>
-    <span class="step">Action + owner + deadline JSON</span>
+    <span class="step">Trooper discussion</span><span class="arrow">→</span>
+    <span class="step">Chunked action review</span><span class="arrow">→</span>
+    <span class="step">Filtered actions</span>
   </div>
 
   <section class="panel">
@@ -77,13 +78,21 @@
   </section>
 
   <section class="panel" id="results" hidden>
+    <h2>Discussion</h2>
+    <pre id="discussion"></pre>
+
     <h2>Extracted actions</h2>
     <div class="stats" id="stats"></div>
     <p id="empty" class="muted" hidden>The model returned no outstanding actions.</p>
     <table id="action-table" hidden>
-      <thead><tr><th>#</th><th>Action</th><th>Owner</th><th>Deadline</th></tr></thead>
+      <thead><tr><th>#</th><th>Action</th><th>Owner</th><th>Deadline</th><th>Evidence</th></tr></thead>
       <tbody id="actions"></tbody>
     </table>
+    <div id="planned-section" hidden>
+      <h2>Planned activities</h2>
+      <p class="muted">These were classified as scheduled activity rather than tracked actions.</p>
+      <ul id="planned"></ul>
+    </div>
     <details><summary>See what MiniLM kept</summary><pre id="denoised"></pre></details>
     <details><summary>See returned model JSON</summary><pre id="json"></pre></details>
   </section>
@@ -115,7 +124,7 @@
     run.disabled = true;
     results.hidden = true;
     status.className = '';
-    status.textContent = 'Denoising and running the local model… this can take a few minutes on CPU.';
+    status.textContent = 'Denoising, writing the discussion, and validating chunked actions with Trooper…';
     try {
       const form = new FormData();
       if (text.value.trim()) form.append('text', text.value.trim());
@@ -129,7 +138,7 @@
       tbody.replaceChildren();
       payload.actions.forEach((row, index) => {
         const tr = document.createElement('tr');
-        [String(index + 1), row.action, row.owner, row.deadline].forEach((value) => {
+        [String(index + 1), row.action, row.owner, row.deadline, row.evidence].forEach((value) => {
           const td = document.createElement('td');
           td.textContent = value;
           tr.appendChild(td);
@@ -141,8 +150,19 @@
         stat('Actions', payload.actions.length),
         stat('MiniLM kept', `${payload.denoiser.keptUnitCount}/${payload.denoiser.totalUnitCount} units`),
         stat('Removed', `${Math.round(payload.denoiser.removedRatio * 100)}%`),
+        stat('Chunks', payload.trooper?.diagnostics?.chunkCount ?? '—'),
+        stat('Candidates checked', payload.trooper?.diagnostics?.candidateCount ?? '—'),
         stat('Total time', `${(payload.timingMs.total / 1000).toFixed(1)}s`)
       );
+      document.getElementById('discussion').textContent = payload.discussion || 'No substantive discussion was returned.';
+      const planned = document.getElementById('planned');
+      planned.replaceChildren();
+      (payload.plannedActivities || []).forEach((row) => {
+        const li = document.createElement('li');
+        li.textContent = `${row.action} — ${row.owner}; ${row.deadline}`;
+        planned.appendChild(li);
+      });
+      document.getElementById('planned-section').hidden = !(payload.plannedActivities || []).length;
       empty.hidden = payload.actions.length !== 0;
       table.hidden = payload.actions.length === 0;
       document.getElementById('denoised').textContent = payload.denoisedTranscript;

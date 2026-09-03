@@ -1,50 +1,74 @@
-const fetch = require('node-fetch');
+'use strict';
+
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
 const { prepareTranscript } = require('./simplifiedStagedMinutes');
 
-const WORKER_URL = (process.env.QWEN_ACTIONS_WORKER_URL || 'http://127.0.0.1:8768').replace(/\/$/, '');
-const WORKER_TIMEOUT_MS = Number(process.env.QWEN_ACTIONS_TIMEOUT_MS || 300000);
+const ROOT = path.resolve(__dirname, '..');
+const PIPELINE_SCRIPT = path.join(ROOT, 'scripts', 'finetune_trooper_action_pipeline.py');
 
 function normalizeActions(rows) {
-  if (!Array.isArray(rows)) throw Object.assign(new Error('The trial model returned no actions array.'), { statusCode: 502 });
+  if (!Array.isArray(rows)) throw Object.assign(new Error('The Trooper trial returned no actions array.'), { statusCode: 502 });
   return rows.map((row) => ({
     action: String(row?.action || '').replace(/\s+/g, ' ').trim(),
-    owner: String(row?.owner || 'Not stated').replace(/\s+/g, ' ').trim() || 'Not stated',
-    deadline: String(row?.deadline || 'Not stated').replace(/\s+/g, ' ').trim() || 'Not stated'
-  })).filter((row) => row.action);
+    owner: String(row?.owner || 'Unclear').replace(/\s+/g, ' ').trim() || 'Unclear',
+    deadline: String(row?.deadline || 'Not stated').replace(/\s+/g, ' ').trim() || 'Not stated',
+    evidence: String(row?.evidence || '').replace(/\s+/g, ' ').trim(),
+    chunkNumber: Number(row?.chunkNumber || 0) || null,
+    turnRange: String(row?.turnRange || '').trim()
+  })).filter((row) => row.action && row.evidence);
 }
 
-async function callQwenWorker(denoisedTranscript) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), WORKER_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${WORKER_URL}/extract-actions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ denoisedTranscript }),
-      signal: controller.signal
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || body.ok === false) {
-      const error = new Error(body.error || `The Qwen action worker returned HTTP ${response.status}.`);
-      error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
-      throw error;
+function runTrooperPipeline(denoisedTranscript) {
+  return fs.mkdtemp(path.join(os.tmpdir(), 'finetune-trooper-')).then(async (tempDir) => {
+    const transcriptPath = path.join(tempDir, 'denoised-transcript.txt');
+    await fs.writeFile(transcriptPath, denoisedTranscript, { encoding: 'utf8', mode: 0o600 });
+    try {
+      return await new Promise((resolve, reject) => {
+        const child = spawn(process.env.PYTHON_BIN || 'python3', [PIPELINE_SCRIPT, transcriptPath], {
+          cwd: ROOT,
+          env: process.env,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+        let stdout = '';
+        let stderr = '';
+        const maxOutputBytes = 12 * 1024 * 1024;
+        const timeoutMs = Number(process.env.FINETUNE_TROOPER_TIMEOUT_MS || 900000);
+        const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+        child.stdout.on('data', (chunk) => {
+          stdout += chunk.toString('utf8');
+          if (Buffer.byteLength(stdout, 'utf8') > maxOutputBytes) child.kill('SIGKILL');
+        });
+        child.stderr.on('data', (chunk) => {
+          stderr += chunk.toString('utf8');
+          if (Buffer.byteLength(stderr, 'utf8') > 256 * 1024) stderr = stderr.slice(-256 * 1024);
+        });
+        child.on('error', (error) => { clearTimeout(timer); reject(error); });
+        child.on('close', (code, signal) => {
+          clearTimeout(timer);
+          if (code !== 0) {
+            const error = new Error(`Trooper finetune pipeline failed (${code ?? signal}).`);
+            error.details = stderr.slice(-4000);
+            error.statusCode = 502;
+            reject(error);
+            return;
+          }
+          try {
+            resolve(JSON.parse(stdout));
+          } catch {
+            const error = new Error('Trooper finetune pipeline returned invalid JSON.');
+            error.details = stdout.slice(0, 1000);
+            error.statusCode = 502;
+            reject(error);
+          }
+        });
+      });
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
-    return { ...body, actions: normalizeActions(body.actions) };
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      const timeout = new Error('The trial model timed out before returning actions.');
-      timeout.statusCode = 504;
-      throw timeout;
-    }
-    if (error.code === 'ECONNREFUSED') {
-      const unavailable = new Error('The local Qwen action model is not available.');
-      unavailable.statusCode = 503;
-      throw unavailable;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }
 
 async function generateFinetuneMeetingActions(transcriptText) {
@@ -52,13 +76,17 @@ async function generateFinetuneMeetingActions(transcriptText) {
   const denoiserStartedAt = Date.now();
   const prepared = await prepareTranscript(transcriptText, []);
   const denoiserMs = Date.now() - denoiserStartedAt;
-  const modelStartedAt = Date.now();
-  const generated = await callQwenWorker(prepared.preparedTranscript);
+  const trooperStartedAt = Date.now();
+  const generated = await runTrooperPipeline(prepared.preparedTranscript);
+  const actions = normalizeActions(generated.actions);
+  const plannedActivities = normalizeActions(generated.plannedActivities || []);
 
   return {
     ok: true,
-    pipeline: 'minilm_denoiser_v3_then_qwen3_0_6b_lora',
-    actions: generated.actions,
+    pipeline: generated.pipeline,
+    discussion: String(generated.discussion || '').trim(),
+    actions,
+    plannedActivities,
     denoisedTranscript: prepared.preparedTranscript,
     denoiser: {
       model: prepared.model,
@@ -70,22 +98,19 @@ async function generateFinetuneMeetingActions(transcriptText) {
       rawLength: prepared.rawLength,
       preparedLength: prepared.preparedLength
     },
-    model: {
-      id: generated.model,
-      revision: generated.modelRevision,
-      baseModel: generated.baseModel,
-      baseRevision: generated.baseRevision,
-      inputTokens: generated.inputTokens,
-      outputTokens: generated.outputTokens,
-      rawOutput: generated.rawModelOutput
+    trooper: {
+      model: process.env.TROOPER_MODEL || 'eu_liv_000099',
+      diagnostics: generated.diagnostics || {}
     },
     timingMs: {
       denoiser: denoiserMs,
-      model: Date.now() - modelStartedAt,
-      generation: generated.generationMs,
+      trooper: Date.now() - trooperStartedAt,
       total: Date.now() - startedAt
     }
   };
 }
 
-module.exports = { generateFinetuneMeetingActions, _private: { normalizeActions, callQwenWorker } };
+module.exports = {
+  generateFinetuneMeetingActions,
+  _private: { normalizeActions, runTrooperPipeline }
+};

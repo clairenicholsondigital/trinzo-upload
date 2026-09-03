@@ -7003,9 +7003,10 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
   }
 }));
 
-// Isolated trial: DOCX/text upload -> live MiniLM denoiser v3 -> one local
-// Qwen3-0.6B LoRA prompt. This deliberately does not alter the production
-// staged-meeting-minutes pipeline or fall back to it on failure.
+// Isolated trial: deterministic DOCX/text extraction -> live MiniLM denoiser v3
+// -> Trooper discussion -> contiguous conversation chunks -> candidate extraction
+// -> per-candidate action classification. This deliberately does not alter the
+// production staged-meeting-minutes pipeline or fall back to it on failure.
 router.post('/staged-meeting-minutes-finetune/actions', requireAuth, withTestUpload(async (req, res) => {
   const startedAt = Date.now();
   try {
@@ -7013,12 +7014,14 @@ router.post('/staged-meeting-minutes-finetune/actions', requireAuth, withTestUpl
     validateTranscriptText(transcript.text);
     const result = await generateFinetuneMeetingActions(transcript.text);
     console.info(JSON.stringify({
-      event: 'staged_meeting_minutes_finetune_actions_completed',
+      event: 'staged_meeting_minutes_finetune_trooper_completed',
       source: transcript.source,
       fileName: transcript.fileName || null,
       transcriptLength: transcript.text.length,
       denoisedLength: result.denoisedTranscript.length,
       actionCount: result.actions.length,
+      plannedActivityCount: result.plannedActivities.length,
+      chunkCount: result.trooper?.diagnostics?.chunkCount || 0,
       durationMs: Date.now() - startedAt
     }));
     return res.json({
