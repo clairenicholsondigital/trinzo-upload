@@ -25,6 +25,14 @@ test('the duplicated page keeps the staged APIs but resumes on its own route', (
   assert.doesNotMatch(finetune, /resumeUrl: '\/staged-meeting-minutes\?draftId='/);
 });
 
+test('finetune drafts cannot overwrite drafts from the existing page', () => {
+  assert.match(finetune, /STAGED_DRAFTS_KEY = 'stagedMeetingMinutesFinetuneJobs'/);
+  assert.match(finetune, /STAGED_TRANSCRIPTS_KEY = 'stagedMeetingMinutesFinetuneTranscripts'/);
+  assert.match(finetune, /draftId = 'staged-finetune-review-' \+ randomId/);
+  assert.match(original, /STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs'/);
+  assert.doesNotMatch(original, /stagedMeetingMinutesFinetune/);
+});
+
 test('the existing staged page remains pointed at the existing route', () => {
   assert.match(original, /resumeUrl: '\/staged-meeting-minutes\?draftId='/);
   assert.doesNotMatch(original, /Finetune workflow sandbox/);

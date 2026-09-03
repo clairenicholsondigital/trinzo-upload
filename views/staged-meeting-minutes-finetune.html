@@ -862,8 +862,8 @@ td select {
 
 <script>
 (function initialiseStagedScreens() {
-  var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
-  var STAGED_TRANSCRIPTS_KEY = 'stagedMeetingMinutesTranscripts';
+  var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesFinetuneJobs';
+  var STAGED_TRANSCRIPTS_KEY = 'stagedMeetingMinutesFinetuneTranscripts';
   var params = new URLSearchParams(window.location.search);
   var draftId = params.get('draftId') || '';
   var stageJobId = params.get('stageJobId') || '';
@@ -3724,7 +3724,7 @@ td select {
     var randomId = window.crypto && typeof window.crypto.randomUUID === 'function'
       ? window.crypto.randomUUID()
       : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
-    draftId = 'staged-review-' + randomId;
+    draftId = 'staged-finetune-review-' + randomId;
     params.set('draftId', draftId);
     var nextUrl = window.location.pathname + '?' + params.toString();
     replaceUrl(nextUrl);
