@@ -5,7 +5,7 @@ This is an isolated experimental path for `/staged-meeting-minutes-finetune`:
 1. Accept a `.docx`, `.txt`, or `.csv` transcript using the existing upload reader.
 2. Run the existing meeting-minutes-usefulness v3 MiniLM denoiser.
 3. Send the entire denoised transcript in one prompt to a local Qwen model.
-4. Return review-only JSON containing `action` and `owner`.
+4. Return review-only JSON containing `action`, `owner`, and `deadline`.
 
 It does not change or fall back to the normal `/staged-meeting-minutes` workflow.
 
@@ -40,7 +40,7 @@ uses `QWEN_ACTIONS_WORKER_URL` and a five-minute default timeout.
 - A basic smoke test returned valid JSON, but also showed that the model can
   incorrectly merge a suggestion into a confirmed action. Every row must be
   reviewed against the transcript.
-- This route tests action and owner only. It does not extract deadlines or
-  replace the staged minutes workflow.
+- This route tests action, owner and deadline extraction. It does not replace
+  the staged minutes workflow.
 - The worker currently runs CPU float32 and uses about 3.2 GB resident memory on
   this VPS. Only one generation runs at a time.

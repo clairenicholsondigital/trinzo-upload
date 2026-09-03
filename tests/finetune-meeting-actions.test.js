@@ -5,12 +5,12 @@ const { _private } = require('../utils/finetuneMeetingActions');
 
 test('normalizes action rows and fills an absent owner', () => {
   assert.deepEqual(_private.normalizeActions([
-    { action: '  Review   the plan ', owner: ' Bob ' },
+    { action: '  Review   the plan ', owner: ' Bob ', deadline: ' Friday ' },
     { action: 'Send notes', owner: '' },
     { action: '   ', owner: 'Alice' }
   ]), [
-    { action: 'Review the plan', owner: 'Bob' },
-    { action: 'Send notes', owner: 'Not stated' }
+    { action: 'Review the plan', owner: 'Bob', deadline: 'Friday' },
+    { action: 'Send notes', owner: 'Not stated', deadline: 'Not stated' }
   ]);
 });
 

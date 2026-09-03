@@ -35,19 +35,27 @@ ADAPTER_REVISION = "511773a88fbf0c0b45f6a619f69c53771403c4c0"
 BASE_MODEL_ID = "Qwen/Qwen3-0.6B"
 BASE_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
 
-SYSTEM_PROMPT = """You extract outstanding meeting actions from transcripts.
-Return JSON only. Do not add commentary or markdown.
+SYSTEM_PROMPT = """You extract current agreed meeting actions from transcript excerpts.
 
-An action must be a task that somebody accepted, committed to, or was clearly assigned.
-Exclude suggestions that were not accepted, questions, general discussion, status updates,
-work already completed, and meeting administration or run-of-show instructions.
+An action exists when the transcript clearly shows that:
+- someone explicitly commits to doing something;
+- someone accepts a request or assignment;
+- or the group explicitly agrees that a task needs to be done.
 
-For owner, use the person who explicitly accepted the task or was explicitly assigned it.
-Do not use a person merely because they requested the work, were mentioned, or receive it.
-If the owner is not explicit, use \"Not stated\".
-
-Use exactly this shape:
-{\"actions\":[{\"action\":\"Clear task wording\",\"owner\":\"Person name or Not stated\"}]}"""
+Important:
+- Phrases such as "I'll do it", "I can do that" followed by acceptance, "leave that with me", and "yes, I'll take care of it" are strong evidence of an action.
+- An action does not need to have a deadline.
+- The person requesting work is not automatically the owner. Use the person who accepts responsibility.
+- If the action is agreed but no owner is stated, use null.
+- If no deadline is stated, use null.
+- Combine evidence across turns when the task, owner, or deadline appears separately.
+- Keep separate tasks as separate actions.
+- Later changes override earlier owners, deadlines, or plans.
+- Do not output suggestions that were not accepted, hypothetical or conditional future plans that have not been activated, status updates, historical work, work already completed, or routine process descriptions.
+- If a request is rejected, cancelled, or explicitly put on hold without a replacement task, do not output it as an active action.
+- Never invent an action, owner, or deadline.
+- Return valid JSON only in this schema:
+{\"actions\":[{\"action\":\"...\",\"owner\":\"...\",\"deadline\":\"...\"}]}"""
 
 
 def extract_json_object(raw: str) -> dict[str, Any]:
@@ -76,14 +84,16 @@ def normalize_actions(payload: dict[str, Any]) -> list[dict[str, str]]:
             continue
         action = re.sub(r"\s+", " ", str(row.get("action") or "")).strip()[:1000]
         owner = re.sub(r"\s+", " ", str(row.get("owner") or "Not stated")).strip()[:200]
+        deadline = re.sub(r"\s+", " ", str(row.get("deadline") or "Not stated")).strip()[:200]
         if not action:
             continue
         owner = owner or "Not stated"
+        deadline = deadline or "Not stated"
         key = (action.casefold(), owner.casefold())
         if key in seen:
             continue
         seen.add(key)
-        actions.append({"action": action, "owner": owner})
+        actions.append({"action": action, "owner": owner, "deadline": deadline})
     return actions
 
 

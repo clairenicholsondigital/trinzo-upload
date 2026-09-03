@@ -54,7 +54,7 @@
     <span class="step">DOCX / transcript</span><span class="arrow">→</span>
     <span class="step">MiniLM denoiser v3</span><span class="arrow">→</span>
     <span class="step">Qwen3 0.6B + LoRA</span><span class="arrow">→</span>
-    <span class="step">Action + owner JSON</span>
+    <span class="step">Action + owner + deadline JSON</span>
   </div>
 
   <section class="panel">
@@ -73,7 +73,7 @@
       <button id="run" type="button">Run experimental extraction</button>
       <span id="status" role="status" aria-live="polite"></span>
     </div>
-    <p class="warning">Trial output only: review every action and owner against the transcript before using it.</p>
+    <p class="warning">Trial output only: review every action, owner and deadline against the transcript before using it.</p>
   </section>
 
   <section class="panel" id="results" hidden>
@@ -81,7 +81,7 @@
     <div class="stats" id="stats"></div>
     <p id="empty" class="muted" hidden>The model returned no outstanding actions.</p>
     <table id="action-table" hidden>
-      <thead><tr><th>#</th><th>Action</th><th>Owner</th></tr></thead>
+      <thead><tr><th>#</th><th>Action</th><th>Owner</th><th>Deadline</th></tr></thead>
       <tbody id="actions"></tbody>
     </table>
     <details><summary>See what MiniLM kept</summary><pre id="denoised"></pre></details>
@@ -129,7 +129,7 @@
       tbody.replaceChildren();
       payload.actions.forEach((row, index) => {
         const tr = document.createElement('tr');
-        [String(index + 1), row.action, row.owner].forEach((value) => {
+        [String(index + 1), row.action, row.owner, row.deadline].forEach((value) => {
           const td = document.createElement('td');
           td.textContent = value;
           tr.appendChild(td);

@@ -13,7 +13,7 @@ class QwenMeetingActionWorkerTests(unittest.TestCase):
             normalize_actions(
                 {
                     "actions": [
-                        {"action": " Review   plan ", "owner": " Bob "},
+                        {"action": " Review   plan ", "owner": " Bob ", "deadline": " Friday "},
                         {"action": "review plan", "owner": "bob"},
                         {"action": "Send notes"},
                         {"owner": "Alice"},
@@ -21,8 +21,8 @@ class QwenMeetingActionWorkerTests(unittest.TestCase):
                 }
             ),
             [
-                {"action": "Review plan", "owner": "Bob"},
-                {"action": "Send notes", "owner": "Not stated"},
+                {"action": "Review plan", "owner": "Bob", "deadline": "Friday"},
+                {"action": "Send notes", "owner": "Not stated", "deadline": "Not stated"},
             ],
         )
 

@@ -8,7 +8,8 @@ function normalizeActions(rows) {
   if (!Array.isArray(rows)) throw Object.assign(new Error('The trial model returned no actions array.'), { statusCode: 502 });
   return rows.map((row) => ({
     action: String(row?.action || '').replace(/\s+/g, ' ').trim(),
-    owner: String(row?.owner || 'Not stated').replace(/\s+/g, ' ').trim() || 'Not stated'
+    owner: String(row?.owner || 'Not stated').replace(/\s+/g, ' ').trim() || 'Not stated',
+    deadline: String(row?.deadline || 'Not stated').replace(/\s+/g, ' ').trim() || 'Not stated'
   })).filter((row) => row.action);
 }
 
