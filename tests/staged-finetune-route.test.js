@@ -8,29 +8,36 @@ const serverSource = fs.readFileSync(path.join(repoRoot, 'server.js'), 'utf8');
 const original = fs.readFileSync(path.join(repoRoot, 'views/staged-meeting-minutes.html'), 'utf8');
 const finetune = fs.readFileSync(path.join(repoRoot, 'views/staged-meeting-minutes-finetune.html'), 'utf8');
 
-test('the finetune route serves an independent authenticated view', () => {
+const apiSource = fs.readFileSync(path.join(repoRoot, 'routes/api.js'), 'utf8');
+const trialUtility = fs.readFileSync(path.join(repoRoot, 'utils/finetuneMeetingActions.js'), 'utf8');
+
+test('the finetune route serves an independent authenticated trial view', () => {
   assert.match(
     serverSource,
     /app\.get\('\/staged-meeting-minutes-finetune', authRoutes\.requireAuth, \(req, res\) => \{\s*sendView\(res, 'staged-meeting-minutes-finetune\.html'\)/
   );
   assert.notEqual(finetune, original);
-  assert.match(finetune, /<title>Finetune \| Staged Meeting Transcript to Minutes Tool<\/title>/);
-  assert.match(finetune, /<h1>Finetune Meeting Transcript to Minutes Tool<\/h1>/);
+  assert.match(finetune, /<title>Finetuned Meeting Actions Trial \| Trinzo<\/title>/);
+  assert.match(finetune, /MiniLM denoiser v3/);
+  assert.match(finetune, /Qwen3 0\.6B \+ LoRA/);
 });
 
-test('the duplicated page keeps the staged APIs but resumes on its own route', () => {
-  assert.match(finetune, /fetchJson\('\/api\/staged-meeting-minutes\/jobs\?stage='/);
-  assert.match(finetune, /fetchJson\('\/api\/staged-meeting-minutes\/review-events'/);
-  assert.match(finetune, /resumeUrl: '\/staged-meeting-minutes-finetune\?draftId='/);
-  assert.doesNotMatch(finetune, /resumeUrl: '\/staged-meeting-minutes\?draftId='/);
+test('the trial page calls only its isolated action endpoint', () => {
+  assert.match(finetune, /fetch\('\/api\/staged-meeting-minutes-finetune\/actions'/);
+  assert.doesNotMatch(finetune, /fetchJson\('\/api\/staged-meeting-minutes\/jobs/);
+  assert.doesNotMatch(finetune, /STAGED_DRAFTS_KEY/);
 });
 
-test('finetune drafts cannot overwrite drafts from the existing page', () => {
-  assert.match(finetune, /STAGED_DRAFTS_KEY = 'stagedMeetingMinutesFinetuneJobs'/);
-  assert.match(finetune, /STAGED_TRANSCRIPTS_KEY = 'stagedMeetingMinutesFinetuneTranscripts'/);
-  assert.match(finetune, /draftId = 'staged-finetune-review-' \+ randomId/);
+test('the API trial is authenticated and uses the v3 denoiser before Qwen', () => {
+  assert.match(apiSource, /router\.post\('\/staged-meeting-minutes-finetune\/actions', requireAuth, withTestUpload/);
+  assert.match(trialUtility, /prepareTranscript\(transcriptText, \[\]\)/);
+  assert.match(trialUtility, /callQwenWorker\(prepared\.preparedTranscript\)/);
+  assert.match(trialUtility, /minilm_denoiser_v3_then_qwen3_0_6b_lora/);
+});
+
+test('the experimental page does not share client-side draft storage', () => {
   assert.match(original, /STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs'/);
-  assert.doesNotMatch(original, /stagedMeetingMinutesFinetune/);
+  assert.doesNotMatch(finetune, /localStorage/);
 });
 
 test('the existing staged page remains pointed at the existing route', () => {

@@ -71,6 +71,7 @@ const {
   organizeDiscussionParagraphs: organizeSimplifiedDiscussionParagraphs,
   generateActions: generateSimplifiedActions
 } = require('../utils/simplifiedStagedMinutes');
+const { generateFinetuneMeetingActions } = require('../utils/finetuneMeetingActions');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -6998,6 +6999,38 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
       details: error?.details || null,
       durationMs: Date.now() - startedAt
     }));
+    return sendTestError(res, error);
+  }
+}));
+
+// Isolated trial: DOCX/text upload -> live MiniLM denoiser v3 -> one local
+// Qwen3-0.6B LoRA prompt. This deliberately does not alter the production
+// staged-meeting-minutes pipeline or fall back to it on failure.
+router.post('/staged-meeting-minutes-finetune/actions', requireAuth, withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const result = await generateFinetuneMeetingActions(transcript.text);
+    console.info(JSON.stringify({
+      event: 'staged_meeting_minutes_finetune_actions_completed',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      denoisedLength: result.denoisedTranscript.length,
+      actionCount: result.actions.length,
+      durationMs: Date.now() - startedAt
+    }));
+    return res.json({
+      ...result,
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length
+    });
+  } catch (error) {
+    safeLogError('[Finetune meeting-action trial failed]', error, {
+      durationMs: Date.now() - startedAt
+    });
     return sendTestError(res, error);
   }
 }));

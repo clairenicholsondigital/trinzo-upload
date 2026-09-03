@@ -1,0 +1,3 @@
+# Installed into .venv-qwen-actions, which inherits the VPS Torch/Transformers stack.
+peft==0.20.0
+accelerate==1.14.0
