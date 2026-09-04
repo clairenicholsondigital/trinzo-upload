@@ -20,11 +20,8 @@ const { meetingProfile } = require('../utils/canonicalMinutes/meetingPurpose');
 const DROPDOWN_OPTIONS = [
   'Project review',
   'Audit kick-off / planning',
-  'Client update',
   'Decision meeting',
-  'Workshop',
   'Webinar rehearsal',
-  'Case study interview',
   'Technical file review',
   'Technical file consultancy review',
   'Software weekly review',
@@ -37,11 +34,8 @@ const DROPDOWN_OPTIONS = [
 const EXPECTED = {
   'Project review': 'project_review',
   'Audit kick-off / planning': 'audit_planning',
-  'Client update': 'client_update',
   'Decision meeting': 'decision_meeting',
-  'Workshop': 'workshop',
   'Webinar rehearsal': 'webinar_rehearsal',
-  'Case study interview': 'case_study_interview',
   'Technical file review': 'technical_file_review',
   'Technical file consultancy review': 'technical_file_review',
   'Software weekly review': 'technical_file_review',

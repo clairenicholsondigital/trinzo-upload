@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Review_Lean_Generation_Pipeline_Meeting_Transcript_2.docx",
   "expected": {
-    "meetingType": "Workshop",
+    "meetingType": "Process / pipeline planning",
     "meetingTitle": "Review Lean Generation Pipeline",
     "meetingPurpose": "Sense-check a proposed lean lead-generation pipeline before running a manual test and potential AI-supported pilot.",
     "meetingObjectives": [

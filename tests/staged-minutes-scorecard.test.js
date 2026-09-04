@@ -72,6 +72,7 @@ test('every committed fixture has a transcript and an expected.json the scorer c
   const root = path.resolve(__dirname, '../scripts/staged-scorecard-fixtures');
   const fixtures = fs.readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
   assert.ok(fixtures.length >= 13, `expected at least 13 fixtures, found ${fixtures.length}`);
+  const expectedMeetingTypes = new Set();
   for (const fixture of fixtures) {
     const dir = path.join(root, fixture.name);
     assert.ok(fs.existsSync(path.join(dir, 'transcript.txt')), `${fixture.name} is missing transcript.txt`);
@@ -80,7 +81,18 @@ test('every committed fixture has a transcript and an expected.json the scorer c
     for (const key of ['meetingType', 'meetingPurpose', 'meetingObjectives', 'overallTopicsDiscussed', 'discussion', 'actions']) {
       assert.ok(key in expected, `${fixture.name} expected.json is missing "${key}"`);
     }
+    expectedMeetingTypes.add(expected.meetingType);
   }
+
+  // The reviewer should not be asked to choose a type that has no ground-truth example.
+  // Conversely, every expected type must be selectable, or the human cannot correct it.
+  const page = fs.readFileSync(path.resolve(__dirname, '../views/staged-meeting-minutes.html'), 'utf8');
+  const select = page.slice(page.indexOf('<select id="meetingType">'));
+  const markup = select.slice(0, select.indexOf('</select>'));
+  const dropdownTypes = new Set([...markup.matchAll(/<option(?:\s+value="([^"]*)")?\s*>([^<]*)</g)]
+    .map((match) => (match[1] || match[2]).trim())
+    .map((value) => value.replace(/\s*\(general\)$/, '')));
+  assert.deepEqual([...dropdownTypes].sort(), [...expectedMeetingTypes].sort());
 });
 
 // --- semantic tier: the pure half, tested without python or a model.

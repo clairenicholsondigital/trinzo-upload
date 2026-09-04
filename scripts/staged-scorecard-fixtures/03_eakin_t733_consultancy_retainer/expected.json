@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_weekly.docx",
   "expected": {
-    "meetingType": "Technical file review",
+    "meetingType": "Technical file consultancy review",
     "meetingTitle": "T733/T817 Eakin Healthcare Consultancy Retainer - Client project checkin for TF24",
     "meetingPurpose": "Review TF24 technical-file remediation status and agree next actions across risk, software, subcontractors, usability, testing and PMS.",
     "meetingObjectives": [

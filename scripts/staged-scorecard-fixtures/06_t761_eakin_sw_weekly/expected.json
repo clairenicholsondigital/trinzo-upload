@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Client_T761_Eakin_SW_weekly_checkin_NEW.docx",
   "expected": {
-    "meetingType": "Technical file review",
+    "meetingType": "Software weekly review",
     "meetingTitle": "Client T761 Eakin SW - weekly checkin",
     "meetingPurpose": "Follow up on T761 software technical-file risks, standards applicability, alarm change close-out, language updates and cybersecurity controls.",
     "meetingObjectives": [

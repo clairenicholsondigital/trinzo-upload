@@ -43,7 +43,7 @@ const MIN_TOTAL_EVENTS = 12;
 // The dropdown labels for the profile ids this can suggest. Kept here rather than in
 // meetingPurpose.js so the grep-guarded profile slice stays untouched; pinned against the
 // dropdown by tests/meeting-type-suggestion.test.js.
-const DROPDOWN_LABEL_BY_PROFILE = {
+const PROFILE_LABEL = {
   webinar_rehearsal: 'Webinar rehearsal',
   case_study_interview: 'Case study interview',
   technical_file_review: 'Technical file review',
@@ -57,10 +57,17 @@ const DROPDOWN_LABEL_BY_PROFILE = {
   // "suggesting" it would be noise.
 };
 
+// Only types represented by the reviewed 13-transcript scorecard may be offered to a
+// reviewer. Profiles outside that set still participate in scoring as competing
+// explanations; removing them from the ranking made unrelated meetings look dominant.
+const DROPDOWN_LABEL_BY_PROFILE = Object.fromEntries(Object.entries(PROFILE_LABEL).filter(([, label]) => ![
+  'Case study interview', 'Client update', 'Workshop'
+].includes(label)));
+
 function scoreProfiles(events) {
   const scores = [];
   for (const profile of profileHintCatalogue()) {
-    if (!DROPDOWN_LABEL_BY_PROFILE[profile.id]) continue;
+    if (!PROFILE_LABEL[profile.id]) continue;
     const matchedEventIds = new Set();
     let supportedHints = 0;
     const supported = [];
@@ -94,13 +101,13 @@ function suggestMeetingTypeFromEvidence(evidence) {
     && best.totalMatchedEvents >= MIN_TOTAL_EVENTS
     && marginRatio >= DOMINANCE_RATIO;
   return {
-    type: DROPDOWN_LABEL_BY_PROFILE[best.profileId],
+    type: PROFILE_LABEL[best.profileId],
     profileId: best.profileId,
     supportedHints: best.supported,
     totalMatchedEvents: best.totalMatchedEvents,
     runnerUp: runnerUp ? { profileId: runnerUp.profileId, totalMatchedEvents: runnerUp.totalMatchedEvents } : null,
     marginRatio: Number(marginRatio.toFixed(2)),
-    accepted
+    accepted: accepted && Boolean(DROPDOWN_LABEL_BY_PROFILE[best.profileId])
   };
 }
 

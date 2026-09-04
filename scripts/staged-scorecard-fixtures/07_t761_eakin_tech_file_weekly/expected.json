@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Client_T761_Eakin_Tech_File_SW_Weekly_checkin.docx",
   "expected": {
-    "meetingType": "Technical file review",
+    "meetingType": "Software and technical-file weekly review",
     "meetingTitle": "T761 Eakin Healthcare Tech File SW review - SW coding changes",
     "meetingPurpose": "Review T761 Eakin software coding changes and related technical-file dependencies for alarms, languages, versioning, electrical safety and cybersecurity.",
     "meetingObjectives": [

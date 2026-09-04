@@ -222,7 +222,11 @@ async function scoreFixture(name) {
   const expectedRaw = JSON.parse(fs.readFileSync(path.join(dir, 'expected.json'), 'utf8'));
   const expected = expectedRaw.expected || expectedRaw;
 
-  const details = api.extractStagedDetailsFromTranscript(text, name).screens?.details || {};
+  // Use the original upload filename recorded by the reviewer, not the fixture folder
+  // name. Production type inference sees that filename, so the scorecard must exercise
+  // the same input if meetingType is to be a meaningful expected value.
+  const sourceFileName = expectedRaw.transcriptFile || name;
+  const details = api.extractStagedDetailsFromTranscript(text, sourceFileName).screens?.details || {};
   const summaryResult = await api.canonicalStagedResponse('summary', { text, fileName: name, source: 'file' }, { confirmedDetails: details });
   const summary = summaryResult.screens?.summary || {};
   const confirmedSummary = {
@@ -239,7 +243,9 @@ async function scoreFixture(name) {
 
   const generatedDiscussionText = discussion.flatMap((card) => (card.points || []).map((point) => (typeof point === 'string' ? point : point?.text)));
 
-  const typeMatch = overlap(expected.meetingType, details.meetingType) >= 0.34;
+  // Meeting types are a closed dropdown vocabulary. Fuzzy overlap allowed materially
+  // different choices such as two kinds of technical-file review to pass as equivalent.
+  const typeMatch = String(expected.meetingType || '').trim() === String(details.meetingType || '').trim();
   const purposeOverlap = overlap(expected.meetingPurpose, summary.meetingPurpose);
   const objectiveCoverage = coverage(expected.meetingObjectives || [], summary.objectives || [], overlap);
   const topicCoverage = coverage(expected.overallTopicsDiscussed || [], summary.overallTopics || [], overlap);

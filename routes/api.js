@@ -614,9 +614,8 @@ function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   if (isSoftwareWeekly) return 'Software weekly review';
   if (isTechnicalFile && /\bconsultancy\b/i.test(titleHint)) return 'Technical file consultancy review';
   if (isTechnicalFile) return 'Technical file review';
+  if (/\b(?:process|pipeline|lead generation)\b.*\b(?:planning|review|design)\b|\b(?:planning|review|design)\b.*\b(?:process|pipeline)\b/i.test(titleHint)) return 'Process / pipeline planning';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
-  if (/\bworkshop\b/i.test(titleHint)) return 'Workshop';
-  if (/\b(client update|status update)\b/i.test(titleHint)) return 'Client update';
   if (/\bdecision\b/i.test(titleHint)) return 'Decision meeting';
   return 'Project review';
 }
