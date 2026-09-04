@@ -637,144 +637,6 @@ def normalise_actions(result: dict[str, Any], chunk: dict[str, int]) -> list[dic
     return output
 
 
-def webinar_constraint_categories(text: str) -> list[str]:
-    categories = []
-    if re.search(r"\b(?:on yourself|personal intro(?:duction)?|introduction)\b", text, flags=re.IGNORECASE):
-        categories.append("personal-introduction duration")
-    if re.search(r"\b(?:per answer|q\s*&\s*a answers?|answers? concise)\b", text, flags=re.IGNORECASE):
-        categories.append("Q&A-answer duration or concision")
-    if re.search(r"\b(?:drop|dropping|remove|omit|cut)\b.{0,50}\b(?:joke|line|wording)\b", text, flags=re.IGNORECASE):
-        categories.append("removal of wording or a joke")
-    return categories
-
-
-def potential_compound_actions(actions: list[dict[str, Any]], turns: list[str] | None = None) -> list[tuple[int, dict[str, Any]]]:
-    """Return conservative, one-based parallel presenter constraints."""
-    output = []
-    for index, action in enumerate(actions, 1):
-        text = clean(action.get("action"))
-        evidence_text = []
-        if turns:
-            for evidence_id in action.get("evidenceIds", []):
-                match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
-                if match and 1 <= int(match.group(1)) <= len(turns):
-                    evidence_text.append(turns[int(match.group(1)) - 1])
-        combined = " ".join([text, *evidence_text])
-        if len(webinar_constraint_categories(combined)) >= 2:
-            output.append((index, action))
-    return output
-
-
-def webinar_constraint_children(action: dict[str, Any], turns: list[str]) -> list[str]:
-    evidence = []
-    for evidence_id in action.get("evidenceIds", []):
-        match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
-        if match and 1 <= int(match.group(1)) <= len(turns):
-            evidence.append(turns[int(match.group(1)) - 1])
-    combined = " ".join([clean(action.get("action")), *evidence])
-    categories = webinar_constraint_categories(combined)
-    if len(categories) < 2:
-        return []
-
-    children = []
-    if "personal-introduction duration" in categories:
-        duration = re.search(
-            r"((?:\d+|[a-z]+(?:-[a-z]+)?)\s+seconds?)\s+(?:on yourself|for (?:your )?(?:personal )?intro(?:duction)?)",
-            combined, flags=re.IGNORECASE)
-        children.append(
-            f"Limit the personal introduction to {duration.group(1).lower()}." if duration
-            else "Keep the personal introduction concise.")
-    if "Q&A-answer duration or concision" in categories:
-        duration = re.search(
-            r"((?:\d+|[a-z]+(?:-[a-z]+)?)\s+seconds?)\s+per answer",
-            combined, flags=re.IGNORECASE)
-        children.append(
-            f"Limit each Q&A answer to {duration.group(1).lower()}." if duration
-            else "Keep Q&A answers concise to avoid overrunning.")
-    if "removal of wording or a joke" in categories:
-        quoted_joke = re.search(r"['\"‘]([^'\"’]{1,60})['\"’]\s+joke", combined, flags=re.IGNORECASE)
-        if quoted_joke:
-            children.append(f"Drop the '{clean(quoted_joke.group(1))}' joke from the opening.")
-        else:
-            named_joke = re.search(
-                r"(?:drop|dropping|remove|omit|cut)(?:\s+the)?\s+(.{0,50}?\bjoke\b)",
-                combined, flags=re.IGNORECASE)
-            children.append(
-                f"Remove the {clean(named_joke.group(1))} from the opening." if named_joke
-                else "Remove the identified wording from the opening.")
-    return children if len(children) == len(categories) else []
-
-
-def webinar_constraint_owner(action: dict[str, Any], turns: list[str]) -> str:
-    speakers: dict[str, str] = {}
-    for turn_text in turns:
-        speaker = clean(turn_text.split(":", 1)[0]) if ":" in turn_text else ""
-        if speaker:
-            speakers.setdefault(speaker.split()[0].casefold(), speaker)
-    for evidence_id in action.get("evidenceIds", []):
-        match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
-        if not match or not 1 <= int(match.group(1)) <= len(turns):
-            continue
-        turn_text = turns[int(match.group(1)) - 1]
-        addressee = re.search(r"\b([A-Z][a-z]+),\s+(?:you(?:'re| are)|your)\b", turn_text)
-        if addressee and addressee.group(1).casefold() in speakers:
-            return speakers[addressee.group(1).casefold()]
-    return clean(action.get("owner")) or "Not stated"
-
-
-def webinar_constraint_recaps(turns: list[str]) -> list[tuple[int, list[str]]]:
-    recaps = []
-    for turn, turn_text in enumerate(turns, 1):
-        categories = webinar_constraint_categories(turn_text)
-        if len(categories) >= 2:
-            recaps.append((turn, categories))
-    return recaps
-
-
-def atomise_webinar_actions(actions: list[dict[str, Any]], turns: list[str]) -> tuple[list[dict[str, Any]], int]:
-    recaps = webinar_constraint_recaps(turns)
-    if not recaps:
-        return actions, 0
-
-    output = list(actions)
-    split_count = 0
-    for recap_turn, categories in recaps:
-        evidence_id = f"turn_{recap_turn}"
-        matching = [index for index, action in enumerate(output)
-                    if evidence_id in action.get("evidenceIds", [])
-                    and webinar_constraint_categories(clean(action.get("action")))]
-        source = output[matching[0]] if matching else {
-            "owner": "Not stated", "action": turns[recap_turn - 1], "deadline": "Not stated",
-            "status": "ASSIGNED", "evidenceIds": [evidence_id],
-        }
-        source = dict(source)
-        evidence_ids = list(source.get("evidenceIds", []))
-        if evidence_id not in evidence_ids:
-            evidence_ids.append(evidence_id)
-        if recap_turn < len(turns):
-            addressee = webinar_constraint_owner({"owner": "Not stated", "evidenceIds": [evidence_id]}, turns)
-            next_speaker = clean(turns[recap_turn].split(":", 1)[0]) if ":" in turns[recap_turn] else ""
-            if addressee != "Not stated" and next_speaker.casefold() == addressee.casefold():
-                evidence_ids.append(f"turn_{recap_turn + 1}")
-        source["evidenceIds"] = sorted(set(evidence_ids), key=lambda value: int(value.split("_")[-1]))
-        children = webinar_constraint_children(source, turns)
-        if len(children) != len(categories):
-            continue
-        owner = webinar_constraint_owner(source, turns)
-        replacement = []
-        split_count += 1
-        for child_text in children:
-            child = dict(source)
-            child["action"] = child_text
-            child["owner"] = owner
-            replacement.append(child)
-        insert_at = matching[0] if matching else len(output)
-        for index in reversed(matching):
-            output.pop(index)
-        output[insert_at:insert_at] = replacement
-    return output, split_count
-
-
 def normalise_discussion_candidates(result: dict[str, Any], chunk: dict[str, int]) -> list[dict[str, Any]]:
     output = []
     rows = result.get("candidates") if isinstance(result.get("candidates"), list) else []
@@ -939,11 +801,8 @@ def main() -> int:
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
         results = list(pool.map(analyse, chunks))
     actions = [action for group in results for action in group]
-    atomised_candidate_count = 0
-    if prompt_profile == "webinar_rehearsal":
-        actions, atomised_candidate_count = atomise_webinar_actions(actions, turns)
     print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
-        "actionPromptProfile": prompt_profile, "atomisedCandidateCount": atomised_candidate_count}, ensure_ascii=False))
+        "actionPromptProfile": prompt_profile}, ensure_ascii=False))
     return 0
 
 

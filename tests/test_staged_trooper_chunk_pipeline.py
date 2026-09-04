@@ -30,63 +30,6 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertEqual(actions[0]["evidenceIds"], ["turn_2"])
         self.assertEqual(actions[0]["status"], "COMMITTED")
 
-    def test_compound_action_gate_is_conservative(self):
-        actions = [
-            {"action": "Build the closing slide with the QR code and link."},
-            {"action": "Start recording, monitor the indicator, and take a screenshot."},
-            {"action": "Keep the introduction short, keep answers brief, and remove the joke."},
-            {"action": "Be thirty seconds on yourself per answer and drop the not-see-you joke."},
-        ]
-        candidates = PIPELINE.potential_compound_actions(actions)
-        self.assertEqual([index for index, _ in candidates], [3, 4])
-
-        partial = [{"action": "Remove the joke.", "evidenceIds": ["turn_1"]}]
-        evidence_candidates = PIPELINE.potential_compound_actions(
-            partial, ["Priya: Thirty seconds on yourself, thirty seconds per answer, and dropping the joke."])
-        self.assertEqual([index for index, _ in evidence_candidates], [1])
-
-    def test_webinar_atomiser_uses_evidence_and_copies_metadata(self):
-        actions = [
-            {"owner": "Callum", "action": "Build the closing slide.", "status": "ASSIGNED",
-             "deadline": "Friday", "evidenceIds": ["turn_8"]},
-            {"owner": "Priya", "action": "Drop the 'not-see-you' joke.", "status": "ASSIGNED",
-             "deadline": "During the webinar", "evidenceIds": ["turn_2"]},
-        ]
-        turns = ["Tom Whitfield: Ready", "Priya Sethi: Tom, you're thirty seconds on yourself, thirty seconds per answer, and dropping the 'not-see-you' joke."]
-        output, count = PIPELINE.atomise_webinar_actions(actions, turns)
-        self.assertEqual(count, 1)
-        self.assertIs(output[0], actions[0])
-        self.assertEqual([row["action"] for row in output[1:]], [
-            "Limit the personal introduction to thirty seconds.",
-            "Limit each Q&A answer to thirty seconds.",
-            "Drop the 'not-see-you' joke from the opening.",
-        ])
-        for row in output[1:]:
-            self.assertEqual(row["owner"], "Tom Whitfield")
-            self.assertEqual(row["status"], "ASSIGNED")
-            self.assertEqual(row["deadline"], "During the webinar")
-            self.assertEqual(row["evidenceIds"], ["turn_2"])
-
-    def test_non_matching_webinar_action_is_preserved(self):
-        action = {"owner": "Tom", "action": "Remove the joke.", "status": "ASSIGNED",
-                  "deadline": "Today", "evidenceIds": ["turn_3"]}
-        output, count = PIPELINE.atomise_webinar_actions(
-            [action], ["Priya: recap", "Tom: yes", "Priya: Remove the joke."])
-        self.assertEqual(output, [action])
-        self.assertEqual(count, 0)
-
-    def test_webinar_recap_recovers_constraints_when_extraction_omits_candidate(self):
-        turns = [
-            "Tom Whitfield: Ready",
-            "Priya Sethi: Tom, you're thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke.",
-            "Tom Whitfield: Yes, dropping the joke and being disciplined on time.",
-        ]
-        output, count = PIPELINE.atomise_webinar_actions([], turns)
-        self.assertEqual(count, 1)
-        self.assertEqual([row["owner"] for row in output], ["Tom Whitfield"] * 3)
-        self.assertEqual([row["evidenceIds"] for row in output], [["turn_2", "turn_3"]] * 3)
-        self.assertEqual([row["status"] for row in output], ["ASSIGNED"] * 3)
-
     def test_live_prompt_is_the_short_verb_sweep(self):
         for verb in ("Review", "Resolve", "Arrange", "Plan", "Email"):
             self.assertIn(f"- {verb}", PIPELINE.ACTION_PROMPT)
@@ -197,7 +140,6 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         pipeline, _ = PIPELINE.action_prompt_for_meeting_type("Process pipeline planning")
         for term in ("grouping chat questions", "Q&A", "dead air", "assignment recaps"):
             self.assertIn(term, webinar)
-        self.assertIn("eight action candidates", webinar)
         for term in ("CONTINUE", "TRACE", "INCORPORATE", "controlled documents"):
             self.assertIn(term, technical)
         for term in ("full general sweep", "owner-by-owner action ledger", "retrospective test", "recurring review"):
