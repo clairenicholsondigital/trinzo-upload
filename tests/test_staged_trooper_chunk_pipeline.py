@@ -80,12 +80,12 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertIs(general, PIPELINE.DISCUSSION_PROMPT)
 
     def test_discussion_two_half_route_is_limited_to_coverage_sensitive_types(self):
-        for meeting_type in ("Workshop",):
+        for meeting_type in ("Workshop", "Technical file review"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertTrue(PIPELINE.discussion_uses_two_halves(meeting_type))
         for meeting_type in ("Audit kick-off / planning", "Importer obligations review",
                              "Process / pipeline planning", "Lead generation pipeline review",
-                             "Webinar rehearsal", "Technical file review",
+                             "Webinar rehearsal",
                              "Project review", "Decision meeting"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_two_halves(meeting_type))

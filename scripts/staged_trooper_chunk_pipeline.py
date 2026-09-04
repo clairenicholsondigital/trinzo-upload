@@ -471,6 +471,7 @@ def discussion_uses_two_halves(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return (
         normalised == "workshop"
+        or normalised == "technical file review"
     )
 
 
