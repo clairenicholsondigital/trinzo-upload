@@ -27,8 +27,7 @@ const DROPDOWN_OPTIONS = [
   'Software weekly review',
   'Software and technical-file weekly review',
   'Process / pipeline planning',
-  'Importer obligations review',
-  'Internal follow-up'
+  'Importer obligations review'
 ];
 
 const EXPECTED = {
@@ -41,8 +40,7 @@ const EXPECTED = {
   'Software weekly review': 'technical_file_review',
   'Software and technical-file weekly review': 'technical_file_review',
   'Process / pipeline planning': 'process_pipeline_planning',
-  'Importer obligations review': 'importer_obligations_review',
-  'Internal follow-up': 'internal_follow_up'
+  'Importer obligations review': 'importer_obligations_review'
 };
 
 test('the meeting type dropdown offers exactly the options this table pins', () => {
