@@ -2311,6 +2311,10 @@ td select {
     // The row itself carries the inline rephrase marker, and the text is editable in place.
     action_wording_needs_review: true,
     discussion_wording_needs_review: true,
+    // This aggregate has no fieldPath, quote or repair control, so its instruction to
+    // edit a "highlighted section" cannot take the reviewer anywhere. The visible,
+    // editable Discussion content is already the review surface.
+    wording_needs_review: true,
     // An empty actions table is its own announcement.
     no_actions_detected: true
   };

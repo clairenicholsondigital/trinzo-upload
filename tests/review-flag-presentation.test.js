@@ -28,6 +28,7 @@ test('a check the table already shows is not repeated as a banner', () => {
   // The row already carries an inline "rephrase before sharing" marker.
   assert.equal(flagIsSelfEvident({ type: 'action_wording_needs_review' }), true);
   assert.equal(flagIsSelfEvident({ type: 'discussion_wording_needs_review' }), true);
+  assert.equal(flagIsSelfEvident({ type: 'wording_needs_review' }), true);
   // An empty actions table is its own announcement.
   assert.equal(flagIsSelfEvident({ type: 'no_actions_detected' }), true);
 });

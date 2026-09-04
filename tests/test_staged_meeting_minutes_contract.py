@@ -213,6 +213,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Building the same evidence-grounded understanding used by the quality scorecard.", api)
         self.assertIn("payload = await canonicalStagedResponse(stage, transcript, canonicalInput)", api)
         self.assertNotIn("payload = await generateMiniLmTrooperStage(stage, transcript.text", api)
+        self.assertIn("Do not pass machine-written purpose/objective prose through the", api)
         self.assertIn("findStagedSourceJobFromRequest", api)
         self.assertIn("function isTransientPgError", db)
         self.assertIn("code === '40P01' || code === '40001'", db)

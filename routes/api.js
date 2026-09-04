@@ -5500,9 +5500,10 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         });
         const summary = summaryResponse.screens?.summary || {};
         canonicalInput.confirmedSummary = {
-          meetingPurpose: summary.meetingPurpose,
-          objectives: summary.objectives || [],
-          executiveSummary: summary.executiveSummary,
+          // These machine-selected topics provide the same planning context as the
+          // scorecard. Do not pass machine-written purpose/objective prose through the
+          // reviewer-confirmed fields: that made the editorial checker claim the user
+          // had confirmed text they had never seen, then ask them to add it again.
           overallTopics: summary.overallTopics || [],
           topicRefs: (summary.topicRefs || []).map((ref) => ({
             text: ref.text,
