@@ -38,8 +38,8 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
     def test_action_prompt_routes_supported_meeting_types(self):
         cases = {
             "Webinar rehearsal": "webinar_rehearsal",
-            "Technical file review": "technical_file_or_software_review",
-            "Software Weekly Review": "technical_file_or_software_review",
+            "Technical file review": "technical_file_review",
+            "Software Weekly Review": "general",
             "Process / pipeline planning": "process_or_pipeline_planning",
             "Lead generation pipeline review": "process_or_pipeline_planning",
             "Project review": "general",

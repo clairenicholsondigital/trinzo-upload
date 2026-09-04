@@ -235,8 +235,10 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
-    if any(term in normalised for term in ("technical file", "software review", "software weekly", "software check in")):
-        return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_or_software_review"
+    if any(term in normalised for term in ("software weekly", "software check in", "software review")):
+        return ACTION_PROMPT, "general"
+    if "technical file" in normalised:
+        return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_review"
     if any(term in normalised for term in ("pipeline", "process planning", "process review", "lead generation")):
         return PROCESS_PIPELINE_ACTION_PROMPT, "process_or_pipeline_planning"
     return ACTION_PROMPT, "general"
