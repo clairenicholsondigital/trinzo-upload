@@ -691,7 +691,6 @@ td select {
               <option>Technical file consultancy review</option>
               <option>Software weekly review</option>
               <option>Software and technical-file weekly review</option>
-              <option>Process / pipeline planning</option>
               <option>Importer obligations review</option>
             </select>
           </div>
@@ -1530,7 +1529,7 @@ td select {
       if (meetingTitleInput) meetingTitleInput.value = state.details.meetingTitle || '';
       if (meetingDateInput) meetingDateInput.value = state.details.meetingDate || '';
       if (meetingLocationInput) meetingLocationInput.value = state.details.meetingLocation || '';
-      if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = state.details.meetingType === 'Project review' ? 'General' : state.details.meetingType;
+      if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = ['Project review', 'Process / pipeline planning'].includes(state.details.meetingType) ? 'General' : state.details.meetingType;
       if (useExternalAttendeeLabel) useExternalAttendeeLabel.checked = state.details.clientAttendeeLabel === 'External';
       updateClientAttendeeLabels();
       renderAttendees(internalAttendeesRow, state.details.internalAttendees);
@@ -3031,7 +3030,7 @@ td select {
       refreshMeetingTitleHelp();
       if (meetingDateInput && mergedDetails.meetingDate) meetingDateInput.value = mergedDetails.meetingDate.slice(0, 10);
       if (meetingLocationInput) meetingLocationInput.value = mergedDetails.meetingLocation || 'Microsoft Teams';
-      if (meetingTypeInput && mergedDetails.meetingType) meetingTypeInput.value = mergedDetails.meetingType === 'Project review' ? 'General' : mergedDetails.meetingType;
+      if (meetingTypeInput && mergedDetails.meetingType) meetingTypeInput.value = ['Project review', 'Process / pipeline planning'].includes(mergedDetails.meetingType) ? 'General' : mergedDetails.meetingType;
       renderAttendees(internalAttendeesRow, mergedDetails.internalAttendees);
       renderAttendees(clientAttendeesRow, mergedDetails.clientAttendees);
       stagedState.details = detailsFromDom();

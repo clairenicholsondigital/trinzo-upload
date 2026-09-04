@@ -26,7 +26,6 @@ const DROPDOWN_OPTIONS = [
   'Technical file consultancy review',
   'Software weekly review',
   'Software and technical-file weekly review',
-  'Process / pipeline planning',
   'Importer obligations review'
 ];
 
@@ -39,7 +38,6 @@ const EXPECTED = {
   'Technical file consultancy review': 'technical_file_review',
   'Software weekly review': 'technical_file_review',
   'Software and technical-file weekly review': 'technical_file_review',
-  'Process / pipeline planning': 'process_pipeline_planning',
   'Importer obligations review': 'importer_obligations_review'
 };
 
