@@ -61,7 +61,7 @@ const PROFILE_LABEL = {
 // reviewer. Profiles outside that set still participate in scoring as competing
 // explanations; removing them from the ranking made unrelated meetings look dominant.
 const DROPDOWN_LABEL_BY_PROFILE = Object.fromEntries(Object.entries(PROFILE_LABEL).filter(([, label]) => ![
-  'Case study interview', 'Client update', 'Workshop'
+  'Case study interview', 'Client update', 'Internal follow-up', 'Workshop'
 ].includes(label)));
 
 function scoreProfiles(events) {

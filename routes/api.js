@@ -603,7 +603,7 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
 // answers "what kind of meeting is this", so every test now reads titleHint.
 function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   const titleHint = `${fileName || ''} ${meetingTitle || ''}`.replace(/[_-]+/g, ' ');
-  if (/\binternal\b.*\b(?:follow ?up|review from client call|debrief)\b/i.test(titleHint)) return 'Internal follow-up';
+  if (/\binternal\b.*\b(?:follow ?up|review from client call|debrief)\b/i.test(titleHint)) return 'General';
   if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(titleHint)) return 'Importer obligations review';
   if (/\baudit\b.*\b(?:kick ?off|planning|preparation|readiness)\b/i.test(titleHint)) return 'Audit kick-off / planning';
   // Recurring software reviews have their own discussion profile; ordinary release reviews
