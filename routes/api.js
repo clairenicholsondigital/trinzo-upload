@@ -64,6 +64,7 @@ const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSumma
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
 const { generateMiniLmTrooperStage } = require('../utils/stagedMiniLmTrooper');
+const { filterActionsForPresentation } = require('../utils/stagedActionPresentation');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -5294,6 +5295,16 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       }
     }
   }
+  if (stage === 'actions' && Array.isArray(result?.screens?.actions)) {
+    const presentedActions = filterActionsForPresentation(result.screens.actions);
+    const removed = result.screens.actions.filter((item) => !presentedActions.includes(item));
+    if (removed.length) console.log(JSON.stringify({
+      event: 'staged_minimum_action_words_gate',
+      stage: 'actions',
+      removed: removed.map((item) => item?.action || item?.meetingActionPoint || '')
+    }));
+    result = { ...result, screens: { ...result.screens, actions: presentedActions } };
+  }
   const health = assessGenerationHealth({
     stage,
     trooper: { used: polished.used, reason: polished.reason },
@@ -5497,6 +5508,18 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         ...priorScreens,
         ...(payload.screens || {})
       };
+    }
+
+    if (stage === 'actions' && Array.isArray(payload?.screens?.actions)) {
+      const presentedActions = filterActionsForPresentation(payload.screens.actions);
+      const removed = payload.screens.actions.filter((item) => !presentedActions.includes(item));
+      if (removed.length) console.info(JSON.stringify({
+        event: 'staged_minimum_action_words_gate',
+        jobId: Number(jobId),
+        stage: 'actions',
+        removed: removed.map((item) => item?.action || item?.meetingActionPoint || '')
+      }));
+      payload.screens.actions = presentedActions;
     }
 
     await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
