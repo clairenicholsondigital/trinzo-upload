@@ -307,6 +307,31 @@ DISCUSSION_PROMPT = """Write the Key discussion points for formal meeting minute
 DENOISED TRANSCRIPT:
 {transcript}"""
 
+AUDIT_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this audit planning meeting using only this transcript section.
+
+Create a compact audit state ledger. Preserve concrete states affecting audit scope, readiness, responsibilities, evidence access, execution, working arrangements or reporting.
+
+Prioritise according to the section supplied:
+- FIRST THIRD: audit classification and findings; preparation/on-site/report dates; audit lead, auditors and specialist role; products and no-AI position; initial transmission, rollout, version and cybersecurity risks; software-management focus; document-access position.
+- MIDDLE THIRD: site and travel logistics; design-owner or device context; code of conduct, training and confidentiality prerequisites; access and sharing; risk-assessment-to-audit-plan sequence; planning meetings and availability constraints.
+- FINAL THIRD: tracker, sampling and checklist method; SBOM availability and suppliers; CVE and corporate threat monitoring; separate software track; AI-assisted report writing; end-of-day coordination after site work.
+
+Rules:
+- Return at most 4 headings and at most 12 points TOTAL for this section. Count all points and remove lower-priority ones until there are no more than 12.
+- Combine repetitions but keep materially different states separate. Omit banter, generic wellbeing commentary, meeting procedure and speculative examples without an audit consequence.
+- Preserve exact names, dates, standards, device types, dependencies, proposals and uncertainty. Describe states, not actions.
+- A speaker saying “you are the lead” assigns the addressee, not the speaker. Name that lead only if the addressee is explicit or securely resolved from a nearby named address; otherwise say “the audit lead”.
+- Preserve classification evidence literally: routine versus for-cause, surveillance context, full findings and ratings, and not an assessment audit.
+- Preserve positive and negative technology claims literally, including no-AI statements.
+- Distinguish core auditors from specialist support and a proposed separate software track.
+- Distinguish evidence expected before arrival from evidence only available on site.
+- Before returning, rescan for the priority states assigned to the supplied third.
+
+Use clear British English. Return only the required JSON.
+
+DENOISED TRANSCRIPT SECTION:
+{transcript}"""
+
 WEBINAR_REHEARSAL_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this webinar rehearsal using only the denoised transcript below.
 
 Capture the substantive run-of-show at concrete, atomic detail. Internally sweep the transcript for:
@@ -397,6 +422,8 @@ DENOISED TRANSCRIPT:
 
 def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if "audit" in normalised:
+        return AUDIT_DISCUSSION_PROMPT, "audit_planning"
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_DISCUSSION_PROMPT, "webinar_rehearsal"
     if ("software" in normalised and "technical file" in normalised) or any(
@@ -411,8 +438,7 @@ def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
 def discussion_uses_two_halves(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return (
-        "audit" in normalised
-        or "importer" in normalised
+        "importer" in normalised
         or normalised == "workshop"
         or any(term in normalised for term in ("pipeline", "lead generation"))
     )
@@ -420,7 +446,7 @@ def discussion_uses_two_halves(meeting_type: str) -> bool:
 
 def discussion_uses_three_thirds(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
-    return normalised == "software weekly review"
+    return "audit" in normalised or normalised == "software weekly review"
 
 
 def clean(value: Any) -> str:
@@ -528,8 +554,13 @@ def main() -> int:
             def analyse_third(index_and_turns: tuple[int, list[str]]) -> dict[str, Any]:
                 index, third_turns = index_and_turns
                 position = ("first", "middle", "final")[index - 1]
-                context = f"This is the {position} third of the meeting transcript. Capture the substantive discussion contained in this third.\n\n"
-                return call_trooper(discussion_prompt.format(transcript=context + "\n".join(third_turns)), 2400, DISCUSSION_SCHEMA)
+                if prompt_profile == "audit_planning":
+                    context = f"This is the {position} third of the meeting transcript. Follow the {position.upper()} THIRD priorities.\n\n"
+                    max_tokens = 1800
+                else:
+                    context = f"This is the {position} third of the meeting transcript. Capture the substantive discussion contained in this third.\n\n"
+                    max_tokens = 2400
+                return call_trooper(discussion_prompt.format(transcript=context + "\n".join(third_turns)), max_tokens, DISCUSSION_SCHEMA)
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
                 results = list(pool.map(analyse_third, enumerate(thirds, 1)))
         elif discussion_uses_two_halves(args.meeting_type):
