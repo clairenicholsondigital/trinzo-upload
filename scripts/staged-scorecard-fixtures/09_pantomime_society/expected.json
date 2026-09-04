@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Random2_pantomime_society_transcript.docx",
   "expected": {
-    "meetingType": "Decision meeting",
+    "meetingType": "General",
     "meetingTitle": "Panto Society planning",
     "meetingPurpose": "Choose the pantomime production and agree the main planning actions for rehearsal, casting, publicity, technical setup and performances.",
     "meetingObjectives": [

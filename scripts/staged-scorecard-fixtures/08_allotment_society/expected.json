@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Random1_allotment_society_transcript.docx",
   "expected": {
-    "meetingType": "Internal follow-up",
+    "meetingType": "General",
     "meetingTitle": "Allotment Society committee",
     "meetingPurpose": "Review Allotment Society site issues, agree practical maintenance tasks and confirm upcoming administration and event arrangements.",
     "meetingObjectives": [
