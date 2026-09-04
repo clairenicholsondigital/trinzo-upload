@@ -97,6 +97,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Project review"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Process / pipeline planning"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Lead generation pipeline review"))
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Technical file consultancy review"))
         for meeting_type in ("Software and technical-file weekly review", "Technical file review", "Client update"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_three_thirds(meeting_type))

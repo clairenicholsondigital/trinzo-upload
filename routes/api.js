@@ -612,6 +612,7 @@ function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   const isTechnicalFile = /\btech(?:nical)? file\b.*\b(?:weekly|check ?in|review|status)\b/i.test(titleHint);
   if (isSoftwareWeekly && isTechnicalFile) return 'Software and technical-file weekly review';
   if (isSoftwareWeekly) return 'Software weekly review';
+  if (isTechnicalFile && /\bconsultancy\b/i.test(titleHint)) return 'Technical file consultancy review';
   if (isTechnicalFile) return 'Technical file review';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
   if (/\bworkshop\b/i.test(titleHint)) return 'Workshop';
