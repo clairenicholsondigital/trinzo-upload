@@ -359,11 +359,46 @@ Output rules:
 DENOISED TRANSCRIPT:
 {transcript}"""
 
+SOFTWARE_WEEKLY_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this software weekly review using only the denoised transcript below.
+
+Capture each concrete software-workstream state separately. Internally sweep the transcript for:
+- implemented or demonstrated behaviour, including alarm sound, colour, flash, mute and fan logic;
+- change requests and their exact state: proposed, submitted, approved, awaiting review or incorporated into a software version;
+- changes between software versions, whether they are visible in code, and any gap assessment or traceability consequence;
+- debug commands or test inputs one person must provide, what another person must run, and what should be visible on screen;
+- prospective or retrospective tests, test scenarios, test data and evidence needed where code or traceability is incomplete;
+- risk-plan and risk-matrix updates, including probability rationale, what constitutes an event, severity, occurrence and benefit-risk reasoning;
+- cybersecurity controls involving ports, locks, passwords, GUI access or third-party interference, plus where those controls must be documented;
+- standards and compliance reviews, applicability questions, current review progress, existing test coverage and remaining testing scope;
+- device-function distinctions that affect applicability, such as supplying flow to connected equipment rather than performing that equipment's function;
+- language, character, symbol, font-driver, font-tool, firewall or IT-access issues and their current resolution state;
+- clinical or usability feedback and whether it accepted a change or left further review necessary;
+- purchased standards, PMS updates and other technical-file follow-up relevant to the software work.
+
+Output rules:
+- Return 5-8 concise headings and no more than 26 points in total.
+- Use one standalone point for each materially distinct implementation, change-control, testing, traceability, risk, standards or documentation state.
+- Do not combine "implemented", "submitted", "approved", "tested" and "documented" into one broad progress sentence when the transcript supports them separately.
+- Preserve concrete names, versions, dates, standard numbers, device functions, technical examples, dependencies and uncertainty.
+- Distinguish completed work, current work, required evidence and conditional consequences.
+- Include concrete current states even where they imply an action, but do not create an action list.
+- Omit repetition, meeting procedure and unsupported inference.
+- Before returning, rescan for missed IMPLEMENTED, DEMONSTRATED, SUBMITTED, APPROVED, DEBUG INPUT, TEST RESULT, TRACEABILITY, RETROSPECTIVE TEST, RISK RATIONALE, STANDARD APPLICABILITY, COMPLIANCE STATUS, CYBERSECURITY CONTROL, FONT ACCESS, CLINICAL ACCEPTANCE and PMS details.
+- Give equal priority to documentation and hand-off states: the agreed software-list format; who must supply debug commands and who will use them; whether a compliance-document review is only part-way complete; existing test coverage versus remaining scope; purchased standards; and where risk or cybersecurity rationale must be recorded.
+- State timing and status literally. Never convert "submitted for review on Wednesday" into "approved for Wednesday", or a request for another person to supply information into work already completed.
+- Keep these distinct when supported: the numerical risk rationale and definition of one event; the physical device function relevant to a standard; the chosen cybersecurity controls and their usability risk; and the document that must capture those controls.
+- Use clear British English. Return only the required JSON.
+
+DENOISED TRANSCRIPT:
+{transcript}"""
+
 
 def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_DISCUSSION_PROMPT, "webinar_rehearsal"
+    if any(term in normalised for term in ("software weekly", "software check in", "software review")):
+        return SOFTWARE_WEEKLY_DISCUSSION_PROMPT, "software_weekly_review"
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_DISCUSSION_PROMPT, "technical_file_review"
     return DISCUSSION_PROMPT, "general"

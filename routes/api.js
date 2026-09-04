@@ -606,13 +606,10 @@ function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   if (/\binternal\b.*\b(?:follow ?up|review from client call|debrief)\b/i.test(titleHint)) return 'Internal follow-up';
   if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(titleHint)) return 'Importer obligations review';
   if (/\baudit\b.*\b(?:kick ?off|planning|preparation|readiness)\b/i.test(titleHint)) return 'Audit kick-off / planning';
-  // Split deliberately. "Technical file review" names the artefact, so review is enough to
-  // identify it. "Software ... review" does not: "Software Release Review" is an ordinary
-  // release review, and it was being told it was closing a technical-file change package.
-  // A software technical-file review is a recurring commitment, so the recurrence words
-  // are what identify that one.
+  // Recurring software reviews have their own discussion profile; ordinary release reviews
+  // still fall through because recurrence remains required.
+  if (/\b(?:sw|software)\b.*\b(?:weekly|check ?in)\b/i.test(titleHint)) return 'Software weekly review';
   if (/\btech(?:nical)? file\b.*\b(?:weekly|check ?in|review|status)\b/i.test(titleHint)) return 'Technical file review';
-  if (/\b(?:sw|software)\b.*\b(?:weekly|check ?in)\b/i.test(titleHint)) return 'Technical file review';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
   if (/\bworkshop\b/i.test(titleHint)) return 'Workshop';
   if (/\b(client update|status update)\b/i.test(titleHint)) return 'Client update';

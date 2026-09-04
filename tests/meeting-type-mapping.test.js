@@ -70,6 +70,13 @@ test('each meeting type resolves to the profile it is meant to', () => {
   }
 });
 
+test('recurring software titles are classified separately from technical-file reviews', () => {
+  const { inferStagedMeetingType } = require('../routes/api').stagedEvaluation;
+  assert.equal(inferStagedMeetingType('', 'Client_T761_Eakin_SW_Weekly_Checkin.docx'), 'Software weekly review');
+  assert.equal(inferStagedMeetingType('', 'Eakin software and technical file weekly check-in.docx'), 'Software weekly review');
+  assert.equal(inferStagedMeetingType('', 'Eakin T733 technical file weekly review.docx'), 'Technical file review');
+});
+
 test('a specific title still wins over a generic type', () => {
   // The case the ordering exists to protect: the reviewer leaves the pre-selected
   // "Project review" and the title names what the meeting actually was.
