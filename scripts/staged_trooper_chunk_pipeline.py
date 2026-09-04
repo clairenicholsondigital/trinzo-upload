@@ -193,6 +193,56 @@ discussion points and eight action candidates. Return only the required JSON.
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
 
+SOFTWARE_WEEKLY_ACTION_PROMPT = """Review this coherent software weekly-review transcript section.
+
+First identify concise, substantive discussion points. Then perform a separate,
+exhaustive action sweep and identify every possible task with a distinct deliverable.
+
+Apply the full general sweep first:
+- I’ll, I can, we’ll, we need to, you need to;
+- Review, Resolve, Arrange, Plan and Email;
+- requests followed by agreement and named assignments;
+- information or documents to send, share, review or update;
+- checks, confirmations, decisions, follow-ups and deadlines.
+
+Then apply a software-workstream sweep for:
+- checking whether an issue, alarm or control is captured in a risk analysis;
+- sending debug commands, technical instructions, files or other test inputs;
+- running those commands or tests and reporting observable results;
+- resolving language-character, symbol, font-driver, tool-access or loading issues;
+- tracing changes between software versions and locating them in code;
+- identifying gaps, retrospective test scenarios, test data or close-out evidence;
+- incorporating another person's findings into design-change, risk or technical-file records;
+- continuing compliance or technical reviews and flagging support required;
+- following up on whether a standard or requirement applies;
+- adding someone to a recurring review or follow-up call.
+
+Treat clearly assigned continuation of existing work as an action. At the end of
+the section, build an owner-by-owner action ledger from any recap: every concrete
+responsibility in that recap must be considered before lower-value candidates.
+
+Include proposed tasks. Give each candidate one status: COMMITTED, ASSIGNED,
+REQUIRED, PROPOSED or COMPLETED.
+
+Rules:
+- State only the exact deliverable or next step supported.
+- Sending an input, testing it, reviewing the result and incorporating the result
+  are separate deliverables when separately supported.
+- Split separate owners and deliverables; preserve every supported owner.
+- Do not mistake a recipient, reviewer, dependency or person offering support for the owner.
+- Evidence for the task, commitment, owner and deadline may be in different turns.
+- Preserve conditions and dependencies without merging the dependent actions.
+- An issue or status update alone is not an action without a supported next step.
+- Do not spend candidate capacity on broad status restatements or meeting procedure.
+- Before returning, rescan owner by owner for missed CHECK, SEND, TEST, REPORT,
+  RESOLVE, TRACE, IDENTIFY, INCORPORATE, CONTINUE, FLAG, FOLLOW-UP and ADD tasks.
+
+Use only turn numbers in this section. Keep wording concise. Return at most two
+discussion points and ten action candidates. Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
 PROCESS_PIPELINE_ACTION_PROMPT = """Review this coherent section from a process or pipeline-planning meeting.
 
 First identify concise, substantive discussion points. Then perform a separate
@@ -236,7 +286,7 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
     if any(term in normalised for term in ("software weekly", "software check in", "software review")):
-        return ACTION_PROMPT, "general"
+        return SOFTWARE_WEEKLY_ACTION_PROMPT, "software_weekly_review"
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_review"
     if any(term in normalised for term in ("pipeline", "process planning", "process review", "lead generation")):

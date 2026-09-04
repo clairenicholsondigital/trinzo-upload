@@ -39,7 +39,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         cases = {
             "Webinar rehearsal": "webinar_rehearsal",
             "Technical file review": "technical_file_review",
-            "Software Weekly Review": "general",
+            "Software Weekly Review": "software_weekly_review",
             "Process / pipeline planning": "process_or_pipeline_planning",
             "Lead generation pipeline review": "process_or_pipeline_planning",
             "Project review": "general",
@@ -53,11 +53,14 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
     def test_specialised_prompts_preserve_the_required_sweeps(self):
         webinar, _ = PIPELINE.action_prompt_for_meeting_type("Webinar rehearsal")
         technical, _ = PIPELINE.action_prompt_for_meeting_type("Technical file review")
+        software, _ = PIPELINE.action_prompt_for_meeting_type("Software weekly review")
         pipeline, _ = PIPELINE.action_prompt_for_meeting_type("Process pipeline planning")
         for term in ("grouping chat questions", "Q&A", "dead air", "assignment recaps"):
             self.assertIn(term, webinar)
         for term in ("CONTINUE", "TRACE", "INCORPORATE", "controlled documents"):
             self.assertIn(term, technical)
+        for term in ("full general sweep", "owner-by-owner action ledger", "retrospective test", "recurring review"):
+            self.assertIn(term, software.lower())
         for term in ("manual tests", "conditional candidate", "Salesforce", "TRACK"):
             self.assertIn(term, pipeline)
 
