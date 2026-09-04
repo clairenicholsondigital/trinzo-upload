@@ -159,7 +159,7 @@ const MEETING_PROFILES = [
     id: 'project_review',
     // Broadest, so it is last: it is the option a reviewer gets by not choosing one, and
     // it must not shadow a profile that knows more about the meeting than it does.
-    matches: (type, title) => /\b(?:project review|status|progress|weekly|fortnightly|monthly|catch[- ]?up|check[- ]?in|stand[- ]?up|review meeting|project meeting)\b/i.test(`${type} ${title}`),
+    matches: (type, title) => /\b(?:general|project review|status|progress|weekly|fortnightly|monthly|catch[- ]?up|check[- ]?in|stand[- ]?up|review meeting|project meeting)\b/i.test(`${type} ${title}`),
     topicHints: [
       { intent: 'Review', pattern: /\b(?:progress|status|completed|delivered|finished|done|underway|ongoing)\b/i },
       { intent: 'Identify', pattern: /\b(?:risk|issue|blocker|blocked|dependency|constraint|delay|slip)\b/i },

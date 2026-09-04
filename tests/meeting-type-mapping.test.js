@@ -18,7 +18,7 @@ const { meetingProfile } = require('../utils/canonicalMinutes/meetingPurpose');
 // So the mapping is pinned. Changing it means changing this table deliberately.
 
 const DROPDOWN_OPTIONS = [
-  'Project review',
+  'General',
   'Audit kick-off / planning',
   'Decision meeting',
   'Webinar rehearsal',
@@ -32,7 +32,7 @@ const DROPDOWN_OPTIONS = [
 ];
 
 const EXPECTED = {
-  'Project review': 'project_review',
+  'General': 'project_review',
   'Audit kick-off / planning': 'audit_planning',
   'Decision meeting': 'decision_meeting',
   'Webinar rehearsal': 'webinar_rehearsal',
@@ -78,13 +78,13 @@ test('recurring software titles are classified separately from technical-file re
 
 test('a specific title still wins over a generic type', () => {
   // The case the ordering exists to protect: the reviewer leaves the pre-selected
-  // "Project review" and the title names what the meeting actually was.
+  // "General" and the title names what the meeting actually was.
   const cases = [
-    ['Project review', 'Client DITA T819 Importer Obligations review plan', 'importer_obligations_review'],
-    ['Project review', 'Client T761 Eakin SW Weekly Checkin', 'technical_file_review'],
-    ['Project review', 'Abbott audit kick-off', 'audit_planning'],
-    ['Project review', 'Webinar rehearsal run-through', 'webinar_rehearsal'],
-    ['Project review', 'Weekly status', 'project_review']
+    ['General', 'Client DITA T819 Importer Obligations review plan', 'importer_obligations_review'],
+    ['General', 'Client T761 Eakin SW Weekly Checkin', 'technical_file_review'],
+    ['General', 'Abbott audit kick-off', 'audit_planning'],
+    ['General', 'Webinar rehearsal run-through', 'webinar_rehearsal'],
+    ['General', 'Weekly status', 'project_review']
   ];
   for (const [type, title, expected] of cases) {
     assert.equal(meetingProfile({ type, title })?.id, expected, `${type} / ${title}`);
@@ -149,13 +149,13 @@ test('the seven formerly misclassified meetings still resolve from their titles 
   const { extractStagedDetailsFromTranscript } = require('../routes/api').stagedEvaluation;
   const mammoth = require('mammoth');
   const cases = [
-    ['scripts/transcript-tests/001_status_review/transcript.txt', 'Project review'],
-    ['scripts/transcript-tests/002_validation_decision/transcript.txt', 'Project review'],
-    ['scripts/transcript-tests/008_event_planning/transcript.txt', 'Project review'],
-    ['scripts/transcript-tests/049_low_substance_noise/transcript.txt', 'Project review'],
-    ['scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt', 'Project review'],
-    ['scripts/transcript-tests/064_analytics_review/transcript.txt', 'Project review'],
-    ['scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx', 'Project review']
+    ['scripts/transcript-tests/001_status_review/transcript.txt', 'General'],
+    ['scripts/transcript-tests/002_validation_decision/transcript.txt', 'General'],
+    ['scripts/transcript-tests/008_event_planning/transcript.txt', 'General'],
+    ['scripts/transcript-tests/049_low_substance_noise/transcript.txt', 'General'],
+    ['scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt', 'General'],
+    ['scripts/transcript-tests/064_analytics_review/transcript.txt', 'General'],
+    ['scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx', 'General']
   ];
   for (const [file, expected] of cases) {
     const full = path.resolve(__dirname, '..', file);

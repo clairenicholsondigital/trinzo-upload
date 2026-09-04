@@ -43,7 +43,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             "Software and technical-file weekly review": "software_weekly_review",
             "Process / pipeline planning": "process_or_pipeline_planning",
             "Lead generation pipeline review": "process_or_pipeline_planning",
-            "Project review": "general",
+            "General": "general",
             "": "general",
         }
         for meeting_type, expected in cases.items():
@@ -58,7 +58,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         technical, technical_profile = PIPELINE.discussion_prompt_for_meeting_type("Technical file review")
         software, software_profile = PIPELINE.discussion_prompt_for_meeting_type("Software weekly review")
         hybrid, hybrid_profile = PIPELINE.discussion_prompt_for_meeting_type("Software and technical-file weekly review")
-        general, general_profile = PIPELINE.discussion_prompt_for_meeting_type("Project review")
+        general, general_profile = PIPELINE.discussion_prompt_for_meeting_type("General")
         self.assertEqual(audit_profile, "audit_planning")
         self.assertEqual(importer_profile, "importer_obligations")
         self.assertEqual(webinar_profile, "webinar_rehearsal")
@@ -82,7 +82,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
     def test_chunk_candidate_filter_is_limited_to_hybrid_weekly_type(self):
         self.assertTrue(PIPELINE.discussion_uses_chunk_candidate_filter(
             "Software and technical-file weekly review"))
-        for meeting_type in ("Software weekly review", "Technical file review", "Project review", ""):
+        for meeting_type in ("Software weekly review", "Technical file review", "General", ""):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_chunk_candidate_filter(meeting_type))
 
@@ -117,7 +117,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         for meeting_type in ("Audit kick-off / planning", "Importer obligations review",
                              "Process / pipeline planning", "Lead generation pipeline review",
                              "Webinar rehearsal",
-                             "Project review", "Decision meeting"):
+                             "General", "Decision meeting"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_two_halves(meeting_type))
 
@@ -125,7 +125,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Audit kick-off / planning"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Importer obligations review"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Software weekly review"))
-        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Project review"))
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("General"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Process / pipeline planning"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Lead generation pipeline review"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Technical file consultancy review"))

@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Weakness1_brewery_numbers_transcript.docx",
   "expected": {
-    "meetingType": "Project review",
+    "meetingType": "General",
     "meetingTitle": "Brew schedule planning",
     "meetingPurpose": "Plan the next two weeks of brewery production, including brew schedule, ingredient ordering, festival supply and equipment risk.",
     "meetingObjectives": [

@@ -1,7 +1,7 @@
 {
   "transcriptFile": "Weakness2_two_Jos_nameclash_transcript.docx",
   "expected": {
-    "meetingType": "Project review",
+    "meetingType": "General",
     "meetingTitle": "10K committee catch-up",
     "meetingPurpose": "Review planning status for the 10K event and assign responsibilities for safety, route, medals and promotion.",
     "meetingObjectives": [

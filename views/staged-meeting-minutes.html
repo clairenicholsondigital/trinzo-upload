@@ -683,7 +683,7 @@ td select {
           <div class="field">
             <label for="meetingType">Meeting type</label>
             <select id="meetingType">
-              <option value="Project review">Project review (general)</option>
+              <option>General</option>
               <option>Audit kick-off / planning</option>
               <option>Decision meeting</option>
               <option>Webinar rehearsal</option>
@@ -1531,7 +1531,7 @@ td select {
       if (meetingTitleInput) meetingTitleInput.value = state.details.meetingTitle || '';
       if (meetingDateInput) meetingDateInput.value = state.details.meetingDate || '';
       if (meetingLocationInput) meetingLocationInput.value = state.details.meetingLocation || '';
-      if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = state.details.meetingType;
+      if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = state.details.meetingType === 'Project review' ? 'General' : state.details.meetingType;
       if (useExternalAttendeeLabel) useExternalAttendeeLabel.checked = state.details.clientAttendeeLabel === 'External';
       updateClientAttendeeLabels();
       renderAttendees(internalAttendeesRow, state.details.internalAttendees);
@@ -3018,7 +3018,7 @@ td select {
       refreshMeetingTitleHelp();
       if (meetingDateInput && mergedDetails.meetingDate) meetingDateInput.value = mergedDetails.meetingDate.slice(0, 10);
       if (meetingLocationInput) meetingLocationInput.value = mergedDetails.meetingLocation || 'Microsoft Teams';
-      if (meetingTypeInput && mergedDetails.meetingType) meetingTypeInput.value = mergedDetails.meetingType;
+      if (meetingTypeInput && mergedDetails.meetingType) meetingTypeInput.value = mergedDetails.meetingType === 'Project review' ? 'General' : mergedDetails.meetingType;
       renderAttendees(internalAttendeesRow, mergedDetails.internalAttendees);
       renderAttendees(clientAttendeesRow, mergedDetails.clientAttendees);
       stagedState.details = detailsFromDom();

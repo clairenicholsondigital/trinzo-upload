@@ -617,7 +617,7 @@ function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   if (/\b(?:process|pipeline|lead generation)\b.*\b(?:planning|review|design)\b|\b(?:planning|review|design)\b.*\b(?:process|pipeline)\b/i.test(titleHint)) return 'Process / pipeline planning';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
   if (/\bdecision\b/i.test(titleHint)) return 'Decision meeting';
-  return 'Project review';
+  return 'General';
 }
 
 function extractLineAfterLabel(text, labels) {
@@ -1015,7 +1015,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   // visible: a pre-selected dropdown with no note is indistinguishable from a default.
   const titleOnlyType = inferStagedMeetingType(text, fileName, headerTitle || meetingTitle);
   let meetingTypeSuggestion = null;
-  if (titleOnlyType === 'Project review') {
+  if (titleOnlyType === 'General') {
     try {
       meetingTypeSuggestion = suggestMeetingTypeFromEvidence(prepareEvidence(text));
     } catch {
@@ -2197,7 +2197,7 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     meetingTitle: details.meetingTitle || context.meetingTitle,
     meetingDate: details.meetingDate || context.meetingDate,
     meetingLocation: details.meetingLocation || context.meetingLocation,
-    meetingType: context.meetingType || details.meetingType || 'Project review',
+    meetingType: context.meetingType || details.meetingType || 'General',
     participants: context.participants.length ? context.participants : details.allAttendees,
     meetingPurpose: confirmedUnderstanding.meetingPurpose,
     keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text),
@@ -2605,7 +2605,7 @@ function stagedContextFromRequest(req) {
     meetingTitle: firstString(confirmedDetails.meetingTitle, req.body?.meetingTitle, req.query?.meetingTitle),
     meetingDate: firstString(confirmedDetails.meetingDate, req.body?.meetingDate, req.query?.meetingDate),
     meetingLocation: firstString(confirmedDetails.meetingLocation, req.body?.meetingLocation, req.query?.meetingLocation),
-    meetingType: firstString(confirmedDetails.meetingType, req.body?.meetingType, req.query?.meetingType, 'Project review'),
+    meetingType: firstString(confirmedDetails.meetingType, req.body?.meetingType, req.query?.meetingType, 'General'),
     participants: linesFrom(confirmedDetails.participants || req.body?.participants || req.query?.participants),
     meetingPurpose: confirmedUnderstanding.meetingPurpose,
     keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text),
@@ -3599,7 +3599,7 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
         meetingDate: reviewData.meetingDate || '',
         meetingLocation: reviewData.meetingLocation || 'Microsoft Teams',
         organisation: candidate?.organisation || candidate?.clientName || '',
-        meetingType: candidate?.meetingType || 'Project review',
+        meetingType: candidate?.meetingType || 'General',
         internalAttendees,
         clientAttendees
       },

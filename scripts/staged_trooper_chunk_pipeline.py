@@ -549,7 +549,7 @@ def discussion_uses_three_thirds(meeting_type: str) -> bool:
     return (
         "audit" in normalised
         or "importer" in normalised
-        or normalised in ("software weekly review", "project review", "technical file consultancy review")
+        or normalised in ("software weekly review", "general", "project review", "technical file consultancy review")
         or any(term in normalised for term in ("pipeline", "lead generation"))
     )
 
