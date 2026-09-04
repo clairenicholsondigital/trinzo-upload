@@ -69,7 +69,9 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
         totalUnitCount: prepared.totalUnitCount, removedRatio,
         chunkCount: result.chunkCount || null, turnCount: result.turnCount || null,
         actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null,
-        discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null
+        discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null,
+        discussionCallCount: stage === 'discussion' ? (result.discussionCallCount || 1) : null,
+        discussionSplitAfterTurn: stage === 'discussion' ? (result.splitAfterTurn || null) : null
       }
     };
   } finally {

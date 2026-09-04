@@ -369,6 +369,16 @@ def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     return DISCUSSION_PROMPT, "general"
 
 
+def discussion_uses_two_halves(meeting_type: str) -> bool:
+    normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    return (
+        "audit" in normalised
+        or "importer" in normalised
+        or normalised == "workshop"
+        or any(term in normalised for term in ("pipeline", "lead generation"))
+    )
+
+
 def clean(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -464,14 +474,28 @@ def main() -> int:
         raise SystemExit("Denoised transcript has no turns")
     if args.stage == "discussion":
         discussion_prompt, prompt_profile = discussion_prompt_for_meeting_type(args.meeting_type)
-        result = call_trooper(discussion_prompt.format(transcript=transcript), 2200, DISCUSSION_SCHEMA)
+        split_after_turn = None
+        if discussion_uses_two_halves(args.meeting_type):
+            split_after_turn = (len(turns) + 1) // 2
+            halves = (turns[:split_after_turn], turns[split_after_turn:])
+            def analyse_half(index_and_turns: tuple[int, list[str]]) -> dict[str, Any]:
+                index, half_turns = index_and_turns
+                position = "first" if index == 1 else "second"
+                context = f"This is the {position} half of the meeting transcript. Capture the substantive discussion contained in this half.\n\n"
+                return call_trooper(discussion_prompt.format(transcript=context + "\n".join(half_turns)), 2200, DISCUSSION_SCHEMA)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(analyse_half, enumerate(halves, 1)))
+        else:
+            results = [call_trooper(discussion_prompt.format(transcript=transcript), 2200, DISCUSSION_SCHEMA)]
         discussion = []
-        for row in result.get("discussion", []):
-            topic, points = clean(row.get("topic")), [clean(p) for p in row.get("points", []) if clean(p)]
-            if topic and points:
-                discussion.append({"topic": topic, "points": points[:6]})
+        for result in results:
+            for row in result.get("discussion", []):
+                topic, points = clean(row.get("topic")), [clean(p) for p in row.get("points", []) if clean(p)]
+                if topic and points:
+                    discussion.append({"topic": topic, "points": points[:6]})
         print(json.dumps({"stage": "discussion", "discussion": discussion,
-            "discussionPromptProfile": prompt_profile}, ensure_ascii=False))
+            "discussionPromptProfile": prompt_profile,
+            "discussionCallCount": len(results), "splitAfterTurn": split_after_turn}, ensure_ascii=False))
         return 0
 
     minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))
