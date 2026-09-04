@@ -2331,6 +2331,14 @@ td select {
 
   function flagIsSelfEvident(flag) {
     if (!flag || flag.blocking) return false;
+    // These candidates already render immediately above as transcript snippets with
+    // Create action and Dismiss controls. Repeating their counts here as a second pair
+    // of abstract Decide rows adds no decision and makes the stage look unfinished
+    // twice. Keep the payload and candidate cards; suppress only the duplicate banner.
+    if (flag.repairCandidates && flag.repairCandidates.length
+        && (flag.type === 'action_review_candidates'
+          || flag.type === 'action_publication_review'
+          || flag.type === 'action_candidates_need_confirmation')) return true;
     // Anything offering a one-click add/dismiss or a jump-to-field is actionable, whatever
     // its type: never suppress a flag the reviewer can act on from the banner.
     if (flag.repairCandidates && flag.repairCandidates.length) return false;
@@ -2351,7 +2359,9 @@ td select {
     currentValidationFlags = list;
     currentValidationStage = stage || stageForScreen(activeIndex) || '';
     var fromPayload = collectActionCandidatesFromPayload(payloadCandidates);
-    var fromFlags = fromPayload.length ? [] : collectActionCandidatesFromFlags(list, currentValidationStage);
+    // Candidate-summary flags may be hidden from the duplicate banner list, but their
+    // concrete snippets still need to populate the dedicated review panel.
+    var fromFlags = fromPayload.length ? [] : collectActionCandidatesFromFlags(allFlags, currentValidationStage);
     var byCandidateId = {};
     fromFlags.concat(fromPayload).forEach(function (entry) {
       if (entry && actionCandidateAlreadyConfirmed(entry.candidate)) {

@@ -44,8 +44,12 @@ test('a check describing something absent from the screen always survives', () =
 test('anything the reviewer can act on from the banner is never suppressed', () => {
   const { flagIsSelfEvident } = loadClassifier();
   // One-click add/dismiss, jump-to-field, and blocking work all outrank the type list -
-  // including for a type that would otherwise be suppressed.
-  assert.equal(flagIsSelfEvident({ type: 'action_review_candidates', repairCandidates: [{ action: 'x' }] }), false);
+  // including for a type that would otherwise be suppressed. Action candidates are the
+  // exception because they have their own richer Create/Dismiss panel above the banner.
+  assert.equal(flagIsSelfEvident({ type: 'action_review_candidates', repairCandidates: [{ action: 'x' }] }), true);
+  assert.equal(flagIsSelfEvident({ type: 'action_publication_review', repairCandidates: [{ action: 'x' }] }), true);
+  assert.equal(flagIsSelfEvident({ type: 'action_candidates_need_confirmation', repairCandidates: [{ action: 'x' }] }), true);
+  assert.equal(flagIsSelfEvident({ type: 'discussion_speech_removed', repairCandidates: [{ text: 'x' }] }), false);
   assert.equal(flagIsSelfEvident({ type: 'malformed_text', fieldPath: 'discussion.0.points.1' }), false);
   assert.equal(flagIsSelfEvident({ type: 'possible_omitted_workstream', discussionSuggestion: 'x' }), false);
   assert.equal(flagIsSelfEvident({ type: 'detected_actions_not_surfaced', blocking: true }), false);
