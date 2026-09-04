@@ -71,7 +71,8 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
         actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null,
         discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null,
         discussionCallCount: stage === 'discussion' ? (result.discussionCallCount || 1) : null,
-        discussionSplitAfterTurn: stage === 'discussion' ? (result.splitAfterTurn || null) : null
+        discussionSplitAfterTurn: stage === 'discussion' ? (result.splitAfterTurn || null) : null,
+        discussionSplitAfterTurns: stage === 'discussion' ? (result.splitAfterTurns || null) : null
       }
     };
   } finally {

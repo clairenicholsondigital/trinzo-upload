@@ -27,6 +27,7 @@ const DROPDOWN_OPTIONS = [
   'Case study interview',
   'Technical file review',
   'Software weekly review',
+  'Software and technical-file weekly review',
   'Process / pipeline planning',
   'Importer obligations review',
   'Internal follow-up'
@@ -42,6 +43,7 @@ const EXPECTED = {
   'Case study interview': 'case_study_interview',
   'Technical file review': 'technical_file_review',
   'Software weekly review': 'technical_file_review',
+  'Software and technical-file weekly review': 'technical_file_review',
   'Process / pipeline planning': 'process_pipeline_planning',
   'Importer obligations review': 'importer_obligations_review',
   'Internal follow-up': 'internal_follow_up'
@@ -73,7 +75,7 @@ test('each meeting type resolves to the profile it is meant to', () => {
 test('recurring software titles are classified separately from technical-file reviews', () => {
   const { inferStagedMeetingType } = require('../routes/api').stagedEvaluation;
   assert.equal(inferStagedMeetingType('', 'Client_T761_Eakin_SW_Weekly_Checkin.docx'), 'Software weekly review');
-  assert.equal(inferStagedMeetingType('', 'Eakin software and technical file weekly check-in.docx'), 'Software weekly review');
+  assert.equal(inferStagedMeetingType('', 'Eakin software and technical file weekly check-in.docx'), 'Software and technical-file weekly review');
   assert.equal(inferStagedMeetingType('', 'Eakin T733 technical file weekly review.docx'), 'Technical file review');
 });
 

@@ -40,6 +40,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             "Webinar rehearsal": "webinar_rehearsal",
             "Technical file review": "technical_file_review",
             "Software Weekly Review": "software_weekly_review",
+            "Software and technical-file weekly review": "software_weekly_review",
             "Process / pipeline planning": "process_or_pipeline_planning",
             "Lead generation pipeline review": "process_or_pipeline_planning",
             "Project review": "general",
@@ -54,10 +55,13 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         webinar, webinar_profile = PIPELINE.discussion_prompt_for_meeting_type("Webinar rehearsal")
         technical, technical_profile = PIPELINE.discussion_prompt_for_meeting_type("Technical file review")
         software, software_profile = PIPELINE.discussion_prompt_for_meeting_type("Software weekly review")
+        hybrid, hybrid_profile = PIPELINE.discussion_prompt_for_meeting_type("Software and technical-file weekly review")
         general, general_profile = PIPELINE.discussion_prompt_for_meeting_type("Project review")
         self.assertEqual(webinar_profile, "webinar_rehearsal")
         self.assertEqual(technical_profile, "technical_file_review")
         self.assertEqual(software_profile, "software_weekly_review")
+        self.assertEqual(hybrid_profile, "software_weekly_review")
+        self.assertIs(hybrid, software)
         self.assertEqual(general_profile, "general")
         for term in ("missing animations", "spoken cues", "dead-air risks", "private warnings"):
             self.assertIn(term, webinar)
@@ -75,6 +79,12 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         for meeting_type in ("Webinar rehearsal", "Technical file review", "Project review", "Decision meeting"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_two_halves(meeting_type))
+
+    def test_discussion_three_third_route_is_only_for_pure_software_weeklies(self):
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Software weekly review"))
+        for meeting_type in ("Software and technical-file weekly review", "Technical file review", "Project review"):
+            with self.subTest(meeting_type=meeting_type):
+                self.assertFalse(PIPELINE.discussion_uses_three_thirds(meeting_type))
 
     def test_specialised_prompts_preserve_the_required_sweeps(self):
         webinar, _ = PIPELINE.action_prompt_for_meeting_type("Webinar rehearsal")

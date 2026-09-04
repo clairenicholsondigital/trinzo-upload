@@ -285,7 +285,9 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
-    if any(term in normalised for term in ("software weekly", "software check in", "software review")):
+    if ("software" in normalised and "technical file" in normalised) or any(
+        term in normalised for term in ("software weekly", "software check in", "software review")
+    ):
         return SOFTWARE_WEEKLY_ACTION_PROMPT, "software_weekly_review"
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_review"
@@ -397,7 +399,9 @@ def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_DISCUSSION_PROMPT, "webinar_rehearsal"
-    if any(term in normalised for term in ("software weekly", "software check in", "software review")):
+    if ("software" in normalised and "technical file" in normalised) or any(
+        term in normalised for term in ("software weekly", "software check in", "software review")
+    ):
         return SOFTWARE_WEEKLY_DISCUSSION_PROMPT, "software_weekly_review"
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_DISCUSSION_PROMPT, "technical_file_review"
@@ -412,6 +416,11 @@ def discussion_uses_two_halves(meeting_type: str) -> bool:
         or normalised == "workshop"
         or any(term in normalised for term in ("pipeline", "lead generation"))
     )
+
+
+def discussion_uses_three_thirds(meeting_type: str) -> bool:
+    normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    return normalised == "software weekly review"
 
 
 def clean(value: Any) -> str:
@@ -510,7 +519,20 @@ def main() -> int:
     if args.stage == "discussion":
         discussion_prompt, prompt_profile = discussion_prompt_for_meeting_type(args.meeting_type)
         split_after_turn = None
-        if discussion_uses_two_halves(args.meeting_type):
+        split_after_turns = None
+        if discussion_uses_three_thirds(args.meeting_type):
+            first_end = (len(turns) + 2) // 3
+            second_end = (2 * len(turns) + 2) // 3
+            split_after_turns = [first_end, second_end]
+            thirds = (turns[:first_end], turns[first_end:second_end], turns[second_end:])
+            def analyse_third(index_and_turns: tuple[int, list[str]]) -> dict[str, Any]:
+                index, third_turns = index_and_turns
+                position = ("first", "middle", "final")[index - 1]
+                context = f"This is the {position} third of the meeting transcript. Capture the substantive discussion contained in this third.\n\n"
+                return call_trooper(discussion_prompt.format(transcript=context + "\n".join(third_turns)), 2400, DISCUSSION_SCHEMA)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+                results = list(pool.map(analyse_third, enumerate(thirds, 1)))
+        elif discussion_uses_two_halves(args.meeting_type):
             split_after_turn = (len(turns) + 1) // 2
             halves = (turns[:split_after_turn], turns[split_after_turn:])
             def analyse_half(index_and_turns: tuple[int, list[str]]) -> dict[str, Any]:
@@ -530,7 +552,8 @@ def main() -> int:
                     discussion.append({"topic": topic, "points": points[:6]})
         print(json.dumps({"stage": "discussion", "discussion": discussion,
             "discussionPromptProfile": prompt_profile,
-            "discussionCallCount": len(results), "splitAfterTurn": split_after_turn}, ensure_ascii=False))
+            "discussionCallCount": len(results), "splitAfterTurn": split_after_turn,
+            "splitAfterTurns": split_after_turns}, ensure_ascii=False))
         return 0
 
     minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))

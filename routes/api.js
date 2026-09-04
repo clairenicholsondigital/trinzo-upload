@@ -608,8 +608,11 @@ function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   if (/\baudit\b.*\b(?:kick ?off|planning|preparation|readiness)\b/i.test(titleHint)) return 'Audit kick-off / planning';
   // Recurring software reviews have their own discussion profile; ordinary release reviews
   // still fall through because recurrence remains required.
-  if (/\b(?:sw|software)\b.*\b(?:weekly|check ?in)\b/i.test(titleHint)) return 'Software weekly review';
-  if (/\btech(?:nical)? file\b.*\b(?:weekly|check ?in|review|status)\b/i.test(titleHint)) return 'Technical file review';
+  const isSoftwareWeekly = /\b(?:sw|software)\b.*\b(?:weekly|check ?in)\b/i.test(titleHint);
+  const isTechnicalFile = /\btech(?:nical)? file\b.*\b(?:weekly|check ?in|review|status)\b/i.test(titleHint);
+  if (isSoftwareWeekly && isTechnicalFile) return 'Software and technical-file weekly review';
+  if (isSoftwareWeekly) return 'Software weekly review';
+  if (isTechnicalFile) return 'Technical file review';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
   if (/\bworkshop\b/i.test(titleHint)) return 'Workshop';
   if (/\b(client update|status update)\b/i.test(titleHint)) return 'Client update';
