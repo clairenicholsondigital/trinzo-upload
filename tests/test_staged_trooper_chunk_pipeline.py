@@ -52,11 +52,15 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
 
     def test_discussion_prompt_routes_webinar_rehearsals_only(self):
         webinar, webinar_profile = PIPELINE.discussion_prompt_for_meeting_type("Webinar rehearsal")
-        general, general_profile = PIPELINE.discussion_prompt_for_meeting_type("Technical file review")
+        technical, technical_profile = PIPELINE.discussion_prompt_for_meeting_type("Technical file review")
+        general, general_profile = PIPELINE.discussion_prompt_for_meeting_type("Project review")
         self.assertEqual(webinar_profile, "webinar_rehearsal")
+        self.assertEqual(technical_profile, "technical_file_review")
         self.assertEqual(general_profile, "general")
         for term in ("missing animations", "spoken cues", "dead-air risks", "private warnings"):
             self.assertIn(term, webinar)
+        for term in ("tracker movement", "change-request review", "retrospective-testing condition"):
+            self.assertIn(term, technical)
         self.assertIs(general, PIPELINE.DISCUSSION_PROMPT)
 
     def test_specialised_prompts_preserve_the_required_sweeps(self):

@@ -331,11 +331,41 @@ Output rules:
 DENOISED TRANSCRIPT:
 {transcript}"""
 
+TECHNICAL_REVIEW_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this technical or consultancy review using only the denoised transcript below.
+
+Capture the current position of each distinct workstream at concrete, atomic detail. Internally sweep the transcript for:
+- tracker movement since the previous review, including what completion band changed and whether that is positive;
+- software or product changes, their exact behaviour, progress, resulting version and change-request review route;
+- technical issues involving alarms, language characters, symbols, fonts, tools, interfaces or loading;
+- risk-management, software, usability, clinical, PMS and technical-file workstreams;
+- protocols, task-analysis completion, study execution plans and timing relative to submissions or external review;
+- clinical or specialist review needed to judge whether a change is acceptable in the field;
+- comments, findings or evidence that must feed into a named document or workstream;
+- traceability gaps and circumstances requiring retrospective scenarios or test evidence;
+- process maps, procedures, contract or subcontractor document availability, gaps, justifications and finalisation dependencies;
+- dependencies, constraints, open questions and decisions about what happens next;
+- governance and evidence consequences: change-request review, clinical acceptability review, resulting software versions, retrospective testing where traceability is absent, and comments to incorporate into PMS or summary documents.
+
+Output rules:
+- Return 5-8 concise topic headings and at most 24 points in total.
+- Keep each materially distinct finding or workstream state as its own standalone point; do not merge several statuses into a generic progress summary.
+- Preserve concrete names, document types, version or change details, languages, percentages, dependencies and uncertainty.
+- Distinguish completed work, work in progress, work awaiting review and conditional work.
+- Include a concrete workstream status even where it also implies an action, but do not create an action list.
+- Omit duplicate explanations, meeting procedure and unsupported inference.
+- Before returning, check that any supported tracker delta, multi-part software change, change-control route, clinical acceptability review, task-analysis state, study timing, retrospective-testing condition, subcontractor-document state and process/procedure dependency is stated explicitly rather than hidden inside a broad summary.
+- Use clear British English and return only the required JSON.
+
+DENOISED TRANSCRIPT:
+{transcript}"""
+
 
 def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_DISCUSSION_PROMPT, "webinar_rehearsal"
+    if "technical file" in normalised:
+        return TECHNICAL_REVIEW_DISCUSSION_PROMPT, "technical_file_review"
     return DISCUSSION_PROMPT, "general"
 
 
