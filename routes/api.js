@@ -5489,8 +5489,17 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       // meeting-type-specific, multi-pass Trooper stage. Do not route these screens
       // through canonicalStagedResponse; that path reduced the measured Discussion
       // coverage from 168/193 to 113/194 and bypassed the high-recall action extractor.
+      const selectedMeetingType = input.confirmedDetails?.meetingType || input.meetingType || '';
+      const meetingIdentity = `${input.confirmedDetails?.meetingTitle || ''} ${transcript.fileName || ''}`;
+      // "Process / pipeline planning" was correctly removed from the reviewer-facing
+      // vocabulary in favour of General. Retain its measured prompt profile internally
+      // when the meeting identity itself clearly names that subject.
+      const generationMeetingType = selectedMeetingType === 'General'
+        && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(meetingIdentity)
+        ? 'Process / pipeline planning'
+        : selectedMeetingType;
       payload = await generateMiniLmTrooperStage(stage, transcript.text, {
-        meetingType: input.confirmedDetails?.meetingType || input.meetingType || ''
+        meetingType: generationMeetingType
       });
     } else {
       const evidenceProgressMessage = stage === 'actions'
