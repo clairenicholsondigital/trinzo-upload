@@ -53,12 +53,14 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
 
     def test_discussion_prompt_routes_supported_specialist_types(self):
         audit, audit_profile = PIPELINE.discussion_prompt_for_meeting_type("Audit kick-off / planning")
+        importer, importer_profile = PIPELINE.discussion_prompt_for_meeting_type("Importer obligations review")
         webinar, webinar_profile = PIPELINE.discussion_prompt_for_meeting_type("Webinar rehearsal")
         technical, technical_profile = PIPELINE.discussion_prompt_for_meeting_type("Technical file review")
         software, software_profile = PIPELINE.discussion_prompt_for_meeting_type("Software weekly review")
         hybrid, hybrid_profile = PIPELINE.discussion_prompt_for_meeting_type("Software and technical-file weekly review")
         general, general_profile = PIPELINE.discussion_prompt_for_meeting_type("Project review")
         self.assertEqual(audit_profile, "audit_planning")
+        self.assertEqual(importer_profile, "importer_obligations")
         self.assertEqual(webinar_profile, "webinar_rehearsal")
         self.assertEqual(technical_profile, "technical_file_review")
         self.assertEqual(software_profile, "software_weekly_review")
@@ -69,6 +71,8 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertIn(term, webinar)
         for term in ("FIRST THIRD", "no-AI", "CVE", "end-of-day coordination"):
             self.assertIn(term, audit)
+        for term in ("EUDAMED", "GUDID", "COUNTRY/LANGUAGE", "checks needed before payment"):
+            self.assertIn(term, importer)
         for term in ("tracker movement", "change-request review", "retrospective-testing condition"):
             self.assertIn(term, technical)
         for term in ("debug commands", "State timing and status literally", "numerical risk rationale"):
@@ -76,17 +80,18 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertIs(general, PIPELINE.DISCUSSION_PROMPT)
 
     def test_discussion_two_half_route_is_limited_to_coverage_sensitive_types(self):
-        for meeting_type in ("Importer obligations review", "Process / pipeline planning",
-                             "Lead generation pipeline review", "Workshop"):
+        for meeting_type in ("Process / pipeline planning", "Lead generation pipeline review", "Workshop"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertTrue(PIPELINE.discussion_uses_two_halves(meeting_type))
-        for meeting_type in ("Audit kick-off / planning", "Webinar rehearsal", "Technical file review",
+        for meeting_type in ("Audit kick-off / planning", "Importer obligations review",
+                             "Webinar rehearsal", "Technical file review",
                              "Project review", "Decision meeting"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_two_halves(meeting_type))
 
     def test_discussion_three_third_route_is_for_audits_and_pure_software_weeklies(self):
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Audit kick-off / planning"))
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Importer obligations review"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Software weekly review"))
         for meeting_type in ("Software and technical-file weekly review", "Technical file review", "Project review"):
             with self.subTest(meeting_type=meeting_type):

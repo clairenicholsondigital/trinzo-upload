@@ -332,6 +332,36 @@ Use clear British English. Return only the required JSON.
 DENOISED TRANSCRIPT SECTION:
 {transcript}"""
 
+IMPORTER_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this importer-obligations review using only this transcript section.
+
+Create a compact importer-compliance state ledger. Preserve distinct supported states concerning:
+- how the QMS manual, procedures and other compliance documents are being built, and how regulatory requirements must reflect the organisation's actual operations;
+- the end-to-end product flow: supplier country, fiscal import or customs clearance, temporary holds, final warehousing and distribution;
+- warehouse systems and manual steps, order channels, ERP processing, picking, packing, labelling, invoicing and dispatch;
+- current identifiers and traceability, including UPC, lot numbers, UDI and 2D data-matrix changes;
+- EUDAMED deadlines, new versus existing products, importer checks, manufacturer data, authorised-representative or third-party registration responsibilities, oversight and timelines;
+- other market databases such as FDA GUDID where products are distributed outside the EU;
+- manufacturer information, warranty material, IFUs, Class I exemptions and the evidence or rationale required when no IFU is supplied;
+- declarations of conformity, product scope, sunglasses, MDR/PPE classifications and risk rationale;
+- document translation and the countries and languages that must be covered based on actual distribution;
+- authorised-representative appointments, SRN correspondence, regulator invoices and checks needed before payment;
+- missing, unreceived or outstanding documents and information, preserving their current state without turning them into an action list.
+
+Rules:
+- Return at most 6 concise headings and at most 16 points TOTAL for this transcript section. Count all points before returning.
+- Keep each materially distinct regulatory obligation, operating-process fact, document state, deadline or dependency as its own point. Combine repetition only.
+- Preserve exact organisations, countries, locations, systems, product classes, identifiers, dates and uncertainty.
+- Distinguish manufacturer, importer, authorised representative, distributor and service-provider responsibilities; do not transfer an obligation merely because another party was discussed.
+- Distinguish customs or airport clearance from warehousing and temporary holding from final storage.
+- Distinguish a proposed interpretation or unresolved question from a confirmed requirement.
+- Include concrete current states even when they imply follow-up, but write discussion points rather than actions.
+- Omit banter, meeting procedure and unsupported inference.
+- Before returning, rescan for QMS/PROCESS, PRODUCT FLOW, CUSTOMS, WAREHOUSE, ORDER FLOW, UPC/UDI/LOT, EUDAMED, GUDID, IFU, DOC, MDR/PPE, COUNTRY/LANGUAGE, SRN and INVOICE states.
+- Use clear British English. Return only the required JSON.
+
+DENOISED TRANSCRIPT SECTION:
+{transcript}"""
+
 WEBINAR_REHEARSAL_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this webinar rehearsal using only the denoised transcript below.
 
 Capture the substantive run-of-show at concrete, atomic detail. Internally sweep the transcript for:
@@ -424,6 +454,8 @@ def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if "audit" in normalised:
         return AUDIT_DISCUSSION_PROMPT, "audit_planning"
+    if "importer" in normalised:
+        return IMPORTER_DISCUSSION_PROMPT, "importer_obligations"
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_DISCUSSION_PROMPT, "webinar_rehearsal"
     if ("software" in normalised and "technical file" in normalised) or any(
@@ -438,15 +470,14 @@ def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
 def discussion_uses_two_halves(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return (
-        "importer" in normalised
-        or normalised == "workshop"
+        normalised == "workshop"
         or any(term in normalised for term in ("pipeline", "lead generation"))
     )
 
 
 def discussion_uses_three_thirds(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
-    return "audit" in normalised or normalised == "software weekly review"
+    return "audit" in normalised or "importer" in normalised or normalised == "software weekly review"
 
 
 def clean(value: Any) -> str:
@@ -557,6 +588,9 @@ def main() -> int:
                 if prompt_profile == "audit_planning":
                     context = f"This is the {position} third of the meeting transcript. Follow the {position.upper()} THIRD priorities.\n\n"
                     max_tokens = 1800
+                elif prompt_profile == "importer_obligations":
+                    context = f"This is the {position} third of the meeting transcript. Capture only the substantive importer-obligations discussion contained in this third.\n\n"
+                    max_tokens = 2200
                 else:
                     context = f"This is the {position} third of the meeting transcript. Capture the substantive discussion contained in this third.\n\n"
                     max_tokens = 2400
