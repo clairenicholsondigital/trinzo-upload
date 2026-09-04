@@ -30,6 +30,35 @@ DISCUSSION_SCHEMA = {"type": "json_schema", "json_schema": {"name": "meeting_dis
         "required": ["topic", "points"], "additionalProperties": False}}},
     "required": ["discussion"], "additionalProperties": False}}}
 
+DISCUSSION_CANDIDATE_SCHEMA = {"type": "json_schema", "json_schema": {
+    "name": "meeting_discussion_candidates", "strict": True, "schema": {
+        "type": "object", "properties": {"candidates": {"type": "array", "items": {
+            "type": "object", "properties": {
+                "workstream": {"type": "string"},
+                "state": {"type": "string"},
+                "evidenceTurns": {"type": "array", "items": {"type": "integer"}},
+            },
+            "required": ["workstream", "state", "evidenceTurns"],
+            "additionalProperties": False,
+        }}},
+        "required": ["candidates"], "additionalProperties": False,
+    },
+}}
+
+DISCUSSION_FILTER_SCHEMA = {"type": "json_schema", "json_schema": {
+    "name": "meeting_discussion_candidate_filter", "strict": True, "schema": {
+        "type": "object", "properties": {"decisions": {"type": "array", "items": {
+            "type": "object", "properties": {
+                "candidate": {"type": "integer"},
+                "decision": {"type": "string", "enum": ["DISCUSSION_POINT", "IGNORE"]},
+            },
+            "required": ["candidate", "decision"],
+            "additionalProperties": False,
+        }}},
+        "required": ["decisions"], "additionalProperties": False,
+    },
+}}
+
 ACTION_SCHEMA = {"type": "json_schema", "json_schema": {"name": "chunk_analysis", "strict": True, "schema": {
     "type": "object", "properties": {
         "discussionPoints": {"type": "array", "items": {"type": "object", "properties": {
@@ -449,6 +478,41 @@ Output rules:
 DENOISED TRANSCRIPT:
 {transcript}"""
 
+SOFTWARE_TECHNICAL_FILE_CANDIDATE_PROMPT = """Review this coherent numbered section from a software and technical-file meeting.
+
+Return only standalone, minutes-worthy discussion-state candidates. A candidate must help a reader understand a workstream's material current position, implemented outcome, unresolved issue, decision, dependency, review/approval status, test or evidence position, risk/control rationale, regulatory status, version consequence, standard applicability or document state.
+
+Capture distinct lifecycle states separately, but combine conversational fragments and demonstration micro-steps that establish the same state. Preserve materially different modes such as audible versus visual implementation, and preserve method, timing and evidence gaps separately when each changes the meaning.
+
+Do not create candidates for greetings, meeting frequency, screen sharing, playback procedure, navigation, vague activity, conversational corrections or isolated technical details without a workstream consequence.
+
+Before returning, check each named participant for a substantive contribution and each named standard, plan, matrix, report, logic description or technical-file document for a material review/update state. Include supported brief states rather than allowing a dominant topic to hide them.
+
+Use a short reusable workstream label, one concise factual state, and the smallest sufficient set of supporting turn numbers. Return at most 10 candidates for this section. Include all qualifying states up to that limit. Preserve names, dates, versions, standards, conditions and uncertainty. Describe states rather than action-list instructions.
+
+NUMBERED TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+DISCUSSION_CANDIDATE_FILTER_PROMPT = """Classify every numbered candidate independently as DISCUSSION_POINT or IGNORE.
+
+DISCUSSION_POINT means the candidate is a standalone, minutes-worthy statement that helps a reader understand a substantive workstream's current position, implemented outcome, unresolved issue, decision, dependency, review or approval status, test/evidence position, risk/control rationale, regulatory status, version consequence, standard applicability or document state.
+
+The candidate must remain useful when read outside the transcript. Brief technical details qualify when they distinguish an agreed behaviour, measurable requirement, material test result, risk, unresolved defect or evidence consequence.
+
+IGNORE means the candidate is any of the following:
+- greeting, banter, social observation or personal activity;
+- meeting frequency or attendance without a substantive project consequence;
+- screen sharing, playback, navigation or other demonstration procedure rather than its technical result;
+- vague activity such as being busy, working on something, turning something up or asking generally for progress;
+- conversational correction, fragment or instruction that does not state a durable workstream position;
+- a micro-step whose only purpose is to conduct the meeting or demonstration;
+- wording too ambiguous to be useful in formal minutes.
+
+A substantive point may imply future work and still qualify. Judge only whether the candidate itself is a durable discussion state. Do not rewrite, merge, rank or omit candidates. Return one decision for every candidate number.
+
+NUMBERED CANDIDATES:
+{candidates}"""
+
 
 def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
@@ -465,6 +529,11 @@ def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_DISCUSSION_PROMPT, "technical_file_review"
     return DISCUSSION_PROMPT, "general"
+
+
+def discussion_uses_chunk_candidate_filter(meeting_type: str) -> bool:
+    normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    return normalised == "software and technical file weekly review"
 
 
 def discussion_uses_two_halves(meeting_type: str) -> bool:
@@ -568,6 +637,45 @@ def normalise_actions(result: dict[str, Any], chunk: dict[str, int]) -> list[dic
     return output
 
 
+def normalise_discussion_candidates(result: dict[str, Any], chunk: dict[str, int]) -> list[dict[str, Any]]:
+    output = []
+    rows = result.get("candidates") if isinstance(result.get("candidates"), list) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        workstream, state = clean(row.get("workstream")), clean(row.get("state"))
+        if not workstream or not state:
+            continue
+        evidence = row.get("evidenceTurns") if isinstance(row.get("evidenceTurns"), list) else []
+        evidence = sorted({turn for turn in evidence
+                           if isinstance(turn, int) and not isinstance(turn, bool)
+                           and chunk["start"] <= turn <= chunk["end"]})
+        if not evidence:
+            continue
+        output.append({"workstream": workstream, "state": state, "evidenceTurns": evidence,
+                       "chunk": chunk["number"]})
+    return output
+
+
+def discussion_from_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    discussion: list[dict[str, Any]] = []
+    topics: dict[str, dict[str, Any]] = {}
+    seen_states: set[str] = set()
+    for candidate in candidates:
+        state_key = clean(candidate.get("state")).casefold()
+        if not state_key or state_key in seen_states:
+            continue
+        seen_states.add(state_key)
+        topic = clean(candidate.get("workstream"))
+        topic_key = topic.casefold()
+        if topic_key not in topics:
+            row = {"topic": topic, "points": []}
+            topics[topic_key] = row
+            discussion.append(row)
+        topics[topic_key]["points"].append(clean(candidate.get("state")))
+    return discussion
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript")
@@ -579,6 +687,61 @@ def main() -> int:
     if not turns:
         raise SystemExit("Denoised transcript has no turns")
     if args.stage == "discussion":
+        if discussion_uses_chunk_candidate_filter(args.meeting_type):
+            minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))
+            maximum = max(minimum, math.ceil(len(turns) / 15))
+            boundary_result = call_trooper(BOUNDARY_PROMPT.format(
+                total=len(turns), minimum=minimum, maximum=maximum, numbered=numbered),
+                1400, BOUNDARY_SCHEMA)
+            chunks = safe_boundaries(boundary_result.get("chunks"), len(turns))
+            lines = numbered.splitlines()
+
+            def extract_candidates(chunk: dict[str, int]) -> list[dict[str, Any]]:
+                prompt = SOFTWARE_TECHNICAL_FILE_CANDIDATE_PROMPT.format(
+                    numbered_chunk="\n".join(lines[chunk["start"] - 1:chunk["end"]]))
+                result = call_trooper(prompt, 1800, DISCUSSION_CANDIDATE_SCHEMA)
+                return normalise_discussion_candidates(result, chunk)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
+                candidate_groups = list(pool.map(extract_candidates, chunks))
+            candidates = [candidate for group in candidate_groups for candidate in group]
+            for number, candidate in enumerate(candidates, 1):
+                candidate["candidate"] = number
+
+            batches = [candidates[start:start + 25] for start in range(0, len(candidates), 25)]
+
+            def classify_candidates(batch: list[dict[str, Any]]) -> dict[int, str]:
+                numbered_candidates = "\n".join(
+                    f"{row['candidate']}. {row['workstream']}: {row['state']}"
+                    for row in batch)
+                result = call_trooper(DISCUSSION_CANDIDATE_FILTER_PROMPT.format(
+                    candidates=numbered_candidates), 2600, DISCUSSION_FILTER_SCHEMA)
+                valid_numbers = {row["candidate"] for row in batch}
+                decisions: dict[int, str] = {}
+                rows = result.get("decisions") if isinstance(result.get("decisions"), list) else []
+                for row in rows:
+                    if not isinstance(row, dict) or row.get("candidate") not in valid_numbers:
+                        continue
+                    if row.get("decision") in ("DISCUSSION_POINT", "IGNORE"):
+                        decisions[row["candidate"]] = row["decision"]
+                return decisions
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, max(1, len(batches)))) as pool:
+                decision_groups = list(pool.map(classify_candidates, batches)) if batches else []
+            decisions = {number: decision for group in decision_groups for number, decision in group.items()}
+            accepted = [row for row in candidates if decisions.get(row["candidate"]) == "DISCUSSION_POINT"]
+            discussion = discussion_from_candidates(accepted)
+            total_calls = 1 + len(chunks) + len(batches)
+            print(json.dumps({
+                "stage": "discussion", "discussion": discussion,
+                "discussionPromptProfile": "software_technical_file_chunk_filter",
+                "discussionCallCount": total_calls, "splitAfterTurn": None,
+                "splitAfterTurns": None, "chunkCount": len(chunks), "turnCount": len(turns),
+                "discussionCandidateCount": len(candidates),
+                "discussionAcceptedCandidateCount": len(accepted),
+            }, ensure_ascii=False))
+            return 0
+
         discussion_prompt, prompt_profile = discussion_prompt_for_meeting_type(args.meeting_type)
         split_after_turn = None
         split_after_turns = None

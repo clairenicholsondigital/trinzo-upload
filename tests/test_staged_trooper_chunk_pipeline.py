@@ -79,6 +79,37 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertIn(term, software)
         self.assertIs(general, PIPELINE.DISCUSSION_PROMPT)
 
+    def test_chunk_candidate_filter_is_limited_to_hybrid_weekly_type(self):
+        self.assertTrue(PIPELINE.discussion_uses_chunk_candidate_filter(
+            "Software and technical-file weekly review"))
+        for meeting_type in ("Software weekly review", "Technical file review", "Project review", ""):
+            with self.subTest(meeting_type=meeting_type):
+                self.assertFalse(PIPELINE.discussion_uses_chunk_candidate_filter(meeting_type))
+
+    def test_discussion_candidate_normalisation_requires_in_chunk_evidence(self):
+        result = {"candidates": [
+            {"workstream": "Alarm behaviour", "state": "Three priorities were demonstrated.",
+             "evidenceTurns": [2, 3, 99]},
+            {"workstream": "", "state": "Missing heading", "evidenceTurns": [4]},
+            {"workstream": "Risk", "state": "No evidence", "evidenceTurns": []},
+        ]}
+        rows = PIPELINE.normalise_discussion_candidates(
+            result, {"number": 2, "start": 2, "end": 10})
+        self.assertEqual(rows, [{
+            "workstream": "Alarm behaviour", "state": "Three priorities were demonstrated.",
+            "evidenceTurns": [2, 3], "chunk": 2,
+        }])
+
+    def test_discussion_from_candidates_groups_topics_and_deduplicates_exact_states(self):
+        rows = PIPELINE.discussion_from_candidates([
+            {"workstream": "Risk", "state": "The risk file is under review."},
+            {"workstream": "risk", "state": "The risk file is under review."},
+            {"workstream": "Risk", "state": "A control decision remains open."},
+        ])
+        self.assertEqual(rows, [{"topic": "Risk", "points": [
+            "The risk file is under review.", "A control decision remains open.",
+        ]}])
+
     def test_discussion_two_half_route_is_limited_to_coverage_sensitive_types(self):
         for meeting_type in ("Workshop", "Technical file review"):
             with self.subTest(meeting_type=meeting_type):
