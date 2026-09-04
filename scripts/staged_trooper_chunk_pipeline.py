@@ -305,6 +305,39 @@ DISCUSSION_PROMPT = """Write the Key discussion points for formal meeting minute
 DENOISED TRANSCRIPT:
 {transcript}"""
 
+WEBINAR_REHEARSAL_DISCUSSION_PROMPT = """Write concise Key discussion points for formal minutes of this webinar rehearsal using only the denoised transcript below.
+
+Capture the substantive run-of-show at concrete, atomic detail. Internally sweep the transcript for:
+- slide or deck defects, missing animations, content changes and presentation readiness;
+- the exact opening and audience instructions, including device-specific guidance;
+- presenter order, spoken cues, handovers, case-study insertions and who hands back to whom;
+- timing signals or private warnings given while someone is presenting;
+- Q&A sequencing, proposed opening or backup questions, moderation and closing arrangements;
+- screen-sharing transitions, pauses or dead-air risks and how those gaps will be covered;
+- failure contingencies: who fills verbally, contacts a missing presenter, or takes over a backup deck;
+- explicit rehearsal decisions about what will be rerun, practised or only spot-checked.
+
+Output rules:
+- Return 4-6 concise topic headings and at most 24 points in total.
+- Keep each materially distinct fact as its own standalone point, but omit duplicate explanations and action-list restatements.
+- Preserve concrete names, sequence, cues, examples, timings, defects, risks, contingencies and rehearsal decisions.
+- Do not collapse several handovers or contingency roles into a generic statement such as "roles were agreed".
+- Include operational arrangements as discussion points even when they also imply an action; describe the agreed position without creating an action list.
+- Record proposals and uncertainty accurately. Do not infer or invent facts.
+- Prioritise agreed run-of-show details, identified defects, handover risks, audience instructions, Q&A examples, failure contingencies and decisions about rehearsal scope.
+- Use clear British English.
+- Return only the required JSON.
+
+DENOISED TRANSCRIPT:
+{transcript}"""
+
+
+def discussion_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
+    normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
+        return WEBINAR_REHEARSAL_DISCUSSION_PROMPT, "webinar_rehearsal"
+    return DISCUSSION_PROMPT, "general"
+
 
 def clean(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
@@ -400,13 +433,15 @@ def main() -> int:
     if not turns:
         raise SystemExit("Denoised transcript has no turns")
     if args.stage == "discussion":
-        result = call_trooper(DISCUSSION_PROMPT.format(transcript=transcript), 2200, DISCUSSION_SCHEMA)
+        discussion_prompt, prompt_profile = discussion_prompt_for_meeting_type(args.meeting_type)
+        result = call_trooper(discussion_prompt.format(transcript=transcript), 2200, DISCUSSION_SCHEMA)
         discussion = []
         for row in result.get("discussion", []):
             topic, points = clean(row.get("topic")), [clean(p) for p in row.get("points", []) if clean(p)]
             if topic and points:
                 discussion.append({"topic": topic, "points": points[:6]})
-        print(json.dumps({"stage": "discussion", "discussion": discussion}, ensure_ascii=False))
+        print(json.dumps({"stage": "discussion", "discussion": discussion,
+            "discussionPromptProfile": prompt_profile}, ensure_ascii=False))
         return 0
 
     minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))

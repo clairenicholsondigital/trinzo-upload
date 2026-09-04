@@ -53,7 +53,7 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
     }
     await fs.writeFile(denoisedPath, prepared.preparedTranscript, 'utf8');
     const scriptArgs = [denoisedPath, '--stage', stage];
-    if (stage === 'actions' && String(options.meetingType || '').trim()) {
+    if (String(options.meetingType || '').trim()) {
       scriptArgs.push('--meeting-type', String(options.meetingType).trim());
     }
     const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
@@ -68,7 +68,8 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
         removedUnitCount: prepared.removedUnitCount, keptUnitCount: prepared.keptUnitCount,
         totalUnitCount: prepared.totalUnitCount, removedRatio,
         chunkCount: result.chunkCount || null, turnCount: result.turnCount || null,
-        actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null
+        actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null,
+        discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null
       }
     };
   } finally {
