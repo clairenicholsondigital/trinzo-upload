@@ -571,6 +571,38 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertNotIn("<h3>Topics discussed</h3>", page)
         self.assertNotIn(" with no date stated", page)
 
+    def test_resume_links_name_their_stage_rather_than_a_screen_index(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        client_output = (REPO_DIR / "views" / "staged-meeting-minutes-client-output.html").read_text(encoding="utf-8")
+        jobs = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")
+
+        # Screen indices shifted when Summary was removed, and links outlive a renumbering.
+        # The stage a link names still means the same thing afterwards, so it is what the
+        # page reads; an index arriving on its own is read in the numbering that wrote it.
+        self.assertIn("var STAGE_SCREEN_INDEX = { details: 0, discussion: 1, actions: 2, final_review: 3 }", page)
+        self.assertIn("var LEGACY_SCREEN_INDEX = [0, 1, 1, 2, 3]", page)
+        self.assertIn("function resolveScreenIndex", page)
+        self.assertIn("function migrateLegacyScreenIndex", page)
+        self.assertIn("resolveScreenIndex({ stage: params.get('stage'), screen: params.get('screen') })", page)
+
+        # Everything that writes a link or a draft names the stage in it.
+        self.assertIn("'&stage=' + encodeURIComponent(stageNameForScreen(activeIndex))", page)
+        self.assertIn("activeStage: stageNameForScreen(activeIndex)", page)
+        self.assertIn("stage=final_review&screen=3", client_output)
+        self.assertNotIn("&screen=4", client_output)
+
+        # The Library resolves a draft the same way, and its step list is the flow as it is
+        # now - a list still carrying Summary marked the wrong step as the one to resume.
+        self.assertIn("function stagedActiveScreen", jobs)
+        self.assertIn("function stagedActiveStage", jobs)
+        self.assertIn("const STAGED_LEGACY_SCREEN_INDEX = [0, 1, 1, 2, 3]", jobs)
+        self.assertIn("activeScreen: stagedActiveScreen(draft)", jobs)
+        self.assertIn("const steps = ['Details', 'Discussion', 'Actions', 'Final review']", jobs)
+
+        # A queued job's stage decides where it resumes, not the index it recorded.
+        self.assertIn("var jobStageScreen = screenIndexForStage(params.get('stage') || payload.job.inputPayload?.stage)", page)
+        self.assertNotIn("Number(params.get('screen') || requestedScreen || payload.job.inputPayload?.targetScreen || 0)", page)
+
     def test_staged_transcript_is_carried_across_stages(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

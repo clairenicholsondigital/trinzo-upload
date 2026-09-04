@@ -109,7 +109,7 @@ function startStubServer() {
   });
 }
 
-test('a reviewer can walk the staged flow and see their corrections acknowledged', { timeout: 600000 }, async () => {
+test('a reviewer can walk directly from Details to Discussion', { timeout: 600000 }, async () => {
   const transcriptText = fs.readFileSync(TRANSCRIPT_PATH, 'utf8');
 
   // Warm the MiniLM profile before the browser exists. Under a cold cache the whole
@@ -140,70 +140,23 @@ test('a reviewer can walk the staged flow and see their corrections acknowledged
     const title = await page.inputValue('#meetingTitle');
     assert.ok(title, 'the details stage fills the meeting title');
 
-    // Continue to the summary. Generation runs through the stubbed queue and the real
-    // pipeline; the purpose field must arrive populated, not blank.
-    await page.click('#nextScreenBtn');
-    await page.waitForFunction(() => document.getElementById('meetingPurpose')?.value, null, { timeout: 300000 });
-    const generatedPurpose = await page.inputValue('#meetingPurpose');
-    assert.ok(generatedPurpose.length > 0, 'a purpose is shown');
-    assert.doesNotMatch(generatedPurpose, /Coordinate the meeting's main workstreams/, 'the deleted pipeline sentence stays deleted');
-
-    // The per-workstream objectives actually render - the enrichment work raised the cap
-    // to eight, and a list that is produced but not displayed is the class of gap this
-    // test exists for. This transcript yields several; the exact count is the pipeline's
-    // business, the rendering is this test's.
-    const objectiveLines = (await page.inputValue('#objectives')).split('\n').filter(Boolean);
-    assert.ok(objectiveLines.length >= 1, `objectives render as lines (got ${objectiveLines.length})`);
-
-    // The editorial flags render in the browser, not only in the payload: the purpose on
-    // this meeting is inferred, so its non-blocking flag must be visible - the same
-    // machinery that shows meeting_type_suggested and summary_machine_composed.
-    await page.waitForSelector('#stageValidationFlags:not([hidden])', { timeout: 30000 });
-    const flagText = await page.textContent('#stageValidationFlags');
-    assert.match(flagText, /purpose/i, `the purpose-inferred flag is shown to the reviewer: ${flagText.slice(0, 120)}`);
-
-    // The reviewer corrects the purpose and the first topic - the exact gestures this
-    // session's work promised would be honoured downstream.
-    const reviewerPurpose = 'Check in on the AI programme and unblock the stalled items.';
-    await page.fill('#meetingPurpose', reviewerPurpose);
-    const topics = (await page.inputValue('#overallTopics')).split('\n').filter(Boolean);
-    const reviewerTopic = 'What we owe the client next';
-    await page.fill('#overallTopics', [reviewerTopic, ...topics.slice(1)].join('\n'));
-
-    // Continue to the discussion.
+    // Summary is no longer a reviewer screen. Continue directly to Discussion and prove
+    // the real pipeline result renders rather than leaving the newly renumbered screen
+    // empty.
     await page.click('#nextScreenBtn');
     await page.waitForFunction(() => document.body.getAttribute('data-stage') === 'discussion', null, { timeout: 300000 });
-
-    // The panel this session added, rendered for the first time anywhere: it must appear,
-    // count the confirmed values, and show the reviewer's own words.
-    await page.waitForSelector('#confirmedCarried:not([hidden])', { timeout: 30000 });
-    const carriedSummary = await page.textContent('#confirmedCarriedSummary');
-    assert.match(carriedSummary, /Your earlier edits: (?:all )?\d+/, `panel summary reads: ${carriedSummary}`);
-    // The discussion screen is audited on what it can carry - topics and key facts, not
-    // the purpose; a summary field reported missing from Discussion would be noise, and
-    // noise is how a real miss gets ignored. So the panel lists the corrected heading.
-    const carriedText = await page.textContent('#confirmedCarriedList');
-    assert.ok(carriedText.includes(reviewerTopic), 'the corrected heading is listed in the panel');
-
-    // The reviewer's heading survived the editorial gate despite its pronoun.
-    const discussionText = await page.textContent('main');
-    assert.ok(discussionText.includes(reviewerTopic), 'the reviewer heading appears on the discussion screen');
-
-    // And the purpose box still holds their words, not a regeneration.
-    assert.equal(await page.inputValue('#meetingPurpose'), reviewerPurpose);
+    await page.waitForFunction(() => document.querySelectorAll('[data-discussion-index]').length > 0, null, { timeout: 300000 });
+    assert.ok(await page.locator('[data-discussion-index]').count() > 0, 'discussion cards render');
 
     // No JavaScript error anywhere along the way - the check that was impossible headless.
     assert.deepEqual(pageErrors, [], `page errors: ${pageErrors.join(' | ')}`);
 
-    // The analytics the page actually sent carry the purpose source - asserted on what
-    // reached the server, not on what the page might have built.
+    // The page still sends review analytics while moving through the shorter flow.
     const deadline = Date.now() + 15000;
     while (!recordedReviewEvents.length && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     assert.ok(recordedReviewEvents.length > 0, 'the page posted at least one review event during the flow');
-    const withSource = recordedReviewEvents.filter((event) => 'purposeSource' in event);
-    assert.ok(withSource.length > 0, 'a posted review event carries purposeSource');
   } finally {
     await browser.close();
     server.close();

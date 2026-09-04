@@ -359,6 +359,30 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     localStorage.setItem('stagedMeetingMinutesJobs', JSON.stringify(drafts));
   }
 
+  // The staged review's screens were renumbered when the Summary stage was removed, and a
+  // draft saved before that still records the old index. A draft saved since names the
+  // stage it was left on, and a stage name survives a renumbering, so it decides; an index
+  // arriving on its own is read in the numbering that wrote it.
+  const STAGED_STAGE_SCREEN_INDEX = { details: 0, discussion: 1, actions: 2, final_review: 3 };
+  // Old order: Details, Summary, Discussion, Actions, Final review. Summary is gone, so a
+  // draft parked on it belongs on Discussion, the stage that now follows Details.
+  const STAGED_LEGACY_SCREEN_INDEX = [0, 1, 1, 2, 3];
+
+  function stagedActiveScreen(draft) {
+    const stage = String(draft?.activeStage || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (Object.prototype.hasOwnProperty.call(STAGED_STAGE_SCREEN_INDEX, stage)) return STAGED_STAGE_SCREEN_INDEX[stage];
+    const index = Math.floor(Number(draft?.activeScreen));
+    if (!Number.isFinite(index) || index < 0) return 0;
+    return index < STAGED_LEGACY_SCREEN_INDEX.length
+      ? STAGED_LEGACY_SCREEN_INDEX[index]
+      : STAGED_LEGACY_SCREEN_INDEX[STAGED_LEGACY_SCREEN_INDEX.length - 1];
+  }
+
+  function stagedActiveStage(draft) {
+    const index = stagedActiveScreen(draft);
+    return Object.keys(STAGED_STAGE_SCREEN_INDEX).find((name) => STAGED_STAGE_SCREEN_INDEX[name] === index) || 'details';
+  }
+
   function stagedDraftJob(draft) {
     return {
       jobId: draft.jobId,
@@ -376,8 +400,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       meetingTitle: draft.meetingTitle || 'Staged meeting-minutes review',
       fileName: draft.fileName || 'Browser-saved staged review draft',
       transcriptLength: Number(draft.transcriptLength || 0),
-      activeScreen: Number(draft.activeScreen || 0),
-      resumeUrl: draft.resumeUrl || `/staged-meeting-minutes?draftId=${encodeURIComponent(draft.jobId)}&screen=${Number(draft.activeScreen || 0)}`
+      activeScreen: stagedActiveScreen(draft),
+      resumeUrl: draft.resumeUrl || `/staged-meeting-minutes?draftId=${encodeURIComponent(draft.jobId)}&stage=${encodeURIComponent(stagedActiveStage(draft))}&screen=${stagedActiveScreen(draft)}`
     };
   }
 
@@ -1427,7 +1451,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       <a class="button secondary" href="/staged-meeting-minutes">Start another staged review</a>
       <button class="danger" data-delete-staged-detail="${escapeHtml(job.jobId)}" type="button">Remove draft</button>
     `;
-    const steps = ['Details', 'Summary', 'Discussion', 'Actions', 'Final review'];
+    // The staged review's screens, in order. Summary was removed from the flow; a list that
+    // still carried it put "Resume here" one step above wherever the reviewer actually was.
+    const steps = ['Details', 'Discussion', 'Actions', 'Final review'];
     resultView.innerHTML = `
       <section class="staged-detail-card">
         <h3>Review progress</h3>

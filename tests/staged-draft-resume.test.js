@@ -22,8 +22,14 @@ const { chromium } = require('playwright');
 // for a stage that had never run was nothing at all: an empty table, no message, and no
 // way to tell it apart from a meeting that genuinely produced no discussion.
 //
-// This drives the real page: generate details and summary, reload at ?screen=2 as the
-// Library link does, and require that the discussion arrives.
+// This drives the real page: generate details, reload at ?screen=2 as the Library link did
+// at the time, and require that the discussion arrives.
+//
+// That link is also the second thing under test here. Screen 2 was Discussion when those
+// reports came in, back when Summary sat between Details and Discussion; Summary has since
+// been removed and screen 2 is now Actions. A link written under the old numbering has to
+// keep resuming the stage it named, or resuming a saved draft walks the reviewer past the
+// Discussion review instead of into it.
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const PAGE_PATH = path.join(REPO_ROOT, 'views', 'staged-meeting-minutes.html');
@@ -88,10 +94,7 @@ test('a draft resumed at Discussion generates it instead of showing an empty tab
     await page.click('#generateStagedMinutesBtn');
     await page.waitForFunction(() => document.getElementById('meetingTitle')?.value, null, { timeout: 180000 });
 
-    // Summary, and no further. Discussion is deliberately never generated in this session.
-    await page.click('#nextScreenBtn');
-    await page.waitForFunction(() => document.getElementById('meetingPurpose')?.value, null, { timeout: 300000 });
-
+    // Details, and no further. Discussion is deliberately never generated in this session.
     const draftId = await page.evaluate(() => {
       const drafts = JSON.parse(localStorage.getItem('stagedMeetingMinutesJobs') || '[]');
       return drafts.length ? String(drafts[0].jobId) : '';
@@ -99,7 +102,8 @@ test('a draft resumed at Discussion generates it instead of showing an empty tab
     assert.ok(draftId, 'the draft was saved so it can be resumed');
     assert.ok(!stagesRequested.includes('discussion'), 'discussion has not been generated yet');
 
-    // The gesture: open the saved draft straight at Discussion, as the Library link does.
+    // The gesture: open the saved draft straight at Discussion, through a link written in
+    // the five-screen numbering, as every link saved before Summary was removed was.
     await page.goto(`http://127.0.0.1:${port}/staged-meeting-minutes?draftId=${encodeURIComponent(draftId)}&screen=2`);
     await page.waitForFunction(() => document.body.getAttribute('data-stage') === 'discussion', null, { timeout: 300000 });
     await page.waitForFunction(() => document.querySelectorAll('[data-discussion-index]').length > 0, null, { timeout: 300000 });
@@ -107,6 +111,12 @@ test('a draft resumed at Discussion generates it instead of showing an empty tab
     const cards = await page.evaluate(() => document.querySelectorAll('[data-discussion-index]').length);
     assert.ok(cards > 0, 'the discussion screen has rows rather than an empty table');
     assert.ok(stagesRequested.includes('discussion'), 'resuming at Discussion asked for it to be generated');
+    assert.ok(!stagesRequested.includes('actions'),
+      'the old link resumed Discussion rather than the screen that now carries its index');
+
+    // And a link written today names the stage, so it does not depend on that mapping.
+    await page.goto(`http://127.0.0.1:${port}/staged-meeting-minutes?draftId=${encodeURIComponent(draftId)}&stage=discussion&screen=1`);
+    await page.waitForFunction(() => document.body.getAttribute('data-stage') === 'discussion', null, { timeout: 300000 });
     assert.deepEqual(pageErrors, [], `no page errors: ${pageErrors.join(' | ')}`);
   } finally {
     await browser.close();
