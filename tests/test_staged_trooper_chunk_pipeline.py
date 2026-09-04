@@ -80,10 +80,11 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertIs(general, PIPELINE.DISCUSSION_PROMPT)
 
     def test_discussion_two_half_route_is_limited_to_coverage_sensitive_types(self):
-        for meeting_type in ("Process / pipeline planning", "Lead generation pipeline review", "Workshop"):
+        for meeting_type in ("Workshop",):
             with self.subTest(meeting_type=meeting_type):
                 self.assertTrue(PIPELINE.discussion_uses_two_halves(meeting_type))
         for meeting_type in ("Audit kick-off / planning", "Importer obligations review",
+                             "Process / pipeline planning", "Lead generation pipeline review",
                              "Webinar rehearsal", "Technical file review",
                              "Project review", "Decision meeting"):
             with self.subTest(meeting_type=meeting_type):
@@ -93,7 +94,10 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Audit kick-off / planning"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Importer obligations review"))
         self.assertTrue(PIPELINE.discussion_uses_three_thirds("Software weekly review"))
-        for meeting_type in ("Software and technical-file weekly review", "Technical file review", "Project review"):
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Project review"))
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Process / pipeline planning"))
+        self.assertTrue(PIPELINE.discussion_uses_three_thirds("Lead generation pipeline review"))
+        for meeting_type in ("Software and technical-file weekly review", "Technical file review", "Client update"):
             with self.subTest(meeting_type=meeting_type):
                 self.assertFalse(PIPELINE.discussion_uses_three_thirds(meeting_type))
 

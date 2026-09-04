@@ -471,13 +471,17 @@ def discussion_uses_two_halves(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return (
         normalised == "workshop"
-        or any(term in normalised for term in ("pipeline", "lead generation"))
     )
 
 
 def discussion_uses_three_thirds(meeting_type: str) -> bool:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
-    return "audit" in normalised or "importer" in normalised or normalised == "software weekly review"
+    return (
+        "audit" in normalised
+        or "importer" in normalised
+        or normalised in ("software weekly review", "project review")
+        or any(term in normalised for term in ("pipeline", "lead generation"))
+    )
 
 
 def clean(value: Any) -> str:
