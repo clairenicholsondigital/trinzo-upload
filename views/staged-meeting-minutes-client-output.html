@@ -332,7 +332,9 @@ tr { page-break-inside:avoid; }
     var clientAttendeeLabel = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
     document.title = title + ' | Client meeting minutes';
     if (backToReviewLink) {
-      backToReviewLink.href = '/staged-meeting-minutes?draftId=' + encodeURIComponent(draft.jobId || draftId) + '&screen=4';
+      // Named, not numbered: this link asked for screen 4 back when Final review was the
+      // fifth screen, and survived the renumbering only because the review page clamps.
+      backToReviewLink.href = '/staged-meeting-minutes?draftId=' + encodeURIComponent(draft.jobId || draftId) + '&stage=final_review&screen=3';
     }
     outputRoot.innerHTML =
       '<article class="page"><div class="document">' +

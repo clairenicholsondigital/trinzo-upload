@@ -806,7 +806,54 @@ td select {
   // screen-by-screen flow and on reload/resume.
   var storedTranscriptText = '';
   var draftTranscriptSha256 = '';
-  var requestedScreen = Number(params.get('screen') || 0);
+
+  // A screen index is not durable, and a resume link outlives the numbering that wrote it.
+  // Removing the Summary stage shifted every screen after Details down by one, so a link
+  // or saved draft that recorded Actions as screen 3 now reads as Final review - past the
+  // Discussion review that reviewer had not done yet, with nothing to say so. A stage name
+  // does not shift. Every link and draft this page writes now carries one and it decides
+  // the screen; a bare index arriving with no stage beside it predates that and is read in
+  // the old five-screen numbering.
+  var STAGE_SCREEN_INDEX = { details: 0, discussion: 1, actions: 2, final_review: 3 };
+  // Old order: Details, Summary, Discussion, Actions, Final review. Summary is gone, so a
+  // draft parked on it resumes at Discussion - the stage that now follows Details, and the
+  // one that reviewer had not reached.
+  var LEGACY_SCREEN_INDEX = [0, 1, 1, 2, 3];
+
+  function screenIndexForStage(stage) {
+    var key = String(stage || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return Object.prototype.hasOwnProperty.call(STAGE_SCREEN_INDEX, key) ? STAGE_SCREEN_INDEX[key] : null;
+  }
+
+  // Every screen has a durable name, Final review included. stageForScreen() answers a
+  // different question - which AI stage a screen generates - and Final review generates
+  // nothing, so it answers '' there. Links and drafts want the name.
+  function stageNameForScreen(index) {
+    var names = Object.keys(STAGE_SCREEN_INDEX);
+    for (var i = 0; i < names.length; i += 1) {
+      if (STAGE_SCREEN_INDEX[names[i]] === index) return names[i];
+    }
+    return 'details';
+  }
+
+  function migrateLegacyScreenIndex(value) {
+    var index = Math.floor(Number(value));
+    if (!Number.isFinite(index) || index < 0) return 0;
+    return index < LEGACY_SCREEN_INDEX.length
+      ? LEGACY_SCREEN_INDEX[index]
+      : LEGACY_SCREEN_INDEX[LEGACY_SCREEN_INDEX.length - 1];
+  }
+
+  // The stage decides when there is one. Only a stageless index is migrated, so an index
+  // that has already been resolved must never be passed back through here.
+  function resolveScreenIndex(source) {
+    var fromStage = screenIndexForStage(source && source.stage);
+    if (fromStage !== null) return fromStage;
+    if (!source || source.screen === null || source.screen === undefined || source.screen === '') return 0;
+    return migrateLegacyScreenIndex(source.screen);
+  }
+
+  var requestedScreen = resolveScreenIndex({ stage: params.get('stage'), screen: params.get('screen') });
   var activeIndex = 0;
   var screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]:not([data-screen="summary"])'));
   var statusItems = Array.prototype.slice.call(document.querySelectorAll('[data-screen-target]'));
@@ -3253,7 +3300,11 @@ td select {
       setReviewStatus('Loading staged generation from Library...', false);
       var payload = await fetchJson('/api/jobs/' + encodeURIComponent(stageJobId));
       if (!payload.job) throw new Error('Staged generation job not found.');
-      var targetScreen = Number(params.get('screen') || requestedScreen || payload.job.inputPayload?.targetScreen || 0);
+      // A job records both the stage it ran and the screen index that stage sat on when it
+      // was queued. Only the stage still means the same thing afterwards, so it decides;
+      // requestedScreen has already been resolved and must not be migrated a second time.
+      var jobStageScreen = screenIndexForStage(params.get('stage') || payload.job.inputPayload?.stage);
+      var targetScreen = jobStageScreen !== null ? jobStageScreen : requestedScreen;
       resumedStage = String(payload.job.inputPayload?.stage || stageForScreen(targetScreen) || 'details');
       stagedSourceJobId = String(stageJobId);
       recordWorkflowInteraction('draft_resumed', {
@@ -3373,7 +3424,9 @@ td select {
     }
     if (existing && Array.isArray(existing.validationFlags)) {
       currentValidationFlags = existing.validationFlags;
-      currentValidationStage = existing.validationStage || stageForScreen(existing.activeScreen) || '';
+      currentValidationStage = existing.validationStage
+        || stageForScreen(resolveScreenIndex({ stage: existing.activeStage, screen: existing.activeScreen }))
+        || '';
     }
     if (existing && Array.isArray(existing.actionReviewCandidates)) {
       currentActionReviewCandidatePayloads = existing.actionReviewCandidates;
@@ -3740,6 +3793,9 @@ td select {
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now,
       activeScreen: activeIndex,
+      // Saved beside the index so a draft written today still resumes on the right stage
+      // if the screens are renumbered again.
+      activeStage: stageNameForScreen(activeIndex),
       generationState: generationState,
       targetStage: targetStageInFlight,
       reviewEditStartedAt: reviewEditStartedAt ? new Date(reviewEditStartedAt).toISOString() : null,
@@ -3774,7 +3830,9 @@ td select {
         discussion: discussionRowsFromReview(),
         actions: actionsFromReview()
       },
-      resumeUrl: '/staged-meeting-minutes?draftId=' + encodeURIComponent(id) + '&screen=' + activeIndex,
+      resumeUrl: '/staged-meeting-minutes?draftId=' + encodeURIComponent(id)
+        + '&stage=' + encodeURIComponent(stageNameForScreen(activeIndex))
+        + '&screen=' + activeIndex,
       statusMessage: activeIndex >= screens.length - 1 ? 'Ready for final review.' : 'Reviewer paused during ' + currentStepLabel() + '.',
       generated: Boolean(lastGeneratedPayload)
     };

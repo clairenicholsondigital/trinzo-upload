@@ -5384,12 +5384,19 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
 function stagedStageResumeUrl(inputPayload, payload) {
   const draftId = String(inputPayload?.draftId || '').trim();
   const stage = String(payload?.stagedStage || inputPayload?.stage || 'details').trim().toLowerCase();
+  // targetScreen is a screen index recorded by whichever version of the review page queued
+  // the job, and screen indices have already shifted once - removing Summary moved every
+  // stage after Details down by one. A job queued before that shift still carries the old
+  // index, so honouring it would resume the reviewer a stage further on than they had got
+  // to. The stage name is what survives a renumbering, so it decides the screen, and it
+  // goes in the link for the page to read back.
   const screenByStage = { details: 0, discussion: 1, actions: 2 };
-  const screen = Number.isFinite(Number(inputPayload?.targetScreen))
-    ? Number(inputPayload.targetScreen)
-    : (screenByStage[stage] || 0);
+  const screen = Object.prototype.hasOwnProperty.call(screenByStage, stage)
+    ? screenByStage[stage]
+    : (Number.isFinite(Number(inputPayload?.targetScreen)) ? Number(inputPayload.targetScreen) : 0);
   const params = new URLSearchParams();
   if (draftId) params.set('draftId', draftId);
+  params.set('stage', stage);
   params.set('screen', String(screen));
   params.set('stageJobId', String(inputPayload?.jobId || ''));
   return `/staged-meeting-minutes?${params.toString()}`;
@@ -7863,6 +7870,10 @@ router.stagedEvaluation = {
   // the source for the field names.
   buildStagedReviewDiffs,
   summariseStagedReviewDiffs,
+  // Exposed so a resume link can be tested for the property that matters - that it names
+  // the stage it resumes, and does not simply repeat a screen index recorded under a
+  // numbering that has since changed.
+  stagedStageResumeUrl,
   // Exposed so the purpose baseline can ask the question that matters about a meeting
   // type: would we still call it this if we could only see the title? A type that
   // survives only while the transcript body is visible was inferred from something
