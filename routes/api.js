@@ -5467,7 +5467,9 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       await updateGenerationJobProgress(jobId, stage, 35, stage === 'actions'
         ? 'Denoising, chunking and reviewing action evidence.'
         : 'Denoising and organising discussion evidence.');
-      payload = await generateMiniLmTrooperStage(stage, transcript.text);
+      payload = await generateMiniLmTrooperStage(stage, transcript.text, {
+        meetingType: input.confirmedDetails?.meetingType || input.meetingType || ''
+      });
     } else {
       const evidenceProgressMessage = stage === 'actions'
         ? 'Reviewing action evidence.'

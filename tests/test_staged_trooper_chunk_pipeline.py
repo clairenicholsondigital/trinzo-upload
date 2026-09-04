@@ -35,6 +35,32 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertIn(f"- {verb}", PIPELINE.ACTION_PROMPT)
         self.assertNotIn("Work through", PIPELINE.ACTION_PROMPT)
 
+    def test_action_prompt_routes_supported_meeting_types(self):
+        cases = {
+            "Webinar rehearsal": "webinar_rehearsal",
+            "Technical file review": "technical_file_or_software_review",
+            "Software Weekly Review": "technical_file_or_software_review",
+            "Process / pipeline planning": "process_or_pipeline_planning",
+            "Lead generation pipeline review": "process_or_pipeline_planning",
+            "Project review": "general",
+            "": "general",
+        }
+        for meeting_type, expected in cases.items():
+            with self.subTest(meeting_type=meeting_type):
+                _, profile = PIPELINE.action_prompt_for_meeting_type(meeting_type)
+                self.assertEqual(profile, expected)
+
+    def test_specialised_prompts_preserve_the_required_sweeps(self):
+        webinar, _ = PIPELINE.action_prompt_for_meeting_type("Webinar rehearsal")
+        technical, _ = PIPELINE.action_prompt_for_meeting_type("Technical file review")
+        pipeline, _ = PIPELINE.action_prompt_for_meeting_type("Process pipeline planning")
+        for term in ("grouping chat questions", "Q&A", "dead air", "assignment recaps"):
+            self.assertIn(term, webinar)
+        for term in ("CONTINUE", "TRACE", "INCORPORATE", "controlled documents"):
+            self.assertIn(term, technical)
+        for term in ("manual tests", "conditional candidate", "Salesforce", "TRACK"):
+            self.assertIn(term, pipeline)
+
 
 if __name__ == "__main__":
     unittest.main()

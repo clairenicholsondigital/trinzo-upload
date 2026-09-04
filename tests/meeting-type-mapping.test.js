@@ -26,6 +26,8 @@ const DROPDOWN_OPTIONS = [
   'Webinar rehearsal',
   'Case study interview',
   'Technical file review',
+  'Software weekly review',
+  'Process / pipeline planning',
   'Importer obligations review',
   'Internal follow-up'
 ];
@@ -39,6 +41,8 @@ const EXPECTED = {
   'Webinar rehearsal': 'webinar_rehearsal',
   'Case study interview': 'case_study_interview',
   'Technical file review': 'technical_file_review',
+  'Software weekly review': 'technical_file_review',
+  'Process / pipeline planning': 'process_pipeline_planning',
   'Importer obligations review': 'importer_obligations_review',
   'Internal follow-up': 'internal_follow_up'
 };

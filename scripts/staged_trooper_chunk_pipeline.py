@@ -114,6 +114,133 @@ discussion points and six action candidates. Return only the required JSON.
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
 
+WEBINAR_REHEARSAL_ACTION_PROMPT = """Review this coherent section from a webinar-rehearsal transcript.
+
+First identify concise, substantive discussion points about the webinar content,
+delivery or operation. Then perform a separate action sweep and identify every
+possible task with a distinct deliverable or operational responsibility.
+
+In addition to the general action signals, check specifically for:
+- documents, scripts, slides, links or information to send, share or review;
+- changes to the opening, closing, script, slides, demonstrations or Q&A;
+- technical checks, rehearsal changes and timing adjustments;
+- monitoring or grouping chat questions;
+- managing Q&A, including keeping answers concise or within time;
+- handling screen-sharing handovers, pauses or dead air;
+- introducing speakers, covering transitions or delivering the closing;
+- distributing registration, attendance or follow-up links;
+- promotional activity that someone has agreed to carry out.
+
+Treat an agreed responsibility during the live webinar as an action. Give each
+candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
+
+Rules:
+- State only the exact deliverable or operational responsibility supported.
+- Split separate deliverables and preserve every supported owner.
+- Do not mistake a recipient, presenter or attendee for an owner.
+- An offer is PROPOSED unless another turn accepts it.
+- Evidence for the task, commitment, owner and deadline may be in different turns.
+- An accepted change to webinar wording or delivery is a distinct action.
+- Prioritise explicit assignment recaps and accepted changes before incidental
+  rehearsal instructions.
+- Monitoring chat, managing Q&A and covering transitions are separate responsibilities.
+- Exclude banter, personal travel, mere attendance and trivial meeting procedure.
+- Before returning, rescan for missed MONITOR, GROUP, TIME, COVER, REMOVE,
+  REHEARSE, RECORD, DISTRIBUTE, OPENING, CLOSING and Q&A tasks.
+
+Use only turn numbers in this section. Keep wording concise. Return at most two
+discussion points and eight action candidates. Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+TECHNICAL_REVIEW_ACTION_PROMPT = """Review this coherent section from a technical-file or software-review meeting.
+
+First identify concise, substantive discussion points. Then perform a separate
+action sweep for every concrete deliverable, continuing workstream, technical
+investigation, compliance activity or documentation change.
+
+In addition to the general action signals, check specifically for:
+- work someone must continue, progress, finish or close out;
+- software issues, language or font problems and technical gaps to resolve;
+- changes to trace and retrospective test evidence to identify;
+- tests, studies, assessments and compliance reviews to plan, run or complete;
+- risks, standards, specifications and applicability questions to check or confirm;
+- comments, findings or test outputs to incorporate into controlled documents;
+- documents to update, convert, file, place in a folder, send or submit for review;
+- dependencies where one person's output enables another person's review;
+- support to request or flag and people to add to recurring meetings.
+
+Treat continuation of an existing technical or documentation workstream as an
+action when an owner is expected to progress it, even if no new task is created.
+Give each candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
+
+Rules:
+- State only the exact deliverable or next-step output supported.
+- Split testing, sending, reviewing and incorporating results when separately owned.
+- Preserve every supported owner; do not mistake a reviewer or recipient for an owner.
+- Preserve conditions and dependencies without merging the dependent tasks.
+- An unresolved issue is not itself an action unless the section supports a next step.
+- Evidence for the task, commitment, owner and deadline may be in different turns.
+- Prioritise explicit assignment recaps and owner confirmations.
+- Exclude status-only observations with no supported next step.
+- Before returning, rescan for missed CONTINUE, PROGRESS, RESOLVE, TRACE, TEST,
+  ASSESS, INCORPORATE, CONVERT, FILE, FLAG, CLOSE-OUT, CONFIRM and ADD tasks.
+
+Use only turn numbers in this section. Keep wording concise. Return at most two
+discussion points and eight action candidates. Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+PROCESS_PIPELINE_ACTION_PROMPT = """Review this coherent section from a process or pipeline-planning meeting.
+
+First identify concise, substantive discussion points. Then perform a separate
+action sweep for every concrete experiment, process decision, definition,
+measurement activity and staged next step.
+
+In addition to the general action signals, check specifically for:
+- manual tests, sample slices, trials, pilots and proof-of-concept work;
+- success, quality, volume, eligibility or ICP criteria to define or assess;
+- process stages, ownership, handoffs and operating rules to clarify;
+- signals or data to capture, classify, record, route, track or monitor;
+- CRM, Salesforce or other system changes needed to support the process;
+- conditional next phases that depend on the result of an earlier test;
+- reviews, decisions, follow-ups and updates required after an experiment.
+
+A proposed experiment with a concrete method or outcome is PROPOSED. A subsequent
+phase dependent on that experiment is a separate conditional candidate; do not
+omit it because execution depends on the first result. Give each candidate one
+status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
+
+Rules:
+- State only the exact deliverable, decision or measurable next step supported.
+- Split the initial test, evaluation and subsequent pilot into separate candidates.
+- Preserve each condition and supported owner.
+- Do not mistake a beneficiary, system or consulted team for an owner.
+- Evidence for the task, commitment, owner and condition may be in different turns.
+- Do not promote speculative ideas without a concrete method, output or agreed next step.
+- Prioritise explicit assignment recaps and accepted proposals.
+- Before returning, rescan for missed TEST, PILOT, DEFINE, MEASURE, ASSESS,
+  CLARIFY, CAPTURE, RECORD, TRACK, ROUTE, MONITOR and FOLLOW-UP tasks.
+
+Use only turn numbers in this section. Keep wording concise. Return at most two
+discussion points and eight action candidates. Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+
+def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
+    normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
+        return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
+    if any(term in normalised for term in ("technical file", "software review", "software weekly", "software check in")):
+        return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_or_software_review"
+    if any(term in normalised for term in ("pipeline", "process planning", "process review", "lead generation")):
+        return PROCESS_PIPELINE_ACTION_PROMPT, "process_or_pipeline_planning"
+    return ACTION_PROMPT, "general"
+
 DISCUSSION_PROMPT = """Write the Key discussion points for formal meeting minutes using only the denoised transcript below.
 
 - Group related material under concise, useful topic headings.
@@ -214,6 +341,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript")
     parser.add_argument("--stage", choices=("discussion", "actions"), required=True)
+    parser.add_argument("--meeting-type", default="")
     args = parser.parse_args()
     transcript = Path(args.transcript).read_text(encoding="utf-8")
     turns, numbered = numbered_turns(transcript)
@@ -234,13 +362,15 @@ def main() -> int:
     boundary_result = call_trooper(BOUNDARY_PROMPT.format(total=len(turns), minimum=minimum, maximum=maximum, numbered=numbered), 1400, BOUNDARY_SCHEMA)
     chunks = safe_boundaries(boundary_result.get("chunks"), len(turns))
     lines = numbered.splitlines()
+    action_prompt, prompt_profile = action_prompt_for_meeting_type(args.meeting_type)
     def analyse(chunk: dict[str, int]) -> list[dict[str, Any]]:
-        prompt = ACTION_PROMPT.format(numbered_chunk="\n".join(lines[chunk["start"] - 1:chunk["end"]]))
+        prompt = action_prompt.format(numbered_chunk="\n".join(lines[chunk["start"] - 1:chunk["end"]]))
         return normalise_actions(call_trooper(prompt, 1800, ACTION_SCHEMA), chunk)
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
         results = list(pool.map(analyse, chunks))
     actions = [action for group in results for action in group]
-    print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns)}, ensure_ascii=False))
+    print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
+        "actionPromptProfile": prompt_profile}, ensure_ascii=False))
     return 0
 
 

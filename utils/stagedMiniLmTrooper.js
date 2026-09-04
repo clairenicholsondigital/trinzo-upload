@@ -36,7 +36,7 @@ function runJson(script, args, timeoutMs) {
   });
 }
 
-async function generateMiniLmTrooperStage(stage, transcriptText) {
+async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
   if (!['discussion', 'actions'].includes(stage)) throw new Error(`Unsupported simplified stage: ${stage}`);
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-minilm-trooper-'));
   const rawPath = path.join(tempDir, 'transcript.txt');
@@ -52,7 +52,11 @@ async function generateMiniLmTrooperStage(stage, transcriptText) {
       throw new Error(prepared.reason || 'MiniLM-v3 denoising failed its fail-open safety checks.');
     }
     await fs.writeFile(denoisedPath, prepared.preparedTranscript, 'utf8');
-    const result = await runJson('staged_trooper_chunk_pipeline.py', [denoisedPath, '--stage', stage],
+    const scriptArgs = [denoisedPath, '--stage', stage];
+    if (stage === 'actions' && String(options.meetingType || '').trim()) {
+      scriptArgs.push('--meeting-type', String(options.meetingType).trim());
+    }
+    const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
       Number(process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000));
     return {
       stagedStage: stage,
@@ -64,7 +68,7 @@ async function generateMiniLmTrooperStage(stage, transcriptText) {
         removedUnitCount: prepared.removedUnitCount, keptUnitCount: prepared.keptUnitCount,
         totalUnitCount: prepared.totalUnitCount, removedRatio,
         chunkCount: result.chunkCount || null, turnCount: result.turnCount || null,
-        actionPrompt: stage === 'actions' ? 'bounded_balanced_short_verb_sweep' : null
+        actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null
       }
     };
   } finally {

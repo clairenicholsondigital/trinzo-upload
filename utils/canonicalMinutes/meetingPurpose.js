@@ -85,6 +85,17 @@ const MEETING_PROFILES = [
     ]
   },
   {
+    id: 'process_pipeline_planning',
+    matches: (type, title) => /\b(?:process|pipeline|lead generation)\b.*\b(?:planning|review|design)\b|\b(?:planning|review|design)\b.*\b(?:process|pipeline)\b/i.test(`${type} ${title}`),
+    topicHints: [
+      { intent: 'Review', pattern: /\b(?:current process|pipeline|workflow|stages?|handoffs?|manual)\b/i },
+      { intent: 'Identify', pattern: /\b(?:signals?|lead quality|volume|icp|criteria|eligibility|filter)\b/i },
+      { intent: 'Agree', pattern: /\b(?:test|trial|pilot|sample|slice|proof of concept|experiment)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:capture|record|track|route|salesforce|crm|system)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:next phase|condition|success measure|owner|next step|follow[ -]?up)\b/i }
+    ]
+  },
+  {
     // Evidence-gated meeting frame: applies to audit planning generally, not to
     // a client, project code or fixture title.
     id: 'audit_planning',
