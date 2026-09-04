@@ -63,6 +63,7 @@ const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
+const { generateMiniLmTrooperStage } = require('../utils/stagedMiniLmTrooper');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -5382,7 +5383,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
 function stagedStageResumeUrl(inputPayload, payload) {
   const draftId = String(inputPayload?.draftId || '').trim();
   const stage = String(payload?.stagedStage || inputPayload?.stage || 'details').trim().toLowerCase();
-  const screenByStage = { details: 0, summary: 1, discussion: 2, actions: 3 };
+  const screenByStage = { details: 0, discussion: 1, actions: 2 };
   const screen = Number.isFinite(Number(inputPayload?.targetScreen))
     ? Number(inputPayload.targetScreen)
     : (screenByStage[stage] || 0);
@@ -5462,6 +5463,11 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
           source: 'deterministic_stage_1_prep'
         }
       };
+    } else if (stage === 'discussion' || stage === 'actions') {
+      await updateGenerationJobProgress(jobId, stage, 35, stage === 'actions'
+        ? 'Denoising, chunking and reviewing action evidence.'
+        : 'Denoising and organising discussion evidence.');
+      payload = await generateMiniLmTrooperStage(stage, transcript.text);
     } else {
       const evidenceProgressMessage = stage === 'actions'
         ? 'Reviewing action evidence.'
@@ -6106,7 +6112,7 @@ router.post('/staged-meeting-minutes/review-events', requireAuth, async (req, re
     const interactionSummary = summariseStagedWorkflowInteractions(interactionEvents);
     const reviewStatus = finalReviewCompleted
       ? 'completed'
-      : Number(req.body?.activeScreen || 0) >= 4 ? 'final_review' : 'in_review';
+      : Number(req.body?.activeScreen || 0) >= 3 ? 'final_review' : 'in_review';
     const saved = await saveStagedMeetingMinutesReviewEvent({
       draftId,
       eventKey: firstString(req.body?.eventKey, finalReviewCompleted ? 'final_review_completed' : 'latest_snapshot').slice(0, 200),

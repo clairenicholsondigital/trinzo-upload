@@ -6,7 +6,7 @@ const { formatUkDate, normaliseMinutes, renderStagedMinutesPdfHtml, stagedMinute
 test('staged PDF renderer uses reviewed content and escapes it safely', () => {
   const minutes = {
     details: {
-      meetingTitle: 'Client <Audit>', meetingDate: '2026-08-17', meetingLocation: 'Teams',
+      meetingTitle: 'Client <Audit>', meetingDate: '2026-08-17', meetingLocation: 'Teams', meetingType: 'Project review',
       internalAttendees: ['Jacqui Fox'], clientAttendees: ['Alex & Co'], clientAttendeeLabel: 'Client'
     },
     summary: { objectives: ['Confirm scope'], executiveSummary: 'Reviewed & agreed.' },
@@ -17,6 +17,7 @@ test('staged PDF renderer uses reviewed content and escapes it safely', () => {
   assert.match(html, /Client &lt;Audit&gt;/);
   assert.match(html, /Alex &amp; Co/);
   assert.match(html, /17 August 2026/);
+  assert.match(html, /Project review/);
   assert.match(html, /Send the plan/);
   assert.match(html, /font-family:'Roboto'/);
   assert.match(html, /data:font\/woff2;base64,/);

@@ -53,19 +53,15 @@ function formatUkDate(value) {
 function normaliseMinutes(input = {}) {
   const details = input.details && typeof input.details === 'object' ? input.details : {};
   const attendees = attendeeLists(details);
-  const summary = input.summary && typeof input.summary === 'object' ? input.summary : {};
   return {
     details: {
       meetingTitle: clean(details.meetingTitle, 'Meeting minutes').slice(0, 500),
       meetingDate: formatUkDate(details.meetingDate).slice(0, 100),
       meetingLocation: clean(details.meetingLocation, 'Not stated').slice(0, 500),
+      meetingType: clean(details.meetingType, 'Not stated').slice(0, 120),
       clientAttendeeLabel: clean(details.clientAttendeeLabel, 'Client').slice(0, 50),
       internalAttendees: attendees.internal,
       clientAttendees: attendees.client
-    },
-    summary: {
-      objectives: safeList(summary.objectives),
-      executiveSummary: clean(summary.executiveSummary, 'Not stated').slice(0, 20000)
     },
     discussion: (Array.isArray(input.discussion) ? input.discussion : []).map((item) => ({
       topic: clean(item?.topic, 'Discussion').slice(0, 1000),
@@ -86,7 +82,7 @@ function renderList(items, fallback = 'Not stated') {
 
 function renderStagedMinutesPdfHtml(input = {}) {
   const minutes = normaliseMinutes(input);
-  const { details, summary, discussion, actions } = minutes;
+  const { details, discussion, actions } = minutes;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(details.meetingTitle)}</title>
 <style>
@@ -118,11 +114,10 @@ function renderStagedMinutesPdfHtml(input = {}) {
 <section class="meta">
   <div><span class="label">Date</span>${escapeHtml(details.meetingDate)}</div>
   <div><span class="label">Location</span>${escapeHtml(details.meetingLocation)}</div>
+  <div><span class="label">Meeting type</span>${escapeHtml(details.meetingType)}</div>
   <div><span class="label">Internal attendees</span>${escapeHtml(details.internalAttendees.join(', ') || 'Not stated')}</div>
   <div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', ') || 'Not stated')}</div>
 </section>
-<h2>Objectives</h2>${renderList(summary.objectives)}
-<h2>Executive summary</h2><p>${escapeHtml(summary.executiveSummary)}</p>
 <h2>Key discussion points</h2>
 <table class="discussion"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>
 ${discussion.length ? discussion.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${renderList(item.points)}</td></tr>`).join('') : '<tr><td>Discussion</td><td>Not stated</td></tr>'}

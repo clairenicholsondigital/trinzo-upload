@@ -1,0 +1,46 @@
+{
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "transcripts": 13,
+  "units": 2238,
+  "label_counts": {
+    "retain": 990,
+    "remove": 598,
+    "uncertain": 650
+  },
+  "test_units": 1030,
+  "group_split": true,
+  "classification_report": {
+    "retain": {
+      "precision": 0.7681159420289855,
+      "recall": 0.7810526315789473,
+      "f1-score": 0.7745302713987474,
+      "support": 475.0
+    },
+    "remove": {
+      "precision": 0.7976653696498055,
+      "recall": 0.7945736434108527,
+      "f1-score": 0.7961165048543689,
+      "support": 258.0
+    },
+    "uncertain": {
+      "precision": 0.5310344827586206,
+      "recall": 0.5185185185185185,
+      "f1-score": 0.524701873935264,
+      "support": 297.0
+    },
+    "accuracy": 0.7087378640776699,
+    "macro avg": {
+      "precision": 0.698938598145804,
+      "recall": 0.6980482645027729,
+      "f1-score": 0.6984495500627935,
+      "support": 1030.0
+    },
+    "weighted avg": {
+      "precision": 0.7071553196240081,
+      "recall": 0.7087378640776699,
+      "f1-score": 0.7078994113840832,
+      "support": 1030.0
+    }
+  },
+  "warning": "Bootstrap labels are experimental and require human review before production use."
+}

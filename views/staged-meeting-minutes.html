@@ -612,16 +612,15 @@ td select {
   <section class="panel hero">
     <p class="eyebrow">Staged workflow</p>
     <h1>Staged Meeting Transcript to Minutes Tool</h1>
-    <p class="intro">A screen-based review flow for checking AI-drafted minutes in the same order a reviewer naturally thinks through a meeting. Generate the draft once, then review details, summary, discussion points, actions and final wording in separate stages.</p>
+    <p class="intro">A screen-based review flow for checking AI-drafted minutes. Confirm the meeting details, then review discussion points, actions and final wording.</p>
   </section>
 
   <main class="wizard-shell">
     <aside class="panel status-strip" aria-label="Review progress">
       <button class="status-item active" type="button" data-screen-target="0"><span class="status-dot">1</span><span>Details</span></button>
-      <button class="status-item" type="button" data-screen-target="1"><span class="status-dot">2</span><span>Summary</span></button>
-      <button class="status-item" type="button" data-screen-target="2"><span class="status-dot">3</span><span>Discussion</span></button>
-      <button class="status-item" type="button" data-screen-target="3"><span class="status-dot">4</span><span>Actions</span></button>
-      <button class="status-item" type="button" data-screen-target="4"><span class="status-dot">5</span><span>Final review</span></button>
+      <button class="status-item" type="button" data-screen-target="1"><span class="status-dot">2</span><span>Discussion</span></button>
+      <button class="status-item" type="button" data-screen-target="2"><span class="status-dot">3</span><span>Actions</span></button>
+      <button class="status-item" type="button" data-screen-target="3"><span class="status-dot">4</span><span>Final review</span></button>
     </aside>
 
     <section class="panel">
@@ -631,7 +630,7 @@ td select {
             <h2>Meeting details</h2>
             <p class="intro">Is this the right meeting?</p>
           </div>
-          <div class="screen-header-meta"><span class="progress-pill">1 of 5</span><small class="stage-autosave-status">Autosave starts after generation</small></div>
+          <div class="screen-header-meta"><span class="progress-pill">1 of 4</span><small class="stage-autosave-status">Autosave starts after generation</small></div>
         </div>
         <div class="source-panel">
           <h3>Transcript source</h3>
@@ -702,52 +701,10 @@ td select {
       <article class="screen" data-screen="1">
         <div class="screen-header">
           <div>
-            <h2>Objectives and summary</h2>
-            <p class="intro">Did the AI understand what this meeting was about?</p>
-          </div>
-          <div class="screen-header-meta"><span class="progress-pill">2 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
-        </div>
-        <div class="meeting-understanding">
-          <label for="meetingPurpose">Meeting purpose</label>
-          <textarea id="meetingPurpose" placeholder="In one or two sentences, what was this meeting fundamentally trying to accomplish?"></textarea>
-          <small>Correct this first if the AI has the hierarchy wrong. Later stages will carry this reviewer-confirmed understanding forward.</small>
-        </div>
-        <div class="field">
-          <label for="objectives">Meeting objectives</label>
-          <textarea id="objectives" placeholder="Meeting objectives will appear here after generation."></textarea>
-          <small>Usually 2-5 bullets. Keep only the intended outcomes of the meeting.</small>
-        </div>
-        <div class="field">
-          <label for="executiveSummary">Executive summary</label>
-          <textarea id="executiveSummary" placeholder="Executive summary will appear here after generation."></textarea>
-          <details id="summaryEvidence" class="summary-evidence review-only" hidden><summary id="summaryEvidenceSummary">Where this came from</summary><div id="summaryEvidenceList"></div></details>
-        </div>
-        <div class="field">
-          <label for="overallTopics">Overall topics discussed</label>
-          <textarea id="overallTopics" placeholder="Overall topics will appear here after generation."></textarea>
-          <small>These are useful structure, but they are not the sole authority for the next stage.</small>
-        </div>
-        <!-- Key facts: HIDDEN, NOT REMOVED. Judged one field too many on a screen that
-             already asks a lot. Everything behind it is intact and still runs - the
-             server returns keyFacts, renderKeyFacts fills this list, keyFactsFromDom
-             reads it back, and a draft that already carries key facts keeps them and
-             still steers the discussion stage. TO REINSTATE: delete the `hidden`
-             attribute on the section below. Nothing else to change. -->
-        <section class="key-facts-panel" hidden>
-          <h3>Key facts to preserve</h3>
-          <p>Capture brief clarifications that would materially change the meaning of the minutes if they disappeared.</p>
-          <div id="keyFactsList" class="key-facts-list"></div>
-          <button id="addKeyFactBtn" class="secondary" type="button" style="margin-top:.55rem;">Add key fact</button>
-        </section>
-      </article>
-
-      <article class="screen" data-screen="2">
-        <div class="screen-header">
-          <div>
             <h2>Key discussion points</h2>
             <p class="intro">Did we capture the important conversation properly?</p>
           </div>
-          <div class="screen-header-meta"><span class="progress-pill">3 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
+          <div class="screen-header-meta"><span class="progress-pill">2 of 4</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <div class="discussion-controls">
           <button id="expandDiscussionBtn" class="secondary" type="button">Expand all</button>
@@ -756,12 +713,12 @@ td select {
         <div id="discussionList" class="discussion-list"></div>
       </article>
 
-      <article class="screen" data-screen="3">
+      <article class="screen" data-screen="2">
         <div class="screen-header">
           <div>
             <h2>Actions</h2>
           </div>
-          <div class="screen-header-meta"><span class="progress-pill">4 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
+          <div class="screen-header-meta"><span class="progress-pill">3 of 4</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <p><strong id="confirmedActionCount">0 confirmed actions</strong></p>
         <div class="table-wrap">
@@ -784,13 +741,13 @@ td select {
         <div id="actionReviewGroups" class="action-review-groups"></div>
       </article>
 
-      <article class="screen" data-screen="4">
+      <article class="screen" data-screen="3">
         <div class="screen-header">
           <div>
             <h2>Final review</h2>
             <p class="intro">Review the final minutes layout before exporting the PDF.</p>
           </div>
-          <div class="screen-header-meta"><span class="progress-pill">5 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
+          <div class="screen-header-meta"><span class="progress-pill">4 of 4</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <div class="final-document">
           <div id="finalDocumentPreview"></div>
@@ -847,7 +804,7 @@ td select {
   var draftTranscriptSha256 = '';
   var requestedScreen = Number(params.get('screen') || 0);
   var activeIndex = 0;
-  var screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
+  var screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]:not([data-screen="summary"])'));
   var statusItems = Array.prototype.slice.call(document.querySelectorAll('[data-screen-target]'));
   var previousButton = document.getElementById('previousScreenBtn');
   var nextButton = document.getElementById('nextScreenBtn');
@@ -1240,22 +1197,20 @@ td select {
 
   function stageForScreen(index) {
     if (index === 0) return 'details';
-    if (index === 1) return 'summary';
-    if (index === 2) return 'discussion';
-    if (index === 3) return 'actions';
+    if (index === 1) return 'discussion';
+    if (index === 2) return 'actions';
     return '';
   }
 
   function screenLabel(index) {
-    return ['Details', 'Summary', 'Discussion', 'Actions', 'Final review'][index] || 'this stage';
+    return ['Details', 'Discussion', 'Actions', 'Final review'][index] || 'this stage';
   }
 
   function highestReachableScreen() {
     if (!reviewStarted) return 0;
-    if (!generatedStages.summary) return 1;
-    if (!generatedStages.discussion) return 2;
-    if (!generatedStages.actions) return 3;
-    return 4;
+    if (!generatedStages.discussion) return 1;
+    if (!generatedStages.actions) return 2;
+    return 3;
   }
 
   function stageNeedsGeneration(index) {
@@ -1318,11 +1273,6 @@ td select {
       stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. You can now download or preview the client-ready PDF.' : 'Preview the PDF. If anything still needs changing, go back to that screen; if it looks right, mark the review complete.';
       nextButton.textContent = 'Review complete';
       nextButton.disabled = finalReviewCompleted;
-    } else if (activeIndex === 0 && nextIndex === 1) {
-      stageDecisionQuestion.textContent = 'Ready to move onto Summary?';
-      stageDecisionHint.textContent = 'Continue when Details looks right, or add anything you’d like the next step to emphasise.';
-      nextButton.textContent = 'Continue to summary';
-      nextButton.disabled = !canMoveNext;
     } else {
       stageDecisionQuestion.textContent = 'Want to move onto ' + nextLabel + '?';
       stageDecisionHint.textContent = 'Continue when ' + currentLabel + ' looks right, or keep reviewing this stage.';
@@ -1330,7 +1280,7 @@ td select {
       nextButton.disabled = !canMoveNext;
     }
     if (stageAdditionalContextWrap) {
-      stageAdditionalContextWrap.hidden = !(activeIndex === 0 && nextIndex === 1);
+      stageAdditionalContextWrap.hidden = true;
     }
 
     if (previousButton) {
@@ -1725,8 +1675,6 @@ td select {
     commitStageState(stageForScreen(activeIndex));
     var details = stagedState.details || detailsFromDom();
     var attendeeLists = attendeeListsFromDetails(details);
-    var summary = stagedState.summary || summaryFromDom();
-    var objectives = Array.isArray(summary.objectives) ? summary.objectives : [];
     var discussionRows = Array.isArray(stagedState.discussion)
       ? stagedState.discussion.map(function (item) {
         return { topic: item.topic || 'Discussion', bullets: Array.isArray(item.points) ? item.points : item.bullets || [] };
@@ -1738,10 +1686,9 @@ td select {
       '<h2>' + escapeHtml(details.meetingTitle || 'Untitled meeting') + '</h2>' +
       '<p><strong>Date:</strong> ' + escapeHtml(formatUkDate(details.meetingDate)) + '</p>' +
       '<p><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '</p>' +
+      '<p><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p>' +
       '<p><strong>Internal attendees:</strong> ' + escapeHtml(attendeeLists.internal.join(', ') || 'Not stated') + '</p>' +
       '<p><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml(attendeeLists.client.join(', ') || 'Not stated') + '</p>' +
-      '<div class="section"><h3>Objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
-      '<div class="section"><h3>Summary</h3><p>' + escapeHtml(summary.executiveSummary || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
       '<div class="section"><h3>Key discussion points</h3><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' + discussionRows.map(function (item) {
         return '<tr><td>' + escapeHtml(item.topic) + '</td><td><ul>' + item.bullets.map(function (point) { return '<li>' + escapeHtml(point) + '</li>'; }).join('') + '</ul></td></tr>';
       }).join('') + '</tbody></table></div>' +
@@ -1872,17 +1819,17 @@ td select {
 
   function finalReviewTargetScreenIndex(flag) {
     if (!flag) return null;
-    if (Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) return 3;
-    if (/action|commitment/i.test(String(flag.type || ''))) return 3;
-    if (flag.discussionSuggestion || /discussion|workstream/i.test(String(flag.type || ''))) return 2;
+    if (Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) return 2;
+    if (/action|commitment/i.test(String(flag.type || ''))) return 2;
+    if (flag.discussionSuggestion || /discussion|workstream/i.test(String(flag.type || ''))) return 1;
     return null;
   }
 
   function reviewFlagLabel(flag) {
     if (isFinalReviewScreen()) {
       var targetIndex = finalReviewTargetScreenIndex(flag);
-      if (targetIndex === 3) return 'Actions';
-      if (targetIndex === 2) return 'Discussion';
+      if (targetIndex === 2) return 'Actions';
+      if (targetIndex === 1) return 'Discussion';
       if (flag && flag.severity === 'info') return 'Already checked';
       return 'Final check';
     }
@@ -3103,7 +3050,7 @@ td select {
     formData.append('stage', stage);
     formData.append('draftId', ensureDraftId());
     if (draftTranscriptSha256) formData.append('transcriptSha256', draftTranscriptSha256);
-    formData.append('targetScreen', String(stage === 'details' ? 0 : stage === 'summary' ? 1 : stage === 'discussion' ? 2 : stage === 'actions' ? 3 : activeIndex));
+    formData.append('targetScreen', String(stage === 'details' ? 0 : stage === 'discussion' ? 1 : stage === 'actions' ? 2 : activeIndex));
     if (stagedState.details) {
       formData.append('confirmedDetails', JSON.stringify(stagedState.details));
       formData.append('meetingTitle', stagedState.details.meetingTitle || '');
@@ -4227,11 +4174,11 @@ td select {
       stageHadEdits: Boolean(stageEditStartedAt || Number(stageActiveEditMsByStage[currentStageKey()] || 0)),
       unresolvedPromptCount: document.querySelectorAll('.stage-validation-flag:not(.is-resolved), .terminology-suggestion, .action-candidate-card').length
     }, { source: 'next_button' });
-    if (activeIndex === 2 && reconcileUnresolvedWorkstreamFlags().length) {
+    if (activeIndex === 1 && reconcileUnresolvedWorkstreamFlags().length) {
       recordWorkflowInteraction('stage_continue_blocked', {
         reason: 'unresolved_workstreams'
       }, { source: 'next_button', immediate: true });
-      setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
+      setReviewStatus('Resolve each missing substantive workstream before moving on: add it or intentionally omit it.', true);
       drawAttentionToEditorialChecks();
       return;
     }
