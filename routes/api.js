@@ -63,7 +63,6 @@ const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
-const { generateMiniLmTrooperStage } = require('../utils/stagedMiniLmTrooper');
 const { filterActionsForPresentation } = require('../utils/stagedActionPresentation');
 const {
   buildConfirmedUnderstanding,
@@ -5482,12 +5481,40 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         }
       };
     } else if (stage === 'discussion' || stage === 'actions') {
-      await updateGenerationJobProgress(jobId, stage, 35, stage === 'actions'
-        ? 'Denoising, chunking and reviewing action evidence.'
-        : 'Denoising and organising discussion evidence.');
-      payload = await generateMiniLmTrooperStage(stage, transcript.text, {
-        meetingType: input.confirmedDetails?.meetingType || input.meetingType || ''
-      });
+      await updateGenerationJobProgress(jobId, stage, 25, 'Building the same evidence-grounded understanding used by the quality scorecard.');
+      const canonicalInput = {
+        confirmedDetails: input.confirmedDetails || {},
+        confirmedSummary: input.confirmedSummary || {},
+        confirmedDiscussion: input.confirmedDiscussion || [],
+        confirmedActions: input.confirmedActions || [],
+        additionalContext: input.additionalContext || ''
+      };
+      // The current reviewer flow moves directly from Details to Discussion, while the
+      // scorecard first creates a Summary and uses its grounded topics as context. Running
+      // a hidden Summary here keeps the UI on the exact pipeline that earned the tested
+      // result without restoring an extra reviewer screen.
+      if (!Object.keys(canonicalInput.confirmedSummary).length) {
+        const summaryResponse = await canonicalStagedResponse('summary', transcript, {
+          confirmedDetails: canonicalInput.confirmedDetails,
+          additionalContext: canonicalInput.additionalContext
+        });
+        const summary = summaryResponse.screens?.summary || {};
+        canonicalInput.confirmedSummary = {
+          meetingPurpose: summary.meetingPurpose,
+          objectives: summary.objectives || [],
+          executiveSummary: summary.executiveSummary,
+          overallTopics: summary.overallTopics || [],
+          topicRefs: (summary.topicRefs || []).map((ref) => ({
+            text: ref.text,
+            topicId: ref.topicId,
+            evidenceIds: ref.evidenceIds
+          }))
+        };
+      }
+      await updateGenerationJobProgress(jobId, stage, 55, stage === 'actions'
+        ? 'Applying the canonical action evidence and publication gates.'
+        : 'Applying the canonical discussion grounding and consolidation gates.');
+      payload = await canonicalStagedResponse(stage, transcript, canonicalInput);
     } else {
       const evidenceProgressMessage = stage === 'actions'
         ? 'Reviewing action evidence.'
