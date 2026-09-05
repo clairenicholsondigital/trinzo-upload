@@ -92,6 +92,25 @@ Judge each row from its evidence. There is no minimum or target number of action
 
 Return candidate numbers only, never action text."""
 
+SELECTIVE_ACTUAL_ACTIONS_PROMPT = """Perform a conservative final cleanup of these high-recall action candidates for formal meeting minutes.
+
+The earlier extraction deliberately found both newly assigned and continuing required work. Do not re-litigate every commitment from scratch. Retain a COMMITTED, ASSIGNED or REQUIRED candidate when it names a specific meaningful future task and its evidence does not contradict it. Retain a concrete PROPOSED candidate when the meeting-specific rules allow it.
+
+Remove only completed work, pure discussion or status, an unresolved issue with no next step, vague wording without a meaningful deliverable, malformed transcript fragments, and clearly unaccepted hypotheticals.
+
+Candidate status is an advisory extraction signal: use it, but let contradictory transcript evidence override it. This is a precision cleanup, not a request to minimise the list. There is no target or maximum number of actions.
+
+MEETING-SPECIFIC RULES:
+{guidance}
+
+{candidates}
+
+Return selected candidate numbers only, in transcript order. Never return action text."""
+
+HYBRID_TECHNICAL_SELECTOR_GUIDANCE = """This is a combined software and technical-file weekly review. Retain concrete compliance checks, investigations, tests, document changes, reviews, submissions and dependency-driven follow-ups, including continuing work. REQUIRED is valid here even without a fresh first-person promise. Concrete PROPOSED investigations or reviews are also reviewer-useful and should remain. Exclude only completed items, broad status restatements, vague encouragement, meeting administration, and technical issues with no next step."""
+
+DECISION_MEETING_SELECTOR_GUIDANCE = """This is a decision meeting. Discussion of options is not an action. Retain only an explicit commitment, accepted assignment or agreed follow-up. Exclude every proposal, possibility, question, option and unresolved decision that nobody accepted, even if it is worded like a task."""
+
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
 and end turn numbers.
@@ -662,6 +681,40 @@ def is_importer_obligations_type(meeting_type: str) -> bool:
     return "importer" in value and "obligation" in value
 
 
+def selective_actual_action_profile(meeting_type: str) -> tuple[str, str] | None:
+    value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if value == "software and technical file weekly review":
+        return HYBRID_TECHNICAL_SELECTOR_GUIDANCE, "hybrid_technical_actual_actions"
+    if value == "decision meeting":
+        return DECISION_MEETING_SELECTOR_GUIDANCE, "decision_meeting_actual_actions"
+    return None
+
+
+def select_actual_actions(actions: list[dict[str, Any]], turns: list[str], guidance: str) -> list[dict[str, Any]]:
+    """Apply the four-word gate and the narrowly routed conservative selector."""
+    eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
+    blocks = []
+    for number, action in enumerate(eligible, 1):
+        evidence = []
+        for evidence_id in action.get("evidenceIds", []):
+            match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
+            if match and 1 <= int(match.group(1)) <= len(turns):
+                evidence.append(turns[int(match.group(1)) - 1])
+        blocks.append(
+            f"{number}. Owner: {action.get('owner', 'Not stated')}\n"
+            f"Draft: {action.get('action', '')}\n"
+            f"Status: {action.get('status', '')}\n"
+            f"Evidence: {' '.join(evidence)}"
+        )
+    if not eligible:
+        return []
+    result = call_trooper(SELECTIVE_ACTUAL_ACTIONS_PROMPT.format(
+        guidance=guidance, candidates="\n\n".join(blocks)), 2200, ACTUAL_ACTIONS_SCHEMA)
+    selected = {number for number in result.get("candidateNumbers", [])
+                if isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(eligible)}
+    return [action for number, action in enumerate(eligible, 1) if number in selected]
+
+
 def importer_action_content_tokens(value: Any) -> set[str]:
     ignored = {
         "a", "an", "and", "all", "additional", "better", "for", "from", "full", "general", "in", "information", "of", "on", "the", "to", "with",
@@ -895,6 +948,11 @@ def main() -> int:
     if is_importer_obligations_type(args.meeting_type):
         actions = select_importer_actual_actions(actions, turns)
         prompt_profile = "importer_obligations_actual_actions"
+    else:
+        selector = selective_actual_action_profile(args.meeting_type)
+        if selector:
+            guidance, prompt_profile = selector
+            actions = select_actual_actions(actions, turns, guidance)
     print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
         "actionPromptProfile": prompt_profile}, ensure_ascii=False))
     return 0

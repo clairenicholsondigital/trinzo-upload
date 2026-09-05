@@ -58,6 +58,35 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertIn("Return none", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
         self.assertNotIn("15 strongest", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
 
+    def test_final_selector_is_limited_to_two_proven_meeting_types(self):
+        hybrid = PIPELINE.selective_actual_action_profile("Software and technical-file weekly review")
+        decision = PIPELINE.selective_actual_action_profile("Decision meeting")
+        self.assertEqual(hybrid[1], "hybrid_technical_actual_actions")
+        self.assertEqual(decision[1], "decision_meeting_actual_actions")
+        for meeting_type in ("Software weekly review", "Technical file review", "Audit kick-off / planning",
+                             "Webinar rehearsal", "Process / pipeline planning", "General", ""):
+            with self.subTest(meeting_type=meeting_type):
+                self.assertIsNone(PIPELINE.selective_actual_action_profile(meeting_type))
+
+    def test_selective_final_selector_runs_after_four_word_gate_without_quota(self):
+        actions = [{"owner": "Alex", "action": "Check the report", "status": "REQUIRED", "evidenceIds": ["turn_1"]}]
+        actions.extend({"owner": "Alex", "action": f"Review technical document number {number}",
+                        "status": "REQUIRED", "evidenceIds": ["turn_1"]} for number in range(1, 18))
+        original = PIPELINE.call_trooper
+        captured = {}
+        try:
+            def fake_call(prompt, max_tokens, schema):
+                captured["prompt"] = prompt
+                return {"candidateNumbers": list(range(1, 18))}
+            PIPELINE.call_trooper = fake_call
+            selected = PIPELINE.select_actual_actions(
+                actions, ["Alex: I will review the documents."], PIPELINE.HYBRID_TECHNICAL_SELECTOR_GUIDANCE)
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertNotIn("Check the report", captured["prompt"])
+        self.assertEqual(len(selected), 17)
+        self.assertIn("There is no target or maximum", captured["prompt"])
+
     def test_importer_quality_filter_rejects_generic_objects(self):
         rows = [
             {"action": "Clarify points for better clarity"},
