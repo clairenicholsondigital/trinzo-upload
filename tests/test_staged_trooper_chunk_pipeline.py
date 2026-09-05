@@ -87,6 +87,59 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertEqual(len(selected), 17)
         self.assertIn("There is no target or maximum", captured["prompt"])
 
+    def test_retrieval_selector_routes_only_exact_validated_types(self):
+        expected = {
+            "Audit kick-off / planning": "audit_retrieval",
+            "Technical file review": "technical_retrieval",
+            "Webinar rehearsal": "webinar_retrieval",
+            "Software weekly review": "software_retrieval",
+            "Process / pipeline planning": "process_retrieval",
+        }
+        for meeting_type, profile in expected.items():
+            with self.subTest(meeting_type=meeting_type):
+                self.assertEqual(PIPELINE.retrieval_selector_profile(meeting_type)[1], profile)
+        for meeting_type in ("General", "Decision meeting", "Importer obligations review",
+                             "Software and technical-file weekly review", "Technical file consultancy review", ""):
+            with self.subTest(meeting_type=meeting_type):
+                self.assertIsNone(PIPELINE.retrieval_selector_profile(meeting_type))
+
+    def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts):
+                return {text: [1.0, 0.0] if "discussion" not in text.lower() else [0.0, 1.0] for text in texts}
+        actions = [
+            {"owner": "Alex", "action": "Send the revised audit plan", "status": "COMMITTED", "evidenceIds": ["turn_1"]},
+            {"owner": "Not stated", "action": "Discuss the possible colour scheme", "status": "PROPOSED", "evidenceIds": ["turn_2"]},
+        ]
+        original = PIPELINE.call_trooper
+        try:
+            def fake_call(prompt, max_tokens, schema):
+                numbers = [int(value) for value in __import__('re').findall(r"(?m)^(\d+)\. Owner:", prompt)]
+                return {"decisions": [{"candidateNumber": number, "decision": "REMOVE",
+                    "rejectionCode": "DISCUSSION_ONLY", "evidenceTurns": [1]} for number in numbers]}
+            PIPELINE.call_trooper = fake_call
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                actions, ["Alex: I will send the revised audit plan.", "Blair: This is only discussion."],
+                "Audit guidance", Backend())
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual([row["action"] for row in selected], ["Send the revised audit plan"])
+
+    def test_retrieval_selector_fails_open_on_incomplete_decisions(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        actions = [{"owner": "Alex", "action": "Review the complete technical report",
+                    "status": "PROPOSED", "evidenceIds": ["turn_1"]}]
+        original = PIPELINE.call_trooper
+        try:
+            PIPELINE.call_trooper = lambda *_args: {"decisions": []}
+            selected = PIPELINE.select_retrieval_grounded_actions(actions, ["Alex: Maybe review it."], "Rules", Backend())
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected, actions)
+
     def test_importer_quality_filter_rejects_generic_objects(self):
         rows = [
             {"action": "Clarify points for better clarity"},

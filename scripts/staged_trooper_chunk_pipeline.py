@@ -80,6 +80,14 @@ ACTUAL_ACTIONS_SCHEMA = {"type": "json_schema", "json_schema": {"name": "actual_
     "type": "object", "properties": {"candidateNumbers": {"type": "array", "items": {"type": "integer"}}},
     "required": ["candidateNumbers"], "additionalProperties": False}}}
 
+RETRIEVAL_SELECTOR_SCHEMA = {"type": "json_schema", "json_schema": {"name": "retrieval_action_decisions", "strict": True, "schema": {
+    "type": "object", "properties": {"decisions": {"type": "array", "items": {"type": "object", "properties": {
+        "candidateNumber": {"type": "integer"}, "decision": {"type": "string", "enum": ["KEEP", "REMOVE"]},
+        "rejectionCode": {"type": "string", "enum": ["NONE", "COMPLETED_ONLY", "UNACCEPTED_PROPOSAL", "DISCUSSION_ONLY", "MEETING_ADMIN", "MALFORMED", "NO_SUPPORTED_TASK"]},
+        "evidenceTurns": {"type": "array", "items": {"type": "integer"}}},
+        "required": ["candidateNumber", "decision", "rejectionCode", "evidenceTurns"], "additionalProperties": False}}},
+    "required": ["decisions"], "additionalProperties": False}}}
+
 IMPORTER_ACTUAL_ACTIONS_PROMPT = """Provide only the actual actions from these candidates.
 
 An actual action is a concrete future task that a person explicitly agreed or was assigned to do in this meeting.
@@ -110,6 +118,27 @@ Return selected candidate numbers only, in transcript order. Never return action
 HYBRID_TECHNICAL_SELECTOR_GUIDANCE = """This is a combined software and technical-file weekly review. Retain concrete compliance checks, investigations, tests, document changes, reviews, submissions and dependency-driven follow-ups, including continuing work. REQUIRED is valid here even without a fresh first-person promise. Concrete PROPOSED investigations or reviews are also reviewer-useful and should remain. Exclude only completed items, broad status restatements, vague encouragement, meeting administration, and technical issues with no next step."""
 
 DECISION_MEETING_SELECTOR_GUIDANCE = """This is a decision meeting. Discussion of options is not an action. Retain only an explicit commitment, accepted assignment or agreed follow-up. Exclude every proposal, possibility, question, option and unresolved decision that nobody accepted, even if it is worded like a task."""
+
+RETRIEVAL_SELECTOR_PROMPT = """Validate high-recall action candidates against retrieved transcript evidence.
+
+KEEP a specific future commitment, accepted assignment, requirement, agreed follow-up, or meeting-type-valid proposed task. Continuing unfinished work is valid.
+
+REMOVE only with one rejection code: COMPLETED_ONLY, UNACCEPTED_PROPOSAL, DISCUSSION_ONLY, MEETING_ADMIN, MALFORMED, or NO_SUPPORTED_TASK. A REMOVE decision must cite at least one supplied transcript turn that demonstrates the rejection. Similar vocabulary alone is not evidence. Do not reject merely because owner or deadline is unstated. Do not consolidate duplicates. There is no target or maximum count.
+
+MEETING RULES:
+{guidance}
+
+Return exactly one decision for every candidate, retaining its candidate number.
+
+{candidates}"""
+
+RETRIEVAL_PROFILE_GUIDANCE = {
+    "audit_retrieval": "Retain concrete audit preparation, scope/risk planning, training prerequisites, document/data sharing, access arrangements and pre-audit coordination.",
+    "technical_retrieval": "Retain concrete compliance checks, investigations, tests, controlled-document changes, reviews, submissions and continuing dependency-driven work.",
+    "webinar_retrieval": "Retain agreed live-event responsibilities, accepted slide/script/delivery changes, technical checks, question handling, cues, rehearsal and distribution tasks.",
+    "software_retrieval": "Retain concrete software investigation, testing, debugging, documentation, change-control and continuing technical work.",
+    "process_retrieval": "Retain concrete manual tests, pilots, criteria, information-capture tasks and conditional next phases with a stated trigger or method.",
+}
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -690,6 +719,121 @@ def selective_actual_action_profile(meeting_type: str) -> tuple[str, str] | None
     return None
 
 
+def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
+    value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    profiles = {
+        "audit kick off planning": "audit_retrieval",
+        "technical file review": "technical_retrieval",
+        "webinar rehearsal": "webinar_retrieval",
+        "software weekly review": "software_retrieval",
+        "process pipeline planning": "process_retrieval",
+        "lead generation pipeline review": "process_retrieval",
+    }
+    profile = profiles.get(value)
+    return (RETRIEVAL_PROFILE_GUIDANCE[profile], profile) if profile else None
+
+
+def load_action_retrieval_backend() -> Any:
+    try:
+        from meeting_minutes_minilm_experiment import MiniLMBackend
+        return MiniLMBackend.load(enabled=True)
+    except Exception:
+        return None
+
+
+def dot_similarity(left: list[float], right: list[float]) -> float:
+    return sum(a * b for a, b in zip(left, right))
+
+
+def action_has_recall_protection(action: dict[str, Any], evidence: list[str]) -> bool:
+    if clean(action.get("status")).upper() not in {"COMMITTED", "ASSIGNED", "REQUIRED"}:
+        return False
+    joined = " ".join(evidence)
+    return bool(re.search(
+        r"\b(?:i['’]?ll|i will|i can|we['’]?ll|we will|you(?:'ll| will| need to| have to)|"
+        r"can you|please|agreed|assigned|need(?:s)? to|must|shall|required|action(?:ed)?|"
+        r"by (?:monday|tuesday|wednesday|thursday|friday|tomorrow|next week))\b", joined, re.I))
+
+
+def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]] | None:
+    decisions: dict[int, dict[str, Any]] = {}
+    for start in range(0, len(blocks), 15):
+        batch = blocks[start:start + 15]
+        try:
+            result = call_trooper(RETRIEVAL_SELECTOR_PROMPT.format(
+                guidance=guidance, candidates="\n\n".join(block for _, block in batch)),
+                3000, RETRIEVAL_SELECTOR_SCHEMA)
+        except Exception:
+            return None
+        expected = {number for number, _ in batch}
+        returned = {row.get("candidateNumber"): row for row in result.get("decisions", [])
+                    if isinstance(row, dict) and row.get("candidateNumber") in expected}
+        if set(returned) != expected:
+            return None
+        decisions.update(returned)
+    return decisions
+
+
+def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list[str], guidance: str,
+                                      backend: Any = None) -> list[dict[str, Any]]:
+    """Fail-open, two-check selector grounded in original and MiniLM-retrieved evidence."""
+    eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
+    if not eligible:
+        return []
+    backend = backend or load_action_retrieval_backend()
+    if not backend or not getattr(backend, "available", False):
+        return eligible
+    texts = [*turns, *[clean(action.get("action")) for action in eligible]]
+    embeddings = backend.encode_many(texts)
+    def vector(text: str) -> list[float] | None:
+        value = re.sub(r"\s+", " ", clean(text)).strip()
+        return embeddings.get(value)
+    turn_vectors = [vector(turn) for turn in turns]
+    blocks: list[tuple[int, str]] = []
+    protected: set[int] = set()
+    for number, action in enumerate(eligible, 1):
+        original_numbers = {int(match.group(1)) for evidence_id in action.get("evidenceIds", [])
+                            if (match := re.fullmatch(r"turn_(\d+)", clean(evidence_id)))
+                            and 1 <= int(match.group(1)) <= len(turns)}
+        query = vector(clean(action.get("action")))
+        ranked = [] if query is None else sorted(
+            ((dot_similarity(query, candidate), index + 1) for index, candidate in enumerate(turn_vectors) if candidate is not None),
+            reverse=True)
+        semantic_numbers = []
+        for _score, turn_number in ranked:
+            if any(abs(turn_number - prior) <= 1 for prior in semantic_numbers):
+                continue
+            semantic_numbers.append(turn_number)
+            if len(semantic_numbers) >= 4:
+                break
+        evidence_numbers = set(original_numbers)
+        for turn_number in semantic_numbers:
+            evidence_numbers.update(range(max(1, turn_number - 1), min(len(turns), turn_number + 1) + 1))
+        evidence = [turns[index - 1] for index in sorted(evidence_numbers)]
+        if action_has_recall_protection(action, [turns[index - 1] for index in sorted(original_numbers)]):
+            protected.add(number)
+        lines = "\n".join(f"  Turn {index}: {turns[index - 1]}" for index in sorted(evidence_numbers))
+        blocks.append((number, f"{number}. Owner: {action.get('owner', 'Not stated')}\n"
+            f"Draft: {action.get('action', '')}\nStatus: {action.get('status', '')}\nEvidence:\n{lines}"))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(retrieval_decisions, blocks, guidance)
+        second_future = pool.submit(retrieval_decisions, list(reversed(blocks)), guidance)
+        first, second = first_future.result(), second_future.result()
+    if first is None or second is None:
+        return eligible
+    valid_codes = {"COMPLETED_ONLY", "UNACCEPTED_PROPOSAL", "DISCUSSION_ONLY", "MEETING_ADMIN", "MALFORMED", "NO_SUPPORTED_TASK"}
+    removed = set()
+    for number in range(1, len(eligible) + 1):
+        left, right = first[number], second[number]
+        if number in protected:
+            continue
+        if (left.get("decision") == right.get("decision") == "REMOVE"
+                and left.get("rejectionCode") == right.get("rejectionCode") in valid_codes
+                and left.get("evidenceTurns") and right.get("evidenceTurns")):
+            removed.add(number)
+    return [action for number, action in enumerate(eligible, 1) if number not in removed]
+
+
 def select_actual_actions(actions: list[dict[str, Any]], turns: list[str], guidance: str) -> list[dict[str, Any]]:
     """Apply the four-word gate and the narrowly routed conservative selector."""
     eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
@@ -953,6 +1097,11 @@ def main() -> int:
         if selector:
             guidance, prompt_profile = selector
             actions = select_actual_actions(actions, turns, guidance)
+        else:
+            retrieval_selector = retrieval_selector_profile(args.meeting_type)
+            if retrieval_selector:
+                guidance, prompt_profile = retrieval_selector
+                actions = select_retrieval_grounded_actions(actions, turns, guidance)
     print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
         "actionPromptProfile": prompt_profile}, ensure_ascii=False))
     return 0
