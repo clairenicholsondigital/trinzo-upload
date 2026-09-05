@@ -5495,9 +5495,12 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       // vocabulary in favour of General. Retain its measured prompt profile internally
       // when the meeting identity itself clearly names that subject.
       const generationMeetingType = selectedMeetingType === 'General'
-        && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(meetingIdentity)
-        ? 'Process / pipeline planning'
-        : selectedMeetingType;
+        && /\bimporter[\s_-]*obligations?\b/i.test(meetingIdentity)
+        ? 'Importer obligations review'
+        : selectedMeetingType === 'General'
+          && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(meetingIdentity)
+          ? 'Process / pipeline planning'
+          : selectedMeetingType;
       payload = await generateMiniLmTrooperStage(stage, transcript.text, {
         meetingType: generationMeetingType
       });

@@ -30,6 +30,29 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertEqual(actions[0]["evidenceIds"], ["turn_2"])
         self.assertEqual(actions[0]["status"], "COMMITTED")
 
+    def test_importer_actual_action_selector_runs_after_four_word_gate(self):
+        actions = [
+            {"owner": "Alex", "action": "Check the report", "evidenceIds": ["turn_1"]},
+            {"owner": "Blair", "action": "Send the final report", "evidenceIds": ["turn_2"]},
+            {"owner": "Casey", "action": "Review the signed supplier agreement", "evidenceIds": ["turn_3"]},
+        ]
+        original = PIPELINE.call_trooper
+        captured = {}
+        try:
+            def fake_call(prompt, max_tokens, schema):
+                captured["prompt"] = prompt
+                return {"candidateNumbers": [2, 99]}
+            PIPELINE.call_trooper = fake_call
+            selected = PIPELINE.select_importer_actual_actions(actions, ["A: One", "B: Two", "C: Three"])
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertNotIn("Check the report", captured["prompt"])
+        self.assertEqual([row["action"] for row in selected], ["Review the signed supplier agreement"])
+
+    def test_importer_actual_action_route_is_meeting_type_specific(self):
+        self.assertTrue(PIPELINE.is_importer_obligations_type("Importer obligations review"))
+        self.assertFalse(PIPELINE.is_importer_obligations_type("General"))
+
     def test_live_prompt_is_the_short_verb_sweep(self):
         for verb in ("Review", "Resolve", "Arrange", "Plan", "Email"):
             self.assertIn(f"- {verb}", PIPELINE.ACTION_PROMPT)

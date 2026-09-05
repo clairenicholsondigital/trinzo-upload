@@ -76,6 +76,22 @@ ACTION_SCHEMA = {"type": "json_schema", "json_schema": {"name": "chunk_analysis"
             "additionalProperties": False}}},
     "required": ["discussionPoints", "actionCandidates"], "additionalProperties": False}}}
 
+ACTUAL_ACTIONS_SCHEMA = {"type": "json_schema", "json_schema": {"name": "actual_actions", "strict": True, "schema": {
+    "type": "object", "properties": {"candidateNumbers": {"type": "array", "items": {"type": "integer"}}},
+    "required": ["candidateNumbers"], "additionalProperties": False}}}
+
+IMPORTER_ACTUAL_ACTIONS_PROMPT = """Provide only the actual actions from these candidates.
+
+An actual action is a concrete future task that a person explicitly agreed or was assigned to do in this meeting.
+
+Exclude discussion, existing processes, general obligations, questions, suggestions, completed work and vague possibilities.
+
+Judge each row from its evidence. Return the 15 strongest actual-action candidate numbers, or all actual actions if fewer than 15 qualify.
+
+{candidates}
+
+Return candidate numbers only, never action text."""
+
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
 and end turn numbers.
@@ -637,6 +653,37 @@ def normalise_actions(result: dict[str, Any], chunk: dict[str, int]) -> list[dic
     return output
 
 
+def action_word_count(value: Any) -> int:
+    return len(re.findall(r"[\w]+(?:['’.-][\w]+)*", clean(value), flags=re.UNICODE))
+
+
+def is_importer_obligations_type(meeting_type: str) -> bool:
+    value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    return "importer" in value and "obligation" in value
+
+
+def select_importer_actual_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    """Apply the four-word gate, then one simple evidence-backed publication selection."""
+    eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
+    blocks = []
+    for number, action in enumerate(eligible, 1):
+        evidence = []
+        for evidence_id in action.get("evidenceIds", []):
+            match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
+            if match and 1 <= int(match.group(1)) <= len(turns):
+                turn = int(match.group(1))
+                evidence.append(turns[turn - 1])
+        blocks.append(f"{number}. {action.get('owner', 'Not stated')} — {action.get('action', '')}\n"
+                      f"Evidence: {' '.join(evidence)}")
+    if not eligible:
+        return []
+    result = call_trooper(IMPORTER_ACTUAL_ACTIONS_PROMPT.format(candidates="\n\n".join(blocks)),
+                          1200, ACTUAL_ACTIONS_SCHEMA)
+    selected = {number for number in result.get("candidateNumbers", [])[:15]
+                if isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(eligible)}
+    return [action for number, action in enumerate(eligible, 1) if number in selected]
+
+
 def normalise_discussion_candidates(result: dict[str, Any], chunk: dict[str, int]) -> list[dict[str, Any]]:
     output = []
     rows = result.get("candidates") if isinstance(result.get("candidates"), list) else []
@@ -801,6 +848,9 @@ def main() -> int:
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
         results = list(pool.map(analyse, chunks))
     actions = [action for group in results for action in group]
+    if is_importer_obligations_type(args.meeting_type):
+        actions = select_importer_actual_actions(actions, turns)
+        prompt_profile = "importer_obligations_actual_actions"
     print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
         "actionPromptProfile": prompt_profile}, ensure_ascii=False))
     return 0
