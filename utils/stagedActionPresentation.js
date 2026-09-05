@@ -1,6 +1,6 @@
 'use strict';
 
-const MINIMUM_ACTION_WORDS = 3;
+const MINIMUM_ACTION_WORDS = 4;
 
 function actionWordCount(value) {
   return (String(value || '').match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) || []).length;

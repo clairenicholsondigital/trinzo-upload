@@ -9,20 +9,21 @@ const {
   filterActionsForPresentation
 } = require('../utils/stagedActionPresentation');
 
-test('the global action presentation minimum is three words inclusive', () => {
-  assert.equal(MINIMUM_ACTION_WORDS, 3);
+test('the global action presentation minimum is four words inclusive', () => {
+  assert.equal(MINIMUM_ACTION_WORDS, 4);
   assert.equal(actionWordCount('Check'), 1);
   assert.equal(actionWordCount('Check report'), 2);
   assert.equal(actionWordCount('Check the report'), 3);
   assert.equal(actionWordCount('Follow-up with Keon'), 3);
+  assert.equal(actionWordCount('Check the final report'), 4);
 });
 
-test('only actions with at least three words reach the UI', () => {
+test('only actions with at least four words reach the UI', () => {
   const actions = [
     { action: 'Check' },
     { action: 'Do thinking' },
     { action: 'Check the report' },
     { meetingActionPoint: 'Send final client report' }
   ];
-  assert.deepEqual(filterActionsForPresentation(actions), actions.slice(2));
+  assert.deepEqual(filterActionsForPresentation(actions), actions.slice(3));
 });
