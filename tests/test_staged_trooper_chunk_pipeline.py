@@ -53,6 +53,11 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertTrue(PIPELINE.is_importer_obligations_type("Importer obligations review"))
         self.assertFalse(PIPELINE.is_importer_obligations_type("General"))
 
+    def test_importer_prompt_has_no_action_quota(self):
+        self.assertIn("no minimum or target", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
+        self.assertIn("Return none", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
+        self.assertNotIn("15 strongest", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
+
     def test_importer_quality_filter_rejects_generic_objects(self):
         rows = [
             {"action": "Clarify points for better clarity"},

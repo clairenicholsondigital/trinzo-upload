@@ -86,7 +86,7 @@ An actual action is a concrete future task that a person explicitly agreed or wa
 
 Exclude discussion, existing processes, general obligations, questions, suggestions, completed work and vague possibilities.
 
-Judge each row from its evidence. Return the 15 strongest actual-action candidate numbers, or all actual actions if fewer than 15 qualify.
+Judge each row from its evidence. There is no minimum or target number of actions. Return none if no candidates qualify.
 
 {candidates}
 
