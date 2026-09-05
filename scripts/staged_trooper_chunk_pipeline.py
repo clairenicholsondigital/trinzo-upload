@@ -662,6 +662,49 @@ def is_importer_obligations_type(meeting_type: str) -> bool:
     return "importer" in value and "obligation" in value
 
 
+def importer_action_content_tokens(value: Any) -> set[str]:
+    ignored = {
+        "a", "an", "and", "all", "additional", "better", "for", "from", "full", "general", "in", "information", "of", "on", "the", "to", "with",
+        "arrange", "ask", "check", "clarify", "confirm", "elaborate", "email", "follow", "provide", "review", "send", "update",
+    }
+    return {token for token in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", clean(value).lower()) if token not in ignored}
+
+
+def filter_importer_selected_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove generic-object rows and retain the more specific of contained duplicates."""
+    generic_objects = {"clarity", "detail", "details", "issue", "issues", "point", "points", "question", "questions", "thing", "things"}
+    useful = []
+    for action in actions:
+        tokens = importer_action_content_tokens(action.get("action"))
+        if not tokens or tokens <= generic_objects:
+            continue
+        useful.append(action)
+
+    removed: set[int] = set()
+    for left_index, left in enumerate(useful):
+        if left_index in removed:
+            continue
+        left_tokens = importer_action_content_tokens(left.get("action"))
+        left_verb = clean(left.get("action")).split(" ", 1)[0].lower()
+        for right_index in range(left_index + 1, len(useful)):
+            if right_index in removed:
+                continue
+            right = useful[right_index]
+            right_tokens = importer_action_content_tokens(right.get("action"))
+            right_verb = clean(right.get("action")).split(" ", 1)[0].lower()
+            if left_verb != right_verb or not left_tokens or not right_tokens:
+                continue
+            smaller, larger = (left_tokens, right_tokens) if len(left_tokens) <= len(right_tokens) else (right_tokens, left_tokens)
+            if len(smaller & larger) / len(smaller) < 0.8:
+                continue
+            left_score = (len(left_tokens), action_word_count(left.get("action")))
+            right_score = (len(right_tokens), action_word_count(right.get("action")))
+            removed.add(left_index if left_score < right_score else right_index)
+            if left_index in removed:
+                break
+    return [action for index, action in enumerate(useful) if index not in removed]
+
+
 def select_importer_actual_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
     """Apply the four-word gate, then one simple evidence-backed publication selection."""
     eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
@@ -681,7 +724,8 @@ def select_importer_actual_actions(actions: list[dict[str, Any]], turns: list[st
                           1200, ACTUAL_ACTIONS_SCHEMA)
     selected = {number for number in result.get("candidateNumbers", [])[:15]
                 if isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(eligible)}
-    return [action for number, action in enumerate(eligible, 1) if number in selected]
+    chosen = [action for number, action in enumerate(eligible, 1) if number in selected]
+    return filter_importer_selected_actions(chosen)
 
 
 def normalise_discussion_candidates(result: dict[str, Any], chunk: dict[str, int]) -> list[dict[str, Any]]:

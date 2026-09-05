@@ -53,6 +53,20 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertTrue(PIPELINE.is_importer_obligations_type("Importer obligations review"))
         self.assertFalse(PIPELINE.is_importer_obligations_type("General"))
 
+    def test_importer_quality_filter_rejects_generic_objects(self):
+        rows = [
+            {"action": "Clarify points for better clarity"},
+            {"action": "Clarify points about supplier registration evidence"},
+        ]
+        self.assertEqual(PIPELINE.filter_importer_selected_actions(rows), [rows[1]])
+
+    def test_importer_quality_filter_keeps_specific_contained_duplicate(self):
+        rows = [
+            {"action": "Review the records with additional information"},
+            {"action": "Review the records with additional information for authorised-representative registration"},
+        ]
+        self.assertEqual(PIPELINE.filter_importer_selected_actions(rows), [rows[1]])
+
     def test_live_prompt_is_the_short_verb_sweep(self):
         for verb in ("Review", "Resolve", "Arrange", "Plan", "Email"):
             self.assertIn(f"- {verb}", PIPELINE.ACTION_PROMPT)
