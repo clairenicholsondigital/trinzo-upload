@@ -253,6 +253,19 @@ duplicate fragments of a broader assignment. Do not turn the rehearsal itself in
 Keep distinct deliverables distinct, but treat the steps of one recording check, one opening script
 or one slide asset as a single work package."""
 
+PROCESS_RETRIEVAL_V2_GUIDANCE = """Retain only an agreed experiment, a prerequisite that must be
+defined before that experiment, or a conditional next phase with an explicit trigger. In a
+lead-generation pipeline review, distinguish the small manual test from the later mixed manual/AI
+pilot, retain the pilot's quality-and-volume condition, and retain criteria or capture/tracking
+questions that the group explicitly identified as work still to define.
+
+Remove the proposed steady-state pipeline itself: possible signal sources, triage, Salesforce
+matching, AI packs, opportunity tiers, prioritisation, contact research, sales planning and feedback
+loops are process-design discussion unless somebody separately accepted them as an immediate task.
+Remove requests answered during the meeting, descriptions of current practice, possible automation
+after an uncompleted pilot, generic sense-checking and options nobody accepted. Do not convert each
+box in a future-state process diagram into an action."""
+
 
 def audit_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_AUDIT_ACTION_V2", "0") == "1"
@@ -272,6 +285,10 @@ def hybrid_action_v2_enabled() -> bool:
 
 def webinar_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_WEBINAR_ACTION_V2", "0") == "1"
+
+
+def process_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_PROCESS_ACTION_V2", "0") == "1"
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -631,6 +648,35 @@ discussion points and ten action candidates. Return only the required JSON.
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
 
+PROCESS_ACTION_V2_PROMPT = """Review this coherent section from a process or pipeline-planning
+meeting. Build a concise ledger of agreed experiments, their prerequisites and explicitly
+conditional next phases.
+
+For a lead-generation pipeline, check specifically for:
+- a small manual slice that the team agreed to test against a stated quality outcome;
+- a later time-bounded manual/AI pilot whose start depends on useful initial results;
+- ICP or eligibility criteria that the team said still need to be defined;
+- an unresolved operating decision about how client-delivery signals should be captured and
+  consistently tracked, including CRM or Salesforce use.
+
+Rules:
+- A described future-state process is not a list of actions. Do not extract its signal sources,
+  triage, cleaning, CRM matching, AI packs, prioritisation, contact research, outreach or feedback
+  boxes unless a person separately accepts one as immediate work.
+- Preserve the manual-test owner, measurable outcome and the pilot's trigger. Do not merge the
+  initial test with the conditional pilot.
+- A question answered by a description of current practice is discussion, unless the exchange ends
+  with a concrete gap the group must resolve.
+- Possible later automation is not yet an action when both the manual test and pilot must happen first.
+- Resolve named joint owners from the proposal and use a team owner only where the transcript
+  explicitly describes the definition as team work.
+
+Return at most two discussion points and six action candidates for this section. Use only turn
+numbers in this section and return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
 PROCESS_PIPELINE_ACTION_PROMPT = """Review this coherent section from a process or pipeline-planning meeting.
 
 First identify concise, substantive discussion points. Then perform a separate
@@ -690,6 +736,8 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_review"
     if any(term in normalised for term in ("pipeline", "process planning", "process review", "lead generation")):
+        if process_action_v2_enabled():
+            return PROCESS_ACTION_V2_PROMPT, "process_pipeline_v2"
         return PROCESS_PIPELINE_ACTION_PROMPT, "process_or_pipeline_planning"
     return ACTION_PROMPT, "general"
 
@@ -1964,6 +2012,123 @@ def recover_webinar_actions(actions: list[dict[str, Any]], turns: list[str], sam
     return output
 
 
+def process_action_family(action: dict[str, Any]) -> str:
+    """Map pipeline-planning drafts to the small set of agreed next-step work packages."""
+    wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:four|4) week\b", wording) and re.search(r"\b(?:pilot|manual|ai)\b", wording):
+        return "conditional_pilot"
+    if re.search(r"\b(?:small|manual) (?:slice|test|trial)\b|\btest the proposed\b", wording) \
+            and re.search(r"\b(?:lead|pipeline|process|quality|volume|produce)\b", wording):
+        return "manual_slice"
+    if re.search(r"\b(?:icp|ideal client profile)\b", wording) \
+            and re.search(r"\b(?:criteria|fit|define|filter|quality|noise)\b", wording):
+        return "icp_criteria"
+    if re.search(r"\bclient delivery\b", wording) and re.search(
+        r"\b(?:capture|track|record|salesforce|feedback|signals?|leads?)\b", wording
+    ):
+        return "client_delivery_capture"
+    return ""
+
+
+def process_action_roles(turns: list[str]) -> dict[str, str]:
+    roles: dict[str, str] = {}
+    proposer, _ = speaker_for_pattern(turns, r"\b(?:way that|jack and i).*\bgoing to go about this\b")
+    whole = " ".join(clean(turn) for turn in turns)
+    partner_match = re.search(r"\b([A-Z][A-Za-z'’-]+) and I (?:are going to|have been working)\b", whole)
+    if proposer and partner_match:
+        joint = f"{proposer} and {participant_name(turns, partner_match.group(1))}"
+        roles["manual_slice"] = joint
+        roles["conditional_pilot"] = joint
+    if re.search(r"\bcriteria for the ICP fit\b", whole, re.I) \
+            and re.search(r"\bdefined as a team\b", whole, re.I):
+        roles["icp_criteria"] = "Team"
+    if re.search(r"\bclient delivery\b", whole, re.I) \
+            and re.search(r"\bnot always tracked in Salesforce\b", whole, re.I):
+        roles["client_delivery_capture"] = "Sales and client-delivery team"
+    return roles
+
+
+def compose_process_family(family: str) -> str:
+    return {
+        "manual_slice": "Take a small manual slice of the proposed lead-generation process and test whether it produces the required lead quality",
+        "conditional_pilot": "Run a four-week mixed manual and AI pilot if the manual test produces useful volume and quality",
+        "icp_criteria": "Define the ICP fit criteria so poor-quality signals can be filtered earlier in the process",
+        "client_delivery_capture": "Clarify how client-delivery lead signals should be captured and tracked, including whether they should be recorded consistently in Salesforce",
+    }.get(family, "")
+
+
+def consolidate_process_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    """Discard future-state diagram boxes and retain one row per agreed process experiment."""
+    roles = process_action_roles(turns)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        family = process_action_family(action)
+        if family:
+            groups.setdefault(family, []).append(action)
+    output: list[dict[str, Any]] = []
+    for family, members in groups.items():
+        representative = dict(max(members, key=representative_rank))
+        representative["action"] = compose_process_family(family)
+        if roles.get(family):
+            representative["owner"] = roles[family]
+            representative["support"] = sample_count
+        else:
+            representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
+        if family == "conditional_pilot":
+            representative["deadline"] = "After a successful manual test"
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        representative["sampleCount"] = sample_count
+        representative["mergedCandidateCount"] = sum(
+            int(member.get("mergedCandidateCount", 1) or 1) for member in members
+        )
+        representative["processConsolidatedFamily"] = family
+        output.append(representative)
+    return output
+
+
+def recover_process_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    """Recover the explicit experiment chain and definition gaps from transcript evidence."""
+    output = list(actions)
+    present = {process_action_family(action) for action in output}
+    roles = process_action_roles(turns)
+    specifications = (
+        ("manual_slice", (r"\breally small slice\b", r"\bmanually do it\b", r"\bproducing what we want\b")),
+        ("conditional_pilot", (r"\bfour-week pilot\b", r"\bmix of manual and ai\b", r"\bright volume\b.*\bright (?:the )?quality\b")),
+        ("icp_criteria", (r"\bcriteria for the icp fit\b", r"\bdefined as a team\b")),
+        ("client_delivery_capture", (r"\bhow are we capturing that\b", r"\bnot always tracked in salesforce\b")),
+    )
+    for family, patterns in specifications:
+        if family in present or not roles.get(family):
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family],
+            "action": compose_process_family(family),
+            "deadline": "After a successful manual test" if family == "conditional_pilot" else "not stated",
+            "status": "PROPOSED" if family in {"manual_slice", "conditional_pilot"} else "REQUIRED",
+            "evidenceIds": list(dict.fromkeys(evidence)),
+            "support": sample_count,
+            "sampleCount": sample_count,
+            "mergedCandidateCount": 1,
+            "recoveredProcessFamily": family,
+        })
+        present.add(family)
+    family_order = {family: index for index, family in enumerate(
+        ("manual_slice", "conditional_pilot", "icp_criteria", "client_delivery_capture")
+    )}
+    return sorted(output, key=lambda row: family_order.get(process_action_family(row), len(family_order)))
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -2000,6 +2165,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
         return IMPORTER_RETRIEVAL_V2_GUIDANCE, "importer_retrieval_v2"
     if profile == "webinar_retrieval" and webinar_action_v2_enabled():
         return WEBINAR_RETRIEVAL_V2_GUIDANCE, "webinar_retrieval_v2"
+    if profile == "process_retrieval" and process_action_v2_enabled():
+        return PROCESS_RETRIEVAL_V2_GUIDANCE, "process_retrieval_v2"
     return (RETRIEVAL_PROFILE_GUIDANCE[profile], profile) if profile else None
 
 
@@ -2589,7 +2756,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if prompt_profile == "importer_obligations_v2":
         actions = repair_importer_actions(actions, turns)
     if sample_count > 1:
-        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2"}
+        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2", "process_pipeline_v2"}
                              else SUPPORT_MERGE_THRESHOLD)
         actions = merge_sampled_actions(
             actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
@@ -2643,6 +2810,9 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if action_prompt == WEBINAR_ACTION_V2_PROMPT:
         actions = consolidate_webinar_actions(actions, turns, sample_count)
         actions = recover_webinar_actions(actions, turns, sample_count)
+    if action_prompt == PROCESS_ACTION_V2_PROMPT:
+        actions = consolidate_process_actions(actions, turns, sample_count)
+        actions = recover_process_actions(actions, turns, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)

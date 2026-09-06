@@ -179,6 +179,21 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(PIPELINE.action_prompt_for_meeting_type("General")[1], "general")
             self.assertIsNone(PIPELINE.retrieval_selector_profile("General"))
 
+    def test_process_v2_flag_routes_dedicated_extractor_and_retrieval_selector(self):
+        with mock.patch.dict(os.environ, {"STAGED_PROCESS_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type("Process / pipeline planning")
+            guidance, retrieval_profile = PIPELINE.retrieval_selector_profile("Process / pipeline planning")
+        self.assertIs(prompt, PIPELINE.PROCESS_ACTION_V2_PROMPT)
+        self.assertEqual(action_profile, "process_pipeline_v2")
+        self.assertEqual(retrieval_profile, "process_retrieval_v2")
+        self.assertIn("future-state process", prompt)
+        self.assertIn("process diagram", guidance)
+
+    def test_process_v2_flag_does_not_change_general_routing(self):
+        with mock.patch.dict(os.environ, {"STAGED_PROCESS_ACTION_V2": "1"}):
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type("General")[1], "general")
+            self.assertIsNone(PIPELINE.retrieval_selector_profile("General"))
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -678,6 +693,37 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(by_family["recording_control"]["owner"], "Callum Reid")
         self.assertEqual(by_family["warmup"]["owner"], "Team")
         self.assertEqual(len(recovered), 12)
+
+    def test_process_review_keeps_experiment_chain_and_definition_gaps_only(self):
+        turns = [
+            "Conor Flynn: So Jack and I have been working on what a good process would look like.",
+            "Conor Flynn: The way that Jack and I are going to go about this is to check it with you guys.",
+            "Conor Flynn: We want to take a really small slice and manually do it.",
+            "Conor Flynn: If that is successful in producing what we want to produce.",
+            "Conor Flynn: We do a four-week pilot with a mix of manual and AI.",
+            "Conor Flynn: We will see if it creates the right volume and the right quality.",
+            "Jack Cunningham: Something that would need to be defined as a team is exactly how we set the criteria for the ICP fit.",
+            "Keon Fox: Client delivery is in the first capture stage. How are we capturing that until now?",
+            "Kathryn Cullen: Those leads are sent to sales but are not always tracked in Salesforce.",
+        ]
+        consolidated = PIPELINE.consolidate_process_actions([
+            {"owner": "Unknown", "action": "Take a small manual slice and test lead quality",
+             "evidenceIds": ["turn_3"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Manually test the proposed lead-generation process",
+             "evidenceIds": ["turn_4"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Use AI to create opportunity packs",
+             "evidenceIds": ["turn_5"], "sampleCount": 3},
+        ], turns, 3)
+        recovered = PIPELINE.recover_process_actions(consolidated, turns, 3)
+        by_family = {PIPELINE.process_action_family(row): row for row in recovered}
+        self.assertNotIn("", by_family)
+        self.assertEqual(len(recovered), 4)
+        self.assertEqual(by_family["manual_slice"]["owner"], "Conor Flynn and Jack Cunningham")
+        self.assertEqual(by_family["conditional_pilot"]["owner"], "Conor Flynn and Jack Cunningham")
+        self.assertEqual(by_family["icp_criteria"]["owner"], "Team")
+        self.assertEqual(by_family["client_delivery_capture"]["owner"],
+                         "Sales and client-delivery team")
+        self.assertEqual(by_family["conditional_pilot"]["support"], 3)
 
 
 class SampledActionSupportTests(unittest.TestCase):
