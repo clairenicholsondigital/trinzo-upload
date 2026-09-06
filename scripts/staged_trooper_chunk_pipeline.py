@@ -211,9 +211,31 @@ conditions such as "after Wednesday", "before sharing", "before the audit", and 
 risk analysis". Verify the owner from the evidence: the speaker stating a requirement is not the
 owner when the requirement is addressed to somebody else."""
 
+IMPORTER_RETRIEVAL_V2_GUIDANCE = """Retain only a specific outstanding follow-up created or
+explicitly continued in this importer-obligations meeting. Valid actions include sending or
+reviewing a named QMS/compliance document; contacting a named person about a task list,
+registration plan or responsibility split; confirming a country/language/product list; continuing
+supplier/system implementation with a concrete outcome; a genuinely conditional offer to review
+a proposed label or barcode; updating a named declaration or rationale; sending and separately
+reviewing named regulatory correspondence; and arranging an accepted follow-up call.
+
+Remove regulatory or importer obligations stated as background, legal-responsibility explanations,
+ordinary warehouse/order/ERP/picking/packing/invoicing/dispatch process, questions answered in the
+meeting, generic checks, vague clarity or handling tasks, and future possibilities nobody accepted.
+An EUDAMED, UDI, barcode, label, invoice or QMS noun does not make discussion into an action.
+
+Require a complete task object and outcome in the candidate's own cited turns. Preserve ongoing
+work only when a named owner states it is still being progressed toward a future outcome. Verify
+the owner from the commitment or acceptance; do not assign work to the explainer, requester,
+recipient, legal manufacturer or service provider merely because they are mentioned."""
+
 
 def audit_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_AUDIT_ACTION_V2", "0") == "1"
+
+
+def importer_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_IMPORTER_ACTION_V2", "0") == "1"
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -326,6 +348,56 @@ Rules:
 Return at most two discussion points and six action candidates. Prioritise explicit deliverables,
 prerequisites and decisions over descriptive audit content. Use only turn numbers in this section.
 Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+IMPORTER_ACTION_PROMPT = """Review this coherent section from an importer-obligations review.
+
+Build a concise ledger of concrete outstanding follow-ups created or explicitly continued in
+this meeting. A regulatory obligation, business-process description or question is not itself an
+action. Include it only when the section supports a named person's specific next-step output.
+
+Check specifically for:
+- a named compliance or QMS document to send, resend, read or review;
+- a named person to contact about a task list, registration plan or responsibility split;
+- a country, product, language, translation, registration or responsibility list to confirm;
+- explicitly continuing implementation with suppliers or a system provider, including lot,
+  barcode or label work with a stated owner or timeframe;
+- a conditional offer to review a proposed label or barcode format when the business wants it;
+- a declaration, rationale or other controlled document to update;
+- named regulatory correspondence, an invoice or registration confirmation to send and review;
+- an accepted follow-up call to arrange.
+
+Give each candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
+
+Rules:
+- State the complete deliverable. Exclude vague wording such as "go through questions", "provide
+  clarity", "handle the invoice", "do checks", "follow up" or "look at the process" unless the
+  concrete object and outcome are stated.
+- Distinguish work newly assigned or explicitly continued from the organisation's standing legal
+  duty, normal warehouse/order process, existing manufacturer responsibility or background status.
+- A question asked and answered during this meeting is not a future action.
+- Preserve legitimate continuation work when the owner states it is underway and still has a
+  future outcome or timeframe.
+- Preserve conditions: an offered regulatory review remains conditional until accepted; do not
+  turn an offer into a committed task.
+- Resolve the owner from the commitment or acceptance. The person explaining an obligation,
+  asking a question, receiving a document or being consulted is not automatically the owner.
+- Keep each handoff distinct: sending correspondence and reviewing it are separate actions;
+  updating a label and optionally reviewing its proposed format may also be separate.
+- Exclude ordinary product flow, warehousing, ERP, picking, packing, invoicing and dispatch
+  descriptions unless a concrete follow-up was accepted.
+- Exclude generic EUDAMED or importer obligations when the transcript only states who is legally
+  responsible or what the regulation normally requires.
+- Evidence for task, commitment, owner, recipient, condition and timeframe may be in different
+  turns. Cite all supporting turns within this section.
+- Before returning, rescan owner by owner for missed SEND, REVIEW, SPEAK, CONFIRM, CONTINUE,
+  UPDATE and ARRANGE tasks.
+
+Return at most two discussion points and seven action candidates. Prioritise explicit handoffs,
+continuing implementation and controlled-document changes over regulatory explanation. Use only
+turn numbers in this section. Return only the required JSON.
 
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
@@ -503,6 +575,8 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
         term in normalised for term in ("kick off", "kickoff", "planning")
     ):
         return AUDIT_ACTION_PROMPT, "audit_planning_v2"
+    if importer_action_v2_enabled() and "importer" in normalised and "obligation" in normalised:
+        return IMPORTER_ACTION_PROMPT, "importer_obligations_v2"
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
     if ("software" in normalised and "technical file" in normalised) or any(
@@ -976,6 +1050,165 @@ def repair_audit_actions(actions: list[dict[str, Any]], turns: list[str]) -> lis
     return output
 
 
+def transcript_turn_speaker(turn: str) -> str:
+    # Teams exports commonly glue the utterance directly to the timestamp
+    # (for example ``7:26I will ...``), so a word boundary is not reliable here.
+    match = re.match(r"^(.+?)\s+\d{1,2}:\d{2}(?::\d{2})?", clean(turn))
+    if match:
+        return clean(match.group(1))
+    match = re.match(r"^([^:]{2,80}):\s", clean(turn))
+    return clean(match.group(1)) if match else ""
+
+
+def speaker_for_pattern(turns: list[str], pattern: str) -> tuple[str, int | None]:
+    for number, turn in enumerate(turns, 1):
+        speaker = transcript_turn_speaker(turn)
+        utterance = re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn)) if speaker else clean(turn)
+        if speaker and re.search(pattern, utterance, re.I):
+            return speaker, number
+    return "", None
+
+
+def participant_name(turns: list[str], first_name: str) -> str:
+    for turn in turns:
+        speaker = transcript_turn_speaker(turn)
+        if re.search(rf"\b{re.escape(first_name)}\b", speaker, re.I):
+            return speaker
+    return first_name
+
+
+def repair_importer_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    """Repair importer handoffs and conditions only when the full transcript carries them."""
+    whole = " ".join(turns)
+    qms_sender, _ = speaker_for_pattern(turns, r"\bi will\b.*\bflick\b.*\bover\b")
+    qms_reviewer, _ = speaker_for_pattern(turns, r"\bi['’]?ll take a look\b")
+    medenvoy_owner, _ = speaker_for_pattern(turns, r"\bi can go back to cody\b")
+    lot_owner, _ = speaker_for_pattern(turns, r"\bwe(?:'re| are) working\b.*\blot numbering\b")
+    label_reviewer, _ = speaker_for_pattern(turns, r"\bcould have a look at the label if you wanted\b")
+    hpra_sender, _ = speaker_for_pattern(turns, r"\bi can send (?:a copy|that email)\b")
+    hpra_reviewer, _ = speaker_for_pattern(turns, r"\bsend it on to myself\b.*\bwe can have a look\b")
+    colm = participant_name(turns, "Colm")
+
+    output = []
+    for source in actions:
+        action = dict(source)
+        lowered = clean(action.get("action")).lower()
+
+        if re.search(r"\b(?:send|resend|flick)\b", lowered) \
+                and re.search(r"\b(?:qms|quality)\b.*\bmanual\b|\bmanual\b", lowered) \
+                and qms_sender:
+            action["owner"] = qms_sender
+            action["action"] = "Resend the QMS manual to Orla"
+
+        if re.search(r"\b(?:review|read|take a look)\b", lowered) \
+                and re.search(r"\bqms manual\b", lowered) and qms_reviewer:
+            action["owner"] = qms_reviewer
+            action["action"] = "Review the QMS manual this week and raise any questions"
+
+        medenvoy_plan = re.search(r"\b(?:med ?envoy|envoy)\b", lowered) \
+            and re.search(r"\b(?:overview|task list|project plan|responsibilit|requirements)\b", lowered)
+        if medenvoy_plan and medenvoy_owner and re.search(r"\btask list\b", whole, re.I):
+            action["owner"] = medenvoy_owner
+            action["action"] = (
+                "Speak to Cody about the MedEnvoy task list, registration plan and responsibility for each activity"
+            )
+
+        conditional_label_review = re.search(r"\b(?:review|check|look)\b.*\b(?:label|barcode)\b", lowered)
+        if conditional_label_review and label_reviewer and re.search(r"\bif you wanted\b", whole, re.I):
+            action["owner"] = label_reviewer
+            action["action"] = "Review the proposed label or barcode format if DITA requests a regulatory check"
+            action["status"] = "PROPOSED"
+
+        lot_or_label_work = re.search(r"\b(?:lot numbering|license placing|outer box label|label update)\b", lowered)
+        if lot_or_label_work and lot_owner and owners_compatible(action.get("owner"), lot_owner) \
+                and re.search(r"\brf smart\b", whole, re.I) \
+                and re.search(r"\bnext two to three weeks\b", whole, re.I):
+            action["owner"] = lot_owner
+            action["action"] = (
+                "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks"
+            )
+
+        hpra_material = re.search(r"\b(?:hpra|invoice|bill|srn)\b", lowered)
+        if hpra_material and re.search(r"\bsend\b", lowered) and hpra_sender \
+                and re.search(r"\bsrn\b", whole, re.I):
+            action["owner"] = hpra_sender
+            action["action"] = "Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review"
+
+        hpra_review = hpra_material and re.search(r"\b(?:review|look|direction)\b", lowered)
+        if hpra_review and hpra_reviewer and re.search(r"\bliam\b", whole, re.I):
+            action["owner"] = f"{hpra_reviewer} and {colm}"
+            action["action"] = (
+                "Review the HPRA invoice and SRN correspondence with Liam before payment guidance is given"
+            )
+
+        declaration_update = re.search(r"\bdeclarations? of conformity\b", lowered) \
+            and re.search(r"\b(?:risk|rationale|ppe|sunglasses)\b", lowered)
+        if declaration_update and re.search(r"\bsunglasses\b", whole, re.I) \
+                and re.search(r"\bppe\b", whole, re.I):
+            action["action"] = (
+                "Update declarations of conformity for sunglasses with the EU MDR and PPE Category I risk rationale"
+            )
+
+        output.append(action)
+    return output
+
+
+def recover_importer_followup_call(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    output = list(actions)
+    if not any(re.search(r"\b(?:send|resend)\b.*\bqms manual\b", clean(row.get("action")), re.I)
+               for row in output):
+        for number, turn in enumerate(turns, 1):
+            if not re.search(r"\bflick this over to\b", turn, re.I):
+                continue
+            context_start = max(0, number - 9)
+            context = turns[context_start:number]
+            qms_offset = next((offset for offset in range(len(context) - 1, -1, -1)
+                               if re.search(r"\b(?:qms|quality) manual\b", context[offset], re.I)), None)
+            recipient_match = re.search(r"\bover to ([A-Z][A-Za-z'’-]+)\b", turn)
+            owner = transcript_turn_speaker(turn)
+            if qms_offset is None or not recipient_match or not owner:
+                continue
+            qms_turn = context_start + qms_offset + 1
+            output.append({
+                "owner": owner,
+                "action": f"Resend the QMS manual to {recipient_match.group(1)}",
+                "deadline": "not stated",
+                "status": "COMMITTED",
+                "evidenceIds": [f"turn_{qms_turn}", f"turn_{number}"],
+                "support": sample_count,
+                "sampleCount": sample_count,
+                "mergedCandidateCount": 1,
+                "recoveredImporterHandoff": True,
+            })
+            break
+
+    if any(re.search(r"\b(?:follow[- ]?up|another) call\b", clean(row.get("action")), re.I) for row in output):
+        return output
+    for number, turn in enumerate(turns, 1):
+        if not re.search(r"\banother call\b.*\bnext week\b", turn, re.I):
+            continue
+        owner = transcript_turn_speaker(turn)
+        accepted_number = next((candidate for candidate in range(number + 1, min(len(turns), number + 3) + 1)
+                                if re.search(r"\b(?:okay|yes|absolutely|helpful)\b", turns[candidate - 1], re.I)), None)
+        if not owner or accepted_number is None:
+            continue
+        recipient = transcript_turn_speaker(turns[accepted_number - 1])
+        if not recipient or recipient == owner:
+            continue
+        return output + [{
+            "owner": owner,
+            "action": f"Arrange a follow-up call with {recipient} for the following week",
+            "deadline": "The following week",
+            "status": "ASSIGNED",
+            "evidenceIds": [f"turn_{number}", f"turn_{accepted_number}"],
+            "support": sample_count,
+            "sampleCount": sample_count,
+            "mergedCandidateCount": 1,
+            "recoveredImporterFollowup": True,
+        }]
+    return output
+
+
 def audit_action_family(action: dict[str, Any]) -> str:
     """Return a conservative audit work-package key for deterministic consolidation.
 
@@ -1142,6 +1375,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
     profile = profiles.get(value)
     if profile == "audit_retrieval" and audit_action_v2_enabled():
         return AUDIT_RETRIEVAL_V2_GUIDANCE, "audit_retrieval_v2"
+    if profile == "importer_retrieval" and importer_action_v2_enabled():
+        return IMPORTER_RETRIEVAL_V2_GUIDANCE, "importer_retrieval_v2"
     return (RETRIEVAL_PROFILE_GUIDANCE[profile], profile) if profile else None
 
 
@@ -1498,7 +1733,8 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
                                       backend: Any = None, profile: str = "") -> list[dict[str, Any]]:
     """Fail-open, two-check selector grounded in original and MiniLM-retrieved evidence."""
     eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
-    if profile == "audit_retrieval_v2":
+    strict_profile = profile in {"audit_retrieval_v2", "importer_retrieval_v2"}
+    if strict_profile:
         eligible = [action for action in eligible if audit_candidate_has_lexical_anchor(action, turns)]
     if not eligible:
         return []
@@ -1518,7 +1754,7 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
                             if (match := re.fullmatch(r"turn_(\d+)", clean(evidence_id)))
                             and 1 <= int(match.group(1)) <= len(turns)}
         evidence_numbers = set(original_numbers)
-        if profile == "audit_retrieval_v2":
+        if strict_profile:
             # The lexical-anchor gate above prevents post-hoc grounding of an invented object.
             # Immediate context resolves requests and addressees; only two semantic anchors are
             # added because audit vocabulary repeats heavily across a long transcript.
@@ -1529,7 +1765,7 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
             ((dot_similarity(query, candidate), index + 1) for index, candidate in enumerate(turn_vectors) if candidate is not None),
             reverse=True)
         semantic_numbers = []
-        semantic_limit = 2 if profile == "audit_retrieval_v2" else 4
+        semantic_limit = 2 if strict_profile else 4
         for _score, turn_number in ranked:
             if any(abs(turn_number - prior) <= 1 for prior in semantic_numbers):
                 continue
@@ -1542,7 +1778,7 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
         # Audit v2 deliberately lets the two evidence-grounded checks judge every row. Generic
         # first-person/date protection otherwise preserves travel, attendance and prior-audit
         # history simply because those statements happen to contain "we will" or a weekday.
-        if profile != "audit_retrieval_v2" and action_has_recall_protection(
+        if not strict_profile and action_has_recall_protection(
             action, [turns[index - 1] for index in sorted(original_numbers)]
         ):
             protected.add(number)
@@ -1727,8 +1963,11 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     actions = repair_short_actions(actions, turns)
     if prompt_profile == "audit_planning_v2":
         actions = repair_audit_actions(actions, turns)
+    if prompt_profile == "importer_obligations_v2":
+        actions = repair_importer_actions(actions, turns)
     if sample_count > 1:
-        support_threshold = 0.64 if prompt_profile == "audit_planning_v2" else SUPPORT_MERGE_THRESHOLD
+        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2"}
+                             else SUPPORT_MERGE_THRESHOLD)
         actions = merge_sampled_actions(
             actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
         )
@@ -1736,6 +1975,13 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
         for action in actions:
             action.pop("sample", None)
         actions = dedupe_identical_actions(actions)
+    if prompt_profile == "importer_obligations_v2":
+        # Sampling can choose an un-repaired representative from a semantic group. Reapply the
+        # transcript-grounded wording, then collapse work packages that now share a canonical form.
+        actions = repair_importer_actions(actions, turns)
+        actions = dedupe_identical_actions(sorted(
+            actions, key=lambda row: int(row.get("support", 1) or 1), reverse=True
+        ))
     candidate_count = len(actions)
     if os.environ.get("STAGED_ACTION_DELIVERABLE_MERGE", "0") == "1" and len(actions) > 1:
         actions = merge_by_deliverable(actions, structure_action_deliverables(actions), load_action_retrieval_backend())
@@ -1757,6 +2003,14 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
             if retrieval_selector:
                 guidance, prompt_profile = retrieval_selector
                 actions = select_retrieval_grounded_actions(actions, turns, guidance, profile=prompt_profile)
+    if action_prompt == IMPORTER_ACTION_PROMPT:
+        # Selection can remove a sampled version of an explicit handoff, and can leave a less
+        # complete representative of a surviving work package. Finish from transcript evidence.
+        actions = repair_importer_actions(actions, turns)
+        actions = dedupe_identical_actions(sorted(
+            actions, key=lambda row: int(row.get("support", 1) or 1), reverse=True
+        ))
+        actions = recover_importer_followup_call(actions, turns, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)

@@ -122,6 +122,23 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Software weekly review")[1], "software_weekly_review")
             self.assertEqual(PIPELINE.retrieval_selector_profile("Importer obligations review")[1], "importer_retrieval")
 
+    def test_importer_v2_flag_routes_dedicated_extractor_and_selector(self):
+        with mock.patch.dict(os.environ, {"STAGED_IMPORTER_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type("Importer obligations review")
+            guidance, selector_profile = PIPELINE.retrieval_selector_profile("Importer obligations review")
+        self.assertEqual(action_profile, "importer_obligations_v2")
+        self.assertEqual(selector_profile, "importer_retrieval_v2")
+        self.assertIs(prompt, PIPELINE.IMPORTER_ACTION_PROMPT)
+        self.assertIn("standing legal", prompt)
+        self.assertIn("warehouse/order/ERP", guidance)
+
+    def test_importer_v2_flag_does_not_change_other_meeting_types(self):
+        with mock.patch.dict(os.environ, {"STAGED_IMPORTER_ACTION_V2": "1"}):
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Technical file review")[1],
+                             "technical_file_review")
+            self.assertEqual(PIPELINE.retrieval_selector_profile("Audit kick-off / planning")[1],
+                             "audit_retrieval")
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -477,6 +494,63 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(len(rows), 5)
         self.assertEqual([row["action"] for row in rows[:2]],
                          ["Send the code of conduct to Niamh", "Complete the code of conduct"])
+
+    def test_importer_repairs_handoffs_conditions_and_work_packages_from_evidence(self):
+        turns = [
+            "Jacqui Fox   7:26I will flick this over to Orla.",
+            "Orla Skally   7:41I'll take a look at the QMS manual this week.",
+            "Orla Skally   17:53I can go back to Cody and ask about the MedEnvoy task list.",
+            "Orla Skally   12:46We're working currently on lot numbering with RF Smart.",
+            "Jenny Gough   14:01I could have a look at the label if you wanted.",
+            "Orla Skally   24:50In the next two to three weeks we'll have the label system.",
+            "Orla Skally   30:46The HPRA sent me a bill and I can send a copy.",
+            "Jacqui Fox   31:07Send it on to myself, Colm. We can have a look and talk to Liam.",
+            "Orla Skally   31:27I can send that email following the SRN confirmation.",
+            "Colm O'Rourke   31:41That would be good.",
+            "John-Paul Hughes   32:01The sunglasses need the EU MDR and PPE rationale.",
+        ]
+        rows = PIPELINE.repair_importer_actions([
+            {"owner": "Cody", "action": "Get an overview and task list from MedEnvoy", "evidenceIds": ["turn_3"]},
+            {"owner": "Jenny Gough", "action": "Review the label", "evidenceIds": ["turn_5"]},
+            {"owner": "Orla Skally", "action": "Implement lot numbering process", "evidenceIds": ["turn_4"]},
+            {"owner": "Orla Skally", "action": "Send the HPRA bill copy", "evidenceIds": ["turn_7"]},
+            {"owner": "Jacqui Fox", "action": "Review the HPRA bill and seek direction", "evidenceIds": ["turn_8"]},
+            {"owner": "John-Paul Hughes", "action": "Update declarations of conformity with the PPE risk rationale",
+             "evidenceIds": ["turn_9"]},
+        ], turns)
+        self.assertEqual(rows[0]["owner"], "Orla Skally")
+        self.assertIn("responsibility for each activity", rows[0]["action"])
+        self.assertEqual(rows[1]["status"], "PROPOSED")
+        self.assertIn("if DITA requests", rows[1]["action"])
+        self.assertIn("next two to three weeks", rows[2]["action"])
+        self.assertEqual(rows[3]["owner"], "Orla Skally")
+        self.assertIn("SRN confirmation email", rows[3]["action"])
+        self.assertEqual(rows[4]["owner"], "Jacqui Fox and Colm O'Rourke")
+        self.assertIn("before payment guidance", rows[4]["action"])
+        self.assertIn("EU MDR and PPE Category I", rows[5]["action"])
+
+    def test_importer_recovers_only_an_accepted_next_week_followup_call(self):
+        turns = [
+            "Jacqui Fox   30:20We'll look at another call in the diary with you next week if that's okay.",
+            "Orla Skally   30:27Okay, yes, that would be helpful.",
+        ]
+        recovered = PIPELINE.recover_importer_followup_call([], turns, 3)
+        self.assertEqual(recovered[0]["owner"], "Jacqui Fox")
+        self.assertEqual(recovered[0]["action"], "Arrange a follow-up call with Orla Skally for the following week")
+        self.assertEqual(recovered[0]["support"], 3)
+        self.assertEqual(PIPELINE.recover_importer_followup_call([], [turns[0]], 3), [])
+
+    def test_importer_recovers_explicit_qms_handoff_when_sampling_misses_it(self):
+        turns = [
+            "Jacqui Fox   7:20This is the QMS manual that was sent on Friday.",
+            "Orla Skally   7:24That's okay.",
+            "Jacqui Fox   7:26I will flick this over to Orla.",
+        ]
+        recovered = PIPELINE.recover_importer_followup_call([], turns, 3)
+        self.assertEqual(recovered[0]["owner"], "Jacqui Fox")
+        self.assertEqual(recovered[0]["action"], "Resend the QMS manual to Orla")
+        self.assertEqual(recovered[0]["evidenceIds"], ["turn_1", "turn_3"])
+        self.assertEqual(recovered[0]["support"], 3)
 
 
 class SampledActionSupportTests(unittest.TestCase):
