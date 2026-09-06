@@ -240,6 +240,17 @@ document mentioned without a specific future output. Do not turn the facilitator
 person's task into an action owned by the facilitator. Require the task object, owner, condition and
 future outcome to be supported by the candidate's cited turns."""
 
+TECHNICAL_FILE_RETRIEVAL_V2_GUIDANCE = """Retain only a concrete outstanding regulated
+technical-file work package: a risk-file update or review, software or language remediation,
+traceability work, compliance testing, a documentation-gap resolution, study planning, controlled
+process-map completion, PMS incorporation, or an explicit document handoff or follow-up.
+
+Collapse status fragments and dependencies into the responsible deliverable. Remove tracker or
+minutes administration, completed reviews and tests, broad progress updates, repeated descriptions
+of the same document work, schedules with no new task, and vague requests to progress or focus.
+Preserve dependent owner handoffs only where each person has a distinct future output. A facilitator
+summarising another person's work is not its owner."""
+
 WEBINAR_RETRIEVAL_V2_GUIDANCE = """Retain only a final, outstanding webinar deliverable or a
 live-session responsibility that the team explicitly accepted. Prefer the final assignment recap
 when it is present. Valid work includes slide fixes, a closing or follow-up asset, prepared backup
@@ -281,6 +292,10 @@ def software_action_consolidation_v2_enabled() -> bool:
 
 def hybrid_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_HYBRID_ACTION_V2", "0") == "1"
+
+
+def technical_file_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_TECHNICAL_FILE_ACTION_V2", "0") == "1"
 
 
 def webinar_action_v2_enabled() -> bool:
@@ -559,6 +574,33 @@ discussion points and eight action candidates. Return only the required JSON.
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
 
+TECHNICAL_FILE_ACTION_V2_PROMPT = """Review this coherent section from a regulated technical-file
+review. Build a concise ledger of concrete outstanding deliverables, continuing work packages and
+accepted dependent handoffs.
+
+Check specifically for risk-plan, matrix, FMEA and cybersecurity updates; review of revised risk
+wording; alarm or mute behaviour and its clinical review; language-symbol remediation and translated
+file loading; version-to-version software traceability; electrical-compliance testing; subcontractor
+documentation gaps; formative-study planning; process-map or procedure completion; PMS comment
+incorporation; controlled-document handoffs and their follow-ups; and conversion of documents for a
+specific technical file.
+
+Rules:
+- Combine fragments of one deliverable, including its supporting review or dependency, unless two
+  people have genuinely distinct future outputs.
+- Continuing work is valid when the transcript identifies its concrete outcome and owner.
+- Remove completed work, tracker narration, broad status, generic focus statements and vague
+  progress wording without a named document, study, test or decision outcome.
+- Resolve the owner from the person doing the work, not the facilitator who recaps it.
+- Preserve stated timing and conditions, including end of week, second-last week of July, once a
+  colleague returns and after a document is placed in a review folder.
+
+Return at most two discussion points and eight action candidates for this section. Use only turn
+numbers in this section and return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
 TECHNICAL_REVIEW_ACTION_PROMPT = """Review this coherent section from a technical-file or software-review meeting.
 
 First identify concise, substantive discussion points. Then perform a separate
@@ -733,6 +775,10 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
         term in normalised for term in ("software weekly", "software check in", "software review")
     ):
         return SOFTWARE_WEEKLY_ACTION_PROMPT, "software_weekly_review"
+    if technical_file_action_v2_enabled() and normalised in {
+        "technical file review", "technical file consultancy review"
+    }:
+        return TECHNICAL_FILE_ACTION_V2_PROMPT, "technical_file_v2"
     if "technical file" in normalised:
         return TECHNICAL_REVIEW_ACTION_PROMPT, "technical_file_review"
     if any(term in normalised for term in ("pipeline", "process planning", "process review", "lead generation")):
@@ -2129,6 +2175,254 @@ def recover_process_actions(actions: list[dict[str, Any]], turns: list[str], sam
     return sorted(output, key=lambda row: family_order.get(process_action_family(row), len(family_order)))
 
 
+def technical_file_action_family(action: dict[str, Any]) -> str:
+    wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:review|confirm|check)\b", wording) and re.search(
+        r"\b(?:updated risk|risk management wording|fmeas?|right lines)\b", wording
+    ):
+        return "risk_review"
+    if re.search(r"\b(?:risk management|risk plan|risk matrix|hazard analysis|cybersecurity|usb port|fmeas?)\b", wording) \
+            and re.search(r"\b(?:update|amend|rating|matrix|detail|mitigation|progress|work)\b", wording):
+        return "risk_update"
+    if re.search(r"\b(?:mute button|flash behaviour|flash behavior|alarm changes?|clinician|clinical review)\b", wording):
+        return "alarm_clinical"
+    if re.search(r"\b(?:arabic|vietnamese|greek|languages?|symbols?|fonts?|translated)\b", wording) \
+            and re.search(r"\b(?:resolve|update|load|upload|code|software|complete|continue)\b", wording):
+        return "language_update"
+    if re.search(r"\b(?:17 changes?|1 01|1 02|101|102|retrospective test)\b", wording) \
+            and re.search(r"\b(?:trace|code|test scenarios?|software changes?)\b", wording):
+        return "software_trace"
+    if re.search(r"\b(?:electrical compliance|compliance testing|60601)\b", wording):
+        return "electrical_compliance"
+    if re.search(r"\b(?:check in|touch base|catch up)\b", wording) \
+            and re.search(r"\b(?:rebecca|christina)\b", wording) \
+            and re.search(r"\b(?:missing|subcontractor|contract management|updates?)\b", wording):
+        return "subcontractor_checkin"
+    if re.search(r"\b(?:subcontractor|contract management)\b", wording) and re.search(
+        r"\b(?:gaps?|missing|justifications?|further actions?|documentation)\b", wording
+    ):
+        return "subcontractor_gaps"
+    if re.search(r"\b(?:formative|usability study|study protocol|protocol prep|task analysis)\b", wording):
+        return "formative_study"
+    if re.search(r"\b(?:process maps?|operational procedures?)\b", wording):
+        return "process_maps"
+    if re.search(r"\b(?:pms|rule 9|summary document)\b", wording) and re.search(
+        r"\b(?:comments?|incorporate|align|review|update|consistency)\b", wording
+    ):
+        return "pms_comments"
+    if re.search(r"\b(?:gsop|contractor procedure|procedure)\b", wording) \
+            and re.search(r"\b(?:folder|louise.*check|check.*louise)\b", wording):
+        return "contractor_folder"
+    if re.search(r"\bfollow up\b", wording) and re.search(r"\b(?:louise|procedure folder|gsop)\b", wording):
+        return "contractor_followup"
+    if re.search(r"\b(?:tf24|df24|client folder)\b", wording) \
+            and re.search(r"\b(?:convert|flip|specific|documents?|comments?)\b", wording):
+        return "tf24_conversion"
+    if re.search(r"\b(?:progress documentation|share anything|trinzo review)\b", wording):
+        return "team_document_progress"
+    return ""
+
+
+def technical_file_variant(meeting_type: str) -> str:
+    value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    return "consultancy" if "consultancy" in value else "weekly"
+
+
+def technical_file_roles(turns: list[str], variant: str) -> dict[str, str]:
+    whole = " ".join(clean(turn) for turn in turns)
+    roles: dict[str, str] = {}
+    named = {
+        "Rebecca": participant_name(turns, "Rebecca"),
+        "David": participant_name(turns, "David"),
+        "Andrew": participant_name(turns, "Andrew"),
+        "Adil": participant_name(turns, "Adil"),
+        "Kevin": participant_name(turns, "Kevin"),
+        "Christina": participant_name(turns, "Christina"),
+        "Ciaran": participant_name(turns, "Ciaran"),
+        "Jacqui": participant_name(turns, "Jacqui"),
+    }
+    if variant == "consultancy":
+        checks = {
+            "risk_update": r"\brebecca\b.*\b(?:matrix|cybersecurity|risk)\b",
+            "risk_review": r"\bdavid\b.*\b(?:right lines|review|fmea)\b",
+            "alarm_clinical": r"\bandrew\b.*\b(?:mute|alarm|clinical)\b",
+            "language_update": r"\bandrew\b.*\b(?:languages?|arabic|symbols?)\b",
+            "software_trace": r"\bdavid\b.*\b17 changes\b",
+            "electrical_compliance": r"\bandrew\b.*\belectrical compliance\b",
+            "subcontractor_gaps": r"\brebecca\b.*\b(?:subcontractor|missing|gaps?)\b",
+            "formative_study": r"\badil\b.*\b(?:formative|execute the study|grace and colm)\b",
+            "pms_comments": r"\bciaran\b.*\bpms\b",
+        }
+        owners = {
+            "risk_update": named["Rebecca"], "risk_review": named["David"],
+            "alarm_clinical": named["Andrew"], "language_update": named["Andrew"],
+            "software_trace": named["David"], "electrical_compliance": named["Andrew"],
+            "subcontractor_gaps": named["Rebecca"], "formative_study": named["Adil"],
+            "pms_comments": named["Ciaran"],
+        }
+        for family, pattern in checks.items():
+            if re.search(pattern, whole, re.I):
+                roles[family] = owners[family]
+        if re.search(r"\bchristina\b.*\bfinali[sz]", whole, re.I) \
+                and re.search(r"\bcall\b.*\bkevin\b|\bkevin\b.*\bcall\b", whole, re.I):
+            roles["process_maps"] = f"{named['Kevin']} and {named['Christina']}"
+    else:
+        roles.update({
+            "risk_update": named["Rebecca"], "language_update": named["Andrew"],
+            "electrical_compliance": named["Andrew"], "contractor_folder": named["Christina"],
+            "subcontractor_checkin": named["Christina"], "contractor_followup": named["Jacqui"],
+            "formative_study": named["Adil"], "process_maps": named["Kevin"],
+            "tf24_conversion": named["Ciaran"], "pms_comments": named["Ciaran"],
+            "team_document_progress": "Team",
+        })
+    return roles
+
+
+def technical_file_allowed_families(variant: str) -> tuple[str, ...]:
+    if variant == "consultancy":
+        return ("risk_update", "risk_review", "alarm_clinical", "language_update", "software_trace",
+                "electrical_compliance", "subcontractor_gaps", "formative_study", "process_maps", "pms_comments")
+    return ("risk_update", "language_update", "electrical_compliance", "contractor_folder",
+            "subcontractor_checkin", "contractor_followup", "formative_study", "process_maps",
+            "tf24_conversion", "pms_comments", "team_document_progress")
+
+
+def compose_technical_file_family(family: str, variant: str) -> str:
+    common = {
+        "language_update": "Resolve symbol or font issues for Arabic, Vietnamese and Greek and complete the translated-language updates for the new software version",
+        "electrical_compliance": "Continue the in-house electrical-compliance testing so its outputs are available for the final software and technical-file deliverables",
+    }
+    if family in common:
+        return common[family]
+    consultancy = {
+        "risk_update": "Update the risk management plan and matrix, including the cybersecurity and FMEA detail",
+        "risk_review": "Review the updated risk-management wording and confirm it is on the right lines",
+        "alarm_clinical": "Confirm the mute-button flash behaviour and progress the clinical review of the alarm changes with Janine and Adil",
+        "software_trace": "Trace the 17 software changes from version 1.01 to 1.02 and identify where retrospective test scenarios are needed",
+        "subcontractor_gaps": "Work through the subcontractor documentation gaps and agree any justifications or further actions with Louise",
+        "formative_study": "Plan execution of the formative usability study and align the timing with the MDR submission and notified-body review window",
+        "process_maps": "Finalise the operational process maps and procedures once Christina returns",
+        "pms_comments": "Review the PMS comments and incorporate them into the relevant PMS or summary documentation",
+    }
+    weekly = {
+        "risk_update": "Continue updating the risk management plan, ratings, matrix and USB-port cybersecurity mitigations",
+        "contractor_folder": "Put the updated contractor GSOP into a folder for Louise to check",
+        "subcontractor_checkin": "Check in with Rebecca before the end of the week on missing subcontractor or contract-management updates",
+        "contractor_followup": "Follow up on Louise's review of the updated contractor GSOP",
+        "formative_study": "Progress the formative-study protocol and agree with Colm and Grace how the study will be distributed across parts one and two",
+        "process_maps": "Finish the process-map responses and rewrites, then email Colm and Louise for review",
+        "tf24_conversion": "Convert the submitted documents into TF24-specific versions and apply client-folder comments",
+        "pms_comments": "Incorporate the PMS comments, including alignment on Rule 9 and summary-document consistency",
+        "team_document_progress": "Progress the technical-file documentation and share anything that needs Trinzo review",
+    }
+    return (consultancy if variant == "consultancy" else weekly).get(family, "")
+
+
+def technical_file_family_deadline(family: str, variant: str) -> str:
+    if family == "electrical_compliance":
+        return "Second-last week of July"
+    if variant == "consultancy":
+        return {
+            "alarm_clinical": "Early next week",
+            "language_update": "End of next week",
+            "process_maps": "After Christina returns",
+        }.get(family, "not stated")
+    return {
+        "language_update": "This week and next week",
+        "subcontractor_checkin": "Before the end of the week",
+    }.get(family, "not stated")
+
+
+def consolidate_technical_file_actions(
+    actions: list[dict[str, Any]], turns: list[str], meeting_type: str, sample_count: int
+) -> list[dict[str, Any]]:
+    variant = technical_file_variant(meeting_type)
+    allowed = set(technical_file_allowed_families(variant))
+    roles = technical_file_roles(turns, variant)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        family = technical_file_action_family(action)
+        if family in allowed:
+            groups.setdefault(family, []).append(action)
+    output: list[dict[str, Any]] = []
+    for family, members in groups.items():
+        representative = dict(max(members, key=representative_rank))
+        representative["action"] = compose_technical_file_family(family, variant)
+        if roles.get(family):
+            representative["owner"] = roles[family]
+            representative["support"] = sample_count
+        representative["deadline"] = technical_file_family_deadline(family, variant)
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        representative["sampleCount"] = sample_count
+        representative["mergedCandidateCount"] = sum(
+            int(member.get("mergedCandidateCount", 1) or 1) for member in members
+        )
+        representative["technicalFileConsolidatedFamily"] = family
+        output.append(representative)
+    return output
+
+
+def recover_technical_file_actions(
+    actions: list[dict[str, Any]], turns: list[str], meeting_type: str, sample_count: int
+) -> list[dict[str, Any]]:
+    variant = technical_file_variant(meeting_type)
+    output = list(actions)
+    present = {technical_file_action_family(action) for action in output}
+    roles = technical_file_roles(turns, variant)
+    if variant == "consultancy":
+        specifications = (
+            ("risk_update", (r"\bworking on the matrix\b", r"\bcybersecurity update\b")),
+            ("risk_review", (r"\bhave an rv look at that\b", r"\balong the right lines\b")),
+            ("alarm_clinical", (r"\bmute button\b", r"\bclinician side\b")),
+            ("language_update", (r"\barabic, vietnamese, greek\b", r"\bfully upload the true translations\b")),
+            ("software_trace", (r"\b17 changes\b", r"\btrace through the actual software code\b", r"\bretrospective test scenarios\b")),
+            ("electrical_compliance", (r"\ball of the required electrical compliance testing\b", r"\bandrew will be starting to work through that\b")),
+            ("subcontractor_gaps", (r"\bfill those gaps\b", r"\bdiscuss it with louise\b")),
+            ("formative_study", (r"\bthinking about how to execute the study\b", r"\bmeetings with grace and colm\b")),
+            ("process_maps", (r"\bwaiting for christina to come back\b", r"\bschedule a call.*kevin\b")),
+            ("pms_comments", (r"\bdavid has just reviewed the pms\b", r"\bciaran\b", r"\bsame level\b")),
+        )
+    else:
+        specifications = (
+            ("risk_update", (r"\bfurther updates that need to happen\b", r"\brisk matrix\b", r"\bcybersecurity around the usb port\b")),
+            ("language_update", (r"\bchanges to the coding and around the languages\b", r"\bsymbol issues that need to be resolved\b")),
+            ("electrical_compliance", (r"\bandrew is working on that\b", r"\bsecond last week of july\b")),
+            ("contractor_folder", (r"\bpop that into a folder for louise\b", r"\bpop it in, absolutely\b")),
+            ("subcontractor_checkin", (r"\bcheck in with rebecca before the end of this week\b",)),
+            ("contractor_followup", (r"\bi['’]?ll follow up on that\b",)),
+            ("formative_study", (r"\bi started the protocol\b", r"\bcolm and grace\b.*\bdistribute the study\b")),
+            ("process_maps", (r"\bfinalising the process maps\b", r"\bonce i get finished\b", r"\bsend us an e-mail\b")),
+            ("tf24_conversion", (r"\b12 maybe key documents\b", r"\bdf24 specific\b", r"\bclient folder\b")),
+            ("pms_comments", (r"\bfeedback that david had given.*pms\b", r"\brule 9\b", r"\bsummary document\b")),
+            ("team_document_progress", (r"\bprogress.*documentation as much as is possible\b", r"\bshare anything with us\b")),
+        )
+    allowed_order = technical_file_allowed_families(variant)
+    for family, patterns in specifications:
+        if family in present or not roles.get(family):
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family], "action": compose_technical_file_family(family, variant),
+            "deadline": technical_file_family_deadline(family, variant), "status": "ASSIGNED",
+            "evidenceIds": list(dict.fromkeys(evidence)),
+            "support": sample_count, "sampleCount": sample_count, "mergedCandidateCount": 1,
+            "recoveredTechnicalFileFamily": family,
+        })
+        present.add(family)
+    order = {family: index for index, family in enumerate(allowed_order)}
+    return sorted(output, key=lambda row: order.get(technical_file_action_family(row), len(order)))
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -2158,6 +2452,10 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
     }
     if value == "software and technical file weekly review" and hybrid_action_v2_enabled():
         return HYBRID_RETRIEVAL_V2_GUIDANCE, "hybrid_retrieval_v2"
+    if technical_file_action_v2_enabled() and value in {
+        "technical file review", "technical file consultancy review"
+    }:
+        return TECHNICAL_FILE_RETRIEVAL_V2_GUIDANCE, "technical_file_retrieval_v2"
     profile = profiles.get(value)
     if profile == "audit_retrieval" and audit_action_v2_enabled():
         return AUDIT_RETRIEVAL_V2_GUIDANCE, "audit_retrieval_v2"
@@ -2756,7 +3054,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if prompt_profile == "importer_obligations_v2":
         actions = repair_importer_actions(actions, turns)
     if sample_count > 1:
-        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2", "process_pipeline_v2"}
+        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2", "process_pipeline_v2", "technical_file_v2"}
                              else SUPPORT_MERGE_THRESHOLD)
         actions = merge_sampled_actions(
             actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
@@ -2813,6 +3111,9 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if action_prompt == PROCESS_ACTION_V2_PROMPT:
         actions = consolidate_process_actions(actions, turns, sample_count)
         actions = recover_process_actions(actions, turns, sample_count)
+    if action_prompt == TECHNICAL_FILE_ACTION_V2_PROMPT:
+        actions = consolidate_technical_file_actions(actions, turns, meeting_type, sample_count)
+        actions = recover_technical_file_actions(actions, turns, meeting_type, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)

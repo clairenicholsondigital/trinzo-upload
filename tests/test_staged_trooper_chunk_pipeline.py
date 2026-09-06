@@ -194,6 +194,21 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(PIPELINE.action_prompt_for_meeting_type("General")[1], "general")
             self.assertIsNone(PIPELINE.retrieval_selector_profile("General"))
 
+    def test_technical_file_v2_routes_both_t733_variants_only_when_enabled(self):
+        for meeting_type in ("Technical file review", "Technical file consultancy review"):
+            with self.subTest(meeting_type=meeting_type), mock.patch.dict(
+                os.environ, {"STAGED_TECHNICAL_FILE_ACTION_V2": "1"}
+            ):
+                prompt, action_profile = PIPELINE.action_prompt_for_meeting_type(meeting_type)
+                guidance, retrieval_profile = PIPELINE.retrieval_selector_profile(meeting_type)
+                self.assertIs(prompt, PIPELINE.TECHNICAL_FILE_ACTION_V2_PROMPT)
+                self.assertEqual(action_profile, "technical_file_v2")
+                self.assertEqual(retrieval_profile, "technical_file_retrieval_v2")
+                self.assertIn("facilitator", guidance)
+        with mock.patch.dict(os.environ, {"STAGED_TECHNICAL_FILE_ACTION_V2": "1"}):
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type(
+                "Software and technical-file weekly review")[1], "software_weekly_review")
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -724,6 +739,36 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(by_family["client_delivery_capture"]["owner"],
                          "Sales and client-delivery team")
         self.assertEqual(by_family["conditional_pilot"]["support"], 3)
+
+    def test_technical_file_consolidation_uses_variant_specific_work_packages(self):
+        turns = [
+            "Rebecca Gill: I'm working on the risk matrix and cybersecurity update.",
+            "David Didsbury: I will review the updated FMEAs and confirm they are on the right lines.",
+            "Jacqui Fox: Andrew is resolving Arabic, Vietnamese and Greek symbol issues.",
+            "Jacqui Fox: Ciaran needs to incorporate the PMS comments into the summary document.",
+            "Christina McLean: I will put the updated contractor GSOP into a folder for Louise to check.",
+        ]
+        actions = [
+            {"owner": "Unknown", "action": "Update the risk management matrix and cybersecurity detail",
+             "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Review the updated FMEAs and confirm the wording is on the right lines",
+             "evidenceIds": ["turn_2"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Resolve Arabic Vietnamese and Greek language symbol issues",
+             "evidenceIds": ["turn_3"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Put the contractor procedure in a folder for Louise to check",
+             "evidenceIds": ["turn_5"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Update the minutes tracker table",
+             "evidenceIds": ["turn_1"], "sampleCount": 3},
+        ]
+        consultancy = PIPELINE.consolidate_technical_file_actions(
+            actions, turns, "Technical file consultancy review", 3)
+        weekly = PIPELINE.consolidate_technical_file_actions(
+            actions, turns, "Technical file review", 3)
+        self.assertEqual({PIPELINE.technical_file_action_family(row) for row in consultancy},
+                         {"risk_update", "risk_review", "language_update"})
+        self.assertEqual({PIPELINE.technical_file_action_family(row) for row in weekly},
+                         {"risk_update", "language_update", "contractor_folder"})
+        self.assertTrue(all(row["support"] == 3 for row in consultancy + weekly))
 
 
 class SampledActionSupportTests(unittest.TestCase):
