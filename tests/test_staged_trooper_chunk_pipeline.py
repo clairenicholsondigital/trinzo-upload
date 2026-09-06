@@ -145,6 +145,25 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"STAGED_SOFTWARE_ACTION_CONSOLIDATION_V2": "1"}):
             self.assertTrue(PIPELINE.software_action_consolidation_v2_enabled())
 
+    def test_hybrid_v2_flag_routes_dedicated_extractor_and_retrieval_selector(self):
+        meeting_type = "Software and technical-file weekly review"
+        with mock.patch.dict(os.environ, {"STAGED_HYBRID_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type(meeting_type)
+            selector = PIPELINE.selective_actual_action_profile(meeting_type)
+            guidance, retrieval_profile = PIPELINE.retrieval_selector_profile(meeting_type)
+        self.assertIs(prompt, PIPELINE.HYBRID_ACTION_PROMPT)
+        self.assertIsNone(selector)
+        self.assertEqual(action_profile, "hybrid_technical_v2")
+        self.assertEqual(retrieval_profile, "hybrid_retrieval_v2")
+        self.assertIn("dependent\nhandoffs", guidance)
+
+    def test_hybrid_v2_flag_does_not_change_software_only_routing(self):
+        with mock.patch.dict(os.environ, {"STAGED_HYBRID_ACTION_V2": "1"}):
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Software weekly review")[1],
+                             "software_weekly_review")
+            self.assertEqual(PIPELINE.retrieval_selector_profile("Software weekly review")[1],
+                             "software_retrieval")
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -580,6 +599,31 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(by_family["nebulizer_standard_review"]["owner"], "David Didsbury and Colm")
         self.assertEqual(by_family["debug_command_handoff"]["owner"], "David Didsbury")
         self.assertEqual(by_family["debug_command_test"]["owner"], "Andrew Kane")
+
+    def test_hybrid_review_consolidates_work_packages_and_recovers_split_handoffs(self):
+        turns = [
+            "Andrew Kane   5:24That's probably something I need to look at for the mute button LED.",
+            "Jacqui Fox   6:10We need a mini review with the clinicians around the audible sound.",
+            "Rebecca Cuckoo   6:30That's been pushed out until next week.",
+            "David Didsbury   9:28I might give you some more letters to try when you're back at the debug program.",
+            "David Didsbury   10:20I want to physically see the debug result.",
+            "Rebecca Cuckoo   33:49The 27427 standard needs an applicability review.",
+            "Jacqui Fox   34:06I can follow follow up with Colm as well.",
+            "Jacqui Fox   34:42We're back to normal on Tuesday, Rebecca, I'll add you to that.",
+        ]
+        consolidated = PIPELINE.consolidate_hybrid_actions([
+            {"owner": "David", "action": "Confirm LED behavior when the mute button is pressed", "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "Andrew", "action": "Investigate the alarm LED flashing for the mute button", "evidenceIds": ["turn_1"], "sampleCount": 3},
+        ], turns)
+        recovered = PIPELINE.recover_hybrid_actions(consolidated, turns, 3)
+        by_family = {PIPELINE.hybrid_action_family(row): row for row in recovered}
+        self.assertEqual(by_family["mute_led_confirmation"]["owner"], "Andrew Kane")
+        self.assertEqual(by_family["mute_led_confirmation"]["support"], 3)
+        self.assertEqual(by_family["debug_command_handoff"]["owner"], "David Didsbury")
+        self.assertEqual(by_family["debug_command_test"]["owner"], "Andrew Kane")
+        self.assertEqual(by_family["standard_applicability"]["owner"], "Jacqui Fox")
+        self.assertEqual(by_family["recurring_call"]["action"], "Add Rebecca to the regular Tuesday follow-up call")
+        self.assertEqual(by_family["clinician_alarm_review"]["support"], 3)
 
 
 class SampledActionSupportTests(unittest.TestCase):

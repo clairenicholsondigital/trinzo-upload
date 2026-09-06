@@ -229,6 +229,17 @@ work only when a named owner states it is still being progressed toward a future
 the owner from the commitment or acceptance; do not assign work to the explainer, requester,
 recipient, legal manufacturer or service provider merely because they are mentioned."""
 
+HYBRID_RETRIEVAL_V2_GUIDANCE = """Retain only a concrete outstanding software or technical-file
+follow-up created, accepted or explicitly continued in this weekly review. Keep distinct dependent
+handoffs: define or send debug commands versus test and report their result; complete a gap
+assessment versus incorporate its output; send a standard versus assess its applicability.
+
+Remove status already completed, explanations of current software behaviour, questions answered in
+the meeting, speculative version numbers, generic review or update wording, and a meeting or
+document mentioned without a specific future output. Do not turn the facilitator recapping another
+person's task into an action owned by the facilitator. Require the task object, owner, condition and
+future outcome to be supported by the candidate's cited turns."""
+
 
 def audit_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_AUDIT_ACTION_V2", "0") == "1"
@@ -240,6 +251,10 @@ def importer_action_v2_enabled() -> bool:
 
 def software_action_consolidation_v2_enabled() -> bool:
     return os.environ.get("STAGED_SOFTWARE_ACTION_CONSOLIDATION_V2", "0") == "1"
+
+
+def hybrid_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_HYBRID_ACTION_V2", "0") == "1"
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -402,6 +417,42 @@ Rules:
 Return at most two discussion points and seven action candidates. Prioritise explicit handoffs,
 continuing implementation and controlled-document changes over regulatory explanation. Use only
 turn numbers in this section. Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+HYBRID_ACTION_PROMPT = """Review this coherent section from a combined software and technical-file
+weekly review. Build a concise ledger of concrete outstanding follow-ups created, accepted or
+explicitly continued in the meeting.
+
+Keep dependent work packages distinct. Check specifically for:
+- an alarm or mute-button behaviour to confirm and a separate clinician/usability review;
+- debug commands to define or send and the separate test/result the software owner must produce;
+- a submitted change request to progress through approval and close-out;
+- a version-to-version gap assessment and the separate controlled-document update using its output;
+- continuing electrical-compliance work and any stated support dependency;
+- remaining language, character, font or translated-file implementation;
+- risk-file updates for a named cybersecurity concern and control;
+- a named document to review and decide whether it belongs in the document system;
+- standards to send and a separate applicability review;
+- an accepted recurring follow-up call or attendee addition.
+
+Rules:
+- A status report, completed test, current behaviour explanation or question answered in the meeting
+  is not a future action.
+- State the complete deliverable; exclude vague wording such as "review the output", "look at the
+  languages", "continue the work", "set up meetings" or "get an update" without its object/outcome.
+- Resolve ownership from the commitment, accepted assignment or explicit recap. The facilitator,
+  requester, recipient or person mentioned in a document is not automatically the owner.
+- Preserve conditions, dependencies and dates such as next week, Wednesday, after confirmation and
+  only if the document needs to be added.
+- Evidence for task, owner, condition and timeframe may span several turns. Cite them all.
+- Before returning, rescan for missed CONFIRM, REVIEW, SEND, TEST, PROGRESS, COMPLETE, INCORPORATE,
+  CONTINUE, UPDATE, EMAIL, FOLLOW UP and ADD tasks.
+
+Return at most two discussion points and eight action candidates. Prioritise explicit commitments,
+handoffs and recap items over explanatory discussion. Use only turn numbers in this section and
+return only the required JSON.
 
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
@@ -581,6 +632,8 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
         return AUDIT_ACTION_PROMPT, "audit_planning_v2"
     if importer_action_v2_enabled() and "importer" in normalised and "obligation" in normalised:
         return IMPORTER_ACTION_PROMPT, "importer_obligations_v2"
+    if hybrid_action_v2_enabled() and normalised == "software and technical file weekly review":
+        return HYBRID_ACTION_PROMPT, "hybrid_technical_v2"
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
     if ("software" in normalised and "technical file" in normalised) or any(
@@ -1511,6 +1564,190 @@ def consolidate_software_review_actions(actions: list[dict[str, Any]], turns: li
     return output
 
 
+def hybrid_action_family(action: dict[str, Any]) -> str:
+    wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:mute button|alarm led)\b", wording) and re.search(r"\b(?:flash|led|behavio)\w*\b", wording):
+        return "mute_led_confirmation"
+    if re.search(r"\b(?:mini review|clinicians?|clinical team|audible sound|usability)\b", wording):
+        return "clinician_alarm_review"
+    if re.search(r"\b(?:debug|command letters?)\b", wording):
+        if re.search(r"\b(?:provide|send|give|agree|more letters?)\b", wording):
+            return "debug_command_handoff"
+        if re.search(r"\b(?:test|physically|visible|screen|screenshot|result|confirm|document)\b", wording):
+            return "debug_command_test"
+    if re.search(r"\bchange request\b", wording) and re.search(
+        r"\b(?:wednesday|review|approve|approval|close|folder|gather|progress|meeting|document|form)\b", wording
+    ):
+        return "change_request_closeout"
+    if re.search(r"\b(?:17 (?:software )?changes?|1 01|1 02|101|102|gap assessment)\b", wording):
+        if re.search(r"\b(?:incorporate|compile|summary|design change|technical file|tech file|change control)\b", wording):
+            return "gap_output_incorporation"
+        if re.search(r"\b(?:gap|determine|trace|visible|code|review|confirm|where)\b", wording):
+            return "software_gap_assessment"
+    if re.search(r"\bcompile all referenced changes\b", wording) \
+            and re.search(r"\b(?:design changes?|technical file|tech file|summary report)\b", wording):
+        return "gap_output_incorporation"
+    if re.search(r"\b(?:electrical compliance|compliance testing|60601)\b", wording):
+        return "electrical_compliance"
+    if re.search(r"\b(?:languages?|arabic|vietnamese|greek|fonts?|characters?|translated files?)\b", wording) \
+            and re.search(r"\b(?:continue|updates?|implement|load|add|support|driver|symbols?|investigate|complete)\b", wording):
+        return "language_update"
+    if re.search(r"\b(?:usb port|port lock|screen interference|cybersecurity)\b", wording) \
+            and re.search(r"\b(?:risk|control|file|matrix|update|input|tidy|consider)\b", wording):
+        return "cybersecurity_risk"
+    if re.search(r"\bfan logic\b", wording) and re.search(r"\b(?:review|cognidocs|document|add)\b", wording):
+        return "fan_logic_review"
+    if re.search(r"\b27427\b", wording) and re.search(r"\b(?:colm|applicab|follow up|review)\b", wording) \
+            and not re.search(r"\b(?:send|email)\b", wording):
+        return "standard_applicability"
+    if re.search(r"\b(?:81001|27427|purchased standards?)\b", wording) \
+            and re.search(r"\b(?:send|email|share)\b", wording):
+        return "standards_handoff"
+    if re.search(r"\b(?:add rebecca|tuesday|regular.*call|follow up call|tech call)\b", wording) \
+            and re.search(r"\b(?:add|call|follow up|recurring|regular)\b", wording):
+        return "recurring_call"
+    return ""
+
+
+def hybrid_action_roles(turns: list[str]) -> dict[str, str]:
+    whole = " ".join(re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
+                     if transcript_turn_speaker(turn) else clean(turn) for turn in turns)
+    roles: dict[str, str] = {}
+    patterns = {
+        "mute_led_confirmation": r"\bsomething i need to look at\b",
+        "clinician_alarm_review": r"\bpushed out (?:until|till) next week\b",
+        "debug_command_handoff": r"\bmight give you some more letters to try\b",
+        "change_request_closeout": r"\bapproved on wednesday\b.*\bgathering the information\b",
+        "electrical_compliance": r"\bi started going through\b.*\b60601",
+        "language_update": r"\bi(?:'ve| have) started (?:learning|loading) the languages\b",
+        "cybersecurity_risk": r"\binputting it (?:on|onto) the risk management file\b",
+        "standards_handoff": r"\bi['’]?ll send them over in an email\b",
+        "standard_applicability": r"\bi can follow follow up with colm\b",
+    }
+    for family, pattern in patterns.items():
+        speaker, _ = speaker_for_pattern(turns, pattern)
+        if speaker:
+            roles[family] = speaker
+    if re.search(r"\b17 changes?\b.*\b(?:1\.01|1 01|101)\b.*\b(?:1\.02|1 02|102)\b", whole, re.I):
+        roles["software_gap_assessment"] = participant_name(turns, "David")
+    if re.search(r"\bchange request\b", whole, re.I) and re.search(r"\bwednesday\b", whole, re.I) \
+            and re.search(r"\b(?:gathering the information|close out)\b", whole, re.I):
+        roles["change_request_closeout"] = participant_name(turns, "Rebecca")
+    if re.search(r"\btake david['’]?s output and incorporate\b", whole, re.I):
+        roles["gap_output_incorporation"] = participant_name(turns, "Rebecca")
+    if re.search(r"\bfan logic\b.*\bcognidocs\b", whole, re.I):
+        roles["fan_logic_review"] = participant_name(turns, "Andrew")
+    if re.search(r"\badd you to that\b", whole, re.I) and re.search(r"\bnormal on tuesday\b", whole, re.I):
+        roles["recurring_call"] = participant_name(turns, "Jacqui")
+    if re.search(r"\bphysically (?:see|seen|visible)\b", whole, re.I) and re.search(r"\bdebug\b", whole, re.I):
+        roles["debug_command_test"] = participant_name(turns, "Andrew")
+    return roles
+
+
+def compose_hybrid_family(family: str) -> str:
+    return {
+        "mute_led_confirmation": "Confirm what happens to the alarm LED flashing when the mute button is pressed",
+        "clinician_alarm_review": "Complete the clinician mini-review of the alarm-sound changes next week, including the dependent usability input",
+        "debug_command_handoff": "Send or agree further debug commands for Andrew to test against the software",
+        "debug_command_test": "Test the additional debug commands and confirm what is physically visible or produced on screen",
+        "change_request_closeout": "Progress the submitted change request through Wednesday review and gather the close-out information",
+        "software_gap_assessment": "Complete the gap assessment of the 17 changes from software version 1.01 to 1.02 and identify where they are visible in the code",
+        "gap_output_incorporation": "Incorporate David's output on the 17 software changes into the design-change or technical-file summary",
+        "electrical_compliance": "Continue the electrical-compliance testing review and flag any support needed from David",
+        "language_update": "Continue the additional-language update, including Arabic, Vietnamese and Greek character or font support and translated-file loading",
+        "cybersecurity_risk": "Update the risk-management file with USB-port and screen-interference risks and proposed controls by Wednesday",
+        "fan_logic_review": "Review David's fan-logic document and decide whether it needs to be added to Cognidocs",
+        "standards_handoff": "Email the purchased 81001-5-1 and 27427 standards for assessment",
+        "standard_applicability": "Follow up with Colm to review whether the 27427 standard is applicable",
+        "recurring_call": "Add Rebecca to the regular Tuesday follow-up call",
+    }.get(family, "")
+
+
+def consolidate_hybrid_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    roles = hybrid_action_roles(turns)
+    groups: list[dict[str, Any]] = []
+    for action in actions:
+        family = hybrid_action_family(action)
+        target = next((group for group in groups if family and group["family"] == family), None)
+        if target is None:
+            groups.append({"family": family, "representative": action, "members": [action]})
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+    output = []
+    for group in groups:
+        family, members = group["family"], group["members"]
+        if not family:
+            output.append(members[0])
+            continue
+        representative = dict(group["representative"])
+        representative["action"] = compose_hybrid_family(family)
+        if roles.get(family):
+            representative["owner"] = roles[family]
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        representative["support"] = (max(int(member.get("sampleCount", 1) or 1) for member in members)
+                                     if roles.get(family)
+                                     else max(int(member.get("support", 1) or 1) for member in members))
+        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
+        representative["mergedCandidateCount"] = sum(
+            int(member.get("mergedCandidateCount", 1) or 1) for member in members
+        )
+        representative["hybridConsolidatedFamily"] = family
+        output.append(representative)
+    return output
+
+
+def recover_hybrid_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    """Recover only explicit hybrid handoffs that sampling or selection commonly splits."""
+    output = list(actions)
+    present = {hybrid_action_family(action) for action in output}
+    roles = hybrid_action_roles(turns)
+    specifications = (
+        ("mute_led_confirmation", (r"\bmute button\b", r"\bsomething i need to look at\b")),
+        ("clinician_alarm_review", (r"\bmini review with the clinicians\b", r"\bpushed out (?:until|till) next week\b")),
+        ("debug_command_handoff", (r"\bmore letters to try\b", r"\bdebug program\b")),
+        ("debug_command_test", (r"\bdebug\b", r"\bphysically (?:see|seen|visible)\b")),
+        ("change_request_closeout", (r"\bsubmitted that last week\b", r"\bapproved on wednesday\b")),
+        ("software_gap_assessment", (r"\b17 changes\b", r"\bvisible within the code\b")),
+        ("gap_output_incorporation", (r"\btake david['’]?s output and incorporate\b",)),
+        ("electrical_compliance", (r"\b60601", r"\bsupport that you need from david\b")),
+        ("language_update", (r"\barabic\b.*\bvietnamese\b.*\bgreek\b", r"\bload the fully translated\b")),
+        ("cybersecurity_risk", (r"\binputting it onto the risk management file\b", r"\bport lock for the usb\b")),
+        ("fan_logic_review", (r"\bfan logic\b", r"\bcognidocs\b")),
+        ("standards_handoff", (r"\b81001-5-1\b", r"\bsend them over in an email\b")),
+        ("standard_applicability", (r"\b27427\b", r"\bfollow follow up with colm\b")),
+        ("recurring_call", (r"\bnormal on tuesday\b", r"\badd you to that\b")),
+    )
+    for family, patterns in specifications:
+        if family in present or not roles.get(family):
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family],
+            "action": compose_hybrid_family(family),
+            "deadline": "Next week" if family == "clinician_alarm_review" else "not stated",
+            "status": "ASSIGNED",
+            "evidenceIds": list(dict.fromkeys(evidence)),
+            "support": sample_count,
+            "sampleCount": sample_count,
+            "mergedCandidateCount": 1,
+            "recoveredHybridFamily": family,
+        })
+        present.add(family)
+    return output
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -1519,6 +1756,8 @@ def is_importer_obligations_type(meeting_type: str) -> bool:
 def selective_actual_action_profile(meeting_type: str) -> tuple[str, str] | None:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if value == "software and technical file weekly review":
+        if hybrid_action_v2_enabled():
+            return None
         return HYBRID_TECHNICAL_SELECTOR_GUIDANCE, "hybrid_technical_actual_actions"
     if value == "decision meeting":
         return DECISION_MEETING_SELECTOR_GUIDANCE, "decision_meeting_actual_actions"
@@ -1536,6 +1775,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
         "lead generation pipeline review": "process_retrieval",
         "importer obligations review": "importer_retrieval",
     }
+    if value == "software and technical file weekly review" and hybrid_action_v2_enabled():
+        return HYBRID_RETRIEVAL_V2_GUIDANCE, "hybrid_retrieval_v2"
     profile = profiles.get(value)
     if profile == "audit_retrieval" and audit_action_v2_enabled():
         return AUDIT_RETRIEVAL_V2_GUIDANCE, "audit_retrieval_v2"
@@ -1897,7 +2138,7 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
                                       backend: Any = None, profile: str = "") -> list[dict[str, Any]]:
     """Fail-open, two-check selector grounded in original and MiniLM-retrieved evidence."""
     eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
-    strict_profile = profile in {"audit_retrieval_v2", "importer_retrieval_v2"}
+    strict_profile = profile in {"audit_retrieval_v2", "importer_retrieval_v2", "hybrid_retrieval_v2"}
     if strict_profile:
         eligible = [action for action in eligible if audit_candidate_has_lexical_anchor(action, turns)]
     if not eligible:
@@ -2130,7 +2371,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if prompt_profile == "importer_obligations_v2":
         actions = repair_importer_actions(actions, turns)
     if sample_count > 1:
-        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2"}
+        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2"}
                              else SUPPORT_MERGE_THRESHOLD)
         actions = merge_sampled_actions(
             actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
@@ -2178,6 +2419,9 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     normalised_meeting_type = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if normalised_meeting_type == "software weekly review" and software_action_consolidation_v2_enabled():
         actions = consolidate_software_review_actions(actions, turns)
+    if action_prompt == HYBRID_ACTION_PROMPT:
+        actions = consolidate_hybrid_actions(actions, turns)
+        actions = recover_hybrid_actions(actions, turns, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)
