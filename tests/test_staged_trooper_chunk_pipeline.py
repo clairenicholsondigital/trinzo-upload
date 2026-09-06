@@ -1,6 +1,8 @@
 import importlib.util
+import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -104,6 +106,22 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             with self.subTest(meeting_type=meeting_type):
                 self.assertIsNone(PIPELINE.retrieval_selector_profile(meeting_type))
 
+    def test_audit_v2_flag_routes_dedicated_extractor_and_selector(self):
+        with mock.patch.dict(os.environ, {"STAGED_AUDIT_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type("Audit kick-off / planning")
+            guidance, selector_profile = PIPELINE.retrieval_selector_profile("Audit kick-off / planning")
+        self.assertEqual(action_profile, "audit_planning_v2")
+        self.assertEqual(selector_profile, "audit_retrieval_v2")
+        self.assertIs(prompt, PIPELINE.AUDIT_ACTION_PROMPT)
+        self.assertIn("previous or other audits", prompt)
+        self.assertNotIn("whether an auditor will run a separate track", prompt)
+        self.assertIn("travel", guidance)
+
+    def test_audit_v2_flag_does_not_change_other_meeting_types(self):
+        with mock.patch.dict(os.environ, {"STAGED_AUDIT_ACTION_V2": "1"}):
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Software weekly review")[1], "software_weekly_review")
+            self.assertEqual(PIPELINE.retrieval_selector_profile("Importer obligations review")[1], "importer_retrieval")
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -140,6 +158,50 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         finally:
             PIPELINE.call_trooper = original
         self.assertEqual(selected, actions)
+
+    def test_audit_v2_selector_does_not_bypass_consensus_removal_via_generic_protection(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        actions = [{"owner": "Stuart", "action": "Attend the audit on Wednesday",
+                    "status": "COMMITTED", "evidenceIds": ["turn_1"]}]
+        original = PIPELINE.call_trooper
+        prompts = []
+        try:
+            def remove_all(prompt, *_args):
+                prompts.append(prompt)
+                return {"decisions": [{
+                    "candidateNumber": 1, "decision": "REMOVE", "rejectionCode": "MEETING_ADMIN",
+                    "evidenceTurns": [1],
+                }]}
+            PIPELINE.call_trooper = remove_all
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                actions, ["Stuart: I will attend the audit on Wednesday.", "Alex: Understood.",
+                          "Alex: This is a nearby turn.", "Alex: Unrelated distant audit wording."],
+                PIPELINE.AUDIT_RETRIEVAL_V2_GUIDANCE, Backend(), profile="audit_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected, [])
+        self.assertEqual(len(prompts), 2)
+        self.assertTrue(all("Turn 2:" in prompt for prompt in prompts))
+
+    def test_audit_v2_drops_candidate_without_object_in_its_cited_evidence(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        action = {"owner": "Unknown", "action": "Decide whether an auditor runs a separate track",
+                  "status": "REQUIRED", "evidenceIds": ["turn_1"]}
+        self.assertFalse(PIPELINE.audit_candidate_has_lexical_anchor(
+            action, ["Jacqui: I will share some opening key points."]))
+        original = PIPELINE.call_trooper
+        try:
+            PIPELINE.call_trooper = lambda *_args: self.fail("ungrounded audit candidate reached selector")
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                [action], ["Jacqui: I will share some opening key points."],
+                PIPELINE.AUDIT_RETRIEVAL_V2_GUIDANCE, Backend(), profile="audit_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected, [])
 
     def test_importer_quality_filter_rejects_generic_objects(self):
         rows = [
@@ -335,6 +397,35 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertFalse(PIPELINE.action_has_recall_protection(action, ["Stuart: you need to do a desktop audit, it must be done"]))
         self.assertTrue(PIPELINE.action_has_recall_protection(action, ["Stuart: I'll share the risk analysis before you arrive"]))
 
+    def test_audit_repairs_prerequisite_addressee_and_track_decision_object(self):
+        turns = [
+            "Niamh Lynch: What do I need to complete?",
+            "Jacqui Fox: The training documents are next.",
+            "Smith, Stuart M: You will need to complete the code of conduct first.",
+            "Niamh Lynch: Are you going to have me on a separate track?",
+            "Smith, Stuart M: I am working through the logistics and risk analysis for a separate track.",
+        ]
+        rows = PIPELINE.repair_audit_actions([
+            {"owner": "Smith, Stuart M", "action": "Complete the code of conduct",
+             "status": "REQUIRED", "evidenceIds": ["turn_3"]},
+            {"owner": "Smith, Stuart M", "action": "Work through logistics and risk analysis",
+             "status": "ASSIGNED", "evidenceIds": ["turn_5"]},
+        ], turns)
+        self.assertEqual(rows[0]["owner"], "Niamh Lynch")
+        self.assertEqual(rows[1]["owner"], "Smith, Stuart M")
+        self.assertEqual(rows[1]["action"],
+                         "Decide whether Niamh should run a separate audit track based on the risk analysis and logistics")
+
+    def test_audit_repairs_joint_owners_for_accepted_hotel_catch_up(self):
+        rows = PIPELINE.repair_audit_actions([{
+            "owner": "Niamh Lynch", "action": "Arrange a catch-up meeting at the hotel",
+            "status": "ASSIGNED", "evidenceIds": ["turn_1", "turn_2"],
+        }], [
+            "Niamh Lynch: Do we need a catch-up meeting?",
+            "Stuart M: Yes, we can meet at the hotel.",
+        ])
+        self.assertEqual(rows[0]["owner"], "Stuart M and Niamh Lynch")
+
 
 class SampledActionSupportTests(unittest.TestCase):
     class FakeBackend:
@@ -367,6 +458,22 @@ class SampledActionSupportTests(unittest.TestCase):
         self.assertNotIn("sample", risk)
         tiers = [row["tier"] for row in PIPELINE.assign_action_tiers(merged, 3)]
         self.assertEqual(tiers, [1, 2])
+
+    def test_audit_threshold_can_merge_consistent_lower_similarity_wording(self):
+        vectors = {
+            "Prepare the audit scope and applicable standards": [1.0, 0.0],
+            "Build the scope, classifications and standards list": [0.65, 0.76],
+        }
+        actions = [
+            {"owner": "Stuart", "action": text, "status": "ASSIGNED",
+             "evidenceIds": [f"turn_{index}"], "sample": index - 1}
+            for index, text in enumerate(vectors, 1)
+        ]
+        backend = self.FakeBackend(vectors)
+        self.assertEqual(len(PIPELINE.merge_sampled_actions(actions, 3, backend)), 2)
+        merged = PIPELINE.merge_sampled_actions(actions, 3, backend, threshold=0.64)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["support"], 2)
 
     def test_single_sample_proposals_are_dropped_and_other_minority_rows_are_raised(self):
         rows = [

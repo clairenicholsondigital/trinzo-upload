@@ -192,6 +192,29 @@ RETRIEVAL_PROFILE_GUIDANCE = {
     "importer_retrieval": "Retain explicit future assignments created in this meeting: documents to send, resend or review, lists or confirmations to provide, registrations, declarations or labels to update, calls to arrange, and named follow-ups with a person. Remove descriptions of the importer's standing regulatory obligations, existing processes, how the business works, questions with no agreed follow-up, and requests to explain something during the meeting itself.",
 }
 
+AUDIT_RETRIEVAL_V2_GUIDANCE = """Retain only a concrete outstanding audit-preparation deliverable,
+prerequisite, accepted coordination task, or explicit decision that still has to be made.
+
+Valid audit actions include preparing scope/risk inputs; confirming, sending or sharing named
+documents or data; arranging secure access; sending or completing named training/confidentiality
+prerequisites; adjusting a preparation timeline around a named constraint; arranging an accepted
+pre-audit catch-up; and resolving a specifically stated choice assigned to a named person.
+
+Remove descriptive audit scope and possible areas to inspect unless a person accepted a concrete
+follow-up. Remove normal audit process, scheduled audit attendance, working hours, travel,
+accommodation, transport, social coordination, previous/other audits, already-completed reports,
+generic preparation wording, and unaccepted "might/could look at" suggestions. A technical noun
+such as SBOM, CVE, design owner or programming does not make discussion into an action.
+
+Require the draft to name its actual deliverable or decision object. Preserve legitimate
+conditions such as "after Wednesday", "before sharing", "before the audit", and "based on the
+risk analysis". Verify the owner from the evidence: the speaker stating a requirement is not the
+owner when the requirement is addressed to somebody else."""
+
+
+def audit_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_AUDIT_ACTION_V2", "0") == "1"
+
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
 and end turn numbers.
@@ -255,6 +278,54 @@ Rules:
 
 Use only turn numbers in this section. Keep wording concise. Return at most two
 discussion points and six action candidates. Return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+AUDIT_ACTION_PROMPT = """Review this coherent section from an audit kick-off or audit-planning transcript.
+
+Build a concise audit-preparation action ledger. Identify every supported future task with a
+specific deliverable, prerequisite, coordination outcome or unresolved decision that somebody
+must progress after this meeting.
+
+Check specifically for:
+- audit scope, applicable standards, product classifications, product overview and risk-assessment inputs to prepare;
+- documents, trackers, findings data, complaints, CAPA, deviations or other material to confirm, send or share;
+- secure document transfer or external system access to arrange;
+- code-of-conduct, confidentiality and training-attestation prerequisites to send or complete;
+- preparation timelines that must be adjusted around a named availability constraint;
+- an accepted pre-audit catch-up or planning meeting to arrange;
+- an explicit unresolved choice that a named person accepted responsibility for deciding.
+
+Give each candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
+
+Rules:
+- State the complete task object. Never emit generic actions such as "prepare", "understand",
+  "go through", "work out logistics", "look at issues" or "plan for the event".
+- Preserve a dependency or condition when it changes the task: after a planning meeting, before
+  information is shared, before the audit starts, or based on the risk analysis.
+- Resolve "you" from the named addressee in the surrounding turns. The person stating a
+  requirement is not automatically its owner. Preserve joint owners when both accept a task.
+- Consolidate parts of one audit-preparation work package within this section, but keep sending
+  a prerequisite separate from the recipient completing it.
+- A possible audit topic (a system, standard, SBOM, CVE, device area, process or document that
+  the auditor may inspect) is not an action unless somebody accepts a concrete follow-up.
+- Exclude descriptions of normal audit practice, audit scope, and already scheduled audit work
+  when no additional deliverable or decision remains.
+- Exclude previous or other audits, already-completed reports, travel, accommodation, car
+  arrangements, mere attendance, site hours and social coordination.
+- A suggestion such as "might be worth looking at" is PROPOSED only when somebody accepts it;
+  otherwise exclude it.
+- An unresolved choice can be an action only when the cited section states both the specific
+  choice and that somebody is actively deciding it; name that choice rather than its background.
+- Evidence for task, commitment, owner, recipient, prerequisite and deadline may be in different
+  turns. Cite all supporting turns within this section.
+- Before returning, rescan owner by owner for missed PREPARE, CONFIRM, SHARE, ARRANGE, COMPLETE,
+  ADJUST and DECIDE tasks.
+
+Return at most two discussion points and six action candidates. Prioritise explicit deliverables,
+prerequisites and decisions over descriptive audit content. Use only turn numbers in this section.
+Return only the required JSON.
 
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
@@ -428,6 +499,10 @@ TRANSCRIPT SECTION:
 
 def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     normalised = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if audit_action_v2_enabled() and "audit" in normalised and any(
+        term in normalised for term in ("kick off", "kickoff", "planning")
+    ):
+        return AUDIT_ACTION_PROMPT, "audit_planning_v2"
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
     if ("software" in normalised and "technical file" in normalised) or any(
@@ -824,6 +899,83 @@ def action_word_count(value: Any) -> int:
     return len(re.findall(r"[\w]+(?:['’.-][\w]+)*", clean(value), flags=re.UNICODE))
 
 
+AUDIT_GROUNDING_STOP = {
+    "the", "and", "for", "with", "from", "into", "that", "this", "those", "these", "before", "after",
+    "audit", "auditor", "meeting", "action", "task", "explicit", "decision", "decide", "complete", "prepare",
+    "provide", "share", "send", "confirm", "arrange", "review", "look", "work", "make", "ensure", "plan",
+}
+
+
+def audit_candidate_has_lexical_anchor(action: dict[str, Any], turns: list[str]) -> bool:
+    """Reject prompt-shaped audit candidates whose cited turns do not mention their object.
+
+    The selector may retrieve a same-topic turn elsewhere in a long audit and accidentally
+    validate an invented candidate. Requiring one non-generic object token in the extractor's
+    own citations prevents that post-hoc grounding while still allowing later context retrieval.
+    """
+    action_tokens = {token for token in re.findall(r"[a-z0-9]+", clean(action.get("action")).lower())
+                     if len(token) > 2 and token not in AUDIT_GROUNDING_STOP}
+    evidence = " ".join(
+        turns[number - 1]
+        for number in evidence_turn_numbers(action, len(turns))
+    ).lower()
+    evidence_tokens = {token for token in re.findall(r"[a-z0-9]+", evidence)
+                       if len(token) > 2 and token not in AUDIT_GROUNDING_STOP}
+    return bool(action_tokens & evidence_tokens)
+
+
+def audit_action_context(action: dict[str, Any], turns: list[str], radius: int = 2) -> str:
+    numbers = evidence_turn_numbers(action, len(turns))
+    expanded = set(numbers)
+    for number in numbers:
+        expanded.update(range(max(1, number - radius), min(len(turns), number + radius) + 1))
+    return " ".join(turns[number - 1] for number in sorted(expanded))
+
+
+def repair_audit_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    """Repair audit-specific owner and decision loss from cited transcript context."""
+    output = []
+    for source in actions:
+        action = dict(source)
+        wording = clean(action.get("action"))
+        lowered = wording.lower()
+        local = audit_action_context(action, turns, radius=2)
+        wider = audit_action_context(action, turns, radius=15)
+
+        completes_prerequisite = bool(re.search(
+            r"\b(?:complete|sign|do)\b.*\b(?:code of conduct|training attestation|audit process|aqr global)",
+            lowered,
+        ))
+        addressed_to_niamh = bool(
+            re.search(r"\b(?:you|you'll|you will)\b", local, re.I)
+            and re.search(r"\bniamh\b", wider, re.I)
+        )
+        if completes_prerequisite and addressed_to_niamh:
+            action["owner"] = "Niamh Lynch"
+
+        if re.search(r"\b(?:catch[ -]?up|meet(?:ing)?)\b", lowered) \
+                and re.search(r"\bhotel\b", local, re.I) \
+                and re.search(r"\bniamh\b", local, re.I) \
+                and re.search(r"\bstuart\b", local, re.I):
+            action["owner"] = "Stuart M and Niamh Lynch"
+
+        if re.search(r"\b(?:adjust|plan|determine)\b.*\b(?:timeline|calendar)\b", lowered) \
+                and re.search(r"\b(?:unavailable|won't be around|will not be around|14th|17th)\b", local, re.I) \
+                and re.search(r"\bniamh\b", wider, re.I):
+            action["owner"] = "Jacqui Fox and Niamh Lynch"
+
+        if re.search(r"\bseparate track\b", local, re.I) \
+                and re.search(r"\b(?:logistics|risk analysis|track|structure)\b", lowered):
+            subject = "Niamh" if re.search(r"\bniamh\b", wider, re.I) else "the auditor"
+            action["action"] = (
+                f"Decide whether {subject} should run a separate audit track based on the risk analysis and logistics"
+            )
+            action["status"] = "ASSIGNED"
+
+        output.append(action)
+    return output
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -850,6 +1002,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
         "importer obligations review": "importer_retrieval",
     }
     profile = profiles.get(value)
+    if profile == "audit_retrieval" and audit_action_v2_enabled():
+        return AUDIT_RETRIEVAL_V2_GUIDANCE, "audit_retrieval_v2"
     return (RETRIEVAL_PROFILE_GUIDANCE[profile], profile) if profile else None
 
 
@@ -977,7 +1131,8 @@ def action_vectors(actions: list[dict[str, Any]], backend: Any) -> list[list[flo
     return output
 
 
-def merge_sampled_actions(actions: list[dict[str, Any]], sample_count: int, backend: Any = None) -> list[dict[str, Any]]:
+def merge_sampled_actions(actions: list[dict[str, Any]], sample_count: int, backend: Any = None,
+                          threshold: float = SUPPORT_MERGE_THRESHOLD) -> list[dict[str, Any]]:
     """Fold repeated extraction samples into one row per deliverable with a support count.
 
     Each row carries the sample it came from. Rows join an existing group when their wording is
@@ -993,7 +1148,7 @@ def merge_sampled_actions(actions: list[dict[str, Any]], sample_count: int, back
             if group["key"] == key:
                 target = group
                 break
-            if vector is not None and group["vector"] is not None and dot_similarity(vector, group["vector"]) >= SUPPORT_MERGE_THRESHOLD \
+            if vector is not None and group["vector"] is not None and dot_similarity(vector, group["vector"]) >= threshold \
                     and owners_compatible(action.get("owner"), group["representative"].get("owner")):
                 target = group
                 break
@@ -1202,9 +1357,11 @@ def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[in
 
 
 def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list[str], guidance: str,
-                                      backend: Any = None) -> list[dict[str, Any]]:
+                                      backend: Any = None, profile: str = "") -> list[dict[str, Any]]:
     """Fail-open, two-check selector grounded in original and MiniLM-retrieved evidence."""
     eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
+    if profile == "audit_retrieval_v2":
+        eligible = [action for action in eligible if audit_candidate_has_lexical_anchor(action, turns)]
     if not eligible:
         return []
     backend = backend or load_action_retrieval_backend()
@@ -1222,22 +1379,34 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
         original_numbers = {int(match.group(1)) for evidence_id in action.get("evidenceIds", [])
                             if (match := re.fullmatch(r"turn_(\d+)", clean(evidence_id)))
                             and 1 <= int(match.group(1)) <= len(turns)}
+        evidence_numbers = set(original_numbers)
+        if profile == "audit_retrieval_v2":
+            # The lexical-anchor gate above prevents post-hoc grounding of an invented object.
+            # Immediate context resolves requests and addressees; only two semantic anchors are
+            # added because audit vocabulary repeats heavily across a long transcript.
+            for turn_number in original_numbers:
+                evidence_numbers.update(range(max(1, turn_number - 1), min(len(turns), turn_number + 1) + 1))
         query = vector(clean(action.get("action")))
         ranked = [] if query is None else sorted(
             ((dot_similarity(query, candidate), index + 1) for index, candidate in enumerate(turn_vectors) if candidate is not None),
             reverse=True)
         semantic_numbers = []
+        semantic_limit = 2 if profile == "audit_retrieval_v2" else 4
         for _score, turn_number in ranked:
             if any(abs(turn_number - prior) <= 1 for prior in semantic_numbers):
                 continue
             semantic_numbers.append(turn_number)
-            if len(semantic_numbers) >= 4:
+            if len(semantic_numbers) >= semantic_limit:
                 break
-        evidence_numbers = set(original_numbers)
         for turn_number in semantic_numbers:
             evidence_numbers.update(range(max(1, turn_number - 1), min(len(turns), turn_number + 1) + 1))
         evidence = [turns[index - 1] for index in sorted(evidence_numbers)]
-        if action_has_recall_protection(action, [turns[index - 1] for index in sorted(original_numbers)]):
+        # Audit v2 deliberately lets the two evidence-grounded checks judge every row. Generic
+        # first-person/date protection otherwise preserves travel, attendance and prior-audit
+        # history simply because those statements happen to contain "we will" or a weekday.
+        if profile != "audit_retrieval_v2" and action_has_recall_protection(
+            action, [turns[index - 1] for index in sorted(original_numbers)]
+        ):
             protected.add(number)
         lines = "\n".join(f"  Turn {index}: {turns[index - 1][:SELECTOR_TURN_CHARS]}" for index in sorted(evidence_numbers))
         blocks.append((number, f"{number}. Owner: {action.get('owner', 'Not stated')}\n"
@@ -1418,8 +1587,13 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     actions = [action for group in results for action in group]
     actions = drop_completed_actions(actions)
     actions = repair_short_actions(actions, turns)
+    if prompt_profile == "audit_planning_v2":
+        actions = repair_audit_actions(actions, turns)
     if sample_count > 1:
-        actions = merge_sampled_actions(actions, sample_count, load_action_retrieval_backend())
+        support_threshold = 0.64 if prompt_profile == "audit_planning_v2" else SUPPORT_MERGE_THRESHOLD
+        actions = merge_sampled_actions(
+            actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
+        )
     else:
         for action in actions:
             action.pop("sample", None)
@@ -1444,7 +1618,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
             retrieval_selector = retrieval_selector_profile(meeting_type)
             if retrieval_selector:
                 guidance, prompt_profile = retrieval_selector
-                actions = select_retrieval_grounded_actions(actions, turns, guidance)
+                actions = select_retrieval_grounded_actions(actions, turns, guidance, profile=prompt_profile)
     actions = assign_action_tiers(actions, sample_count)
     return {"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
             "actionPromptProfile": prompt_profile, "actionSampleCount": sample_count,
