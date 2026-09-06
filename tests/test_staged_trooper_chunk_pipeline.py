@@ -426,6 +426,58 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         ])
         self.assertEqual(rows[0]["owner"], "Stuart M and Niamh Lynch")
 
+    def test_audit_consolidates_complementary_work_package_fragments(self):
+        rows = PIPELINE.consolidate_audit_actions([
+            {"owner": "Stuart M", "action": "Build out the audit scope and product classifications",
+             "status": "ASSIGNED", "support": 2, "sampleCount": 3,
+             "mergedCandidateCount": 2, "evidenceIds": ["turn_12"]},
+            {"owner": "Smith, Stuart M", "action": "Determine the list of applicable standards",
+             "status": "REQUIRED", "support": 3, "sampleCount": 3,
+             "mergedCandidateCount": 3, "evidenceIds": ["turn_21"]},
+            {"owner": "Stuart M", "action": "Complete the risk assessment",
+             "status": "COMMITTED", "support": 2, "sampleCount": 3,
+             "mergedCandidateCount": 2, "evidenceIds": ["turn_204"]},
+        ])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["action"],
+                         "Prepare the audit scope, applicable standards, product classifications and risk-assessment inputs")
+        self.assertEqual(rows[0]["support"], 3)
+        self.assertEqual(rows[0]["mergedCandidateCount"], 7)
+        self.assertEqual(rows[0]["evidenceIds"], ["turn_12", "turn_21", "turn_204"])
+
+    def test_audit_consolidates_materials_access_prerequisites_and_catchup_separately(self):
+        rows = PIPELINE.consolidate_audit_actions([
+            {"owner": "Stuart", "action": "Share the risk analysis with Niamh", "evidenceIds": ["turn_205"]},
+            {"owner": "Stuart M", "action": "Share complaints, CAPA and deviations data", "evidenceIds": ["turn_213"]},
+            {"owner": "Stuart", "action": "Share the audit findings tracker", "evidenceIds": ["turn_218"]},
+            {"owner": "Jacqui", "action": "Arrange access or sharing of documents", "evidenceIds": ["turn_169"]},
+            {"owner": "Jacqui Fox", "action": "Figure out a way to get Niamh external SharePoint access", "evidenceIds": ["turn_170"]},
+            {"owner": "Niamh", "action": "Complete the code of conduct", "evidenceIds": ["turn_158"]},
+            {"owner": "Niamh Lynch", "action": "Complete the training attestation", "evidenceIds": ["turn_192"]},
+            {"owner": "Stuart and Niamh", "action": "Arrange a catch-up meeting before the audit", "evidenceIds": ["turn_185"]},
+            {"owner": "Stuart M and Niamh Lynch", "action": "Arrange a face-to-face catch-up at the hotel", "evidenceIds": ["turn_188"]},
+        ])
+        self.assertEqual([row.get("auditConsolidatedFamily") for row in rows], [
+            "audit_material_sharing", "secure_document_access", "prerequisite_completion", "pre_audit_catchup",
+        ])
+        self.assertEqual(rows[0]["action"],
+                         "Share the risk analysis, the audit tracker, complaints data, CAPA data and deviations data")
+        self.assertEqual(rows[1]["action"], "Arrange secure document sharing and external SharePoint access")
+        self.assertEqual(rows[2]["action"], "Complete the code of conduct and the training attestation")
+        self.assertEqual(rows[3]["action"], "Arrange the face-to-face pre-audit catch-up at the hotel before the audit starts")
+
+    def test_audit_does_not_merge_sending_with_completing_or_cross_owner_access(self):
+        rows = PIPELINE.consolidate_audit_actions([
+            {"owner": "Jacqui", "action": "Send the code of conduct to Niamh", "evidenceIds": ["turn_157"]},
+            {"owner": "Niamh", "action": "Complete the code of conduct", "evidenceIds": ["turn_158"]},
+            {"owner": "Jacqui", "action": "Arrange external SharePoint access", "evidenceIds": ["turn_169"]},
+            {"owner": "Stuart", "action": "Arrange secure document sharing", "evidenceIds": ["turn_170"]},
+            {"owner": "Niamh", "action": "Arrange travel before the audit", "evidenceIds": ["turn_267"]},
+        ])
+        self.assertEqual(len(rows), 5)
+        self.assertEqual([row["action"] for row in rows[:2]],
+                         ["Send the code of conduct to Niamh", "Complete the code of conduct"])
+
 
 class SampledActionSupportTests(unittest.TestCase):
     class FakeBackend:

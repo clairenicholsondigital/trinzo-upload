@@ -976,6 +976,144 @@ def repair_audit_actions(actions: list[dict[str, Any]], turns: list[str]) -> lis
     return output
 
 
+def audit_action_family(action: dict[str, Any]) -> str:
+    """Return a conservative audit work-package key for deterministic consolidation.
+
+    This intentionally keys on both the operation and its object. Audit transcripts repeat the
+    same nouns throughout, so noun-only similarity merges distinct work such as sending a code
+    of conduct and completing it, or booking travel and arranging a pre-audit catch-up.
+    """
+    wording = normalised_action_key(action.get("action"))
+    completion = bool(re.search(r"\b(?:complete|sign|undertake|conduct)\b", wording))
+    if completion and re.search(r"\b(?:code of conduct|training attestation)\b", wording):
+        return "prerequisite_completion"
+
+    if re.search(r"\b(?:catch up|catchup)\b", wording) \
+            and re.search(r"\b(?:arrange|hold|schedule|meet|meeting)\b", wording):
+        return "pre_audit_catchup"
+
+    if re.search(r"\b(?:arrange|provide|figure|get|secure|transmit|transfer|share|sharing)\b", wording) \
+            and re.search(r"\b(?:sharepoint|document access|sharing of documents|document sharing|securely transmitting|secure transmission|external access)\b", wording):
+        return "secure_document_access"
+
+    shares_material = bool(re.search(r"\b(?:share|send|provide|transmit)\b", wording))
+    material = bool(re.search(
+        r"\b(?:risk analysis|audit (?:findings )?tracker|complaints?|capa|kappa|deviations?|material data|available data)\b",
+        wording,
+    ))
+    if shares_material and material:
+        return "audit_material_sharing"
+
+    prepares_scope = bool(re.search(r"\b(?:build|prepare|determine|define|complete)\b", wording))
+    scope_object = bool(re.search(
+        r"\b(?:audit scope|scope|standards list|applicable standards|product classifications?|product overview|risk assessment)\b",
+        wording,
+    ))
+    if prepares_scope and scope_object and not re.search(r"\b(?:attestation|training|code of conduct)\b", wording):
+        return "audit_scope_inputs"
+
+    return ""
+
+
+def joined_audit_objects(values: list[str]) -> str:
+    if len(values) < 2:
+        return values[0] if values else ""
+    return ", ".join(values[:-1]) + f" and {values[-1]}"
+
+
+def compose_audit_family(family: str, members: list[dict[str, Any]]) -> str:
+    wording = " ".join(normalised_action_key(member.get("action")) for member in members)
+    if family == "prerequisite_completion":
+        objects = []
+        if "code of conduct" in wording:
+            objects.append("the code of conduct")
+        if "training attestation" in wording:
+            objects.append("the training attestation")
+        return f"Complete {joined_audit_objects(objects)}" if objects else ""
+    if family == "pre_audit_catchup":
+        face_to_face = "face-to-face " if "face to face" in wording else ""
+        location = " at the hotel" if "hotel" in wording else ""
+        timing = " before the audit starts" if re.search(r"\bbefore (?:the )?audit", wording) else ""
+        return f"Arrange the {face_to_face}pre-audit catch-up{location}{timing}"
+    if family == "secure_document_access":
+        objects = []
+        if re.search(r"\b(?:secure|transmit|transfer|document sharing|sharing of documents)\b", wording):
+            objects.append("secure document sharing")
+        if "sharepoint" in wording or "external access" in wording:
+            objects.append("external SharePoint access")
+        if not objects:
+            objects.append("document access")
+        return f"Arrange {joined_audit_objects(objects)}"
+    if family == "audit_material_sharing":
+        objects = []
+        checks = (
+            (r"\brisk analysis\b", "the risk analysis"),
+            (r"\baudit (?:findings )?tracker\b", "the audit tracker"),
+            (r"\bcomplaints?\b", "complaints data"),
+            (r"\b(?:capa|kappa)\b", "CAPA data"),
+            (r"\bdeviations?\b", "deviations data"),
+        )
+        for pattern, label in checks:
+            if re.search(pattern, wording):
+                objects.append(label)
+        condition = " once confidentiality requirements are in place" if re.search(
+            r"\b(?:confidentiality|code of conduct)\b", wording
+        ) else ""
+        return f"Share {joined_audit_objects(objects)}{condition}" if objects else ""
+    if family == "audit_scope_inputs":
+        objects = []
+        checks = (
+            (r"\bscope\b", "the audit scope"),
+            (r"\bstandards?\b", "applicable standards"),
+            (r"\bclassifications?\b", "product classifications"),
+            (r"\bproduct overview\b", "the product overview"),
+            (r"\brisk assessment\b", "risk-assessment inputs"),
+        )
+        for pattern, label in checks:
+            if re.search(pattern, wording):
+                objects.append(label)
+        return f"Prepare {joined_audit_objects(objects)}" if objects else ""
+    return ""
+
+
+def consolidate_audit_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Consolidate complementary drafts of one audit work package without an LLM call."""
+    groups: list[dict[str, Any]] = []
+    for action in actions:
+        family = audit_action_family(action)
+        target = next((group for group in groups
+                       if family and group["family"] == family
+                       and owners_compatible(action.get("owner"), group["representative"].get("owner"))), None)
+        if target is None:
+            groups.append({"family": family, "representative": action, "members": [action]})
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+
+    output = []
+    for group in groups:
+        members = group["members"]
+        if not group["family"] or len(members) == 1:
+            output.append(members[0])
+            continue
+        representative = dict(group["representative"])
+        composed = compose_audit_family(group["family"], members)
+        if composed:
+            representative["action"] = composed
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
+        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
+        representative["mergedCandidateCount"] = sum(
+            int(member.get("mergedCandidateCount", 1) or 1) for member in members
+        )
+        representative["auditConsolidatedFamily"] = group["family"]
+        output.append(representative)
+    return output
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -1619,6 +1757,8 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
             if retrieval_selector:
                 guidance, prompt_profile = retrieval_selector
                 actions = select_retrieval_grounded_actions(actions, turns, guidance, profile=prompt_profile)
+    if action_prompt == AUDIT_ACTION_PROMPT:
+        actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)
     return {"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
             "actionPromptProfile": prompt_profile, "actionSampleCount": sample_count,
