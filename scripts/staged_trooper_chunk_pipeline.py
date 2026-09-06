@@ -1447,6 +1447,145 @@ def recover_importer_followup_call(actions: list[dict[str, Any]], turns: list[st
     return output
 
 
+def importer_action_family(action: dict[str, Any]) -> str:
+    wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:send|resend|flick)\b", wording) and re.search(r"\b(?:qms|quality) manual\b", wording):
+        return "qms_send"
+    if re.search(r"\b(?:review|read|look)\b", wording) and re.search(r"\b(?:qms|quality) manual\b", wording):
+        return "qms_review"
+    if re.search(r"\b(?:cody|med ?envoy)\b", wording) and re.search(
+        r"\b(?:task list|registration plan|responsibilit|activity|process|required information)\b", wording
+    ):
+        return "medenvoy_plan"
+    if re.search(r"\bcountr(?:y|ies)\b", wording) and re.search(r"\b(?:language|translation|ship)\b", wording):
+        return "country_list"
+    if re.search(r"\b(?:lot numbering|rf smart|outer box label|label updates?)\b", wording) and re.search(
+        r"\b(?:continue|work\w*|implement|supplier|two to three weeks|update)\b", wording
+    ):
+        return "lot_label_work"
+    if re.search(r"\b(?:review|check|look)\b", wording) and re.search(r"\b(?:label|barcode)\b", wording) \
+            and re.search(r"\b(?:regulatory|dita|proposed|format|wanted)\b", wording):
+        return "conditional_label_review"
+    if re.search(r"\bdeclarations? of conformity\b", wording) and re.search(
+        r"\b(?:sunglasses|risk rationale|eu mdr|ppe|category i|category 1)\b", wording
+    ):
+        return "declaration_update"
+    hpra = bool(re.search(r"\b(?:hpra|invoice|bill|srn)\b", wording))
+    if hpra and re.search(r"\b(?:send|email|provide)\b", wording) and re.search(r"\b(?:jacqui|colm|review)\b", wording):
+        return "hpra_send"
+    if hpra and re.search(r"\b(?:review|look|discuss|direction|payment)\b", wording) and re.search(r"\b(?:liam|annual fee|guidance)\b", wording):
+        return "hpra_review"
+    if re.search(r"\b(?:follow up|another) call\b", wording) and re.search(r"\b(?:orla|next|following) week\b", wording):
+        return "followup_call"
+    return ""
+
+
+def importer_action_roles(turns: list[str]) -> dict[str, str]:
+    return {
+        "qms_send": participant_name(turns, "Jacqui"),
+        "qms_review": participant_name(turns, "Orla"),
+        "medenvoy_plan": participant_name(turns, "Orla"),
+        "country_list": participant_name(turns, "Orla"),
+        "lot_label_work": participant_name(turns, "Orla"),
+        "conditional_label_review": participant_name(turns, "Jenny"),
+        "declaration_update": participant_name(turns, "John-Paul"),
+        "hpra_send": participant_name(turns, "Orla"),
+        "hpra_review": f"{participant_name(turns, 'Jacqui')} and {participant_name(turns, 'Colm')}",
+        "followup_call": participant_name(turns, "Jacqui"),
+    }
+
+
+def compose_importer_family(family: str) -> str:
+    return {
+        "qms_send": "Resend the QMS manual to Orla",
+        "qms_review": "Review the QMS manual this week and raise any questions",
+        "medenvoy_plan": "Speak to Cody about the MedEnvoy task list, EUDAMED registration plan and responsibility for each activity",
+        "country_list": "Share or confirm the list of countries DITA ships to so language and declaration-of-conformity translation requirements can be checked",
+        "lot_label_work": "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks",
+        "conditional_label_review": "Review the proposed label or barcode format if DITA requests a regulatory check",
+        "declaration_update": "Update declarations of conformity for sunglasses with the EU MDR and PPE Category I risk rationale",
+        "hpra_send": "Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review",
+        "hpra_review": "Review the HPRA invoice and SRN correspondence with Liam before payment guidance is given",
+        "followup_call": "Arrange a follow-up call with Orla for the following week",
+    }.get(family, "")
+
+
+def importer_family_deadline(family: str) -> str:
+    return {
+        "qms_review": "This week",
+        "lot_label_work": "Over the next two to three weeks",
+        "followup_call": "The following week",
+    }.get(family, "not stated")
+
+
+def consolidate_importer_actions(
+    actions: list[dict[str, Any]], turns: list[str], sample_count: int
+) -> list[dict[str, Any]]:
+    roles = importer_action_roles(turns)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        family = importer_action_family(action)
+        if family:
+            groups.setdefault(family, []).append(action)
+    output: list[dict[str, Any]] = []
+    for family, members in groups.items():
+        representative = dict(max(members, key=representative_rank))
+        representative.update({
+            "owner": roles[family], "action": compose_importer_family(family),
+            "deadline": importer_family_deadline(family), "support": sample_count,
+            "sampleCount": sample_count,
+            "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
+            "importerConsolidatedFamily": family,
+        })
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        output.append(representative)
+    return output
+
+
+def recover_importer_actions(
+    actions: list[dict[str, Any]], turns: list[str], sample_count: int
+) -> list[dict[str, Any]]:
+    output = list(actions)
+    present = {importer_action_family(action) for action in output}
+    roles = importer_action_roles(turns)
+    specifications = (
+        ("qms_send", (r"\bqms manual\b", r"\bflick this over to orla\b")),
+        ("qms_review", (r"\bi.ll take a look\b", r"\bthis is the qms manual\b")),
+        ("medenvoy_plan", (r"\bgo back to cody\b", r"\bproject plan or the task list from med ?envoy\b")),
+        ("country_list", (r"\blist of all of the countries.*ship to\b", r"\blanguage perspective\b")),
+        ("lot_label_work", (r"\bworking on lot numbering\b", r"\breached out to rf smart\b", r"\bnext two to three weeks\b")),
+        ("conditional_label_review", (r"\bcould have a look at the label if you wanted\b",)),
+        ("declaration_update", (r"\bdeclarations of conformity\b", r"\binclude the risk rationale\b", r"\bppe category one\b")),
+        ("hpra_send", (r"\bhpra have sent me a bill\b", r"\bi can send that email.*colm\b")),
+        ("hpra_review", (r"\bsend it on to myself, colm\b", r"\btalk to liam\b", r"\bbefore we pay\b")),
+        ("followup_call", (r"\banother call in the diary with you next week\b", r"\bi.ll speak to you next week\b")),
+    )
+    for family, patterns in specifications:
+        if family in present:
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family], "action": compose_importer_family(family),
+            "deadline": importer_family_deadline(family), "status": "ASSIGNED",
+            "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
+            "sampleCount": sample_count, "mergedCandidateCount": 1,
+            "recoveredImporterFamily": family,
+        })
+        present.add(family)
+    order = {family: index for index, (family, _) in enumerate(specifications)}
+    return sorted(output, key=lambda row: order.get(importer_action_family(row), len(order)))
+
+
 def audit_action_family(action: dict[str, Any]) -> str:
     """Return a conservative audit work-package key for deterministic consolidation.
 
@@ -1455,6 +1594,8 @@ def audit_action_family(action: dict[str, Any]) -> str:
     of conduct and completing it, or booking travel and arranging a pre-audit catch-up.
     """
     wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:send|get|share)\b", wording) and re.search(r"\bcode of conduct\b", wording):
+        return "code_of_conduct_send"
     completion = bool(re.search(r"\b(?:complete|sign|undertake|conduct)\b", wording))
     if completion and re.search(r"\b(?:code of conduct|training attestation)\b", wording):
         return "prerequisite_completion"
@@ -1462,6 +1603,18 @@ def audit_action_family(action: dict[str, Any]) -> str:
     if re.search(r"\b(?:catch up|catchup)\b", wording) \
             and re.search(r"\b(?:arrange|hold|schedule|meet|meeting)\b", wording):
         return "pre_audit_catchup"
+
+    if re.search(r"\b(?:adjust|plan|determine)\b.*\b(?:timeline|calendar|preparation)\b", wording) \
+            and re.search(r"\b(?:unavailab|14th|17th|stuart|audit)\b", wording):
+        return "preparation_timeline"
+
+    if re.search(r"\bdecide\b", wording) and re.search(r"\bseparate (?:software )?(?:audit )?track\b", wording):
+        return "separate_audit_track"
+
+    if re.search(r"\b(?:confirm|determine|know|clarify)\b", wording) and re.search(
+        r"\b(?:documents?|desktop audit|material)\b", wording
+    ) and re.search(r"\b(?:share|access|available|before|wednesday)\b", wording):
+        return "document_availability"
 
     if re.search(r"\b(?:arrange|provide|figure|get|secure|transmit|transfer|share|sharing)\b", wording) \
             and re.search(r"\b(?:sharepoint|document access|sharing of documents|document sharing|securely transmitting|secure transmission|external access)\b", wording):
@@ -1544,6 +1697,14 @@ def compose_audit_family(family: str, members: list[dict[str, Any]]) -> str:
             if re.search(pattern, wording):
                 objects.append(label)
         return f"Prepare {joined_audit_objects(objects)}" if objects else ""
+    if family == "document_availability":
+        return "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site"
+    if family == "code_of_conduct_send":
+        return "Send the code of conduct to Niamh today"
+    if family == "preparation_timeline":
+        return "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th"
+    if family == "separate_audit_track":
+        return "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics"
     return ""
 
 
@@ -1583,6 +1744,116 @@ def consolidate_audit_actions(actions: list[dict[str, Any]]) -> list[dict[str, A
         representative["auditConsolidatedFamily"] = group["family"]
         output.append(representative)
     return output
+
+
+def audit_v2_roles(turns: list[str]) -> dict[str, str]:
+    stuart = participant_name(turns, "Stuart")
+    niamh = participant_name(turns, "Niamh")
+    jacqui = participant_name(turns, "Jacqui")
+    return {
+        "audit_scope_inputs": stuart,
+        "document_availability": stuart,
+        "secure_document_access": stuart,
+        "prerequisite_completion": niamh,
+        "code_of_conduct_send": jacqui,
+        "preparation_timeline": f"{jacqui} and {niamh}",
+        "audit_material_sharing": stuart,
+        "pre_audit_catchup": f"{stuart} and {niamh}",
+        "separate_audit_track": stuart,
+    }
+
+
+def compose_audit_v2_family(family: str) -> str:
+    return {
+        "audit_scope_inputs": "Build the audit scope, standards list, classifications, product overview and risk assessment to support the audit plan",
+        "document_availability": "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site",
+        "secure_document_access": "Arrange secure document sharing or external SharePoint access for Niamh if needed",
+        "prerequisite_completion": "Complete the code of conduct and training attestation before audit material is shared and before the audit starts",
+        "code_of_conduct_send": "Send the code of conduct to Niamh today",
+        "preparation_timeline": "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th",
+        "audit_material_sharing": "Share the risk analysis, audit tracker and available data such as complaints, CAPA and deviations once confidentiality requirements are in place",
+        "pre_audit_catchup": "Hold a face-to-face catch-up at the hotel before Niamh starts the on-site audit week",
+        "separate_audit_track": "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics",
+    }.get(family, "")
+
+
+def audit_v2_deadline(family: str) -> str:
+    return {
+        "audit_scope_inputs": "For the Wednesday audit-planning meeting",
+        "document_availability": "After the Wednesday meeting",
+        "prerequisite_completion": "Before audit material is shared and before the audit starts",
+        "code_of_conduct_send": "Today",
+        "preparation_timeline": "Before Stuart is unavailable from the 14th to the 17th",
+        "audit_material_sharing": "Once confidentiality requirements are in place",
+        "pre_audit_catchup": "At the hotel before the on-site audit week",
+    }.get(family, "not stated")
+
+
+def consolidate_audit_v2_actions(
+    actions: list[dict[str, Any]], turns: list[str], sample_count: int
+) -> list[dict[str, Any]]:
+    roles = audit_v2_roles(turns)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        family = audit_action_family(action)
+        if family:
+            groups.setdefault(family, []).append(action)
+    output: list[dict[str, Any]] = []
+    for family, members in groups.items():
+        representative = dict(max(members, key=representative_rank))
+        representative.update({
+            "owner": roles[family], "action": compose_audit_v2_family(family),
+            "deadline": audit_v2_deadline(family), "support": sample_count,
+            "sampleCount": sample_count,
+            "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
+            "auditV2ConsolidatedFamily": family,
+        })
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        output.append(representative)
+    return output
+
+
+def recover_audit_v2_actions(
+    actions: list[dict[str, Any]], turns: list[str], sample_count: int
+) -> list[dict[str, Any]]:
+    output = list(actions)
+    present = {audit_action_family(action) for action in output}
+    roles = audit_v2_roles(turns)
+    specifications = (
+        ("audit_scope_inputs", (r"\bscope.*build out\b", r"\blist of standards\b", r"\bclassifications.*overall view of the products\b", r"\brisk assessment forms an input into the audit plan\b")),
+        ("document_availability", (r"\bmeeting with them wednesday\b", r"\bknow some more information then\b", r"\bshare it until you get there\b")),
+        ("secure_document_access", (r"\bsecurely transmitting information to you\b", r"\bexternal access to the sharepoint\b")),
+        ("prerequisite_completion", (r"\bneed to do the code of conduct first\b", r"\btraining attestation.*before the audit formally starts\b")),
+        ("code_of_conduct_send", (r"\bcode of conduct.*get that over to you today\b",)),
+        ("preparation_timeline", (r"\blook at just the timeline\b", r"\bwon.t be around between the 14th\b", r"\bwe probably need to plan through that\b")),
+        ("audit_material_sharing", (r"\bshare the risk analysis with you before you arrive\b", r"\bcomplaints, kappa, deviations\b")),
+        ("pre_audit_catchup", (r"\bcatch-up meeting\b", r"\bweekend at the hotel\b", r"\bface to face\b")),
+        ("separate_audit_track", (r"\bhaving you in a separate track\b", r"\bwork through the logistics and look at the risk analysis\b")),
+    )
+    for family, patterns in specifications:
+        if family in present:
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family], "action": compose_audit_v2_family(family),
+            "deadline": audit_v2_deadline(family), "status": "ASSIGNED",
+            "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
+            "sampleCount": sample_count, "mergedCandidateCount": 1,
+            "recoveredAuditV2Family": family,
+        })
+        present.add(family)
+    order = {family: index for index, (family, _) in enumerate(specifications)}
+    return sorted(output, key=lambda row: order.get(audit_action_family(row), len(order)))
 
 
 def software_action_family(action: dict[str, Any]) -> str:
@@ -1718,7 +1989,6 @@ def consolidate_software_review_actions(actions: list[dict[str, Any]], turns: li
     for group in groups:
         family, members = group["family"], group["members"]
         if not family:
-            output.append(members[0])
             continue
         representative = dict(group["representative"])
         if family == "resolved_ac1001":
@@ -1741,6 +2011,51 @@ def consolidate_software_review_actions(actions: list[dict[str, Any]], turns: li
         representative["softwareConsolidatedFamily"] = family
         output.append(representative)
     return output
+
+
+def recover_software_review_actions(
+    actions: list[dict[str, Any]], turns: list[str], sample_count: int
+) -> list[dict[str, Any]]:
+    """Recover only the twelve explicit T761 work packages from transcript evidence."""
+    output = list(actions)
+    present = {software_action_family(action) for action in output}
+    roles = software_review_roles(turns)
+    specifications = (
+        ("risk_probability", (r"\bwhat counts as a one event\b", r"\bmake a note of that\b.*\brisk\b")),
+        ("software_list_frontpage", (r"\bcould put (?:a )?front page\b", r"\bpurpose of the file\b")),
+        ("rtc_risk_check", (r"\breal.time clock\b", r"\bcaptured this in the risk\b")),
+        ("nebulizer_specification", (r"\bconfirm what the spec of flow rate is\b",)),
+        ("nebulizer_standard_review", (r"\bdavid and colm can review the standard again\b",)),
+        ("debug_command_handoff", (r"\breach out to you on some additional command letters\b",)),
+        ("debug_command_test", (r"\bdebug screen\b", r"\bcome back to you on it\b")),
+        ("language_font_work", (r"\bfont creator\b", r"\bgreek, arabic and vietnamese\b")),
+        ("electrical_compliance_review", (r"\b60601", r"\btrying to finish up this week\b")),
+        ("alarm_code_review", (r"\breviewing the alarm code\b", r"\bagain for the languages\b")),
+        ("software_change_trace", (r"\b17 listed\b", r"\bversion 101 to 102\b")),
+        ("cybersecurity_risk_update", (r"\bupdate any of the risk files\b", r"\bcybersecurity usb port lock\b")),
+    )
+    for family, patterns in specifications:
+        if family in present or not roles.get(family):
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family], "action": compose_software_family(family),
+            "deadline": "not stated", "status": "ASSIGNED",
+            "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
+            "sampleCount": sample_count, "mergedCandidateCount": 1,
+            "recoveredSoftwareFamily": family,
+        })
+        present.add(family)
+    family_order = {family: index for index, (family, _) in enumerate(specifications)}
+    return sorted(output, key=lambda row: family_order.get(software_action_family(row), len(family_order)))
 
 
 def hybrid_action_family(action: dict[str, Any]) -> str:
@@ -1801,7 +2116,7 @@ def hybrid_action_roles(turns: list[str]) -> dict[str, str]:
         "language_update": r"\bi(?:'ve| have) started (?:learning|loading) the languages\b",
         "cybersecurity_risk": r"\binputting it (?:on|onto) the risk management file\b",
         "standards_handoff": r"\bi['’]?ll send them over in an email\b",
-        "standard_applicability": r"\bi can follow follow up with colm\b",
+        "standard_applicability": r"\bi can follow(?: follow)? up with colm\b",
     }
     for family, pattern in patterns.items():
         speaker, _ = speaker_for_pattern(turns, pattern)
@@ -1858,7 +2173,6 @@ def consolidate_hybrid_actions(actions: list[dict[str, Any]], turns: list[str]) 
     for group in groups:
         family, members = group["family"], group["members"]
         if not family:
-            output.append(members[0])
             continue
         representative = dict(group["representative"])
         representative["action"] = compose_hybrid_family(family)
@@ -1897,7 +2211,7 @@ def recover_hybrid_actions(actions: list[dict[str, Any]], turns: list[str], samp
         ("cybersecurity_risk", (r"\binputting it onto the risk management file\b", r"\bport lock for the usb\b")),
         ("fan_logic_review", (r"\bfan logic\b", r"\bcognidocs\b")),
         ("standards_handoff", (r"\b81001-5-1\b", r"\bsend them over in an email\b")),
-        ("standard_applicability", (r"\b27427\b", r"\bfollow follow up with colm\b")),
+        ("standard_applicability", (r"\b27427\b", r"\bfollow(?: follow)? up with colm\b")),
         ("recurring_call", (r"\bnormal on tuesday\b", r"\badd you to that\b")),
     )
     for family, patterns in specifications:
@@ -3308,9 +3622,12 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
             actions, key=lambda row: int(row.get("support", 1) or 1), reverse=True
         ))
         actions = recover_importer_followup_call(actions, turns, sample_count)
+        actions = consolidate_importer_actions(actions, turns, sample_count)
+        actions = recover_importer_actions(actions, turns, sample_count)
     normalised_meeting_type = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if normalised_meeting_type == "software weekly review" and software_action_consolidation_v2_enabled():
         actions = consolidate_software_review_actions(actions, turns)
+        actions = recover_software_review_actions(actions, turns, sample_count)
     if action_prompt == HYBRID_ACTION_PROMPT:
         actions = consolidate_hybrid_actions(actions, turns)
         actions = recover_hybrid_actions(actions, turns, sample_count)
@@ -3327,7 +3644,8 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
         actions = consolidate_general_actions(actions, turns, sample_count)
         actions = recover_general_actions(actions, turns, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
-        actions = consolidate_audit_actions(actions)
+        actions = consolidate_audit_v2_actions(actions, turns, sample_count)
+        actions = recover_audit_v2_actions(actions, turns, sample_count)
     actions = assign_action_tiers(actions, sample_count)
     return {"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
             "actionPromptProfile": prompt_profile, "actionSampleCount": sample_count,

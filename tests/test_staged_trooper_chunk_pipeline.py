@@ -633,6 +633,51 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(recovered[0]["evidenceIds"], ["turn_1", "turn_3"])
         self.assertEqual(recovered[0]["support"], 3)
 
+    def test_importer_v2_closed_ledger_keeps_only_the_ten_reviewed_work_packages(self):
+        turns = [
+            "Jacqui Fox: I will flick this QMS manual over to Orla.",
+            "Orla Skally: I'll take a look at the QMS manual this week.",
+            "Orla Skally: I can go back to Cody about the MedEnvoy task list and registration plan.",
+            "Orla Skally: I will share the list of countries we ship to for language translation.",
+            "Orla Skally: We are working with RF Smart on lot numbering and label updates.",
+            "Jenny Gough: I could review the proposed barcode label if DITA wanted.",
+            "John-Paul Hughes: Update the declarations of conformity for sunglasses with the PPE risk rationale.",
+            "Orla Skally: Send the HPRA invoice and SRN email to Jacqui and Colm.",
+            "Jacqui Fox: Review the HPRA invoice with Liam before payment guidance.",
+            "Jacqui Fox: Arrange another call with Orla next week.",
+        ]
+        actions = [{"owner": "Unknown", "action": turn.split(": ", 1)[1], "evidenceIds": [f"turn_{index}"]}
+                   for index, turn in enumerate(turns, 1)]
+        actions.append({"owner": "Unknown", "action": "Explain the intercompany storage structure", "evidenceIds": ["turn_1"]})
+        rows = PIPELINE.consolidate_importer_actions(actions, turns, 3)
+        families = {PIPELINE.importer_action_family(row) for row in rows}
+        self.assertEqual(len(rows), 10)
+        self.assertNotIn("", families)
+        self.assertEqual({row["support"] for row in rows}, {3})
+
+    def test_audit_v2_closed_ledger_keeps_nine_packages_and_drops_audit_narration(self):
+        turns = ["Smith, Stuart M: Audit planning.", "Niamh Lynch: Understood.", "Jacqui Fox: I will send it."]
+        actions = [
+            "Prepare the audit scope, applicable standards, product classifications and risk assessment",
+            "Confirm which documents are available to share before the desktop audit",
+            "Arrange secure document sharing and external SharePoint access",
+            "Complete the code of conduct and training attestation",
+            "Send the code of conduct to Niamh",
+            "Adjust the audit preparation timeline because Stuart is unavailable from the 14th to 17th",
+            "Share the risk analysis, audit tracker, complaints, CAPA and deviations",
+            "Arrange a pre-audit catch-up at the hotel",
+            "Decide whether Niamh should run a separate software audit track",
+            "Prepare normal audit findings and rating documentation",
+        ]
+        rows = PIPELINE.consolidate_audit_v2_actions([
+            {"owner": "Unknown", "action": action, "evidenceIds": ["turn_1"]} for action in actions
+        ], turns, 3)
+        families = {PIPELINE.audit_action_family(row) for row in rows}
+        self.assertEqual(len(rows), 9)
+        self.assertNotIn("", families)
+        prerequisite = next(row for row in rows if PIPELINE.audit_action_family(row) == "prerequisite_completion")
+        self.assertEqual(prerequisite["owner"], "Niamh Lynch")
+
     def test_software_review_consolidates_distinct_handoff_and_test_work_packages(self):
         turns = [
             "Jacqui Fox   13:08Andrew, if you could just confirm what the spec of flow rate is. David and Colm can review the standard again.",
@@ -648,13 +693,26 @@ class DeterministicActionCleanupTests(unittest.TestCase):
             {"owner": "David Didsbury", "action": "Send additional debug command letters", "evidenceIds": ["turn_2"]},
             {"owner": "Jacqui Fox", "action": "Document what happens when debug commands are used on the debug screen", "evidenceIds": ["turn_4"]},
             {"owner": "Jacqui Fox", "action": "Check whether IEC AC1001 is captured in the risk analysis", "evidenceIds": ["turn_1"]},
+            {"owner": "Unknown", "action": "Review last week's follow-up actions", "evidenceIds": ["turn_1"]},
         ], turns)
         by_family = {row["softwareConsolidatedFamily"]: row for row in rows}
         self.assertEqual(len(rows), 4)
+        self.assertNotIn("", {PIPELINE.software_action_family(row) for row in rows})
         self.assertEqual(by_family["nebulizer_specification"]["owner"], "Andrew Kane")
         self.assertEqual(by_family["nebulizer_standard_review"]["owner"], "David Didsbury and Colm")
         self.assertEqual(by_family["debug_command_handoff"]["owner"], "David Didsbury")
         self.assertEqual(by_family["debug_command_test"]["owner"], "Andrew Kane")
+
+    def test_software_review_recovers_probability_action_when_extraction_omits_it(self):
+        turns = [
+            "David Didsbury: What counts as a one event?",
+            "Rebecca Gill: I'll make a note of that and I'll have a look at it whilst looking at the risk.",
+        ]
+        rows = PIPELINE.recover_software_review_actions([], turns, 3)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(PIPELINE.software_action_family(rows[0]), "risk_probability")
+        self.assertEqual(rows[0]["owner"], "Rebecca Gill")
+        self.assertEqual(rows[0]["support"], 3)
 
     def test_hybrid_review_consolidates_work_packages_and_recovers_split_handoffs(self):
         turns = [
@@ -670,6 +728,7 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         consolidated = PIPELINE.consolidate_hybrid_actions([
             {"owner": "David", "action": "Confirm LED behavior when the mute button is pressed", "evidenceIds": ["turn_1"], "sampleCount": 3},
             {"owner": "Andrew", "action": "Investigate the alarm LED flashing for the mute button", "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "Unknown", "action": "Review items sent by email to determine next steps", "evidenceIds": ["turn_2"], "sampleCount": 3},
         ], turns)
         recovered = PIPELINE.recover_hybrid_actions(consolidated, turns, 3)
         by_family = {PIPELINE.hybrid_action_family(row): row for row in recovered}
@@ -680,6 +739,7 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(by_family["standard_applicability"]["owner"], "Jacqui Fox")
         self.assertEqual(by_family["recurring_call"]["action"], "Add Rebecca to the regular Tuesday follow-up call")
         self.assertEqual(by_family["clinician_alarm_review"]["support"], 3)
+        self.assertNotIn("", by_family)
 
     def test_webinar_review_keeps_one_row_per_final_assignment_and_recovers_missing_rows(self):
         turns = [
