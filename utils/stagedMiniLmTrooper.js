@@ -36,6 +36,18 @@ function runJson(script, args, timeoutMs) {
   });
 }
 
+// Tier 1 rows were agreed by most independent extraction samples and are shown as actions.
+// Tier 2 rows were seen by a minority: real often enough to keep in view, wrong often enough
+// not to publish unasked. They go to the collapsed "raised" panel, from which the reviewer
+// can add one to the table. Single-sample runs carry no tier and everything is tier 1.
+function splitActionTiers(actions) {
+  const rows = Array.isArray(actions) ? actions : [];
+  return {
+    actions: rows.filter((row) => Number(row?.tier ?? 1) !== 2),
+    raisedActions: rows.filter((row) => Number(row?.tier ?? 1) === 2)
+  };
+}
+
 async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
   if (!['discussion', 'actions'].includes(stage)) throw new Error(`Unsupported simplified stage: ${stage}`);
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-minilm-trooper-'));
@@ -60,7 +72,7 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
       Number(process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000));
     return {
       stagedStage: stage,
-      screens: stage === 'discussion' ? { discussion: result.discussion || [] } : { actions: result.actions || [] },
+      screens: stage === 'discussion' ? { discussion: result.discussion || [] } : splitActionTiers(result.actions),
       validationFlags: [],
       preparedTranscriptTelemetry: {
         source: 'minilm_v3_denoiser', model: prepared.model, embeddingModel: prepared.embeddingModel,
@@ -69,6 +81,7 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
         totalUnitCount: prepared.totalUnitCount, removedRatio,
         chunkCount: result.chunkCount || null, turnCount: result.turnCount || null,
         actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null,
+        actionSampleCount: stage === 'actions' ? (result.actionSampleCount || 1) : null,
         discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null,
         discussionCallCount: stage === 'discussion' ? (result.discussionCallCount || 1) : null,
         discussionSplitAfterTurn: stage === 'discussion' ? (result.splitAfterTurn || null) : null,
@@ -82,4 +95,4 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
   }
 }
 
-module.exports = { generateMiniLmTrooperStage };
+module.exports = { generateMiniLmTrooperStage, splitActionTiers };

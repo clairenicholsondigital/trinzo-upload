@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import random
+import threading
 import json
 import math
 import os
@@ -16,7 +18,22 @@ from typing import Any
 
 URL = "https://eu.router.trooper.ai/v1/chat/completions"
 MODEL = "eu_liv_000099"
+# Trooper allows 10 in-flight requests per API key and answers the eleventh with 429. Chunk
+# extraction and the two selector passes fan out in threads, so the process caps its own
+# concurrency below that and treats 429 as "wait", not "fail".
+TROOPER_MAX_INFLIGHT = max(1, int(os.environ.get("TROOPER_MAX_INFLIGHT", "8")))
+TROOPER_INFLIGHT = threading.BoundedSemaphore(TROOPER_MAX_INFLIGHT)
 MAX_CHUNK_TURNS = 45
+# The boundary model was observed returning a 3-turn section despite the prompt's 8-turn
+# floor; sections that small produced bare-verb candidates ("share", "do"). Merge them.
+MIN_CHUNK_TURNS = 8
+MINIMUM_ACTION_WORDS = 4
+# Rows that recur across independent extraction samples are real far more often than rows that
+# appear once (measured on three deployed runs: 55% vs 17% hit expected actions). Two candidates
+# are the same deliverable when their embeddings agree at this level and their owners do not
+# disagree.
+SUPPORT_MERGE_THRESHOLD = 0.70
+STATUS_RANK = {"ASSIGNED": 4, "COMMITTED": 3, "REQUIRED": 2, "PROPOSED": 1, "COMPLETED": 0}
 
 BOUNDARY_SCHEMA = {"type": "json_schema", "json_schema": {"name": "meeting_chunks", "strict": True, "schema": {
     "type": "object", "properties": {"chunks": {"type": "array", "items": {"type": "object", "properties": {
@@ -88,6 +105,40 @@ RETRIEVAL_SELECTOR_SCHEMA = {"type": "json_schema", "json_schema": {"name": "ret
         "required": ["candidateNumber", "decision", "rejectionCode", "evidenceTurns"], "additionalProperties": False}}},
     "required": ["decisions"], "additionalProperties": False}}}
 
+SHORT_ACTION_REPAIR_SCHEMA = {"type": "json_schema", "json_schema": {"name": "short_action_repairs", "strict": True, "schema": {
+    "type": "object", "properties": {"repairs": {"type": "array", "items": {"type": "object", "properties": {
+        "candidateNumber": {"type": "integer"}, "action": {"type": "string"}},
+        "required": ["candidateNumber", "action"], "additionalProperties": False}}},
+    "required": ["repairs"], "additionalProperties": False}}}
+
+SHORT_ACTION_REPAIR_PROMPT = """Each numbered fragment below is an action candidate that the extractor wrote as a bare verb or phrase, with the transcript turns it cited.
+
+For every fragment, using only its cited turns, write the specific task as one concise minutes action that names what is to be done and to what (for example "Send the code of conduct to Niamh", "Build out the audit scope and standards list"). Do not add owners, deadlines or details the turns do not state.
+
+Return an empty string for a fragment when its cited turns contain no specific future task: screen sharing, meeting procedure, banter, a description of how things normally work, or a restatement of the schedule. Also return an empty string for travel, accommodation, car hire, attendance, being on site, and personal arrangements - these are never minutes actions. Only a deliverable somebody will send, share, review, confirm, arrange, update, decide, investigate or prepare qualifies.
+
+Return exactly one repair for every fragment, keeping its candidate number.
+
+{fragments}"""
+
+DELIVERABLE_VERBS = ["SEND", "SHARE", "REVIEW", "CONFIRM", "ARRANGE", "UPDATE", "DECIDE", "INVESTIGATE", "PREPARE", "ATTEND", "OTHER"]
+DELIVERABLE_SCHEMA = {"type": "json_schema", "json_schema": {"name": "action_deliverables", "strict": True, "schema": {
+    "type": "object", "properties": {"deliverables": {"type": "array", "items": {"type": "object", "properties": {
+        "candidateNumber": {"type": "integer"}, "deliverable": {"type": "string"},
+        "verb": {"type": "string", "enum": DELIVERABLE_VERBS}, "recipient": {"type": "string"}},
+        "required": ["candidateNumber", "deliverable", "verb", "recipient"], "additionalProperties": False}}},
+    "required": ["deliverables"], "additionalProperties": False}}}
+
+DELIVERABLE_PROMPT = """For each numbered action candidate, name its deliverable: the specific thing that is to be produced, sent, reviewed, decided or arranged, as a short noun phrase (2-6 words) with no verb, owner or deadline. Examples: "risk analysis", "code of conduct", "SharePoint access for Niamh", "pre-audit catch-up meeting", "software list front page", "nebuliser flow-rate specification".
+
+Give the verb class: SEND (send/email/provide), SHARE (share/give access), REVIEW (review/read/check/look at), CONFIRM (confirm/check whether/clarify), ARRANGE (arrange/schedule/organise/meet), UPDATE (update/add/change/write/document), DECIDE (decide/agree/choose), INVESTIGATE (investigate/look up/find out/test), PREPARE (prepare/build/plan/draft), ATTEND (attend/be present/travel), OTHER.
+
+Give the recipient if the candidate names who receives the deliverable, otherwise an empty string.
+
+Return exactly one entry per candidate, keeping its number.
+
+{candidates}"""
+
 IMPORTER_ACTUAL_ACTIONS_PROMPT = """Provide only the actual actions from these candidates.
 
 An actual action is a concrete future task that a person explicitly agreed or was assigned to do in this meeting.
@@ -138,6 +189,7 @@ RETRIEVAL_PROFILE_GUIDANCE = {
     "webinar_retrieval": "Retain agreed live-event responsibilities, accepted slide/script/delivery changes, technical checks, question handling, cues, rehearsal and distribution tasks.",
     "software_retrieval": "Retain concrete software investigation, testing, debugging, documentation, change-control and continuing technical work.",
     "process_retrieval": "Retain concrete manual tests, pilots, criteria, information-capture tasks and conditional next phases with a stated trigger or method.",
+    "importer_retrieval": "Retain explicit future assignments created in this meeting: documents to send, resend or review, lists or confirmations to provide, registrations, declarations or labels to update, calls to arrange, and named follow-ups with a person. Remove descriptions of the importer's standing regulatory obligations, existing processes, how the business works, questions with no agreed follow-up, and requests to explain something during the meeting itself.",
 }
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
@@ -637,22 +689,34 @@ def call_trooper(prompt: str, max_tokens: int, schema: dict[str, Any]) -> dict[s
         "temperature": 0.1, "max_tokens": max_tokens, "response_format": schema,
     }).encode()
     last: Exception | None = None
-    for attempt in range(3):
+    attempts = 6
+    for attempt in range(attempts):
         request = urllib.request.Request(clean(os.environ.get("TROOPER_CHAT_COMPLETIONS_URL")) or URL, data=body,
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=180) as response:
-                payload = json.loads(response.read().decode())
+            with TROOPER_INFLIGHT:
+                with urllib.request.urlopen(request, timeout=180) as response:
+                    payload = json.loads(response.read().decode())
             content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
             start = content.find("{")
             if start < 0:
                 raise RuntimeError("Trooper returned no JSON object")
             return json.JSONDecoder().raw_decode(content[start:])[0]
+        except urllib.error.HTTPError as error:
+            try:
+                error.detail = error.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                error.detail = ""
+            last = error
+            if error.code not in (408, 409, 425, 429, 500, 502, 503, 504):
+                break
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as error:
             last = error
-            if attempt < 2:
-                time.sleep(2 ** attempt)
-    raise RuntimeError(f"Trooper request failed: {type(last).__name__}")
+        if attempt < attempts - 1:
+            time.sleep(min(30.0, 2 ** attempt) + random.uniform(0, 0.5))
+    detail = (f"HTTP {last.code} {getattr(last, 'detail', '')}".strip()
+              if isinstance(last, urllib.error.HTTPError) else type(last).__name__)
+    raise RuntimeError(f"Trooper request failed: {detail}")
 
 
 def safe_boundaries(rows: Any, total: int) -> list[dict[str, int]]:
@@ -675,11 +739,66 @@ def safe_boundaries(rows: Any, total: int) -> list[dict[str, int]]:
     output, start = [], 1
     for end in sorted(set(ends)):
         if end >= start:
-            output.append({"number": len(output) + 1, "start": start, "end": end})
+            output.append({"start": start, "end": end})
             start = end + 1
+    output = merge_undersized_chunks(output)
+    for number, chunk in enumerate(output, 1):
+        chunk["number"] = number
     if not output or output[-1]["end"] != total:
         raise RuntimeError("Could not build contiguous chunk boundaries")
     return output
+
+
+def alternative_chunkings(chunks: list[dict[str, int]], total: int, sample_count: int) -> list[list[dict[str, int]]]:
+    """One chunking per extraction sample, so the samples disagree for structural reasons.
+
+    Three passes over the same sections at temperature 0.1 mostly agree with each other,
+    including on the noise. Sample 0 keeps the model's boundaries; sample 1 shifts every
+    boundary to the middle of the model's sections, so a request and its acceptance split by
+    a boundary sit together; later samples use fixed windows of decreasing size."""
+    output = [chunks]
+    if sample_count <= 1 or total < 2 * MIN_CHUNK_TURNS:
+        return output * sample_count
+    if sample_count >= 2:
+        midpoints = [(chunk["start"] + chunk["end"]) // 2 for chunk in chunks[:-1]]
+        ends = sorted({point for point in midpoints if 1 <= point < total} | {total})
+        rows, start = [], 1
+        for end in ends:
+            rows.append({"start": start, "end": end})
+            start = end + 1
+        output.append(safe_boundaries(rows, total))
+    window = 30
+    while len(output) < sample_count:
+        rows = [{"start": start, "end": min(total, start + window - 1)} for start in range(1, total + 1, window)]
+        output.append(safe_boundaries(rows, total))
+        window = max(MIN_CHUNK_TURNS * 2, window - 8)
+    return output[:sample_count]
+
+
+def merge_undersized_chunks(chunks: list[dict[str, int]]) -> list[dict[str, int]]:
+    """Fold any section under MIN_CHUNK_TURNS into its smaller neighbour when the result stays
+    within MAX_CHUNK_TURNS. A section too small to carry a request and its acceptance yields
+    fragments, not actions."""
+    chunks = [dict(chunk) for chunk in chunks]
+    changed = True
+    while changed and len(chunks) > 1:
+        changed = False
+        for index, chunk in enumerate(chunks):
+            if chunk["end"] - chunk["start"] + 1 >= MIN_CHUNK_TURNS:
+                continue
+            neighbours = [i for i in (index - 1, index + 1) if 0 <= i < len(chunks)]
+            neighbours.sort(key=lambda i: chunks[i]["end"] - chunks[i]["start"])
+            for other in neighbours:
+                merged_size = max(chunk["end"], chunks[other]["end"]) - min(chunk["start"], chunks[other]["start"]) + 1
+                if merged_size <= MAX_CHUNK_TURNS:
+                    low, high = sorted((index, other))
+                    chunks[low] = {"start": chunks[low]["start"], "end": chunks[high]["end"]}
+                    del chunks[high]
+                    changed = True
+                    break
+            if changed:
+                break
+    return chunks
 
 
 def normalise_actions(result: dict[str, Any], chunk: dict[str, int]) -> list[dict[str, Any]]:
@@ -728,6 +847,7 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
         "software weekly review": "software_retrieval",
         "process pipeline planning": "process_retrieval",
         "lead generation pipeline review": "process_retrieval",
+        "importer obligations review": "importer_retrieval",
     }
     profile = profiles.get(value)
     return (RETRIEVAL_PROFILE_GUIDANCE[profile], profile) if profile else None
@@ -745,20 +865,327 @@ def dot_similarity(left: list[float], right: list[float]) -> float:
     return sum(a * b for a, b in zip(left, right))
 
 
+def drop_completed_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The extractor labels finished work COMPLETED so it can be excluded; 9 such rows reached
+    reviewers across three measured runs and matched 2 expected actions between them."""
+    return [action for action in actions if clean(action.get("status")).upper() != "COMPLETED"]
+
+
+def normalised_action_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", clean(value).lower()).strip()
+
+
+def dedupe_identical_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Adjacent chunks re-extract the same wording; keep the first row and pool the evidence."""
+    output: list[dict[str, Any]] = []
+    by_key: dict[str, dict[str, Any]] = {}
+    for action in actions:
+        key = normalised_action_key(action.get("action"))
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = action
+            output.append(action)
+            continue
+        merged = list(existing.get("evidenceIds", []))
+        merged.extend(evidence for evidence in action.get("evidenceIds", []) if evidence not in merged)
+        existing["evidenceIds"] = merged
+        if clean(existing.get("owner")) in ("", "Not stated") and clean(action.get("owner")) not in ("", "Not stated"):
+            existing["owner"] = action["owner"]
+    return output
+
+
+def evidence_turn_numbers(action: dict[str, Any], total: int) -> list[int]:
+    numbers = set()
+    for evidence_id in action.get("evidenceIds", []) if isinstance(action.get("evidenceIds"), list) else []:
+        match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
+        if match and 1 <= int(match.group(1)) <= total:
+            numbers.add(int(match.group(1)))
+    return sorted(numbers)
+
+
+def repair_short_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    """Rewrite bare-verb candidates from their cited turns instead of letting the word gate drop them.
+
+    Measured on Abbott: the extractor returned "send" for Jacqui's "I'll get that over to you
+    today" (the code of conduct) and "build out" for Stuart's scope work - both expected actions,
+    both deleted by the four-word gate. Fail-open: on any error the originals are returned and the
+    gate behaves as before."""
+    short = [(index, action) for index, action in enumerate(actions)
+             if action_word_count(action.get("action")) < MINIMUM_ACTION_WORDS and evidence_turn_numbers(action, len(turns))]
+    if not short:
+        return actions
+    fragments = []
+    for number, (_index, action) in enumerate(short, 1):
+        cited = "\n".join(f"  Turn {turn}: {turns[turn - 1]}" for turn in evidence_turn_numbers(action, len(turns))[:6])
+        fragments.append(f"{number}. Owner: {action.get('owner', 'Not stated')}\nFragment: {action.get('action', '')}\nCited turns:\n{cited}")
+    repaired: dict[int, str] = {}
+    try:
+        for start in range(0, len(fragments), 12):
+            batch = fragments[start:start + 12]
+            result = call_trooper(SHORT_ACTION_REPAIR_PROMPT.format(fragments="\n\n".join(batch)), 1500, SHORT_ACTION_REPAIR_SCHEMA)
+            for row in result.get("repairs", []) if isinstance(result.get("repairs"), list) else []:
+                number = row.get("candidateNumber") if isinstance(row, dict) else None
+                if isinstance(number, int) and start + 1 <= number <= start + len(batch):
+                    repaired[number] = clean(row.get("action"))
+    except Exception:
+        return actions
+    output = list(actions)
+    for number, (index, action) in enumerate(short, 1):
+        wording = repaired.get(number, "")
+        if action_word_count(wording) >= MINIMUM_ACTION_WORDS:
+            output[index] = {**action, "action": wording, "repairedFrom": action.get("action")}
+        else:
+            output[index] = {**action, "action": ""}  # nothing supported: leave for the gate
+    return [action for action in output if clean(action.get("action"))]
+
+
+def action_sample_count() -> int:
+    """Independent extraction samples per meeting. Three, each over a different chunking, is
+    the measured configuration (see docs/staged-actions-live-path-2026-09-06.md);
+    STAGED_ACTION_SAMPLES=1 restores single-pass extraction with every row in tier 1."""
+    try:
+        return max(1, int(os.environ.get("STAGED_ACTION_SAMPLES", "3")))
+    except ValueError:
+        return 3
+
+
+def owner_tokens(value: Any) -> set[str]:
+    tokens = {token for token in re.findall(r"[a-z]+", clean(value).lower()) if len(token) > 1}
+    return tokens - {"not", "stated", "and", "team", "the", "mr", "mrs", "ms", "dr"}
+
+
+def owners_compatible(left: Any, right: Any) -> bool:
+    """Unstated owners are compatible with anyone; stated owners must share a name token."""
+    left_tokens, right_tokens = owner_tokens(left), owner_tokens(right)
+    if not left_tokens or not right_tokens:
+        return True
+    return bool(left_tokens & right_tokens)
+
+
+def action_vectors(actions: list[dict[str, Any]], backend: Any) -> list[list[float] | None]:
+    if not backend or not getattr(backend, "available", False):
+        return [None] * len(actions)
+    texts = [clean(action.get("action")) for action in actions]
+    try:
+        embeddings = backend.encode_many(texts)
+    except Exception:
+        return [None] * len(actions)
+    output = []
+    for text in texts:
+        key = re.sub(r"\s+", " ", text).strip()
+        output.append(embeddings.get(key) or embeddings.get(text) or embeddings.get(key.lower()))
+    return output
+
+
+def merge_sampled_actions(actions: list[dict[str, Any]], sample_count: int, backend: Any = None) -> list[dict[str, Any]]:
+    """Fold repeated extraction samples into one row per deliverable with a support count.
+
+    Each row carries the sample it came from. Rows join an existing group when their wording is
+    identical after normalisation, or when the embeddings agree at SUPPORT_MERGE_THRESHOLD and the
+    owners do not disagree. Without MiniLM only identical wording merges, so support is
+    understated rather than invented."""
+    vectors = action_vectors(actions, backend)
+    groups: list[dict[str, Any]] = []
+    for action, vector in zip(actions, vectors):
+        key = normalised_action_key(action.get("action"))
+        target = None
+        for group in groups:
+            if group["key"] == key:
+                target = group
+                break
+            if vector is not None and group["vector"] is not None and dot_similarity(vector, group["vector"]) >= SUPPORT_MERGE_THRESHOLD \
+                    and owners_compatible(action.get("owner"), group["representative"].get("owner")):
+                target = group
+                break
+        if target is None:
+            groups.append({"key": key, "vector": vector, "representative": action, "members": [action]})
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+    output = []
+    for group in groups:
+        representative = dict(group["representative"])
+        evidence: list[str] = []
+        for member in group["members"]:
+            evidence.extend(item for item in member.get("evidenceIds", []) if item not in evidence)
+        representative["evidenceIds"] = evidence
+        representative["support"] = len({member.get("sample", 0) for member in group["members"]})
+        representative["sampleCount"] = sample_count
+        representative["mergedCandidateCount"] = len(group["members"])
+        representative.pop("sample", None)
+        output.append(representative)
+    return output
+
+
+def representative_rank(action: dict[str, Any]) -> tuple[int, int, int, int]:
+    owner_stated = int(clean(action.get("owner")) not in ("", "Not stated"))
+    return (owner_stated, STATUS_RANK.get(clean(action.get("status")).upper(), 0),
+            len(action.get("evidenceIds", []) or []), action_word_count(action.get("action")))
+
+
+def assign_action_tiers(actions: list[dict[str, Any]], sample_count: int) -> list[dict[str, Any]]:
+    """Tier 1 is the actions table: a row most samples agreed on. Tier 2 is the collapsed
+    "raised" panel: a minority row that at least one sample read as a commitment, assignment
+    or requirement. A minority row every sample read as a mere proposal is tier 3 and is not
+    returned - on the measured runs those 83 rows carried one expected action between them."""
+    output = []
+    for action in actions:
+        support = int(action.get("support", 1) or 1)
+        if sample_count <= 1 or support * 2 >= sample_count + 1:
+            action["tier"] = 1
+        elif support >= 2 or clean(action.get("status")).upper() != "PROPOSED":
+            action["tier"] = 2
+        else:
+            action["tier"] = 3
+        if action["tier"] < 3 or os.environ.get("STAGED_ACTION_KEEP_TIER3") == "1":
+            output.append(action)
+    return output
+
+
+VERB_FAMILIES = [{"SEND", "SHARE"}, {"REVIEW", "INVESTIGATE", "CONFIRM"}, {"ARRANGE", "ATTEND"}, {"UPDATE", "PREPARE"}]
+
+
+def verbs_compatible(left: str, right: str) -> bool:
+    left, right = clean(left).upper(), clean(right).upper()
+    if not left or not right or left == right:
+        return True
+    return any(left in family and right in family for family in VERB_FAMILIES)
+
+
+def structure_action_deliverables(actions: list[dict[str, Any]]) -> dict[int, dict[str, str]]:
+    """Ask for the deliverable noun phrase, verb class and recipient of every candidate.
+
+    Free-text action sentences embed poorly for identity ("Have a catch-up before Monday" and
+    "Schedule a meeting at the hotel" sit at 0.66); the deliverable phrase is what two drafts of
+    the same commitment share. Fail-open: returns {} when the call fails, and callers then skip
+    the merge."""
+    output: dict[int, dict[str, str]] = {}
+    for start in range(0, len(actions), 20):
+        batch = actions[start:start + 20]
+        blocks = "\n".join(f"{start + index}. Owner: {row.get('owner', 'Not stated')} | {clean(row.get('action'))}"
+                            for index, row in enumerate(batch, 1))
+        try:
+            result = call_trooper(DELIVERABLE_PROMPT.format(candidates=blocks), 2500, DELIVERABLE_SCHEMA)
+        except Exception:
+            return {}
+        for row in result.get("deliverables", []) if isinstance(result.get("deliverables"), list) else []:
+            number = row.get("candidateNumber") if isinstance(row, dict) else None
+            if isinstance(number, int) and start + 1 <= number <= start + len(batch) and clean(row.get("deliverable")):
+                output[number] = {"deliverable": clean(row.get("deliverable")), "verb": clean(row.get("verb")).upper(),
+                                  "recipient": clean(row.get("recipient"))}
+    return output
+
+
+def first_evidence_turn(action: dict[str, Any]) -> int | None:
+    numbers = [int(match.group(1)) for evidence_id in action.get("evidenceIds", []) or []
+               if (match := re.fullmatch(r"turn_(\d+)", clean(evidence_id)))]
+    return min(numbers) if numbers else None
+
+
+def merge_by_deliverable(actions: list[dict[str, Any]], structured: dict[int, dict[str, str]], backend: Any,
+                         threshold: float = 0.80, far_threshold: float = 0.90, locality: int = 60) -> list[dict[str, Any]]:
+    """Fold candidates that name the same deliverable for compatible owners with compatible verbs.
+
+    Nearby candidates (within `locality` turns) merge at `threshold`; candidates from different
+    parts of the meeting need the stronger `far_threshold`, because the same phrase can be a
+    different deliverable an hour later. Without structure or MiniLM nothing merges."""
+    if not structured or not backend or not getattr(backend, "available", False):
+        return actions
+    phrases = [structured.get(number, {}).get("deliverable", "") for number in range(1, len(actions) + 1)]
+    try:
+        embeddings = backend.encode_many([phrase for phrase in phrases if phrase])
+    except Exception:
+        return actions
+    def vector(phrase: str) -> list[float] | None:
+        key = re.sub(r"\s+", " ", phrase).strip()
+        return embeddings.get(key) or embeddings.get(phrase) or embeddings.get(key.lower())
+    groups: list[dict[str, Any]] = []
+    for number, action in enumerate(actions, 1):
+        info = structured.get(number, {})
+        vec = vector(info.get("deliverable", "")) if info.get("deliverable") else None
+        turn = first_evidence_turn(action)
+        target = None
+        if vec is not None:
+            for group in groups:
+                if group["vector"] is None or not verbs_compatible(info.get("verb", ""), group["verb"]):
+                    continue
+                # A meeting between two people is one deliverable with two owners: the recipient
+                # of one draft is the owner of the other. Everything else needs compatible owners.
+                joint = (bool(owner_tokens(action.get("owner")) & owner_tokens(group["recipient"]))
+                         or bool(owner_tokens(group["representative"].get("owner")) & owner_tokens(info.get("recipient", ""))))
+                if not joint and not owners_compatible(action.get("owner"), group["representative"].get("owner")):
+                    continue
+                similarity = dot_similarity(vec, group["vector"])
+                near = turn is not None and group["turn"] is not None and abs(turn - group["turn"]) <= locality
+                if similarity >= (threshold if near else far_threshold):
+                    target = group
+                    if joint and not owners_compatible(action.get("owner"), group["representative"].get("owner")):
+                        group["jointOwners"].append(clean(action.get("owner")))
+                    break
+        if target is None:
+            groups.append({"vector": vec, "verb": info.get("verb", ""), "turn": turn, "representative": action, "members": [action],
+                           "recipient": info.get("recipient", ""), "jointOwners": []})
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+    output = []
+    for group in groups:
+        representative = dict(group["representative"])
+        if len(group["members"]) > 1:
+            evidence: list[str] = []
+            for member in group["members"]:
+                evidence.extend(item for item in member.get("evidenceIds", []) if item not in evidence)
+            representative["evidenceIds"] = evidence
+            representative["support"] = max(int(member.get("support", 1) or 1) for member in group["members"])
+            representative["mergedCandidateCount"] = sum(int(member.get("mergedCandidateCount", 1) or 1) for member in group["members"])
+            representative["mergedFrom"] = [clean(member.get("action")) for member in group["members"] if member is not group["representative"]]
+            owners = [clean(representative.get("owner"))] + [owner for owner in group["jointOwners"]
+                                                                if owner and not owners_compatible(owner, representative.get("owner"))]
+            if len(owners) > 1:
+                representative["owner"] = " and ".join(dict.fromkeys(owners))
+        output.append(representative)
+    return output
+
+
 def action_has_recall_protection(action: dict[str, Any], evidence: list[str]) -> bool:
     if clean(action.get("status")).upper() not in {"COMMITTED", "ASSIGNED", "REQUIRED"}:
         return False
     joined = " ".join(evidence)
+    # First-person commitments, explicit assignments and dated promises only. "need to",
+    # "must", "please" and "required" describe how things are done at least as often as they
+    # create a task, and protecting them kept process description on the screen.
     return bool(re.search(
-        r"\b(?:i['’]?ll|i will|i can|we['’]?ll|we will|you(?:'ll| will| need to| have to)|"
-        r"can you|please|agreed|assigned|need(?:s)? to|must|shall|required|action(?:ed)?|"
+        r"\b(?:i['’]?ll|i will|i can|we['’]?ll|we will|you(?:['’]ll| will)|"
+        r"can you|could you|will you|agreed|assigned|action(?:ed)?|"
         r"by (?:monday|tuesday|wednesday|thursday|friday|tomorrow|next week))\b", joined, re.I))
+
+
+SELECTOR_BATCH_CHARS = 22000
+SELECTOR_TURN_CHARS = 360
+
+
+def selector_batches(blocks: list[tuple[int, str]]) -> list[list[tuple[int, str]]]:
+    """At most 15 candidates and about SELECTOR_BATCH_CHARS of text per call. Fifteen software
+    review candidates with their evidence overran the model's input and came back as HTTP 422."""
+    batches: list[list[tuple[int, str]]] = []
+    current: list[tuple[int, str]] = []
+    size = 0
+    for block in blocks:
+        if current and (len(current) >= 15 or size + len(block[1]) > SELECTOR_BATCH_CHARS):
+            batches.append(current)
+            current, size = [], 0
+        current.append(block)
+        size += len(block[1])
+    if current:
+        batches.append(current)
+    return batches
 
 
 def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]] | None:
     decisions: dict[int, dict[str, Any]] = {}
-    for start in range(0, len(blocks), 15):
-        batch = blocks[start:start + 15]
+    for batch in selector_batches(blocks):
         try:
             result = call_trooper(RETRIEVAL_SELECTOR_PROMPT.format(
                 guidance=guidance, candidates="\n\n".join(block for _, block in batch)),
@@ -812,7 +1239,7 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
         evidence = [turns[index - 1] for index in sorted(evidence_numbers)]
         if action_has_recall_protection(action, [turns[index - 1] for index in sorted(original_numbers)]):
             protected.add(number)
-        lines = "\n".join(f"  Turn {index}: {turns[index - 1]}" for index in sorted(evidence_numbers))
+        lines = "\n".join(f"  Turn {index}: {turns[index - 1][:SELECTOR_TURN_CHARS]}" for index in sorted(evidence_numbers))
         blocks.append((number, f"{number}. Owner: {action.get('owner', 'Not stated')}\n"
             f"Draft: {action.get('action', '')}\nStatus: {action.get('status', '')}\nEvidence:\n{lines}"))
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -827,8 +1254,10 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
         left, right = first[number], second[number]
         if number in protected:
             continue
+        # The rejection codes overlap (DISCUSSION_ONLY, NO_SUPPORTED_TASK and UNACCEPTED_PROPOSAL
+        # describe the same rows), so requiring the same code made removal a matter of luck.
         if (left.get("decision") == right.get("decision") == "REMOVE"
-                and left.get("rejectionCode") == right.get("rejectionCode") in valid_codes
+                and left.get("rejectionCode") in valid_codes and right.get("rejectionCode") in valid_codes
                 and left.get("evidenceTurns") and right.get("evidenceTurns")):
             removed.add(number)
     return [action for number, action in enumerate(eligible, 1) if number not in removed]
@@ -964,6 +1393,64 @@ def discussion_from_candidates(candidates: list[dict[str, Any]]) -> list[dict[st
     return discussion
 
 
+def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dict[str, Any]:
+    """The live actions stage: boundary chunking, high-recall extraction, type-routed selection.
+
+    Shared by the CLI (main) and the offline live-path harness so both measure the same code."""
+    minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))
+    maximum = max(minimum, math.ceil(len(turns) / 15))
+    boundary_result = call_trooper(BOUNDARY_PROMPT.format(total=len(turns), minimum=minimum, maximum=maximum, numbered=numbered), 1400, BOUNDARY_SCHEMA)
+    chunks = safe_boundaries(boundary_result.get("chunks"), len(turns))
+    lines = numbered.splitlines()
+    action_prompt, prompt_profile = action_prompt_for_meeting_type(meeting_type)
+    sample_count = action_sample_count()
+    def analyse(job: tuple[dict[str, int], int]) -> list[dict[str, Any]]:
+        chunk, sample = job
+        prompt = action_prompt.format(numbered_chunk="\n".join(lines[chunk["start"] - 1:chunk["end"]]))
+        rows = normalise_actions(call_trooper(prompt, 1800, ACTION_SCHEMA), chunk)
+        for row in rows:
+            row["sample"] = sample
+        return rows
+    chunkings = alternative_chunkings(chunks, len(turns), sample_count)
+    jobs = [(chunk, sample) for sample, sample_chunks in enumerate(chunkings) for chunk in sample_chunks]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4 if sample_count == 1 else 6, len(jobs))) as pool:
+        results = list(pool.map(analyse, jobs))
+    actions = [action for group in results for action in group]
+    actions = drop_completed_actions(actions)
+    actions = repair_short_actions(actions, turns)
+    if sample_count > 1:
+        actions = merge_sampled_actions(actions, sample_count, load_action_retrieval_backend())
+    else:
+        for action in actions:
+            action.pop("sample", None)
+        actions = dedupe_identical_actions(actions)
+    candidate_count = len(actions)
+    if os.environ.get("STAGED_ACTION_DELIVERABLE_MERGE", "0") == "1" and len(actions) > 1:
+        actions = merge_by_deliverable(actions, structure_action_deliverables(actions), load_action_retrieval_backend())
+    # The importer-only selector kept 8 rows of 49 and discarded 3 of the 6 candidates that
+    # matched the reviewed minutes (the resent QMS manual, the countries list, the declarations
+    # of conformity) while keeping "Speak to you next week". It stays available behind
+    # STAGED_IMPORTER_LEGACY_SELECTOR=1; the default is the same evidence-grounded path as every
+    # other type, with importer guidance.
+    if is_importer_obligations_type(meeting_type) and os.environ.get("STAGED_IMPORTER_LEGACY_SELECTOR") == "1":
+        actions = select_importer_actual_actions(actions, turns)
+        prompt_profile = "importer_obligations_actual_actions"
+    else:
+        selector = selective_actual_action_profile(meeting_type)
+        if selector:
+            guidance, prompt_profile = selector
+            actions = select_actual_actions(actions, turns, guidance)
+        else:
+            retrieval_selector = retrieval_selector_profile(meeting_type)
+            if retrieval_selector:
+                guidance, prompt_profile = retrieval_selector
+                actions = select_retrieval_grounded_actions(actions, turns, guidance)
+    actions = assign_action_tiers(actions, sample_count)
+    return {"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
+            "actionPromptProfile": prompt_profile, "actionSampleCount": sample_count,
+            "candidateCountBeforeSelection": candidate_count}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript")
@@ -1077,33 +1564,7 @@ def main() -> int:
             "splitAfterTurns": split_after_turns}, ensure_ascii=False))
         return 0
 
-    minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))
-    maximum = max(minimum, math.ceil(len(turns) / 15))
-    boundary_result = call_trooper(BOUNDARY_PROMPT.format(total=len(turns), minimum=minimum, maximum=maximum, numbered=numbered), 1400, BOUNDARY_SCHEMA)
-    chunks = safe_boundaries(boundary_result.get("chunks"), len(turns))
-    lines = numbered.splitlines()
-    action_prompt, prompt_profile = action_prompt_for_meeting_type(args.meeting_type)
-    def analyse(chunk: dict[str, int]) -> list[dict[str, Any]]:
-        prompt = action_prompt.format(numbered_chunk="\n".join(lines[chunk["start"] - 1:chunk["end"]]))
-        return normalise_actions(call_trooper(prompt, 1800, ACTION_SCHEMA), chunk)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
-        results = list(pool.map(analyse, chunks))
-    actions = [action for group in results for action in group]
-    if is_importer_obligations_type(args.meeting_type):
-        actions = select_importer_actual_actions(actions, turns)
-        prompt_profile = "importer_obligations_actual_actions"
-    else:
-        selector = selective_actual_action_profile(args.meeting_type)
-        if selector:
-            guidance, prompt_profile = selector
-            actions = select_actual_actions(actions, turns, guidance)
-        else:
-            retrieval_selector = retrieval_selector_profile(args.meeting_type)
-            if retrieval_selector:
-                guidance, prompt_profile = retrieval_selector
-                actions = select_retrieval_grounded_actions(actions, turns, guidance)
-    print(json.dumps({"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
-        "actionPromptProfile": prompt_profile}, ensure_ascii=False))
+    print(json.dumps(run_actions_stage(turns, numbered, args.meeting_type), ensure_ascii=False))
     return 0
 
 

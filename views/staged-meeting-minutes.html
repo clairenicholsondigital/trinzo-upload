@@ -361,6 +361,10 @@ tr.wording-unresolved td:first-child { box-shadow:inset 3px 0 0 #d9a514; }
 .considered-options p.considered-intro { margin:0 0 .6rem; font-size:.82rem; color:#4a5560; }
 .considered-options ul { margin:0; padding-left:1.15rem; }
 .considered-options li { margin-bottom:.35rem; font-size:.88rem; }
+.raised-actions li { display:flex; flex-wrap:wrap; gap:.4rem .7rem; align-items:baseline; }
+.raised-actions .raised-text { flex:1 1 22rem; }
+.raised-actions .raised-support { font-size:.78rem; color:#4a5560; white-space:nowrap; }
+.raised-actions button { font-size:.8rem; padding:.2rem .55rem; }
 .considered-options .considered-by { color:#4a5560; font-size:.8rem; }
 .wording-unresolved-note { display:inline-block; margin-bottom:4px; padding:1px 8px; border-radius:6px; background:#f5e2b8; color:#7a5b12; font-size:0.72rem; font-weight:600; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
@@ -737,6 +741,7 @@ td select {
           <button id="addActionRowBtn" type="button">Add action</button>
         </div>
         <div id="consideredOptions" class="considered-options" hidden></div>
+        <div id="raisedActions" class="considered-options raised-actions" hidden></div>
         <div id="actionReviewGroups" class="action-review-groups"></div>
       </article>
 
@@ -911,7 +916,7 @@ td select {
   // present — otherwise a resumed draft shows placeholder text as if it were generated and
   // a genuine generation failure stays hidden until a later step.
   var generatedStages = { details: false, summary: false, discussion: false, actions: false };
-  var stagedState = { details: null, summary: null, discussion: null, actions: null };
+  var stagedState = { details: null, summary: null, discussion: null, actions: null, raisedActions: [] };
   var generatedStageVersions = { details: null, summary: null, discussion: null, actions: null };
   // Where the purpose the reviewer was shown came from - stated in the meeting, read off
   // the title, the meeting type, or nothing. The review analytics already record whether
@@ -1554,6 +1559,8 @@ td select {
       generatedStages.actions = true;
       renderActions(state.actions);
       renderConsideredOptions(state.consideredOptions);
+      stagedState.raisedActions = Array.isArray(state.raisedActions) ? state.raisedActions : [];
+      renderRaisedActions(stagedState.raisedActions);
     }
   }
 
@@ -1635,6 +1642,27 @@ td select {
         var by = item && item.raisedBy && item.raisedBy !== 'Not stated'
           ? ' <span class="considered-by">- raised by ' + escapeHtml(item.raisedBy) + '</span>' : '';
         return '<li>' + escapeHtml(String((item && item.option) || '')) + by + '</li>';
+      }).join('') + '</ul>';
+  }
+
+  // Rows most extraction passes did not agree on. They are neither published nor thrown away:
+  // the reviewer sees them beneath the table and adds the real ones with one click. A row
+  // added here becomes an ordinary action row; a dismissed one is dropped from the draft.
+  function renderRaisedActions(items) {
+    var host = document.getElementById('raisedActions');
+    if (!host) return;
+    var rows = Array.isArray(items) ? items.filter(function (item) { return item && String(item.action || '').trim(); }) : [];
+    if (!rows.length) { host.hidden = true; host.innerHTML = ''; return; }
+    host.hidden = false;
+    host.innerHTML = '<h3>Raised in the meeting, not confirmed</h3>' +
+      '<p class="considered-intro">' + rows.length + ' possible action' + (rows.length === 1 ? '' : 's') +
+      ' below ' + (rows.length === 1 ? 'was' : 'were') + ' found by only some passes over the transcript. Add the real ones; dismiss the rest.</p>' +
+      '<ul>' + rows.map(function (item, index) {
+        var owner = item.owner && item.owner !== 'Not stated' ? escapeHtml(item.owner) + ': ' : '';
+        var support = item.sampleCount ? '<span class="raised-support">' + Number(item.support || 1) + ' of ' + Number(item.sampleCount) + ' passes</span>' : '';
+        return '<li data-raised-index="' + index + '"><span class="raised-text">' + owner + escapeHtml(String(item.action || '')) + '</span>' + support +
+          '<button class="secondary" type="button" data-raised-add="' + index + '">Add to actions</button>' +
+          '<button class="secondary" type="button" data-raised-dismiss="' + index + '">Dismiss</button></li>';
       }).join('') + '</ul>';
   }
 
@@ -3065,6 +3093,8 @@ td select {
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) {
       renderActions(screensPayload.actions);
       renderConsideredOptions(screensPayload.consideredOptions);
+      stagedState.raisedActions = Array.isArray(screensPayload.raisedActions) ? screensPayload.raisedActions : [];
+      renderRaisedActions(stagedState.raisedActions);
       stagedState.actions = actionsFromReview();
       generatedStageVersions.actions = cloneReviewValue(stagedState.actions);
     }
@@ -4117,6 +4147,31 @@ td select {
     exportClientPdfButton.addEventListener('click', downloadClientPdf);
   }
   if (previewClientPdfButton) previewClientPdfButton.addEventListener('click', previewClientPdf);
+  var raisedActionsHost = document.getElementById('raisedActions');
+  if (raisedActionsHost) {
+    raisedActionsHost.addEventListener('click', function (event) {
+      var add = event.target.closest('[data-raised-add]');
+      var dismiss = event.target.closest('[data-raised-dismiss]');
+      if (!add && !dismiss) return;
+      var index = Number((add || dismiss).getAttribute(add ? 'data-raised-add' : 'data-raised-dismiss'));
+      var rows = Array.isArray(stagedState.raisedActions) ? stagedState.raisedActions : [];
+      var item = rows[index];
+      if (!item) return;
+      if (add && actionsTableBody) {
+        var emptyState = actionsTableBody.querySelector('.empty-state');
+        if (emptyState) actionsTableBody.innerHTML = '';
+        actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({ owner: item.owner, action: item.action, deadline: item.deadline }));
+        recordWorkflowInteraction('raised_action_added', { support: Number(item.support || 1), sampleCount: Number(item.sampleCount || 1) }, { source: 'raised_actions_panel' });
+      } else {
+        recordWorkflowInteraction('raised_action_dismissed', { support: Number(item.support || 1), sampleCount: Number(item.sampleCount || 1) }, { source: 'raised_actions_panel' });
+      }
+      stagedState.raisedActions = rows.filter(function (_row, position) { return position !== index; });
+      renderRaisedActions(stagedState.raisedActions);
+      updateConfirmedActionCount();
+      renderFinalDocument();
+      saveDraft();
+    });
+  }
   if (actionsTableBody) {
     actionsTableBody.addEventListener('click', function (event) {
       var button = event.target.closest('[data-action-row]');

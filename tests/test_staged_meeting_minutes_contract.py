@@ -212,8 +212,10 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("runQueuedStagedMeetingMinutesStage", api)
         self.assertIn("Denoising and organising discussion evidence.", api)
         self.assertIn("payload = await generateMiniLmTrooperStage(stage, transcript.text", api)
-        self.assertIn("const generationMeetingType = selectedMeetingType === 'General'", api)
-        self.assertIn("meetingType: generationMeetingType", api)
+        # The queued stage and the scorecard route the meeting type through one shared helper,
+        # so the two cannot drift apart again.
+        self.assertIn("function stagedGenerationMeetingType(selectedMeetingType, meetingIdentity)", api)
+        self.assertIn("meetingType: stagedGenerationMeetingType(selectedMeetingType, meetingIdentity)", api)
         self.assertIn("findStagedSourceJobFromRequest", api)
         self.assertIn("function isTransientPgError", db)
         self.assertIn("code === '40P01' || code === '40001'", db)

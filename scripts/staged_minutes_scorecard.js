@@ -236,10 +236,19 @@ async function scoreFixture(name) {
     overallTopics: summary.overallTopics || [],
     topicRefs: (summary.topicRefs || []).map((ref) => ({ text: ref.text, topicId: ref.topicId, evidenceIds: ref.evidenceIds }))
   };
-  const discussionResult = await api.canonicalStagedResponse('discussion', { text, fileName: name, source: 'file' }, { confirmedDetails: details, confirmedSummary });
+  // Discussion and Actions are served by the MiniLM-v3 + Trooper chunk pipeline
+  // (generateMiniLmTrooperStage), not canonicalStagedResponse - the queued stage stopped
+  // routing them through the canonical path at 43275ac, and this script kept scoring the
+  // canonical path for two weeks afterwards. The meeting type is the reviewer-confirmed one,
+  // which for a scored fixture is the expected type, routed exactly as the queued stage
+  // routes it.
+  const generationMeetingType = api.stagedGenerationMeetingType(expected.meetingType || details.meetingType || '',
+    `${expected.meetingTitle || details.meetingTitle || ''} ${sourceFileName}`);
+  const discussionResult = await api.generateMiniLmTrooperStage('discussion', text, { meetingType: generationMeetingType });
   const discussion = discussionResult.screens?.discussion || [];
-  const actionsResult = await api.canonicalStagedResponse('actions', { text, fileName: name, source: 'file' }, { confirmedDetails: details, confirmedSummary });
-  const actions = actionsResult.screens?.actions || [];
+  const actionsResult = await api.generateMiniLmTrooperStage('actions', text, { meetingType: generationMeetingType });
+  const actions = api.filterActionsForPresentation(actionsResult.screens?.actions || []);
+  const raisedActions = api.filterActionsForPresentation(actionsResult.screens?.raisedActions || []);
 
   const generatedDiscussionText = discussion.flatMap((card) => (card.points || []).map((point) => (typeof point === 'string' ? point : point?.text)));
 
@@ -258,6 +267,10 @@ async function scoreFixture(name) {
   // Precision the other way: how many published actions correspond to something a human
   // actually minuted, versus how many are the tool's own invention or noise.
   const actionPrecision = coverage(actions, expected.actions || [], (generated, exp) => actionMatch(exp, generated));
+  // Expected actions that only the collapsed "raised" panel found. They are not on the table,
+  // so they do not count as recall - but they are one click from it, which is a different
+  // failure from being absent, and the count says how much recall the tiering is holding back.
+  const raisedOnly = coverage(actionCoverage.unmatched.map((action) => (expected.actions || []).find((item) => item.action === action) || { action }), raisedActions, actionMatch);
 
   const wording = wordingFaultsAcross([
     summary.meetingPurpose,
@@ -279,6 +292,7 @@ async function scoreFixture(name) {
     discussion: discussionCoverage,
     actionRecall: actionCoverage,
     actionPrecision: { matched: actionPrecision.matched, total: actionPrecision.total },
+    raisedActions: { shown: raisedActions.length, expectedFoundOnlyHere: raisedOnly.matched },
     wording
   };
 }

@@ -3735,6 +3735,18 @@ function stagedNoEditReviewExperience(trace = []) {
   };
 }
 
+// "Process / pipeline planning" was correctly removed from the reviewer-facing vocabulary in
+// favour of General. Retain its measured prompt profile internally when the meeting identity
+// itself clearly names that subject. Shared by the queued stage and the scorecard so the two
+// cannot drift apart again.
+function stagedGenerationMeetingType(selectedMeetingType, meetingIdentity) {
+  const selected = String(selectedMeetingType || '');
+  const identity = String(meetingIdentity || '');
+  if (selected === 'General' && /\bimporter[\s_-]*obligations?\b/i.test(identity)) return 'Importer obligations review';
+  if (selected === 'General' && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(identity)) return 'Process / pipeline planning';
+  return selected;
+}
+
 async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
   // The evaluation sequence runs the pipeline that ships, because it used to run a
   // different one. This function drove buildStagedSummaryResponse and its siblings - an
@@ -5491,18 +5503,8 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       // coverage from 168/193 to 113/194 and bypassed the high-recall action extractor.
       const selectedMeetingType = input.confirmedDetails?.meetingType || input.meetingType || '';
       const meetingIdentity = `${input.confirmedDetails?.meetingTitle || ''} ${transcript.fileName || ''}`;
-      // "Process / pipeline planning" was correctly removed from the reviewer-facing
-      // vocabulary in favour of General. Retain its measured prompt profile internally
-      // when the meeting identity itself clearly names that subject.
-      const generationMeetingType = selectedMeetingType === 'General'
-        && /\bimporter[\s_-]*obligations?\b/i.test(meetingIdentity)
-        ? 'Importer obligations review'
-        : selectedMeetingType === 'General'
-          && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(meetingIdentity)
-          ? 'Process / pipeline planning'
-          : selectedMeetingType;
       payload = await generateMiniLmTrooperStage(stage, transcript.text, {
-        meetingType: generationMeetingType
+        meetingType: stagedGenerationMeetingType(selectedMeetingType, meetingIdentity)
       });
     } else {
       const evidenceProgressMessage = stage === 'actions'
@@ -5536,6 +5538,9 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         removed: removed.map((item) => item?.action || item?.meetingActionPoint || '')
       }));
       payload.screens.actions = presentedActions;
+      if (Array.isArray(payload.screens.raisedActions)) {
+        payload.screens.raisedActions = filterActionsForPresentation(payload.screens.raisedActions);
+      }
     }
 
     await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
@@ -7893,6 +7898,11 @@ router.post('/copilot-chat', async (req, res) => {
 
 router.stagedEvaluation = {
   runStagedSequenceForEvaluation,
+  // The scorecard generates discussion and actions through the same function and the same
+  // meeting-type routing as the queued stage, so it measures the pipeline the reviewer sees.
+  generateMiniLmTrooperStage,
+  stagedGenerationMeetingType,
+  filterActionsForPresentation,
   // The health judgement is pure so its rules can be tested without a pipeline run.
   assessGenerationHealth,
   // Exposed so the merge can be tested for the property that matters - that a renamed
