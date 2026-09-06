@@ -209,6 +209,17 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(PIPELINE.action_prompt_for_meeting_type(
                 "Software and technical-file weekly review")[1], "software_weekly_review")
 
+    def test_general_v2_routes_only_the_exact_general_type(self):
+        with mock.patch.dict(os.environ, {"STAGED_GENERAL_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type("General")
+            guidance, retrieval_profile = PIPELINE.retrieval_selector_profile("General")
+            self.assertIs(prompt, PIPELINE.GENERAL_ACTION_V2_PROMPT)
+            self.assertEqual(action_profile, "general_v2")
+            self.assertEqual(retrieval_profile, "general_retrieval_v2")
+            self.assertIn("named person accepted", guidance)
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Decision meeting")[1], "general")
+            self.assertIsNone(PIPELINE.retrieval_selector_profile("Decision meeting"))
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -769,6 +780,38 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual({PIPELINE.technical_file_action_family(row) for row in weekly},
                          {"risk_update", "language_update", "contractor_folder"})
         self.assertTrue(all(row["support"] == 3 for row in consultancy + weekly))
+
+    def test_general_consolidation_keeps_one_complete_row_per_accepted_deliverable(self):
+        turns = [
+            "Deepa Sharma: We have both Jos today, Jo Bennett and Jo Marsh.",
+            "Jo Marsh: I'll sort the marshals and get us up to fourteen.",
+            "Jo Bennett: I'll get a quote from St John Ambulance for two crews and confirm it once you're happy with the cost.",
+            "Alan Pryce: I'll get the road-closure application in this week and confirm the towpath's reopened.",
+            "Deepa Sharma: I'll reorder the medals and order three hundred and fifty.",
+            "Deepa Sharma: I'll take the social media, post every couple of days and get the entry link out everywhere.",
+        ]
+        actions = [
+            {"owner": "Jo", "action": "Sort the marshals and get the number up to fourteen",
+             "evidenceIds": ["turn_2"], "sampleCount": 3},
+            {"owner": "Jo", "action": "Get a quote from St John for two first aid crews",
+             "evidenceIds": ["turn_3"], "sampleCount": 3},
+            {"owner": "Alan", "action": "Submit the road closure application and check the towpath",
+             "evidenceIds": ["turn_4"], "sampleCount": 3},
+            {"owner": "Deepa", "action": "Reorder 350 medals",
+             "evidenceIds": ["turn_5"], "sampleCount": 3},
+            {"owner": "Deepa", "action": "Run the social media push and distribute the entry link",
+             "evidenceIds": ["turn_6"], "sampleCount": 3},
+            {"owner": "Deepa", "action": "Confirm the race date", "evidenceIds": ["turn_1"], "sampleCount": 3},
+        ]
+        consolidated = PIPELINE.consolidate_general_actions(actions, turns, 3)
+        recovered = PIPELINE.recover_general_actions(consolidated, turns, 3)
+        by_family = {PIPELINE.general_action_family(row, "race"): row for row in recovered}
+        self.assertNotIn("", by_family)
+        self.assertEqual(len(recovered), 5)
+        self.assertEqual(by_family["marshals"]["owner"], "Jo Marsh")
+        self.assertEqual(by_family["first_aid"]["owner"], "Jo Bennett")
+        self.assertEqual(by_family["road_closure"]["deadline"], "This week")
+        self.assertEqual(by_family["social"]["support"], 3)
 
 
 class SampledActionSupportTests(unittest.TestCase):

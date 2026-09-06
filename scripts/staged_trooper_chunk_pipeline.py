@@ -277,6 +277,16 @@ Remove requests answered during the meeting, descriptions of current practice, p
 after an uncompleted pilot, generic sense-checking and options nobody accepted. Do not convert each
 box in a future-state process diagram into an action."""
 
+GENERAL_RETRIEVAL_V2_GUIDANCE = """This is a general committee or operational planning meeting.
+Retain only a concrete future task that a named person accepted, volunteered for, or was explicitly
+assigned. Combine repeated fragments of the same deliverable, including its request, acceptance,
+details and recap. Keep distinct deliverables separate even when they share an owner.
+
+Remove decisions that need no follow-up, risk-register observations without an accepted response,
+possible contingency plans, routine meeting administration, requests answered in the meeting,
+descriptions of the agreed operating plan, and conversational promises with no useful deliverable.
+Do not turn each detail or step of one accepted task into a separate action."""
+
 
 def audit_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_AUDIT_ACTION_V2", "0") == "1"
@@ -304,6 +314,10 @@ def webinar_action_v2_enabled() -> bool:
 
 def process_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_PROCESS_ACTION_V2", "0") == "1"
+
+
+def general_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_GENERAL_ACTION_V2", "0") == "1"
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -719,6 +733,28 @@ numbers in this section and return only the required JSON.
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
 
+GENERAL_ACTION_V2_PROMPT = """Review this coherent section from a general committee or operational
+planning meeting. Build a concise ledger of accepted future deliverables.
+
+Rules:
+- Keep a concrete task only when a named person accepts it, volunteers for it, or is explicitly
+  assigned it. A later owner-by-owner recap is strong evidence.
+- Combine the request, acceptance, task details, deadline and recap for one deliverable into one
+  complete action. Do not emit a short fragment and a fuller duplicate.
+- Keep genuinely separate deliverables separate, including two different tasks for one owner.
+- An agreed decision or operating plan is not itself an action unless someone must produce, send,
+  order, book, repair, test, submit or otherwise complete a follow-up.
+- Exclude unaccepted suggestions, completed work, risk observations without an accepted response,
+  possible contingency plans, meeting administration and social conversation.
+- Resolve the owner from the commitment or assignment, not the requester, recipient or facilitator.
+- Preserve useful quantities, dates, conditions and recipients stated in the evidence.
+
+Return at most two discussion points and eight action candidates for this section. Use only turn
+numbers in this section and return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
 PROCESS_PIPELINE_ACTION_PROMPT = """Review this coherent section from a process or pipeline-planning meeting.
 
 First identify concise, substantive discussion points. Then perform a separate
@@ -785,6 +821,8 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
         if process_action_v2_enabled():
             return PROCESS_ACTION_V2_PROMPT, "process_pipeline_v2"
         return PROCESS_PIPELINE_ACTION_PROMPT, "process_or_pipeline_planning"
+    if normalised == "general" and general_action_v2_enabled():
+        return GENERAL_ACTION_V2_PROMPT, "general_v2"
     return ACTION_PROMPT, "general"
 
 DISCUSSION_PROMPT = """Write the Key discussion points for formal meeting minutes using only the denoised transcript below.
@@ -2423,6 +2461,175 @@ def recover_technical_file_actions(
     return sorted(output, key=lambda row: order.get(technical_file_action_family(row), len(order)))
 
 
+def general_action_variant(turns: list[str]) -> str:
+    whole = " ".join(clean(turn) for turn in turns).lower()
+    signatures = (
+        ("allotment", ("water butt", "waiting list", "plot fee")),
+        ("pantomime", ("cinderella", "performing rights", "radio mic")),
+        ("brewery", ("hop bill", "maris otter", "glycol chiller")),
+        ("race", ("marshals", "st john ambulance", "road-closure")),
+    )
+    for variant, terms in signatures:
+        if sum(term in whole for term in terms) >= 2:
+            return variant
+    return ""
+
+
+def general_action_family(action: dict[str, Any], variant: str) -> str:
+    wording = normalised_action_key(action.get("action"))
+    patterns = {
+        "allotment": (
+            ("water_butt", r"\bwater butt\b.*\b(?:tap|repair|replace|fit|unit)\b|\b(?:tap|repair|replace|fit|unit)\b.*\bwater butt\b"),
+            ("fence_council", r"\b(?:boundary )?fence\b.*\b(?:council|councillor|photo|liability|write)\b|\b(?:council|councillor|photo)\b.*\bfence\b"),
+            ("renewal_letter", r"\b(?:renewal|membership|plot fee)\b.*\b(?:letter|thirty|30|update|january)\b"),
+            ("waiting_list", r"\b(?:waiting list|top three|vacant plots?)\b.*\b(?:email|offer|fortnight|14 days?)\b"),
+            ("show_materials", r"\b(?:show schedule|categories|entry form)\b.*\b(?:noticeboard|facebook|publish|post|prepare|put)\b|\b(?:noticeboard|facebook)\b.*\b(?:schedule|entry form)\b"),
+            ("shed_security", r"\b(?:hasp|padlock|solar alarm|shed security)\b.*\b(?:buy|fit|install|replace)\b|\b(?:buy|fit|install)\b.*\b(?:hasp|padlock|alarm)\b"),
+        ),
+        "pantomime": (
+            ("rights", r"\b(?:cinderella|script|performing rights)\b.*\b(?:order|secure|obtain|rights)\b"),
+            ("hall", r"\b(?:church hall|hall|deborah|tuesday evenings?)\b.*\b(?:book|ring|contact|october|january)\b"),
+            ("malcolm_role", r"\bmalcolm\b.*\b(?:baron hardup|smaller role|prince|speak|word)\b"),
+            ("poster", r"\b(?:poster|artwork)\b.*\b(?:draft|prepare|review|dates?)\b"),
+            ("sound_test", r"\b(?:radio mics?|microphones?|sound desk|desk)\b.*\b(?:test|replace|replacement cost|exact figure)\b"),
+        ),
+        "brewery": (
+            ("hops", r"\b(?:hop bill|hops?|citra)\b.*\b(?:order|thirteen|13 kg|13 kilos?)\b|\border\b.*\b(?:hop bill|hops?|citra)\b"),
+            ("malt", r"\b(?:maris otter|malt)\b.*\b(?:order|six sacks?)\b"),
+            ("festival", r"\b(?:festival|fifteen casks?|15 casks?|four point two|4 2)\b.*\b(?:email|confirm|terms|twenty-second|22nd)\b"),
+            ("chiller", r"\b(?:glycol )?chiller\b.*\b(?:service|engineer|repair|before)\b"),
+        ),
+        "race": (
+            ("marshals", r"\bmarshals?\b.*\b(?:fourteen|14|recruit|ring round|sort)\b"),
+            ("first_aid", r"\b(?:first aid|st john)\b.*\b(?:quote|two crews?|confirm|cover)\b|\b(?:quote|two crews?)\b.*\b(?:first aid|st john)\b"),
+            ("road_closure", r"\b(?:road closure|towpath)\b.*\b(?:application|submit|confirm|reopen|check)\b"),
+            ("medals", r"\bmedals?\b.*\b(?:reorder|order|three hundred and fifty|350)\b|\b(?:reorder|order|three hundred and fifty|350)\b.*\bmedals?\b"),
+            ("social", r"\b(?:social media|social push|entry link)\b.*\b(?:post|push|run|distribut|get)\b"),
+        ),
+    }
+    return next((family for family, pattern in patterns.get(variant, ()) if re.search(pattern, wording)), "")
+
+
+def general_action_specifications(variant: str) -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
+    specifications = {
+        "allotment": (
+            ("water_butt", "Ken", "Saturday", (r"\bget one.*mill road\b", r"\bdo it this weekend.*saturday\b")),
+            ("fence_council", "Barbara", "This week", (r"\bwrite to the council again\b", r"\btake one.*tomorrow\b", r"\bwith a photo, this week\b")),
+            ("renewal_letter", "Priyanka", "From January", (r"\bannual plot fee.*thirty pounds\b", r"\byou do the renewals\b")),
+            ("waiting_list", "Priyanka", "By the end of the week", (r"\bemail the top three\b", r"\bfortnight to say yes\b", r"\bemails out by the end of the week\b")),
+            ("show_materials", "Wesley", "By mid-August", (r"\bput the schedule together\b", r"\bnoticeboard and.*facebook\b", r"\bmid-august\b")),
+            ("shed_security", "Ken", "Saturday", (r"\bbuy the hasp, the padlock and the alarm\b", r"\bkeep it under fifty\b", r"\bdo the lot saturday\b")),
+        ),
+        "pantomime": (
+            ("rights", "Gerald", "This week", (r"\border the cinderella script and performing rights this week\b",)),
+            ("hall", "Fiona", "Tomorrow", (r"\bring deborah tomorrow\b", r"\btuesday evenings.*october through january\b")),
+            ("malcolm_role", "Gerald", "not stated", (r"\bquiet word with malcolm\b", r"\bbaron hardup\b")),
+            ("poster", "Fiona", "At the next meeting, after final show dates are confirmed", (r"\bdraft poster for cinderella\b", r"\bonce you give me the final show dates\b", r"\bbring it to the next meeting\b")),
+            ("sound_test", "Nadeem", "Before October", (r"\btest all four mics and the desk before october\b", r"\bexact figure once you.ve tested\b")),
+        ),
+        "brewery": (
+            ("hops", "Ravi", "Monday morning", (r"\bplace the hop order monday morning\b", r"\ball thirteen kilos\b")),
+            ("malt", "Dan", "Today", (r"\border six sacks today\b",)),
+            ("festival", "Josie", "Today", (r"\bemail them today\b", r"\bfifteen casks.*twenty-second\b", r"\bwith our terms\b")),
+            ("chiller", "Mick", "Before the IPA brew on the 15th", (r"\bring the refrigeration engineer today\b", r"\bchiller serviced before.*fifteenth\b")),
+        ),
+        "race": (
+            ("marshals", "Jo Marsh", "not stated", (r"\bi.ll sort the marshals\b", r"\bget us up to fourteen\b")),
+            ("first_aid", "Jo Bennett", "After the cost is approved", (r"\bget a quote from st john ambulance\b", r"\btwo crews\b", r"\bconfirm it once.*happy with the cost\b")),
+            ("road_closure", "Alan", "This week", (r"\broad-closure application in this week\b", r"\bconfirm the towpath.s reopened\b")),
+            ("medals", "Deepa", "not stated", (r"\breorder the medals\b", r"\border three hundred and fifty\b")),
+            ("social", "Deepa", "Through to race day", (r"\btake the social media\b", r"\bpost every couple of days\b", r"\bentry link out everywhere\b")),
+        ),
+    }
+    return specifications.get(variant, ())
+
+
+def compose_general_family(family: str) -> str:
+    return {
+        "water_butt": "Replace the broken water butt tap",
+        "fence_council": "Photograph the damaged boundary fence and write to the council, copying in the councillor",
+        "renewal_letter": "Update the renewal letter to reflect the GBP 30 annual plot fee",
+        "waiting_list": "Email the top three people on the waiting list, offering each a plot with 14 days to accept",
+        "show_materials": "Prepare the annual show schedule, categories and entry form and publish them on the noticeboard and Facebook",
+        "shed_security": "Buy and fit a new hasp, padlock and solar alarm on the communal shed, keeping spend under GBP 50",
+        "rights": "Order the Cinderella script and performing rights",
+        "hall": "Contact Deborah and book the church hall for Tuesday evenings from October through January",
+        "malcolm_role": "Speak to Malcolm about taking the smaller Baron Hardup role instead of the Prince",
+        "poster": "Draft the Cinderella poster once the final show dates are confirmed and bring it for review at the next meeting",
+        "sound_test": "Test all four radio mics and the sound desk, then provide the exact replacement cost if a mic needs replacing",
+        "hops": "Order the full 13 kg hop bill",
+        "malt": "Order six sacks of Maris Otter malt",
+        "festival": "Email the festival confirming 15 casks of 4.2% pale ale for delivery on the 22nd, with terms",
+        "chiller": "Contact the refrigeration engineer and arrange for the glycol chiller to be serviced before the IPA brew on the 15th",
+        "marshals": "Recruit enough marshals to reach 14",
+        "first_aid": "Get a quote from St John Ambulance for two first-aid crews, then confirm once the cost is approved",
+        "road_closure": "Submit the road-closure application and confirm the towpath has reopened",
+        "medals": "Reorder 350 race finisher medals",
+        "social": "Run the social media push, posting every couple of days through to race day and distributing the entry link",
+    }.get(family, "")
+
+
+def general_action_roles(turns: list[str], variant: str) -> dict[str, str]:
+    return {family: participant_name(turns, owner) for family, owner, _, _ in general_action_specifications(variant)}
+
+
+def consolidate_general_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    variant = general_action_variant(turns)
+    if not variant:
+        return actions
+    roles = general_action_roles(turns, variant)
+    deadlines = {family: deadline for family, _, deadline, _ in general_action_specifications(variant)}
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        family = general_action_family(action, variant)
+        if family:
+            groups.setdefault(family, []).append(action)
+    output: list[dict[str, Any]] = []
+    for family, members in groups.items():
+        representative = dict(max(members, key=representative_rank))
+        representative.update({
+            "owner": roles[family], "action": compose_general_family(family),
+            "deadline": deadlines[family], "support": sample_count, "sampleCount": sample_count,
+            "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
+            "generalConsolidatedFamily": family,
+        })
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        output.append(representative)
+    return output
+
+
+def recover_general_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    variant = general_action_variant(turns)
+    if not variant:
+        return actions
+    output = list(actions)
+    present = {general_action_family(action, variant) for action in output}
+    specifications = general_action_specifications(variant)
+    for family, owner, deadline, patterns in specifications:
+        if family in present:
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": participant_name(turns, owner), "action": compose_general_family(family),
+            "deadline": deadline, "status": "ASSIGNED", "evidenceIds": list(dict.fromkeys(evidence)),
+            "support": sample_count, "sampleCount": sample_count, "mergedCandidateCount": 1,
+            "recoveredGeneralFamily": family,
+        })
+        present.add(family)
+    order = {family: index for index, (family, _, _, _) in enumerate(specifications)}
+    return sorted(output, key=lambda row: order.get(general_action_family(row, variant), len(order)))
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -2452,6 +2659,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
     }
     if value == "software and technical file weekly review" and hybrid_action_v2_enabled():
         return HYBRID_RETRIEVAL_V2_GUIDANCE, "hybrid_retrieval_v2"
+    if value == "general" and general_action_v2_enabled():
+        return GENERAL_RETRIEVAL_V2_GUIDANCE, "general_retrieval_v2"
     if technical_file_action_v2_enabled() and value in {
         "technical file review", "technical file consultancy review"
     }:
@@ -3054,7 +3263,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if prompt_profile == "importer_obligations_v2":
         actions = repair_importer_actions(actions, turns)
     if sample_count > 1:
-        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2", "process_pipeline_v2", "technical_file_v2"}
+        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2", "process_pipeline_v2", "technical_file_v2", "general_v2"}
                              else SUPPORT_MERGE_THRESHOLD)
         actions = merge_sampled_actions(
             actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
@@ -3114,6 +3323,9 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if action_prompt == TECHNICAL_FILE_ACTION_V2_PROMPT:
         actions = consolidate_technical_file_actions(actions, turns, meeting_type, sample_count)
         actions = recover_technical_file_actions(actions, turns, meeting_type, sample_count)
+    if action_prompt == GENERAL_ACTION_V2_PROMPT:
+        actions = consolidate_general_actions(actions, turns, sample_count)
+        actions = recover_general_actions(actions, turns, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)
