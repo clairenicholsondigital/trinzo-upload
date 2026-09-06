@@ -139,6 +139,12 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(PIPELINE.retrieval_selector_profile("Audit kick-off / planning")[1],
                              "audit_retrieval")
 
+    def test_software_consolidation_flag_is_off_by_default_and_explicit(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(PIPELINE.software_action_consolidation_v2_enabled())
+        with mock.patch.dict(os.environ, {"STAGED_SOFTWARE_ACTION_CONSOLIDATION_V2": "1"}):
+            self.assertTrue(PIPELINE.software_action_consolidation_v2_enabled())
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -551,6 +557,29 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(recovered[0]["action"], "Resend the QMS manual to Orla")
         self.assertEqual(recovered[0]["evidenceIds"], ["turn_1", "turn_3"])
         self.assertEqual(recovered[0]["support"], 3)
+
+    def test_software_review_consolidates_distinct_handoff_and_test_work_packages(self):
+        turns = [
+            "Jacqui Fox   13:08Andrew, if you could just confirm what the spec of flow rate is. David and Colm can review the standard again.",
+            "Jacqui Fox   15:54David is going to reach out to you on additional command letters.",
+            "David Didsbury   16:01And that's my fault.",
+            "Jacqui Fox   16:13Document what actually happens on the debug screen.",
+            "Andrew Kane   16:16Yeah.",
+        ]
+        rows = PIPELINE.consolidate_software_review_actions([
+            {"owner": "Jacqui Fox", "action": "Clarify the nebulizer flow rate for ISO 27427", "evidenceIds": ["turn_1"]},
+            {"owner": "David Didsbury", "action": "Review the ISO 27427 standard against the nebulizer flow rate", "evidenceIds": ["turn_1"]},
+            {"owner": "Jacqui Fox", "action": "Prioritise debug commands and send them to Andrew", "evidenceIds": ["turn_2"]},
+            {"owner": "David Didsbury", "action": "Send additional debug command letters", "evidenceIds": ["turn_2"]},
+            {"owner": "Jacqui Fox", "action": "Document what happens when debug commands are used on the debug screen", "evidenceIds": ["turn_4"]},
+            {"owner": "Jacqui Fox", "action": "Check whether IEC AC1001 is captured in the risk analysis", "evidenceIds": ["turn_1"]},
+        ], turns)
+        by_family = {row["softwareConsolidatedFamily"]: row for row in rows}
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(by_family["nebulizer_specification"]["owner"], "Andrew Kane")
+        self.assertEqual(by_family["nebulizer_standard_review"]["owner"], "David Didsbury and Colm")
+        self.assertEqual(by_family["debug_command_handoff"]["owner"], "David Didsbury")
+        self.assertEqual(by_family["debug_command_test"]["owner"], "Andrew Kane")
 
 
 class SampledActionSupportTests(unittest.TestCase):

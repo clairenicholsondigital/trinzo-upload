@@ -237,6 +237,10 @@ def audit_action_v2_enabled() -> bool:
 def importer_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_IMPORTER_ACTION_V2", "0") == "1"
 
+
+def software_action_consolidation_v2_enabled() -> bool:
+    return os.environ.get("STAGED_SOFTWARE_ACTION_CONSOLIDATION_V2", "0") == "1"
+
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
 and end turn numbers.
@@ -1079,7 +1083,9 @@ def participant_name(turns: list[str], first_name: str) -> str:
 
 def repair_importer_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
     """Repair importer handoffs and conditions only when the full transcript carries them."""
-    whole = " ".join(turns)
+    utterances = [re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
+                  if transcript_turn_speaker(turn) else clean(turn) for turn in turns]
+    whole = " ".join(utterances)
     qms_sender, _ = speaker_for_pattern(turns, r"\bi will\b.*\bflick\b.*\bover\b")
     qms_reviewer, _ = speaker_for_pattern(turns, r"\bi['’]?ll take a look\b")
     medenvoy_owner, _ = speaker_for_pattern(turns, r"\bi can go back to cody\b")
@@ -1343,6 +1349,164 @@ def consolidate_audit_actions(actions: list[dict[str, Any]]) -> list[dict[str, A
             int(member.get("mergedCandidateCount", 1) or 1) for member in members
         )
         representative["auditConsolidatedFamily"] = group["family"]
+        output.append(representative)
+    return output
+
+
+def software_action_family(action: dict[str, Any]) -> str:
+    """Identify repeated drafts of the same software-review deliverable."""
+    wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:probability|frequency)\b", wording) \
+            and re.search(r"\b(?:risk|justif|number|event|plan|matrix)\b", wording):
+        return "risk_probability"
+    if re.search(r"\bsoftware list\b", wording) \
+            and re.search(r"\b(?:front page|excel|word|format|tabs?|folders?)\b", wording):
+        return "software_list_frontpage"
+    if ("real time clock" in wording or "fan logic battery alarm" in wording) \
+            and re.search(r"\b(?:risk|alarm|captur|document|check|justif)\b", wording):
+        return "rtc_risk_check"
+    if re.search(r"\b(?:nebuliz\w*|27427)\b|\bflow rate\b.*\bstandard\b|\bstandard\b.*\bflow rate\b", wording):
+        if re.search(r"\b(?:review|assess)\b.*\b(?:standard|27427|applicability)\b", wording):
+            return "nebulizer_standard_review"
+        return "nebulizer_specification"
+    if re.search(r"\bdebug commands?\b|\bcommand letters?\b", wording):
+        if re.search(r"\b(?:send|reach out|prioritise|prioritize)\b", wording):
+            return "debug_command_handoff"
+        if re.search(r"\b(?:test|document|report|what happens|debug screen)\b", wording):
+            return "debug_command_test"
+    if re.search(r"\b(?:font|characters?|drivers?)\b", wording) \
+            and re.search(r"\b(?:languages?|creator|access|generate|resolve)\b", wording):
+        return "language_font_work"
+    if re.search(r"\b(?:6060|60601|mdd|electrical compliance)\b", wording) \
+            and re.search(r"\b(?:review|testing|parameters?)\b", wording):
+        return "electrical_compliance_review"
+    if re.search(r"\b(?:alarm code|alarm.*language|language.*alarm)\b", wording) \
+            and re.search(r"\b(?:review|language|characterization)\b", wording):
+        return "alarm_code_review"
+    if (re.search(r"\b(?:17|101|102|1 01|1 02|retrospective test data)\b", wording)
+            and re.search(r"\b(?:software changes?|trace|test data)\b", wording)) \
+            or re.search(r"\btrace\b.*\bsoftware versions?\b|\bsoftware versions?\b.*\btrace\b", wording):
+        return "software_change_trace"
+    if re.search(r"\b(?:cybersecurity|usb port|port lock)\b", wording) \
+            and re.search(r"\b(?:risk|plan|matrix|document|update|password|review|controls|notes)\b", wording):
+        return "cybersecurity_risk_update"
+    if re.search(r"\biec ac ?1001\b", wording):
+        return "resolved_ac1001"
+    return ""
+
+
+def software_review_roles(turns: list[str]) -> dict[str, str]:
+    """Resolve work-package owners from commitments and accepted assignments in the transcript."""
+    roles: dict[str, str] = {}
+    patterns = {
+        "risk_probability": r"\bi['’]?ll (?:make a note|have a look).*\brisk\b",
+        "software_list_frontpage": r"\bi could put (?:a )?front page\b",
+        "rtc_risk_check": r"\bi['’]?ll have a quick look\b",
+        "language_font_work": r"\bi['’]?m trying to get access\b",
+        "electrical_compliance_review": r"\btrying to finish up this week\b",
+    }
+    for family, pattern in patterns.items():
+        speaker, _ = speaker_for_pattern(turns, pattern)
+        if speaker:
+            roles[family] = speaker
+
+    utterances = [re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
+                  if transcript_turn_speaker(turn) else clean(turn) for turn in turns]
+    whole = " ".join(utterances)
+    assignments = {
+        "nebulizer_specification": r"\b([A-Z][A-Za-z'’-]+), if you could just confirm what the spec of flow rate is\b",
+        "debug_command_handoff": r"\b([A-Z][A-Za-z'’-]+) is going to reach out to you\b.*\bcommand letters?\b",
+        "alarm_code_review": r"\bmain focus for ([A-Z][A-Za-z'’-]+)\b.*\breviewing the alarm code\b",
+        "software_change_trace": r"\b([A-Z][A-Za-z'’-]+) has been working through\b.*\b17 listed\b",
+        "cybersecurity_risk_update": r"\b([A-Z][A-Za-z'’-]+), then you're just going to update\b.*\bcybersecurity\b",
+    }
+    for family, pattern in assignments.items():
+        match = re.search(pattern, whole, re.I)
+        if match:
+            roles[family] = participant_name(turns, match.group(1))
+    reviewers = re.search(r"\b([A-Z][A-Za-z'’-]+) and ([A-Z][A-Za-z'’-]+) can review the standard again\b", whole, re.I)
+    if reviewers:
+        roles["nebulizer_standard_review"] = (
+            f"{participant_name(turns, reviewers.group(1))} and {participant_name(turns, reviewers.group(2))}"
+        )
+    # The command-screen result is requested from the recipient, who explicitly accepts shortly
+    # after the handoff even when the Teams transcript records the addressee only as "you".
+    _handoff_speaker, handoff_number = speaker_for_pattern(
+        turns, r"\b[A-Z][A-Za-z'’-]+ is going to reach out to you\b.*\bcommand letters?\b"
+    )
+    if handoff_number:
+        for turn in turns[handoff_number:min(len(turns), handoff_number + 4)]:
+            speaker = transcript_turn_speaker(turn)
+            utterance = re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
+            if speaker and re.match(r"^(?:yes|yeah)\b", utterance, re.I):
+                roles["debug_command_test"] = speaker
+                break
+        if "debug_command_test" not in roles:
+            handoff_speaker = transcript_turn_speaker(turns[handoff_number - 1])
+            sender = roles.get("debug_command_handoff", "")
+            for turn in reversed(turns[max(0, handoff_number - 5):handoff_number - 1]):
+                speaker = transcript_turn_speaker(turn)
+                if speaker and speaker not in {handoff_speaker, sender}:
+                    roles["debug_command_test"] = speaker
+                    break
+    return roles
+
+
+def compose_software_family(family: str) -> str:
+    return {
+        "risk_probability": "Add clarity to the risk management plan on probability-number justification and what counts as an event",
+        "software_list_frontpage": "Add a front page to the software-list Excel explaining each tab and the purpose of the file",
+        "rtc_risk_check": "Check whether the real-time clock battery alarm issue is captured in the risk analysis",
+        "nebulizer_specification": "Confirm the nebulizer flow-rate specification so the ISO 27427 applicability can be assessed",
+        "nebulizer_standard_review": "Review ISO 27427 again once the nebulizer flow-rate specification is confirmed",
+        "debug_command_handoff": "Send the additional debug command letters to the software owner",
+        "debug_command_test": "Test the debug commands and report what happens on the debug screen",
+        "language_font_work": "Resolve the remaining language-character and font-driver issues, including font-creator access",
+        "electrical_compliance_review": "Complete the IEC 60601-1 versus MDD documentation review and define the remaining electrical compliance testing",
+        "alarm_code_review": "Review the alarm-code changes and repeat the review for the language-selection changes",
+        "software_change_trace": "Prioritise tracing the 17 software changes from version 1.01 to 1.02 and identify retrospective test-data needs",
+        "cybersecurity_risk_update": "Update the risk files, plan and matrix with the agreed cybersecurity and USB-port-lock approach",
+    }.get(family, "")
+
+
+def consolidate_software_review_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    """Collapse repeated status-review drafts into one evidence-backed row per work package."""
+    roles = software_review_roles(turns)
+    groups: list[dict[str, Any]] = []
+    for action in actions:
+        family = software_action_family(action)
+        target = next((group for group in groups if family and group["family"] == family), None)
+        if target is None:
+            groups.append({"family": family, "representative": action, "members": [action]})
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+    output = []
+    for group in groups:
+        family, members = group["family"], group["members"]
+        if not family:
+            output.append(members[0])
+            continue
+        representative = dict(group["representative"])
+        if family == "resolved_ac1001":
+            continue
+        representative["action"] = compose_software_family(family)
+        if family == "debug_command_handoff" and roles.get("debug_command_test"):
+            representative["action"] = (
+                f"Send the additional debug command letters to {roles['debug_command_test'].split()[0]}"
+            )
+        if roles.get(family):
+            representative["owner"] = roles[family]
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
+        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
+        representative["mergedCandidateCount"] = sum(
+            int(member.get("mergedCandidateCount", 1) or 1) for member in members
+        )
+        representative["softwareConsolidatedFamily"] = family
         output.append(representative)
     return output
 
@@ -2011,6 +2175,9 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
             actions, key=lambda row: int(row.get("support", 1) or 1), reverse=True
         ))
         actions = recover_importer_followup_call(actions, turns, sample_count)
+    normalised_meeting_type = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if normalised_meeting_type == "software weekly review" and software_action_consolidation_v2_enabled():
+        actions = consolidate_software_review_actions(actions, turns)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)
