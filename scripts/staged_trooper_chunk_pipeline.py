@@ -240,6 +240,19 @@ document mentioned without a specific future output. Do not turn the facilitator
 person's task into an action owned by the facilitator. Require the task object, owner, condition and
 future outcome to be supported by the candidate's cited turns."""
 
+WEBINAR_RETRIEVAL_V2_GUIDANCE = """Retain only a final, outstanding webinar deliverable or a
+live-session responsibility that the team explicitly accepted. Prefer the final assignment recap
+when it is present. Valid work includes slide fixes, a closing or follow-up asset, prepared backup
+questions, chat moderation, presenter timing controls, agreed opening or closing wording, dead-air
+coverage, recording checks and an accepted pre-event warm-up.
+
+Remove rehearsal procedure that was completed during this meeting, descriptions of the planned
+flow, ordinary presenter handovers, example questions or answers, general delivery advice,
+technical possibilities that were discussed but not included in the final responsibilities, and
+duplicate fragments of a broader assignment. Do not turn the rehearsal itself into many actions.
+Keep distinct deliverables distinct, but treat the steps of one recording check, one opening script
+or one slide asset as a single work package."""
+
 
 def audit_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_AUDIT_ACTION_V2", "0") == "1"
@@ -255,6 +268,10 @@ def software_action_consolidation_v2_enabled() -> bool:
 
 def hybrid_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_HYBRID_ACTION_V2", "0") == "1"
+
+
+def webinar_action_v2_enabled() -> bool:
+    return os.environ.get("STAGED_WEBINAR_ACTION_V2", "0") == "1"
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -457,6 +474,34 @@ return only the required JSON.
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
 
+WEBINAR_ACTION_V2_PROMPT = """Review this coherent section from a webinar rehearsal and build a
+concise ledger of final outstanding deliverables and accepted live-session responsibilities.
+
+Check specifically for slide or animation fixes; closing or follow-up assets; prepared backup
+questions; chat moderation; private presenter timing warnings; an agreed limit on the presenter's
+introduction or Q&A answers; wording explicitly accepted for removal; opening and housekeeping
+content; dead-air and closing coverage; recording start, proof and monitoring; and an accepted
+pre-event warm-up.
+
+Rules:
+- Prefer the final owner-by-owner assignment recap when one exists, using earlier turns only to
+  resolve the full deliverable, condition or timing.
+- Combine the steps of one work package: recording start, indicator check, screenshot and monitoring
+  are one responsibility; building and re-sharing one closing slide are one deliverable.
+- Keep genuinely different responsibilities separate, such as preparing backup questions versus
+  moderating live chat, or shortening the introduction versus shortening Q&A answers.
+- Rehearsal instructions already performed, descriptions of the event flow, example audience
+  questions, general presentation advice and unaccepted contingency ideas are not future actions.
+- Resolve the owner from a commitment, acceptance or assignment recap. A presenter or recipient is
+  not automatically the owner.
+- Preserve stated timing such as tonight, during the webinar and 08:30 tomorrow.
+
+Return at most two discussion points and eight action candidates for this section. Use only turn
+numbers in this section and return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
 WEBINAR_REHEARSAL_ACTION_PROMPT = """Review this coherent section from a webinar-rehearsal transcript.
 
 First identify concise, substantive discussion points about the webinar content,
@@ -635,6 +680,8 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
     if hybrid_action_v2_enabled() and normalised == "software and technical file weekly review":
         return HYBRID_ACTION_PROMPT, "hybrid_technical_v2"
     if "webinar" in normalised and any(term in normalised for term in ("rehearsal", "practice", "run through")):
+        if webinar_action_v2_enabled():
+            return WEBINAR_ACTION_V2_PROMPT, "webinar_rehearsal_v2"
         return WEBINAR_REHEARSAL_ACTION_PROMPT, "webinar_rehearsal"
     if ("software" in normalised and "technical file" in normalised) or any(
         term in normalised for term in ("software weekly", "software check in", "software review")
@@ -1748,6 +1795,175 @@ def recover_hybrid_actions(actions: list[dict[str, Any]], turns: list[str], samp
     return output
 
 
+def webinar_action_family(action: dict[str, Any]) -> str:
+    """Map rehearsal drafts onto the final work package they represent."""
+    wording = normalised_action_key(action.get("action"))
+    if re.search(r"\b(?:animation|fade in)\b", wording) and re.search(r"\b(?:slide|three things)\b", wording):
+        return "slide_animation"
+    if re.search(r"\b(?:closing slide|qr code|booking link)\b", wording):
+        return "closing_slide"
+    if re.search(r"\b(?:backup|planted|softball|warm|meaty) questions?\b", wording):
+        return "backup_questions"
+    if re.search(r"\b(?:five|5) min(?:ute)?s?\b", wording) and re.search(
+        r"\b(?:message|warn|warning|flash|chat|cue)\b", wording
+    ):
+        return "timing_warning"
+    if re.search(r"\b(?:monitor|watch|collect|group|manage|feed)\b", wording) \
+            and re.search(r"\b(?:chat|questions?)\b", wording):
+        return "chat_moderation"
+    if re.search(r"\b(?:personal introduction|personal intro|who am i|intro)\b", wording) \
+            and re.search(r"\b(?:30|thirty|short|seconds?)\b", wording):
+        return "short_intro"
+    if re.search(r"\b(?:q a|questions? and answers?|answers?)\b", wording) \
+            and re.search(r"\b(?:concise|30|thirty|seconds?|time|overrun|disciplined)\b", wording):
+        return "concise_answers"
+    if re.search(r"\b(?:not see you|not see|joke)\b", wording) \
+            and re.search(r"\b(?:drop|remove|cut|avoid|do not)\b", wording):
+        return "drop_joke"
+    if re.search(r"\b(?:opening|open|housekeeping|speech bubble|microphones?|cameras?)\b", wording) \
+            and re.search(r"\b(?:deliver|perform|use|include|instruct|tell|line|script)\b", wording):
+        return "opening_housekeeping"
+    if re.search(r"\b(?:dead air|silence|screen sharing handover|handovers?|closing|close)\b", wording) \
+            and re.search(r"\b(?:cover|handle|deliver|fill|talk|perform)\b", wording):
+        return "dead_air_and_close"
+    if re.search(r"\b(?:recording|record|red dot|red recording indicator|screenshot)\b", wording) \
+            and re.search(r"\b(?:start|hit|check|watch|monitor|proof|indicator|screenshot)\b", wording):
+        return "recording_control"
+    if re.search(r"\b(?:warm up|warmup|half eight|08 30|8 30)\b", wording) \
+            and re.search(r"\b(?:run|rehears|opening|handover|meet)\b", wording):
+        return "warmup"
+    return ""
+
+
+def webinar_action_roles(turns: list[str]) -> dict[str, str]:
+    roles: dict[str, str] = {}
+    patterns = {
+        "slide_animation": r"\bi can put it back in after\b",
+        "closing_slide": r"\b(?:i can make that slide|i['’]?ll do the closing slide|building the closing slide)\b",
+        "backup_questions": r"\b(?:i['’]?ll write the three backup questions|i['’]?ll have a couple of planted ones ready)\b",
+        "chat_moderation": r"\b(?:i['’]?m just watching the chat|i['’]?m (?:on|grouping) the chat throughout)\b",
+        "timing_warning": r"\b(?:i['’]?ll put five mins|i['’]?ll still message you at five minutes)\b",
+        "short_intro": r"\b(?:i['’]?ll do the who am i bit|keep the me bit short)\b",
+        "concise_answers": r"\bi['’]?ll be disciplined\b",
+        "drop_joke": r"\b(?:cutting the joke|dropping the joke)\b",
+        "opening_housekeeping": r"\b(?:the plan is i open it|i['’]?m doing the open.*housekeeping)\b",
+        "dead_air_and_close": r"\b(?:on the day i['’]?ll cover it|i['’]?m doing .*covering any dead air)\b",
+        "recording_control": r"\b(?:my job is.*i hit the button|red dot.*screenshot.*watch it)\b",
+    }
+    for family, pattern in patterns.items():
+        speaker, _ = speaker_for_pattern(turns, pattern)
+        if speaker:
+            roles[family] = speaker
+    whole = " ".join(clean(turn) for turn in turns)
+    if re.search(r"\b(?:half eight|08:?30|8:?30)\b", whole, re.I) \
+            and re.search(r"\b(?:opening|open)\b.*\bfirst handover\b", whole, re.I):
+        roles["warmup"] = "Team"
+    return roles
+
+
+def compose_webinar_family(family: str) -> str:
+    return {
+        "slide_animation": "Restore the animation on the three-things slide",
+        "closing_slide": "Build the closing slide with the booking link and QR code, then re-share the deck",
+        "backup_questions": "Write three backup questions and circulate them to the team",
+        "chat_moderation": "Monitor and group the chat questions during the webinar",
+        "timing_warning": "Send the presenter a private five-minute timing warning during the webinar",
+        "short_intro": "Keep the personal introduction to about 30 seconds",
+        "concise_answers": "Keep Q&A answers concise and avoid overrunning",
+        "drop_joke": "Drop the not-see-you joke from the opening",
+        "opening_housekeeping": "Use the opening housekeeping script, including the tap-the-speech-bubble instruction for mobile attendees",
+        "dead_air_and_close": "Cover dead air during screen-sharing handovers and handle the closing",
+        "recording_control": "Start recording when the opening begins, check the red recording indicator, take a screenshot and monitor the recording",
+        "warmup": "Run a short 08:30 warm-up covering the opening and first handover",
+    }.get(family, "")
+
+
+def webinar_family_deadline(family: str) -> str:
+    return {
+        "backup_questions": "Tonight",
+        "chat_moderation": "During the webinar",
+        "timing_warning": "During the webinar",
+        "recording_control": "During the webinar",
+        "warmup": "08:30 before the live session",
+    }.get(family, "not stated")
+
+
+def consolidate_webinar_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    """Keep one final-recap-shaped action per accepted webinar work package."""
+    roles = webinar_action_roles(turns)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        family = webinar_action_family(action)
+        if family:
+            groups.setdefault(family, []).append(action)
+    output: list[dict[str, Any]] = []
+    for family, members in groups.items():
+        representative = dict(max(members, key=representative_rank))
+        representative["action"] = compose_webinar_family(family)
+        if roles.get(family):
+            representative["owner"] = roles[family]
+            representative["support"] = sample_count
+        else:
+            representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
+        representative["deadline"] = webinar_family_deadline(family)
+        representative["evidenceIds"] = list(dict.fromkeys(
+            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
+        ))
+        representative["sampleCount"] = sample_count
+        representative["mergedCandidateCount"] = sum(
+            int(member.get("mergedCandidateCount", 1) or 1) for member in members
+        )
+        representative["webinarConsolidatedFamily"] = family
+        output.append(representative)
+    return output
+
+
+def recover_webinar_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
+    """Recover explicit final webinar assignments split across chunks or sampling passes."""
+    output = list(actions)
+    present = {webinar_action_family(action) for action in output}
+    roles = webinar_action_roles(turns)
+    specifications = (
+        ("slide_animation", (r"\banimation\b", r"\bput it back in after\b")),
+        ("closing_slide", (r"\bclosing slide\b", r"\bqr code\b", r"\bre-share the deck\b")),
+        ("backup_questions", (r"\bthree backup questions\b", r"\bsend them round\b")),
+        ("chat_moderation", (r"\bgrouping the chat\b", r"\b(?:on|grouping) the chat throughout\b")),
+        ("timing_warning", (r"\bfive mins\b|\bfive minutes\b", r"\bmessage you\b")),
+        ("short_intro", (r"\bthirty seconds on (?:you|yourself)\b|\bwho am i bit\b",)),
+        ("concise_answers", (r"\bthirty seconds per answer\b", r"\bdisciplined on time\b")),
+        ("drop_joke", (r"\bdropping the joke\b|\bcutting the joke\b",)),
+        ("opening_housekeeping", (r"\bdoing the open\b|\bplan is i open it\b", r"\bspeech[- ]bubble\b")),
+        ("dead_air_and_close", (r"\bcovering any dead air\b|\bon the day i['’]?ll cover it\b", r"\bi (?:think i )?close\b|\band the close\b")),
+        ("recording_control", (r"\bhit record\b|\bhit the button\b", r"\bscreenshot\b", r"\bred dot\b|\brecording indicator\b")),
+        ("warmup", (r"\bhalf eight\b|\b08:?30\b|\b8:?30\b", r"\b(?:opening|open)\b.*\bfirst handover\b")),
+    )
+    for family, patterns in specifications:
+        if family in present or not roles.get(family):
+            continue
+        evidence: list[str] = []
+        for pattern in patterns:
+            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
+            if number is None:
+                evidence = []
+                break
+            evidence.append(f"turn_{number}")
+        if not evidence:
+            continue
+        output.append({
+            "owner": roles[family],
+            "action": compose_webinar_family(family),
+            "deadline": webinar_family_deadline(family),
+            "status": "ASSIGNED",
+            "evidenceIds": list(dict.fromkeys(evidence)),
+            "support": sample_count,
+            "sampleCount": sample_count,
+            "mergedCandidateCount": 1,
+            "recoveredWebinarFamily": family,
+        })
+        present.add(family)
+    return output
+
+
 def is_importer_obligations_type(meeting_type: str) -> bool:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     return "importer" in value and "obligation" in value
@@ -1782,6 +1998,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
         return AUDIT_RETRIEVAL_V2_GUIDANCE, "audit_retrieval_v2"
     if profile == "importer_retrieval" and importer_action_v2_enabled():
         return IMPORTER_RETRIEVAL_V2_GUIDANCE, "importer_retrieval_v2"
+    if profile == "webinar_retrieval" and webinar_action_v2_enabled():
+        return WEBINAR_RETRIEVAL_V2_GUIDANCE, "webinar_retrieval_v2"
     return (RETRIEVAL_PROFILE_GUIDANCE[profile], profile) if profile else None
 
 
@@ -2371,7 +2589,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if prompt_profile == "importer_obligations_v2":
         actions = repair_importer_actions(actions, turns)
     if sample_count > 1:
-        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2"}
+        support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2"}
                              else SUPPORT_MERGE_THRESHOLD)
         actions = merge_sampled_actions(
             actions, sample_count, load_action_retrieval_backend(), threshold=support_threshold
@@ -2422,6 +2640,9 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     if action_prompt == HYBRID_ACTION_PROMPT:
         actions = consolidate_hybrid_actions(actions, turns)
         actions = recover_hybrid_actions(actions, turns, sample_count)
+    if action_prompt == WEBINAR_ACTION_V2_PROMPT:
+        actions = consolidate_webinar_actions(actions, turns, sample_count)
+        actions = recover_webinar_actions(actions, turns, sample_count)
     if action_prompt == AUDIT_ACTION_PROMPT:
         actions = consolidate_audit_actions(actions)
     actions = assign_action_tiers(actions, sample_count)

@@ -164,6 +164,21 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(PIPELINE.retrieval_selector_profile("Software weekly review")[1],
                              "software_retrieval")
 
+    def test_webinar_v2_flag_routes_dedicated_extractor_and_retrieval_selector(self):
+        with mock.patch.dict(os.environ, {"STAGED_WEBINAR_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type("Webinar rehearsal")
+            guidance, retrieval_profile = PIPELINE.retrieval_selector_profile("Webinar rehearsal")
+        self.assertIs(prompt, PIPELINE.WEBINAR_ACTION_V2_PROMPT)
+        self.assertEqual(action_profile, "webinar_rehearsal_v2")
+        self.assertEqual(retrieval_profile, "webinar_retrieval_v2")
+        self.assertIn("owner-by-owner assignment recap", prompt)
+        self.assertIn("one recording check", guidance)
+
+    def test_webinar_v2_flag_does_not_change_general_routing(self):
+        with mock.patch.dict(os.environ, {"STAGED_WEBINAR_ACTION_V2": "1"}):
+            self.assertEqual(PIPELINE.action_prompt_for_meeting_type("General")[1], "general")
+            self.assertIsNone(PIPELINE.retrieval_selector_profile("General"))
+
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
             available = True
@@ -624,6 +639,45 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertEqual(by_family["standard_applicability"]["owner"], "Jacqui Fox")
         self.assertEqual(by_family["recurring_call"]["action"], "Add Rebecca to the regular Tuesday follow-up call")
         self.assertEqual(by_family["clinician_alarm_review"]["support"], 3)
+
+    def test_webinar_review_keeps_one_row_per_final_assignment_and_recovers_missing_rows(self):
+        turns = [
+            "Callum Reid: I can put it back in after, it's two seconds.",
+            "Nadia Okonkwo: I'll put five mins in the chat to you.",
+            "Priya Sethi: So I think I close, I do a proper thank you.",
+            "Priya Sethi: Half eight, yeah. Just the open and the first handover.",
+            "Callum Reid: Yep, and building the closing slide with the QR code and the link, and I'll re-share the deck once it's done.",
+            "Nadia Okonkwo: I'll write the three backup questions tonight and send them round, and I'm grouping the chat throughout.",
+            "Tom Whitfield: Ha, yes, dropping the joke, being disciplined on time.",
+            "Nadia Okonkwo: And I'll still message you at five minutes.",
+            "Priya Sethi: I'm doing the open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers.",
+            "Priya Sethi: You hit record the second I start talking.",
+            "Callum Reid: Red dot, screenshot, watch it the whole time.",
+            "Priya Sethi: So, half eight tomorrow for the warm-up.",
+            "Tom Whitfield: I'll do the who am I bit, keep it short.",
+            "Priya Sethi: Thirty seconds on you, don't do the whole CV.",
+            "Priya Sethi: Thirty seconds per answer.",
+            "Tom Whitfield: I'll be disciplined.",
+        ]
+        consolidated = PIPELINE.consolidate_webinar_actions([
+            {"owner": "Callum", "action": "Put the animation back on the three-things slide",
+             "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "Callum Reid", "action": "Restore the missing slide animation",
+             "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "Callum", "action": "Act as the technical safety net",
+             "evidenceIds": ["turn_2"], "sampleCount": 3},
+        ], turns, 3)
+        recovered = PIPELINE.recover_webinar_actions(consolidated, turns, 3)
+        by_family = {PIPELINE.webinar_action_family(row): row for row in recovered}
+        self.assertNotIn("", by_family)
+        self.assertEqual(by_family["slide_animation"]["owner"], "Callum Reid")
+        self.assertEqual(by_family["slide_animation"]["support"], 3)
+        self.assertEqual(by_family["backup_questions"]["owner"], "Nadia Okonkwo")
+        self.assertEqual(by_family["drop_joke"]["owner"], "Tom Whitfield")
+        self.assertEqual(by_family["opening_housekeeping"]["owner"], "Priya Sethi")
+        self.assertEqual(by_family["recording_control"]["owner"], "Callum Reid")
+        self.assertEqual(by_family["warmup"]["owner"], "Team")
+        self.assertEqual(len(recovered), 12)
 
 
 class SampledActionSupportTests(unittest.TestCase):
