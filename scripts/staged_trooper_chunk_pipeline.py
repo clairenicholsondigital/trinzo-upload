@@ -1064,10 +1064,27 @@ def numbered_turns(transcript: str) -> tuple[list[str], str]:
     return turns, "\n".join(f"[{index}] {line}" for index, line in enumerate(turns, 1))
 
 
+def validate_trooper_response_format(response_format: dict[str, Any]) -> None:
+    """Fail closed if a Trooper call could fall back to prompt-only JSON instructions."""
+    format_type = clean(response_format.get("type")) if isinstance(response_format, dict) else ""
+    if format_type == "json_object":
+        return
+    if format_type == "json_schema":
+        json_schema = response_format.get("json_schema")
+        if (
+            isinstance(json_schema, dict)
+            and clean(json_schema.get("name"))
+            and isinstance(json_schema.get("schema"), dict)
+        ):
+            return
+    raise ValueError("Trooper requests require response_format json_object or a named json_schema")
+
+
 def call_trooper(prompt: str, max_tokens: int, schema: dict[str, Any]) -> dict[str, Any]:
     key = clean(os.environ.get("TROOPER_API_KEY"))
     if not key:
         raise RuntimeError("TROOPER_API_KEY is not configured")
+    validate_trooper_response_format(schema)
     body = json.dumps({
         "model": clean(os.environ.get("TROOPER_MODEL")) or MODEL,
         "messages": [{"role": "system", "content": "Use only transcript evidence. Return valid JSON only."}, {"role": "user", "content": prompt}],
@@ -1093,7 +1110,12 @@ def call_trooper(prompt: str, max_tokens: int, schema: dict[str, Any]) -> dict[s
             except Exception:
                 error.detail = ""
             last = error
-            if error.code not in (408, 409, 425, 429, 500, 502, 503, 504):
+            json_generation_failed = (
+                error.code == 422
+                and bool(re.search(r"json_generation_failed|could not produce valid JSON", error.detail, re.I))
+                and attempt == 0
+            )
+            if error.code not in (408, 409, 425, 429, 500, 502, 503, 504) and not json_generation_failed:
                 break
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as error:
             last = error
@@ -1306,11 +1328,40 @@ def speaker_for_pattern(turns: list[str], pattern: str) -> tuple[str, int | None
 
 
 def participant_name(turns: list[str], first_name: str) -> str:
+    """Resolve a requested name only when that person is a transcript speaker.
+
+    Callers use this helper to expand a known first name to the speaker label recorded in
+    the transcript. Returning the requested name when no speaker matched turned fixture
+    defaults into invented owners on unrelated meetings (for example, Stuart on Nordvik).
+    An empty result means that this resolver has no evidence; callers must preserve an
+    already evidence-grounded owner or render the owner as not stated.
+    """
     for turn in turns:
         speaker = transcript_turn_speaker(turn)
         if re.search(rf"\b{re.escape(first_name)}\b", speaker, re.I):
             return speaker
-    return first_name
+    return ""
+
+
+def evidenced_person_name(turns: list[str], name: str) -> str:
+    """Return a speaker label or an explicitly mentioned person's name, never a caller default."""
+    speaker = participant_name(turns, name)
+    if speaker:
+        return speaker
+    pattern = re.compile(
+        rf"\b((?i:{re.escape(clean(name))})(?:\s+[A-Z][A-Za-z'’.-]+)?)\b"
+    )
+    for turn in turns:
+        match = pattern.search(clean(turn))
+        if match:
+            return clean(match.group(1))
+    return ""
+
+
+def join_resolved_participants(*names: str) -> str:
+    """Join a multi-owner label only when every requested participant was resolved."""
+    cleaned = [clean(name) for name in names]
+    return " and ".join(cleaned) if cleaned and all(cleaned) else ""
 
 
 def repair_importer_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
@@ -1490,7 +1541,9 @@ def importer_action_roles(turns: list[str]) -> dict[str, str]:
         "conditional_label_review": participant_name(turns, "Jenny"),
         "declaration_update": participant_name(turns, "John-Paul"),
         "hpra_send": participant_name(turns, "Orla"),
-        "hpra_review": f"{participant_name(turns, 'Jacqui')} and {participant_name(turns, 'Colm')}",
+        "hpra_review": join_resolved_participants(
+            participant_name(turns, "Jacqui"), participant_name(turns, "Colm")
+        ),
         "followup_call": participant_name(turns, "Jacqui"),
     }
 
@@ -1531,12 +1584,14 @@ def consolidate_importer_actions(
     for family, members in groups.items():
         representative = dict(max(members, key=representative_rank))
         representative.update({
-            "owner": roles[family], "action": compose_importer_family(family),
+            "action": compose_importer_family(family),
             "deadline": importer_family_deadline(family), "support": sample_count,
             "sampleCount": sample_count,
             "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
             "importerConsolidatedFamily": family,
         })
+        if roles.get(family):
+            representative["owner"] = roles[family]
         representative["evidenceIds"] = list(dict.fromkeys(
             evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
         ))
@@ -1575,7 +1630,7 @@ def recover_importer_actions(
         if not evidence:
             continue
         output.append({
-            "owner": roles[family], "action": compose_importer_family(family),
+            "owner": roles.get(family) or "Not stated", "action": compose_importer_family(family),
             "deadline": importer_family_deadline(family), "status": "ASSIGNED",
             "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
             "sampleCount": sample_count, "mergedCandidateCount": 1,
@@ -1756,9 +1811,9 @@ def audit_v2_roles(turns: list[str]) -> dict[str, str]:
         "secure_document_access": stuart,
         "prerequisite_completion": niamh,
         "code_of_conduct_send": jacqui,
-        "preparation_timeline": f"{jacqui} and {niamh}",
+        "preparation_timeline": join_resolved_participants(jacqui, niamh),
         "audit_material_sharing": stuart,
-        "pre_audit_catchup": f"{stuart} and {niamh}",
+        "pre_audit_catchup": join_resolved_participants(stuart, niamh),
         "separate_audit_track": stuart,
     }
 
@@ -1802,12 +1857,14 @@ def consolidate_audit_v2_actions(
     for family, members in groups.items():
         representative = dict(max(members, key=representative_rank))
         representative.update({
-            "owner": roles[family], "action": compose_audit_v2_family(family),
+            "action": compose_audit_v2_family(family),
             "deadline": audit_v2_deadline(family), "support": sample_count,
             "sampleCount": sample_count,
             "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
             "auditV2ConsolidatedFamily": family,
         })
+        if roles.get(family):
+            representative["owner"] = roles[family]
         representative["evidenceIds"] = list(dict.fromkeys(
             evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
         ))
@@ -1845,7 +1902,7 @@ def recover_audit_v2_actions(
         if not evidence:
             continue
         output.append({
-            "owner": roles[family], "action": compose_audit_v2_family(family),
+            "owner": roles.get(family) or "Not stated", "action": compose_audit_v2_family(family),
             "deadline": audit_v2_deadline(family), "status": "ASSIGNED",
             "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
             "sampleCount": sample_count, "mergedCandidateCount": 1,
@@ -1926,11 +1983,14 @@ def software_review_roles(turns: list[str]) -> dict[str, str]:
     for family, pattern in assignments.items():
         match = re.search(pattern, whole, re.I)
         if match:
-            roles[family] = participant_name(turns, match.group(1))
+            roles[family] = evidenced_person_name(turns, match.group(1))
     reviewers = re.search(r"\b([A-Z][A-Za-z'’-]+) and ([A-Z][A-Za-z'’-]+) can review the standard again\b", whole, re.I)
     if reviewers:
         roles["nebulizer_standard_review"] = (
-            f"{participant_name(turns, reviewers.group(1))} and {participant_name(turns, reviewers.group(2))}"
+            join_resolved_participants(
+                evidenced_person_name(turns, reviewers.group(1)),
+                evidenced_person_name(turns, reviewers.group(2)),
+            )
         )
     # The command-screen result is requested from the recipient, who explicitly accepts shortly
     # after the handoff even when the Teams transcript records the addressee only as "you".
@@ -2575,204 +2635,64 @@ def technical_file_action_family(action: dict[str, Any]) -> str:
     return ""
 
 
-def technical_file_variant(meeting_type: str) -> str:
-    value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
-    return "consultancy" if "consultancy" in value else "weekly"
-
-
-def technical_file_roles(turns: list[str], variant: str) -> dict[str, str]:
-    whole = " ".join(clean(turn) for turn in turns)
-    roles: dict[str, str] = {}
-    named = {
-        "Rebecca": participant_name(turns, "Rebecca"),
-        "David": participant_name(turns, "David"),
-        "Andrew": participant_name(turns, "Andrew"),
-        "Adil": participant_name(turns, "Adil"),
-        "Kevin": participant_name(turns, "Kevin"),
-        "Christina": participant_name(turns, "Christina"),
-        "Ciaran": participant_name(turns, "Ciaran"),
-        "Jacqui": participant_name(turns, "Jacqui"),
-    }
-    if variant == "consultancy":
-        checks = {
-            "risk_update": r"\brebecca\b.*\b(?:matrix|cybersecurity|risk)\b",
-            "risk_review": r"\bdavid\b.*\b(?:right lines|review|fmea)\b",
-            "alarm_clinical": r"\bandrew\b.*\b(?:mute|alarm|clinical)\b",
-            "language_update": r"\bandrew\b.*\b(?:languages?|arabic|symbols?)\b",
-            "software_trace": r"\bdavid\b.*\b17 changes\b",
-            "electrical_compliance": r"\bandrew\b.*\belectrical compliance\b",
-            "subcontractor_gaps": r"\brebecca\b.*\b(?:subcontractor|missing|gaps?)\b",
-            "formative_study": r"\badil\b.*\b(?:formative|execute the study|grace and colm)\b",
-            "pms_comments": r"\bciaran\b.*\bpms\b",
-        }
-        owners = {
-            "risk_update": named["Rebecca"], "risk_review": named["David"],
-            "alarm_clinical": named["Andrew"], "language_update": named["Andrew"],
-            "software_trace": named["David"], "electrical_compliance": named["Andrew"],
-            "subcontractor_gaps": named["Rebecca"], "formative_study": named["Adil"],
-            "pms_comments": named["Ciaran"],
-        }
-        for family, pattern in checks.items():
-            if re.search(pattern, whole, re.I):
-                roles[family] = owners[family]
-        if re.search(r"\bchristina\b.*\bfinali[sz]", whole, re.I) \
-                and re.search(r"\bcall\b.*\bkevin\b|\bkevin\b.*\bcall\b", whole, re.I):
-            roles["process_maps"] = f"{named['Kevin']} and {named['Christina']}"
-    else:
-        roles.update({
-            "risk_update": named["Rebecca"], "language_update": named["Andrew"],
-            "electrical_compliance": named["Andrew"], "contractor_folder": named["Christina"],
-            "subcontractor_checkin": named["Christina"], "contractor_followup": named["Jacqui"],
-            "formative_study": named["Adil"], "process_maps": named["Kevin"],
-            "tf24_conversion": named["Ciaran"], "pms_comments": named["Ciaran"],
-            "team_document_progress": "Team",
-        })
-    return roles
-
-
-def technical_file_allowed_families(variant: str) -> tuple[str, ...]:
-    if variant == "consultancy":
-        return ("risk_update", "risk_review", "alarm_clinical", "language_update", "software_trace",
-                "electrical_compliance", "subcontractor_gaps", "formative_study", "process_maps", "pms_comments")
-    return ("risk_update", "language_update", "electrical_compliance", "contractor_folder",
-            "subcontractor_checkin", "contractor_followup", "formative_study", "process_maps",
-            "tf24_conversion", "pms_comments", "team_document_progress")
-
-
-def compose_technical_file_family(family: str, variant: str) -> str:
-    common = {
-        "language_update": "Resolve symbol or font issues for Arabic, Vietnamese and Greek and complete the translated-language updates for the new software version",
-        "electrical_compliance": "Continue the in-house electrical-compliance testing so its outputs are available for the final software and technical-file deliverables",
-    }
-    if family in common:
-        return common[family]
-    consultancy = {
-        "risk_update": "Update the risk management plan and matrix, including the cybersecurity and FMEA detail",
-        "risk_review": "Review the updated risk-management wording and confirm it is on the right lines",
-        "alarm_clinical": "Confirm the mute-button flash behaviour and progress the clinical review of the alarm changes with Janine and Adil",
-        "software_trace": "Trace the 17 software changes from version 1.01 to 1.02 and identify where retrospective test scenarios are needed",
-        "subcontractor_gaps": "Work through the subcontractor documentation gaps and agree any justifications or further actions with Louise",
-        "formative_study": "Plan execution of the formative usability study and align the timing with the MDR submission and notified-body review window",
-        "process_maps": "Finalise the operational process maps and procedures once Christina returns",
-        "pms_comments": "Review the PMS comments and incorporate them into the relevant PMS or summary documentation",
-    }
-    weekly = {
-        "risk_update": "Continue updating the risk management plan, ratings, matrix and USB-port cybersecurity mitigations",
-        "contractor_folder": "Put the updated contractor GSOP into a folder for Louise to check",
-        "subcontractor_checkin": "Check in with Rebecca before the end of the week on missing subcontractor or contract-management updates",
-        "contractor_followup": "Follow up on Louise's review of the updated contractor GSOP",
-        "formative_study": "Progress the formative-study protocol and agree with Colm and Grace how the study will be distributed across parts one and two",
-        "process_maps": "Finish the process-map responses and rewrites, then email Colm and Louise for review",
-        "tf24_conversion": "Convert the submitted documents into TF24-specific versions and apply client-folder comments",
-        "pms_comments": "Incorporate the PMS comments, including alignment on Rule 9 and summary-document consistency",
-        "team_document_progress": "Progress the technical-file documentation and share anything that needs Trinzo review",
-    }
-    return (consultancy if variant == "consultancy" else weekly).get(family, "")
-
-
-def technical_file_family_deadline(family: str, variant: str) -> str:
-    if family == "electrical_compliance":
-        return "Second-last week of July"
-    if variant == "consultancy":
-        return {
-            "alarm_clinical": "Early next week",
-            "language_update": "End of next week",
-            "process_maps": "After Christina returns",
-        }.get(family, "not stated")
-    return {
-        "language_update": "This week and next week",
-        "subcontractor_checkin": "Before the end of the week",
-    }.get(family, "not stated")
-
-
 def consolidate_technical_file_actions(
     actions: list[dict[str, Any]], turns: list[str], meeting_type: str, sample_count: int
 ) -> list[dict[str, Any]]:
-    variant = technical_file_variant(meeting_type)
-    allowed = set(technical_file_allowed_families(variant))
-    roles = technical_file_roles(turns, variant)
-    groups: dict[str, list[dict[str, Any]]] = {}
+    """Deduplicate known work packages without turning them into a closed content ledger.
+
+    Meeting type controls extraction and selection guidance, not the subjects that a client is
+    allowed to discuss. Every selected row with cited evidence therefore survives. A known family
+    is only a conservative duplicate hint: owners must be compatible and the evidence must be
+    local (or the wording identical). The representative's wording, owner and deadline are never
+    replaced with fixture-derived values.
+    """
+    del meeting_type, sample_count
+    groups: list[dict[str, Any]] = []
     for action in actions:
+        if not evidence_turn_numbers(action, len(turns)):
+            continue
         family = technical_file_action_family(action)
-        if family in allowed:
-            groups.setdefault(family, []).append(action)
+        turn = first_evidence_turn(action)
+        key = normalised_action_key(action.get("action"))
+        target = None
+        if family:
+            for group in groups:
+                if group["family"] != family or not owners_compatible(
+                    action.get("owner"), group["representative"].get("owner")
+                ):
+                    continue
+                near = turn is not None and group["turn"] is not None and abs(turn - group["turn"]) <= 60
+                if near or key == group["key"]:
+                    target = group
+                    break
+        if target is None:
+            groups.append({
+                "family": family, "key": key, "turn": turn,
+                "representative": action, "members": [action],
+            })
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+
     output: list[dict[str, Any]] = []
-    for family, members in groups.items():
-        representative = dict(max(members, key=representative_rank))
-        representative["action"] = compose_technical_file_family(family, variant)
-        if roles.get(family):
-            representative["owner"] = roles[family]
-            representative["support"] = sample_count
-        representative["deadline"] = technical_file_family_deadline(family, variant)
+    for group in groups:
+        family, members = group["family"], group["members"]
+        representative = dict(group["representative"])
+        if len(members) == 1:
+            output.append(representative)
+            continue
         representative["evidenceIds"] = list(dict.fromkeys(
             evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
         ))
-        representative["sampleCount"] = sample_count
+        representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
+        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
         representative["mergedCandidateCount"] = sum(
             int(member.get("mergedCandidateCount", 1) or 1) for member in members
         )
         representative["technicalFileConsolidatedFamily"] = family
         output.append(representative)
     return output
-
-
-def recover_technical_file_actions(
-    actions: list[dict[str, Any]], turns: list[str], meeting_type: str, sample_count: int
-) -> list[dict[str, Any]]:
-    variant = technical_file_variant(meeting_type)
-    output = list(actions)
-    present = {technical_file_action_family(action) for action in output}
-    roles = technical_file_roles(turns, variant)
-    if variant == "consultancy":
-        specifications = (
-            ("risk_update", (r"\bworking on the matrix\b", r"\bcybersecurity update\b")),
-            ("risk_review", (r"\bhave an rv look at that\b", r"\balong the right lines\b")),
-            ("alarm_clinical", (r"\bmute button\b", r"\bclinician side\b")),
-            ("language_update", (r"\barabic, vietnamese, greek\b", r"\bfully upload the true translations\b")),
-            ("software_trace", (r"\b17 changes\b", r"\btrace through the actual software code\b", r"\bretrospective test scenarios\b")),
-            ("electrical_compliance", (r"\ball of the required electrical compliance testing\b", r"\bandrew will be starting to work through that\b")),
-            ("subcontractor_gaps", (r"\bfill those gaps\b", r"\bdiscuss it with louise\b")),
-            ("formative_study", (r"\bthinking about how to execute the study\b", r"\bmeetings with grace and colm\b")),
-            ("process_maps", (r"\bwaiting for christina to come back\b", r"\bschedule a call.*kevin\b")),
-            ("pms_comments", (r"\bdavid has just reviewed the pms\b", r"\bciaran\b", r"\bsame level\b")),
-        )
-    else:
-        specifications = (
-            ("risk_update", (r"\bfurther updates that need to happen\b", r"\brisk matrix\b", r"\bcybersecurity around the usb port\b")),
-            ("language_update", (r"\bchanges to the coding and around the languages\b", r"\bsymbol issues that need to be resolved\b")),
-            ("electrical_compliance", (r"\bandrew is working on that\b", r"\bsecond last week of july\b")),
-            ("contractor_folder", (r"\bpop that into a folder for louise\b", r"\bpop it in, absolutely\b")),
-            ("subcontractor_checkin", (r"\bcheck in with rebecca before the end of this week\b",)),
-            ("contractor_followup", (r"\bi['’]?ll follow up on that\b",)),
-            ("formative_study", (r"\bi started the protocol\b", r"\bcolm and grace\b.*\bdistribute the study\b")),
-            ("process_maps", (r"\bfinalising the process maps\b", r"\bonce i get finished\b", r"\bsend us an e-mail\b")),
-            ("tf24_conversion", (r"\b12 maybe key documents\b", r"\bdf24 specific\b", r"\bclient folder\b")),
-            ("pms_comments", (r"\bfeedback that david had given.*pms\b", r"\brule 9\b", r"\bsummary document\b")),
-            ("team_document_progress", (r"\bprogress.*documentation as much as is possible\b", r"\bshare anything with us\b")),
-        )
-    allowed_order = technical_file_allowed_families(variant)
-    for family, patterns in specifications:
-        if family in present or not roles.get(family):
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles[family], "action": compose_technical_file_family(family, variant),
-            "deadline": technical_file_family_deadline(family, variant), "status": "ASSIGNED",
-            "evidenceIds": list(dict.fromkeys(evidence)),
-            "support": sample_count, "sampleCount": sample_count, "mergedCandidateCount": 1,
-            "recoveredTechnicalFileFamily": family,
-        })
-        present.add(family)
-    order = {family: index for index, family in enumerate(allowed_order)}
-    return sorted(output, key=lambda row: order.get(technical_file_action_family(row), len(order)))
 
 
 def general_action_variant(turns: list[str]) -> str:
@@ -2902,11 +2822,13 @@ def consolidate_general_actions(actions: list[dict[str, Any]], turns: list[str],
     for family, members in groups.items():
         representative = dict(max(members, key=representative_rank))
         representative.update({
-            "owner": roles[family], "action": compose_general_family(family),
+            "action": compose_general_family(family),
             "deadline": deadlines[family], "support": sample_count, "sampleCount": sample_count,
             "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
             "generalConsolidatedFamily": family,
         })
+        if roles.get(family):
+            representative["owner"] = roles[family]
         representative["evidenceIds"] = list(dict.fromkeys(
             evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
         ))
@@ -2934,7 +2856,7 @@ def recover_general_actions(actions: list[dict[str, Any]], turns: list[str], sam
         if not evidence:
             continue
         output.append({
-            "owner": participant_name(turns, owner), "action": compose_general_family(family),
+            "owner": participant_name(turns, owner) or "Not stated", "action": compose_general_family(family),
             "deadline": deadline, "status": "ASSIGNED", "evidenceIds": list(dict.fromkeys(evidence)),
             "support": sample_count, "sampleCount": sample_count, "mergedCandidateCount": 1,
             "recoveredGeneralFamily": family,
@@ -3639,7 +3561,6 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
         actions = recover_process_actions(actions, turns, sample_count)
     if action_prompt == TECHNICAL_FILE_ACTION_V2_PROMPT:
         actions = consolidate_technical_file_actions(actions, turns, meeting_type, sample_count)
-        actions = recover_technical_file_actions(actions, turns, meeting_type, sample_count)
     if action_prompt == GENERAL_ACTION_V2_PROMPT:
         actions = consolidate_general_actions(actions, turns, sample_count)
         actions = recover_general_actions(actions, turns, sample_count)

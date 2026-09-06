@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import sys
 import unittest
@@ -678,6 +679,29 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         prerequisite = next(row for row in rows if PIPELINE.audit_action_family(row) == "prerequisite_completion")
         self.assertEqual(prerequisite["owner"], "Niamh Lynch")
 
+    def test_absent_default_participant_cannot_replace_an_evidence_grounded_owner(self):
+        turns = [
+            "Jacqui Fox: Gareth owns the scope work and the standards list.",
+            "Gareth Pryce: I'll complete both by Friday.",
+        ]
+        self.assertEqual(PIPELINE.participant_name(turns, "Stuart"), "")
+        self.assertEqual(PIPELINE.audit_v2_roles(turns)["audit_scope_inputs"], "")
+        self.assertEqual(
+            PIPELINE.evidenced_person_name(
+                ["Jacqui Fox: Ingrid Solberg will send the brochure."], "Ingrid"
+            ),
+            "Ingrid Solberg",
+        )
+
+        rows = PIPELINE.consolidate_audit_v2_actions([{
+            "owner": "Gareth Pryce",
+            "action": "Complete the audit scope and standards list",
+            "status": "ASSIGNED",
+            "evidenceIds": ["turn_1", "turn_2"],
+        }], turns, 3)
+        self.assertEqual(rows[0]["owner"], "Gareth Pryce")
+        self.assertNotEqual(rows[0]["owner"], "Stuart")
+
     def test_software_review_consolidates_distinct_handoff_and_test_work_packages(self):
         turns = [
             "Jacqui Fox   13:08Andrew, if you could just confirm what the spec of flow rate is. David and Colm can review the standard again.",
@@ -811,35 +835,55 @@ class DeterministicActionCleanupTests(unittest.TestCase):
                          "Sales and client-delivery team")
         self.assertEqual(by_family["conditional_pilot"]["support"], 3)
 
-    def test_technical_file_consolidation_uses_variant_specific_work_packages(self):
+    def test_technical_file_consolidation_is_open_world_and_preserves_source_slots(self):
         turns = [
-            "Rebecca Gill: I'm working on the risk matrix and cybersecurity update.",
-            "David Didsbury: I will review the updated FMEAs and confirm they are on the right lines.",
-            "Jacqui Fox: Andrew is resolving Arabic, Vietnamese and Greek symbol issues.",
-            "Jacqui Fox: Ciaran needs to incorporate the PMS comments into the summary document.",
-            "Christina McLean: I will put the updated contractor GSOP into a folder for Louise to check.",
+            "David Didsbury: I'll write comments on the severity bands by Friday.",
+            "Sanjay Iyer: I'll create and submit the three new DIs this week.",
+            "Ffion Hargreaves: I'll send the seven completed supplier agreements this afternoon.",
         ]
         actions = [
-            {"owner": "Unknown", "action": "Update the risk management matrix and cybersecurity detail",
-             "evidenceIds": ["turn_1"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Review the updated FMEAs and confirm the wording is on the right lines",
-             "evidenceIds": ["turn_2"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Resolve Arabic Vietnamese and Greek language symbol issues",
-             "evidenceIds": ["turn_3"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Put the contractor procedure in a folder for Louise to check",
-             "evidenceIds": ["turn_5"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Update the minutes tracker table",
-             "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "David Didsbury", "action": "Write comments on the risk-plan severity bands",
+             "deadline": "Friday", "evidenceIds": ["turn_1"], "sampleCount": 3},
+            {"owner": "Sanjay Iyer", "action": "Create and submit new DIs for the three references",
+             "deadline": "This week", "evidenceIds": ["turn_2"], "sampleCount": 3},
+            {"owner": "Ffion Hargreaves", "action": "Send the seven completed supplier agreements",
+             "deadline": "This afternoon", "evidenceIds": ["turn_3"], "sampleCount": 3},
+            {"owner": "Kevin", "action": "Finish the process maps and email Colm and Louise",
+             "deadline": "Not stated", "evidenceIds": [], "sampleCount": 3},
         ]
         consultancy = PIPELINE.consolidate_technical_file_actions(
             actions, turns, "Technical file consultancy review", 3)
         weekly = PIPELINE.consolidate_technical_file_actions(
             actions, turns, "Technical file review", 3)
-        self.assertEqual({PIPELINE.technical_file_action_family(row) for row in consultancy},
-                         {"risk_update", "risk_review", "language_update"})
-        self.assertEqual({PIPELINE.technical_file_action_family(row) for row in weekly},
-                         {"risk_update", "language_update", "contractor_folder"})
-        self.assertTrue(all(row["support"] == 3 for row in consultancy + weekly))
+        expected = [(row["owner"], row["action"], row["deadline"]) for row in actions[:3]]
+        self.assertEqual([(row["owner"], row["action"], row["deadline"]) for row in consultancy], expected)
+        self.assertEqual([(row["owner"], row["action"], row["deadline"]) for row in weekly], expected)
+        leaked = " ".join(row["action"] for row in consultancy + weekly).lower()
+        self.assertNotRegex(leaked, r"usb.port|rule 9|louise|colm|tf24")
+
+    def test_technical_file_known_family_is_only_a_local_compatible_owner_dedupe_hint(self):
+        turns = [
+            "Rebecca Gill: I'll update the risk matrix this week.",
+            "Jacqui Fox: The severity wording needs a separate sign-off.",
+            "Rebecca Gill: I'll update the risk-management matrix with David's comments.",
+        ]
+        actions = [
+            {"owner": "Rebecca Gill", "action": "Update the risk matrix", "deadline": "This week",
+             "status": "PROPOSED", "evidenceIds": ["turn_1"], "support": 1, "sampleCount": 3},
+            {"owner": "Jacqui Fox", "action": "Obtain sign-off for the severity wording", "deadline": "Not stated",
+             "status": "ASSIGNED", "evidenceIds": ["turn_2"], "support": 2, "sampleCount": 3},
+            {"owner": "Rebecca Gill", "action": "Update the risk-management matrix with David's comments",
+             "deadline": "This week", "status": "ASSIGNED", "evidenceIds": ["turn_3"],
+             "support": 2, "sampleCount": 3},
+        ]
+        rows = PIPELINE.consolidate_technical_file_actions(
+            actions, turns, "Technical file review", 3)
+        self.assertEqual(len(rows), 2)
+        risk = next(row for row in rows if row["owner"] == "Rebecca Gill")
+        self.assertEqual(risk["action"], actions[2]["action"])
+        self.assertEqual(risk["deadline"], actions[2]["deadline"])
+        self.assertEqual(risk["evidenceIds"], ["turn_1", "turn_3"])
+        self.assertEqual(risk["support"], 2)
 
     def test_general_consolidation_keeps_one_complete_row_per_accepted_deliverable(self):
         turns = [
@@ -955,6 +999,76 @@ class SampledActionSupportTests(unittest.TestCase):
 
 
 class TrooperTransportTests(unittest.TestCase):
+    def test_request_uses_real_structured_output_mode_in_http_body(self):
+        import io
+        captured = {}
+        response_body = io.BytesIO(b'{"choices":[{"message":{"content":"{\\"chunks\\":[]}"}}]}')
+        response_body.status = 200
+        class Response:
+            def __enter__(self): return response_body
+            def __exit__(self, *args): return False
+        def urlopen(request, timeout=0):
+            captured.update(json.loads(request.data.decode("utf-8")))
+            return Response()
+        original_open = PIPELINE.urllib.request.urlopen
+        original_key = PIPELINE.os.environ.get("TROOPER_API_KEY")
+        try:
+            PIPELINE.os.environ["TROOPER_API_KEY"] = "test"
+            PIPELINE.urllib.request.urlopen = urlopen
+            self.assertEqual(PIPELINE.call_trooper("p", 10, PIPELINE.BOUNDARY_SCHEMA), {"chunks": []})
+            self.assertEqual(captured["response_format"], PIPELINE.BOUNDARY_SCHEMA)
+            self.assertEqual(captured["response_format"]["type"], "json_schema")
+            self.assertNotIn("response_format", captured["messages"][1]["content"])
+        finally:
+            PIPELINE.urllib.request.urlopen = original_open
+            if original_key is None:
+                PIPELINE.os.environ.pop("TROOPER_API_KEY", None)
+            else:
+                PIPELINE.os.environ["TROOPER_API_KEY"] = original_key
+
+    def test_transport_rejects_prompt_only_or_malformed_json_mode(self):
+        original_key = PIPELINE.os.environ.get("TROOPER_API_KEY")
+        try:
+            PIPELINE.os.environ["TROOPER_API_KEY"] = "test"
+            for malformed in ({}, {"type": "json_schema"}, {"type": "text"}):
+                with self.subTest(malformed=malformed):
+                    with self.assertRaisesRegex(ValueError, "require response_format"):
+                        PIPELINE.call_trooper("Return JSON", 10, malformed)
+        finally:
+            if original_key is None:
+                PIPELINE.os.environ.pop("TROOPER_API_KEY", None)
+            else:
+                PIPELINE.os.environ["TROOPER_API_KEY"] = original_key
+
+    def test_json_generation_failure_gets_one_uncharged_retry(self):
+        import io
+        import urllib.error
+        calls = {"n": 0}
+        good = io.BytesIO(b'{"choices":[{"message":{"content":"{\\"ok\\":true}"}}]}')
+        class Response:
+            def __enter__(self): return good
+            def __exit__(self, *args): return False
+        def urlopen(request, timeout=0):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                detail = b'{"error":{"code":"json_generation_failed","message":"Model could not produce valid JSON"}}'
+                raise urllib.error.HTTPError("u", 422, "invalid json", {}, io.BytesIO(detail))
+            return Response()
+        original_open, original_sleep = PIPELINE.urllib.request.urlopen, PIPELINE.time.sleep
+        original_key = PIPELINE.os.environ.get("TROOPER_API_KEY")
+        try:
+            PIPELINE.os.environ["TROOPER_API_KEY"] = "test"
+            PIPELINE.urllib.request.urlopen = urlopen
+            PIPELINE.time.sleep = lambda seconds: None
+            self.assertEqual(PIPELINE.call_trooper("p", 10, {"type": "json_object"}), {"ok": True})
+            self.assertEqual(calls["n"], 2)
+        finally:
+            PIPELINE.urllib.request.urlopen, PIPELINE.time.sleep = original_open, original_sleep
+            if original_key is None:
+                PIPELINE.os.environ.pop("TROOPER_API_KEY", None)
+            else:
+                PIPELINE.os.environ["TROOPER_API_KEY"] = original_key
+
     def test_429_is_retried_and_other_client_errors_are_not(self):
         import io
         import urllib.error
@@ -975,7 +1089,8 @@ class TrooperTransportTests(unittest.TestCase):
             PIPELINE.os.environ["TROOPER_API_KEY"] = "test"
             PIPELINE.urllib.request.urlopen = urlopen
             PIPELINE.time.sleep = lambda seconds: None
-            self.assertEqual(PIPELINE.call_trooper("p", 10, {}), {"ok": True})
+            json_mode = {"type": "json_object"}
+            self.assertEqual(PIPELINE.call_trooper("p", 10, json_mode), {"ok": True})
             self.assertEqual(calls["n"], 2)
             calls["n"] = 0
             def forbidden(request, timeout=0):
@@ -983,7 +1098,7 @@ class TrooperTransportTests(unittest.TestCase):
                 raise urllib.error.HTTPError("u", 401, "no", {}, io.BytesIO(b""))
             PIPELINE.urllib.request.urlopen = forbidden
             with self.assertRaisesRegex(RuntimeError, "HTTP 401"):
-                PIPELINE.call_trooper("p", 10, {})
+                PIPELINE.call_trooper("p", 10, json_mode)
             self.assertEqual(calls["n"], 1)
         finally:
             PIPELINE.urllib.request.urlopen, PIPELINE.time.sleep = original_open, original_sleep
