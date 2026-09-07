@@ -191,6 +191,20 @@ Return exactly one decision for every candidate, retaining its candidate number.
 
 {candidates}"""
 
+
+def retrieval_selector_prompt(guidance: str, candidates: str) -> str:
+    if not operator_selector_enabled():
+        return RETRIEVAL_SELECTOR_PROMPT.format(guidance=guidance, candidates=candidates)
+
+    rules = RETRIEVAL_SELECTOR_PROMPT.format(guidance=guidance, candidates="").strip()
+    return f"""[CMD]@staged-action-selector|verify=true|detail=6|creativity=0|format=json|audience=client|language=en-GB
+[INPUT]
+{candidates}
+[/INPUT]
+
+{rules}
+Judge every numbered candidate inside INPUT and return exactly one decision for each."""
+
 RETRIEVAL_PROFILE_GUIDANCE = {
     "audit_retrieval": "Retain concrete audit preparation, scope/risk planning, training prerequisites, document/data sharing, access arrangements and pre-audit coordination.",
     "technical_retrieval": "Retain concrete compliance checks, investigations, tests, controlled-document changes, reviews, submissions and continuing dependency-driven work.",
@@ -348,6 +362,10 @@ def process_action_v2_enabled() -> bool:
 
 def general_action_v2_enabled() -> bool:
     return os.environ.get("STAGED_GENERAL_ACTION_V2", "0") == "1"
+
+
+def operator_selector_enabled() -> bool:
+    return os.environ.get("STAGED_TROOPER_OPERATOR_SELECTOR", "0") == "1"
 
 BOUNDARY_PROMPT = """Divide this numbered meeting transcript into consecutive
 sections for downstream action extraction. Your only output is the section start
@@ -1917,8 +1935,8 @@ def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[in
                 for local, number in local_to_global.items()
             ]
             try:
-                result = call_trooper(RETRIEVAL_SELECTOR_PROMPT.format(
-                    guidance=guidance, candidates="\n\n".join(request_blocks)),
+                result = call_trooper(retrieval_selector_prompt(
+                    guidance, "\n\n".join(request_blocks)),
                     1600, RETRIEVAL_SELECTOR_SCHEMA)
                 last_error = ""
             except Exception as error:

@@ -409,6 +409,26 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertIn("1. Owner", prompts[1])
         self.assertIn("Second task", prompts[1])
 
+    def test_selector_prompt_is_unchanged_when_operator_flag_is_disabled(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            prompt = PIPELINE.retrieval_selector_prompt("Meeting guidance", "1. Candidate evidence")
+        self.assertFalse(prompt.startswith("[CMD]"))
+        self.assertIn("Meeting guidance", prompt)
+        self.assertIn("1. Candidate evidence", prompt)
+
+    def test_operator_selector_isolates_candidates_inside_input(self):
+        candidate = "1. Candidate evidence TOKEN_ONLY_IN_INPUT"
+        with mock.patch.dict(os.environ, {"STAGED_TROOPER_OPERATOR_SELECTOR": "1"}):
+            prompt = PIPELINE.retrieval_selector_prompt("Meeting guidance", candidate)
+        self.assertTrue(prompt.startswith(
+            "[CMD]@staged-action-selector|verify=true|detail=6|creativity=0|format=json"))
+        input_text = prompt.split("[INPUT]\n", 1)[1].split("\n[/INPUT]", 1)[0]
+        rules_text = prompt.split("\n[/INPUT]", 1)[1]
+        self.assertEqual(input_text, candidate)
+        self.assertNotIn("TOKEN_ONLY_IN_INPUT", rules_text)
+        self.assertIn("Meeting guidance", rules_text)
+        self.assertIn("exactly one decision for each", rules_text)
+
     def test_audit_v2_drops_candidate_without_object_in_its_cited_evidence(self):
         class Backend:
             available = True
