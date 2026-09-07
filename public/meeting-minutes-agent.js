@@ -7,6 +7,7 @@
   var uploadZone = document.getElementById('uploadZone');
   var detailsEditor = document.getElementById('detailsEditor');
   var status = document.getElementById('workflowStatus');
+  var agentRetryDelaysSeconds = [5, 15, 30];
 
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
@@ -28,8 +29,31 @@
   async function jsonRequest(url, options) {
     var response = await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}));
     var payload = await response.json().catch(function () { return {}; });
-    if (!response.ok || payload.ok === false) throw new Error(payload.error || 'The request could not be completed.');
+    if (!response.ok || payload.ok === false) {
+      var error = new Error(payload.error || 'The request could not be completed.');
+      error.status = response.status;
+      error.code = payload.code || '';
+      error.retryable = payload.retryable === true;
+      throw error;
+    }
     return payload;
+  }
+
+  function waitForAgentRetry(seconds, nextAttempt, totalAttempts) {
+    return new Promise(function (resolve) {
+      var remaining = seconds;
+      function tick() {
+        if (remaining <= 0) {
+          setStatus('Retrying with a fresh agent conversation now…', false);
+          resolve();
+          return;
+        }
+        setStatus('Microsoft is temporarily busy. Retrying in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + ' (attempt ' + nextAttempt + ' of ' + totalAttempts + ')…', false);
+        remaining -= 1;
+        window.setTimeout(tick, 1000);
+      }
+      tick();
+    });
   }
 
   function showStep(index) {
@@ -141,10 +165,25 @@
     setBusy(true, instruction ? 'The agent is applying your edits…' : 'The agent is reviewing the denoised transcript…');
     try {
       var current = stage === 'discussion' ? { discussion: state.discussion } : { actions: state.actions };
-      var payload = await jsonRequest('/api/meeting-minutes-agent/generate', {
+      var requestOptions = {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage: stage, denoisedTranscript: state.denoisedTranscript, details: state.details, current: current, instruction: instruction || '' })
-      });
+      };
+      var payload;
+      var totalAttempts = agentRetryDelaysSeconds.length + 1;
+      for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
+        if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts);
+        try {
+          payload = await jsonRequest('/api/meeting-minutes-agent/generate', requestOptions);
+          break;
+        } catch (error) {
+          var usageLimit = error.code === 'M365_AGENT_USAGE_LIMIT' && error.retryable;
+          if (!usageLimit) throw error;
+          if (attempt === totalAttempts - 1) {
+            throw new Error('Microsoft is still temporarily busy after four attempts. Your work has been kept; please try again shortly.');
+          }
+        }
+      }
       if (stage === 'discussion') { state.discussion = payload.discussion || []; state.discussionGenerated = true; renderDiscussion(); showStep(1); }
       else { state.actions = payload.actions || []; state.actionsGenerated = true; renderActions(); showStep(2); }
       setStatus((instruction ? 'Agent edits applied' : (stage === 'discussion' ? 'Discussion points generated' : 'Actions generated')) + '. Review and edit every field before continuing.', false);

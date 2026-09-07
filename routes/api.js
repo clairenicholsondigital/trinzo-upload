@@ -7980,7 +7980,12 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
     });
     const agent = await askM365Agent(prompt);
     if (/usage limit/i.test(agent.finalText)) {
-      return res.status(503).json({ ok: false, error: 'The Microsoft agent has reached its usage limit.' });
+      return res.status(503).json({
+        ok: false,
+        code: 'M365_AGENT_USAGE_LIMIT',
+        retryable: true,
+        error: 'Microsoft is temporarily busy.'
+      });
     }
     const parsed = extractJsonFromText(agent.finalText);
     if (!parsed) {
