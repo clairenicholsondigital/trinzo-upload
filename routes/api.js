@@ -10,7 +10,9 @@ const crypto = require('crypto');
 const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerProjectKnowledge } = require('../utils/knowledge');
 
 const {
+  DIRECT_LINE_BASE_URL,
   generateToken,
+  generateM365AgentToken,
   startConversation,
   sendMessage,
   getBotMessages
@@ -7872,6 +7874,26 @@ router.post('/jobs/run-once', async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message || 'Job runner failed.' });
+  }
+});
+
+router.post('/meeting-minutes-agent/token', requireAuth, async (req, res) => {
+  try {
+    const tokenData = await generateM365AgentToken();
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      ok: true,
+      token: tokenData.token,
+      conversationId: tokenData.conversationId,
+      expiresIn: tokenData.expiresIn,
+      domain: DIRECT_LINE_BASE_URL
+    });
+  } catch (error) {
+    safeLogError('[meeting-minutes-agent/token] failed', error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      error: 'The meeting-minutes agent is temporarily unavailable.'
+    });
   }
 });
 

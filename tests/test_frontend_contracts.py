@@ -6,6 +6,29 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class FrontendContractTest(unittest.TestCase):
+    def test_meeting_minutes_agent_uses_authenticated_short_lived_token_boundary(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        copilot = (REPO_DIR / "utils" / "copilot.js").read_text(encoding="utf-8")
+        page = (REPO_DIR / "views" / "meeting-minutes-agent.html").read_text(encoding="utf-8")
+        client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
+        dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
+
+        self.assertIn("app.get('/meeting-minutes-agent', authRoutes.requireAuth", server)
+        self.assertIn("router.post('/meeting-minutes-agent/token', requireAuth", api)
+        self.assertIn("res.set('Cache-Control', 'no-store')", api)
+        self.assertIn("process.env.M365AGENT_SECRET1", copilot)
+        self.assertIn("generateM365AgentToken", api)
+        self.assertIn("cdn.botframework.com/botframework-webchat/latest/webchat.js", page)
+        self.assertIn("/api/meeting-minutes-agent/token", client)
+        self.assertIn("window.WebChat.createDirectLine", client)
+        self.assertIn("name: 'startConversation'", client)
+        self.assertIn('href="/meeting-minutes-agent"', dashboard)
+        self.assertNotIn("M365AGENT_SECRET1", page)
+        self.assertNotIn("M365AGENT_SECRET1", client)
+        self.assertNotIn("DIRECTLINE_SECRET", page)
+        self.assertNotIn("DIRECTLINE_SECRET", client)
+
     def test_meeting_minutes_final_uses_date_picker_for_meeting_date(self):
         shared_js = (REPO_DIR / "public" / "test-transcript-page.js").read_text(encoding="utf-8")
 

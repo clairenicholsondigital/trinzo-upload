@@ -2,22 +2,42 @@ const fetch = require('node-fetch');
 
 const DIRECT_LINE_BASE_URL = 'https://europe.directline.botframework.com/v3/directline';
 
-async function generateToken() {
-  const tokenResponse = await fetch(`${DIRECT_LINE_BASE_URL}/tokens/generate`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.DIRECTLINE_SECRET}`
-    }
-  });
-
-  const tokenData = await tokenResponse.json();
-  if (!tokenData || !tokenData.token) {
-    const error = new Error('No token returned');
-    error.details = tokenData;
+async function generateTokenDetails(secret, fetchImpl = fetch) {
+  if (!secret || !String(secret).trim()) {
+    const error = new Error('Direct Line secret is not configured.');
+    error.statusCode = 503;
     throw error;
   }
 
+  const tokenResponse = await fetchImpl(`${DIRECT_LINE_BASE_URL}/tokens/generate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${String(secret).trim()}`
+    }
+  });
+
+  const tokenData = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok || !tokenData || !tokenData.token) {
+    const error = new Error('Direct Line did not issue a conversation token.');
+    error.statusCode = 502;
+    error.details = { upstreamStatus: tokenResponse.status };
+    throw error;
+  }
+
+  return {
+    token: tokenData.token,
+    conversationId: tokenData.conversationId || '',
+    expiresIn: Number(tokenData.expires_in || 0)
+  };
+}
+
+async function generateToken() {
+  const tokenData = await generateTokenDetails(process.env.DIRECTLINE_SECRET);
   return tokenData.token;
+}
+
+async function generateM365AgentToken() {
+  return generateTokenDetails(process.env.M365AGENT_SECRET1);
 }
 
 async function startConversation(token) {
@@ -68,7 +88,9 @@ async function getBotMessages(token, conversationId, userId) {
 
 module.exports = {
   DIRECT_LINE_BASE_URL,
+  generateTokenDetails,
   generateToken,
+  generateM365AgentToken,
   startConversation,
   sendMessage,
   getBotMessages
