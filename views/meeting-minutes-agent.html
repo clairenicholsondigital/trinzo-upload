@@ -65,6 +65,7 @@
 }
 .meeting-agent-page .notice.error { color:var(--danger-text); border-color:var(--danger-border); background:var(--danger-bg); }
 .meeting-agent-page .editor-shell { display:grid; grid-template-columns:minmax(0,2fr) minmax(280px,1fr); gap:1rem; min-width:0; }
+.meeting-agent-page .actions-editor-shell { grid-template-columns:minmax(0,3.25fr) minmax(250px,.9fr); }
 .meeting-agent-page .editor-shell > * { min-width:0; }
 .meeting-agent-page .paper { background:var(--surface); color:var(--text); border-radius:12px; padding:1.1rem; border:1px solid var(--border); box-shadow:var(--shadow-sm); }
 .meeting-agent-page .discussion-card { border:1px solid var(--border); border-radius:10px; padding:.8rem; margin-bottom:.7rem; background:#fbfdfe; }
@@ -77,8 +78,22 @@
 .meeting-agent-page .agent-label { display:flex; gap:.5rem; align-items:center; color:var(--heading); font-weight:700; }
 .meeting-agent-page .status-dot { width:.65rem; height:.65rem; border-radius:50%; background:var(--ok-text); box-shadow:0 0 0 3px var(--ok-bg); }
 .meeting-agent-page .table-wrap { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--border); border-radius:10px; }
-.meeting-agent-page .actions-table { min-width:720px; }
-.meeting-agent-page .actions-table textarea { min-height:72px; }
+.meeting-agent-page .actions-table { min-width:800px; table-layout:fixed; }
+.meeting-agent-page .actions-table th:nth-child(1) { width:43%; }
+.meeting-agent-page .actions-table th:nth-child(2) { width:21%; }
+.meeting-agent-page .actions-table th:nth-child(3) { width:27%; }
+.meeting-agent-page .actions-table th:nth-child(4) { width:9%; }
+.meeting-agent-page .actions-table textarea { min-height:142px; resize:vertical; }
+.meeting-agent-page .actions-table input,
+.meeting-agent-page .actions-table select { min-height:2.6rem; }
+.meeting-agent-page .owner-editor { display:grid; gap:.45rem; }
+.meeting-agent-page .deadline-editor { display:grid; gap:.45rem; }
+.meeting-agent-page .deadline-editor input[type="date"] {
+  width:100%; min-height:2.6rem; padding:.5rem .6rem;
+  border:1px solid var(--border-strong); border-radius:8px;
+  background:var(--surface); color:var(--text); color-scheme:light; font:inherit;
+}
+.meeting-agent-page .deadline-hint { color:var(--muted); font-size:.73rem; line-height:1.25; }
 .meeting-agent-page .final-document { max-width:920px; margin:0 auto; padding:clamp(1.1rem,3vw,2.2rem); }
 .meeting-agent-page .final-document section { border-top:1px solid var(--border); margin-top:1rem; padding-top:.8rem; }
 .meeting-agent-page .screen-actions { justify-content:space-between; margin-top:1rem; }
@@ -155,7 +170,7 @@
   </section>
 
   <section class="panel screen" data-screen="2">
-    <div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Actions and deadlines</h2><button id="addAction" class="secondary" type="button">Add action</button></div><p class="muted">Blank owners or deadlines mean they were not explicitly stated.</p><div class="table-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th></th></tr></thead><tbody id="actionsBody"></tbody></table></div></div>
+    <div class="editor-shell actions-editor-shell"><div class="paper"><div class="toolbar"><h2>Actions and deadlines</h2><button id="addAction" class="secondary" type="button">Add action</button></div><p class="muted">Choose an owner from the meeting participants or enter another evidenced name. Relative deadlines are preserved; use the date picker when an exact date is known.</p><div class="table-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th></th></tr></thead><tbody id="actionsBody"></tbody></table></div></div>
       <aside class="panel agent-edit"><div class="agent-label"><span class="status-dot"></span>Ask the agent for bulk edits</div><p class="muted">For example: “Merge duplicates, but keep separate deliverables separate.”</p><textarea id="actionsInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyActionsEdit" class="button" type="button">Apply with agent</button></aside></div>
     <div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="openFinalReview" class="button" type="button">Review complete minutes</button></div>
   </section>

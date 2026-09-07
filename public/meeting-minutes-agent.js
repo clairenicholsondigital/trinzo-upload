@@ -106,10 +106,33 @@
     return state.actions;
   }
 
+  function participantNames() {
+    var attendeeInput = document.getElementById('attendees');
+    var attendees = attendeeInput
+      ? attendeeInput.value.split(/\r?\n/).map(function (value) { return value.trim(); }).filter(Boolean)
+      : ((state.details || {}).allAttendees || []);
+    return attendees.filter(function (name, index) {
+      return attendees.findIndex(function (candidate) { return candidate.toLocaleLowerCase() === name.toLocaleLowerCase(); }) === index;
+    });
+  }
+
+  function exactDateValue(value) {
+    var text = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+  }
+
   function renderActions() {
     var body = document.getElementById('actionsBody');
+    var participants = participantNames();
     body.innerHTML = state.actions.map(function (item, index) {
-      return '<tr><td data-label="Action"><textarea data-action aria-label="Action">' + escapeHtml(item.action || '') + '</textarea></td><td data-label="Owner"><input data-owner value="' + escapeHtml(item.owner || '') + '" aria-label="Owner"></td><td data-label="Deadline"><input data-deadline value="' + escapeHtml(item.deadline || '') + '" aria-label="Deadline"></td><td><button class="delete" data-delete-action="' + index + '" type="button">Remove</button></td></tr>';
+      var owner = String(item.owner || '').trim();
+      if (/^not stated$/i.test(owner)) owner = '';
+      var participant = participants.find(function (name) { return name.toLocaleLowerCase() === owner.toLocaleLowerCase(); });
+      var customOwner = Boolean(owner && !participant);
+      var ownerOptions = '<option value=""' + (!owner ? ' selected' : '') + '>Not stated</option>'
+        + participants.map(function (name) { return '<option value="' + escapeHtml(name) + '"' + (participant === name ? ' selected' : '') + '>' + escapeHtml(name) + '</option>'; }).join('')
+        + '<option value="__other__"' + (customOwner ? ' selected' : '') + '>Other evidenced person…</option>';
+      return '<tr><td data-label="Action"><textarea data-action aria-label="Action">' + escapeHtml(item.action || '') + '</textarea></td><td data-label="Owner"><div class="owner-editor"><select data-owner-choice aria-label="Choose an action owner">' + ownerOptions + '</select><input data-owner value="' + escapeHtml(participant || owner) + '" placeholder="Enter evidenced owner" aria-label="Enter another evidenced action owner"' + (customOwner ? '' : ' hidden') + '></div></td><td data-label="Deadline"><div class="deadline-editor"><input data-deadline value="' + escapeHtml(item.deadline || '') + '" placeholder="Not stated" aria-label="Deadline wording"><input data-deadline-picker type="date" value="' + escapeHtml(exactDateValue(item.deadline)) + '" aria-label="Choose an exact deadline date"><span class="deadline-hint">Choose an exact date, or retain the evidenced wording above.</span></div></td><td><button class="delete" data-delete-action="' + index + '" type="button">Remove</button></td></tr>';
     }).join('') || '<tr><td colspan="4" class="muted">No actions have been added.</td></tr>';
   }
 
@@ -156,6 +179,21 @@
   document.getElementById('discussionList').addEventListener('click', function (event) { var button = event.target.closest('[data-delete-discussion]'); if (!button) return; readDiscussion(); state.discussion.splice(Number(button.dataset.deleteDiscussion), 1); renderDiscussion(); });
   document.getElementById('addAction').addEventListener('click', function () { readActions(); state.actions.push({ action: '', owner: '', deadline: '' }); renderActions(); });
   document.getElementById('actionsBody').addEventListener('click', function (event) { var button = event.target.closest('[data-delete-action]'); if (!button) return; readActions(); state.actions.splice(Number(button.dataset.deleteAction), 1); renderActions(); });
+  document.getElementById('actionsBody').addEventListener('change', function (event) {
+    if (event.target.matches('[data-owner-choice]')) {
+      var ownerInput = event.target.closest('.owner-editor').querySelector('[data-owner]');
+      var custom = event.target.value === '__other__';
+      ownerInput.hidden = !custom;
+      if (custom) {
+        if (participantNames().some(function (name) { return name.toLocaleLowerCase() === ownerInput.value.trim().toLocaleLowerCase(); })) ownerInput.value = '';
+        ownerInput.focus();
+      }
+      else ownerInput.value = event.target.value;
+    }
+    if (event.target.matches('[data-deadline-picker]') && event.target.value) {
+      event.target.closest('.deadline-editor').querySelector('[data-deadline]').value = event.target.value;
+    }
+  });
   document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(3); setStatus('Review the complete minutes before printing or sharing.', false); });
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.reload(); });
