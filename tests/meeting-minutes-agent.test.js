@@ -22,10 +22,11 @@ test('discussion prompt treats the denoised transcript as evidence and requires 
   assert.match(prompt, /Testing found an accessibility defect/);
 });
 
-test('bulk edit prompt sends the complete current draft and preserves evidence rules', () => {
+test('bulk edit prompt sends the complete denoised transcript and current draft', () => {
+  const transcript = `Priya: I will repair the labels by Friday.\n${'Supporting denoised evidence. '.repeat(500)}FINAL_DENOISED_TRANSCRIPT_TURN`;
   const prompt = meetingMinutesAgentPrompt({
     stage: 'actions',
-    transcript: 'Priya: I will repair the labels by Friday.',
+    transcript,
     details: {},
     current: { actions: [{ action: 'Repair labels', owner: 'Priya', deadline: 'Friday' }] },
     instruction: 'Make this concise.'
@@ -34,6 +35,8 @@ test('bulk edit prompt sends the complete current draft and preserves evidence r
   assert.match(prompt, /Make this concise/);
   assert.match(prompt, /Repair labels/);
   assert.match(prompt, /empty string unless it is explicitly evidenced/);
+  assert.match(prompt, /DENOISED TRANSCRIPT:/);
+  assert.ok(prompt.endsWith(transcript), 'the complete denoised transcript, including its final turn, must reach the agent');
 });
 
 test('agent discussion and action payloads are bounded and normalised', () => {
