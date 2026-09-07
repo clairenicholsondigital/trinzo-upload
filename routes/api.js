@@ -10,7 +10,6 @@ const crypto = require('crypto');
 const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerProjectKnowledge } = require('../utils/knowledge');
 
 const {
-  DIRECT_LINE_BASE_URL,
   generateToken,
   generateM365AgentToken,
   startConversation,
@@ -7886,7 +7885,7 @@ router.post('/meeting-minutes-agent/token', requireAuth, async (req, res) => {
       token: tokenData.token,
       conversationId: tokenData.conversationId,
       expiresIn: tokenData.expiresIn,
-      domain: DIRECT_LINE_BASE_URL
+      domain: tokenData.domain
     });
   } catch (error) {
     safeLogError('[meeting-minutes-agent/token] failed', error);
