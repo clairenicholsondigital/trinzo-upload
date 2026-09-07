@@ -6,7 +6,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class FrontendContractTest(unittest.TestCase):
-    def test_meeting_minutes_agent_uses_authenticated_short_lived_token_boundary(self):
+    def test_meeting_minutes_agent_uses_guided_minilm_and_copilot_workflow(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         copilot = (REPO_DIR / "utils" / "copilot.js").read_text(encoding="utf-8")
@@ -15,15 +15,17 @@ class FrontendContractTest(unittest.TestCase):
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
 
         self.assertIn("app.get('/meeting-minutes-agent', authRoutes.requireAuth", server)
-        self.assertIn("router.post('/meeting-minutes-agent/token', requireAuth", api)
-        self.assertIn("res.set('Cache-Control', 'no-store')", api)
         self.assertIn("process.env.M365AGENT_TOKEN_ENDPOINT", copilot)
         self.assertIn("/powervirtualagents/regionalchannelsettings", copilot)
-        self.assertIn("generateM365AgentToken", api)
-        self.assertIn("cdn.botframework.com/botframework-webchat/latest/webchat.js", page)
-        self.assertIn("/api/meeting-minutes-agent/token", client)
-        self.assertIn("window.WebChat.createDirectLine", client)
-        self.assertIn("name: 'startConversation'", client)
+        self.assertIn("router.post('/meeting-minutes-agent/prepare', requireAuth", api)
+        self.assertIn("router.post('/meeting-minutes-agent/generate', requireAuth", api)
+        self.assertIn("prepareMiniLmTranscript", api)
+        self.assertIn('accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"', page)
+        self.assertIn("/api/meeting-minutes-agent/prepare", client)
+        self.assertIn("/api/meeting-minutes-agent/generate", client)
+        self.assertIn("Ask the agent for bulk edits", page)
+        self.assertNotIn("cdn.botframework.com/botframework-webchat", page)
+        self.assertNotIn("window.WebChat", client)
         self.assertIn('href="/meeting-minutes-agent"', dashboard)
         self.assertNotIn("M365AGENT_SECRET1", page)
         self.assertNotIn("M365AGENT_SECRET1", client)

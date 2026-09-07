@@ -111,15 +111,28 @@ async function generateM365AgentToken() {
   return generateCopilotStudioTokenDetails(process.env.M365AGENT_TOKEN_ENDPOINT);
 }
 
-async function startConversation(token) {
-  const response = await fetch(`${DIRECT_LINE_BASE_URL}/conversations`, {
+function safeDirectLineDomain(domain = DIRECT_LINE_BASE_URL) {
+  const value = String(domain || '').replace(/\/+$/, '');
+  let url;
+  try { url = new URL(value); } catch { url = null; }
+  if (!url || url.protocol !== 'https:' || !url.hostname.endsWith('.directline.botframework.com') || !/\/v3\/directline$/i.test(url.pathname)) {
+    const error = new Error('Direct Line domain is invalid.');
+    error.statusCode = 502;
+    throw error;
+  }
+  return value;
+}
+
+async function startConversation(token, domain = DIRECT_LINE_BASE_URL) {
+  const response = await fetch(`${safeDirectLineDomain(domain)}/conversations`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` }
   });
 
-  const data = await response.json();
-  if (!data || !data.conversationId) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data || !data.conversationId) {
     const error = new Error('No conversationId returned');
+    error.statusCode = 502;
     error.details = data;
     throw error;
   }
@@ -127,8 +140,8 @@ async function startConversation(token) {
   return data.conversationId;
 }
 
-async function sendMessage(token, conversationId, fromId, text) {
-  const response = await fetch(`${DIRECT_LINE_BASE_URL}/conversations/${conversationId}/activities`, {
+async function sendMessage(token, conversationId, fromId, text, domain = DIRECT_LINE_BASE_URL) {
+  const response = await fetch(`${safeDirectLineDomain(domain)}/conversations/${encodeURIComponent(conversationId)}/activities`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -141,20 +154,63 @@ async function sendMessage(token, conversationId, fromId, text) {
     })
   });
 
-  return response.json();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.id) {
+    const error = new Error('Direct Line did not accept the message.');
+    error.statusCode = 502;
+    throw error;
+  }
+  return data;
 }
 
-async function getBotMessages(token, conversationId, userId) {
-  const activitiesResponse = await fetch(`${DIRECT_LINE_BASE_URL}/conversations/${conversationId}/activities`, {
+async function getBotMessages(token, conversationId, userId, domain = DIRECT_LINE_BASE_URL) {
+  const activitiesResponse = await fetch(`${safeDirectLineDomain(domain)}/conversations/${encodeURIComponent(conversationId)}/activities`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
-  const activitiesData = await activitiesResponse.json();
+  const activitiesData = await activitiesResponse.json().catch(() => ({}));
+  if (!activitiesResponse.ok) {
+    const error = new Error('Direct Line messages could not be retrieved.');
+    error.statusCode = 502;
+    throw error;
+  }
   const botMessages = (activitiesData.activities || [])
     .filter(activity => activity.type === 'message' && activity.from && activity.from.id !== userId && activity.text)
     .map(activity => activity.text);
 
   return { botMessages, activitiesData };
+}
+
+async function askM365Agent(prompt, options = {}) {
+  const tokenData = await generateM365AgentToken();
+  const conversationId = await startConversation(tokenData.token, tokenData.domain);
+  const userId = `trinzo-meeting-minutes-${Date.now()}`;
+  const sent = await sendMessage(tokenData.token, conversationId, userId, prompt, tokenData.domain);
+  const maxWaitMs = Math.max(5000, Number(options.maxWaitMs || 90000));
+  const pollEveryMs = Math.max(500, Number(options.pollEveryMs || 2000));
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, pollEveryMs));
+    const { activitiesData } = await getBotMessages(tokenData.token, conversationId, userId, tokenData.domain);
+    const botMessages = (activitiesData.activities || [])
+      .filter((activity) => activity.type === 'message'
+        && activity.replyToId === sent.id
+        && (activity.from?.role === 'bot' || Boolean(activity.from?.name)))
+      .map((activity) => String(activity.text || '').trim())
+      .filter(Boolean);
+    if (botMessages.length) {
+      return {
+        conversationId,
+        botName: (activitiesData.activities || []).find((activity) => activity.replyToId === sent.id && (activity.from?.role === 'bot' || activity.from?.name))?.from?.name || '',
+        finalText: botMessages[botMessages.length - 1]
+      };
+    }
+  }
+
+  const error = new Error('The meeting-minutes agent did not reply in time.');
+  error.statusCode = 504;
+  throw error;
 }
 
 module.exports = {
@@ -163,6 +219,7 @@ module.exports = {
   generateTokenDetails,
   generateToken,
   generateM365AgentToken,
+  askM365Agent,
   startConversation,
   sendMessage,
   getBotMessages

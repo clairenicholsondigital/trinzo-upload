@@ -48,6 +48,31 @@ function splitActionTiers(actions) {
   };
 }
 
+async function denoiseMiniLmFile(rawPath) {
+  const prepared = await runJson('staged_simplified_minilm.py', [rawPath, '--model', process.env.STAGED_SIMPLIFIED_MINILM_MODEL || MODEL,
+    '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85')],
+  Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000));
+  const removedRatio = Number(prepared.totalUnitCount || 0)
+    ? Number(prepared.removedUnitCount || 0) / Number(prepared.totalUnitCount) : 1;
+  if (!prepared.ok || prepared.keptUnitCount < 3 || String(prepared.preparedTranscript || '').length < 100 || removedRatio > 0.55) {
+    const error = new Error(prepared.reason || 'MiniLM-v3 denoising failed its fail-open safety checks.');
+    error.statusCode = 422;
+    throw error;
+  }
+  return { ...prepared, removedRatio };
+}
+
+async function prepareMiniLmTranscript(transcriptText) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-minilm-prepare-'));
+  const rawPath = path.join(tempDir, 'transcript.txt');
+  try {
+    await fs.writeFile(rawPath, String(transcriptText || ''), 'utf8');
+    return await denoiseMiniLmFile(rawPath);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
   if (!['discussion', 'actions'].includes(stage)) throw new Error(`Unsupported simplified stage: ${stage}`);
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-minilm-trooper-'));
@@ -55,14 +80,8 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
   const denoisedPath = path.join(tempDir, 'denoised-v3.txt');
   try {
     await fs.writeFile(rawPath, String(transcriptText || ''), 'utf8');
-    const prepared = await runJson('staged_simplified_minilm.py', [rawPath, '--model', process.env.STAGED_SIMPLIFIED_MINILM_MODEL || MODEL,
-      '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85')],
-    Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000));
-    const removedRatio = Number(prepared.totalUnitCount || 0)
-      ? Number(prepared.removedUnitCount || 0) / Number(prepared.totalUnitCount) : 1;
-    if (!prepared.ok || prepared.keptUnitCount < 3 || String(prepared.preparedTranscript || '').length < 100 || removedRatio > 0.55) {
-      throw new Error(prepared.reason || 'MiniLM-v3 denoising failed its fail-open safety checks.');
-    }
+    const prepared = await denoiseMiniLmFile(rawPath);
+    const removedRatio = prepared.removedRatio;
     await fs.writeFile(denoisedPath, prepared.preparedTranscript, 'utf8');
     const scriptArgs = [denoisedPath, '--stage', stage];
     if (String(options.meetingType || '').trim()) {
@@ -95,4 +114,4 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
   }
 }
 
-module.exports = { generateMiniLmTrooperStage, splitActionTiers };
+module.exports = { generateMiniLmTrooperStage, prepareMiniLmTranscript, splitActionTiers };
