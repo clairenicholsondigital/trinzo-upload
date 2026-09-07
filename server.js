@@ -38,6 +38,7 @@ app.get('/meeting-minutes-final', authRoutes.requireAuth, (req, res) => {
 });
 
 app.get('/meeting-minutes-agent', authRoutes.requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
   sendView(res, 'meeting-minutes-agent.html').catch((error) => res.status(404).send(error.message));
 });
 

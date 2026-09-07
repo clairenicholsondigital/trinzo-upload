@@ -15,6 +15,7 @@ class FrontendContractTest(unittest.TestCase):
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
 
         self.assertIn("app.get('/meeting-minutes-agent', authRoutes.requireAuth", server)
+        self.assertIn("res.set('Cache-Control', 'no-store')", server.split("app.get('/meeting-minutes-agent'", 1)[1].split("app.get('/staged-meeting-minutes'", 1)[0])
         self.assertIn("process.env.M365AGENT_TOKEN_ENDPOINT", copilot)
         self.assertIn("/powervirtualagents/regionalchannelsettings", copilot)
         self.assertIn("router.post('/meeting-minutes-agent/prepare', requireAuth", api)
@@ -25,6 +26,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="transcriptFile" type="file"', page)
         self.assertIn('hidden>', page)
         self.assertIn('#transcriptFile { display:none !important; }', page)
+        self.assertIn('input[type="date"]', page)
         self.assertIn("/api/meeting-minutes-agent/prepare", client)
         self.assertIn("/api/meeting-minutes-agent/generate", client)
         self.assertIn('data-label="Owner"', client)
