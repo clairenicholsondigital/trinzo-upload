@@ -49,6 +49,10 @@ def generation_meeting_type(meeting_type: str, meeting_title: str, file_name: st
         return "Importer obligations review"
     if meeting_type == "General" and re.search(r"(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))", identity, re.I):
         return "Process / pipeline planning"
+    if meeting_type == "General" and re.search(
+        r"\b(?:project|consultancy|retainer)\b.*\b(?:check[\s_-]*in|weekly|status|review)\b", identity, re.I
+    ):
+        return "Project / consultancy check-in"
     return meeting_type
 
 
@@ -74,7 +78,7 @@ def run_fixture(folder: Path, pipeline: Any) -> dict[str, Any]:
     turns, numbered = pipeline.numbered_turns(prepared["preparedTranscript"])
     result = pipeline.run_actions_stage(turns, numbered, generation_type)
     shown = [row for row in result.get("actions", []) if pipeline.action_word_count(row.get("action")) >= 4]
-    return {
+    output = {
         "name": folder.name, "meetingType": meeting_type, "generationMeetingType": generation_type,
         "expected": expected, "actions": shown, "rawActionCount": len(result.get("actions", [])),
         "actionPromptProfile": result.get("actionPromptProfile"), "chunkCount": result.get("chunkCount"),
@@ -82,6 +86,11 @@ def run_fixture(folder: Path, pipeline: Any) -> dict[str, Any]:
         "turnCount": result.get("turnCount"), "durationMs": int((time.time() - started) * 1000),
         "denoise": {key: prepared.get(key) for key in ("removedUnitCount", "keptUnitCount", "totalUnitCount")},
     }
+    if result.get("candidateLifecycle") is not None:
+        output["candidateLifecycle"] = result["candidateLifecycle"]
+    if result.get("actionStageCounts") is not None:
+        output["actionStageCounts"] = result["actionStageCounts"]
+    return output
 
 
 def main() -> None:

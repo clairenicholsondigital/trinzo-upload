@@ -61,13 +61,11 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertIn("Return none", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
         self.assertNotIn("15 strongest", PIPELINE.IMPORTER_ACTUAL_ACTIONS_PROMPT)
 
-    def test_final_selector_is_limited_to_two_proven_meeting_types(self):
+    def test_legacy_final_selector_is_limited_to_the_hybrid_type(self):
         hybrid = PIPELINE.selective_actual_action_profile("Software and technical-file weekly review")
-        decision = PIPELINE.selective_actual_action_profile("Decision meeting")
         self.assertEqual(hybrid[1], "hybrid_technical_actual_actions")
-        self.assertEqual(decision[1], "decision_meeting_actual_actions")
         for meeting_type in ("Software weekly review", "Technical file review", "Audit kick-off / planning",
-                             "Webinar rehearsal", "Process / pipeline planning", "General", ""):
+                             "Webinar rehearsal", "Process / pipeline planning", "General", "Decision meeting", ""):
             with self.subTest(meeting_type=meeting_type):
                 self.assertIsNone(PIPELINE.selective_actual_action_profile(meeting_type))
 
@@ -98,11 +96,12 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             "Software weekly review": "software_retrieval",
             "Process / pipeline planning": "process_retrieval",
             "Importer obligations review": "importer_retrieval",
+            "Decision meeting": "decision_retrieval_v2",
         }
         for meeting_type, profile in expected.items():
             with self.subTest(meeting_type=meeting_type):
                 self.assertEqual(PIPELINE.retrieval_selector_profile(meeting_type)[1], profile)
-        for meeting_type in ("General", "Decision meeting",
+        for meeting_type in ("General",
                              "Software and technical-file weekly review", "Technical file consultancy review", ""):
             with self.subTest(meeting_type=meeting_type):
                 self.assertIsNone(PIPELINE.retrieval_selector_profile(meeting_type))
@@ -122,6 +121,30 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"STAGED_AUDIT_ACTION_V2": "1"}):
             self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Software weekly review")[1], "software_weekly_review")
             self.assertEqual(PIPELINE.retrieval_selector_profile("Importer obligations review")[1], "importer_retrieval")
+
+    def test_audit_runtime_prompts_contain_no_fixture_people_or_client(self):
+        runtime_text = " ".join((
+            PIPELINE.AUDIT_ACTION_PROMPT,
+            PIPELINE.AUDIT_RETRIEVAL_V2_GUIDANCE,
+            PIPELINE.SHORT_ACTION_REPAIR_PROMPT,
+            PIPELINE.DELIVERABLE_PROMPT,
+        ))
+        for fixture_term in ("Abbott", "Stuart", "Niamh", "Jacqui"):
+            with self.subTest(fixture_term=fixture_term):
+                self.assertNotIn(fixture_term, runtime_text)
+
+    def test_project_checkin_routes_from_internal_type_without_client_terms(self):
+        with mock.patch.dict(os.environ, {"STAGED_GENERAL_ACTION_V2": "1"}):
+            prompt, action_profile = PIPELINE.action_prompt_for_meeting_type(
+                "Project / consultancy check-in"
+            )
+            guidance, retrieval_profile = PIPELINE.retrieval_selector_profile(
+                "Project / consultancy check-in"
+            )
+        self.assertIs(prompt, PIPELINE.PROJECT_CHECKIN_ACTION_PROMPT)
+        self.assertEqual(action_profile, "project_checkin_v2")
+        self.assertEqual(retrieval_profile, "project_checkin_retrieval_v2")
+        self.assertIn("concrete blocker", guidance)
 
     def test_importer_v2_flag_routes_dedicated_extractor_and_selector(self):
         with mock.patch.dict(os.environ, {"STAGED_IMPORTER_ACTION_V2": "1"}):
@@ -173,7 +196,8 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertEqual(action_profile, "webinar_rehearsal_v2")
         self.assertEqual(retrieval_profile, "webinar_retrieval_v2")
         self.assertIn("owner-by-owner assignment recap", prompt)
-        self.assertIn("one recording check", guidance)
+        self.assertIn("exact material", guidance)
+        self.assertNotIn("one recording check", guidance)
 
     def test_webinar_v2_flag_does_not_change_general_routing(self):
         with mock.patch.dict(os.environ, {"STAGED_WEBINAR_ACTION_V2": "1"}):
@@ -219,7 +243,7 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             self.assertEqual(retrieval_profile, "general_retrieval_v2")
             self.assertIn("named person accepted", guidance)
             self.assertEqual(PIPELINE.action_prompt_for_meeting_type("Decision meeting")[1], "general")
-            self.assertIsNone(PIPELINE.retrieval_selector_profile("Decision meeting"))
+            self.assertEqual(PIPELINE.retrieval_selector_profile("Decision meeting")[1], "decision_retrieval_v2")
 
     def test_retrieval_selector_requires_consensus_and_protects_explicit_commitment(self):
         class Backend:
@@ -235,7 +259,8 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             def fake_call(prompt, max_tokens, schema):
                 numbers = [int(value) for value in __import__('re').findall(r"(?m)^(\d+)\. Owner:", prompt)]
                 return {"decisions": [{"candidateNumber": number, "decision": "REMOVE",
-                    "rejectionCode": "DISCUSSION_ONLY", "evidenceTurns": [1]} for number in numbers]}
+                    "evidenceState": "TOPIC_ONLY", "rejectionCode": "DISCUSSION_ONLY",
+                    "evidenceTurns": [1]} for number in numbers]}
             PIPELINE.call_trooper = fake_call
             selected = PIPELINE.select_retrieval_grounded_actions(
                 actions, ["Alex: I will send the revised audit plan.", "Blair: This is only discussion."],
@@ -258,6 +283,22 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             PIPELINE.call_trooper = original
         self.assertEqual(selected, actions)
 
+    def test_validated_selector_fails_closed_on_incomplete_decisions(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        actions = [{"owner": "Alex", "action": "Review the complete technical report",
+                    "status": "ASSIGNED", "evidenceIds": ["turn_1"]}]
+        original = PIPELINE.call_trooper
+        try:
+            PIPELINE.call_trooper = lambda *_args: {"decisions": []}
+            with self.assertRaisesRegex(RuntimeError, "omitted candidate numbers"):
+                PIPELINE.select_retrieval_grounded_actions(
+                    actions, ["Alex: I will review the report."], "Rules", Backend(),
+                    profile="technical_file_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+
     def test_audit_v2_selector_does_not_bypass_consensus_removal_via_generic_protection(self):
         class Backend:
             available = True
@@ -270,7 +311,8 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
             def remove_all(prompt, *_args):
                 prompts.append(prompt)
                 return {"decisions": [{
-                    "candidateNumber": 1, "decision": "REMOVE", "rejectionCode": "MEETING_ADMIN",
+                    "candidateNumber": 1, "decision": "REMOVE", "evidenceState": "LOGISTICS_ONLY",
+                    "rejectionCode": "MEETING_ADMIN",
                     "evidenceTurns": [1],
                 }]}
             PIPELINE.call_trooper = remove_all
@@ -283,6 +325,89 @@ class StagedTrooperChunkPipelineTests(unittest.TestCase):
         self.assertEqual(selected, [])
         self.assertEqual(len(prompts), 2)
         self.assertTrue(all("Turn 2:" in prompt for prompt in prompts))
+        self.assertTrue(all("Turn 3:" in prompt for prompt in prompts))
+        self.assertTrue(all("Turn 4:" not in prompt for prompt in prompts))
+
+    def test_validated_selector_rejects_split_decision_despite_extractor_confidence(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        actions = [{
+            "owner": "Alex", "action": "Send the revised audit plan", "status": "COMMITTED",
+            "evidenceIds": ["turn_1"], "taskEvidenceIds": ["turn_1"],
+            "commitmentEvidenceIds": ["turn_1"], "support": 3,
+        }]
+        original = PIPELINE.call_trooper
+        calls = 0
+        try:
+            def split_decision(*_args):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    return {"decisions": [{"candidateNumber": 1, "decision": "KEEP",
+                        "evidenceState": "EXPLICIT_COMMITMENT", "rejectionCode": "NONE", "evidenceTurns": [1]}]}
+                return {"decisions": [{"candidateNumber": 1, "decision": "REMOVE",
+                    "evidenceState": "TOPIC_ONLY", "rejectionCode": "NO_SUPPORTED_TASK",
+                    "evidenceTurns": [1]}]}
+            PIPELINE.call_trooper = split_decision
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                actions, ["Alex: I will send the revised audit plan."], "Rules", Backend(),
+                profile="audit_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected, [])
+
+    def test_validated_selector_records_only_supplied_keep_evidence(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        actions = [{"owner": "Alex", "action": "Send the revised audit plan",
+                    "status": "COMMITTED", "evidenceIds": ["turn_1"]}]
+        original = PIPELINE.call_trooper
+        try:
+            PIPELINE.call_trooper = lambda *_args: {"decisions": [{
+                "candidateNumber": 1, "decision": "KEEP", "rejectionCode": "NONE",
+                "evidenceState": "EXPLICIT_COMMITMENT", "evidenceTurns": [1, 99],
+            }]}
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                actions, ["Alex: I will send the revised audit plan."], "Rules", Backend(),
+                profile="audit_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected[0]["selectorEvidenceIds"], ["turn_1"])
+
+    def test_selector_locally_rejects_structured_enum_violations(self):
+        decision = PIPELINE.normalise_retrieval_decision({
+            "candidateNumber": 1, "decision": "REMOVE", "rejectionCode": "DISCUSSION_ONLY",
+            "evidenceTurns": [1],
+        }, {1})
+        self.assertEqual(decision["decision"], "REMOVE")
+        self.assertEqual(decision["rejectionCode"], "DISCUSSION_ONLY")
+        self.assertIsNone(PIPELINE.normalise_retrieval_decision({
+            "candidateNumber": 1, "decision": "TOPIC_ONLY", "rejectionCode": "NONE",
+            "evidenceTurns": [1],
+        }, {1}))
+
+    def test_selector_re_requests_only_missing_candidate_numbers(self):
+        blocks = [(1, "1. Owner: A\nDraft: First task"),
+                  (2, "2. Owner: B\nDraft: Second task")]
+        original = PIPELINE.call_trooper
+        prompts = []
+        try:
+            def partial_then_complete(prompt, *_args):
+                prompts.append(prompt)
+                return {"decisions": [{"candidateNumber": 1, "decision": "KEEP",
+                    "evidenceState": "EXPLICIT_COMMITMENT", "rejectionCode": "NONE", "evidenceTurns": [1]}]}
+            PIPELINE.call_trooper = partial_then_complete
+            result = PIPELINE.retrieval_decisions(blocks, "Rules")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(set(result), {1, 2})
+        self.assertIn("1. Owner", prompts[0])
+        self.assertIn("2. Owner", prompts[0])
+        self.assertNotIn("First task", prompts[1])
+        self.assertIn("1. Owner", prompts[1])
+        self.assertIn("Second task", prompts[1])
 
     def test_audit_v2_drops_candidate_without_object_in_its_cited_evidence(self):
         class Backend:
@@ -439,6 +564,102 @@ if __name__ == "__main__":
 
 
 class DeterministicActionCleanupTests(unittest.TestCase):
+    def test_action_normalisation_preserves_evidence_roles(self):
+        rows = PIPELINE.normalise_actions({"actionCandidates": [{
+            "owner": "Alex Morgan", "action": "Send the controlled document", "deadline": "Friday",
+            "status": "COMMITTED", "taskEvidenceTurns": [2], "commitmentEvidenceTurns": [3],
+            "ownerEvidenceTurns": [3], "deadlineEvidenceTurns": [4],
+        }]}, {"start": 1, "end": 5})
+        self.assertEqual(rows[0]["evidenceIds"], ["turn_2", "turn_3", "turn_4"])
+        self.assertEqual(rows[0]["taskEvidenceIds"], ["turn_2"])
+        self.assertEqual(rows[0]["commitmentEvidenceIds"], ["turn_3"])
+        self.assertEqual(rows[0]["ownerEvidenceIds"], ["turn_3"])
+        self.assertEqual(rows[0]["deadlineEvidenceIds"], ["turn_4"])
+
+    def test_grounding_blanks_unsupported_fields_and_drops_unresolved_fragments(self):
+        turns = ["Alex Morgan: Priya will send the pack on Friday.", "Priya Shah: I will do that."]
+        rows = PIPELINE.ground_action_attributions([
+            {"owner": "Priya Shah", "action": "Send the pack", "deadline": "Friday",
+             "evidenceIds": ["turn_1", "turn_2"], "deadlineEvidenceIds": ["turn_1"]},
+            {"owner": "Morgan Lee", "action": "Review the pack", "deadline": "Wednesday",
+             "evidenceIds": ["turn_1"]},
+            {"owner": "Alex Morgan", "action": "Send it", "deadline": "Not stated",
+             "evidenceIds": ["turn_1"]},
+            {"owner": "All", "action": "Come back next month with the best idea",
+             "deadline": "Next month", "evidenceIds": ["turn_1"]},
+        ], turns)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["owner"], "Priya Shah")
+        self.assertEqual(rows[0]["deadline"], "Friday")
+        self.assertEqual(rows[1]["owner"], "Not stated")
+        self.assertEqual(rows[1]["deadline"], "Not stated")
+
+    def test_grounding_does_not_make_the_speaker_owner_of_their_instruction(self):
+        turns = ["Jacqui Fox: Write that rationale down though, Ines.",
+                 "Priya Sethi: When you're there, check the wifi and clicker."]
+        rows = PIPELINE.ground_action_attributions([
+            {"owner": "Jacqui Fox", "action": "Write down the coverage rationale",
+             "evidenceIds": ["turn_1"], "ownerEvidenceIds": ["turn_1"]},
+            {"owner": "Priya Sethi", "action": "Check the venue wifi and clicker",
+             "evidenceIds": ["turn_2"], "ownerEvidenceIds": ["turn_2"]},
+        ], turns)
+        self.assertEqual([row["owner"] for row in rows], ["Not stated", "Not stated"])
+
+    def test_grounding_keeps_complete_diagnostic_choice_containing_something(self):
+        turns = ["Hannah Vestergaard: I will ask Ravi whether the protocols are blocked by something substantive or by time."]
+        rows = PIPELINE.ground_action_attributions([{
+            "owner": "Hannah Vestergaard",
+            "action": "Ask Ravi whether the protocols are blocked by something substantive or by available time",
+            "evidenceIds": ["turn_1"], "ownerEvidenceIds": ["turn_1"],
+        }], turns)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["owner"], "Hannah Vestergaard")
+
+    def test_every_validated_profile_requires_its_task_object_in_local_evidence(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        action = {"owner": "Callum Reid", "action": "Print thirty additional handouts",
+                  "status": "ASSIGNED", "evidenceIds": ["turn_1"]}
+        original = PIPELINE.call_trooper
+        try:
+            PIPELINE.call_trooper = lambda *_args: self.fail("ungrounded candidate reached selector")
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                [action], ["Callum Reid: I can set the chart colours manually."], "Rules", Backend(),
+                profile="webinar_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected, [])
+
+    def test_decision_meeting_requires_separate_commitment_evidence(self):
+        class Backend:
+            available = True
+            def encode_many(self, texts): return {text: [1.0] for text in texts}
+        proposal = {"owner": "Rex", "action": "Mark out the visitor bays in blue",
+                    "status": "REQUIRED", "evidenceIds": ["turn_1"],
+                    "taskEvidenceIds": ["turn_1"], "commitmentEvidenceIds": []}
+        original = PIPELINE.call_trooper
+        try:
+            PIPELINE.call_trooper = lambda *_args: self.fail("proposal reached selector")
+            selected = PIPELINE.select_retrieval_grounded_actions(
+                [proposal], ["Rex: Mark out the visitor bays in blue."], "Rules", Backend(),
+                profile="decision_retrieval_v2")
+        finally:
+            PIPELINE.call_trooper = original
+        self.assertEqual(selected, [])
+
+    def test_open_world_consolidation_keeps_unknown_actions_with_or_without_a_family_hint(self):
+        turns = ["Alex Morgan: I will prepare the novel evidence register."]
+        action = {"owner": "Alex Morgan", "action": "Prepare the novel evidence register",
+                  "deadline": "Not stated", "evidenceIds": ["turn_1"], "support": 1}
+        family_functions = (None, lambda _action: "", lambda _action: "known_family")
+        for family_function in family_functions:
+            with self.subTest(family=bool(family_function)):
+                self.assertEqual(
+                    PIPELINE.consolidate_open_world_actions([action], turns, family_function),
+                    [action],
+                )
+
     def test_undersized_chunks_merge_into_a_neighbour_within_the_limit(self):
         chunks = PIPELINE.safe_boundaries([
             {"start": 1, "end": 17}, {"start": 18, "end": 20}, {"start": 21, "end": 43}, {"start": 44, "end": 60}], 60)
@@ -496,428 +717,6 @@ class DeterministicActionCleanupTests(unittest.TestCase):
         self.assertFalse(PIPELINE.action_has_recall_protection(action, ["Stuart: you need to do a desktop audit, it must be done"]))
         self.assertTrue(PIPELINE.action_has_recall_protection(action, ["Stuart: I'll share the risk analysis before you arrive"]))
 
-    def test_audit_repairs_prerequisite_addressee_and_track_decision_object(self):
-        turns = [
-            "Niamh Lynch: What do I need to complete?",
-            "Jacqui Fox: The training documents are next.",
-            "Smith, Stuart M: You will need to complete the code of conduct first.",
-            "Niamh Lynch: Are you going to have me on a separate track?",
-            "Smith, Stuart M: I am working through the logistics and risk analysis for a separate track.",
-        ]
-        rows = PIPELINE.repair_audit_actions([
-            {"owner": "Smith, Stuart M", "action": "Complete the code of conduct",
-             "status": "REQUIRED", "evidenceIds": ["turn_3"]},
-            {"owner": "Smith, Stuart M", "action": "Work through logistics and risk analysis",
-             "status": "ASSIGNED", "evidenceIds": ["turn_5"]},
-        ], turns)
-        self.assertEqual(rows[0]["owner"], "Niamh Lynch")
-        self.assertEqual(rows[1]["owner"], "Smith, Stuart M")
-        self.assertEqual(rows[1]["action"],
-                         "Decide whether Niamh should run a separate audit track based on the risk analysis and logistics")
-
-    def test_audit_repairs_joint_owners_for_accepted_hotel_catch_up(self):
-        rows = PIPELINE.repair_audit_actions([{
-            "owner": "Niamh Lynch", "action": "Arrange a catch-up meeting at the hotel",
-            "status": "ASSIGNED", "evidenceIds": ["turn_1", "turn_2"],
-        }], [
-            "Niamh Lynch: Do we need a catch-up meeting?",
-            "Stuart M: Yes, we can meet at the hotel.",
-        ])
-        self.assertEqual(rows[0]["owner"], "Stuart M and Niamh Lynch")
-
-    def test_audit_consolidates_complementary_work_package_fragments(self):
-        rows = PIPELINE.consolidate_audit_actions([
-            {"owner": "Stuart M", "action": "Build out the audit scope and product classifications",
-             "status": "ASSIGNED", "support": 2, "sampleCount": 3,
-             "mergedCandidateCount": 2, "evidenceIds": ["turn_12"]},
-            {"owner": "Smith, Stuart M", "action": "Determine the list of applicable standards",
-             "status": "REQUIRED", "support": 3, "sampleCount": 3,
-             "mergedCandidateCount": 3, "evidenceIds": ["turn_21"]},
-            {"owner": "Stuart M", "action": "Complete the risk assessment",
-             "status": "COMMITTED", "support": 2, "sampleCount": 3,
-             "mergedCandidateCount": 2, "evidenceIds": ["turn_204"]},
-        ])
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["action"],
-                         "Prepare the audit scope, applicable standards, product classifications and risk-assessment inputs")
-        self.assertEqual(rows[0]["support"], 3)
-        self.assertEqual(rows[0]["mergedCandidateCount"], 7)
-        self.assertEqual(rows[0]["evidenceIds"], ["turn_12", "turn_21", "turn_204"])
-
-    def test_audit_consolidates_materials_access_prerequisites_and_catchup_separately(self):
-        rows = PIPELINE.consolidate_audit_actions([
-            {"owner": "Stuart", "action": "Share the risk analysis with Niamh", "evidenceIds": ["turn_205"]},
-            {"owner": "Stuart M", "action": "Share complaints, CAPA and deviations data", "evidenceIds": ["turn_213"]},
-            {"owner": "Stuart", "action": "Share the audit findings tracker", "evidenceIds": ["turn_218"]},
-            {"owner": "Jacqui", "action": "Arrange access or sharing of documents", "evidenceIds": ["turn_169"]},
-            {"owner": "Jacqui Fox", "action": "Figure out a way to get Niamh external SharePoint access", "evidenceIds": ["turn_170"]},
-            {"owner": "Niamh", "action": "Complete the code of conduct", "evidenceIds": ["turn_158"]},
-            {"owner": "Niamh Lynch", "action": "Complete the training attestation", "evidenceIds": ["turn_192"]},
-            {"owner": "Stuart and Niamh", "action": "Arrange a catch-up meeting before the audit", "evidenceIds": ["turn_185"]},
-            {"owner": "Stuart M and Niamh Lynch", "action": "Arrange a face-to-face catch-up at the hotel", "evidenceIds": ["turn_188"]},
-        ])
-        self.assertEqual([row.get("auditConsolidatedFamily") for row in rows], [
-            "audit_material_sharing", "secure_document_access", "prerequisite_completion", "pre_audit_catchup",
-        ])
-        self.assertEqual(rows[0]["action"],
-                         "Share the risk analysis, the audit tracker, complaints data, CAPA data and deviations data")
-        self.assertEqual(rows[1]["action"], "Arrange secure document sharing and external SharePoint access")
-        self.assertEqual(rows[2]["action"], "Complete the code of conduct and the training attestation")
-        self.assertEqual(rows[3]["action"], "Arrange the face-to-face pre-audit catch-up at the hotel before the audit starts")
-
-    def test_audit_does_not_merge_sending_with_completing_or_cross_owner_access(self):
-        rows = PIPELINE.consolidate_audit_actions([
-            {"owner": "Jacqui", "action": "Send the code of conduct to Niamh", "evidenceIds": ["turn_157"]},
-            {"owner": "Niamh", "action": "Complete the code of conduct", "evidenceIds": ["turn_158"]},
-            {"owner": "Jacqui", "action": "Arrange external SharePoint access", "evidenceIds": ["turn_169"]},
-            {"owner": "Stuart", "action": "Arrange secure document sharing", "evidenceIds": ["turn_170"]},
-            {"owner": "Niamh", "action": "Arrange travel before the audit", "evidenceIds": ["turn_267"]},
-        ])
-        self.assertEqual(len(rows), 5)
-        self.assertEqual([row["action"] for row in rows[:2]],
-                         ["Send the code of conduct to Niamh", "Complete the code of conduct"])
-
-    def test_importer_repairs_handoffs_conditions_and_work_packages_from_evidence(self):
-        turns = [
-            "Jacqui Fox   7:26I will flick this over to Orla.",
-            "Orla Skally   7:41I'll take a look at the QMS manual this week.",
-            "Orla Skally   17:53I can go back to Cody and ask about the MedEnvoy task list.",
-            "Orla Skally   12:46We're working currently on lot numbering with RF Smart.",
-            "Jenny Gough   14:01I could have a look at the label if you wanted.",
-            "Orla Skally   24:50In the next two to three weeks we'll have the label system.",
-            "Orla Skally   30:46The HPRA sent me a bill and I can send a copy.",
-            "Jacqui Fox   31:07Send it on to myself, Colm. We can have a look and talk to Liam.",
-            "Orla Skally   31:27I can send that email following the SRN confirmation.",
-            "Colm O'Rourke   31:41That would be good.",
-            "John-Paul Hughes   32:01The sunglasses need the EU MDR and PPE rationale.",
-        ]
-        rows = PIPELINE.repair_importer_actions([
-            {"owner": "Cody", "action": "Get an overview and task list from MedEnvoy", "evidenceIds": ["turn_3"]},
-            {"owner": "Jenny Gough", "action": "Review the label", "evidenceIds": ["turn_5"]},
-            {"owner": "Orla Skally", "action": "Implement lot numbering process", "evidenceIds": ["turn_4"]},
-            {"owner": "Orla Skally", "action": "Send the HPRA bill copy", "evidenceIds": ["turn_7"]},
-            {"owner": "Jacqui Fox", "action": "Review the HPRA bill and seek direction", "evidenceIds": ["turn_8"]},
-            {"owner": "John-Paul Hughes", "action": "Update declarations of conformity with the PPE risk rationale",
-             "evidenceIds": ["turn_9"]},
-        ], turns)
-        self.assertEqual(rows[0]["owner"], "Orla Skally")
-        self.assertIn("responsibility for each activity", rows[0]["action"])
-        self.assertEqual(rows[1]["status"], "PROPOSED")
-        self.assertIn("if DITA requests", rows[1]["action"])
-        self.assertIn("next two to three weeks", rows[2]["action"])
-        self.assertEqual(rows[3]["owner"], "Orla Skally")
-        self.assertIn("SRN confirmation email", rows[3]["action"])
-        self.assertEqual(rows[4]["owner"], "Jacqui Fox and Colm O'Rourke")
-        self.assertIn("before payment guidance", rows[4]["action"])
-        self.assertIn("EU MDR and PPE Category I", rows[5]["action"])
-
-    def test_importer_recovers_only_an_accepted_next_week_followup_call(self):
-        turns = [
-            "Jacqui Fox   30:20We'll look at another call in the diary with you next week if that's okay.",
-            "Orla Skally   30:27Okay, yes, that would be helpful.",
-        ]
-        recovered = PIPELINE.recover_importer_followup_call([], turns, 3)
-        self.assertEqual(recovered[0]["owner"], "Jacqui Fox")
-        self.assertEqual(recovered[0]["action"], "Arrange a follow-up call with Orla Skally for the following week")
-        self.assertEqual(recovered[0]["support"], 3)
-        self.assertEqual(PIPELINE.recover_importer_followup_call([], [turns[0]], 3), [])
-
-    def test_importer_recovers_explicit_qms_handoff_when_sampling_misses_it(self):
-        turns = [
-            "Jacqui Fox   7:20This is the QMS manual that was sent on Friday.",
-            "Orla Skally   7:24That's okay.",
-            "Jacqui Fox   7:26I will flick this over to Orla.",
-        ]
-        recovered = PIPELINE.recover_importer_followup_call([], turns, 3)
-        self.assertEqual(recovered[0]["owner"], "Jacqui Fox")
-        self.assertEqual(recovered[0]["action"], "Resend the QMS manual to Orla")
-        self.assertEqual(recovered[0]["evidenceIds"], ["turn_1", "turn_3"])
-        self.assertEqual(recovered[0]["support"], 3)
-
-    def test_importer_v2_closed_ledger_keeps_only_the_ten_reviewed_work_packages(self):
-        turns = [
-            "Jacqui Fox: I will flick this QMS manual over to Orla.",
-            "Orla Skally: I'll take a look at the QMS manual this week.",
-            "Orla Skally: I can go back to Cody about the MedEnvoy task list and registration plan.",
-            "Orla Skally: I will share the list of countries we ship to for language translation.",
-            "Orla Skally: We are working with RF Smart on lot numbering and label updates.",
-            "Jenny Gough: I could review the proposed barcode label if DITA wanted.",
-            "John-Paul Hughes: Update the declarations of conformity for sunglasses with the PPE risk rationale.",
-            "Orla Skally: Send the HPRA invoice and SRN email to Jacqui and Colm.",
-            "Jacqui Fox: Review the HPRA invoice with Liam before payment guidance.",
-            "Jacqui Fox: Arrange another call with Orla next week.",
-        ]
-        actions = [{"owner": "Unknown", "action": turn.split(": ", 1)[1], "evidenceIds": [f"turn_{index}"]}
-                   for index, turn in enumerate(turns, 1)]
-        actions.append({"owner": "Unknown", "action": "Explain the intercompany storage structure", "evidenceIds": ["turn_1"]})
-        rows = PIPELINE.consolidate_importer_actions(actions, turns, 3)
-        families = {PIPELINE.importer_action_family(row) for row in rows}
-        self.assertEqual(len(rows), 10)
-        self.assertNotIn("", families)
-        self.assertEqual({row["support"] for row in rows}, {3})
-
-    def test_audit_v2_closed_ledger_keeps_nine_packages_and_drops_audit_narration(self):
-        turns = ["Smith, Stuart M: Audit planning.", "Niamh Lynch: Understood.", "Jacqui Fox: I will send it."]
-        actions = [
-            "Prepare the audit scope, applicable standards, product classifications and risk assessment",
-            "Confirm which documents are available to share before the desktop audit",
-            "Arrange secure document sharing and external SharePoint access",
-            "Complete the code of conduct and training attestation",
-            "Send the code of conduct to Niamh",
-            "Adjust the audit preparation timeline because Stuart is unavailable from the 14th to 17th",
-            "Share the risk analysis, audit tracker, complaints, CAPA and deviations",
-            "Arrange a pre-audit catch-up at the hotel",
-            "Decide whether Niamh should run a separate software audit track",
-            "Prepare normal audit findings and rating documentation",
-        ]
-        rows = PIPELINE.consolidate_audit_v2_actions([
-            {"owner": "Unknown", "action": action, "evidenceIds": ["turn_1"]} for action in actions
-        ], turns, 3)
-        families = {PIPELINE.audit_action_family(row) for row in rows}
-        self.assertEqual(len(rows), 9)
-        self.assertNotIn("", families)
-        prerequisite = next(row for row in rows if PIPELINE.audit_action_family(row) == "prerequisite_completion")
-        self.assertEqual(prerequisite["owner"], "Niamh Lynch")
-
-    def test_absent_default_participant_cannot_replace_an_evidence_grounded_owner(self):
-        turns = [
-            "Jacqui Fox: Gareth owns the scope work and the standards list.",
-            "Gareth Pryce: I'll complete both by Friday.",
-        ]
-        self.assertEqual(PIPELINE.participant_name(turns, "Stuart"), "")
-        self.assertEqual(PIPELINE.audit_v2_roles(turns)["audit_scope_inputs"], "")
-        self.assertEqual(
-            PIPELINE.evidenced_person_name(
-                ["Jacqui Fox: Ingrid Solberg will send the brochure."], "Ingrid"
-            ),
-            "Ingrid Solberg",
-        )
-
-        rows = PIPELINE.consolidate_audit_v2_actions([{
-            "owner": "Gareth Pryce",
-            "action": "Complete the audit scope and standards list",
-            "status": "ASSIGNED",
-            "evidenceIds": ["turn_1", "turn_2"],
-        }], turns, 3)
-        self.assertEqual(rows[0]["owner"], "Gareth Pryce")
-        self.assertNotEqual(rows[0]["owner"], "Stuart")
-
-    def test_software_review_consolidates_distinct_handoff_and_test_work_packages(self):
-        turns = [
-            "Jacqui Fox   13:08Andrew, if you could just confirm what the spec of flow rate is. David and Colm can review the standard again.",
-            "Jacqui Fox   15:54David is going to reach out to you on additional command letters.",
-            "David Didsbury   16:01And that's my fault.",
-            "Jacqui Fox   16:13Document what actually happens on the debug screen.",
-            "Andrew Kane   16:16Yeah.",
-        ]
-        rows = PIPELINE.consolidate_software_review_actions([
-            {"owner": "Jacqui Fox", "action": "Clarify the nebulizer flow rate for ISO 27427", "evidenceIds": ["turn_1"]},
-            {"owner": "David Didsbury", "action": "Review the ISO 27427 standard against the nebulizer flow rate", "evidenceIds": ["turn_1"]},
-            {"owner": "Jacqui Fox", "action": "Prioritise debug commands and send them to Andrew", "evidenceIds": ["turn_2"]},
-            {"owner": "David Didsbury", "action": "Send additional debug command letters", "evidenceIds": ["turn_2"]},
-            {"owner": "Jacqui Fox", "action": "Document what happens when debug commands are used on the debug screen", "evidenceIds": ["turn_4"]},
-            {"owner": "Jacqui Fox", "action": "Check whether IEC AC1001 is captured in the risk analysis", "evidenceIds": ["turn_1"]},
-            {"owner": "Unknown", "action": "Review last week's follow-up actions", "evidenceIds": ["turn_1"]},
-        ], turns)
-        by_family = {row["softwareConsolidatedFamily"]: row for row in rows}
-        self.assertEqual(len(rows), 4)
-        self.assertNotIn("", {PIPELINE.software_action_family(row) for row in rows})
-        self.assertEqual(by_family["nebulizer_specification"]["owner"], "Andrew Kane")
-        self.assertEqual(by_family["nebulizer_standard_review"]["owner"], "David Didsbury and Colm")
-        self.assertEqual(by_family["debug_command_handoff"]["owner"], "David Didsbury")
-        self.assertEqual(by_family["debug_command_test"]["owner"], "Andrew Kane")
-
-    def test_software_review_recovers_probability_action_when_extraction_omits_it(self):
-        turns = [
-            "David Didsbury: What counts as a one event?",
-            "Rebecca Gill: I'll make a note of that and I'll have a look at it whilst looking at the risk.",
-        ]
-        rows = PIPELINE.recover_software_review_actions([], turns, 3)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(PIPELINE.software_action_family(rows[0]), "risk_probability")
-        self.assertEqual(rows[0]["owner"], "Rebecca Gill")
-        self.assertEqual(rows[0]["support"], 3)
-
-    def test_hybrid_review_consolidates_work_packages_and_recovers_split_handoffs(self):
-        turns = [
-            "Andrew Kane   5:24That's probably something I need to look at for the mute button LED.",
-            "Jacqui Fox   6:10We need a mini review with the clinicians around the audible sound.",
-            "Rebecca Cuckoo   6:30That's been pushed out until next week.",
-            "David Didsbury   9:28I might give you some more letters to try when you're back at the debug program.",
-            "David Didsbury   10:20I want to physically see the debug result.",
-            "Rebecca Cuckoo   33:49The 27427 standard needs an applicability review.",
-            "Jacqui Fox   34:06I can follow follow up with Colm as well.",
-            "Jacqui Fox   34:42We're back to normal on Tuesday, Rebecca, I'll add you to that.",
-        ]
-        consolidated = PIPELINE.consolidate_hybrid_actions([
-            {"owner": "David", "action": "Confirm LED behavior when the mute button is pressed", "evidenceIds": ["turn_1"], "sampleCount": 3},
-            {"owner": "Andrew", "action": "Investigate the alarm LED flashing for the mute button", "evidenceIds": ["turn_1"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Review items sent by email to determine next steps", "evidenceIds": ["turn_2"], "sampleCount": 3},
-        ], turns)
-        recovered = PIPELINE.recover_hybrid_actions(consolidated, turns, 3)
-        by_family = {PIPELINE.hybrid_action_family(row): row for row in recovered}
-        self.assertEqual(by_family["mute_led_confirmation"]["owner"], "Andrew Kane")
-        self.assertEqual(by_family["mute_led_confirmation"]["support"], 3)
-        self.assertEqual(by_family["debug_command_handoff"]["owner"], "David Didsbury")
-        self.assertEqual(by_family["debug_command_test"]["owner"], "Andrew Kane")
-        self.assertEqual(by_family["standard_applicability"]["owner"], "Jacqui Fox")
-        self.assertEqual(by_family["recurring_call"]["action"], "Add Rebecca to the regular Tuesday follow-up call")
-        self.assertEqual(by_family["clinician_alarm_review"]["support"], 3)
-        self.assertNotIn("", by_family)
-
-    def test_webinar_review_keeps_one_row_per_final_assignment_and_recovers_missing_rows(self):
-        turns = [
-            "Callum Reid: I can put it back in after, it's two seconds.",
-            "Nadia Okonkwo: I'll put five mins in the chat to you.",
-            "Priya Sethi: So I think I close, I do a proper thank you.",
-            "Priya Sethi: Half eight, yeah. Just the open and the first handover.",
-            "Callum Reid: Yep, and building the closing slide with the QR code and the link, and I'll re-share the deck once it's done.",
-            "Nadia Okonkwo: I'll write the three backup questions tonight and send them round, and I'm grouping the chat throughout.",
-            "Tom Whitfield: Ha, yes, dropping the joke, being disciplined on time.",
-            "Nadia Okonkwo: And I'll still message you at five minutes.",
-            "Priya Sethi: I'm doing the open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers.",
-            "Priya Sethi: You hit record the second I start talking.",
-            "Callum Reid: Red dot, screenshot, watch it the whole time.",
-            "Priya Sethi: So, half eight tomorrow for the warm-up.",
-            "Tom Whitfield: I'll do the who am I bit, keep it short.",
-            "Priya Sethi: Thirty seconds on you, don't do the whole CV.",
-            "Priya Sethi: Thirty seconds per answer.",
-            "Tom Whitfield: I'll be disciplined.",
-        ]
-        consolidated = PIPELINE.consolidate_webinar_actions([
-            {"owner": "Callum", "action": "Put the animation back on the three-things slide",
-             "evidenceIds": ["turn_1"], "sampleCount": 3},
-            {"owner": "Callum Reid", "action": "Restore the missing slide animation",
-             "evidenceIds": ["turn_1"], "sampleCount": 3},
-            {"owner": "Callum", "action": "Act as the technical safety net",
-             "evidenceIds": ["turn_2"], "sampleCount": 3},
-        ], turns, 3)
-        recovered = PIPELINE.recover_webinar_actions(consolidated, turns, 3)
-        by_family = {PIPELINE.webinar_action_family(row): row for row in recovered}
-        self.assertNotIn("", by_family)
-        self.assertEqual(by_family["slide_animation"]["owner"], "Callum Reid")
-        self.assertEqual(by_family["slide_animation"]["support"], 3)
-        self.assertEqual(by_family["backup_questions"]["owner"], "Nadia Okonkwo")
-        self.assertEqual(by_family["drop_joke"]["owner"], "Tom Whitfield")
-        self.assertEqual(by_family["opening_housekeeping"]["owner"], "Priya Sethi")
-        self.assertEqual(by_family["recording_control"]["owner"], "Callum Reid")
-        self.assertEqual(by_family["warmup"]["owner"], "Team")
-        self.assertEqual(len(recovered), 12)
-
-    def test_process_review_keeps_experiment_chain_and_definition_gaps_only(self):
-        turns = [
-            "Conor Flynn: So Jack and I have been working on what a good process would look like.",
-            "Conor Flynn: The way that Jack and I are going to go about this is to check it with you guys.",
-            "Conor Flynn: We want to take a really small slice and manually do it.",
-            "Conor Flynn: If that is successful in producing what we want to produce.",
-            "Conor Flynn: We do a four-week pilot with a mix of manual and AI.",
-            "Conor Flynn: We will see if it creates the right volume and the right quality.",
-            "Jack Cunningham: Something that would need to be defined as a team is exactly how we set the criteria for the ICP fit.",
-            "Keon Fox: Client delivery is in the first capture stage. How are we capturing that until now?",
-            "Kathryn Cullen: Those leads are sent to sales but are not always tracked in Salesforce.",
-        ]
-        consolidated = PIPELINE.consolidate_process_actions([
-            {"owner": "Unknown", "action": "Take a small manual slice and test lead quality",
-             "evidenceIds": ["turn_3"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Manually test the proposed lead-generation process",
-             "evidenceIds": ["turn_4"], "sampleCount": 3},
-            {"owner": "Unknown", "action": "Use AI to create opportunity packs",
-             "evidenceIds": ["turn_5"], "sampleCount": 3},
-        ], turns, 3)
-        recovered = PIPELINE.recover_process_actions(consolidated, turns, 3)
-        by_family = {PIPELINE.process_action_family(row): row for row in recovered}
-        self.assertNotIn("", by_family)
-        self.assertEqual(len(recovered), 4)
-        self.assertEqual(by_family["manual_slice"]["owner"], "Conor Flynn and Jack Cunningham")
-        self.assertEqual(by_family["conditional_pilot"]["owner"], "Conor Flynn and Jack Cunningham")
-        self.assertEqual(by_family["icp_criteria"]["owner"], "Team")
-        self.assertEqual(by_family["client_delivery_capture"]["owner"],
-                         "Sales and client-delivery team")
-        self.assertEqual(by_family["conditional_pilot"]["support"], 3)
-
-    def test_technical_file_consolidation_is_open_world_and_preserves_source_slots(self):
-        turns = [
-            "David Didsbury: I'll write comments on the severity bands by Friday.",
-            "Sanjay Iyer: I'll create and submit the three new DIs this week.",
-            "Ffion Hargreaves: I'll send the seven completed supplier agreements this afternoon.",
-        ]
-        actions = [
-            {"owner": "David Didsbury", "action": "Write comments on the risk-plan severity bands",
-             "deadline": "Friday", "evidenceIds": ["turn_1"], "sampleCount": 3},
-            {"owner": "Sanjay Iyer", "action": "Create and submit new DIs for the three references",
-             "deadline": "This week", "evidenceIds": ["turn_2"], "sampleCount": 3},
-            {"owner": "Ffion Hargreaves", "action": "Send the seven completed supplier agreements",
-             "deadline": "This afternoon", "evidenceIds": ["turn_3"], "sampleCount": 3},
-            {"owner": "Kevin", "action": "Finish the process maps and email Colm and Louise",
-             "deadline": "Not stated", "evidenceIds": [], "sampleCount": 3},
-        ]
-        consultancy = PIPELINE.consolidate_technical_file_actions(
-            actions, turns, "Technical file consultancy review", 3)
-        weekly = PIPELINE.consolidate_technical_file_actions(
-            actions, turns, "Technical file review", 3)
-        expected = [(row["owner"], row["action"], row["deadline"]) for row in actions[:3]]
-        self.assertEqual([(row["owner"], row["action"], row["deadline"]) for row in consultancy], expected)
-        self.assertEqual([(row["owner"], row["action"], row["deadline"]) for row in weekly], expected)
-        leaked = " ".join(row["action"] for row in consultancy + weekly).lower()
-        self.assertNotRegex(leaked, r"usb.port|rule 9|louise|colm|tf24")
-
-    def test_technical_file_known_family_is_only_a_local_compatible_owner_dedupe_hint(self):
-        turns = [
-            "Rebecca Gill: I'll update the risk matrix this week.",
-            "Jacqui Fox: The severity wording needs a separate sign-off.",
-            "Rebecca Gill: I'll update the risk-management matrix with David's comments.",
-        ]
-        actions = [
-            {"owner": "Rebecca Gill", "action": "Update the risk matrix", "deadline": "This week",
-             "status": "PROPOSED", "evidenceIds": ["turn_1"], "support": 1, "sampleCount": 3},
-            {"owner": "Jacqui Fox", "action": "Obtain sign-off for the severity wording", "deadline": "Not stated",
-             "status": "ASSIGNED", "evidenceIds": ["turn_2"], "support": 2, "sampleCount": 3},
-            {"owner": "Rebecca Gill", "action": "Update the risk-management matrix with David's comments",
-             "deadline": "This week", "status": "ASSIGNED", "evidenceIds": ["turn_3"],
-             "support": 2, "sampleCount": 3},
-        ]
-        rows = PIPELINE.consolidate_technical_file_actions(
-            actions, turns, "Technical file review", 3)
-        self.assertEqual(len(rows), 2)
-        risk = next(row for row in rows if row["owner"] == "Rebecca Gill")
-        self.assertEqual(risk["action"], actions[2]["action"])
-        self.assertEqual(risk["deadline"], actions[2]["deadline"])
-        self.assertEqual(risk["evidenceIds"], ["turn_1", "turn_3"])
-        self.assertEqual(risk["support"], 2)
-
-    def test_general_consolidation_keeps_one_complete_row_per_accepted_deliverable(self):
-        turns = [
-            "Deepa Sharma: We have both Jos today, Jo Bennett and Jo Marsh.",
-            "Jo Marsh: I'll sort the marshals and get us up to fourteen.",
-            "Jo Bennett: I'll get a quote from St John Ambulance for two crews and confirm it once you're happy with the cost.",
-            "Alan Pryce: I'll get the road-closure application in this week and confirm the towpath's reopened.",
-            "Deepa Sharma: I'll reorder the medals and order three hundred and fifty.",
-            "Deepa Sharma: I'll take the social media, post every couple of days and get the entry link out everywhere.",
-        ]
-        actions = [
-            {"owner": "Jo", "action": "Sort the marshals and get the number up to fourteen",
-             "evidenceIds": ["turn_2"], "sampleCount": 3},
-            {"owner": "Jo", "action": "Get a quote from St John for two first aid crews",
-             "evidenceIds": ["turn_3"], "sampleCount": 3},
-            {"owner": "Alan", "action": "Submit the road closure application and check the towpath",
-             "evidenceIds": ["turn_4"], "sampleCount": 3},
-            {"owner": "Deepa", "action": "Reorder 350 medals",
-             "evidenceIds": ["turn_5"], "sampleCount": 3},
-            {"owner": "Deepa", "action": "Run the social media push and distribute the entry link",
-             "evidenceIds": ["turn_6"], "sampleCount": 3},
-            {"owner": "Deepa", "action": "Confirm the race date", "evidenceIds": ["turn_1"], "sampleCount": 3},
-        ]
-        consolidated = PIPELINE.consolidate_general_actions(actions, turns, 3)
-        recovered = PIPELINE.recover_general_actions(consolidated, turns, 3)
-        by_family = {PIPELINE.general_action_family(row, "race"): row for row in recovered}
-        self.assertNotIn("", by_family)
-        self.assertEqual(len(recovered), 5)
-        self.assertEqual(by_family["marshals"]["owner"], "Jo Marsh")
-        self.assertEqual(by_family["first_aid"]["owner"], "Jo Bennett")
-        self.assertEqual(by_family["road_closure"]["deadline"], "This week")
-        self.assertEqual(by_family["social"]["support"], 3)
-
-
 class SampledActionSupportTests(unittest.TestCase):
     class FakeBackend:
         available = True
@@ -936,7 +735,8 @@ class SampledActionSupportTests(unittest.TestCase):
             {"owner": "Not stated", "action": "Share the risk analysis with Niamh", "status": "PROPOSED", "evidenceIds": ["turn_31"], "sample": 0},
             {"owner": "Stuart", "action": "Send Niamh the risk analysis before she arrives", "status": "ASSIGNED", "evidenceIds": ["turn_209"], "sample": 1},
             {"owner": "Stuart", "action": "Share the risk analysis with Niamh", "status": "COMMITTED", "evidenceIds": ["turn_31"], "sample": 2},
-            {"owner": "Jacqui", "action": "Book the hotel for the audit week", "status": "COMMITTED", "evidenceIds": ["turn_2"], "sample": 1},
+            {"owner": "Jacqui", "action": "Book the hotel for the audit week", "status": "COMMITTED",
+             "evidenceIds": ["turn_2"], "commitmentEvidenceIds": ["turn_2"], "sample": 1},
         ]
         merged = PIPELINE.merge_sampled_actions(actions, 3, self.FakeBackend(vectors))
         self.assertEqual(len(merged), 2)
@@ -966,10 +766,11 @@ class SampledActionSupportTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["support"], 2)
 
-    def test_single_sample_proposals_are_dropped_and_other_minority_rows_are_raised(self):
+    def test_single_sample_rows_need_commitment_evidence_to_be_raised(self):
         rows = [
             {"action": "a", "support": 1, "status": "PROPOSED"},
-            {"action": "b", "support": 1, "status": "REQUIRED"},
+            {"action": "b", "support": 1, "status": "REQUIRED", "commitmentEvidenceIds": ["turn_2"]},
+            {"action": "unsupported", "support": 1, "status": "REQUIRED"},
             {"action": "c", "support": 2, "status": "PROPOSED"},
             {"action": "d", "support": 3, "status": "PROPOSED"},
         ]
@@ -1127,11 +928,8 @@ class DeliverableMergeTests(unittest.TestCase):
                       3: {"deliverable": "hotel booking", "verb": "ARRANGE", "recipient": ""},
                       4: {"deliverable": "meeting at the hotel", "verb": "ARRANGE", "recipient": ""}}
         merged = PIPELINE.merge_by_deliverable(actions, structured, self.FakeBackend(vectors))
-        self.assertEqual([row["action"] for row in merged],
-                         ["Meet Niamh before the first week.", "Book the hotel.", "Catch up at the hotel after week one."])
-        self.assertEqual(merged[0]["evidenceIds"], ["turn_176", "turn_188"])
-        self.assertEqual(merged[0]["mergedFrom"], ["Have a catch-up at the hotel."])
-        self.assertEqual(merged[0]["owner"], "Stuart M and Niamh")
+        self.assertEqual([row["action"] for row in merged], [row["action"] for row in actions])
+        self.assertEqual(merged[0]["owner"], "Stuart M")
 
     def test_incompatible_verbs_or_owners_do_not_merge(self):
         vectors = {"risk files": [1.0, 0.0]}
@@ -1179,7 +977,7 @@ class AlternativeChunkingTests(unittest.TestCase):
 class SelectorBatchingTests(unittest.TestCase):
     def test_batches_respect_count_and_character_limits(self):
         small = [(n, "x" * 100) for n in range(1, 21)]
-        self.assertEqual([len(b) for b in PIPELINE.selector_batches(small)], [15, 5])
+        self.assertEqual([len(b) for b in PIPELINE.selector_batches(small)], [8, 8, 4])
         big = [(n, "y" * 9000) for n in range(1, 6)]
-        self.assertEqual([len(b) for b in PIPELINE.selector_batches(big)], [2, 2, 1])
+        self.assertEqual([len(b) for b in PIPELINE.selector_batches(big)], [1, 1, 1, 1, 1])
         self.assertEqual(PIPELINE.selector_batches([]), [])

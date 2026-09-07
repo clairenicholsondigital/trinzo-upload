@@ -3744,6 +3744,7 @@ function stagedGenerationMeetingType(selectedMeetingType, meetingIdentity) {
   const identity = String(meetingIdentity || '');
   if (selected === 'General' && /\bimporter[\s_-]*obligations?\b/i.test(identity)) return 'Importer obligations review';
   if (selected === 'General' && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(identity)) return 'Process / pipeline planning';
+  if (selected === 'General' && /\b(?:project|consultancy|retainer)\b.*\b(?:check[\s_-]*in|weekly|status|review)\b/i.test(identity)) return 'Project / consultancy check-in';
   return selected;
 }
 

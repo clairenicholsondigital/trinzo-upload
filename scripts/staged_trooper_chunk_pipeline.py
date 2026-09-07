@@ -23,6 +23,8 @@ MODEL = "eu_liv_000099"
 # concurrency below that and treats 429 as "wait", not "fail".
 TROOPER_MAX_INFLIGHT = max(1, int(os.environ.get("TROOPER_MAX_INFLIGHT", "8")))
 TROOPER_INFLIGHT = threading.BoundedSemaphore(TROOPER_MAX_INFLIGHT)
+ACTION_RETRIEVAL_BACKEND: Any = None
+ACTION_RETRIEVAL_BACKEND_LOCK = threading.Lock()
 MAX_CHUNK_TURNS = 45
 # The boundary model was observed returning a 3-turn section despite the prompt's 8-turn
 # floor; sections that small produced bare-verb candidates ("share", "do"). Merge them.
@@ -113,7 +115,7 @@ SHORT_ACTION_REPAIR_SCHEMA = {"type": "json_schema", "json_schema": {"name": "sh
 
 SHORT_ACTION_REPAIR_PROMPT = """Each numbered fragment below is an action candidate that the extractor wrote as a bare verb or phrase, with the transcript turns it cited.
 
-For every fragment, using only its cited turns, write the specific task as one concise minutes action that names what is to be done and to what (for example "Send the code of conduct to Niamh", "Build out the audit scope and standards list"). Do not add owners, deadlines or details the turns do not state.
+For every fragment, using only its cited turns, write the specific task as one concise minutes action that names what is to be done and to what (for example "Send the code of conduct to the auditor", "Build out the audit scope and standards list"). Do not add owners, deadlines or details the turns do not state.
 
 Return an empty string for a fragment when its cited turns contain no specific future task: screen sharing, meeting procedure, banter, a description of how things normally work, or a restatement of the schedule. Also return an empty string for travel, accommodation, car hire, attendance, being on site, and personal arrangements - these are never minutes actions. Only a deliverable somebody will send, share, review, confirm, arrange, update, decide, investigate or prepare qualifies.
 
@@ -129,7 +131,7 @@ DELIVERABLE_SCHEMA = {"type": "json_schema", "json_schema": {"name": "action_del
         "required": ["candidateNumber", "deliverable", "verb", "recipient"], "additionalProperties": False}}},
     "required": ["deliverables"], "additionalProperties": False}}}
 
-DELIVERABLE_PROMPT = """For each numbered action candidate, name its deliverable: the specific thing that is to be produced, sent, reviewed, decided or arranged, as a short noun phrase (2-6 words) with no verb, owner or deadline. Examples: "risk analysis", "code of conduct", "SharePoint access for Niamh", "pre-audit catch-up meeting", "software list front page", "nebuliser flow-rate specification".
+DELIVERABLE_PROMPT = """For each numbered action candidate, name its deliverable: the specific thing that is to be produced, sent, reviewed, decided or arranged, as a short noun phrase (2-6 words) with no verb, owner or deadline. Examples: "risk analysis", "code of conduct", "secure document access", "pre-audit catch-up meeting", "software list front page", "nebuliser flow-rate specification".
 
 Give the verb class: SEND (send/email/provide), SHARE (share/give access), REVIEW (review/read/check/look at), CONFIRM (confirm/check whether/clarify), ARRANGE (arrange/schedule/organise/meet), UPDATE (update/add/change/write/document), DECIDE (decide/agree/choose), INVESTIGATE (investigate/look up/find out/test), PREPARE (prepare/build/plan/draft), ATTEND (attend/be present/travel), OTHER.
 
@@ -170,11 +172,17 @@ HYBRID_TECHNICAL_SELECTOR_GUIDANCE = """This is a combined software and technica
 
 DECISION_MEETING_SELECTOR_GUIDANCE = """This is a decision meeting. Discussion of options is not an action. Retain only an explicit commitment, accepted assignment or agreed follow-up. Exclude every proposal, possibility, question, option and unresolved decision that nobody accepted, even if it is worded like a task."""
 
-RETRIEVAL_SELECTOR_PROMPT = """Validate high-recall action candidates against retrieved transcript evidence.
+RETRIEVAL_SELECTOR_PROMPT = """Validate high-recall action candidates against the supplied local transcript evidence.
 
-KEEP a specific future commitment, accepted assignment, requirement, agreed follow-up, or meeting-type-valid proposed task. Continuing unfinished work is valid.
+KEEP only when the evidence positively establishes both a concrete standalone task or deliverable
+and that it is outstanding work: an explicit commitment, accepted assignment, agreed follow-up,
+continuing unfinished task, stated prerequisite, or meeting-type-valid accepted/deferred proposal.
 
-REMOVE only with one rejection code: COMPLETED_ONLY, UNACCEPTED_PROPOSAL, DISCUSSION_ONLY, MEETING_ADMIN, MALFORMED, or NO_SUPPORTED_TASK. A REMOVE decision must cite at least one supplied transcript turn that demonstrates the rejection. Similar vocabulary alone is not evidence. Do not reject merely because owner or deadline is unstated. Do not consolidate duplicates. There is no target or maximum count.
+For KEEP, use rejectionCode NONE and cite the supplied turns that prove the task and outstanding
+status. Candidate wording, status labels, repetition across extraction samples and similar vocabulary
+are not proof. If either element is ambiguous, REMOVE with COMPLETED_ONLY, UNACCEPTED_PROPOSAL,
+DISCUSSION_ONLY, MEETING_ADMIN, MALFORMED or NO_SUPPORTED_TASK and cite the supporting turns. Do not
+reject merely because owner or deadline is unstated. Do not consolidate duplicates. There is no target.
 
 MEETING RULES:
 {guidance}
@@ -195,10 +203,10 @@ RETRIEVAL_PROFILE_GUIDANCE = {
 AUDIT_RETRIEVAL_V2_GUIDANCE = """Retain only a concrete outstanding audit-preparation deliverable,
 prerequisite, accepted coordination task, or explicit decision that still has to be made.
 
-Valid audit actions include preparing scope/risk inputs; confirming, sending or sharing named
-documents or data; arranging secure access; sending or completing named training/confidentiality
-prerequisites; adjusting a preparation timeline around a named constraint; arranging an accepted
-pre-audit catch-up; and resolving a specifically stated choice assigned to a named person.
+Valid audit actions include preparing scope or readiness inputs; confirming, sending or sharing a
+named document, record or dataset; arranging required evidence access; completing a specifically
+named prerequisite; adjusting a preparation plan around a stated constraint; arranging an accepted
+working session; and resolving a concrete choice assigned to a person.
 
 Remove descriptive audit scope and possible areas to inspect unless a person accepted a concrete
 follow-up. Remove normal audit process, scheduled audit attendance, working hours, travel,
@@ -207,9 +215,8 @@ generic preparation wording, and unaccepted "might/could look at" suggestions. A
 such as SBOM, CVE, design owner or programming does not make discussion into an action.
 
 Require the draft to name its actual deliverable or decision object. Preserve legitimate
-conditions such as "after Wednesday", "before sharing", "before the audit", and "based on the
-risk analysis". Verify the owner from the evidence: the speaker stating a requirement is not the
-owner when the requirement is addressed to somebody else."""
+conditions only when the transcript states them. Verify the owner from the evidence: the speaker
+stating or recapping a requirement is not the owner when somebody else must perform it."""
 
 IMPORTER_RETRIEVAL_V2_GUIDANCE = """Retain only a specific outstanding follow-up created or
 explicitly continued in this importer-obligations meeting. Valid actions include sending or
@@ -231,8 +238,8 @@ recipient, legal manufacturer or service provider merely because they are mentio
 
 HYBRID_RETRIEVAL_V2_GUIDANCE = """Retain only a concrete outstanding software or technical-file
 follow-up created, accepted or explicitly continued in this weekly review. Keep distinct dependent
-handoffs: define or send debug commands versus test and report their result; complete a gap
-assessment versus incorporate its output; send a standard versus assess its applicability.
+handoffs when one person produces or sends an input and another tests, reviews or incorporates its
+result. Keep a technical assessment separate from the controlled-document change it enables.
 
 Remove status already completed, explanations of current software behaviour, questions answered in
 the meeting, speculative version numbers, generic review or update wording, and a meeting or
@@ -253,26 +260,32 @@ summarising another person's work is not its owner."""
 
 WEBINAR_RETRIEVAL_V2_GUIDANCE = """Retain only a final, outstanding webinar deliverable or a
 live-session responsibility that the team explicitly accepted. Prefer the final assignment recap
-when it is present. Valid work includes slide fixes, a closing or follow-up asset, prepared backup
-questions, chat moderation, presenter timing controls, agreed opening or closing wording, dead-air
-coverage, recording checks and an accepted pre-event warm-up.
+when it is present. A valid row must name the exact material, content change, equipment or venue
+check, prepared resource, or operational responsibility supported by this transcript.
+
+A live-session behaviour (opening, handover, timing, chat, questions, recording, closing or backup
+coverage) is an action only when the evidence explicitly assigns or accepts it for the real event,
+ideally in the final owner-by-owner recap. Merely performing, practising, demonstrating or advising
+it during this rehearsal is not outstanding work. Concrete pre-event changes to slides, charts,
+speaker notes, wording, equipment, venue checks or materials do not require a final recap when their
+own evidence clearly assigns or accepts the future deliverable.
 
 Remove rehearsal procedure that was completed during this meeting, descriptions of the planned
 flow, ordinary presenter handovers, example questions or answers, general delivery advice,
 technical possibilities that were discussed but not included in the final responsibilities, and
-duplicate fragments of a broader assignment. Do not turn the rehearsal itself into many actions.
-Keep distinct deliverables distinct, but treat the steps of one recording check, one opening script
-or one slide asset as a single work package."""
+duplicate fragments of a broader assignment. Do not turn the rehearsal itself into many actions or
+invent a familiar webinar task merely because it appears in these instructions. Keep distinct
+deliverables distinct and merge only steps producing one supported output for a compatible owner."""
 
 PROCESS_RETRIEVAL_V2_GUIDANCE = """Retain only an agreed experiment, a prerequisite that must be
-defined before that experiment, or a conditional next phase with an explicit trigger. In a
-lead-generation pipeline review, distinguish the small manual test from the later mixed manual/AI
-pilot, retain the pilot's quality-and-volume condition, and retain criteria or capture/tracking
-questions that the group explicitly identified as work still to define.
+defined before that experiment, or a conditional next phase with an explicit trigger. In a process
+or pipeline review, distinguish an immediate bounded test from a later pilot, preserve the pilot's
+stated success condition, and retain criteria, ownership or information-capture work that the group
+explicitly accepted.
 
-Remove the proposed steady-state pipeline itself: possible signal sources, triage, Salesforce
-matching, AI packs, opportunity tiers, prioritisation, contact research, sales planning and feedback
-loops are process-design discussion unless somebody separately accepted them as an immediate task.
+Remove the proposed steady-state pipeline itself: possible sources, stages, system matching,
+prioritisation, enrichment, routing and feedback loops are process-design discussion unless somebody
+separately accepted one as an immediate task.
 Remove requests answered during the meeting, descriptions of current practice, possible automation
 after an uncompleted pilot, generic sense-checking and options nobody accepted. Do not convert each
 box in a future-state process diagram into an action."""
@@ -285,7 +298,24 @@ details and recap. Keep distinct deliverables separate even when they share an o
 Remove decisions that need no follow-up, risk-register observations without an accepted response,
 possible contingency plans, routine meeting administration, requests answered in the meeting,
 descriptions of the agreed operating plan, and conversational promises with no useful deliverable.
-Do not turn each detail or step of one accepted task into a separate action."""
+Do not turn each detail or step of one accepted task into a separate action. Agreement to revisit a
+topic, make progress, wait for somebody, or return with the best idea is not a deliverable. Exclude
+personal side tasks, travel and training unrelated to the meeting's substantive work."""
+
+PROJECT_CHECKIN_RETRIEVAL_GUIDANCE = """This is a project or consultancy check-in. Retain only a
+specific outstanding project follow-up that somebody accepted: arranging a replacement working
+session, asking a named person to resolve or explain a concrete blocker, correcting access to a
+named project resource, or producing, sending, reviewing or updating a specific project output.
+
+When a participant accepts a follow-up to ask, contact or chase another person, keep that
+participant as owner and state the action as "Ask/contact [person] to [specific outcome]". Do not
+turn it into an assignment of the underlying work to the other person unless the evidence records
+that person's own acceptance.
+
+Remove waiting for an attendee, attendance and travel discussion, personal training or exams,
+meeting procedure, instructions not to produce minutes, status narration, vague progress updates,
+and unresolved references such as 'try him', 'get it' or 'deal with that'. A rescheduled meeting is
+an action only when somebody is explicitly responsible for placing or confirming it."""
 
 
 def audit_action_v2_enabled() -> bool:
@@ -392,26 +422,21 @@ Build a concise audit-preparation action ledger. Identify every supported future
 specific deliverable, prerequisite, coordination outcome or unresolved decision that somebody
 must progress after this meeting.
 
-Check specifically for:
-- audit scope, applicable standards, product classifications, product overview and risk-assessment inputs to prepare;
-- documents, trackers, findings data, complaints, CAPA, deviations or other material to confirm, send or share;
-- secure document transfer or external system access to arrange;
-- code-of-conduct, confidentiality and training-attestation prerequisites to send or complete;
-- preparation timelines that must be adjusted around a named availability constraint;
-- an accepted pre-audit catch-up or planning meeting to arrange;
-- an explicit unresolved choice that a named person accepted responsibility for deciding.
+Check generically for scope, readiness or risk inputs to prepare; a named document, record, dataset
+or evidence pack to confirm, send, share or review; required evidence access; a specifically named
+prerequisite; a preparation-plan change caused by a stated constraint; an accepted working session;
+and a concrete unresolved choice that somebody accepted responsibility for deciding.
 
 Give each candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
 
 Rules:
 - State the complete task object. Never emit generic actions such as "prepare", "understand",
   "go through", "work out logistics", "look at issues" or "plan for the event".
-- Preserve a dependency or condition when it changes the task: after a planning meeting, before
-  information is shared, before the audit starts, or based on the risk analysis.
+- Preserve a dependency or condition only when the transcript states it and it changes the task.
 - Resolve "you" from the named addressee in the surrounding turns. The person stating a
   requirement is not automatically its owner. Preserve joint owners when both accept a task.
-- Consolidate parts of one audit-preparation work package within this section, but keep sending
-  a prerequisite separate from the recipient completing it.
+- Consolidate parts of one audit-preparation work package within this section, but keep separately
+  owned production, sending, review and completion stages distinct.
 - A possible audit topic (a system, standard, SBOM, CVE, device area, process or document that
   the auditor may inspect) is not an action unless somebody accepts a concrete follow-up.
 - Exclude descriptions of normal audit practice, audit scope, and already scheduled audit work
@@ -440,16 +465,10 @@ Build a concise ledger of concrete outstanding follow-ups created or explicitly 
 this meeting. A regulatory obligation, business-process description or question is not itself an
 action. Include it only when the section supports a named person's specific next-step output.
 
-Check specifically for:
-- a named compliance or QMS document to send, resend, read or review;
-- a named person to contact about a task list, registration plan or responsibility split;
-- a country, product, language, translation, registration or responsibility list to confirm;
-- explicitly continuing implementation with suppliers or a system provider, including lot,
-  barcode or label work with a stated owner or timeframe;
-- a conditional offer to review a proposed label or barcode format when the business wants it;
-- a declaration, rationale or other controlled document to update;
-- named regulatory correspondence, an invoice or registration confirmation to send and review;
-- an accepted follow-up call to arrange.
+Check generically for concrete information, questions, contracts, controlled documents or evidence
+to draft, obtain, send, chase, review or update; a named external party to contact; implementation
+work with a supplier or service provider that has a stated owner and future outcome; and an accepted
+follow-up session that somebody must schedule.
 
 Give each candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
 
@@ -470,8 +489,8 @@ Rules:
   updating a label and optionally reviewing its proposed format may also be separate.
 - Exclude ordinary product flow, warehousing, ERP, picking, packing, invoicing and dispatch
   descriptions unless a concrete follow-up was accepted.
-- Exclude generic EUDAMED or importer obligations when the transcript only states who is legally
-  responsible or what the regulation normally requires.
+- Exclude standing importer or regulatory obligations when the transcript only states who is
+  legally responsible or what normally happens.
 - Evidence for task, commitment, owner, recipient, condition and timeframe may be in different
   turns. Cite all supporting turns within this section.
 - Before returning, rescan owner by owner for missed SEND, REVIEW, SPEAK, CONFIRM, CONTINUE,
@@ -489,16 +508,12 @@ weekly review. Build a concise ledger of concrete outstanding follow-ups created
 explicitly continued in the meeting.
 
 Keep dependent work packages distinct. Check specifically for:
-- an alarm or mute-button behaviour to confirm and a separate clinician/usability review;
-- debug commands to define or send and the separate test/result the software owner must produce;
-- a submitted change request to progress through approval and close-out;
-- a version-to-version gap assessment and the separate controlled-document update using its output;
-- continuing electrical-compliance work and any stated support dependency;
-- remaining language, character, font or translated-file implementation;
-- risk-file updates for a named cybersecurity concern and control;
-- a named document to review and decide whether it belongs in the document system;
-- standards to send and a separate applicability review;
-- an accepted recurring follow-up call or attendee addition.
+- software behaviour, risk or control questions with a concrete investigation or document output;
+- technical inputs to define or send and the separate test or review result another owner must produce;
+- a change, assessment or gap analysis and the controlled-document update its output enables;
+- continuing compliance, localisation, traceability or testing work with a stated outcome;
+- a named document or standard to send, review, file, update or assess for applicability;
+- an accepted follow-up session or participant addition needed to progress the work.
 
 Rules:
 - A status report, completed test, current behaviour explanation or question answered in the meeting
@@ -523,24 +538,26 @@ TRANSCRIPT SECTION:
 WEBINAR_ACTION_V2_PROMPT = """Review this coherent section from a webinar rehearsal and build a
 concise ledger of final outstanding deliverables and accepted live-session responsibilities.
 
-Check specifically for slide or animation fixes; closing or follow-up assets; prepared backup
-questions; chat moderation; private presenter timing warnings; an agreed limit on the presenter's
-introduction or Q&A answers; wording explicitly accepted for removal; opening and housekeeping
-content; dead-air and closing coverage; recording start, proof and monitoring; and an accepted
-pre-event warm-up.
+Check generically for changes to slides, charts, scripts, speaker notes or other content; venue,
+display, connectivity or presentation-equipment checks; printed or digital materials to prepare;
+accepted wording or timing edits; reserve audience questions; and explicitly assigned live-session
+or pre-event responsibilities.
 
 Rules:
 - Prefer the final owner-by-owner assignment recap when one exists, using earlier turns only to
   resolve the full deliverable, condition or timing.
-- Combine the steps of one work package: recording start, indicator check, screenshot and monitoring
-  are one responsibility; building and re-sharing one closing slide are one deliverable.
-- Keep genuinely different responsibilities separate, such as preparing backup questions versus
-  moderating live chat, or shortening the introduction versus shortening Q&A answers.
+- For a live-session behaviour, emit a candidate only when the section explicitly assigns or
+  accepts that behaviour for the real event. Do not emit something merely because a person
+  practises, demonstrates or receives advice about it in the rehearsal.
+- A concrete pre-event slide, chart, notes, wording, venue, equipment or materials change may be
+  emitted without a final recap when it is clearly accepted as outstanding work.
+- Combine steps only when they produce one deliverable for one compatible owner. Keep genuinely
+  different deliverables or owners separate.
 - Rehearsal instructions already performed, descriptions of the event flow, example audience
   questions, general presentation advice and unaccepted contingency ideas are not future actions.
 - Resolve the owner from a commitment, acceptance or assignment recap. A presenter or recipient is
   not automatically the owner.
-- Preserve stated timing such as tonight, during the webinar and 08:30 tomorrow.
+- Preserve stated timing, but do not infer a task merely because an event time is discussed.
 
 Return at most two discussion points and eight action candidates for this section. Use only turn
 numbers in this section and return only the required JSON.
@@ -592,16 +609,17 @@ TECHNICAL_FILE_ACTION_V2_PROMPT = """Review this coherent section from a regulat
 review. Build a concise ledger of concrete outstanding deliverables, continuing work packages and
 accepted dependent handoffs.
 
-Check specifically for risk-plan, matrix, FMEA and cybersecurity updates; review of revised risk
-wording; alarm or mute behaviour and its clinical review; language-symbol remediation and translated
-file loading; version-to-version software traceability; electrical-compliance testing; subcontractor
-documentation gaps; formative-study planning; process-map or procedure completion; PMS comment
-incorporation; controlled-document handoffs and their follow-ups; and conversion of documents for a
-specific technical file.
+Check generically for risk-management comments, definitions, matrices and approvals; classification
+or regulatory rationale; identifier or controlled-record corrections; technical investigation and
+testing; evidence, reviewer or specialist-resource gaps; supplier and quality agreements; localisation
+or market requirements; tracker ownership corrections; controlled-document drafting, handoff, review
+and incorporation; and a focused session explicitly assigned to resolve a technical definition.
 
 Rules:
 - Combine fragments of one deliverable, including its supporting review or dependency, unless two
   people have genuinely distinct future outputs.
+- Preserve distinct stages where one person must produce or send an output and another must review or
+  approve it. Preserve a request for comments separately from implementing those comments.
 - Continuing work is valid when the transcript identifies its concrete outcome and owner.
 - Remove completed work, tracker narration, broad status, generic focus statements and vague
   progress wording without a named document, study, test or decision outcome.
@@ -656,8 +674,8 @@ TRANSCRIPT SECTION:
 
 SOFTWARE_WEEKLY_ACTION_PROMPT = """Review this coherent software weekly-review transcript section.
 
-First identify concise, substantive discussion points. Then perform a separate,
-exhaustive action sweep and identify every possible task with a distinct deliverable.
+First identify concise, substantive discussion points. Then build a concise ledger of concrete
+outstanding software deliverables, accepted assignments and explicitly deferred work.
 
 Apply the full general sweep first:
 - I’ll, I can, we’ll, we need to, you need to;
@@ -682,8 +700,8 @@ Treat clearly assigned continuation of existing work as an action. At the end of
 the section, build an owner-by-owner action ledger from any recap: every concrete
 responsibility in that recap must be considered before lower-value candidates.
 
-Include proposed tasks. Give each candidate one status: COMMITTED, ASSIGNED,
-REQUIRED, PROPOSED or COMPLETED.
+Include a proposal only when somebody accepts or explicitly defers it as work to perform. Give each
+candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED.
 
 Rules:
 - State only the exact deliverable or next step supported.
@@ -708,22 +726,20 @@ PROCESS_ACTION_V2_PROMPT = """Review this coherent section from a process or pip
 meeting. Build a concise ledger of agreed experiments, their prerequisites and explicitly
 conditional next phases.
 
-For a lead-generation pipeline, check specifically for:
-- a small manual slice that the team agreed to test against a stated quality outcome;
-- a later time-bounded manual/AI pilot whose start depends on useful initial results;
-- ICP or eligibility criteria that the team said still need to be defined;
-- an unresolved operating decision about how client-delivery signals should be captured and
-  consistently tracked, including CRM or Salesforce use.
+Check generically for a bounded test or pilot with a concrete method or success condition; a
+prerequisite, definition, measurement or ownership decision the group accepted as immediate work;
+information-capture or tracking work with a specific output; and a conditional later phase with an
+explicit trigger.
 
 Rules:
-- A described future-state process is not a list of actions. Do not extract its signal sources,
-  triage, cleaning, CRM matching, AI packs, prioritisation, contact research, outreach or feedback
-  boxes unless a person separately accepts one as immediate work.
-- Preserve the manual-test owner, measurable outcome and the pilot's trigger. Do not merge the
-  initial test with the conditional pilot.
+- A described future-state process is not a list of actions. Do not extract its sources, stages,
+  system matching, prioritisation, enrichment, routing or feedback loops unless a person separately
+  accepts one as immediate work.
+- Preserve each experiment's owner, measurable outcome and trigger. Do not merge an initial test
+  with a conditional later pilot.
 - A question answered by a description of current practice is discussion, unless the exchange ends
   with a concrete gap the group must resolve.
-- Possible later automation is not yet an action when both the manual test and pilot must happen first.
+- Possible later automation is not yet an action while prerequisite experiments remain incomplete.
 - Resolve named joint owners from the proposal and use a team owner only where the transcript
   explicitly describes the definition as team work.
 
@@ -751,6 +767,26 @@ Rules:
 
 Return at most two discussion points and eight action candidates for this section. Use only turn
 numbers in this section and return only the required JSON.
+
+TRANSCRIPT SECTION:
+{numbered_chunk}"""
+
+PROJECT_CHECKIN_ACTION_PROMPT = """Review this coherent section from a project or consultancy
+check-in. Build a concise ledger of specific outstanding project follow-ups.
+
+Keep an explicitly owned replacement meeting, a request to resolve or explain a concrete blocker,
+an access correction, or a specific project document or output to produce, send, review or update.
+Exclude waiting for attendees, personal training or exams, travel, meeting procedure, status-only
+discussion, instructions about whether to write minutes, and vague or unresolved actions.
+
+If somebody accepts responsibility to ask, contact or chase another person about an outcome, the
+candidate must preserve that delegation: owner = the person accepting the follow-up; action =
+"Ask/contact [other person] to [specific outcome]". Do not assign the underlying work directly to
+the other person unless that person explicitly accepts it in the cited section.
+
+Give each candidate one status: COMMITTED, ASSIGNED, REQUIRED, PROPOSED or COMPLETED. Cite separate
+task, commitment, owner and deadline evidence. Preserve the exact supported deliverable and owner;
+do not fill gaps from common project-management practice. Return only the required JSON.
 
 TRANSCRIPT SECTION:
 {numbered_chunk}"""
@@ -823,6 +859,8 @@ def action_prompt_for_meeting_type(meeting_type: str) -> tuple[str, str]:
         return PROCESS_PIPELINE_ACTION_PROMPT, "process_or_pipeline_planning"
     if normalised == "general" and general_action_v2_enabled():
         return GENERAL_ACTION_V2_PROMPT, "general_v2"
+    if normalised == "project consultancy check in" and general_action_v2_enabled():
+        return PROJECT_CHECKIN_ACTION_PROMPT, "project_checkin_v2"
     return ACTION_PROMPT, "general"
 
 DISCUSSION_PROMPT = """Write the Key discussion points for formal meeting minutes using only the denoised transcript below.
@@ -1213,17 +1251,26 @@ def normalise_actions(result: dict[str, Any], chunk: dict[str, int]) -> list[dic
     for row in result.get("actionCandidates", []) if isinstance(result.get("actionCandidates"), list) else []:
         if not isinstance(row, dict) or not clean(row.get("action")):
             continue
+        evidence_by_role: dict[str, list[str]] = {}
         evidence = []
         for field in ("taskEvidenceTurns", "commitmentEvidenceTurns", "ownerEvidenceTurns", "deadlineEvidenceTurns"):
             values = row.get(field) if isinstance(row.get(field), list) else []
-            evidence.extend(v for v in values if isinstance(v, int) and not isinstance(v, bool) and chunk["start"] <= v <= chunk["end"])
+            valid = sorted(set(
+                value for value in values
+                if isinstance(value, int) and not isinstance(value, bool)
+                and chunk["start"] <= value <= chunk["end"]
+            ))
+            evidence_by_role[field.replace("Turns", "Ids")] = [f"turn_{value}" for value in valid]
+            evidence.extend(valid)
         status = clean(row.get("status"))
-        output.append({
+        action = {
             "owner": clean(row.get("owner")) or "Not stated",
             "action": clean(row.get("action")),
             "deadline": clean(row.get("deadline")) or "Not stated",
             "status": status or "PROPOSED", "evidenceIds": [f"turn_{n}" for n in sorted(set(evidence))],
-        })
+        }
+        action.update(evidence_by_role)
+        output.append(action)
     return output
 
 
@@ -1256,58 +1303,6 @@ def audit_candidate_has_lexical_anchor(action: dict[str, Any], turns: list[str])
     return bool(action_tokens & evidence_tokens)
 
 
-def audit_action_context(action: dict[str, Any], turns: list[str], radius: int = 2) -> str:
-    numbers = evidence_turn_numbers(action, len(turns))
-    expanded = set(numbers)
-    for number in numbers:
-        expanded.update(range(max(1, number - radius), min(len(turns), number + radius) + 1))
-    return " ".join(turns[number - 1] for number in sorted(expanded))
-
-
-def repair_audit_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
-    """Repair audit-specific owner and decision loss from cited transcript context."""
-    output = []
-    for source in actions:
-        action = dict(source)
-        wording = clean(action.get("action"))
-        lowered = wording.lower()
-        local = audit_action_context(action, turns, radius=2)
-        wider = audit_action_context(action, turns, radius=15)
-
-        completes_prerequisite = bool(re.search(
-            r"\b(?:complete|sign|do)\b.*\b(?:code of conduct|training attestation|audit process|aqr global)",
-            lowered,
-        ))
-        addressed_to_niamh = bool(
-            re.search(r"\b(?:you|you'll|you will)\b", local, re.I)
-            and re.search(r"\bniamh\b", wider, re.I)
-        )
-        if completes_prerequisite and addressed_to_niamh:
-            action["owner"] = "Niamh Lynch"
-
-        if re.search(r"\b(?:catch[ -]?up|meet(?:ing)?)\b", lowered) \
-                and re.search(r"\bhotel\b", local, re.I) \
-                and re.search(r"\bniamh\b", local, re.I) \
-                and re.search(r"\bstuart\b", local, re.I):
-            action["owner"] = "Stuart M and Niamh Lynch"
-
-        if re.search(r"\b(?:adjust|plan|determine)\b.*\b(?:timeline|calendar)\b", lowered) \
-                and re.search(r"\b(?:unavailable|won't be around|will not be around|14th|17th)\b", local, re.I) \
-                and re.search(r"\bniamh\b", wider, re.I):
-            action["owner"] = "Jacqui Fox and Niamh Lynch"
-
-        if re.search(r"\bseparate track\b", local, re.I) \
-                and re.search(r"\b(?:logistics|risk analysis|track|structure)\b", lowered):
-            subject = "Niamh" if re.search(r"\bniamh\b", wider, re.I) else "the auditor"
-            action["action"] = (
-                f"Decide whether {subject} should run a separate audit track based on the risk analysis and logistics"
-            )
-            action["status"] = "ASSIGNED"
-
-        output.append(action)
-    return output
-
-
 def transcript_turn_speaker(turn: str) -> str:
     # Teams exports commonly glue the utterance directly to the timestamp
     # (for example ``7:26I will ...``), so a word boundary is not reliable here.
@@ -1316,1554 +1311,6 @@ def transcript_turn_speaker(turn: str) -> str:
         return clean(match.group(1))
     match = re.match(r"^([^:]{2,80}):\s", clean(turn))
     return clean(match.group(1)) if match else ""
-
-
-def speaker_for_pattern(turns: list[str], pattern: str) -> tuple[str, int | None]:
-    for number, turn in enumerate(turns, 1):
-        speaker = transcript_turn_speaker(turn)
-        utterance = re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn)) if speaker else clean(turn)
-        if speaker and re.search(pattern, utterance, re.I):
-            return speaker, number
-    return "", None
-
-
-def participant_name(turns: list[str], first_name: str) -> str:
-    """Resolve a requested name only when that person is a transcript speaker.
-
-    Callers use this helper to expand a known first name to the speaker label recorded in
-    the transcript. Returning the requested name when no speaker matched turned fixture
-    defaults into invented owners on unrelated meetings (for example, Stuart on Nordvik).
-    An empty result means that this resolver has no evidence; callers must preserve an
-    already evidence-grounded owner or render the owner as not stated.
-    """
-    for turn in turns:
-        speaker = transcript_turn_speaker(turn)
-        if re.search(rf"\b{re.escape(first_name)}\b", speaker, re.I):
-            return speaker
-    return ""
-
-
-def evidenced_person_name(turns: list[str], name: str) -> str:
-    """Return a speaker label or an explicitly mentioned person's name, never a caller default."""
-    speaker = participant_name(turns, name)
-    if speaker:
-        return speaker
-    pattern = re.compile(
-        rf"\b((?i:{re.escape(clean(name))})(?:\s+[A-Z][A-Za-z'’.-]+)?)\b"
-    )
-    for turn in turns:
-        match = pattern.search(clean(turn))
-        if match:
-            return clean(match.group(1))
-    return ""
-
-
-def join_resolved_participants(*names: str) -> str:
-    """Join a multi-owner label only when every requested participant was resolved."""
-    cleaned = [clean(name) for name in names]
-    return " and ".join(cleaned) if cleaned and all(cleaned) else ""
-
-
-def repair_importer_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
-    """Repair importer handoffs and conditions only when the full transcript carries them."""
-    utterances = [re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
-                  if transcript_turn_speaker(turn) else clean(turn) for turn in turns]
-    whole = " ".join(utterances)
-    qms_sender, _ = speaker_for_pattern(turns, r"\bi will\b.*\bflick\b.*\bover\b")
-    qms_reviewer, _ = speaker_for_pattern(turns, r"\bi['’]?ll take a look\b")
-    medenvoy_owner, _ = speaker_for_pattern(turns, r"\bi can go back to cody\b")
-    lot_owner, _ = speaker_for_pattern(turns, r"\bwe(?:'re| are) working\b.*\blot numbering\b")
-    label_reviewer, _ = speaker_for_pattern(turns, r"\bcould have a look at the label if you wanted\b")
-    hpra_sender, _ = speaker_for_pattern(turns, r"\bi can send (?:a copy|that email)\b")
-    hpra_reviewer, _ = speaker_for_pattern(turns, r"\bsend it on to myself\b.*\bwe can have a look\b")
-    colm = participant_name(turns, "Colm")
-
-    output = []
-    for source in actions:
-        action = dict(source)
-        lowered = clean(action.get("action")).lower()
-
-        if re.search(r"\b(?:send|resend|flick)\b", lowered) \
-                and re.search(r"\b(?:qms|quality)\b.*\bmanual\b|\bmanual\b", lowered) \
-                and qms_sender:
-            action["owner"] = qms_sender
-            action["action"] = "Resend the QMS manual to Orla"
-
-        if re.search(r"\b(?:review|read|take a look)\b", lowered) \
-                and re.search(r"\bqms manual\b", lowered) and qms_reviewer:
-            action["owner"] = qms_reviewer
-            action["action"] = "Review the QMS manual this week and raise any questions"
-
-        medenvoy_plan = re.search(r"\b(?:med ?envoy|envoy)\b", lowered) \
-            and re.search(r"\b(?:overview|task list|project plan|responsibilit|requirements)\b", lowered)
-        if medenvoy_plan and medenvoy_owner and re.search(r"\btask list\b", whole, re.I):
-            action["owner"] = medenvoy_owner
-            action["action"] = (
-                "Speak to Cody about the MedEnvoy task list, registration plan and responsibility for each activity"
-            )
-
-        conditional_label_review = re.search(r"\b(?:review|check|look)\b.*\b(?:label|barcode)\b", lowered)
-        if conditional_label_review and label_reviewer and re.search(r"\bif you wanted\b", whole, re.I):
-            action["owner"] = label_reviewer
-            action["action"] = "Review the proposed label or barcode format if DITA requests a regulatory check"
-            action["status"] = "PROPOSED"
-
-        lot_or_label_work = re.search(r"\b(?:lot numbering|license placing|outer box label|label update)\b", lowered)
-        if lot_or_label_work and lot_owner and owners_compatible(action.get("owner"), lot_owner) \
-                and re.search(r"\brf smart\b", whole, re.I) \
-                and re.search(r"\bnext two to three weeks\b", whole, re.I):
-            action["owner"] = lot_owner
-            action["action"] = (
-                "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks"
-            )
-
-        hpra_material = re.search(r"\b(?:hpra|invoice|bill|srn)\b", lowered)
-        if hpra_material and re.search(r"\bsend\b", lowered) and hpra_sender \
-                and re.search(r"\bsrn\b", whole, re.I):
-            action["owner"] = hpra_sender
-            action["action"] = "Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review"
-
-        hpra_review = hpra_material and re.search(r"\b(?:review|look|direction)\b", lowered)
-        if hpra_review and hpra_reviewer and re.search(r"\bliam\b", whole, re.I):
-            action["owner"] = f"{hpra_reviewer} and {colm}"
-            action["action"] = (
-                "Review the HPRA invoice and SRN correspondence with Liam before payment guidance is given"
-            )
-
-        declaration_update = re.search(r"\bdeclarations? of conformity\b", lowered) \
-            and re.search(r"\b(?:risk|rationale|ppe|sunglasses)\b", lowered)
-        if declaration_update and re.search(r"\bsunglasses\b", whole, re.I) \
-                and re.search(r"\bppe\b", whole, re.I):
-            action["action"] = (
-                "Update declarations of conformity for sunglasses with the EU MDR and PPE Category I risk rationale"
-            )
-
-        output.append(action)
-    return output
-
-
-def recover_importer_followup_call(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    output = list(actions)
-    if not any(re.search(r"\b(?:send|resend)\b.*\bqms manual\b", clean(row.get("action")), re.I)
-               for row in output):
-        for number, turn in enumerate(turns, 1):
-            if not re.search(r"\bflick this over to\b", turn, re.I):
-                continue
-            context_start = max(0, number - 9)
-            context = turns[context_start:number]
-            qms_offset = next((offset for offset in range(len(context) - 1, -1, -1)
-                               if re.search(r"\b(?:qms|quality) manual\b", context[offset], re.I)), None)
-            recipient_match = re.search(r"\bover to ([A-Z][A-Za-z'’-]+)\b", turn)
-            owner = transcript_turn_speaker(turn)
-            if qms_offset is None or not recipient_match or not owner:
-                continue
-            qms_turn = context_start + qms_offset + 1
-            output.append({
-                "owner": owner,
-                "action": f"Resend the QMS manual to {recipient_match.group(1)}",
-                "deadline": "not stated",
-                "status": "COMMITTED",
-                "evidenceIds": [f"turn_{qms_turn}", f"turn_{number}"],
-                "support": sample_count,
-                "sampleCount": sample_count,
-                "mergedCandidateCount": 1,
-                "recoveredImporterHandoff": True,
-            })
-            break
-
-    if any(re.search(r"\b(?:follow[- ]?up|another) call\b", clean(row.get("action")), re.I) for row in output):
-        return output
-    for number, turn in enumerate(turns, 1):
-        if not re.search(r"\banother call\b.*\bnext week\b", turn, re.I):
-            continue
-        owner = transcript_turn_speaker(turn)
-        accepted_number = next((candidate for candidate in range(number + 1, min(len(turns), number + 3) + 1)
-                                if re.search(r"\b(?:okay|yes|absolutely|helpful)\b", turns[candidate - 1], re.I)), None)
-        if not owner or accepted_number is None:
-            continue
-        recipient = transcript_turn_speaker(turns[accepted_number - 1])
-        if not recipient or recipient == owner:
-            continue
-        return output + [{
-            "owner": owner,
-            "action": f"Arrange a follow-up call with {recipient} for the following week",
-            "deadline": "The following week",
-            "status": "ASSIGNED",
-            "evidenceIds": [f"turn_{number}", f"turn_{accepted_number}"],
-            "support": sample_count,
-            "sampleCount": sample_count,
-            "mergedCandidateCount": 1,
-            "recoveredImporterFollowup": True,
-        }]
-    return output
-
-
-def importer_action_family(action: dict[str, Any]) -> str:
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:send|resend|flick)\b", wording) and re.search(r"\b(?:qms|quality) manual\b", wording):
-        return "qms_send"
-    if re.search(r"\b(?:review|read|look)\b", wording) and re.search(r"\b(?:qms|quality) manual\b", wording):
-        return "qms_review"
-    if re.search(r"\b(?:cody|med ?envoy)\b", wording) and re.search(
-        r"\b(?:task list|registration plan|responsibilit|activity|process|required information)\b", wording
-    ):
-        return "medenvoy_plan"
-    if re.search(r"\bcountr(?:y|ies)\b", wording) and re.search(r"\b(?:language|translation|ship)\b", wording):
-        return "country_list"
-    if re.search(r"\b(?:lot numbering|rf smart|outer box label|label updates?)\b", wording) and re.search(
-        r"\b(?:continue|work\w*|implement|supplier|two to three weeks|update)\b", wording
-    ):
-        return "lot_label_work"
-    if re.search(r"\b(?:review|check|look)\b", wording) and re.search(r"\b(?:label|barcode)\b", wording) \
-            and re.search(r"\b(?:regulatory|dita|proposed|format|wanted)\b", wording):
-        return "conditional_label_review"
-    if re.search(r"\bdeclarations? of conformity\b", wording) and re.search(
-        r"\b(?:sunglasses|risk rationale|eu mdr|ppe|category i|category 1)\b", wording
-    ):
-        return "declaration_update"
-    hpra = bool(re.search(r"\b(?:hpra|invoice|bill|srn)\b", wording))
-    if hpra and re.search(r"\b(?:send|email|provide)\b", wording) and re.search(r"\b(?:jacqui|colm|review)\b", wording):
-        return "hpra_send"
-    if hpra and re.search(r"\b(?:review|look|discuss|direction|payment)\b", wording) and re.search(r"\b(?:liam|annual fee|guidance)\b", wording):
-        return "hpra_review"
-    if re.search(r"\b(?:follow up|another) call\b", wording) and re.search(r"\b(?:orla|next|following) week\b", wording):
-        return "followup_call"
-    return ""
-
-
-def importer_action_roles(turns: list[str]) -> dict[str, str]:
-    return {
-        "qms_send": participant_name(turns, "Jacqui"),
-        "qms_review": participant_name(turns, "Orla"),
-        "medenvoy_plan": participant_name(turns, "Orla"),
-        "country_list": participant_name(turns, "Orla"),
-        "lot_label_work": participant_name(turns, "Orla"),
-        "conditional_label_review": participant_name(turns, "Jenny"),
-        "declaration_update": participant_name(turns, "John-Paul"),
-        "hpra_send": participant_name(turns, "Orla"),
-        "hpra_review": join_resolved_participants(
-            participant_name(turns, "Jacqui"), participant_name(turns, "Colm")
-        ),
-        "followup_call": participant_name(turns, "Jacqui"),
-    }
-
-
-def compose_importer_family(family: str) -> str:
-    return {
-        "qms_send": "Resend the QMS manual to Orla",
-        "qms_review": "Review the QMS manual this week and raise any questions",
-        "medenvoy_plan": "Speak to Cody about the MedEnvoy task list, EUDAMED registration plan and responsibility for each activity",
-        "country_list": "Share or confirm the list of countries DITA ships to so language and declaration-of-conformity translation requirements can be checked",
-        "lot_label_work": "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks",
-        "conditional_label_review": "Review the proposed label or barcode format if DITA requests a regulatory check",
-        "declaration_update": "Update declarations of conformity for sunglasses with the EU MDR and PPE Category I risk rationale",
-        "hpra_send": "Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review",
-        "hpra_review": "Review the HPRA invoice and SRN correspondence with Liam before payment guidance is given",
-        "followup_call": "Arrange a follow-up call with Orla for the following week",
-    }.get(family, "")
-
-
-def importer_family_deadline(family: str) -> str:
-    return {
-        "qms_review": "This week",
-        "lot_label_work": "Over the next two to three weeks",
-        "followup_call": "The following week",
-    }.get(family, "not stated")
-
-
-def consolidate_importer_actions(
-    actions: list[dict[str, Any]], turns: list[str], sample_count: int
-) -> list[dict[str, Any]]:
-    roles = importer_action_roles(turns)
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for action in actions:
-        family = importer_action_family(action)
-        if family:
-            groups.setdefault(family, []).append(action)
-    output: list[dict[str, Any]] = []
-    for family, members in groups.items():
-        representative = dict(max(members, key=representative_rank))
-        representative.update({
-            "action": compose_importer_family(family),
-            "deadline": importer_family_deadline(family), "support": sample_count,
-            "sampleCount": sample_count,
-            "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
-            "importerConsolidatedFamily": family,
-        })
-        if roles.get(family):
-            representative["owner"] = roles[family]
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        output.append(representative)
-    return output
-
-
-def recover_importer_actions(
-    actions: list[dict[str, Any]], turns: list[str], sample_count: int
-) -> list[dict[str, Any]]:
-    output = list(actions)
-    present = {importer_action_family(action) for action in output}
-    roles = importer_action_roles(turns)
-    specifications = (
-        ("qms_send", (r"\bqms manual\b", r"\bflick this over to orla\b")),
-        ("qms_review", (r"\bi.ll take a look\b", r"\bthis is the qms manual\b")),
-        ("medenvoy_plan", (r"\bgo back to cody\b", r"\bproject plan or the task list from med ?envoy\b")),
-        ("country_list", (r"\blist of all of the countries.*ship to\b", r"\blanguage perspective\b")),
-        ("lot_label_work", (r"\bworking on lot numbering\b", r"\breached out to rf smart\b", r"\bnext two to three weeks\b")),
-        ("conditional_label_review", (r"\bcould have a look at the label if you wanted\b",)),
-        ("declaration_update", (r"\bdeclarations of conformity\b", r"\binclude the risk rationale\b", r"\bppe category one\b")),
-        ("hpra_send", (r"\bhpra have sent me a bill\b", r"\bi can send that email.*colm\b")),
-        ("hpra_review", (r"\bsend it on to myself, colm\b", r"\btalk to liam\b", r"\bbefore we pay\b")),
-        ("followup_call", (r"\banother call in the diary with you next week\b", r"\bi.ll speak to you next week\b")),
-    )
-    for family, patterns in specifications:
-        if family in present:
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles.get(family) or "Not stated", "action": compose_importer_family(family),
-            "deadline": importer_family_deadline(family), "status": "ASSIGNED",
-            "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
-            "sampleCount": sample_count, "mergedCandidateCount": 1,
-            "recoveredImporterFamily": family,
-        })
-        present.add(family)
-    order = {family: index for index, (family, _) in enumerate(specifications)}
-    return sorted(output, key=lambda row: order.get(importer_action_family(row), len(order)))
-
-
-def audit_action_family(action: dict[str, Any]) -> str:
-    """Return a conservative audit work-package key for deterministic consolidation.
-
-    This intentionally keys on both the operation and its object. Audit transcripts repeat the
-    same nouns throughout, so noun-only similarity merges distinct work such as sending a code
-    of conduct and completing it, or booking travel and arranging a pre-audit catch-up.
-    """
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:send|get|share)\b", wording) and re.search(r"\bcode of conduct\b", wording):
-        return "code_of_conduct_send"
-    completion = bool(re.search(r"\b(?:complete|sign|undertake|conduct)\b", wording))
-    if completion and re.search(r"\b(?:code of conduct|training attestation)\b", wording):
-        return "prerequisite_completion"
-
-    if re.search(r"\b(?:catch up|catchup)\b", wording) \
-            and re.search(r"\b(?:arrange|hold|schedule|meet|meeting)\b", wording):
-        return "pre_audit_catchup"
-
-    if re.search(r"\b(?:adjust|plan|determine)\b.*\b(?:timeline|calendar|preparation)\b", wording) \
-            and re.search(r"\b(?:unavailab|14th|17th|stuart|audit)\b", wording):
-        return "preparation_timeline"
-
-    if re.search(r"\bdecide\b", wording) and re.search(r"\bseparate (?:software )?(?:audit )?track\b", wording):
-        return "separate_audit_track"
-
-    if re.search(r"\b(?:confirm|determine|know|clarify)\b", wording) and re.search(
-        r"\b(?:documents?|desktop audit|material)\b", wording
-    ) and re.search(r"\b(?:share|access|available|before|wednesday)\b", wording):
-        return "document_availability"
-
-    if re.search(r"\b(?:arrange|provide|figure|get|secure|transmit|transfer|share|sharing)\b", wording) \
-            and re.search(r"\b(?:sharepoint|document access|sharing of documents|document sharing|securely transmitting|secure transmission|external access)\b", wording):
-        return "secure_document_access"
-
-    shares_material = bool(re.search(r"\b(?:share|send|provide|transmit)\b", wording))
-    material = bool(re.search(
-        r"\b(?:risk analysis|audit (?:findings )?tracker|complaints?|capa|kappa|deviations?|material data|available data)\b",
-        wording,
-    ))
-    if shares_material and material:
-        return "audit_material_sharing"
-
-    prepares_scope = bool(re.search(r"\b(?:build|prepare|determine|define|complete)\b", wording))
-    scope_object = bool(re.search(
-        r"\b(?:audit scope|scope|standards list|applicable standards|product classifications?|product overview|risk assessment)\b",
-        wording,
-    ))
-    if prepares_scope and scope_object and not re.search(r"\b(?:attestation|training|code of conduct)\b", wording):
-        return "audit_scope_inputs"
-
-    return ""
-
-
-def joined_audit_objects(values: list[str]) -> str:
-    if len(values) < 2:
-        return values[0] if values else ""
-    return ", ".join(values[:-1]) + f" and {values[-1]}"
-
-
-def compose_audit_family(family: str, members: list[dict[str, Any]]) -> str:
-    wording = " ".join(normalised_action_key(member.get("action")) for member in members)
-    if family == "prerequisite_completion":
-        objects = []
-        if "code of conduct" in wording:
-            objects.append("the code of conduct")
-        if "training attestation" in wording:
-            objects.append("the training attestation")
-        return f"Complete {joined_audit_objects(objects)}" if objects else ""
-    if family == "pre_audit_catchup":
-        face_to_face = "face-to-face " if "face to face" in wording else ""
-        location = " at the hotel" if "hotel" in wording else ""
-        timing = " before the audit starts" if re.search(r"\bbefore (?:the )?audit", wording) else ""
-        return f"Arrange the {face_to_face}pre-audit catch-up{location}{timing}"
-    if family == "secure_document_access":
-        objects = []
-        if re.search(r"\b(?:secure|transmit|transfer|document sharing|sharing of documents)\b", wording):
-            objects.append("secure document sharing")
-        if "sharepoint" in wording or "external access" in wording:
-            objects.append("external SharePoint access")
-        if not objects:
-            objects.append("document access")
-        return f"Arrange {joined_audit_objects(objects)}"
-    if family == "audit_material_sharing":
-        objects = []
-        checks = (
-            (r"\brisk analysis\b", "the risk analysis"),
-            (r"\baudit (?:findings )?tracker\b", "the audit tracker"),
-            (r"\bcomplaints?\b", "complaints data"),
-            (r"\b(?:capa|kappa)\b", "CAPA data"),
-            (r"\bdeviations?\b", "deviations data"),
-        )
-        for pattern, label in checks:
-            if re.search(pattern, wording):
-                objects.append(label)
-        condition = " once confidentiality requirements are in place" if re.search(
-            r"\b(?:confidentiality|code of conduct)\b", wording
-        ) else ""
-        return f"Share {joined_audit_objects(objects)}{condition}" if objects else ""
-    if family == "audit_scope_inputs":
-        objects = []
-        checks = (
-            (r"\bscope\b", "the audit scope"),
-            (r"\bstandards?\b", "applicable standards"),
-            (r"\bclassifications?\b", "product classifications"),
-            (r"\bproduct overview\b", "the product overview"),
-            (r"\brisk assessment\b", "risk-assessment inputs"),
-        )
-        for pattern, label in checks:
-            if re.search(pattern, wording):
-                objects.append(label)
-        return f"Prepare {joined_audit_objects(objects)}" if objects else ""
-    if family == "document_availability":
-        return "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site"
-    if family == "code_of_conduct_send":
-        return "Send the code of conduct to Niamh today"
-    if family == "preparation_timeline":
-        return "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th"
-    if family == "separate_audit_track":
-        return "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics"
-    return ""
-
-
-def consolidate_audit_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Consolidate complementary drafts of one audit work package without an LLM call."""
-    groups: list[dict[str, Any]] = []
-    for action in actions:
-        family = audit_action_family(action)
-        target = next((group for group in groups
-                       if family and group["family"] == family
-                       and owners_compatible(action.get("owner"), group["representative"].get("owner"))), None)
-        if target is None:
-            groups.append({"family": family, "representative": action, "members": [action]})
-            continue
-        target["members"].append(action)
-        if representative_rank(action) > representative_rank(target["representative"]):
-            target["representative"] = action
-
-    output = []
-    for group in groups:
-        members = group["members"]
-        if not group["family"] or len(members) == 1:
-            output.append(members[0])
-            continue
-        representative = dict(group["representative"])
-        composed = compose_audit_family(group["family"], members)
-        if composed:
-            representative["action"] = composed
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
-        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
-        representative["mergedCandidateCount"] = sum(
-            int(member.get("mergedCandidateCount", 1) or 1) for member in members
-        )
-        representative["auditConsolidatedFamily"] = group["family"]
-        output.append(representative)
-    return output
-
-
-def audit_v2_roles(turns: list[str]) -> dict[str, str]:
-    stuart = participant_name(turns, "Stuart")
-    niamh = participant_name(turns, "Niamh")
-    jacqui = participant_name(turns, "Jacqui")
-    return {
-        "audit_scope_inputs": stuart,
-        "document_availability": stuart,
-        "secure_document_access": stuart,
-        "prerequisite_completion": niamh,
-        "code_of_conduct_send": jacqui,
-        "preparation_timeline": join_resolved_participants(jacqui, niamh),
-        "audit_material_sharing": stuart,
-        "pre_audit_catchup": join_resolved_participants(stuart, niamh),
-        "separate_audit_track": stuart,
-    }
-
-
-def compose_audit_v2_family(family: str) -> str:
-    return {
-        "audit_scope_inputs": "Build the audit scope, standards list, classifications, product overview and risk assessment to support the audit plan",
-        "document_availability": "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site",
-        "secure_document_access": "Arrange secure document sharing or external SharePoint access for Niamh if needed",
-        "prerequisite_completion": "Complete the code of conduct and training attestation before audit material is shared and before the audit starts",
-        "code_of_conduct_send": "Send the code of conduct to Niamh today",
-        "preparation_timeline": "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th",
-        "audit_material_sharing": "Share the risk analysis, audit tracker and available data such as complaints, CAPA and deviations once confidentiality requirements are in place",
-        "pre_audit_catchup": "Hold a face-to-face catch-up at the hotel before Niamh starts the on-site audit week",
-        "separate_audit_track": "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics",
-    }.get(family, "")
-
-
-def audit_v2_deadline(family: str) -> str:
-    return {
-        "audit_scope_inputs": "For the Wednesday audit-planning meeting",
-        "document_availability": "After the Wednesday meeting",
-        "prerequisite_completion": "Before audit material is shared and before the audit starts",
-        "code_of_conduct_send": "Today",
-        "preparation_timeline": "Before Stuart is unavailable from the 14th to the 17th",
-        "audit_material_sharing": "Once confidentiality requirements are in place",
-        "pre_audit_catchup": "At the hotel before the on-site audit week",
-    }.get(family, "not stated")
-
-
-def consolidate_audit_v2_actions(
-    actions: list[dict[str, Any]], turns: list[str], sample_count: int
-) -> list[dict[str, Any]]:
-    roles = audit_v2_roles(turns)
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for action in actions:
-        family = audit_action_family(action)
-        if family:
-            groups.setdefault(family, []).append(action)
-    output: list[dict[str, Any]] = []
-    for family, members in groups.items():
-        representative = dict(max(members, key=representative_rank))
-        representative.update({
-            "action": compose_audit_v2_family(family),
-            "deadline": audit_v2_deadline(family), "support": sample_count,
-            "sampleCount": sample_count,
-            "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
-            "auditV2ConsolidatedFamily": family,
-        })
-        if roles.get(family):
-            representative["owner"] = roles[family]
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        output.append(representative)
-    return output
-
-
-def recover_audit_v2_actions(
-    actions: list[dict[str, Any]], turns: list[str], sample_count: int
-) -> list[dict[str, Any]]:
-    output = list(actions)
-    present = {audit_action_family(action) for action in output}
-    roles = audit_v2_roles(turns)
-    specifications = (
-        ("audit_scope_inputs", (r"\bscope.*build out\b", r"\blist of standards\b", r"\bclassifications.*overall view of the products\b", r"\brisk assessment forms an input into the audit plan\b")),
-        ("document_availability", (r"\bmeeting with them wednesday\b", r"\bknow some more information then\b", r"\bshare it until you get there\b")),
-        ("secure_document_access", (r"\bsecurely transmitting information to you\b", r"\bexternal access to the sharepoint\b")),
-        ("prerequisite_completion", (r"\bneed to do the code of conduct first\b", r"\btraining attestation.*before the audit formally starts\b")),
-        ("code_of_conduct_send", (r"\bcode of conduct.*get that over to you today\b",)),
-        ("preparation_timeline", (r"\blook at just the timeline\b", r"\bwon.t be around between the 14th\b", r"\bwe probably need to plan through that\b")),
-        ("audit_material_sharing", (r"\bshare the risk analysis with you before you arrive\b", r"\bcomplaints, kappa, deviations\b")),
-        ("pre_audit_catchup", (r"\bcatch-up meeting\b", r"\bweekend at the hotel\b", r"\bface to face\b")),
-        ("separate_audit_track", (r"\bhaving you in a separate track\b", r"\bwork through the logistics and look at the risk analysis\b")),
-    )
-    for family, patterns in specifications:
-        if family in present:
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles.get(family) or "Not stated", "action": compose_audit_v2_family(family),
-            "deadline": audit_v2_deadline(family), "status": "ASSIGNED",
-            "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
-            "sampleCount": sample_count, "mergedCandidateCount": 1,
-            "recoveredAuditV2Family": family,
-        })
-        present.add(family)
-    order = {family: index for index, (family, _) in enumerate(specifications)}
-    return sorted(output, key=lambda row: order.get(audit_action_family(row), len(order)))
-
-
-def software_action_family(action: dict[str, Any]) -> str:
-    """Identify repeated drafts of the same software-review deliverable."""
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:probability|frequency)\b", wording) \
-            and re.search(r"\b(?:risk|justif|number|event|plan|matrix)\b", wording):
-        return "risk_probability"
-    if re.search(r"\bsoftware list\b", wording) \
-            and re.search(r"\b(?:front page|excel|word|format|tabs?|folders?)\b", wording):
-        return "software_list_frontpage"
-    if ("real time clock" in wording or "fan logic battery alarm" in wording) \
-            and re.search(r"\b(?:risk|alarm|captur|document|check|justif)\b", wording):
-        return "rtc_risk_check"
-    if re.search(r"\b(?:nebuliz\w*|27427)\b|\bflow rate\b.*\bstandard\b|\bstandard\b.*\bflow rate\b", wording):
-        if re.search(r"\b(?:review|assess)\b.*\b(?:standard|27427|applicability)\b", wording):
-            return "nebulizer_standard_review"
-        return "nebulizer_specification"
-    if re.search(r"\bdebug commands?\b|\bcommand letters?\b", wording):
-        if re.search(r"\b(?:send|reach out|prioritise|prioritize)\b", wording):
-            return "debug_command_handoff"
-        if re.search(r"\b(?:test|document|report|what happens|debug screen)\b", wording):
-            return "debug_command_test"
-    if re.search(r"\b(?:font|characters?|drivers?)\b", wording) \
-            and re.search(r"\b(?:languages?|creator|access|generate|resolve)\b", wording):
-        return "language_font_work"
-    if re.search(r"\b(?:6060|60601|mdd|electrical compliance)\b", wording) \
-            and re.search(r"\b(?:review|testing|parameters?)\b", wording):
-        return "electrical_compliance_review"
-    if re.search(r"\b(?:alarm code|alarm.*language|language.*alarm)\b", wording) \
-            and re.search(r"\b(?:review|language|characterization)\b", wording):
-        return "alarm_code_review"
-    if (re.search(r"\b(?:17|101|102|1 01|1 02|retrospective test data)\b", wording)
-            and re.search(r"\b(?:software changes?|trace|test data)\b", wording)) \
-            or re.search(r"\btrace\b.*\bsoftware versions?\b|\bsoftware versions?\b.*\btrace\b", wording):
-        return "software_change_trace"
-    if re.search(r"\b(?:cybersecurity|usb port|port lock)\b", wording) \
-            and re.search(r"\b(?:risk|plan|matrix|document|update|password|review|controls|notes)\b", wording):
-        return "cybersecurity_risk_update"
-    if re.search(r"\biec ac ?1001\b", wording):
-        return "resolved_ac1001"
-    return ""
-
-
-def software_review_roles(turns: list[str]) -> dict[str, str]:
-    """Resolve work-package owners from commitments and accepted assignments in the transcript."""
-    roles: dict[str, str] = {}
-    patterns = {
-        "risk_probability": r"\bi['’]?ll (?:make a note|have a look).*\brisk\b",
-        "software_list_frontpage": r"\bi could put (?:a )?front page\b",
-        "rtc_risk_check": r"\bi['’]?ll have a quick look\b",
-        "language_font_work": r"\bi['’]?m trying to get access\b",
-        "electrical_compliance_review": r"\btrying to finish up this week\b",
-    }
-    for family, pattern in patterns.items():
-        speaker, _ = speaker_for_pattern(turns, pattern)
-        if speaker:
-            roles[family] = speaker
-
-    utterances = [re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
-                  if transcript_turn_speaker(turn) else clean(turn) for turn in turns]
-    whole = " ".join(utterances)
-    assignments = {
-        "nebulizer_specification": r"\b([A-Z][A-Za-z'’-]+), if you could just confirm what the spec of flow rate is\b",
-        "debug_command_handoff": r"\b([A-Z][A-Za-z'’-]+) is going to reach out to you\b.*\bcommand letters?\b",
-        "alarm_code_review": r"\bmain focus for ([A-Z][A-Za-z'’-]+)\b.*\breviewing the alarm code\b",
-        "software_change_trace": r"\b([A-Z][A-Za-z'’-]+) has been working through\b.*\b17 listed\b",
-        "cybersecurity_risk_update": r"\b([A-Z][A-Za-z'’-]+), then you're just going to update\b.*\bcybersecurity\b",
-    }
-    for family, pattern in assignments.items():
-        match = re.search(pattern, whole, re.I)
-        if match:
-            roles[family] = evidenced_person_name(turns, match.group(1))
-    reviewers = re.search(r"\b([A-Z][A-Za-z'’-]+) and ([A-Z][A-Za-z'’-]+) can review the standard again\b", whole, re.I)
-    if reviewers:
-        roles["nebulizer_standard_review"] = (
-            join_resolved_participants(
-                evidenced_person_name(turns, reviewers.group(1)),
-                evidenced_person_name(turns, reviewers.group(2)),
-            )
-        )
-    # The command-screen result is requested from the recipient, who explicitly accepts shortly
-    # after the handoff even when the Teams transcript records the addressee only as "you".
-    _handoff_speaker, handoff_number = speaker_for_pattern(
-        turns, r"\b[A-Z][A-Za-z'’-]+ is going to reach out to you\b.*\bcommand letters?\b"
-    )
-    if handoff_number:
-        for turn in turns[handoff_number:min(len(turns), handoff_number + 4)]:
-            speaker = transcript_turn_speaker(turn)
-            utterance = re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
-            if speaker and re.match(r"^(?:yes|yeah)\b", utterance, re.I):
-                roles["debug_command_test"] = speaker
-                break
-        if "debug_command_test" not in roles:
-            handoff_speaker = transcript_turn_speaker(turns[handoff_number - 1])
-            sender = roles.get("debug_command_handoff", "")
-            for turn in reversed(turns[max(0, handoff_number - 5):handoff_number - 1]):
-                speaker = transcript_turn_speaker(turn)
-                if speaker and speaker not in {handoff_speaker, sender}:
-                    roles["debug_command_test"] = speaker
-                    break
-    return roles
-
-
-def compose_software_family(family: str) -> str:
-    return {
-        "risk_probability": "Add clarity to the risk management plan on probability-number justification and what counts as an event",
-        "software_list_frontpage": "Add a front page to the software-list Excel explaining each tab and the purpose of the file",
-        "rtc_risk_check": "Check whether the real-time clock battery alarm issue is captured in the risk analysis",
-        "nebulizer_specification": "Confirm the nebulizer flow-rate specification so the ISO 27427 applicability can be assessed",
-        "nebulizer_standard_review": "Review ISO 27427 again once the nebulizer flow-rate specification is confirmed",
-        "debug_command_handoff": "Send the additional debug command letters to the software owner",
-        "debug_command_test": "Test the debug commands and report what happens on the debug screen",
-        "language_font_work": "Resolve the remaining language-character and font-driver issues, including font-creator access",
-        "electrical_compliance_review": "Complete the IEC 60601-1 versus MDD documentation review and define the remaining electrical compliance testing",
-        "alarm_code_review": "Review the alarm-code changes and repeat the review for the language-selection changes",
-        "software_change_trace": "Prioritise tracing the 17 software changes from version 1.01 to 1.02 and identify retrospective test-data needs",
-        "cybersecurity_risk_update": "Update the risk files, plan and matrix with the agreed cybersecurity and USB-port-lock approach",
-    }.get(family, "")
-
-
-def consolidate_software_review_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
-    """Collapse repeated status-review drafts into one evidence-backed row per work package."""
-    roles = software_review_roles(turns)
-    groups: list[dict[str, Any]] = []
-    for action in actions:
-        family = software_action_family(action)
-        target = next((group for group in groups if family and group["family"] == family), None)
-        if target is None:
-            groups.append({"family": family, "representative": action, "members": [action]})
-            continue
-        target["members"].append(action)
-        if representative_rank(action) > representative_rank(target["representative"]):
-            target["representative"] = action
-    output = []
-    for group in groups:
-        family, members = group["family"], group["members"]
-        if not family:
-            continue
-        representative = dict(group["representative"])
-        if family == "resolved_ac1001":
-            continue
-        representative["action"] = compose_software_family(family)
-        if family == "debug_command_handoff" and roles.get("debug_command_test"):
-            representative["action"] = (
-                f"Send the additional debug command letters to {roles['debug_command_test'].split()[0]}"
-            )
-        if roles.get(family):
-            representative["owner"] = roles[family]
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
-        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
-        representative["mergedCandidateCount"] = sum(
-            int(member.get("mergedCandidateCount", 1) or 1) for member in members
-        )
-        representative["softwareConsolidatedFamily"] = family
-        output.append(representative)
-    return output
-
-
-def recover_software_review_actions(
-    actions: list[dict[str, Any]], turns: list[str], sample_count: int
-) -> list[dict[str, Any]]:
-    """Recover only the twelve explicit T761 work packages from transcript evidence."""
-    output = list(actions)
-    present = {software_action_family(action) for action in output}
-    roles = software_review_roles(turns)
-    specifications = (
-        ("risk_probability", (r"\bwhat counts as a one event\b", r"\bmake a note of that\b.*\brisk\b")),
-        ("software_list_frontpage", (r"\bcould put (?:a )?front page\b", r"\bpurpose of the file\b")),
-        ("rtc_risk_check", (r"\breal.time clock\b", r"\bcaptured this in the risk\b")),
-        ("nebulizer_specification", (r"\bconfirm what the spec of flow rate is\b",)),
-        ("nebulizer_standard_review", (r"\bdavid and colm can review the standard again\b",)),
-        ("debug_command_handoff", (r"\breach out to you on some additional command letters\b",)),
-        ("debug_command_test", (r"\bdebug screen\b", r"\bcome back to you on it\b")),
-        ("language_font_work", (r"\bfont creator\b", r"\bgreek, arabic and vietnamese\b")),
-        ("electrical_compliance_review", (r"\b60601", r"\btrying to finish up this week\b")),
-        ("alarm_code_review", (r"\breviewing the alarm code\b", r"\bagain for the languages\b")),
-        ("software_change_trace", (r"\b17 listed\b", r"\bversion 101 to 102\b")),
-        ("cybersecurity_risk_update", (r"\bupdate any of the risk files\b", r"\bcybersecurity usb port lock\b")),
-    )
-    for family, patterns in specifications:
-        if family in present or not roles.get(family):
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles[family], "action": compose_software_family(family),
-            "deadline": "not stated", "status": "ASSIGNED",
-            "evidenceIds": list(dict.fromkeys(evidence)), "support": sample_count,
-            "sampleCount": sample_count, "mergedCandidateCount": 1,
-            "recoveredSoftwareFamily": family,
-        })
-        present.add(family)
-    family_order = {family: index for index, (family, _) in enumerate(specifications)}
-    return sorted(output, key=lambda row: family_order.get(software_action_family(row), len(family_order)))
-
-
-def hybrid_action_family(action: dict[str, Any]) -> str:
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:mute button|alarm led)\b", wording) and re.search(r"\b(?:flash|led|behavio)\w*\b", wording):
-        return "mute_led_confirmation"
-    if re.search(r"\b(?:mini review|clinicians?|clinical team|audible sound|usability)\b", wording):
-        return "clinician_alarm_review"
-    if re.search(r"\b(?:debug|command letters?)\b", wording):
-        if re.search(r"\b(?:provide|send|give|agree|more letters?)\b", wording):
-            return "debug_command_handoff"
-        if re.search(r"\b(?:test|physically|visible|screen|screenshot|result|confirm|document)\b", wording):
-            return "debug_command_test"
-    if re.search(r"\bchange request\b", wording) and re.search(
-        r"\b(?:wednesday|review|approve|approval|close|folder|gather|progress|meeting|document|form)\b", wording
-    ):
-        return "change_request_closeout"
-    if re.search(r"\b(?:17 (?:software )?changes?|1 01|1 02|101|102|gap assessment)\b", wording):
-        if re.search(r"\b(?:incorporate|compile|summary|design change|technical file|tech file|change control)\b", wording):
-            return "gap_output_incorporation"
-        if re.search(r"\b(?:gap|determine|trace|visible|code|review|confirm|where)\b", wording):
-            return "software_gap_assessment"
-    if re.search(r"\bcompile all referenced changes\b", wording) \
-            and re.search(r"\b(?:design changes?|technical file|tech file|summary report)\b", wording):
-        return "gap_output_incorporation"
-    if re.search(r"\b(?:electrical compliance|compliance testing|60601)\b", wording):
-        return "electrical_compliance"
-    if re.search(r"\b(?:languages?|arabic|vietnamese|greek|fonts?|characters?|translated files?)\b", wording) \
-            and re.search(r"\b(?:continue|updates?|implement|load|add|support|driver|symbols?|investigate|complete)\b", wording):
-        return "language_update"
-    if re.search(r"\b(?:usb port|port lock|screen interference|cybersecurity)\b", wording) \
-            and re.search(r"\b(?:risk|control|file|matrix|update|input|tidy|consider)\b", wording):
-        return "cybersecurity_risk"
-    if re.search(r"\bfan logic\b", wording) and re.search(r"\b(?:review|cognidocs|document|add)\b", wording):
-        return "fan_logic_review"
-    if re.search(r"\b27427\b", wording) and re.search(r"\b(?:colm|applicab|follow up|review)\b", wording) \
-            and not re.search(r"\b(?:send|email)\b", wording):
-        return "standard_applicability"
-    if re.search(r"\b(?:81001|27427|purchased standards?)\b", wording) \
-            and re.search(r"\b(?:send|email|share)\b", wording):
-        return "standards_handoff"
-    if re.search(r"\b(?:add rebecca|tuesday|regular.*call|follow up call|tech call)\b", wording) \
-            and re.search(r"\b(?:add|call|follow up|recurring|regular)\b", wording):
-        return "recurring_call"
-    return ""
-
-
-def hybrid_action_roles(turns: list[str]) -> dict[str, str]:
-    whole = " ".join(re.sub(r"^.+?\s+\d{1,2}:\d{2}(?::\d{2})?", "", clean(turn))
-                     if transcript_turn_speaker(turn) else clean(turn) for turn in turns)
-    roles: dict[str, str] = {}
-    patterns = {
-        "mute_led_confirmation": r"\bsomething i need to look at\b",
-        "clinician_alarm_review": r"\bpushed out (?:until|till) next week\b",
-        "debug_command_handoff": r"\bmight give you some more letters to try\b",
-        "change_request_closeout": r"\bapproved on wednesday\b.*\bgathering the information\b",
-        "electrical_compliance": r"\bi started going through\b.*\b60601",
-        "language_update": r"\bi(?:'ve| have) started (?:learning|loading) the languages\b",
-        "cybersecurity_risk": r"\binputting it (?:on|onto) the risk management file\b",
-        "standards_handoff": r"\bi['’]?ll send them over in an email\b",
-        "standard_applicability": r"\bi can follow(?: follow)? up with colm\b",
-    }
-    for family, pattern in patterns.items():
-        speaker, _ = speaker_for_pattern(turns, pattern)
-        if speaker:
-            roles[family] = speaker
-    if re.search(r"\b17 changes?\b.*\b(?:1\.01|1 01|101)\b.*\b(?:1\.02|1 02|102)\b", whole, re.I):
-        roles["software_gap_assessment"] = participant_name(turns, "David")
-    if re.search(r"\bchange request\b", whole, re.I) and re.search(r"\bwednesday\b", whole, re.I) \
-            and re.search(r"\b(?:gathering the information|close out)\b", whole, re.I):
-        roles["change_request_closeout"] = participant_name(turns, "Rebecca")
-    if re.search(r"\btake david['’]?s output and incorporate\b", whole, re.I):
-        roles["gap_output_incorporation"] = participant_name(turns, "Rebecca")
-    if re.search(r"\bfan logic\b.*\bcognidocs\b", whole, re.I):
-        roles["fan_logic_review"] = participant_name(turns, "Andrew")
-    if re.search(r"\badd you to that\b", whole, re.I) and re.search(r"\bnormal on tuesday\b", whole, re.I):
-        roles["recurring_call"] = participant_name(turns, "Jacqui")
-    if re.search(r"\bphysically (?:see|seen|visible)\b", whole, re.I) and re.search(r"\bdebug\b", whole, re.I):
-        roles["debug_command_test"] = participant_name(turns, "Andrew")
-    return roles
-
-
-def compose_hybrid_family(family: str) -> str:
-    return {
-        "mute_led_confirmation": "Confirm what happens to the alarm LED flashing when the mute button is pressed",
-        "clinician_alarm_review": "Complete the clinician mini-review of the alarm-sound changes next week, including the dependent usability input",
-        "debug_command_handoff": "Send or agree further debug commands for Andrew to test against the software",
-        "debug_command_test": "Test the additional debug commands and confirm what is physically visible or produced on screen",
-        "change_request_closeout": "Progress the submitted change request through Wednesday review and gather the close-out information",
-        "software_gap_assessment": "Complete the gap assessment of the 17 changes from software version 1.01 to 1.02 and identify where they are visible in the code",
-        "gap_output_incorporation": "Incorporate David's output on the 17 software changes into the design-change or technical-file summary",
-        "electrical_compliance": "Continue the electrical-compliance testing review and flag any support needed from David",
-        "language_update": "Continue the additional-language update, including Arabic, Vietnamese and Greek character or font support and translated-file loading",
-        "cybersecurity_risk": "Update the risk-management file with USB-port and screen-interference risks and proposed controls by Wednesday",
-        "fan_logic_review": "Review David's fan-logic document and decide whether it needs to be added to Cognidocs",
-        "standards_handoff": "Email the purchased 81001-5-1 and 27427 standards for assessment",
-        "standard_applicability": "Follow up with Colm to review whether the 27427 standard is applicable",
-        "recurring_call": "Add Rebecca to the regular Tuesday follow-up call",
-    }.get(family, "")
-
-
-def consolidate_hybrid_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
-    roles = hybrid_action_roles(turns)
-    groups: list[dict[str, Any]] = []
-    for action in actions:
-        family = hybrid_action_family(action)
-        target = next((group for group in groups if family and group["family"] == family), None)
-        if target is None:
-            groups.append({"family": family, "representative": action, "members": [action]})
-            continue
-        target["members"].append(action)
-        if representative_rank(action) > representative_rank(target["representative"]):
-            target["representative"] = action
-    output = []
-    for group in groups:
-        family, members = group["family"], group["members"]
-        if not family:
-            continue
-        representative = dict(group["representative"])
-        representative["action"] = compose_hybrid_family(family)
-        if roles.get(family):
-            representative["owner"] = roles[family]
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        representative["support"] = (max(int(member.get("sampleCount", 1) or 1) for member in members)
-                                     if roles.get(family)
-                                     else max(int(member.get("support", 1) or 1) for member in members))
-        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
-        representative["mergedCandidateCount"] = sum(
-            int(member.get("mergedCandidateCount", 1) or 1) for member in members
-        )
-        representative["hybridConsolidatedFamily"] = family
-        output.append(representative)
-    return output
-
-
-def recover_hybrid_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    """Recover only explicit hybrid handoffs that sampling or selection commonly splits."""
-    output = list(actions)
-    present = {hybrid_action_family(action) for action in output}
-    roles = hybrid_action_roles(turns)
-    specifications = (
-        ("mute_led_confirmation", (r"\bmute button\b", r"\bsomething i need to look at\b")),
-        ("clinician_alarm_review", (r"\bmini review with the clinicians\b", r"\bpushed out (?:until|till) next week\b")),
-        ("debug_command_handoff", (r"\bmore letters to try\b", r"\bdebug program\b")),
-        ("debug_command_test", (r"\bdebug\b", r"\bphysically (?:see|seen|visible)\b")),
-        ("change_request_closeout", (r"\bsubmitted that last week\b", r"\bapproved on wednesday\b")),
-        ("software_gap_assessment", (r"\b17 changes\b", r"\bvisible within the code\b")),
-        ("gap_output_incorporation", (r"\btake david['’]?s output and incorporate\b",)),
-        ("electrical_compliance", (r"\b60601", r"\bsupport that you need from david\b")),
-        ("language_update", (r"\barabic\b.*\bvietnamese\b.*\bgreek\b", r"\bload the fully translated\b")),
-        ("cybersecurity_risk", (r"\binputting it onto the risk management file\b", r"\bport lock for the usb\b")),
-        ("fan_logic_review", (r"\bfan logic\b", r"\bcognidocs\b")),
-        ("standards_handoff", (r"\b81001-5-1\b", r"\bsend them over in an email\b")),
-        ("standard_applicability", (r"\b27427\b", r"\bfollow(?: follow)? up with colm\b")),
-        ("recurring_call", (r"\bnormal on tuesday\b", r"\badd you to that\b")),
-    )
-    for family, patterns in specifications:
-        if family in present or not roles.get(family):
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles[family],
-            "action": compose_hybrid_family(family),
-            "deadline": "Next week" if family == "clinician_alarm_review" else "not stated",
-            "status": "ASSIGNED",
-            "evidenceIds": list(dict.fromkeys(evidence)),
-            "support": sample_count,
-            "sampleCount": sample_count,
-            "mergedCandidateCount": 1,
-            "recoveredHybridFamily": family,
-        })
-        present.add(family)
-    return output
-
-
-def webinar_action_family(action: dict[str, Any]) -> str:
-    """Map rehearsal drafts onto the final work package they represent."""
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:animation|fade in)\b", wording) and re.search(r"\b(?:slide|three things)\b", wording):
-        return "slide_animation"
-    if re.search(r"\b(?:closing slide|qr code|booking link)\b", wording):
-        return "closing_slide"
-    if re.search(r"\b(?:backup|planted|softball|warm|meaty) questions?\b", wording):
-        return "backup_questions"
-    if re.search(r"\b(?:five|5) min(?:ute)?s?\b", wording) and re.search(
-        r"\b(?:message|warn|warning|flash|chat|cue)\b", wording
-    ):
-        return "timing_warning"
-    if re.search(r"\b(?:monitor|watch|collect|group|manage|feed)\b", wording) \
-            and re.search(r"\b(?:chat|questions?)\b", wording):
-        return "chat_moderation"
-    if re.search(r"\b(?:personal introduction|personal intro|who am i|intro)\b", wording) \
-            and re.search(r"\b(?:30|thirty|short|seconds?)\b", wording):
-        return "short_intro"
-    if re.search(r"\b(?:q a|questions? and answers?|answers?)\b", wording) \
-            and re.search(r"\b(?:concise|30|thirty|seconds?|time|overrun|disciplined)\b", wording):
-        return "concise_answers"
-    if re.search(r"\b(?:not see you|not see|joke)\b", wording) \
-            and re.search(r"\b(?:drop|remove|cut|avoid|do not)\b", wording):
-        return "drop_joke"
-    if re.search(r"\b(?:opening|open|housekeeping|speech bubble|microphones?|cameras?)\b", wording) \
-            and re.search(r"\b(?:deliver|perform|use|include|instruct|tell|line|script)\b", wording):
-        return "opening_housekeeping"
-    if re.search(r"\b(?:dead air|silence|screen sharing handover|handovers?|closing|close)\b", wording) \
-            and re.search(r"\b(?:cover|handle|deliver|fill|talk|perform)\b", wording):
-        return "dead_air_and_close"
-    if re.search(r"\b(?:recording|record|red dot|red recording indicator|screenshot)\b", wording) \
-            and re.search(r"\b(?:start|hit|check|watch|monitor|proof|indicator|screenshot)\b", wording):
-        return "recording_control"
-    if re.search(r"\b(?:warm up|warmup|half eight|08 30|8 30)\b", wording) \
-            and re.search(r"\b(?:run|rehears|opening|handover|meet)\b", wording):
-        return "warmup"
-    return ""
-
-
-def webinar_action_roles(turns: list[str]) -> dict[str, str]:
-    roles: dict[str, str] = {}
-    patterns = {
-        "slide_animation": r"\bi can put it back in after\b",
-        "closing_slide": r"\b(?:i can make that slide|i['’]?ll do the closing slide|building the closing slide)\b",
-        "backup_questions": r"\b(?:i['’]?ll write the three backup questions|i['’]?ll have a couple of planted ones ready)\b",
-        "chat_moderation": r"\b(?:i['’]?m just watching the chat|i['’]?m (?:on|grouping) the chat throughout)\b",
-        "timing_warning": r"\b(?:i['’]?ll put five mins|i['’]?ll still message you at five minutes)\b",
-        "short_intro": r"\b(?:i['’]?ll do the who am i bit|keep the me bit short)\b",
-        "concise_answers": r"\bi['’]?ll be disciplined\b",
-        "drop_joke": r"\b(?:cutting the joke|dropping the joke)\b",
-        "opening_housekeeping": r"\b(?:the plan is i open it|i['’]?m doing the open.*housekeeping)\b",
-        "dead_air_and_close": r"\b(?:on the day i['’]?ll cover it|i['’]?m doing .*covering any dead air)\b",
-        "recording_control": r"\b(?:my job is.*i hit the button|red dot.*screenshot.*watch it)\b",
-    }
-    for family, pattern in patterns.items():
-        speaker, _ = speaker_for_pattern(turns, pattern)
-        if speaker:
-            roles[family] = speaker
-    whole = " ".join(clean(turn) for turn in turns)
-    if re.search(r"\b(?:half eight|08:?30|8:?30)\b", whole, re.I) \
-            and re.search(r"\b(?:opening|open)\b.*\bfirst handover\b", whole, re.I):
-        roles["warmup"] = "Team"
-    return roles
-
-
-def compose_webinar_family(family: str) -> str:
-    return {
-        "slide_animation": "Restore the animation on the three-things slide",
-        "closing_slide": "Build the closing slide with the booking link and QR code, then re-share the deck",
-        "backup_questions": "Write three backup questions and circulate them to the team",
-        "chat_moderation": "Monitor and group the chat questions during the webinar",
-        "timing_warning": "Send the presenter a private five-minute timing warning during the webinar",
-        "short_intro": "Keep the personal introduction to about 30 seconds",
-        "concise_answers": "Keep Q&A answers concise and avoid overrunning",
-        "drop_joke": "Drop the not-see-you joke from the opening",
-        "opening_housekeeping": "Use the opening housekeeping script, including the tap-the-speech-bubble instruction for mobile attendees",
-        "dead_air_and_close": "Cover dead air during screen-sharing handovers and handle the closing",
-        "recording_control": "Start recording when the opening begins, check the red recording indicator, take a screenshot and monitor the recording",
-        "warmup": "Run a short 08:30 warm-up covering the opening and first handover",
-    }.get(family, "")
-
-
-def webinar_family_deadline(family: str) -> str:
-    return {
-        "backup_questions": "Tonight",
-        "chat_moderation": "During the webinar",
-        "timing_warning": "During the webinar",
-        "recording_control": "During the webinar",
-        "warmup": "08:30 before the live session",
-    }.get(family, "not stated")
-
-
-def consolidate_webinar_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    """Keep one final-recap-shaped action per accepted webinar work package."""
-    roles = webinar_action_roles(turns)
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for action in actions:
-        family = webinar_action_family(action)
-        if family:
-            groups.setdefault(family, []).append(action)
-    output: list[dict[str, Any]] = []
-    for family, members in groups.items():
-        representative = dict(max(members, key=representative_rank))
-        representative["action"] = compose_webinar_family(family)
-        if roles.get(family):
-            representative["owner"] = roles[family]
-            representative["support"] = sample_count
-        else:
-            representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
-        representative["deadline"] = webinar_family_deadline(family)
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        representative["sampleCount"] = sample_count
-        representative["mergedCandidateCount"] = sum(
-            int(member.get("mergedCandidateCount", 1) or 1) for member in members
-        )
-        representative["webinarConsolidatedFamily"] = family
-        output.append(representative)
-    return output
-
-
-def recover_webinar_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    """Recover explicit final webinar assignments split across chunks or sampling passes."""
-    output = list(actions)
-    present = {webinar_action_family(action) for action in output}
-    roles = webinar_action_roles(turns)
-    specifications = (
-        ("slide_animation", (r"\banimation\b", r"\bput it back in after\b")),
-        ("closing_slide", (r"\bclosing slide\b", r"\bqr code\b", r"\bre-share the deck\b")),
-        ("backup_questions", (r"\bthree backup questions\b", r"\bsend them round\b")),
-        ("chat_moderation", (r"\bgrouping the chat\b", r"\b(?:on|grouping) the chat throughout\b")),
-        ("timing_warning", (r"\bfive mins\b|\bfive minutes\b", r"\bmessage you\b")),
-        ("short_intro", (r"\bthirty seconds on (?:you|yourself)\b|\bwho am i bit\b",)),
-        ("concise_answers", (r"\bthirty seconds per answer\b", r"\bdisciplined on time\b")),
-        ("drop_joke", (r"\bdropping the joke\b|\bcutting the joke\b",)),
-        ("opening_housekeeping", (r"\bdoing the open\b|\bplan is i open it\b", r"\bspeech[- ]bubble\b")),
-        ("dead_air_and_close", (r"\bcovering any dead air\b|\bon the day i['’]?ll cover it\b", r"\bi (?:think i )?close\b|\band the close\b")),
-        ("recording_control", (r"\bhit record\b|\bhit the button\b", r"\bscreenshot\b", r"\bred dot\b|\brecording indicator\b")),
-        ("warmup", (r"\bhalf eight\b|\b08:?30\b|\b8:?30\b", r"\b(?:opening|open)\b.*\bfirst handover\b")),
-    )
-    for family, patterns in specifications:
-        if family in present or not roles.get(family):
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles[family],
-            "action": compose_webinar_family(family),
-            "deadline": webinar_family_deadline(family),
-            "status": "ASSIGNED",
-            "evidenceIds": list(dict.fromkeys(evidence)),
-            "support": sample_count,
-            "sampleCount": sample_count,
-            "mergedCandidateCount": 1,
-            "recoveredWebinarFamily": family,
-        })
-        present.add(family)
-    return output
-
-
-def process_action_family(action: dict[str, Any]) -> str:
-    """Map pipeline-planning drafts to the small set of agreed next-step work packages."""
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:four|4) week\b", wording) and re.search(r"\b(?:pilot|manual|ai)\b", wording):
-        return "conditional_pilot"
-    if re.search(r"\b(?:small|manual) (?:slice|test|trial)\b|\btest the proposed\b", wording) \
-            and re.search(r"\b(?:lead|pipeline|process|quality|volume|produce)\b", wording):
-        return "manual_slice"
-    if re.search(r"\b(?:icp|ideal client profile)\b", wording) \
-            and re.search(r"\b(?:criteria|fit|define|filter|quality|noise)\b", wording):
-        return "icp_criteria"
-    if re.search(r"\bclient delivery\b", wording) and re.search(
-        r"\b(?:capture|track|record|salesforce|feedback|signals?|leads?)\b", wording
-    ):
-        return "client_delivery_capture"
-    return ""
-
-
-def process_action_roles(turns: list[str]) -> dict[str, str]:
-    roles: dict[str, str] = {}
-    proposer, _ = speaker_for_pattern(turns, r"\b(?:way that|jack and i).*\bgoing to go about this\b")
-    whole = " ".join(clean(turn) for turn in turns)
-    partner_match = re.search(r"\b([A-Z][A-Za-z'’-]+) and I (?:are going to|have been working)\b", whole)
-    if proposer and partner_match:
-        joint = f"{proposer} and {participant_name(turns, partner_match.group(1))}"
-        roles["manual_slice"] = joint
-        roles["conditional_pilot"] = joint
-    if re.search(r"\bcriteria for the ICP fit\b", whole, re.I) \
-            and re.search(r"\bdefined as a team\b", whole, re.I):
-        roles["icp_criteria"] = "Team"
-    if re.search(r"\bclient delivery\b", whole, re.I) \
-            and re.search(r"\bnot always tracked in Salesforce\b", whole, re.I):
-        roles["client_delivery_capture"] = "Sales and client-delivery team"
-    return roles
-
-
-def compose_process_family(family: str) -> str:
-    return {
-        "manual_slice": "Take a small manual slice of the proposed lead-generation process and test whether it produces the required lead quality",
-        "conditional_pilot": "Run a four-week mixed manual and AI pilot if the manual test produces useful volume and quality",
-        "icp_criteria": "Define the ICP fit criteria so poor-quality signals can be filtered earlier in the process",
-        "client_delivery_capture": "Clarify how client-delivery lead signals should be captured and tracked, including whether they should be recorded consistently in Salesforce",
-    }.get(family, "")
-
-
-def consolidate_process_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    """Discard future-state diagram boxes and retain one row per agreed process experiment."""
-    roles = process_action_roles(turns)
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for action in actions:
-        family = process_action_family(action)
-        if family:
-            groups.setdefault(family, []).append(action)
-    output: list[dict[str, Any]] = []
-    for family, members in groups.items():
-        representative = dict(max(members, key=representative_rank))
-        representative["action"] = compose_process_family(family)
-        if roles.get(family):
-            representative["owner"] = roles[family]
-            representative["support"] = sample_count
-        else:
-            representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
-        if family == "conditional_pilot":
-            representative["deadline"] = "After a successful manual test"
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        representative["sampleCount"] = sample_count
-        representative["mergedCandidateCount"] = sum(
-            int(member.get("mergedCandidateCount", 1) or 1) for member in members
-        )
-        representative["processConsolidatedFamily"] = family
-        output.append(representative)
-    return output
-
-
-def recover_process_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    """Recover the explicit experiment chain and definition gaps from transcript evidence."""
-    output = list(actions)
-    present = {process_action_family(action) for action in output}
-    roles = process_action_roles(turns)
-    specifications = (
-        ("manual_slice", (r"\breally small slice\b", r"\bmanually do it\b", r"\bproducing what we want\b")),
-        ("conditional_pilot", (r"\bfour-week pilot\b", r"\bmix of manual and ai\b", r"\bright volume\b.*\bright (?:the )?quality\b")),
-        ("icp_criteria", (r"\bcriteria for the icp fit\b", r"\bdefined as a team\b")),
-        ("client_delivery_capture", (r"\bhow are we capturing that\b", r"\bnot always tracked in salesforce\b")),
-    )
-    for family, patterns in specifications:
-        if family in present or not roles.get(family):
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": roles[family],
-            "action": compose_process_family(family),
-            "deadline": "After a successful manual test" if family == "conditional_pilot" else "not stated",
-            "status": "PROPOSED" if family in {"manual_slice", "conditional_pilot"} else "REQUIRED",
-            "evidenceIds": list(dict.fromkeys(evidence)),
-            "support": sample_count,
-            "sampleCount": sample_count,
-            "mergedCandidateCount": 1,
-            "recoveredProcessFamily": family,
-        })
-        present.add(family)
-    family_order = {family: index for index, family in enumerate(
-        ("manual_slice", "conditional_pilot", "icp_criteria", "client_delivery_capture")
-    )}
-    return sorted(output, key=lambda row: family_order.get(process_action_family(row), len(family_order)))
-
-
-def technical_file_action_family(action: dict[str, Any]) -> str:
-    wording = normalised_action_key(action.get("action"))
-    if re.search(r"\b(?:review|confirm|check)\b", wording) and re.search(
-        r"\b(?:updated risk|risk management wording|fmeas?|right lines)\b", wording
-    ):
-        return "risk_review"
-    if re.search(r"\b(?:risk management|risk plan|risk matrix|hazard analysis|cybersecurity|usb port|fmeas?)\b", wording) \
-            and re.search(r"\b(?:update|amend|rating|matrix|detail|mitigation|progress|work)\b", wording):
-        return "risk_update"
-    if re.search(r"\b(?:mute button|flash behaviour|flash behavior|alarm changes?|clinician|clinical review)\b", wording):
-        return "alarm_clinical"
-    if re.search(r"\b(?:arabic|vietnamese|greek|languages?|symbols?|fonts?|translated)\b", wording) \
-            and re.search(r"\b(?:resolve|update|load|upload|code|software|complete|continue)\b", wording):
-        return "language_update"
-    if re.search(r"\b(?:17 changes?|1 01|1 02|101|102|retrospective test)\b", wording) \
-            and re.search(r"\b(?:trace|code|test scenarios?|software changes?)\b", wording):
-        return "software_trace"
-    if re.search(r"\b(?:electrical compliance|compliance testing|60601)\b", wording):
-        return "electrical_compliance"
-    if re.search(r"\b(?:check in|touch base|catch up)\b", wording) \
-            and re.search(r"\b(?:rebecca|christina)\b", wording) \
-            and re.search(r"\b(?:missing|subcontractor|contract management|updates?)\b", wording):
-        return "subcontractor_checkin"
-    if re.search(r"\b(?:subcontractor|contract management)\b", wording) and re.search(
-        r"\b(?:gaps?|missing|justifications?|further actions?|documentation)\b", wording
-    ):
-        return "subcontractor_gaps"
-    if re.search(r"\b(?:formative|usability study|study protocol|protocol prep|task analysis)\b", wording):
-        return "formative_study"
-    if re.search(r"\b(?:process maps?|operational procedures?)\b", wording):
-        return "process_maps"
-    if re.search(r"\b(?:pms|rule 9|summary document)\b", wording) and re.search(
-        r"\b(?:comments?|incorporate|align|review|update|consistency)\b", wording
-    ):
-        return "pms_comments"
-    if re.search(r"\b(?:gsop|contractor procedure|procedure)\b", wording) \
-            and re.search(r"\b(?:folder|louise.*check|check.*louise)\b", wording):
-        return "contractor_folder"
-    if re.search(r"\bfollow up\b", wording) and re.search(r"\b(?:louise|procedure folder|gsop)\b", wording):
-        return "contractor_followup"
-    if re.search(r"\b(?:tf24|df24|client folder)\b", wording) \
-            and re.search(r"\b(?:convert|flip|specific|documents?|comments?)\b", wording):
-        return "tf24_conversion"
-    if re.search(r"\b(?:progress documentation|share anything|trinzo review)\b", wording):
-        return "team_document_progress"
-    return ""
-
-
-def consolidate_technical_file_actions(
-    actions: list[dict[str, Any]], turns: list[str], meeting_type: str, sample_count: int
-) -> list[dict[str, Any]]:
-    """Deduplicate known work packages without turning them into a closed content ledger.
-
-    Meeting type controls extraction and selection guidance, not the subjects that a client is
-    allowed to discuss. Every selected row with cited evidence therefore survives. A known family
-    is only a conservative duplicate hint: owners must be compatible and the evidence must be
-    local (or the wording identical). The representative's wording, owner and deadline are never
-    replaced with fixture-derived values.
-    """
-    del meeting_type, sample_count
-    groups: list[dict[str, Any]] = []
-    for action in actions:
-        if not evidence_turn_numbers(action, len(turns)):
-            continue
-        family = technical_file_action_family(action)
-        turn = first_evidence_turn(action)
-        key = normalised_action_key(action.get("action"))
-        target = None
-        if family:
-            for group in groups:
-                if group["family"] != family or not owners_compatible(
-                    action.get("owner"), group["representative"].get("owner")
-                ):
-                    continue
-                near = turn is not None and group["turn"] is not None and abs(turn - group["turn"]) <= 60
-                if near or key == group["key"]:
-                    target = group
-                    break
-        if target is None:
-            groups.append({
-                "family": family, "key": key, "turn": turn,
-                "representative": action, "members": [action],
-            })
-            continue
-        target["members"].append(action)
-        if representative_rank(action) > representative_rank(target["representative"]):
-            target["representative"] = action
-
-    output: list[dict[str, Any]] = []
-    for group in groups:
-        family, members = group["family"], group["members"]
-        representative = dict(group["representative"])
-        if len(members) == 1:
-            output.append(representative)
-            continue
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
-        representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
-        representative["mergedCandidateCount"] = sum(
-            int(member.get("mergedCandidateCount", 1) or 1) for member in members
-        )
-        representative["technicalFileConsolidatedFamily"] = family
-        output.append(representative)
-    return output
-
-
-def general_action_variant(turns: list[str]) -> str:
-    whole = " ".join(clean(turn) for turn in turns).lower()
-    signatures = (
-        ("allotment", ("water butt", "waiting list", "plot fee")),
-        ("pantomime", ("cinderella", "performing rights", "radio mic")),
-        ("brewery", ("hop bill", "maris otter", "glycol chiller")),
-        ("race", ("marshals", "st john ambulance", "road-closure")),
-    )
-    for variant, terms in signatures:
-        if sum(term in whole for term in terms) >= 2:
-            return variant
-    return ""
-
-
-def general_action_family(action: dict[str, Any], variant: str) -> str:
-    wording = normalised_action_key(action.get("action"))
-    patterns = {
-        "allotment": (
-            ("water_butt", r"\bwater butt\b.*\b(?:tap|repair|replace|fit|unit)\b|\b(?:tap|repair|replace|fit|unit)\b.*\bwater butt\b"),
-            ("fence_council", r"\b(?:boundary )?fence\b.*\b(?:council|councillor|photo|liability|write)\b|\b(?:council|councillor|photo)\b.*\bfence\b"),
-            ("renewal_letter", r"\b(?:renewal|membership|plot fee)\b.*\b(?:letter|thirty|30|update|january)\b"),
-            ("waiting_list", r"\b(?:waiting list|top three|vacant plots?)\b.*\b(?:email|offer|fortnight|14 days?)\b"),
-            ("show_materials", r"\b(?:show schedule|categories|entry form)\b.*\b(?:noticeboard|facebook|publish|post|prepare|put)\b|\b(?:noticeboard|facebook)\b.*\b(?:schedule|entry form)\b"),
-            ("shed_security", r"\b(?:hasp|padlock|solar alarm|shed security)\b.*\b(?:buy|fit|install|replace)\b|\b(?:buy|fit|install)\b.*\b(?:hasp|padlock|alarm)\b"),
-        ),
-        "pantomime": (
-            ("rights", r"\b(?:cinderella|script|performing rights)\b.*\b(?:order|secure|obtain|rights)\b"),
-            ("hall", r"\b(?:church hall|hall|deborah|tuesday evenings?)\b.*\b(?:book|ring|contact|october|january)\b"),
-            ("malcolm_role", r"\bmalcolm\b.*\b(?:baron hardup|smaller role|prince|speak|word)\b"),
-            ("poster", r"\b(?:poster|artwork)\b.*\b(?:draft|prepare|review|dates?)\b"),
-            ("sound_test", r"\b(?:radio mics?|microphones?|sound desk|desk)\b.*\b(?:test|replace|replacement cost|exact figure)\b"),
-        ),
-        "brewery": (
-            ("hops", r"\b(?:hop bill|hops?|citra)\b.*\b(?:order|thirteen|13 kg|13 kilos?)\b|\border\b.*\b(?:hop bill|hops?|citra)\b"),
-            ("malt", r"\b(?:maris otter|malt)\b.*\b(?:order|six sacks?)\b"),
-            ("festival", r"\b(?:festival|fifteen casks?|15 casks?|four point two|4 2)\b.*\b(?:email|confirm|terms|twenty-second|22nd)\b"),
-            ("chiller", r"\b(?:glycol )?chiller\b.*\b(?:service|engineer|repair|before)\b"),
-        ),
-        "race": (
-            ("marshals", r"\bmarshals?\b.*\b(?:fourteen|14|recruit|ring round|sort)\b"),
-            ("first_aid", r"\b(?:first aid|st john)\b.*\b(?:quote|two crews?|confirm|cover)\b|\b(?:quote|two crews?)\b.*\b(?:first aid|st john)\b"),
-            ("road_closure", r"\b(?:road closure|towpath)\b.*\b(?:application|submit|confirm|reopen|check)\b"),
-            ("medals", r"\bmedals?\b.*\b(?:reorder|order|three hundred and fifty|350)\b|\b(?:reorder|order|three hundred and fifty|350)\b.*\bmedals?\b"),
-            ("social", r"\b(?:social media|social push|entry link)\b.*\b(?:post|push|run|distribut|get)\b"),
-        ),
-    }
-    return next((family for family, pattern in patterns.get(variant, ()) if re.search(pattern, wording)), "")
-
-
-def general_action_specifications(variant: str) -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
-    specifications = {
-        "allotment": (
-            ("water_butt", "Ken", "Saturday", (r"\bget one.*mill road\b", r"\bdo it this weekend.*saturday\b")),
-            ("fence_council", "Barbara", "This week", (r"\bwrite to the council again\b", r"\btake one.*tomorrow\b", r"\bwith a photo, this week\b")),
-            ("renewal_letter", "Priyanka", "From January", (r"\bannual plot fee.*thirty pounds\b", r"\byou do the renewals\b")),
-            ("waiting_list", "Priyanka", "By the end of the week", (r"\bemail the top three\b", r"\bfortnight to say yes\b", r"\bemails out by the end of the week\b")),
-            ("show_materials", "Wesley", "By mid-August", (r"\bput the schedule together\b", r"\bnoticeboard and.*facebook\b", r"\bmid-august\b")),
-            ("shed_security", "Ken", "Saturday", (r"\bbuy the hasp, the padlock and the alarm\b", r"\bkeep it under fifty\b", r"\bdo the lot saturday\b")),
-        ),
-        "pantomime": (
-            ("rights", "Gerald", "This week", (r"\border the cinderella script and performing rights this week\b",)),
-            ("hall", "Fiona", "Tomorrow", (r"\bring deborah tomorrow\b", r"\btuesday evenings.*october through january\b")),
-            ("malcolm_role", "Gerald", "not stated", (r"\bquiet word with malcolm\b", r"\bbaron hardup\b")),
-            ("poster", "Fiona", "At the next meeting, after final show dates are confirmed", (r"\bdraft poster for cinderella\b", r"\bonce you give me the final show dates\b", r"\bbring it to the next meeting\b")),
-            ("sound_test", "Nadeem", "Before October", (r"\btest all four mics and the desk before october\b", r"\bexact figure once you.ve tested\b")),
-        ),
-        "brewery": (
-            ("hops", "Ravi", "Monday morning", (r"\bplace the hop order monday morning\b", r"\ball thirteen kilos\b")),
-            ("malt", "Dan", "Today", (r"\border six sacks today\b",)),
-            ("festival", "Josie", "Today", (r"\bemail them today\b", r"\bfifteen casks.*twenty-second\b", r"\bwith our terms\b")),
-            ("chiller", "Mick", "Before the IPA brew on the 15th", (r"\bring the refrigeration engineer today\b", r"\bchiller serviced before.*fifteenth\b")),
-        ),
-        "race": (
-            ("marshals", "Jo Marsh", "not stated", (r"\bi.ll sort the marshals\b", r"\bget us up to fourteen\b")),
-            ("first_aid", "Jo Bennett", "After the cost is approved", (r"\bget a quote from st john ambulance\b", r"\btwo crews\b", r"\bconfirm it once.*happy with the cost\b")),
-            ("road_closure", "Alan", "This week", (r"\broad-closure application in this week\b", r"\bconfirm the towpath.s reopened\b")),
-            ("medals", "Deepa", "not stated", (r"\breorder the medals\b", r"\border three hundred and fifty\b")),
-            ("social", "Deepa", "Through to race day", (r"\btake the social media\b", r"\bpost every couple of days\b", r"\bentry link out everywhere\b")),
-        ),
-    }
-    return specifications.get(variant, ())
-
-
-def compose_general_family(family: str) -> str:
-    return {
-        "water_butt": "Replace the broken water butt tap",
-        "fence_council": "Photograph the damaged boundary fence and write to the council, copying in the councillor",
-        "renewal_letter": "Update the renewal letter to reflect the GBP 30 annual plot fee",
-        "waiting_list": "Email the top three people on the waiting list, offering each a plot with 14 days to accept",
-        "show_materials": "Prepare the annual show schedule, categories and entry form and publish them on the noticeboard and Facebook",
-        "shed_security": "Buy and fit a new hasp, padlock and solar alarm on the communal shed, keeping spend under GBP 50",
-        "rights": "Order the Cinderella script and performing rights",
-        "hall": "Contact Deborah and book the church hall for Tuesday evenings from October through January",
-        "malcolm_role": "Speak to Malcolm about taking the smaller Baron Hardup role instead of the Prince",
-        "poster": "Draft the Cinderella poster once the final show dates are confirmed and bring it for review at the next meeting",
-        "sound_test": "Test all four radio mics and the sound desk, then provide the exact replacement cost if a mic needs replacing",
-        "hops": "Order the full 13 kg hop bill",
-        "malt": "Order six sacks of Maris Otter malt",
-        "festival": "Email the festival confirming 15 casks of 4.2% pale ale for delivery on the 22nd, with terms",
-        "chiller": "Contact the refrigeration engineer and arrange for the glycol chiller to be serviced before the IPA brew on the 15th",
-        "marshals": "Recruit enough marshals to reach 14",
-        "first_aid": "Get a quote from St John Ambulance for two first-aid crews, then confirm once the cost is approved",
-        "road_closure": "Submit the road-closure application and confirm the towpath has reopened",
-        "medals": "Reorder 350 race finisher medals",
-        "social": "Run the social media push, posting every couple of days through to race day and distributing the entry link",
-    }.get(family, "")
-
-
-def general_action_roles(turns: list[str], variant: str) -> dict[str, str]:
-    return {family: participant_name(turns, owner) for family, owner, _, _ in general_action_specifications(variant)}
-
-
-def consolidate_general_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    variant = general_action_variant(turns)
-    if not variant:
-        return actions
-    roles = general_action_roles(turns, variant)
-    deadlines = {family: deadline for family, _, deadline, _ in general_action_specifications(variant)}
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for action in actions:
-        family = general_action_family(action, variant)
-        if family:
-            groups.setdefault(family, []).append(action)
-    output: list[dict[str, Any]] = []
-    for family, members in groups.items():
-        representative = dict(max(members, key=representative_rank))
-        representative.update({
-            "action": compose_general_family(family),
-            "deadline": deadlines[family], "support": sample_count, "sampleCount": sample_count,
-            "mergedCandidateCount": sum(int(member.get("mergedCandidateCount", 1) or 1) for member in members),
-            "generalConsolidatedFamily": family,
-        })
-        if roles.get(family):
-            representative["owner"] = roles[family]
-        representative["evidenceIds"] = list(dict.fromkeys(
-            evidence_id for member in members for evidence_id in member.get("evidenceIds", [])
-        ))
-        output.append(representative)
-    return output
-
-
-def recover_general_actions(actions: list[dict[str, Any]], turns: list[str], sample_count: int) -> list[dict[str, Any]]:
-    variant = general_action_variant(turns)
-    if not variant:
-        return actions
-    output = list(actions)
-    present = {general_action_family(action, variant) for action in output}
-    specifications = general_action_specifications(variant)
-    for family, owner, deadline, patterns in specifications:
-        if family in present:
-            continue
-        evidence: list[str] = []
-        for pattern in patterns:
-            number = next((index for index, turn in enumerate(turns, 1) if re.search(pattern, turn, re.I)), None)
-            if number is None:
-                evidence = []
-                break
-            evidence.append(f"turn_{number}")
-        if not evidence:
-            continue
-        output.append({
-            "owner": participant_name(turns, owner) or "Not stated", "action": compose_general_family(family),
-            "deadline": deadline, "status": "ASSIGNED", "evidenceIds": list(dict.fromkeys(evidence)),
-            "support": sample_count, "sampleCount": sample_count, "mergedCandidateCount": 1,
-            "recoveredGeneralFamily": family,
-        })
-        present.add(family)
-    order = {family: index for index, (family, _, _, _) in enumerate(specifications)}
-    return sorted(output, key=lambda row: order.get(general_action_family(row, variant), len(order)))
 
 
 def is_importer_obligations_type(meeting_type: str) -> bool:
@@ -2877,13 +1324,13 @@ def selective_actual_action_profile(meeting_type: str) -> tuple[str, str] | None
         if hybrid_action_v2_enabled():
             return None
         return HYBRID_TECHNICAL_SELECTOR_GUIDANCE, "hybrid_technical_actual_actions"
-    if value == "decision meeting":
-        return DECISION_MEETING_SELECTOR_GUIDANCE, "decision_meeting_actual_actions"
     return None
 
 
 def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
     value = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
+    if value == "decision meeting":
+        return DECISION_MEETING_SELECTOR_GUIDANCE, "decision_retrieval_v2"
     profiles = {
         "audit kick off planning": "audit_retrieval",
         "technical file review": "technical_retrieval",
@@ -2897,6 +1344,8 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
         return HYBRID_RETRIEVAL_V2_GUIDANCE, "hybrid_retrieval_v2"
     if value == "general" and general_action_v2_enabled():
         return GENERAL_RETRIEVAL_V2_GUIDANCE, "general_retrieval_v2"
+    if value == "project consultancy check in" and general_action_v2_enabled():
+        return PROJECT_CHECKIN_RETRIEVAL_GUIDANCE, "project_checkin_retrieval_v2"
     if technical_file_action_v2_enabled() and value in {
         "technical file review", "technical file consultancy review"
     }:
@@ -2914,11 +1363,18 @@ def retrieval_selector_profile(meeting_type: str) -> tuple[str, str] | None:
 
 
 def load_action_retrieval_backend() -> Any:
-    try:
-        from meeting_minutes_minilm_experiment import MiniLMBackend
-        return MiniLMBackend.load(enabled=True)
-    except Exception:
-        return None
+    global ACTION_RETRIEVAL_BACKEND
+    if ACTION_RETRIEVAL_BACKEND is not None:
+        return ACTION_RETRIEVAL_BACKEND
+    with ACTION_RETRIEVAL_BACKEND_LOCK:
+        if ACTION_RETRIEVAL_BACKEND is not None:
+            return ACTION_RETRIEVAL_BACKEND
+        try:
+            from meeting_minutes_minilm_experiment import MiniLMBackend
+            ACTION_RETRIEVAL_BACKEND = MiniLMBackend.load(enabled=True)
+        except Exception:
+            return None
+    return ACTION_RETRIEVAL_BACKEND
 
 
 def dot_similarity(left: list[float], right: list[float]) -> float:
@@ -2946,11 +1402,92 @@ def dedupe_identical_actions(actions: list[dict[str, Any]]) -> list[dict[str, An
             by_key[key] = action
             output.append(action)
             continue
-        merged = list(existing.get("evidenceIds", []))
-        merged.extend(evidence for evidence in action.get("evidenceIds", []) if evidence not in merged)
-        existing["evidenceIds"] = merged
+        merge_action_evidence(existing, [existing, action])
         if clean(existing.get("owner")) in ("", "Not stated") and clean(action.get("owner")) not in ("", "Not stated"):
             existing["owner"] = action["owner"]
+    return output
+
+
+ACTION_EVIDENCE_FIELDS = (
+    "evidenceIds", "taskEvidenceIds", "commitmentEvidenceIds", "ownerEvidenceIds", "deadlineEvidenceIds",
+    "selectorEvidenceIds",
+)
+
+
+def merge_action_evidence(target: dict[str, Any], sources: list[dict[str, Any]]) -> None:
+    """Pool evidence without losing what each cited turn supports."""
+    for field in ACTION_EVIDENCE_FIELDS:
+        merged: list[str] = []
+        for source in sources:
+            values = source.get(field) if isinstance(source.get(field), list) else []
+            merged.extend(value for value in values if value not in merged)
+        values = target.get(field) if isinstance(target.get(field), list) else []
+        merged.extend(value for value in values if value not in merged)
+        if merged or field in target or any(field in source for source in sources):
+            target[field] = merged
+    trace_ids: list[str] = []
+    for source in sources:
+        for trace_id in source.get("_traceIds", []) if isinstance(source.get("_traceIds"), list) else []:
+            if trace_id not in trace_ids:
+                trace_ids.append(trace_id)
+    for trace_id in target.get("_traceIds", []) if isinstance(target.get("_traceIds"), list) else []:
+        if trace_id not in trace_ids:
+            trace_ids.append(trace_id)
+    if trace_ids:
+        target["_traceIds"] = trace_ids
+
+
+def consolidate_open_world_actions(
+    actions: list[dict[str, Any]], turns: list[str], family_fn: Any = None,
+    marker: str = "", locality: int = 60,
+) -> list[dict[str, Any]]:
+    """Deduplicate evidence-grounded actions without defining what a meeting may contain.
+
+    A meeting-type family is only a similarity hint. Unfamiliar deliverables pass through, and
+    the representative keeps its extracted wording, owner, deadline and real sample support.
+    """
+    groups: list[dict[str, Any]] = []
+    for action in actions:
+        if not evidence_turn_numbers(action, len(turns)):
+            continue
+        family = clean(family_fn(action)) if family_fn else ""
+        turn = first_evidence_turn(action)
+        key = normalised_action_key(action.get("action"))
+        target = None
+        if family:
+            for group in groups:
+                if group["family"] != family or not owners_compatible(
+                    action.get("owner"), group["representative"].get("owner")
+                ):
+                    continue
+                near = turn is not None and group["turn"] is not None and abs(turn - group["turn"]) <= locality
+                if near or key == group["key"]:
+                    target = group
+                    break
+        if target is None:
+            groups.append({
+                "family": family, "key": key, "turn": turn,
+                "representative": action, "members": [action],
+            })
+            continue
+        target["members"].append(action)
+        if representative_rank(action) > representative_rank(target["representative"]):
+            target["representative"] = action
+
+    output: list[dict[str, Any]] = []
+    for group in groups:
+        members = group["members"]
+        representative = dict(group["representative"])
+        if len(members) > 1:
+            merge_action_evidence(representative, members)
+            representative["support"] = max(int(member.get("support", 1) or 1) for member in members)
+            representative["sampleCount"] = max(int(member.get("sampleCount", 1) or 1) for member in members)
+            representative["mergedCandidateCount"] = sum(
+                int(member.get("mergedCandidateCount", 1) or 1) for member in members
+            )
+            if marker and group["family"]:
+                representative[marker] = group["family"]
+        output.append(representative)
     return output
 
 
@@ -2963,13 +1500,108 @@ def evidence_turn_numbers(action: dict[str, Any], total: int) -> list[int]:
     return sorted(numbers)
 
 
+def action_evidence_context(action: dict[str, Any], turns: list[str], radius: int = 2) -> str:
+    numbers: set[int] = set()
+    for number in evidence_turn_numbers(action, len(turns)):
+        numbers.update(range(max(1, number - radius), min(len(turns), number + radius) + 1))
+    return " ".join(turns[number - 1] for number in sorted(numbers))
+
+
+def owner_supported_by_evidence(action: dict[str, Any], turns: list[str]) -> bool:
+    owner = clean(action.get("owner"))
+    if not owner or owner.lower() in {"unknown", "not stated", "n/a"}:
+        return True
+    owner_tokens_value = {
+        token for token in re.findall(r"[a-z][a-z'’-]+", owner.lower())
+        if len(token) > 2 and token not in {"and", "the"}
+    }
+    evidence_ids = action.get("ownerEvidenceIds") or action.get("taskEvidenceIds") or action.get("evidenceIds") or []
+    for evidence_id in evidence_ids:
+        match = re.fullmatch(r"turn_(\d+)", clean(evidence_id))
+        if not match or not 1 <= int(match.group(1)) <= len(turns):
+            continue
+        turn = turns[int(match.group(1)) - 1]
+        speaker = transcript_turn_speaker(turn)
+        speaker_tokens = set(re.findall(r"[a-z][a-z'’-]+", speaker.lower()))
+        utterance = re.sub(
+            r"^(?:.+?\s+\d{1,2}:\d{2}(?::\d{2})?|[^:]{2,80}:)\s*", "", clean(turn)
+        ) if speaker else clean(turn)
+        if owner_tokens_value and owner_tokens_value <= speaker_tokens:
+            first_person_commitment = re.search(
+                r"\b(?:i['’]?ll|i will|i can|i['’]?m going to|we['’]?ll|we will)\b", utterance, re.I
+            )
+            # A speaker issuing a second-person or bare-imperative instruction is the assigner,
+            # not evidence that the speaker owns the task.
+            directive = re.match(
+                r"^(?:when you(?:'re| are)\b|(?:please\s+)?(?:send|share|review|check|write|"
+                r"prepare|print|fix|update|add|book|schedule|arrange|confirm|find|investigate|"
+                r"trace|run|re-?run|test|decide|provide|forward|complete|finalise)\b)",
+                utterance, re.I,
+            )
+            if directive and not first_person_commitment:
+                continue
+            if re.match(r"^(?:so\b|one (?:action )?is\b|the action is\b|can i\b|am i\b|and the last\b|we said\b)", utterance, re.I) \
+                    and not first_person_commitment:
+                continue
+            return True
+        utterance_tokens = set(re.findall(r"[a-z][a-z'’-]+", utterance.lower()))
+        if owner_tokens_value and owner_tokens_value <= utterance_tokens and re.search(
+            r"\b(?:will|is going to|needs? to|has to|to (?:do|write|send|review|fix|prepare|check)|can you|could you)\b",
+            utterance, re.I,
+        ):
+            return True
+    return False
+
+
+def ground_action_attributions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
+    """Blank unsupported owners/deadlines and remove non-standalone action fragments."""
+    output: list[dict[str, Any]] = []
+    unresolved = re.compile(
+        # Do not reject a complete diagnostic choice such as "whether the protocols are blocked
+        # by something substantive or by available time" merely because it contains "something".
+        # Reject only wording whose task object or addressee is still an unresolved reference.
+        r"\b(?:presumably|implied|someone)\b|\[[^]]+\]|"
+        r"\b(?:ask|contact|email|send|share|give|tell|follow up with) (?:him|her)\b|"
+        r"\b(?:get|obtain|send|review|fix|update|share|provide) it\b",
+        re.I,
+    )
+    vague = re.compile(
+        r"^(?:make progress\b|wait for\b|come back\b.*\bbest idea\b|deal with\b|"
+        r"provide any other updates?\b|know the outcome\b|confirm happiness\b|acknowledge fault\b|"
+        r"do not (?:send|write|produce) (?:the )?minutes\b|prepare for (?:the )?.*\bmeeting\b)",
+        re.I,
+    )
+    for source in actions:
+        action = dict(source)
+        wording = clean(action.get("action"))
+        if unresolved.search(wording) or vague.search(wording):
+            continue
+        context = action_evidence_context(action, turns)
+        owner = clean(action.get("owner"))
+        if owner.lower() in {"all", "everyone", "team", "the team"}:
+            action["owner"] = "Not stated"
+        elif not owner_supported_by_evidence(action, turns):
+            action["owner"] = "Not stated"
+        deadline = clean(action.get("deadline"))
+        if deadline.lower() not in {"", "unknown", "not stated", "n/a", "none"} \
+                and not action.get("deadlineEvidenceIds"):
+            deadline_tokens = {
+                token for token in re.findall(r"[a-z0-9]+", deadline.lower())
+                if len(token) > 2 or token.isdigit()
+            }
+            context_tokens = set(re.findall(r"[a-z0-9]+", context.lower()))
+            if deadline_tokens and not deadline_tokens & context_tokens:
+                action["deadline"] = "Not stated"
+        output.append(action)
+    return output
+
+
 def repair_short_actions(actions: list[dict[str, Any]], turns: list[str]) -> list[dict[str, Any]]:
     """Rewrite bare-verb candidates from their cited turns instead of letting the word gate drop them.
 
-    Measured on Abbott: the extractor returned "send" for Jacqui's "I'll get that over to you
-    today" (the code of conduct) and "build out" for Stuart's scope work - both expected actions,
-    both deleted by the four-word gate. Fail-open: on any error the originals are returned and the
-    gate behaves as before."""
+    Long audit transcripts can yield fragments such as "send" or "build out" for otherwise valid
+    document and scope commitments. Both would be deleted by the four-word gate. Fail-open: on any
+    error the originals are returned and the gate behaves as before."""
     short = [(index, action) for index, action in enumerate(actions)
              if action_word_count(action.get("action")) < MINIMUM_ACTION_WORDS and evidence_turn_numbers(action, len(turns))]
     if not short:
@@ -3067,10 +1699,7 @@ def merge_sampled_actions(actions: list[dict[str, Any]], sample_count: int, back
     output = []
     for group in groups:
         representative = dict(group["representative"])
-        evidence: list[str] = []
-        for member in group["members"]:
-            evidence.extend(item for item in member.get("evidenceIds", []) if item not in evidence)
-        representative["evidenceIds"] = evidence
+        merge_action_evidence(representative, group["members"])
         representative["support"] = len({member.get("sample", 0) for member in group["members"]})
         representative["sampleCount"] = sample_count
         representative["mergedCandidateCount"] = len(group["members"])
@@ -3087,15 +1716,16 @@ def representative_rank(action: dict[str, Any]) -> tuple[int, int, int, int]:
 
 def assign_action_tiers(actions: list[dict[str, Any]], sample_count: int) -> list[dict[str, Any]]:
     """Tier 1 is the actions table: a row most samples agreed on. Tier 2 is the collapsed
-    "raised" panel: a minority row that at least one sample read as a commitment, assignment
-    or requirement. A minority row every sample read as a mere proposal is tier 3 and is not
-    returned - on the measured runs those 83 rows carried one expected action between them."""
+    "raised" panel: a minority row whose extraction includes direct commitment or assignment
+    evidence. A one-sample task fragment without that evidence is tier 3 and is not returned,
+    regardless of the model's status label; labels alone previously promoted discussion and
+    ordinary requirements into reviewer-facing actions."""
     output = []
     for action in actions:
         support = int(action.get("support", 1) or 1)
         if sample_count <= 1 or support * 2 >= sample_count + 1:
             action["tier"] = 1
-        elif support >= 2 or clean(action.get("status")).upper() != "PROPOSED":
+        elif action.get("commitmentEvidenceIds"):
             action["tier"] = 2
         else:
             action["tier"] = 3
@@ -3145,7 +1775,8 @@ def first_evidence_turn(action: dict[str, Any]) -> int | None:
 
 
 def merge_by_deliverable(actions: list[dict[str, Any]], structured: dict[int, dict[str, str]], backend: Any,
-                         threshold: float = 0.80, far_threshold: float = 0.90, locality: int = 60) -> list[dict[str, Any]]:
+                         threshold: float = 0.80, far_threshold: float = 0.90, locality: int = 60,
+                         preserve_structure: bool = False) -> list[dict[str, Any]]:
     """Fold candidates that name the same deliverable for compatible owners with compatible verbs.
 
     Nearby candidates (within `locality` turns) merge at `threshold`; candidates from different
@@ -3162,8 +1793,13 @@ def merge_by_deliverable(actions: list[dict[str, Any]], structured: dict[int, di
         key = re.sub(r"\s+", " ", phrase).strip()
         return embeddings.get(key) or embeddings.get(phrase) or embeddings.get(key.lower())
     groups: list[dict[str, Any]] = []
-    for number, action in enumerate(actions, 1):
+    for number, source in enumerate(actions, 1):
         info = structured.get(number, {})
+        action = dict(source)
+        if preserve_structure and info.get("deliverable"):
+            action["_deliverable"] = info["deliverable"]
+            action["_deliverableVerb"] = info.get("verb", "")
+            action["_deliverableRecipient"] = info.get("recipient", "")
         vec = vector(info.get("deliverable", "")) if info.get("deliverable") else None
         turn = first_evidence_turn(action)
         target = None
@@ -3171,22 +1807,16 @@ def merge_by_deliverable(actions: list[dict[str, Any]], structured: dict[int, di
             for group in groups:
                 if group["vector"] is None or not verbs_compatible(info.get("verb", ""), group["verb"]):
                     continue
-                # A meeting between two people is one deliverable with two owners: the recipient
-                # of one draft is the owner of the other. Everything else needs compatible owners.
-                joint = (bool(owner_tokens(action.get("owner")) & owner_tokens(group["recipient"]))
-                         or bool(owner_tokens(group["representative"].get("owner")) & owner_tokens(info.get("recipient", ""))))
-                if not joint and not owners_compatible(action.get("owner"), group["representative"].get("owner")):
+                if not owners_compatible(action.get("owner"), group["representative"].get("owner")):
                     continue
                 similarity = dot_similarity(vec, group["vector"])
                 near = turn is not None and group["turn"] is not None and abs(turn - group["turn"]) <= locality
                 if similarity >= (threshold if near else far_threshold):
                     target = group
-                    if joint and not owners_compatible(action.get("owner"), group["representative"].get("owner")):
-                        group["jointOwners"].append(clean(action.get("owner")))
                     break
         if target is None:
-            groups.append({"vector": vec, "verb": info.get("verb", ""), "turn": turn, "representative": action, "members": [action],
-                           "recipient": info.get("recipient", ""), "jointOwners": []})
+            groups.append({"vector": vec, "verb": info.get("verb", ""), "turn": turn,
+                           "representative": action, "members": [action]})
             continue
         target["members"].append(action)
         if representative_rank(action) > representative_rank(target["representative"]):
@@ -3195,17 +1825,10 @@ def merge_by_deliverable(actions: list[dict[str, Any]], structured: dict[int, di
     for group in groups:
         representative = dict(group["representative"])
         if len(group["members"]) > 1:
-            evidence: list[str] = []
-            for member in group["members"]:
-                evidence.extend(item for item in member.get("evidenceIds", []) if item not in evidence)
-            representative["evidenceIds"] = evidence
+            merge_action_evidence(representative, group["members"])
             representative["support"] = max(int(member.get("support", 1) or 1) for member in group["members"])
             representative["mergedCandidateCount"] = sum(int(member.get("mergedCandidateCount", 1) or 1) for member in group["members"])
             representative["mergedFrom"] = [clean(member.get("action")) for member in group["members"] if member is not group["representative"]]
-            owners = [clean(representative.get("owner"))] + [owner for owner in group["jointOwners"]
-                                                                if owner and not owners_compatible(owner, representative.get("owner"))]
-            if len(owners) > 1:
-                representative["owner"] = " and ".join(dict.fromkeys(owners))
         output.append(representative)
     return output
 
@@ -3223,18 +1846,52 @@ def action_has_recall_protection(action: dict[str, Any], evidence: list[str]) ->
         r"by (?:monday|tuesday|wednesday|thursday|friday|tomorrow|next week))\b", joined, re.I))
 
 
-SELECTOR_BATCH_CHARS = 22000
+SELECTOR_BATCH_CHARS = 9500
+SELECTOR_BATCH_ITEMS = 8
 SELECTOR_TURN_CHARS = 360
+VALIDATED_RETRIEVAL_PROFILES = {
+    "audit_retrieval_v2", "importer_retrieval_v2", "hybrid_retrieval_v2",
+    "webinar_retrieval_v2", "process_retrieval_v2", "technical_file_retrieval_v2",
+    "general_retrieval_v2", "project_checkin_retrieval_v2", "software_retrieval",
+    "decision_retrieval_v2",
+}
+SELECTOR_REJECTION_CODES = {
+    "COMPLETED_ONLY", "UNACCEPTED_PROPOSAL", "DISCUSSION_ONLY", "MEETING_ADMIN", "MALFORMED",
+    "NO_SUPPORTED_TASK",
+}
+
+
+def normalise_retrieval_decision(row: Any, local_numbers: set[int]) -> dict[str, Any] | None:
+    """Trooper can return JSON that violates its requested schema; enforce it locally."""
+    if not isinstance(row, dict) or row.get("candidateNumber") not in local_numbers:
+        return None
+    decision = row.get("decision")
+    code = row.get("rejectionCode")
+    evidence = row.get("evidenceTurns")
+    if not isinstance(evidence, list) or not all(
+        isinstance(value, int) and not isinstance(value, bool) for value in evidence
+    ) or not evidence:
+        return None
+    if decision == "KEEP" and code != "NONE":
+        return None
+    if decision == "REMOVE" and code not in SELECTOR_REJECTION_CODES:
+        return None
+    if decision not in {"KEEP", "REMOVE"}:
+        return None
+    return {
+        "candidateNumber": row["candidateNumber"], "decision": decision,
+        "rejectionCode": code, "evidenceTurns": evidence,
+    }
 
 
 def selector_batches(blocks: list[tuple[int, str]]) -> list[list[tuple[int, str]]]:
-    """At most 15 candidates and about SELECTOR_BATCH_CHARS of text per call. Fifteen software
-    review candidates with their evidence overran the model's input and came back as HTTP 422."""
+    """Bound both candidates and evidence so schema output fits in the model context window."""
     batches: list[list[tuple[int, str]]] = []
     current: list[tuple[int, str]] = []
     size = 0
     for block in blocks:
-        if current and (len(current) >= 15 or size + len(block[1]) > SELECTOR_BATCH_CHARS):
+        if current and (len(current) >= SELECTOR_BATCH_ITEMS
+                        or size + len(block[1]) > SELECTOR_BATCH_CHARS):
             batches.append(current)
             current, size = [], 0
         current.append(block)
@@ -3247,27 +1904,55 @@ def selector_batches(blocks: list[tuple[int, str]]) -> list[list[tuple[int, str]
 def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]] | None:
     decisions: dict[int, dict[str, Any]] = {}
     for batch in selector_batches(blocks):
-        try:
-            result = call_trooper(RETRIEVAL_SELECTOR_PROMPT.format(
-                guidance=guidance, candidates="\n\n".join(block for _, block in batch)),
-                3000, RETRIEVAL_SELECTOR_SCHEMA)
-        except Exception:
-            return None
         expected = {number for number, _ in batch}
-        returned = {row.get("candidateNumber"): row for row in result.get("decisions", [])
-                    if isinstance(row, dict) and row.get("candidateNumber") in expected}
+        by_number = dict(batch)
+        returned: dict[int, dict[str, Any]] = {}
+        last_error = ""
+        for attempt in range(4):
+            remaining = expected - set(returned)
+            global_numbers = sorted(remaining)
+            local_to_global = {local: number for local, number in enumerate(global_numbers, 1)}
+            request_blocks = [
+                re.sub(r"^\d+\.", f"{local}.", by_number[number], count=1)
+                for local, number in local_to_global.items()
+            ]
+            try:
+                result = call_trooper(RETRIEVAL_SELECTOR_PROMPT.format(
+                    guidance=guidance, candidates="\n\n".join(request_blocks)),
+                    1600, RETRIEVAL_SELECTOR_SCHEMA)
+                last_error = ""
+            except Exception as error:
+                result = {}
+                last_error = clean(error)
+            candidate_rows = {}
+            for row in result.get("decisions", []):
+                normalised = normalise_retrieval_decision(row, set(local_to_global))
+                if normalised is None:
+                    continue
+                global_number = local_to_global[normalised["candidateNumber"]]
+                candidate_rows[global_number] = {**normalised, "candidateNumber": global_number}
+            returned.update(candidate_rows)
+            if set(returned) == expected:
+                break
+            if attempt < 3:
+                time.sleep(0.25 + random.uniform(0, 0.25))
         if set(returned) != expected:
-            return None
+            missing = ",".join(str(number) for number in sorted(expected - set(returned)))
+            detail = f" ({last_error})" if last_error else ""
+            raise RuntimeError(f"Selector batch omitted candidate numbers: {missing}{detail}")
         decisions.update(returned)
     return decisions
 
 
 def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list[str], guidance: str,
                                       backend: Any = None, profile: str = "") -> list[dict[str, Any]]:
-    """Fail-open, two-check selector grounded in original and MiniLM-retrieved evidence."""
+    """Fail-open selector; validated profiles require two positive, locally grounded checks."""
     eligible = [action for action in actions if action_word_count(action.get("action")) >= 4]
-    strict_profile = profile in {"audit_retrieval_v2", "importer_retrieval_v2", "hybrid_retrieval_v2"}
-    if strict_profile:
+    lexical_anchor_profiles = VALIDATED_RETRIEVAL_PROFILES
+    strict_consensus = profile in VALIDATED_RETRIEVAL_PROFILES
+    if profile == "decision_retrieval_v2":
+        eligible = [action for action in eligible if action.get("commitmentEvidenceIds")]
+    if profile in lexical_anchor_profiles:
         eligible = [action for action in eligible if audit_candidate_has_lexical_anchor(action, turns)]
     if not eligible:
         return []
@@ -3281,24 +1966,32 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
         return embeddings.get(value)
     turn_vectors = [vector(turn) for turn in turns]
     blocks: list[tuple[int, str]] = []
+    allowed_evidence: dict[int, set[int]] = {}
     protected: set[int] = set()
     for number, action in enumerate(eligible, 1):
         original_numbers = {int(match.group(1)) for evidence_id in action.get("evidenceIds", [])
                             if (match := re.fullmatch(r"turn_(\d+)", clean(evidence_id)))
                             and 1 <= int(match.group(1)) <= len(turns)}
         evidence_numbers = set(original_numbers)
-        if strict_profile:
+        if strict_consensus:
             # The lexical-anchor gate above prevents post-hoc grounding of an invented object.
-            # Immediate context resolves requests and addressees; only two semantic anchors are
-            # added because audit vocabulary repeats heavily across a long transcript.
+            # Immediate context resolves requests and addressees.
+            context_radius = 2
             for turn_number in original_numbers:
-                evidence_numbers.update(range(max(1, turn_number - 1), min(len(turns), turn_number + 1) + 1))
+                evidence_numbers.update(range(
+                    max(1, turn_number - context_radius),
+                    min(len(turns), turn_number + context_radius) + 1,
+                ))
         query = vector(clean(action.get("action")))
-        ranked = [] if query is None else sorted(
+        ranked = [] if query is None or strict_consensus else sorted(
             ((dot_similarity(query, candidate), index + 1) for index, candidate in enumerate(turn_vectors) if candidate is not None),
             reverse=True)
         semantic_numbers = []
-        semantic_limit = 2 if strict_profile else 4
+        # Domain nouns recur throughout structured reviews. A remotely retrieved same-topic turn
+        # can make completed status, ordinary logistics or an unsupported owner look like a current
+        # commitment. Specialised profiles therefore use citations and immediate dialogue only;
+        # the fallback profile retains bounded retrieval for genuinely scattered hand-offs.
+        semantic_limit = 0 if strict_consensus else 4
         for _score, turn_number in ranked:
             if any(abs(turn_number - prior) <= 1 for prior in semantic_numbers):
                 continue
@@ -3308,35 +2001,69 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
         for turn_number in semantic_numbers:
             evidence_numbers.update(range(max(1, turn_number - 1), min(len(turns), turn_number + 1) + 1))
         evidence = [turns[index - 1] for index in sorted(evidence_numbers)]
+        allowed_evidence[number] = evidence_numbers
         # Audit v2 deliberately lets the two evidence-grounded checks judge every row. Generic
         # first-person/date protection otherwise preserves travel, attendance and prior-audit
         # history simply because those statements happen to contain "we will" or a weekday.
-        if not strict_profile and action_has_recall_protection(
+        if not strict_consensus and action_has_recall_protection(
             action, [turns[index - 1] for index in sorted(original_numbers)]
         ):
             protected.add(number)
         lines = "\n".join(f"  Turn {index}: {turns[index - 1][:SELECTOR_TURN_CHARS]}" for index in sorted(evidence_numbers))
         blocks.append((number, f"{number}. Owner: {action.get('owner', 'Not stated')}\n"
             f"Draft: {action.get('action', '')}\nStatus: {action.get('status', '')}\nEvidence:\n{lines}"))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        first_future = pool.submit(retrieval_decisions, blocks, guidance)
-        second_future = pool.submit(retrieval_decisions, list(reversed(blocks)), guidance)
-        first, second = first_future.result(), second_future.result()
-    if first is None or second is None:
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first_future = pool.submit(retrieval_decisions, blocks, guidance)
+            second_future = pool.submit(retrieval_decisions, list(reversed(blocks)), guidance)
+            first, second = first_future.result(), second_future.result()
+    except Exception:
+        if strict_consensus:
+            raise
         return eligible
     valid_codes = {"COMPLETED_ONLY", "UNACCEPTED_PROPOSAL", "DISCUSSION_ONLY", "MEETING_ADMIN", "MALFORMED", "NO_SUPPORTED_TASK"}
-    removed = set()
+    selected: list[dict[str, Any]] = []
     for number in range(1, len(eligible) + 1):
         left, right = first[number], second[number]
+        eligible[number - 1]["_selectorChecks"] = [
+            {key: decision.get(key) for key in ("decision", "rejectionCode", "evidenceTurns")}
+            for decision in (left, right)
+        ]
         if number in protected:
+            selected.append(eligible[number - 1])
+            continue
+        left_evidence = {
+            value for value in left.get("evidenceTurns", [])
+            if isinstance(value, int) and not isinstance(value, bool)
+            and value in allowed_evidence[number]
+        }
+        right_evidence = {
+            value for value in right.get("evidenceTurns", [])
+            if isinstance(value, int) and not isinstance(value, bool)
+            and value in allowed_evidence[number]
+        }
+        if strict_consensus:
+            # Publication is a positive decision, not the absence of a unanimous veto. Each
+            # independently ordered pass must affirm the action from evidence supplied for it.
+            if (
+                left.get("decision") == right.get("decision") == "KEEP"
+                and left.get("rejectionCode") == right.get("rejectionCode") == "NONE"
+                and left_evidence and right_evidence
+            ):
+                action = dict(eligible[number - 1])
+                action["selectorEvidenceIds"] = [
+                    f"turn_{turn_number}" for turn_number in sorted(left_evidence | right_evidence)
+                ]
+                selected.append(action)
             continue
         # The rejection codes overlap (DISCUSSION_ONLY, NO_SUPPORTED_TASK and UNACCEPTED_PROPOSAL
         # describe the same rows), so requiring the same code made removal a matter of luck.
         if (left.get("decision") == right.get("decision") == "REMOVE"
                 and left.get("rejectionCode") in valid_codes and right.get("rejectionCode") in valid_codes
-                and left.get("evidenceTurns") and right.get("evidenceTurns")):
-            removed.add(number)
-    return [action for number, action in enumerate(eligible, 1) if number not in removed]
+                and left_evidence and right_evidence):
+            continue
+        selected.append(eligible[number - 1])
+    return selected
 
 
 def select_actual_actions(actions: list[dict[str, Any]], turns: list[str], guidance: str) -> list[dict[str, Any]]:
@@ -3473,6 +2200,24 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     """The live actions stage: boundary chunking, high-recall extraction, type-routed selection.
 
     Shared by the CLI (main) and the offline live-path harness so both measure the same code."""
+    diagnostics_enabled = os.environ.get("STAGED_ACTION_DIAGNOSTICS", "0") == "1"
+    diagnostic_sources: dict[str, dict[str, Any]] = {}
+    diagnostic_stages: dict[str, list[str]] = {}
+    diagnostic_counts: dict[str, int] = {}
+
+    def record_stage(stage: str, rows: list[dict[str, Any]]) -> None:
+        if not diagnostics_enabled:
+            return
+        diagnostic_counts[stage] = len(rows)
+        for row in rows:
+            for trace_id in row.get("_traceIds", []):
+                diagnostic_stages.setdefault(trace_id, []).append(stage)
+                source = diagnostic_sources.setdefault(trace_id, {})
+                if clean(row.get("_deliverable")):
+                    source["deliverable"] = clean(row.get("_deliverable"))
+                    source["deliverableVerb"] = clean(row.get("_deliverableVerb"))
+                    source["deliverableRecipient"] = clean(row.get("_deliverableRecipient"))
+
     minimum = max(1, math.ceil(len(turns) / MAX_CHUNK_TURNS))
     maximum = max(minimum, math.ceil(len(turns) / 15))
     boundary_result = call_trooper(BOUNDARY_PROMPT.format(total=len(turns), minimum=minimum, maximum=maximum, numbered=numbered), 1400, BOUNDARY_SCHEMA)
@@ -3492,12 +2237,21 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(4 if sample_count == 1 else 6, len(jobs))) as pool:
         results = list(pool.map(analyse, jobs))
     actions = [action for group in results for action in group]
+    if diagnostics_enabled:
+        for index, action in enumerate(actions, 1):
+            trace_id = f"candidate_{index}"
+            action["_traceIds"] = [trace_id]
+            diagnostic_sources[trace_id] = {
+                key: action.get(key) for key in (
+                    "action", "owner", "deadline", "status", "evidenceIds", "taskEvidenceIds",
+                    "commitmentEvidenceIds", "ownerEvidenceIds", "deadlineEvidenceIds", "sample",
+                )
+            }
+    record_stage("extracted", actions)
     actions = drop_completed_actions(actions)
+    record_stage("not_completed", actions)
     actions = repair_short_actions(actions, turns)
-    if prompt_profile == "audit_planning_v2":
-        actions = repair_audit_actions(actions, turns)
-    if prompt_profile == "importer_obligations_v2":
-        actions = repair_importer_actions(actions, turns)
+    record_stage("standalone", actions)
     if sample_count > 1:
         support_threshold = (0.64 if prompt_profile in {"audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2", "webinar_rehearsal_v2", "process_pipeline_v2", "technical_file_v2", "general_v2"}
                              else SUPPORT_MERGE_THRESHOLD)
@@ -3508,21 +2262,28 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
         for action in actions:
             action.pop("sample", None)
         actions = dedupe_identical_actions(actions)
-    if prompt_profile == "importer_obligations_v2":
-        # Sampling can choose an un-repaired representative from a semantic group. Reapply the
-        # transcript-grounded wording, then collapse work packages that now share a canonical form.
-        actions = repair_importer_actions(actions, turns)
-        actions = dedupe_identical_actions(sorted(
-            actions, key=lambda row: int(row.get("support", 1) or 1), reverse=True
-        ))
+    record_stage("sample_consolidated", actions)
     candidate_count = len(actions)
-    if os.environ.get("STAGED_ACTION_DELIVERABLE_MERGE", "0") == "1" and len(actions) > 1:
-        actions = merge_by_deliverable(actions, structure_action_deliverables(actions), load_action_retrieval_backend())
+    open_world_merge_profiles = {
+        "audit_planning_v2", "importer_obligations_v2", "hybrid_technical_v2",
+        "webinar_rehearsal_v2", "process_pipeline_v2", "technical_file_v2",
+        "general_v2", "project_checkin_v2", "software_weekly_review",
+    }
+    if len(actions) > 1 and (
+        prompt_profile in open_world_merge_profiles
+        or os.environ.get("STAGED_ACTION_DELIVERABLE_MERGE", "0") == "1"
+    ):
+        actions = merge_by_deliverable(
+            actions, structure_action_deliverables(actions), load_action_retrieval_backend(),
+            threshold=0.84, far_threshold=0.92, preserve_structure=True,
+        )
+    record_stage("deliverable_consolidated", actions)
     # The importer-only selector kept 8 rows of 49 and discarded 3 of the 6 candidates that
     # matched the reviewed minutes (the resent QMS manual, the countries list, the declarations
     # of conformity) while keeping "Speak to you next week". It stays available behind
     # STAGED_IMPORTER_LEGACY_SELECTOR=1; the default is the same evidence-grounded path as every
     # other type, with importer guidance.
+    selector_input = list(actions)
     if is_importer_obligations_type(meeting_type) and os.environ.get("STAGED_IMPORTER_LEGACY_SELECTOR") == "1":
         actions = select_importer_actual_actions(actions, turns)
         prompt_profile = "importer_obligations_actual_actions"
@@ -3536,41 +2297,105 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
             if retrieval_selector:
                 guidance, prompt_profile = retrieval_selector
                 actions = select_retrieval_grounded_actions(actions, turns, guidance, profile=prompt_profile)
+    if diagnostics_enabled:
+        for action in selector_input:
+            checks = action.get("_selectorChecks")
+            if checks is None:
+                continue
+            for trace_id in action.get("_traceIds", []):
+                diagnostic_sources.setdefault(trace_id, {})["selectorChecks"] = checks
+    record_stage("evidence_selected", actions)
     if action_prompt == IMPORTER_ACTION_PROMPT:
-        # Selection can remove a sampled version of an explicit handoff, and can leave a less
-        # complete representative of a surviving work package. Finish from transcript evidence.
-        actions = repair_importer_actions(actions, turns)
-        actions = dedupe_identical_actions(sorted(
-            actions, key=lambda row: int(row.get("support", 1) or 1), reverse=True
-        ))
-        actions = recover_importer_followup_call(actions, turns, sample_count)
-        actions = consolidate_importer_actions(actions, turns, sample_count)
-        actions = recover_importer_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     normalised_meeting_type = re.sub(r"[^a-z0-9]+", " ", clean(meeting_type).lower()).strip()
     if normalised_meeting_type == "software weekly review" and software_action_consolidation_v2_enabled():
-        actions = consolidate_software_review_actions(actions, turns)
-        actions = recover_software_review_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     if action_prompt == HYBRID_ACTION_PROMPT:
-        actions = consolidate_hybrid_actions(actions, turns)
-        actions = recover_hybrid_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     if action_prompt == WEBINAR_ACTION_V2_PROMPT:
-        actions = consolidate_webinar_actions(actions, turns, sample_count)
-        actions = recover_webinar_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     if action_prompt == PROCESS_ACTION_V2_PROMPT:
-        actions = consolidate_process_actions(actions, turns, sample_count)
-        actions = recover_process_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     if action_prompt == TECHNICAL_FILE_ACTION_V2_PROMPT:
-        actions = consolidate_technical_file_actions(actions, turns, meeting_type, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     if action_prompt == GENERAL_ACTION_V2_PROMPT:
-        actions = consolidate_general_actions(actions, turns, sample_count)
-        actions = recover_general_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
     if action_prompt == AUDIT_ACTION_PROMPT:
-        actions = consolidate_audit_v2_actions(actions, turns, sample_count)
-        actions = recover_audit_v2_actions(actions, turns, sample_count)
+        actions = consolidate_open_world_actions(actions, turns)
+    if prompt_profile == "decision_retrieval_v2":
+        actions = [action for action in actions if clean(action.get("status")).upper() != "PROPOSED"]
+    record_stage("type_consolidated", actions)
+    actions = [action for action in actions if evidence_turn_numbers(action, len(turns))]
+    record_stage("evidence_valid", actions)
+    actions = ground_action_attributions(actions, turns)
+    record_stage("attribution_grounded", actions)
+    # Wrongly inferred owners can prevent the first deliverable merge. Once attribution has been
+    # grounded (and unsupported owners blanked), reuse the already extracted deliverable labels;
+    # do not make another model call and do not invent a joint owner.
+    grounded_structure = {
+        number: {
+            "deliverable": clean(action.get("_deliverable")),
+            "verb": clean(action.get("_deliverableVerb")),
+            "recipient": clean(action.get("_deliverableRecipient")),
+        }
+        for number, action in enumerate(actions, 1) if clean(action.get("_deliverable"))
+    }
+    if len(actions) > 1 and grounded_structure:
+        actions = merge_by_deliverable(
+            actions, grounded_structure, load_action_retrieval_backend(),
+            # Attribution is grounded now, but keep the same conservative identity threshold as
+            # the pre-selector pass. A broader threshold reduced duplicates at the cost of novel
+            # technical-file work packages in the complete corpus benchmark.
+            threshold=0.84, far_threshold=0.92,
+        )
+    record_stage("work_package_consolidated", actions)
+    for action in actions:
+        action.pop("_deliverable", None)
+        action.pop("_deliverableVerb", None)
+        action.pop("_deliverableRecipient", None)
     actions = assign_action_tiers(actions, sample_count)
-    return {"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
+    record_stage("published", actions)
+    diagnostics = []
+    if diagnostics_enabled:
+        published_by_trace = {
+            trace_id: clean(action.get("action")) for action in actions
+            for trace_id in action.get("_traceIds", [])
+        }
+        rejection_by_last_stage = {
+            "extracted": "completed_filter",
+            "not_completed": "short_action_repair",
+            "standalone": "sample_consolidation",
+            "sample_consolidated": "evidence_selector",
+            "deliverable_consolidated": "evidence_selector",
+            "evidence_selected": "type_consolidation",
+            "type_consolidated": "invalid_evidence",
+            "evidence_valid": "attribution_or_fragment_grounding",
+            "attribution_grounded": "work_package_consolidation",
+            "work_package_consolidated": "tier_gate",
+        }
+        for trace_id, source in diagnostic_sources.items():
+            stages = diagnostic_stages.get(trace_id, [])
+            published = "published" in stages
+            diagnostics.append({
+                "candidateId": trace_id,
+                **source,
+                "stages": stages,
+                "published": published,
+                "publishedAction": published_by_trace.get(trace_id, ""),
+                "disposition": "published" if published else rejection_by_last_stage.get(
+                    stages[-1] if stages else "", "unknown"
+                ),
+            })
+    for action in actions:
+        action.pop("_traceIds", None)
+        action.pop("_selectorChecks", None)
+    result = {"stage": "actions", "actions": actions, "chunkCount": len(chunks), "turnCount": len(turns),
             "actionPromptProfile": prompt_profile, "actionSampleCount": sample_count,
             "candidateCountBeforeSelection": candidate_count}
+    if diagnostics_enabled:
+        result["candidateLifecycle"] = diagnostics
+        result["actionStageCounts"] = diagnostic_counts
+    return result
 
 
 def main() -> int:
