@@ -109,7 +109,7 @@
   function renderActions() {
     var body = document.getElementById('actionsBody');
     body.innerHTML = state.actions.map(function (item, index) {
-      return '<tr><td><textarea data-action aria-label="Action">' + escapeHtml(item.action || '') + '</textarea></td><td><input data-owner value="' + escapeHtml(item.owner || '') + '" aria-label="Owner"></td><td><input data-deadline value="' + escapeHtml(item.deadline || '') + '" aria-label="Deadline"></td><td><button class="delete" data-delete-action="' + index + '" type="button">Remove</button></td></tr>';
+      return '<tr><td data-label="Action"><textarea data-action aria-label="Action">' + escapeHtml(item.action || '') + '</textarea></td><td data-label="Owner"><input data-owner value="' + escapeHtml(item.owner || '') + '" aria-label="Owner"></td><td data-label="Deadline"><input data-deadline value="' + escapeHtml(item.deadline || '') + '" aria-label="Deadline"></td><td><button class="delete" data-delete-action="' + index + '" type="button">Remove</button></td></tr>';
     }).join('') || '<tr><td colspan="4" class="muted">No actions have been added.</td></tr>';
   }
 
