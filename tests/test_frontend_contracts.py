@@ -94,6 +94,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("remove:'Suggested removal'", client)
         self.assertIn('class="proposal-kind"', client)
         self.assertIn('.proposal-kind', page)
+        self.assertIn('class="proposal-header"', page)
+        self.assertIn('class="proposal-actions"', page)
+        self.assertNotIn('<div class="screen-actions"><button id="acceptSelectedProposal"', page)
+        self.assertIn('class="proposal-comparison"', client)
+        self.assertIn('class="proposal-content"', client)
+        self.assertIn('.proposal-change{grid-template-columns:auto auto minmax(0,1fr)', page)
         self.assertIn("normaliseKnownTerms: normaliseMeetingAgentKnownTerms", api)
         self.assertIn("isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag", api)
         public_draft = api.split("function publicMeetingAgentDraft", 1)[1].split("function mergeMeetingAgentFlags", 1)[0]

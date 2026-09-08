@@ -56,6 +56,24 @@
 .meeting-agent-page .topic-field input{border:2px solid #87aeba;background:#fff;font-size:1.05rem;font-weight:700;color:#123544}
 .meeting-agent-page .topic-field input:focus{border-color:var(--agent-brand);box-shadow:0 0 0 3px rgba(8,127,130,.12)}
 .meeting-agent-page .proposal-kind{display:inline-flex;margin-bottom:.35rem;padding:.2rem .52rem;border-radius:999px;background:#dceff1;color:#174c5b;font-size:.76rem;font-weight:700}
+.meeting-agent-page .proposal{padding:.8rem 1rem}
+.meeting-agent-page .proposal-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-bottom:.7rem}
+.meeting-agent-page .proposal-heading{min-width:0}
+.meeting-agent-page .proposal-heading h2{margin:0 0 .15rem;font-size:1.12rem;color:var(--agent-ink)}
+.meeting-agent-page .proposal-heading p{margin:0;font-size:.86rem}
+.meeting-agent-page .proposal-actions{display:flex;align-items:center;gap:.45rem;flex:0 0 auto}
+.meeting-agent-page .proposal-actions button{padding:.48rem .68rem!important;font-size:.82rem;white-space:nowrap}
+.meeting-agent-page #proposalChanges{border:1px solid #cfe0e4;border-radius:9px;overflow:hidden;background:#fff}
+.meeting-agent-page .proposal-change{grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:.55rem;padding:.52rem .65rem;border:0;border-bottom:1px solid #d9e5e8;background:#fff}
+.meeting-agent-page .proposal-change:nth-child(even){background:#f5fafb}
+.meeting-agent-page .proposal-change:last-child{border-bottom:0}
+.meeting-agent-page .proposal-change:focus-within{background:#edf8f8}
+.meeting-agent-page .proposal-change>input{margin:0}
+.meeting-agent-page .proposal-kind{margin:0;white-space:nowrap}
+.meeting-agent-page .proposal-content{min-width:0}
+.meeting-agent-page .proposal-change pre{margin:0;padding:.38rem .5rem;background:#f5f7f8;line-height:1.35}
+.meeting-agent-page .proposal-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+.meeting-agent-page .proposal-value-label{margin:0 0 .2rem;color:#60737d;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.035em}
 .meeting-agent-page .agent-edit{overflow:hidden;border:2px solid #9dbbc4;background:#fff;transition:border-color .18s ease,box-shadow .18s ease}
 .meeting-agent-page .agent-edit:hover{border-color:#5f9eaa;box-shadow:0 4px 14px rgba(18,53,68,.13)}
 .meeting-agent-page .agent-edit[open]{border-color:var(--agent-brand);box-shadow:0 5px 16px rgba(8,127,130,.15)}
@@ -96,6 +114,7 @@
 .meeting-agent-page #workflowStatus.error::before{content:"!";display:grid;place-items:center;width:1.35rem;height:1.35rem;border:0;background:var(--agent-danger);color:#fff;font-size:.88rem;line-height:1;box-shadow:none;animation:none}
 @keyframes agent-status-spin{to{transform:rotate(360deg)}}
 @media(max-width:650px){.meeting-agent-page .attendee-chip{grid-template-columns:minmax(0,1fr) auto}.meeting-agent-page .attendee-chip input{grid-column:1/-1}.meeting-agent-page .attendee-remove-icon{width:40px!important}.meeting-agent-page .attendee-move{width:100%}}
+@media(max-width:760px){.meeting-agent-page .proposal-header{align-items:flex-start;flex-direction:column}.meeting-agent-page .proposal-actions{width:100%;flex-wrap:wrap}.meeting-agent-page .proposal-change{grid-template-columns:auto minmax(0,1fr)}.meeting-agent-page .proposal-content{grid-column:1/-1}.meeting-agent-page .proposal-comparison{grid-template-columns:1fr}}
 </style>
 <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script defer src="/static/meeting-minutes-agent.js"></script>
@@ -123,7 +142,7 @@
 
   <section class="panel screen" data-screen="2"><div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div><p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th><th></th></tr></thead><tbody id="actionsBody"></tbody></table></div></div><details class="panel agent-edit"><summary class="agent-edit-summary"><span class="agent-edit-title"><span class="status-dot"></span>Ask the agent for bulk edits</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open editor</span><span class="agent-edit-toggle-open">Close editor</span><i data-lucide="chevron-down" aria-hidden="true"></i></span></summary><div class="agent-edit-body"><p class="muted">For example: “Merge true duplicates and make the wording concise.”</p><textarea id="actionsInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details></div><div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="openFinalReview" class="button button-with-icon" type="button"><span>Review complete minutes</span><i data-lucide="arrow-right" aria-hidden="true"></i></button></div></section>
 
-  <section id="proposalPanel" class="panel proposal" hidden><div class="toolbar"><h2>Proposed AI changes</h2><button id="rejectProposal" class="secondary" type="button">Reject all</button></div><p class="muted">Select only the changes you want. Nothing has been applied yet.</p><div id="proposalChanges"></div><div class="screen-actions"><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button></div></section>
+  <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Proposed AI changes</h2><p class="muted">Select only the changes you want. Nothing has been applied yet.</p></div><div class="proposal-actions"><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button><button id="rejectProposal" class="secondary" type="button">Reject all</button></div></div><div id="proposalChanges"></div></section>
 
   <section class="panel screen" data-screen="3"><div id="finalDocument" class="paper final-document"></div><div class="screen-actions final-actions"><button class="secondary" data-back="2" type="button">Back to actions</button><label><input id="includeEvidence" type="checkbox" style="width:auto"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button">Print</button><button id="saveMinutes" class="button button-with-icon" type="button"><i data-lucide="save" aria-hidden="true"></i><span>Save minutes</span></button><button id="downloadPdf" class="button" type="button">Download PDF</button><button id="downloadWord" class="button" type="button">Download Word</button><button id="newMinutes" class="secondary" type="button">Start new minutes</button></div></section>
 </main>

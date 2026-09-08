@@ -286,7 +286,13 @@
     if (panel.hidden) return;
     var changeLabels = { add:'New item', modify:'Suggested edit', remove:'Suggested removal' };
     document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
-      return '<label class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked style="width:auto"><div><span class="proposal-kind">' + escapeHtml(changeLabels[change.type] || 'Suggested change') + '</span>' + (change.before ? '<div class="muted">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre>' : '') + (change.after ? '<div class="muted">Proposed</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre>' : '') + '</div></label>';
+      var content;
+      if (change.before && change.after) {
+        content = '<div class="proposal-comparison"><div><div class="proposal-value-label">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre></div><div><div class="proposal-value-label">Proposed</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre></div></div>';
+      } else {
+        content = '<pre>' + escapeHtml(proposalRecord(change.after || change.before)) + '</pre>';
+      }
+      return '<label class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked style="width:auto"><span class="proposal-kind">' + escapeHtml(changeLabels[change.type] || 'Suggested change') + '</span><div class="proposal-content">' + content + '</div></label>';
     }).join('');
     panel.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
