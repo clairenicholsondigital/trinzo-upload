@@ -35,7 +35,9 @@ git rev-parse --git-dir >/dev/null 2>&1 || fail "run this from the live tree (no
 [ -f server.js ] || fail "run this from the live tree (no server.js here)"
 
 before="$(git rev-parse HEAD)"
+deployed="$(cat "$MARKER" 2>/dev/null || true)"
 say "current revision $(git rev-parse --short HEAD)"
+say "marker says ${deployed:0:8}${deployed:+ is live}"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   fail "the live tree has local modifications; resolve them before deploying"
@@ -43,18 +45,35 @@ fi
 
 git fetch origin
 after="$(git rev-parse origin/main)"
-if [ "$before" = "$after" ]; then
-  say "already at origin/main ($(git rev-parse --short "$after")) - nothing to deploy"
+
+# What is live is what the MARKER says, not what the remote says. Comparing the
+# tree to origin/main alone was wrong for the commit authored IN the live tree:
+# push, and the two match immediately, so this said "nothing to deploy" and
+# exited without restarting while the running process was still on old code.
+# That is not hypothetical - it silently skipped 23 commits between 2026-09-07
+# and 2026-09-08, every one of them committed here rather than pulled.
+if [ "$before" = "$after" ] && [ "$deployed" = "$after" ]; then
+  say "already at origin/main ($(git rev-parse --short "$after")) and marker agrees - nothing to deploy"
   exit 0
 fi
 
-say "pulling $(git rev-parse --short "$before")..$(git rev-parse --short "$after")"
-git merge --ff-only origin/main
+pulled=0
+if [ "$before" != "$after" ]; then
+  say "pulling $(git rev-parse --short "$before")..$(git rev-parse --short "$after")"
+  git merge --ff-only origin/main
+  pulled=1
+else
+  say "tree is already at origin/main but the marker is not - restarting onto $(git rev-parse --short "$after") without a pull"
+fi
 
 say "running the test suite against the new revision (the app keeps serving the old one)"
 if ! npm test; then
-  say "tests failed - rolling the tree back to $(git rev-parse --short "$before"), nothing was restarted"
-  git reset --hard "$before"
+  if [ "$pulled" = "1" ]; then
+    say "tests failed - rolling the tree back to $(git rev-parse --short "$before"), nothing was restarted"
+    git reset --hard "$before"
+  else
+    say "tests failed - nothing was pulled, and nothing was restarted"
+  fi
   fail "the new revision does not pass its own tests"
 fi
 
@@ -84,7 +103,7 @@ case "$status" in
     ;;
   *)
     say "smoke check failed ($SMOKE_URL -> $status) - rolling back and restarting the previous revision"
-    git reset --hard "$before"
+    if [ "$pulled" = "1" ]; then git reset --hard "$before"; fi
     pm2 restart "$APP_NAME" --update-env >/dev/null
     fail "the new revision did not answer; the previous one is serving again"
     ;;
