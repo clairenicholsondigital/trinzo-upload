@@ -163,7 +163,7 @@ const {
   buildProposal,
   applyProposal
 } = require('../utils/meetingMinutesAgentV2');
-const { generateMeetingMinutesAgentDocx, docxFilename } = require('../utils/meetingMinutesAgentDocx');
+const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
 const router = express.Router();
@@ -8065,6 +8065,35 @@ function meetingAgentDraftPayload(draft = {}) {
   };
 }
 
+function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
+  const details = sanitiseMeetingAgentDetails(draft.details);
+  const discussion = (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
+    topic: topic?.topic || 'Discussion',
+    points: (Array.isArray(topic?.points) ? topic.points : []).map((item) => item?.text || item).filter(Boolean),
+    decisions: (Array.isArray(topic?.decisions) ? topic.decisions : []).map((item) => item?.text || item).filter(Boolean),
+    openQuestions: (Array.isArray(topic?.openQuestions) ? topic.openQuestions : []).map((item) => item?.text || item).filter(Boolean)
+  }));
+  const actions = (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
+    owner: (Array.isArray(action?.owners) ? action.owners : []).join(', ') || 'Not stated',
+    action: action?.action || '',
+    deadline: meetingAgentTimingLabel(action?.timing)
+  }));
+  const minutes = { details, discussion, actions };
+  if (!includeEvidence) return minutes;
+  const evidenceIds = new Set();
+  for (const topic of Array.isArray(draft.discussion) ? draft.discussion : []) {
+    for (const record of [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])]) {
+      for (const id of record?.evidenceIds || []) evidenceIds.add(id);
+    }
+  }
+  for (const action of Array.isArray(draft.actions) ? draft.actions : []) {
+    for (const id of action?.evidenceIds || []) evidenceIds.add(id);
+  }
+  minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
+  minutes.reviewFlags = Array.isArray(draft.reviewFlags) ? draft.reviewFlags : [];
+  return minutes;
+}
+
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, ...safe } = draft;
   safe.details = sanitiseMeetingAgentDetails(safe.details);
@@ -8419,6 +8448,25 @@ router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, a
     return res.send(buffer);
   } catch (error) {
     safeLogError('[meeting-minutes-agent/export] failed', error);
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
+router.post('/meeting-minutes-agent/drafts/:draftId/export.pdf', requireAuth, async (req, res) => {
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    const minutes = meetingAgentDraftForPdf(draft, req.body?.includeEvidence === true);
+    const pdf = await generateStagedMinutesPdf(minutes);
+    const filename = stagedMinutesPdfFilename(minutes).replace(/["\\]/g, '');
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+      'Content-Length': String(pdf.length)
+    });
+    return res.send(pdf);
+  } catch (error) {
+    safeLogError('[meeting-minutes-agent/pdf] failed', error);
     return sendMeetingAgentFailure(res, error);
   }
 });

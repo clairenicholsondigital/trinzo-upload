@@ -31,6 +31,19 @@ function safeList(value) {
   return (Array.isArray(value) ? value : []).map((item) => clean(item)).filter(Boolean).slice(0, 100);
 }
 
+function recordTextList(value) {
+  return (Array.isArray(value) ? value : []).map((item) => clean(
+    item && typeof item === 'object' ? (item.text || item.point || item.value) : item
+  )).filter(Boolean).slice(0, 100);
+}
+
+function topicRecords(value) {
+  return (Array.isArray(value) ? value : []).map((item) => ({
+    topic: clean(item?.topic, 'Discussion').slice(0, 1000),
+    text: clean(item?.text || item?.point || item?.value).slice(0, 5000)
+  })).filter((item) => item.text).slice(0, 200);
+}
+
 function attendeeLists(details = {}) {
   let internal = safeList(details.internalAttendees);
   const client = safeList(details.clientAttendees);
@@ -53,6 +66,19 @@ function formatUkDate(value) {
 function normaliseMinutes(input = {}) {
   const details = input.details && typeof input.details === 'object' ? input.details : {};
   const attendees = attendeeLists(details);
+  const discussionInput = Array.isArray(input.discussion) ? input.discussion : [];
+  const discussion = discussionInput.map((item) => ({
+    topic: clean(item?.topic, 'Discussion').slice(0, 1000),
+    points: recordTextList(item?.points || item?.bullets)
+  })).filter((item) => item.points.length).slice(0, 100);
+  const decisions = topicRecords([
+    ...(Array.isArray(input.decisions) ? input.decisions : []),
+    ...discussionInput.flatMap((item) => recordTextList(item?.decisions).map((text) => ({ topic: item?.topic, text })))
+  ]);
+  const openQuestions = topicRecords([
+    ...(Array.isArray(input.openQuestions) ? input.openQuestions : []),
+    ...discussionInput.flatMap((item) => recordTextList(item?.openQuestions).map((text) => ({ topic: item?.topic, text })))
+  ]);
   return {
     details: {
       meetingTitle: clean(details.meetingTitle, 'Meeting minutes').slice(0, 500),
@@ -63,15 +89,21 @@ function normaliseMinutes(input = {}) {
       internalAttendees: attendees.internal,
       clientAttendees: attendees.client
     },
-    discussion: (Array.isArray(input.discussion) ? input.discussion : []).map((item) => ({
-      topic: clean(item?.topic, 'Discussion').slice(0, 1000),
-      points: safeList(item?.points || item?.bullets)
-    })).filter((item) => item.points.length).slice(0, 100),
+    discussion,
+    decisions,
+    openQuestions,
     actions: (Array.isArray(input.actions) ? input.actions : []).map((item) => ({
       owner: clean(item?.owner, 'Not stated').slice(0, 500),
       action: clean(item?.action).slice(0, 5000),
       deadline: clean(item?.deadline, 'Not stated').slice(0, 500)
-    })).filter((item) => item.action).slice(0, 200)
+    })).filter((item) => item.action).slice(0, 200),
+    evidenceAppendix: (Array.isArray(input.evidenceAppendix) ? input.evidenceAppendix : []).map((item) => ({
+      id: clean(item?.id).slice(0, 50), speaker: clean(item?.speaker, 'Speaker').slice(0, 180),
+      timestamp: clean(item?.timestamp).slice(0, 30), text: clean(item?.text).slice(0, 5000)
+    })).filter((item) => item.text).slice(0, 300),
+    reviewFlags: (Array.isArray(input.reviewFlags) ? input.reviewFlags : []).map((item) => ({
+      status: clean(item?.status, 'open').slice(0, 30), message: clean(item?.message).slice(0, 1000)
+    })).filter((item) => item.message).slice(0, 250)
   };
 }
 
@@ -82,7 +114,7 @@ function renderList(items, fallback = 'Not stated') {
 
 function renderStagedMinutesPdfHtml(input = {}) {
   const minutes = normaliseMinutes(input);
-  const { details, discussion, actions } = minutes;
+  const { details, discussion, decisions, openQuestions, actions, evidenceAppendix, reviewFlags } = minutes;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(details.meetingTitle)}</title>
 <style>
@@ -108,6 +140,9 @@ function renderStagedMinutesPdfHtml(input = {}) {
   .discussion th:first-child { width:29%; }
   .actions th:first-child { width:20%; }
   .actions th:last-child { width:20%; }
+  .evidence-item { break-inside:avoid; margin:0 0 10px; padding:8px 10px; border-left:3px solid #79b1c2; background:#f5f8fa; }
+  .evidence-item strong { display:block; margin-bottom:2px; color:#405866; font-size:8.5pt; }
+  .review-note { margin:0 0 5px; }
   .footer { margin-top:20px; padding-top:8px; border-top:1px solid #cfdbe4; color:#687785; font-size:8pt; }
 </style></head><body>
 <header><div><p>Meeting minutes</p><h1>${escapeHtml(details.meetingTitle)}</h1></div></header>
@@ -122,10 +157,13 @@ function renderStagedMinutesPdfHtml(input = {}) {
 <table class="discussion"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>
 ${discussion.length ? discussion.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${renderList(item.points)}</td></tr>`).join('') : '<tr><td>Discussion</td><td>Not stated</td></tr>'}
 </tbody></table>
+${decisions.length ? `<h2>Decisions</h2><table class="discussion"><thead><tr><th>Topic</th><th>Decision</th></tr></thead><tbody>${decisions.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${escapeHtml(item.text)}</td></tr>`).join('')}</tbody></table>` : ''}
+${openQuestions.length ? `<h2>Open questions</h2><table class="discussion"><thead><tr><th>Topic</th><th>Question</th></tr></thead><tbody>${openQuestions.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${escapeHtml(item.text)}</td></tr>`).join('')}</tbody></table>` : ''}
 <h2>Actions</h2>
 <table class="actions"><thead><tr><th>Owner</th><th>Action</th><th>Due</th></tr></thead><tbody>
 ${actions.length ? actions.map((item) => `<tr><td>${escapeHtml(item.owner)}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.deadline)}</td></tr>`).join('') : '<tr><td>Not stated</td><td>No actions recorded.</td><td>Not stated</td></tr>'}
 </tbody></table>
+${evidenceAppendix.length || reviewFlags.length ? `<h2>Evidence appendix</h2>${evidenceAppendix.map((item) => `<div class="evidence-item"><strong>${escapeHtml([item.id, item.speaker, item.timestamp].filter(Boolean).join(' · '))}</strong>${escapeHtml(item.text)}</div>`).join('')}${reviewFlags.length ? `<h2>Review notes</h2>${reviewFlags.map((item) => `<p class="review-note"><strong>${escapeHtml(item.status === 'open' ? 'Open' : item.status)}:</strong> ${escapeHtml(item.message)}</p>`).join('')}` : ''}` : ''}
 <p class="footer">Generated by Trinzo meeting minutes workflow. Review and approve before sharing externally.</p>
 </body></html>`;
 }

@@ -439,6 +439,20 @@
     finally { setBusy(false); }
   }
 
+  async function downloadPdf() {
+    try { await saveDraftNow('complete'); } catch (error) { return setStatus(error.message, true); }
+    setBusy(true, 'Generating your PDF…');
+    try {
+      var response = await fetch('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(state.draft.draftId) + '/export.pdf', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({includeEvidence:document.getElementById('includeEvidence').checked})});
+      if (!response.ok) { var problem = await response.json().catch(function () { return {}; }); throw new Error(problem.error || 'The PDF could not be generated.'); }
+      var blob = await response.blob(); var disposition = response.headers.get('content-disposition') || ''; var match = disposition.match(/filename="([^"]+)"/i);
+      var url = URL.createObjectURL(blob); var link = document.createElement('a'); link.href = url; link.download = match ? match[1] : 'Meeting minutes.pdf'; document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      setStatus('PDF downloaded.', false);
+    } catch (error) { setStatus(error.message || 'The PDF could not be generated.', true); }
+    finally { setBusy(false); }
+  }
+
   async function loadDraft(draftId) {
     setBusy(true, 'Loading your saved draft…');
     try { var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId)); adoptDraft(payload.draft); setStatus('Saved draft restored.', false); }
@@ -496,6 +510,7 @@
   document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(3); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false); });
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false);}).catch(function(error){setStatus(error.message,true);}); });
   document.getElementById('downloadWord').addEventListener('click', downloadWord);
+  document.getElementById('downloadPdf').addEventListener('click', downloadPdf);
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
   document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back);});});
