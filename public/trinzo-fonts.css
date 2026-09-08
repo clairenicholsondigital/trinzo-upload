@@ -1,0 +1,28 @@
+/* Self-hosted from Trinzo's supplied Roboto family. */
+@font-face {
+  font-family:"Trinzo Roboto";
+  font-style:normal;
+  font-weight:100 900;
+  font-stretch:75% 100%;
+  font-display:swap;
+  src:url("/static/fonts/roboto-variable.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family:"Trinzo Roboto";
+  font-style:italic;
+  font-weight:100 900;
+  font-stretch:75% 100%;
+  font-display:swap;
+  src:url("/static/fonts/roboto-italic-variable.woff2") format("woff2-variations");
+}
+
+html,
+body,
+button,
+input,
+textarea,
+select,
+option {
+  font-family:"Trinzo Roboto", Roboto, Arial, Helvetica, sans-serif;
+}

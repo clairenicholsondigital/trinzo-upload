@@ -6,6 +6,18 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class FrontendContractTest(unittest.TestCase):
+    def test_every_page_uses_the_self_hosted_roboto_family(self):
+        font_css = (REPO_DIR / "public" / "trinzo-fonts.css").read_text(encoding="utf-8")
+        self.assertIn('font-family:"Trinzo Roboto"', font_css)
+        self.assertIn('/static/fonts/roboto-variable.woff2', font_css)
+        self.assertIn('/static/fonts/roboto-italic-variable.woff2', font_css)
+        self.assertTrue((REPO_DIR / "public" / "fonts" / "roboto-variable.woff2").is_file())
+        self.assertTrue((REPO_DIR / "public" / "fonts" / "roboto-italic-variable.woff2").is_file())
+        for page_path in (REPO_DIR / "views").glob("*.html"):
+            with self.subTest(page=page_path.name):
+                page = page_path.read_text(encoding="utf-8")
+                self.assertIn('/static/trinzo-fonts.css', page)
+
     def test_meeting_minutes_agent_uses_evidence_backed_resumable_workflow(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
