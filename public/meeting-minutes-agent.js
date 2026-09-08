@@ -164,15 +164,6 @@
     document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
     var denoise = draft.denoise || {};
     document.getElementById('denoiseSummary').textContent = denoise.totalUnitCount ? denoise.keptUnitCount + ' of ' + denoise.totalUnitCount + ' passages retained' : '';
-    renderExcluded();
-  }
-
-  function renderExcluded() {
-    var removed = sourceUnits().filter(function (unit) { return unit.classification === 'remove'; });
-    document.getElementById('excludedCount').textContent = removed.length ? '(' + removed.length + ')' : '(none)';
-    document.getElementById('excludedList').innerHTML = removed.map(function (unit) {
-      return '<div class="excluded-row"><div><div class="source-meta">' + escapeHtml(unit.id + ' · ' + unit.speaker + (unit.timestamp ? ' · ' + unit.timestamp : '') + ' · ' + Math.round((unit.confidence || 0) * 100) + '% removal confidence') + '</div><div>' + escapeHtml(unit.text) + '</div></div><button class="secondary" data-restore-unit="' + escapeHtml(unit.id) + '" data-restored="' + (unit.restored ? 'true' : 'false') + '" type="button">' + (unit.restored ? 'Exclude again' : 'Restore passage') + '</button></div>';
-    }).join('') || '<p class="muted">No transcript passages were excluded.</p>';
   }
 
   async function prepareFile(file) {
@@ -184,7 +175,7 @@
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
-      setStatus('Transcript prepared. Check the meeting details and excluded passages before continuing.', false);
+      setStatus('Transcript prepared. Check the meeting details before continuing.', false);
     } catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }
@@ -416,17 +407,6 @@
     finally { setBusy(false); }
   }
 
-  async function restoreUnit(button) {
-    var restored = button.dataset.restored !== 'true';
-    try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, restored ? 'Restoring the passage…' : 'Excluding the passage again…');
-    try {
-      var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(state.draft.draftId) + '/source/' + encodeURIComponent(button.dataset.restoreUnit), {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,restored:restored})});
-      adoptDraft(payload.draft); setStatus('Prepared transcript updated. Existing generated content was preserved and marked for regeneration.', false);
-    } catch (error) { setStatus(error.message, true); }
-    finally { setBusy(false); }
-  }
-
   async function downloadWord() {
     try { await saveDraftNow('complete'); } catch (error) { return setStatus(error.message, true); }
     setBusy(true, 'Creating the Word document…');
@@ -503,7 +483,6 @@
   document.getElementById('discussionList').addEventListener('click', function (event) { var add=event.target.closest('[data-add-record]'); var remove=event.target.closest('[data-remove-record]'); var topicButton=event.target.closest('[data-delete-topic]'); readDiscussion(); if(add){state.draft.discussion[Number(add.dataset.topicIndex)][add.dataset.addRecord].push({id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[]});} if(remove){state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1);} if(topicButton){state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1);} if(add||remove||topicButton){renderDiscussion();scheduleSave();} });
   document.getElementById('actionsBody').addEventListener('click', function (event) { var button=event.target.closest('[data-delete-action]'); if(!button)return; readActions(); state.draft.actions.splice(Number(button.dataset.deleteAction),1); renderActions(); scheduleSave(); });
   document.getElementById('addAction').addEventListener('click', function () { readActions(); state.draft.actions.push({id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[]}); renderActions(); scheduleSave(); });
-  document.getElementById('excludedList').addEventListener('click', function (event) { var button=event.target.closest('[data-restore-unit]'); if(button)restoreUnit(button); });
   document.getElementById('flagList').addEventListener('click', function (event) { var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); scheduleSave(); });
   document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
   document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });
