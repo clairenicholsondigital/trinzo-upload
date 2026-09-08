@@ -222,7 +222,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     </div>
     <nav class="queue-tabs" aria-label="Job queues">
       <a class="queue-tab" href="/jobs" aria-current="page">All items</a>
-      <a class="queue-tab" href="/jobs?type=staged-meeting-minutes">Staged meeting minutes</a>
       <a class="queue-tab" href="/jobs?type=meeting-minutes-agent">Meeting Minutes Agent</a>
     </nav>
     <div id="bulkBar" class="bulk-bar" hidden>
@@ -1489,18 +1488,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return payload;
   }
 
+  // The Library lists Meeting Minutes Agent drafts only. Detail rendering below is
+  // deliberately left intact: /meeting-minutes-final/jobs/:id and /jobs/:id still
+  // resolve here, so a direct link to a queued job of another tool keeps working.
   async function loadList() {
     if (resultOnly) return;
     updateQueueTabs();
-    const type = currentQueueType();
-    const staged = type === 'meeting-minutes-agent' ? [] : stagedJobs();
-    const requests = [];
-    if (type !== 'meeting-minutes-agent') requests.push(fetchJson('/api/jobs?limit=100&type=staged-meeting-minutes'));
-    else requests.push(Promise.resolve({jobs:[]}));
-    if (type !== 'staged-meeting-minutes') requests.push(fetchJson('/api/meeting-minutes-agent/drafts?limit=100'));
-    else requests.push(Promise.resolve({drafts:[]}));
-    const [payload, agentPayload] = await Promise.all(requests);
-    const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+    const agentPayload = await fetchJson('/api/meeting-minutes-agent/drafts?limit=100');
     const agentDrafts = (Array.isArray(agentPayload.drafts) ? agentPayload.drafts : []).map((draft) => ({
       jobId: `agent-${draft.draftId}`,
       draftId: draft.draftId,
@@ -1508,12 +1502,14 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       meetingTitle: draft.title,
       fileName: draft.fileName,
       status: draft.status || 'draft',
-      stage: draft.currentStep >= 3 ? 'final review' : draft.currentStep >= 2 ? 'actions' : draft.currentStep >= 1 ? 'discussion' : 'details',
+      // Server-provided: deriving a label from the step number here is what made
+      // every draft read one stage ahead when the flow gained two screens.
+      stage: draft.stageLabel || 'details',
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
       resumeUrl: draft.resumeUrl
     }));
-    renderJobs(staged.concat(agentDrafts, jobs));
+    renderJobs(agentDrafts);
   }
 
   async function loadDetail() {

@@ -55,3 +55,50 @@ test('agent discussion and action payloads are bounded and normalised', () => {
     { action: '', owner: 'Nobody', deadline: '' }
   ] }), [{ action: 'Repair labels', owner: '', deadline: 'Friday' }]);
 });
+
+test('a reviewer steer prioritises without licensing invention, and never displaces the transcript', () => {
+  const transcript = 'Alex: We agreed to re-issue the verification report.';
+  const steer = 'Focus on MDSAP readiness.\n\nKeep the translation workstream together.';
+
+  const plain = meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {} });
+  const steered = meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {}, steer });
+
+  // Without a steer the prompt is exactly what it was, so existing drafts are unaffected.
+  assert.doesNotMatch(plain, /REVIEWER EMPHASIS/);
+
+  assert.match(steered, /REVIEWER EMPHASIS/);
+  assert.match(steered, /Focus on MDSAP readiness/);
+  // Prose the reviewer laid out in lines must not be flattened into one paragraph.
+  assert.match(steered, /readiness\.\n\nKeep the translation/);
+  // The four load-bearing properties: it prioritises, cannot add, cannot subtract,
+  // and is subordinate to the evidence rules.
+  assert.match(steered, /prioritisation only/i);
+  assert.match(steered, /does not support/);
+  assert.match(steered, /Never omit material the transcript supports/);
+  assert.match(steered, /evidence rules above take precedence/);
+
+  // The transcript stays last in both, so the agent always reads it whole.
+  assert.ok(plain.endsWith(transcript));
+  assert.ok(steered.endsWith(transcript));
+
+  // A steer is not an edit instruction: it must not flip the request onto the
+  // proposal/diff path, which would preview every item as an addition.
+  assert.doesNotMatch(steered, /complete replacement draft/);
+});
+
+test('the summary stage gets its own contract rather than the action instructions', () => {
+  const transcript = 'Alex: We agreed to re-issue the verification report.';
+  const summary = meetingMinutesAgentPrompt({ stage: 'summary', transcript, details: {}, current: { discussion: [], actions: [] } });
+  const actions = meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {} });
+
+  assert.match(summary, /executiveSummary, meetingObjectives, discussion, actions, reviewFlags/);
+  assert.match(summary, /Populate executiveSummary/);
+  assert.match(summary, /Populate meetingObjectives/);
+  // The response validator rejects a payload without both arrays, so the summary
+  // prompt must still ask for them.
+  assert.match(summary, /Return discussion and actions as empty arrays/);
+  // The old bare `else` branch would have handed summary the action rules.
+  assert.doesNotMatch(summary, /Populate actions as/);
+  assert.doesNotMatch(actions, /executiveSummary/);
+  assert.ok(summary.endsWith(transcript));
+});

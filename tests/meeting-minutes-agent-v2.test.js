@@ -11,6 +11,9 @@ const {
   normaliseAgentResult,
   buildProposal,
   applyProposal,
+  migrateDraftPayload,
+  PAYLOAD_VERSION,
+  SCHEMA_VERSION,
   isIdeaOnlyContemplation,
   normaliseKnownTerms,
   normaliseColloquialTimes,
@@ -259,4 +262,62 @@ test('a reviewer edit is flagged against the evidence but never stripped', () =>
     fromReviewer.reviewFlags.map((flag) => flag.id).sort(),
     fromAgent.reviewFlags.map((flag) => flag.id).sort()
   );
+});
+
+test('a draft saved before the flow gained two screens opens where its owner left it', () => {
+  // 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review.
+  // Old numbering had no focus or summary screen, so 1/2/3 mean 2/3/5 now.
+  const cases = [[0, 0], [1, 2], [2, 3], [3, 5]];
+  for (const [stored, expected] of cases) {
+    const once = migrateDraftPayload({ currentStep: stored });
+    assert.equal(once.currentStep, expected);
+    assert.equal(once.payloadVersion, PAYLOAD_VERSION);
+    // Idempotent: a read that is never saved must not shift the step again.
+    assert.equal(migrateDraftPayload(once).currentStep, expected);
+    assert.equal(migrateDraftPayload({ currentStep: stored, payloadVersion: 0 }).currentStep, expected);
+  }
+  // An empty payload (the column default) must migrate, not be skipped.
+  assert.equal(migrateDraftPayload({}).currentStep, 0);
+  // A draft already at the current version is left exactly as it is.
+  const current = { payloadVersion: PAYLOAD_VERSION, currentStep: 5 };
+  assert.equal(migrateDraftPayload(current), current);
+});
+
+test('the wire contract version is not the storage version', () => {
+  // SCHEMA_VERSION is interpolated into the prompt sent to Power Automate, so it
+  // must not move when only the stored payload shape changes.
+  assert.equal(SCHEMA_VERSION, 2);
+  assert.equal(PAYLOAD_VERSION, 3);
+});
+
+test('meeting admin is never inventoried as a detail to check', () => {
+  const inventoried = (text) => salientDetailInventory([{ id: 'T0001', speaker: 'X', text }]).length > 0;
+  // The reported false positive: a colleague's calendar clash read as a standard.
+  assert.equal(inventoried('Okay.I do have a hard stop at 1130, Jacqui.'), false);
+  assert.equal(inventoried('You are on mute, we cannot hear you.'), false);
+  assert.equal(inventoried('Let me share my screen for this bit.'), false);
+  // The standards prefix is required, so a bare number is not a reference...
+  assert.equal(inventoried('See page 214 of the technical file.'), false);
+  assert.equal(inventoried('Could you turn your volume up, you are quiet.'), false);
+  // ...while every genuine form still is.
+  assert.equal(inventoried('We tested against BS EN 60601-1-8 and it passed.'), true);
+  assert.equal(inventoried('ISO 13485 clause 7.3 applies to this change.'), true);
+  assert.equal(inventoried('Maybe it is standard 60601 something; I am not sure.'), true);
+  assert.equal(inventoried('The alarm must be audible at three metres.'), true);
+  assert.equal(inventoried('We shipped 1200 units last quarter.'), true);
+});
+
+test('summary and objectives normalise alongside the rest of the draft', () => {
+  const result = normaliseAgentResult({
+    executiveSummary: '  The meeting closed out   MDSAP readiness. ',
+    objectives: [{ text: 'Close out the MDSAP readiness pack.' }, { text: '' }, null],
+    discussion: [],
+    actions: []
+  }, sourceUnits, 'summary');
+  assert.equal(result.executiveSummary, 'The meeting closed out MDSAP readiness.');
+  assert.equal(result.objectives.length, 1);
+  assert.ok(Array.isArray(result.objectives[0].evidenceIds));
+  // Objectives are a synthesis, so they stay out of the missing-evidence sweep
+  // and must not leak its internal bookkeeping into the stored payload.
+  assert.ok(!('_unsupportedEvidenceIds' in result.objectives[0]));
 });

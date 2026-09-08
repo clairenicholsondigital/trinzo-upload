@@ -152,6 +152,8 @@ const {
 } = require('../utils/db');
 const {
   SCHEMA_VERSION: MEETING_AGENT_SCHEMA_VERSION,
+  PAYLOAD_VERSION: MEETING_AGENT_PAYLOAD_VERSION,
+  normaliseExecutiveSummary,
   sanitiseDetails: sanitiseMeetingAgentDetails,
   normaliseSourceUnits,
   preparedTranscriptFromUnits,
@@ -170,6 +172,61 @@ const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgent
 const { requireAuth } = require('./auth');
 
 const router = express.Router();
+
+// Screen order: 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review.
+const MEETING_AGENT_MAX_STEP = 5;
+const MEETING_AGENT_STAGE_STEP = Object.freeze({ discussion: 2, actions: 3, summary: 4 });
+// The Library renders this rather than deriving a label from the step number, so
+// changing the flow again cannot silently mislabel every draft in the list.
+const MEETING_AGENT_STEP_LABELS = Object.freeze(['details', 'focus', 'discussion', 'actions', 'summary', 'final review']);
+// Identifies this process. A generation record still marked running but stamped
+// with a different boot id can only be one thing: orphaned by a restart.
+const MEETING_AGENT_BOOT_ID = crypto.randomUUID();
+
+// The reviewer's steer is prose they may have laid out in lines or bullets.
+// Deliberately NOT meetingMinutesAgentText() or the v2 text() helper - both
+// collapse every run of whitespace, which would flatten it into one paragraph.
+function meetingAgentSteerText(value) {
+  return String(value == null ? '' : value)
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 2000);
+}
+
+function meetingAgentObjectives(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => meetingMinutesAgentText(typeof item === 'string' ? item : item?.text, 400))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+// A generation is only ever run by the process that started it, so a record from
+// another boot is dead by definition. The time check catches the rarer case of an
+// unhandled rejection inside this same process. Both are evaluated at READ time -
+// there is no sweeper, and a stale record self-heals on the next save.
+function meetingAgentGenerationState(generation) {
+  if (!generation || generation.status !== 'running') return generation || null;
+  const timeoutMs = Math.max(10000, Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000)) + 60000;
+  const orphaned = generation.bootId !== MEETING_AGENT_BOOT_ID;
+  const expired = Date.now() - Number(new Date(generation.startedAt || 0)) > timeoutMs;
+  if (!orphaned && !expired) return generation;
+  return { ...generation, status: 'failed', error: 'Generation was interrupted. Generate it again.' };
+}
+
+function normaliseMeetingAgentGeneration(generation) {
+  if (!generation || typeof generation !== 'object') return null;
+  const status = ['running', 'failed'].includes(generation.status) ? generation.status : null;
+  if (!status) return null;
+  return {
+    stage: MEETING_AGENT_STAGE_STEP[generation.stage] ? generation.stage : 'discussion',
+    status,
+    bootId: meetingMinutesAgentText(generation.bootId, 80),
+    startedAt: meetingMinutesAgentText(generation.startedAt, 40),
+    error: meetingMinutesAgentText(generation.error, 400)
+  };
+}
 const upload = multer({ storage: multer.memoryStorage() });
 const testUpload = multer({
   storage: multer.memoryStorage(),
@@ -7925,7 +7982,7 @@ function normaliseAgentActions(candidate) {
     .filter((item) => item.action);
 }
 
-function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, salientDetails = [] }) {
+function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const shared = [
     'You are preparing formal, evidence-backed meeting minutes from a prepared transcript.',
@@ -7935,13 +7992,21 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     'Preserve exact quantities, language counts, alarm behaviour, approval status, blockers and dependencies when material.',
     'Preserve unclear standard references exactly as spoken and add an unclear_reference review flag instead of silently correcting them.',
     'Use reviewFlags for uncertain facts, ownership, timing, unresolved decisions, unclear references and missing evidence.',
-    'Return one valid JSON object only, with no markdown or commentary.',
-    `Return schemaVersion ${MEETING_AGENT_SCHEMA_VERSION} with exactly these top-level properties: schemaVersion, discussion, actions, reviewFlags.`
+    'Return one valid JSON object only, with no markdown or commentary.'
   ];
+  const returnContract = (extra) => `Return schemaVersion ${MEETING_AGENT_SCHEMA_VERSION} with exactly these top-level properties: schemaVersion, ${extra}discussion, actions, reviewFlags.`;
   if (stage === 'discussion') {
+    shared.push(returnContract(''));
     shared.push('Populate discussion as [{"id":"string","topic":"string","points":[{"id":"string","text":"string","evidenceIds":["T0001"]}],"decisions":[{"id":"string","text":"string","evidenceIds":["T0001"]}],"openQuestions":[{"id":"string","text":"string","evidenceIds":["T0001"]}]}]. Return actions as an empty array.');
     shared.push('Write concise formal discussion points, while keeping decisions and unresolved questions separate. Keep distinct workstreams separate and do not turn proposals or completed work into new actions.');
+  } else if (stage === 'summary') {
+    shared.push(returnContract('executiveSummary, meetingObjectives, '));
+    shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
+    shared.push('Populate meetingObjectives as ["string"] - at most six short statements of what the meeting set out to achieve, in the order they were taken. State each as an aim, not as a report of what happened.');
+    shared.push('Return discussion and actions as empty arrays.');
+    shared.push(`CONFIRMED DISCUSSION AND ACTIONS:\n${JSON.stringify(current || {})}`);
   } else {
+    shared.push(returnContract(''));
     shared.push('Populate actions as [{"id":"string","action":"string","owners":["string"],"timing":{"kind":"deadline|target|not_stated","wording":"string","exactDate":"YYYY-MM-DD or empty"},"evidenceIds":["T0001"]}]. Return discussion as an empty array.');
     shared.push('Include every genuine future commitment, accepted follow-up, ongoing review with a required next step, and work triggered when another task finishes. Support joint owners. Deduplicate only the same deliverable with compatible ownership; preserve distinct testing, reviewing, approving, updating, sending and follow-up work.');
     shared.push('Use timing kind target for provisional aims such as “this week”; use deadline only for a firm commitment. Keep unsupported timing as not_stated with empty wording and exactDate.');
@@ -7951,13 +8016,25 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push(`USER EDITING REQUEST:\n${meetingMinutesAgentText(instruction, 4000)}`);
     shared.push(`CURRENT ${stage.toUpperCase()} DRAFT:\n${JSON.stringify(current || (stage === 'discussion' ? { discussion: [] } : { actions: [] }))}`);
   }
+  const steerText = meetingAgentSteerText(steer);
+  if (steerText) {
+    shared.push([
+      'REVIEWER EMPHASIS - prioritisation only. It is not evidence.',
+      'Use it to decide what leads, how much detail each item gets, and how topics are ordered and titled.',
+      'It never licenses a statement the transcript does not support: if it asks for something the transcript does not contain, include nothing for it and add a missing_evidence review flag saying so.',
+      'Never omit material the transcript supports merely because it is not mentioned here. The evidence rules above take precedence.',
+      '',
+      steerText
+    ].join('\n'));
+  }
   shared.push(`CONFIRMED MEETING DETAILS:\n${JSON.stringify(details || {})}`);
   if (salientDetails.length) shared.push(`IMPORTANT DETAIL INVENTORY TO CHECK:\n${JSON.stringify(salientDetails.slice(0, 80))}`);
   shared.push(`PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`);
   return shared.join('\n\n');
 }
 
-function meetingMinutesAgentAuditPrompt({ transcript, details, actions, salientDetails = [] }) {
+function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, salientDetails = [] }) {
+  const steerText = meetingAgentSteerText(steer);
   return [
     'Audit an existing meeting action register against the complete prepared transcript.',
     'Return valid JSON only with schemaVersion, discussion, actions and reviewFlags. Return discussion as an empty array.',
@@ -7965,6 +8042,7 @@ function meetingMinutesAgentAuditPrompt({ transcript, details, actions, salientD
     'Specifically check accepted follow-ups, continuing reviews with a concrete next step, and work dependent on another task finishing.',
     'Every proposed action must cite valid transcript IDs and use the same owners/timing structure as the existing action schema.',
     'Do not invent owners or timing. Preserve provisional targets as target rather than deadline.',
+    ...(steerText ? [`REVIEWER EMPHASIS - prioritisation only, never a licence to invent:\n${steerText}`] : []),
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAIL INVENTORY:\n${JSON.stringify(salientDetails.slice(0, 80))}`,
     `EXISTING ACTION REGISTER:\n${JSON.stringify(actions || [])}`,
@@ -8052,6 +8130,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt) {
 function meetingAgentDraftPayload(draft = {}) {
   return {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+    payloadVersion: MEETING_AGENT_PAYLOAD_VERSION,
     transcriptSha256: draft.transcriptSha256 || '',
     denoise: draft.denoise || {},
     sourceUnits: normaliseSourceUnits(draft.sourceUnits),
@@ -8064,12 +8143,18 @@ function meetingAgentDraftPayload(draft = {}) {
     pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
     changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
     staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
-    currentStep: Math.max(0, Math.min(3, Number(draft.currentStep || 0)))
+    steer: meetingAgentSteerText(draft.steer),
+    executiveSummary: normaliseMeetingAgentKnownTerms(normaliseExecutiveSummary(draft.executiveSummary)),
+    meetingObjectives: normaliseMeetingAgentKnownTermsDeep(meetingAgentObjectives(draft.meetingObjectives)),
+    generation: normaliseMeetingAgentGeneration(draft.generation),
+    currentStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(draft.currentStep || 0)))
   };
 }
 
 function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const details = sanitiseMeetingAgentDetails(draft.details);
+  const executiveSummary = normaliseExecutiveSummary(draft.executiveSummary);
+  const meetingObjectives = meetingAgentObjectives(draft.meetingObjectives);
   const discussion = (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
     topic: topic?.topic || 'Discussion',
     points: (Array.isArray(topic?.points) ? topic.points : []).map((item) => item?.text || item).filter(Boolean),
@@ -8081,7 +8166,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     action: action?.action || '',
     deadline: meetingAgentTimingLabel(action?.timing)
   }));
-  const minutes = { details, discussion, actions };
+  const minutes = { details, executiveSummary, meetingObjectives, discussion, actions };
   if (!includeEvidence) return minutes;
   const evidenceIds = new Set();
   for (const topic of Array.isArray(draft.discussion) ? draft.discussion : []) {
@@ -8106,6 +8191,8 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
     reviewFlags: visibleReviewFlags
   });
   safe.details = sanitiseMeetingAgentDetails(safe.details);
+  safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
+  safe.stageLabel = MEETING_AGENT_STEP_LABELS[Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(safe.currentStep) || 0))];
   // The client only needs to know whether an undo exists. Shipping up to 30
   // full before/after snapshots on every save was pure weight.
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
@@ -8117,6 +8204,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
       title: safe.details?.meetingTitle || safe.title || 'Meeting minutes',
       fileName: safe.fileName || '',
       currentStep: safe.currentStep || 0,
+      stageLabel: safe.stageLabel,
       openFlagCount: (safe.reviewFlags || []).filter((flag) => flag.status === 'open').length,
       updatedAt: safe.updatedAt,
       createdAt: safe.createdAt,
@@ -8242,12 +8330,19 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       actions: req.body?.actions ?? draft.actions,
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
     }, draft.sourceUnits, '', { enforceEvidence: false });
+    // A tab loaded before the six-step deploy sends a currentStep that means a
+    // different screen than it does now. Ignore it rather than storing the wrong
+    // one; the client stamps payloadVersion to say it speaks the new numbering.
+    const clientSpeaksCurrentSteps = Number(req.body?.payloadVersion || 0) >= MEETING_AGENT_PAYLOAD_VERSION;
     const saved = await saveMeetingAgentDraft(draft, req, {
       details,
+      steer: req.body?.steer ?? draft.steer,
       discussion: normalised.discussion,
       actions: normalised.actions,
+      executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
+      meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
       reviewFlags: mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      currentStep: req.body?.currentStep ?? draft.currentStep,
+      currentStep: clientSpeaksCurrentSteps ? (req.body?.currentStep ?? draft.currentStep) : draft.currentStep,
       status: req.body?.status
     });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
@@ -8282,7 +8377,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId/source/:unitId', requireAut
       return { ...unit, restored: req.body?.restored === true };
     });
     if (!found) return res.status(404).json({ ok: false, error: 'Transcript passage not found.' });
-    const staleStages = [...new Set([...(draft.staleStages || []), ...(draft.discussion?.length ? ['discussion'] : []), ...(draft.actions?.length ? ['actions'] : [])])];
+    const staleStages = [...new Set([...(draft.staleStages || []), ...(draft.discussion?.length ? ['discussion'] : []), ...(draft.actions?.length ? ['actions'] : []), ...(draft.executiveSummary ? ['summary'] : [])])];
     const saved = await saveMeetingAgentDraft(draft, req, {
       sourceUnits,
       preparedTranscript: preparedTranscriptFromUnits(sourceUnits),
@@ -8295,11 +8390,184 @@ router.patch('/meeting-minutes-agent/drafts/:draftId/source/:unitId', requireAut
   }
 });
 
+// One stage, prompt to normalised changes. Deliberately free of `req` so the
+// background worker runs the identical path. The steer is always read from the
+// draft, never the request body, for the same reason.
+async function generateMeetingAgentStage(draft, stage, instruction) {
+  const transcript = String(draft.preparedTranscript || '').trim();
+  if (transcript.length < 100) {
+    const error = new Error('Prepare a transcript before asking the agent.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (Buffer.byteLength(transcript, 'utf8') > 200000) {
+    const error = new Error('The denoised transcript is too large for one agent request.');
+    error.statusCode = 413;
+    throw error;
+  }
+  const current = stage === 'discussion' ? { discussion: draft.discussion || [] }
+    : stage === 'actions' ? { actions: draft.actions || [] }
+    : { discussion: draft.discussion || [], actions: draft.actions || [] };
+  const prompt = meetingMinutesAgentPrompt({
+    stage,
+    transcript,
+    details: sanitiseMeetingAgentDetails(draft.details),
+    current,
+    instruction,
+    steer: draft.steer,
+    salientDetails: draft.salientDetails || []
+  });
+  const parsed = await askPowerAutomateMeetingMinutesAgent(prompt);
+  if (stage === 'summary') {
+    // A prose summary has no evidence structure to normalise, so it does not go
+    // through normaliseAgentResult; only the flags are sanitised.
+    return {
+      changes: {
+        executiveSummary: normaliseExecutiveSummary(parsed.executiveSummary),
+        meetingObjectives: meetingAgentObjectives(parsed.meetingObjectives)
+      },
+      reviewFlags: (Array.isArray(parsed.reviewFlags) ? parsed.reviewFlags : []).map((flag) => normaliseMeetingAgentFlag(flag))
+    };
+  }
+  const normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage);
+  normalised.reviewFlags = mergeMeetingAgentFlags(normalised.reviewFlags, coverageFlags(draft.salientDetails || [], normalised));
+  return {
+    normalised,
+    changes: stage === 'discussion' ? { discussion: normalised.discussion } : { actions: normalised.actions },
+    reviewFlags: normalised.reviewFlags
+  };
+}
+
+const MEETING_AGENT_RETRY_MS = [5000, 15000, 30000];
+
+function publicMeetingAgentGeneration(generation) {
+  if (!generation) return null;
+  const { bootId: _bootId, ...rest } = generation;
+  return rest;
+}
+
+// Runs after the response has already gone back to the reviewer. Same in-process
+// pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
+// process, so there is no other executor to hand it to.
+async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
+  let result = null;
+  let failure = null;
+  for (let attempt = 0; attempt <= MEETING_AGENT_RETRY_MS.length; attempt += 1) {
+    try {
+      const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
+      if (!fresh) return;
+      result = await generateMeetingAgentStage(fresh, stage, '');
+      failure = null;
+      break;
+    } catch (error) {
+      failure = error;
+      // The [5,15,30]s usage-limit ladder lives in the browser. A background run
+      // has no browser, so without repeating it here this path would be strictly
+      // less reliable than the button it replaces.
+      if (!error.retryable || attempt === MEETING_AGENT_RETRY_MS.length) break;
+      await new Promise((resolve) => setTimeout(resolve, MEETING_AGENT_RETRY_MS[attempt]));
+    }
+  }
+
+  // Always write against a FRESH read. A revision captured at kick-off is
+  // guaranteed stale - the reviewer has been autosaving on a 900ms debounce for
+  // the whole run - and merging into the stale copy would clobber their edits.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
+    if (!fresh) return;
+    const changes = result
+      ? {
+        ...result.changes,
+        reviewFlags: mergeMeetingAgentFlags(fresh.reviewFlags, result.reviewFlags),
+        staleStages: (fresh.staleStages || []).filter((value) => value !== stage),
+        currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
+        generation: null
+      }
+      : {
+        generation: {
+          stage,
+          status: 'failed',
+          bootId: MEETING_AGENT_BOOT_ID,
+          startedAt: new Date().toISOString(),
+          error: (failure && failure.message) || 'The agent could not complete this request.'
+        }
+      };
+    try {
+      // saveMeetingAgentDraft reads only req.authUser.userId; this shim is
+      // deliberate, not an oversight - there is no request here.
+      await saveMeetingAgentDraft(fresh, { authUser: { userId } }, changes);
+      return;
+    } catch (error) {
+      if (error.statusCode !== 409 || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+    }
+  }
+}
+
+router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth, async (req, res) => {
+  try {
+    const stage = String(req.body?.stage || '').trim().toLowerCase();
+    if (!MEETING_AGENT_STAGE_STEP[stage]) {
+      return res.status(400).json({ ok: false, error: 'Choose discussion, actions or summary.' });
+    }
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    if (Number(req.body?.revision) !== draft.revision) {
+      const error = new Error('This draft was updated elsewhere. Reload it before generating again.');
+      error.statusCode = 409;
+      error.currentDraft = draft;
+      throw error;
+    }
+    const existing = meetingAgentGenerationState(draft.generation);
+    if (existing && existing.status === 'running') {
+      return res.status(202).json({ ok: true, generation: publicMeetingAgentGeneration(existing), draft: publicMeetingAgentDraft(draft) });
+    }
+    const generation = {
+      stage,
+      status: 'running',
+      bootId: MEETING_AGENT_BOOT_ID,
+      startedAt: new Date().toISOString(),
+      error: ''
+    };
+    const saved = await saveMeetingAgentDraft(draft, req, { generation });
+    const userId = req.authUser?.userId;
+    setImmediate(() => {
+      runMeetingAgentBackgroundStage(saved.draftId, userId, stage)
+        .catch((error) => safeLogError('[meeting-minutes-agent/background] failed', error));
+    });
+    return res.status(202).json({ ok: true, generation: publicMeetingAgentGeneration(generation), draft: publicMeetingAgentDraft(saved) });
+  } catch (error) {
+    safeLogError('[meeting-minutes-agent/generate-background] failed', error);
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
+router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, async (req, res) => {
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    const generation = meetingAgentGenerationState(draft.generation);
+    const running = Boolean(generation && generation.status === 'running');
+    return res.json({
+      ok: true,
+      generation: publicMeetingAgentGeneration(generation),
+      // Carry the draft only once the run is over, so completion is one round trip.
+      draft: running ? undefined : publicMeetingAgentDraft(draft)
+    });
+  } catch (error) {
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
 router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => {
   try {
     const stage = String(req.body?.stage || '').trim().toLowerCase();
-    if (!['discussion', 'actions'].includes(stage)) {
-      return res.status(400).json({ ok: false, error: 'Choose discussion or actions.' });
+    if (!MEETING_AGENT_STAGE_STEP[stage]) {
+      return res.status(400).json({ ok: false, error: 'Choose discussion, actions or summary.' });
+    }
+    const instruction = meetingMinutesAgentText(req.body?.instruction, 4000);
+    if (stage === 'summary' && instruction) {
+      // buildProposal diffs arrays of rows; there is no meaningful diff for a
+      // prose summary, so this stage is edited directly rather than proposed.
+      return res.status(400).json({ ok: false, error: 'The summary is edited directly, not through the agent editor.' });
     }
     const draft = await getMeetingMinutesAgentDraft(req.body?.draftId, req.authUser?.userId, { includeTranscript: true });
     if (!draft) return res.status(404).json({ ok: false, error: 'Meeting-minutes draft not found.' });
@@ -8309,43 +8577,22 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
       error.currentDraft = draft;
       throw error;
     }
-    const transcript = String(draft.preparedTranscript || '').trim();
-    if (transcript.length < 100) {
-      return res.status(400).json({ ok: false, error: 'Prepare a transcript before asking the agent.' });
-    }
-    if (Buffer.byteLength(transcript, 'utf8') > 200000) {
-      return res.status(413).json({ ok: false, error: 'The denoised transcript is too large for one agent request.' });
-    }
-    const prompt = meetingMinutesAgentPrompt({
-      stage,
-      transcript,
-      details: sanitiseMeetingAgentDetails(draft.details),
-      current: stage === 'discussion' ? { discussion: draft.discussion || [] } : { actions: draft.actions || [] },
-      instruction: req.body?.instruction,
-      salientDetails: draft.salientDetails || []
-    });
-    const parsed = await askPowerAutomateMeetingMinutesAgent(prompt);
-    const normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage);
-    normalised.reviewFlags = mergeMeetingAgentFlags(normalised.reviewFlags, coverageFlags(draft.salientDetails || [], normalised));
-    const instruction = meetingMinutesAgentText(req.body?.instruction, 4000);
+    const result = await generateMeetingAgentStage(draft, stage, req.body?.instruction);
     if (instruction) {
       const before = stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
-      const after = stage === 'discussion' ? normalised.discussion : normalised.actions;
+      const after = stage === 'discussion' ? result.normalised.discussion : result.normalised.actions;
       const proposal = buildProposal(stage, before, after);
       const saved = await saveMeetingAgentDraft(draft, req, {
         pendingProposal: proposal,
-        reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, normalised.reviewFlags)
+        reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, result.reviewFlags)
       });
       return res.json({ ok: true, stage, proposal, draft: publicMeetingAgentDraft(saved) });
     }
-    const changes = stage === 'discussion'
-      ? { discussion: normalised.discussion }
-      : { actions: normalised.actions };
     const saved = await saveMeetingAgentDraft(draft, req, {
-      ...changes,
-      reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, normalised.reviewFlags),
+      ...result.changes,
+      reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, result.reviewFlags),
       staleStages: (draft.staleStages || []).filter((value) => value !== stage),
-      currentStep: stage === 'discussion' ? Math.max(1, draft.currentStep || 0) : Math.max(2, draft.currentStep || 0)
+      currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
     });
     return res.json({ ok: true, stage, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
@@ -8367,6 +8614,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       transcript: draft.preparedTranscript,
       details: sanitiseMeetingAgentDetails(draft.details),
       actions: draft.actions || [],
+      steer: draft.steer,
       salientDetails: draft.salientDetails || []
     }));
     const audited = normaliseAgentResult(parsed, draft.sourceUnits, 'actions');

@@ -23,6 +23,13 @@ test('staged PDF renderer uses reviewed content and escapes it safely', () => {
   assert.match(html, /data:font\/woff2;base64,/);
   assert.doesNotMatch(html, /Arial/);
   assert.doesNotMatch(html, /<script/i);
+  // The staged tool has always sent summary:{objectives,executiveSummary} and this
+  // renderer has always ignored it. The meeting-minutes agent adds its own summary
+  // via TOP-LEVEL executiveSummary/meetingObjectives; if anyone ever keys the new
+  // sections off input.summary instead, the staged PDF silently grows two sections.
+  assert.doesNotMatch(html, /Executive summary/);
+  assert.doesNotMatch(html, /Meeting objectives/);
+  assert.doesNotMatch(html, /Reviewed &amp; agreed/);
   assert.equal(stagedMinutesPdfFilename(minutes), 'Client-Audit.pdf');
 });
 

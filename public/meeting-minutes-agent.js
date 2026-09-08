@@ -3,6 +3,11 @@
 
   var state = { draft: null, currentStep: 0 };
   var agentRetryDelaysSeconds = [5, 15, 30];
+  // 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review
+  var MAX_STEP = 5;
+  var STAGE_STEP = { discussion: 2, actions: 3, summary: 4 };
+  var GENERATION_POLL_MS = 2000;
+  var generationTimer = null;
   var saveTimer = null;
   var saveInFlight = null;
   var saveQueued = false;
@@ -176,7 +181,7 @@
   }
 
   function showStep(index, options) {
-    state.currentStep = Math.max(0, Math.min(3, Number(index) || 0));
+    state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
     var stepChanged = Boolean(state.draft) && Number(state.draft.currentStep || 0) !== state.currentStep;
     document.querySelectorAll('[data-screen]').forEach(function (screen) { screen.classList.toggle('active', Number(screen.dataset.screen) === state.currentStep); });
     document.querySelectorAll('[data-step]').forEach(function (button) {
@@ -200,6 +205,46 @@
     var element = document.getElementById(id);
     if (!element || element === document.activeElement) return;
     if (element.value !== value) element.value = value;
+  }
+
+  function generationRunning(stage) {
+    var generation = state.draft && state.draft.generation;
+    return Boolean(generation && generation.status === 'running' && (!stage || generation.stage === stage));
+  }
+
+  function readSteer() {
+    var field = document.getElementById('meetingSteer');
+    if (state.draft && field) state.draft.steer = field.value;
+  }
+
+  function renderSteer() {
+    var field = document.getElementById('meetingSteer');
+    if (!field || field === document.activeElement) return;
+    var value = (state.draft && state.draft.steer) || '';
+    if (field.value !== value) field.value = value;
+  }
+
+  function readSummary() {
+    if (!state.draft) return;
+    var summary = document.getElementById('executiveSummary');
+    if (summary) state.draft.executiveSummary = summary.value.trim();
+    state.draft.meetingObjectives = Array.from(document.querySelectorAll('[data-objective-index]'))
+      .map(function (field) { return field.value.trim(); })
+      .filter(Boolean);
+  }
+
+  function renderSummary() {
+    var draft = state.draft || {};
+    var summary = document.getElementById('executiveSummary');
+    if (summary && summary !== document.activeElement) {
+      var value = draft.executiveSummary || '';
+      if (summary.value !== value) summary.value = value;
+    }
+    var objectives = draft.meetingObjectives || [];
+    document.getElementById('objectivesList').innerHTML = objectives.map(function (text, index) {
+      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="2" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(text) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
+    }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
+    autoGrow(document.getElementById('objectivesList'));
   }
 
   function readDetails() {
@@ -258,6 +303,10 @@
   }
 
   function renderDiscussion() {
+    if (generationRunning('discussion')) {
+      document.getElementById('discussionList').innerHTML = '<p class="generating">The agent is drafting the discussion from your transcript. This keeps running if you close the tab &mdash; the draft will be waiting in your Library.</p>';
+      return;
+    }
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
       return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic" placeholder="Topic"></label><button class="delete" data-delete-topic="' + index + '" type="button">Remove topic</button></div>' + pointSection(topic, index, 'points', 'Discussion') + pointSection(topic, index, 'decisions', 'Decisions') + pointSection(topic, index, 'openQuestions', 'Open questions') + '</article>';
@@ -408,11 +457,14 @@
   }
 
   function renderFinal() {
-    readDetails(); readDiscussion(); readActions();
+    readDetails(); readSteer(); readDiscussion(); readActions(); readSummary();
     var draft = state.draft || {}; var details = draft.details || {};
+    var objectives = (draft.meetingObjectives || []).filter(Boolean);
+    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></section>' : '')
+      + (draft.executiveSummary ? '<section><h3>Executive summary</h3><p>' + escapeHtml(draft.executiveSummary) + '</p></section>' : '');
     var decisions = (draft.discussion || []).flatMap(function (topic) { return (topic.decisions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
     var questions = (draft.discussion || []).flatMap(function (topic) { return (topic.openQuestions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
-    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p><section><h3>Discussion</h3>' + ((draft.discussion || []).map(function (topic) { return '<h4>' + escapeHtml(topic.topic) + '</h4><ul>' + (topic.points || []).map(function (point) { return '<li>' + escapeHtml(point.text) + '</li>'; }).join('') + '</ul>'; }).join('') || '<p>No discussion recorded.</p>') + '</section><section><h3>Decisions</h3>' + (decisions.length ? '<ul>' + decisions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No decisions recorded.</p>') + '</section><section><h3>Open questions</h3>' + (questions.length ? '<ul>' + questions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No open questions recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
+    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Discussion</h3>' + ((draft.discussion || []).map(function (topic) { return '<h4>' + escapeHtml(topic.topic) + '</h4><ul>' + (topic.points || []).map(function (point) { return '<li>' + escapeHtml(point.text) + '</li>'; }).join('') + '</ul>'; }).join('') || '<p>No discussion recorded.</p>') + '</section><section><h3>Decisions</h3>' + (decisions.length ? '<ul>' + decisions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No decisions recorded.</p>') + '</section><section><h3>Open questions</h3>' + (questions.length ? '<ul>' + questions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No open questions recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
   }
 
   function renderAll() {
@@ -422,12 +474,17 @@
     detailsEditor.hidden = !state.draft;
     document.getElementById('saveStrip').hidden = !state.draft;
     if (state.draft) {
-      renderDetails(); renderDiscussion(); renderActions(); renderFlags(); renderProposal();
+      renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags(); renderProposal();
+      var busyStage = generationRunning();
+      ['generateActions', 'addDiscussion', 'applyDiscussionEdit', 'generateSummary'].forEach(function (id) {
+        var button = document.getElementById(id);
+        if (button) button.disabled = busyStage;
+      });
       var stale = state.draft.staleStages || [];
       document.getElementById('staleNotice').hidden = !stale.length;
       document.getElementById('staleStages').textContent = stale.join(' and ');
     } else document.getElementById('staleNotice').hidden = true;
-    showStep(state.draft ? (state.draft.currentStep || state.currentStep || 0) : 0);
+    showStep(state.draft ? Math.max(Number(state.draft.currentStep) || 0, state.currentStep || 0) : 0);
     rendering = false;
     restoreFocus(snapshot);
   }
@@ -436,15 +493,34 @@
     if (!draft) return;
     document.getElementById('reloadDraft').hidden = true;
     state.draft = draft;
-    state.currentStep = draft.currentStep || 0;
+    // Never navigate the reviewer backwards. A background run finishing while they
+    // have moved on would otherwise yank them back to the screen the server last
+    // recorded - which is the screen they were on when the run started.
+    state.currentStep = Math.max(Number(draft.currentStep) || 0, state.currentStep || 0);
     renderAll();
+    // A reload in the middle of a run must not look dead.
+    if (generationRunning()) pollGeneration();
     setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
   }
 
-  function readEditors() { if (!state.draft) return; readDetails(); readDiscussion(); readActions(); state.draft.currentStep = state.currentStep; }
+  function readEditors() { if (!state.draft) return; readDetails(); readSteer(); readDiscussion(); readActions(); readSummary(); state.draft.currentStep = state.currentStep; }
 
   function draftPatchBody(statusValue) {
-    var body = { revision: state.draft.revision, details: state.draft.details, discussion: state.draft.discussion, actions: state.draft.actions, reviewFlags: state.draft.reviewFlags, currentStep: state.currentStep };
+    var body = {
+      revision: state.draft.revision,
+      // Tells the server this client speaks the six-step numbering. A tab loaded
+      // before the deploy will not send it, and its currentStep is then ignored
+      // rather than being read as a screen it did not mean.
+      payloadVersion: 3,
+      details: state.draft.details,
+      steer: state.draft.steer || '',
+      discussion: state.draft.discussion,
+      actions: state.draft.actions,
+      executiveSummary: state.draft.executiveSummary || '',
+      meetingObjectives: state.draft.meetingObjectives || [],
+      reviewFlags: state.draft.reviewFlags,
+      currentStep: state.currentStep
+    };
     if (statusValue) body.status = statusValue;
     return body;
   }
@@ -457,6 +533,10 @@
     if (rendering || !state.draft) return;
     setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
     clearTimeout(saveTimer);
+    // While a background run is in flight, hold the save. Its completion writes
+    // against a fresh read, so letting an autosave race it would surface the
+    // conflict banner over the reviewer's own generation. Flushed on completion.
+    if (generationRunning()) return;
     saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
   }
 
@@ -482,6 +562,55 @@
     return saveInFlight;
   }
 
+  // Kicks a stage off server-side and returns straight away, so the reviewer can
+  // read while it runs. The server keeps going even if this tab closes.
+  async function startBackgroundStage(stage) {
+    if (!state.draft) return;
+    try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
+    try {
+      var payload = await jsonRequest(draftUrl('/generate-background'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,revision:state.draft.revision})});
+      adoptDraft(payload.draft);
+      state.draft.generation = payload.generation;
+      showStep(STAGE_STEP[stage], { scroll: true });
+      renderDiscussion();
+      setStatus('Working on the discussion now. You can keep reading.', false);
+      pollGeneration();
+    } catch (error) { setStatus(error.message, true); }
+  }
+
+  function pollGeneration() {
+    clearTimeout(generationTimer);
+    if (!state.draft || !generationRunning()) return;
+    generationTimer = window.setTimeout(async function () {
+      if (!state.draft) return;
+      try {
+        var payload = await jsonRequest(draftUrl('/generation'));
+        state.draft.generation = payload.generation;
+        if (payload.generation && payload.generation.status === 'running') { pollGeneration(); return; }
+        if (payload.draft) {
+          // The run wrote one content field the reviewer could not have edited,
+          // because it did not exist while it ran. Everything they CAN have
+          // touched meanwhile is carried across explicitly rather than adopted.
+          var localDetails = state.draft.details;
+          var localSteer = state.draft.steer;
+          adoptDraft(payload.draft);
+          state.draft.details = localDetails;
+          state.draft.steer = localSteer;
+          state.draft.generation = payload.generation;
+          renderDetails();
+          renderSteer();
+          renderDiscussion();
+        }
+        if (payload.generation && payload.generation.status === 'failed') {
+          setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true);
+        } else {
+          setStatus('Discussion draft generated. Review its evidence and flags.', false);
+        }
+        scheduleSave();
+      } catch (error) { setStatus(error.message, true); }
+    }, GENERATION_POLL_MS);
+  }
+
   async function runAgent(stage, instruction) {
     if (!state.draft) return false;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return false; }
@@ -500,7 +629,7 @@
       adoptDraft(payload.draft);
       if (instruction) { renderProposal(); setStatus('Review the proposed changes. Nothing has been applied yet.', false); }
       else {
-        showStep(stage === 'discussion' ? 1 : 2, { scroll: true });
+        showStep(STAGE_STEP[stage] || 2, { scroll: true });
         setStatus(stage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : 'Action draft generated. Running the separate missed-action check next.', false);
         if (stage === 'actions') await auditActions(true);
       }
@@ -609,7 +738,25 @@
   document.getElementById('clientAttendeeLabelSelect').addEventListener('change', function (event) {
     document.getElementById('clientAttendeeHeading').textContent = event.target.value === 'External' ? 'External' : 'Client';
   });
-  document.getElementById('generateDiscussion').addEventListener('click', function () { runAgent('discussion',''); });
+  document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(1, { scroll: true }); });
+  document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); startBackgroundStage('discussion'); });
+  document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
+  document.getElementById('generateSummary').addEventListener('click', function () { runAgent('summary',''); });
+  document.getElementById('addObjective').addEventListener('click', function () {
+    readSummary();
+    state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat('');
+    renderSummary();
+    var fields = document.querySelectorAll('[data-objective-index]');
+    if (fields.length) fields[fields.length - 1].focus();
+  });
+  document.getElementById('objectivesList').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-remove-objective]');
+    if (!button) return;
+    readSummary();
+    state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1);
+    renderSummary();
+    scheduleSave();
+  });
   document.getElementById('generateActions').addEventListener('click', function () { runAgent('actions',''); });
   document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
@@ -691,7 +838,7 @@
   document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
   document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });
   document.getElementById('rejectProposal').addEventListener('click', function () { reviewProposal('reject',false); });
-  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(3, { scroll: true }); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false); });
+  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false); });
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false);}).catch(function(error){setStatus(error.message,true);}); });
   document.getElementById('reloadDraft').addEventListener('click', function () {
     if (state.draft) loadDraft(state.draft.draftId);
@@ -701,7 +848,7 @@
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
   document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back, { scroll: true });});});
-  document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===3)renderFinal();showStep(button.dataset.step, { scroll: true });}});});
+  document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP)renderFinal();showStep(button.dataset.step, { scroll: true });}});});
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;

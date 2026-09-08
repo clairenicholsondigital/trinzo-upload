@@ -79,7 +79,18 @@ function normaliseMinutes(input = {}) {
     ...(Array.isArray(input.openQuestions) ? input.openQuestions : []),
     ...discussionInput.flatMap((item) => recordTextList(item?.openQuestions).map((text) => ({ topic: item?.topic, text })))
   ]);
+  // Read ONLY from these top-level keys, never from input.summary. The staged
+  // tool already POSTs summary:{objectives,executiveSummary} which this renderer
+  // has always ignored - keying off it would silently grow that tool's PDF by two
+  // sections. tests/staged-minutes-pdf.test.js asserts it stays ignored.
+  const executiveSummary = clean(input.executiveSummary, '').slice(0, 4000);
+  const meetingObjectives = (Array.isArray(input.meetingObjectives) ? input.meetingObjectives : [])
+    .map((item) => clean(typeof item === 'string' ? item : item?.text, '').slice(0, 400))
+    .filter(Boolean)
+    .slice(0, 20);
   return {
+    executiveSummary,
+    meetingObjectives,
     details: {
       meetingTitle: clean(details.meetingTitle, 'Meeting minutes').slice(0, 500),
       meetingDate: formatUkDate(details.meetingDate).slice(0, 100),
@@ -114,7 +125,7 @@ function renderList(items, fallback = 'Not stated') {
 
 function renderStagedMinutesPdfHtml(input = {}) {
   const minutes = normaliseMinutes(input);
-  const { details, discussion, decisions, openQuestions, actions, evidenceAppendix, reviewFlags } = minutes;
+  const { details, executiveSummary, meetingObjectives, discussion, decisions, openQuestions, actions, evidenceAppendix, reviewFlags } = minutes;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(details.meetingTitle)}</title>
 <style>
@@ -153,6 +164,8 @@ function renderStagedMinutesPdfHtml(input = {}) {
   <div><span class="label">Internal attendees</span>${escapeHtml(details.internalAttendees.join(', ') || 'Not stated')}</div>
   <div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', ') || 'Not stated')}</div>
 </section>
+${meetingObjectives.length ? `<h2>Meeting objectives</h2>${renderList(meetingObjectives)}` : ''}
+${executiveSummary ? `<h2>Executive summary</h2><p>${escapeHtml(executiveSummary)}</p>` : ''}
 <h2>Key discussion points</h2>
 <table class="discussion"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>
 ${discussion.length ? discussion.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${renderList(item.points)}</td></tr>`).join('') : '<tr><td>Discussion</td><td>Not stated</td></tr>'}

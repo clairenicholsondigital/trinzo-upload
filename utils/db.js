@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { migrateDraftPayload: migrateMeetingAgentDraftPayload } = require('./meetingMinutesAgentV2');
 
 let pgPool = null;
 
@@ -3612,7 +3613,10 @@ CREATE INDEX IF NOT EXISTS idx_meeting_minutes_agent_drafts_user_updated
 
 function meetingMinutesAgentDraftFromRow(row, includeTranscript = false) {
   if (!row) return null;
-  const payload = parseJsonObject(row.payload);
+  // The one choke point every agent-draft read returns through - get, list, create
+  // and update all land here - so the step remap cannot be missed by a call site.
+  // Not persisted here; the next save rewrites the payload at the current version.
+  const payload = migrateMeetingAgentDraftPayload(parseJsonObject(row.payload));
   const draft = {
     draftId: String(row.id),
     revision: Number(row.revision || 1),

@@ -2,7 +2,28 @@
 
 const crypto = require('crypto');
 
+// The response contract asked of the agent. It is interpolated into the prompt
+// ("Return schemaVersion N ..."), so changing it changes what Power Automate is
+// told to return - do NOT bump it to describe a change in what we store on disk.
 const SCHEMA_VERSION = 2;
+
+// What is stored in the draft payload. Separate from SCHEMA_VERSION on purpose.
+const PAYLOAD_VERSION = 3;
+
+// Step indices changed meaning when the workflow gained a steer screen (1) and a
+// summary screen (4): what was saved as "actions" (2) is now 3, and "final review"
+// (3) is now 5. Remap anything below the current payload version so a draft opens
+// where its owner left it - and so the client's furthest-step gate does not lock
+// them out of every tab beyond it.
+const STEP_V2_TO_V3 = Object.freeze({ 0: 0, 1: 2, 2: 3, 3: 5 });
+
+function migrateDraftPayload(payload = {}) {
+  if (!payload || typeof payload !== 'object') return payload;
+  // `Number(undefined) >= 3` is false, but be explicit: an absent version is 0.
+  if ((Number(payload.payloadVersion) || 0) >= PAYLOAD_VERSION) return payload;
+  const stored = Math.max(0, Math.min(3, Number(payload.currentStep) || 0));
+  return { ...payload, payloadVersion: PAYLOAD_VERSION, currentStep: STEP_V2_TO_V3[stored] };
+}
 const FLAG_KINDS = new Set([
   'uncertain_fact', 'unclear_reference', 'ownership', 'timing',
   'unresolved_decision', 'missing_evidence', 'possible_missed_follow_up'
@@ -135,16 +156,25 @@ function evidenceIdsFor(value, units = [], supplied = []) {
     .map((item) => item.id);
 }
 
+// How the meeting was run, not what it decided. These lines are real speech and
+// often survive denoising, but they are not minutes content, so they must never
+// be inventoried as an important detail and surfaced as something to check.
+const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute))\b/i;
+
 function salientDetailInventory(units = []) {
   const patterns = [
-    ['quantity', /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:languages?|alarms?|devices?|products?|tests?|documents?|weeks?|days?|items?|versions?|samples?)\b/i],
-    ['standard_reference', /\b(?:BS\s+EN\s+|EN\s+|IEC\s+|ISO\s+|ASTM\s+)?\d{3,5}(?:[-–]\d+)*(?::\d{4})?\b/i],
-    ['alarm_behaviour', /\b(?:alarm|audible|mute|silenc|sound|audio|volume|beep)\b/i],
+    ['quantity', /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:languages?|alarms?|devices?|products?|tests?|documents?|weeks?|days?|items?|versions?|samples?|units?|batches|sites?)\b/i],
+    // A number is a standards reference because something says so in front of it.
+    // The prefix used to be optional, which made this "any bare 3-5 digit number"
+    // and turned "a hard stop at 1130" into a reference for the reviewer to check.
+    ['standard_reference', /\b(?:BS\s+EN|EN|IEC|ISO|ASTM|standards?)\s+\d{3,5}(?:[-–]\d+)*(?::\d{4})?\b/i],
+    ['alarm_behaviour', /\b(?:alarm|audible|mute|silenc|beep)\b/i],
     ['approval_status', /\b(?:approved?|accepted?|signed?\s*off|pending approval|not approved|rejected?)\b/i],
     ['blocker_dependency', /\b(?:block(?:ed|er|ing)?|depend(?:s|ent|ency)?|waiting for|subject to|before .* can|once .* (?:is|has been)|cannot .* until|pending)\b/i]
   ];
   const result = [];
   for (const unit of normaliseSourceUnits(units).filter(includedUnit)) {
+    if (MEETING_ADMIN_PATTERN.test(unit.text)) continue;
     for (const [kind, pattern] of patterns) {
       if (!pattern.test(unit.text)) continue;
       result.push({ id: stableId('detail', `${kind}|${unit.id}`), kind, text: unit.text, evidenceIds: [unit.id] });
@@ -280,6 +310,10 @@ function unresolvedReferenceFlags(units = []) {
   }, index));
 }
 
+function normaliseExecutiveSummary(value) {
+  return text(value, 3000);
+}
+
 function normaliseAgentResult(candidate = {}, units = [], stage = '', options = {}) {
   // enforceEvidence strips owners and timings the cited passages do not support.
   // That is right for agent output. It is wrong for a reviewer's own edits: the
@@ -288,6 +322,12 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   const enforceEvidence = options.enforceEvidence !== false;
   const discussion = normaliseDiscussion(candidate, units);
   const actions = normaliseActions(candidate, units);
+  const objectives = normalisePointList(candidate.objectives, units, 'objective');
+  const executiveSummary = normaliseExecutiveSummary(candidate.executiveSummary);
+  // Objectives carry evidence links like any other record, but they are a
+  // synthesis rather than a citable claim, so they are deliberately left out of
+  // the missing-evidence sweep below - every save would otherwise re-flag them.
+  for (const objective of objectives) delete objective._unsupportedEvidenceIds;
   const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map(normaliseFlag);
   const records = [
     ...discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]),
@@ -356,7 +396,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     record.reviewFlagIds.push(flag.id);
   }
   if (stage === 'discussion') flags.push(...unresolvedReferenceFlags(units));
-  return { schemaVersion: SCHEMA_VERSION, discussion, actions, reviewFlags: uniqueFlags(flags) };
+  return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags: uniqueFlags(flags) };
 }
 
 function uniqueFlags(flags = []) {
@@ -521,12 +561,15 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
 
 module.exports = {
   SCHEMA_VERSION,
+  PAYLOAD_VERSION,
+  migrateDraftPayload,
   text,
   sanitiseDetails,
   normaliseSourceUnits,
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
+  normaliseExecutiveSummary,
   normaliseFlag,
   coverageFlags,
   surroundingEvidence,

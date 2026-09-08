@@ -69,6 +69,26 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('id="denoisedTranscript"', page)
         self.assertNotIn('data-denoised-transcript', page)
         self.assertIn('data-label="Owners"', client)
+        # Six screens: 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review.
+        self.assertEqual(page.count('class="panel screen'), 6)
+        self.assertIn('data-step="5" data-num="6"', page)
+        self.assertIn('grid-template-columns:repeat(6,minmax(0,1fr))', page)
+        self.assertIn('.meeting-agent-page .screen[data-screen="5"]{display:block}', page)
+        self.assertIn('What matters most from this meeting?', page)
+        self.assertIn('id="meetingSteer"', page)
+        self.assertIn('id="executiveSummary"', page)
+        self.assertIn('id="objectivesList"', page)
+        # Background generation: start, poll, and the stale-run detector.
+        self.assertIn("router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth", api)
+        self.assertIn("router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth", api)
+        self.assertIn('generation.bootId !== MEETING_AGENT_BOOT_ID', api)
+        self.assertIn("setImmediate", api)
+        self.assertIn("function pollGeneration", client)
+        self.assertIn("function startBackgroundStage", client)
+        # A background write must land on a fresh read, never a captured revision.
+        self.assertIn("{ authUser: { userId } }", api)
+        # The steer is read from the persisted draft so the worker takes the same path.
+        self.assertIn("steer: draft.steer", api)
         self.assertIn('data-owner-chip', client)
         self.assertIn('data-add-owner', client)
         self.assertIn('Someone else', client)
@@ -83,7 +103,9 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.attendee-chip .secondary{padding:.4rem .6rem;font-size:var(--fs-cap)}', page)
         self.assertIn("clientAttendeeLabel", client)
         self.assertIn('.record-row textarea{min-height:52px}', page)
-        self.assertIn('.notice[hidden]{display:none!important}', page)
+        # Page-wide, not just .notice: .save-strip and the button classes set
+        # display, which silently defeats the attribute without this guard.
+        self.assertIn('.meeting-agent-page [hidden]{display:none!important}', page)
         self.assertIn('@keyframes agent-spin', page)
         self.assertIn('aria-busy="false"', page)
         self.assertIn("status.setAttribute('aria-busy', busy ? 'true' : 'false')", client)
@@ -483,7 +505,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('class="jobs-page"', jobs_page)
         self.assertIn('class="jobs-header"', jobs_page)
         self.assertIn('class="jobs-actions"', jobs_page)
-        self.assertIn('href="/jobs?type=staged-meeting-minutes">Staged meeting minutes</a>', jobs_page)
+        # The Library lists Meeting Minutes Agent drafts only. Staged job DETAIL
+        # rendering below is deliberately kept, so /jobs/:id and
+        # /meeting-minutes-final/jobs/:id deep links still resolve.
+        self.assertNotIn('href="/jobs?type=staged-meeting-minutes"', jobs_page)
+        self.assertIn('href="/jobs?type=meeting-minutes-agent">Meeting Minutes Agent</a>', jobs_page)
+        self.assertIn("fetchJson('/api/meeting-minutes-agent/drafts?limit=100')", jobs_page)
+        self.assertIn('draft.stageLabel', jobs_page)
         self.assertNotIn('href="/jobs?type=meeting-minutes"', jobs_page)
         self.assertNotIn('href="/jobs?type=project-updates"', jobs_page)
         self.assertIn('href="/staged-meeting-minutes">Process new meeting</a>', jobs_page)
@@ -597,7 +625,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("normalisedTerm", jobs_page)
         self.assertIn("sourceSnippet", jobs_page)
         self.assertIn("attempts = 0", db)
-        self.assertIn("/api/jobs?limit=100", jobs_page)
+        # The list no longer fetches the shared job queue - it lists agent drafts
+        # only. The detail path below still calls /api/jobs/:id, so a deep link to
+        # another tool's queued job continues to resolve.
+        self.assertNotIn("/api/jobs?limit=100", jobs_page)
+        self.assertIn("fetchJson(`/api/jobs/${encodeURIComponent(activeJobId)}`)", jobs_page)
         self.assertIn("window.location.pathname.match(/(?:\\/jobs|\\/meeting-minutes-final\\/jobs)", jobs_page)
         self.assertIn("Job cancellation requested", jobs_page)
         self.assertIn("Delete this job, stored transcript and generated result?", jobs_page)

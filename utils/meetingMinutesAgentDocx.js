@@ -78,6 +78,19 @@ function documentBody(draft = {}, includeEvidence = false) {
   body += paragraph(`Meeting type: ${details.meetingType || 'Not stated'}`, 'Subtitle');
   body += paragraph(`Internal attendees: ${(details.internalAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
   body += paragraph(`${details.clientAttendeeLabel === 'External' ? 'External' : 'Client'} attendees: ${(details.clientAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
+  // Objectives and the executive summary lead the document when present, and are
+  // omitted entirely when absent so an older draft exports exactly as it did before.
+  const objectives = (Array.isArray(draft.meetingObjectives) ? draft.meetingObjectives : [])
+    .map((item) => (typeof item === 'string' ? item : item?.text))
+    .filter(Boolean);
+  if (objectives.length) {
+    body += paragraph('Meeting objectives', 'Heading1');
+    body += objectives.map((item) => bullet(item)).join('');
+  }
+  if (draft.executiveSummary) {
+    body += paragraph('Executive summary', 'Heading1');
+    body += paragraph(draft.executiveSummary, 'BodyText');
+  }
   body += paragraph('Discussion', 'Heading1');
   for (const topic of draft.discussion || []) {
     body += paragraph(topic.topic || 'Discussion', 'Heading2');

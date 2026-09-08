@@ -41,6 +41,10 @@
   border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow-sm)}
 .meeting-agent-page .screen{display:none}
 .meeting-agent-page .screen.active{display:block}
+/* A class that sets display beats the user-agent [hidden] rule, and this page
+   sets display on .save-strip, .drop-zone and every button variant - so hiding
+   them from JS silently did nothing. Guard the attribute once, page-wide. */
+.meeting-agent-page [hidden]{display:none!important}
 
 .meeting-agent-page .hero{padding:1.1rem 1.25rem;margin-bottom:.75rem}
 .meeting-agent-page .hero h1{margin:0 0 .35rem}
@@ -116,7 +120,7 @@
 
 /* --------------------------------------------------------------- steps -- */
 .meeting-agent-page .steps{
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
 .meeting-agent-page .step{
   display:flex;align-items:center;gap:.5rem;padding:.6rem .7rem;cursor:pointer;
   border:1px solid var(--border);border-radius:var(--radius-sm);
@@ -153,7 +157,6 @@
   border:1px solid var(--info-border);border-left:var(--rail) solid var(--accent);
   border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);
   font-size:var(--fs-sm);line-height:1.45}
-.meeting-agent-page .notice[hidden]{display:none!important}
 .meeting-agent-page #workflowStatus::before{
   content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--accent)}
 .meeting-agent-page.busy #workflowStatus::before{
@@ -219,6 +222,25 @@
   font-size:var(--fs-sm);color:var(--heading)}
 .meeting-agent-page .attendee-label-control select{width:auto;min-width:110px;padding:.4rem .5rem}
 .meeting-agent-page .attendee-help{margin-top:.6rem;font-size:var(--fs-cap);color:var(--muted)}
+
+/* ------------------------------------------------- focus and summary -- */
+.meeting-agent-page .steer-field{max-width:76ch}
+.meeting-agent-page .steer-field textarea{min-height:150px}
+.meeting-agent-page .steer-hint{margin-top:.5rem;font-size:var(--fs-cap);color:var(--muted)}
+.meeting-agent-page .summary-fields{display:grid;gap:1rem;margin-top:1rem}
+.meeting-agent-page .summary-field{
+  padding:.85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
+.meeting-agent-page .summary-field>.lbl{display:block;margin-bottom:.5rem}
+.meeting-agent-page .summary-field textarea{min-height:170px}
+.meeting-agent-page .generating{
+  display:flex;align-items:center;gap:.7rem;padding:1.1rem;margin-top:.85rem;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft);
+  color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .generating::before{
+  content:"";flex:none;width:1.05rem;height:1.05rem;border-radius:50%;
+  border:2px solid var(--brand-200);border-top-color:var(--accent);
+  animation:agent-spin .75s linear infinite}
+@media(prefers-reduced-motion:reduce){.meeting-agent-page .generating::before{animation:none}}
 
 /* -------------------------------------------------- editor + agent bar -- */
 .meeting-agent-page .paper{min-width:0}
@@ -415,6 +437,10 @@
   display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:var(--fs-sm)}
 
 /* -------------------------------------------------------- responsive -- */
+@media(max-width:1040px){
+  /* six across gets cramped well before the tablet breakpoint */
+  .meeting-agent-page .steps{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
 @media(max-width:900px){
   .meeting-agent-page .actions-table,
   .meeting-agent-page .actions-table tbody,
@@ -456,13 +482,13 @@
   .meeting-agent-page .save-strip,
   .meeting-agent-page .notice,
   .meeting-agent-page .review-flags,
-  .meeting-agent-page .screen:not([data-screen="3"]),
+  .meeting-agent-page .screen:not([data-screen="5"]),
   .meeting-agent-page .screen-actions{display:none!important}
   .meeting-agent-page,
   .meeting-agent-page .container,
   .meeting-agent-page .panel{
     background:#fff!important;border:0;box-shadow:none;padding:0;margin:0}
-  .meeting-agent-page .screen[data-screen="3"]{display:block}
+  .meeting-agent-page .screen[data-screen="5"]{display:block}
 }
 </style>
 <script defer src="/static/meeting-minutes-agent.js"></script>
@@ -484,7 +510,7 @@
 
   <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p><p class="tool-note"><strong>Which minutes tool?</strong> This guided tool supports source evidence, review flags and agent-assisted editing. <a href="/meeting-minutes-final">Meeting transcript to minutes</a> is the quicker single-pass option.</p></section>
 
-  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button">Upload &amp; details</button><button class="step" data-step="1" data-num="2" type="button" disabled>Discussion</button><button class="step" data-step="2" data-num="3" type="button" disabled>Actions</button><button class="step" data-step="3" data-num="4" type="button" disabled>Final review</button></div>
+  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="1" data-num="2" type="button" disabled aria-label="Step 2, what matters most from this meeting">Focus</button><button class="step" data-step="2" data-num="3" type="button" disabled aria-label="Step 3, discussion">Discussion</button><button class="step" data-step="3" data-num="4" type="button" disabled aria-label="Step 4, actions">Actions</button><button class="step" data-step="4" data-num="5" type="button" disabled aria-label="Step 5, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="6" type="button" disabled aria-label="Step 6, final review">Review</button></div>
 
   <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a href="/jobs">Resume later from Library</a></span></div>
 
@@ -514,40 +540,69 @@
           <div class="attendee-help">Edit names directly, or move a person between the Internal and Client groups. Choosing External changes only the heading used in the minutes.</div>
         </div>
       </div>
-      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="generateDiscussion" class="button" type="button">Generate discussion<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="toSteer" class="button" type="button">Continue<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
     </div>
   </section>
 
-  <!-- ================================================== 1 - discussion -->
+  <!-- ============================================ 1 - what matters most -->
   <section class="panel screen" data-screen="1">
+    <div class="toolbar"><h2>What matters most from this meeting?</h2><span class="muted">Optional</span></div>
+    <p class="muted">Tell the agent what you need out of these minutes &mdash; the decision you were chasing, a workstream to keep together, whose commitments matter. It shapes what leads and how much detail each item gets.</p>
+    <div class="steer-field">
+      <textarea id="meetingSteer" rows="6" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
+      <p class="steer-hint">It never lets the agent state something the transcript does not support, and nothing supported is dropped just because you did not mention it. Leave it blank to work from the transcript alone.</p>
+    </div>
+    <div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="startDiscussion" class="button" type="button">Continue<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+  </section>
+
+  <!-- ================================================== 2 - discussion -->
+  <section class="panel screen" data-screen="2">
     <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">Changes are previewed before anything is applied</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview agent changes</button></div></details>
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div>
       <p class="muted">Edit directly and open Evidence beneath any record to inspect its source.</p>
       <div id="discussionList"></div>
     </div>
-    <div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="generateActions" class="button" type="button">Generate actions<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+    <div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to focus</button><button id="generateActions" class="button" type="button">Generate actions<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ===================================================== 2 - actions -->
-  <section class="panel screen" data-screen="2">
+  <section class="panel screen" data-screen="3">
     <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">For example: merge true duplicates and make the wording concise.</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details>
     <div class="paper">
       <div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div>
       <p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p>
       <div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
     </div>
-    <div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="openFinalReview" class="button" type="button">Review complete minutes<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+    <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ==================================================== ai proposals -->
   <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Proposed AI changes</h2><p class="muted">Select only the changes you want. Nothing has been applied yet.</p></div><div class="proposal-actions"><button id="rejectProposal" class="secondary" type="button">Reject all</button><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button></div></div><div id="proposalChanges"></div></section>
 
-  <!-- ================================================ 3 - final review -->
-  <section class="panel screen" data-screen="3">
+  <!-- ======================================= 4 - summary and objectives -->
+  <section class="panel screen" data-screen="4">
+    <div class="toolbar"><h2>Executive summary &amp; objectives</h2><button id="generateSummary" class="secondary" type="button">Generate</button></div>
+    <p class="muted">Written from the discussion and actions you have confirmed. Edit either directly.</p>
+    <div class="summary-fields">
+      <div class="summary-field">
+        <span class="lbl">Meeting objectives</span>
+        <div id="objectivesList" class="record-list"></div>
+        <button id="addObjective" class="secondary add-record" type="button">Add objective</button>
+      </div>
+      <div class="summary-field">
+        <span class="lbl">Executive summary</span>
+        <textarea id="executiveSummary" rows="8" aria-label="Executive summary"></textarea>
+      </div>
+    </div>
+    <div class="screen-actions"><button class="secondary" data-back="3" type="button">Back to actions</button><button id="openFinalReview" class="button" type="button">Review complete minutes<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+  </section>
+
+  <!-- ================================================ 5 - final review -->
+  <section class="panel screen" data-screen="5">
     <div id="finalDocument" class="paper final-document"></div>
     <div class="screen-actions final-actions">
-      <button class="secondary quiet" data-back="2" type="button">Back to actions</button>
+      <button class="secondary quiet" data-back="4" type="button">Back to summary</button>
       <span class="spacer"></span>
       <label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label>
       <span class="divider"></span>
