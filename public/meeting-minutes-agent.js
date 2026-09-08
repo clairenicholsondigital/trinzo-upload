@@ -33,6 +33,7 @@
 
   function setBusy(busy, message) {
     document.body.classList.toggle('busy', busy);
+    status.setAttribute('aria-busy', busy ? 'true' : 'false');
     if (message) setStatus(message, false);
   }
 
