@@ -222,6 +222,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <nav class="queue-tabs" aria-label="Job queues">
       <a class="queue-tab" href="/jobs" aria-current="page">All items</a>
       <a class="queue-tab" href="/jobs?type=staged-meeting-minutes">Staged meeting minutes</a>
+      <a class="queue-tab" href="/jobs?type=meeting-minutes-agent">Meeting Minutes Agent</a>
     </nav>
     <div id="bulkBar" class="bulk-bar" hidden>
       <label><input id="selectAllJobs" type="checkbox" /> Select all</label>
@@ -415,6 +416,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function isLocalStagedDraft(job) {
     return job && job.jobType === 'staged_meeting_minutes_review';
+  }
+
+  function isMeetingAgentDraft(job) {
+    return job && job.jobType === 'meeting_minutes_agent_draft';
   }
 
   function isStaleStagedJob(job) {
@@ -1206,6 +1211,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const type = String(job.jobType || '').toLowerCase();
     if (type === 'staged_meeting_minutes_review') return 'Staged meeting minutes';
     if (type === 'staged_meeting_minutes_stage') return 'Staged stage generation';
+    if (type === 'meeting_minutes_agent_draft') return 'Meeting Minutes Agent';
     if (type === 'project_update_generate') return 'Project update';
     return 'Meeting minutes';
   }
@@ -1218,7 +1224,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function currentQueueType() {
     const type = new URLSearchParams(window.location.search).get('type') || '';
-    return type === 'staged-meeting-minutes' ? type : '';
+    return ['staged-meeting-minutes', 'meeting-minutes-agent'].includes(type) ? type : '';
   }
 
   function updateQueueTabs() {
@@ -1261,11 +1267,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td data-label="Actions" class="row-actions">
                   ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+                  ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-agent-draft="${escapeHtml(job.draftId)}" type="button">Delete</button>` : ''}
                   ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button resume-staged" href="${escapeAttribute(job.resumeUrl)}">Resume staged review <span aria-hidden="true">›</span></a>` : ''}
-                  ${!isStagedJob(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
-                  ${!isStagedJob(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
-                  ${!isStagedJob(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
-                  ${!isStagedJob(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
+                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
+                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
+                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -1276,7 +1283,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function canArchive(job) {
-    return Boolean(job);
+    return Boolean(job) && !isMeetingAgentDraft(job);
   }
 
   function updateBulkControls() {
@@ -1485,10 +1492,27 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (resultOnly) return;
     updateQueueTabs();
     const type = currentQueueType();
-    const staged = stagedJobs();
-    const payload = await fetchJson('/api/jobs?limit=100&type=staged-meeting-minutes');
+    const staged = type === 'meeting-minutes-agent' ? [] : stagedJobs();
+    const requests = [];
+    if (type !== 'meeting-minutes-agent') requests.push(fetchJson('/api/jobs?limit=100&type=staged-meeting-minutes'));
+    else requests.push(Promise.resolve({jobs:[]}));
+    if (type !== 'staged-meeting-minutes') requests.push(fetchJson('/api/meeting-minutes-agent/drafts?limit=100'));
+    else requests.push(Promise.resolve({drafts:[]}));
+    const [payload, agentPayload] = await Promise.all(requests);
     const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
-    renderJobs(staged.concat(jobs));
+    const agentDrafts = (Array.isArray(agentPayload.drafts) ? agentPayload.drafts : []).map((draft) => ({
+      jobId: `agent-${draft.draftId}`,
+      draftId: draft.draftId,
+      jobType: 'meeting_minutes_agent_draft',
+      meetingTitle: draft.title,
+      fileName: draft.fileName,
+      status: draft.status || 'draft',
+      stage: draft.currentStep >= 3 ? 'final review' : draft.currentStep >= 2 ? 'actions' : draft.currentStep >= 1 ? 'discussion' : 'details',
+      createdAt: draft.createdAt,
+      updatedAt: draft.updatedAt,
+      resumeUrl: draft.resumeUrl
+    }));
+    renderJobs(staged.concat(agentDrafts, jobs));
   }
 
   async function loadDetail() {
@@ -1543,6 +1567,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const cancel = event.target.closest('[data-cancel]');
     const deleteButton = event.target.closest('[data-delete]');
     const deleteStagedButton = event.target.closest('[data-delete-staged]');
+    const deleteAgentDraftButton = event.target.closest('[data-delete-agent-draft]');
     if (retry) act('retry', retry.dataset.retry);
     if (cancel) act('cancel', cancel.dataset.cancel);
     if (deleteButton) deleteJob(deleteButton.dataset.delete);
@@ -1550,6 +1575,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       if (!window.confirm('Remove this staged review draft from this browser?')) return;
       deleteStagedDraft(deleteStagedButton.dataset.deleteStaged);
       refresh();
+    }
+    if (deleteAgentDraftButton) {
+      if (!window.confirm('Delete this Meeting Minutes Agent draft and its stored transcript?')) return;
+      fetchJson(`/api/meeting-minutes-agent/drafts/${encodeURIComponent(deleteAgentDraftButton.dataset.deleteAgentDraft)}`, { method: 'DELETE' })
+        .then(() => { setMessage('Agent draft deleted.', 'success'); return refresh(); })
+        .catch((error) => setMessage(error.message || 'Could not delete the agent draft.', 'error'));
     }
   });
   listView.addEventListener('change', (event) => {

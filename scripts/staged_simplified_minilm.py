@@ -52,7 +52,7 @@ def main() -> int:
     classifier = bundle["classifier"]
     probabilities = classifier.predict_proba(matrix)
     classified = []
-    for row, probs in zip(rows, probabilities):
+    for sequence, (row, probs) in enumerate(zip(rows, probabilities), 1):
         best = int(probs.argmax())
         predicted = str(classifier.classes_[best])
         confidence = float(probs[best])
@@ -61,7 +61,15 @@ def main() -> int:
             effective = "remove"
         if effective == "remove" and usefulness.RATIONALE_OR_IMPACT.search(row["text"]):
             effective = "uncertain"
-        classified.append({**row, "classification": effective, "confidence": round(confidence, 4)})
+        classified.append({
+            **row,
+            "id": f"T{sequence:04d}",
+            "sequence": sequence,
+            "cleanedText": clean_speech_text(row.get("text", "")),
+            "classification": effective,
+            "confidence": round(confidence, 4),
+            "restored": False,
+        })
 
     kept = [row for row in classified if row["classification"] != "remove"]
     prepared = render_full_name_clean_transcript(kept)
@@ -75,6 +83,16 @@ def main() -> int:
         "keptUnitCount": len(kept),
         "totalUnitCount": len(classified),
         "preparedTranscript": prepared,
+        "sourceUnits": [{
+            "id": row["id"],
+            "sequence": row["sequence"],
+            "speaker": usefulness.compact(row.get("speaker", "")),
+            "timestamp": row.get("timestamp", ""),
+            "text": row.get("cleanedText", "") or clean_speech_text(row.get("text", "")),
+            "classification": row["classification"],
+            "confidence": row["confidence"],
+            "restored": False,
+        } for row in classified],
     }, ensure_ascii=False))
     return 0
 

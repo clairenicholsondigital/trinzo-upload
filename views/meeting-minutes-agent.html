@@ -1,135 +1,20 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meeting Minutes Agent | Trinzo tools</title>
+<title>Meeting Minutes Agent | Trinzo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/trinzo.css">
 <style>
-.meeting-agent-page,
-.meeting-agent-page * { box-sizing:border-box; }
-.meeting-agent-page { overflow-x:hidden; }
-.meeting-agent-page [hidden] { display:none !important; }
-.meeting-agent-page .container { max-width:1180px; }
-.meeting-agent-page .toolbar,
-.meeting-agent-page .screen-actions { display:flex; gap:.7rem; align-items:center; flex-wrap:wrap; }
-.meeting-agent-page button.secondary {
-  display:inline-flex; align-items:center; justify-content:center; min-height:2.35rem;
-  padding:.55rem .85rem; border:1px solid var(--border-strong); border-radius:8px;
-  background:var(--surface); color:var(--accent-700); font:inherit; font-size:.9rem;
-  font-weight:600; line-height:1.1; cursor:pointer;
-}
-.meeting-agent-page button.secondary:hover { background:var(--brand-050); border-color:var(--brand-200); }
-.meeting-agent-page .hero {
-  padding:1.55rem;
-  background:linear-gradient(135deg,#ffffff 0%,#f2f8fa 100%);
-  border-top-color:var(--brand);
-}
-.meeting-agent-page .hero .intro { max-width:760px; font-size:1.02rem; }
-.meeting-agent-page .steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; margin:1rem 0; }
-.meeting-agent-page .step {
-  min-height:3.2rem; padding:.75rem .85rem; text-align:left;
-  border:1px solid var(--border); border-radius:10px;
-  background:var(--surface); color:var(--muted); font:inherit; font-weight:600;
-  box-shadow:var(--shadow-sm); cursor:pointer;
-}
-.meeting-agent-page .step.active { border-color:var(--accent); color:var(--accent-700); background:var(--brand-050); box-shadow:0 0 0 2px rgba(44,122,144,.12); }
-.meeting-agent-page .step.complete { color:var(--ok-text); border-color:var(--ok-border); }
-.meeting-agent-page .step:disabled { color:#8795a1; background:#f4f6f8; box-shadow:none; opacity:1; cursor:not-allowed; }
-.meeting-agent-page .screen { display:none; }
-.meeting-agent-page .screen.active { display:block; }
-.meeting-agent-page .drop-zone {
-  display:grid; place-items:center; text-align:center; min-height:285px; padding:2.5rem 1.5rem;
-  border:2px dashed #8ebac6; border-radius:14px; background:#f7fbfc;
-  color:var(--text); cursor:pointer; transition:border-color .15s,background .15s,box-shadow .15s;
-}
-.meeting-agent-page .drop-zone:hover,
-.meeting-agent-page .drop-zone.dragover { border-color:var(--accent); background:var(--brand-050); box-shadow:inset 0 0 0 3px rgba(44,122,144,.07); }
-.meeting-agent-page .drop-zone strong { display:block; color:var(--heading); font-size:1.12rem; }
-.meeting-agent-page #transcriptFile { display:none !important; }
-.meeting-agent-page .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem; margin-top:1rem; }
-.meeting-agent-page .field { display:grid; gap:.35rem; }
-.meeting-agent-page .field.full { grid-column:1/-1; }
-.meeting-agent-page input[type="date"] {
-  width:100%; min-height:2.35rem; padding:.55rem .65rem;
-  border:1px solid var(--border-strong); border-radius:8px;
-  background:var(--surface); color:var(--text); font:inherit; font-size:.95rem;
-}
-.meeting-agent-page textarea { min-height:105px; resize:vertical; }
-.meeting-agent-page .notice {
-  margin:.8rem 0; padding:.8rem .9rem; border:1px solid var(--info-border); border-radius:10px;
-  color:var(--info-text); background:var(--info-bg); box-shadow:var(--shadow-sm);
-}
-.meeting-agent-page .notice.error { color:var(--danger-text); border-color:var(--danger-border); background:var(--danger-bg); }
-.meeting-agent-page .editor-shell { display:grid; grid-template-columns:minmax(0,2fr) minmax(280px,1fr); gap:1rem; min-width:0; }
-.meeting-agent-page .actions-editor-shell { grid-template-columns:minmax(0,3.25fr) minmax(250px,.9fr); }
-.meeting-agent-page .editor-shell > * { min-width:0; }
-.meeting-agent-page .paper { background:var(--surface); color:var(--text); border-radius:12px; padding:1.1rem; border:1px solid var(--border); box-shadow:var(--shadow-sm); }
-.meeting-agent-page .discussion-card { border:1px solid var(--border); border-radius:10px; padding:.8rem; margin-bottom:.7rem; background:#fbfdfe; }
-.meeting-agent-page .discussion-card textarea { min-height:115px; }
-.meeting-agent-page .card-head { display:grid; grid-template-columns:1fr auto; gap:.55rem; margin-bottom:.55rem; }
-.meeting-agent-page .delete { background:#fff; color:var(--danger-text); border:1px solid var(--danger-border); border-radius:8px; padding:.45rem .65rem; font:inherit; font-size:.85rem; cursor:pointer; }
-.meeting-agent-page .delete:hover { background:var(--danger-bg); }
-.meeting-agent-page .agent-edit { align-self:start; position:sticky; top:1rem; background:#f6fafb; border-top:3px solid var(--brand); }
-.meeting-agent-page .agent-edit textarea { min-height:145px; margin:.7rem 0; background:#fff; }
-.meeting-agent-page .agent-label { display:flex; gap:.5rem; align-items:center; color:var(--heading); font-weight:700; }
-.meeting-agent-page .status-dot { width:.65rem; height:.65rem; border-radius:50%; background:var(--ok-text); box-shadow:0 0 0 3px var(--ok-bg); }
-.meeting-agent-page .table-wrap { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--border); border-radius:10px; }
-.meeting-agent-page .actions-table { min-width:800px; table-layout:fixed; }
-.meeting-agent-page .actions-table th:nth-child(1) { width:43%; }
-.meeting-agent-page .actions-table th:nth-child(2) { width:21%; }
-.meeting-agent-page .actions-table th:nth-child(3) { width:27%; }
-.meeting-agent-page .actions-table th:nth-child(4) { width:9%; }
-.meeting-agent-page .actions-table textarea { min-height:142px; resize:vertical; }
-.meeting-agent-page .actions-table input,
-.meeting-agent-page .actions-table select { min-height:2.6rem; }
-.meeting-agent-page .owner-editor { display:grid; gap:.45rem; }
-.meeting-agent-page .deadline-editor { display:grid; gap:.45rem; }
-.meeting-agent-page .deadline-editor input[type="date"] {
-  width:100%; min-height:2.6rem; padding:.5rem .6rem;
-  border:1px solid var(--border-strong); border-radius:8px;
-  background:var(--surface); color:var(--text); color-scheme:light; font:inherit;
-}
-.meeting-agent-page .deadline-hint { color:var(--muted); font-size:.73rem; line-height:1.25; }
-.meeting-agent-page .final-document { max-width:920px; margin:0 auto; padding:clamp(1.1rem,3vw,2.2rem); }
-.meeting-agent-page .final-document section { border-top:1px solid var(--border); margin-top:1rem; padding-top:.8rem; }
-.meeting-agent-page .screen-actions { justify-content:space-between; margin-top:1rem; }
-.meeting-agent-page.busy button,
-.meeting-agent-page.busy input,
-.meeting-agent-page.busy textarea,
-.meeting-agent-page.busy select { pointer-events:none; opacity:.68; }
-@media(max-width:800px) {
-  .meeting-agent-page .steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .meeting-agent-page .editor-shell,
-  .meeting-agent-page .form-grid { grid-template-columns:1fr; }
-  .meeting-agent-page .field.full { grid-column:auto; }
-  .meeting-agent-page .agent-edit { position:static; }
-}
-@media(max-width:520px) {
-  .meeting-agent-page { padding:.65rem; }
-  .meeting-agent-page .steps { grid-template-columns:1fr; }
-  .meeting-agent-page .drop-zone { min-height:230px; padding:1.5rem 1rem; }
-  .meeting-agent-page .screen-actions > * { width:100%; }
-  .meeting-agent-page .actions-table { min-width:0; }
-  .meeting-agent-page .actions-table thead { display:none; }
-  .meeting-agent-page .actions-table,
-  .meeting-agent-page .actions-table tbody,
-  .meeting-agent-page .actions-table tr,
-  .meeting-agent-page .actions-table td { display:block; width:100%; }
-  .meeting-agent-page .actions-table tr { padding:.75rem; border-bottom:1px solid var(--border); background:#fbfdfe; }
-  .meeting-agent-page .actions-table tr:last-child { border-bottom:0; }
-  .meeting-agent-page .actions-table td { padding:.35rem 0; border:0; background:transparent !important; }
-  .meeting-agent-page .actions-table td[data-label]::before { content:attr(data-label); display:block; margin-bottom:.25rem; color:var(--muted); font-size:.72rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
-  .meeting-agent-page .actions-table .delete { width:100%; }
-}
-@media print {
-  .meeting-agent-page .nav,.meeting-agent-page .hero,.meeting-agent-page .steps,.meeting-agent-page .notice,.meeting-agent-page .screen:not([data-screen="3"]),.meeting-agent-page .screen-actions { display:none !important; }
-  .meeting-agent-page,.meeting-agent-page .container,.meeting-agent-page .panel { margin:0; padding:0; background:#fff !important; border:0; box-shadow:none; }
-  .meeting-agent-page .screen[data-screen="3"] { display:block; }
-}
+:root{--agent-brand:#087f82;--agent-ink:#123544;--agent-border:#cbd8de;--agent-soft:#f4f8f9;--agent-warn:#fff7e6;--agent-danger:#9f2d26;--agent-ok:#18724f}
+*{box-sizing:border-box}.meeting-agent-page{margin:0;padding:1rem;background:#eef3f5;color:#17222c;font-family:Roboto,Arial,sans-serif}.meeting-agent-page .container{max-width:1280px;margin:0 auto}.meeting-agent-page .nav{min-height:48px;margin-bottom:.65rem}.meeting-agent-page .hero{padding:1rem 1.2rem;margin-bottom:.7rem;border-top:3px solid #6bb5c5}.meeting-agent-page .hero h1{margin:.1rem 0 .3rem;font-size:clamp(1.65rem,3vw,2.15rem);color:var(--agent-ink)}.meeting-agent-page .hero p{margin:.25rem 0;color:#53636d;line-height:1.45}.meeting-agent-page .tool-note{font-size:.88rem}.meeting-agent-page .steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin:.7rem 0}.meeting-agent-page .step{padding:.62rem;border:1px solid var(--agent-border);border-radius:9px;background:#fff;color:#53636d;font-weight:700}.meeting-agent-page .step.active{border-color:var(--agent-brand);box-shadow:inset 0 0 0 1px var(--agent-brand);color:var(--agent-ink)}.meeting-agent-page .step.complete{background:#e9f7f5}.meeting-agent-page .step:disabled{opacity:.55}.meeting-agent-page .save-strip{display:flex;justify-content:space-between;gap:1rem;align-items:center;min-height:42px;padding:.55rem .8rem;margin-bottom:.65rem;background:#fff;border:1px solid var(--agent-border);border-radius:9px;font-size:.88rem}.meeting-agent-page .save-status[data-state="error"]{color:var(--agent-danger)}.meeting-agent-page .save-status[data-state="saved"]{color:var(--agent-ok)}.meeting-agent-page .notice{padding:.72rem .85rem;margin:.65rem 0;border-radius:9px;background:#e7f2f6;border:1px solid #8bb6c7}.meeting-agent-page .notice.error{background:#fff0ef;border-color:#e1aaa6;color:var(--agent-danger)}.meeting-agent-page .panel{background:#fff;border:1px solid var(--agent-border);border-radius:14px;padding:1rem;box-shadow:0 2px 8px rgba(18,53,68,.07)}.meeting-agent-page .screen{display:none}.meeting-agent-page .screen.active{display:block}.meeting-agent-page .drop-zone{display:grid;place-items:center;min-height:260px;text-align:center;border:2px dashed #76a4bc;border-radius:14px;background:#f7fafb;padding:2rem;cursor:pointer}.meeting-agent-page .drop-zone.dragover{border-color:var(--agent-brand);background:#eaf8f7}.meeting-agent-page #transcriptFile{display:none!important}.meeting-agent-page .toolbar,.meeting-agent-page .screen-actions{display:flex;align-items:center;justify-content:space-between;gap:.65rem;flex-wrap:wrap}.meeting-agent-page .toolbar h2{margin:0;color:var(--agent-ink)}.meeting-agent-page .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;margin-top:1rem}.meeting-agent-page .field{display:grid;gap:.35rem;color:var(--agent-ink);font-weight:700}.meeting-agent-page .field.full{grid-column:1/-1}.meeting-agent-page input,.meeting-agent-page textarea,.meeting-agent-page select{width:100%;min-width:0;border:1px solid #aebfc8;border-radius:8px;background:#fff;color:#17222c;padding:.65rem;font:inherit}.meeting-agent-page textarea{resize:vertical;line-height:1.45}.meeting-agent-page .muted{color:#687985}.meeting-agent-page .button,.meeting-agent-page button.button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:linear-gradient(180deg,#17d0c4,#10aca6);color:#072a38;padding:.65rem .9rem;font-weight:700;cursor:pointer;text-decoration:none}.meeting-agent-page .secondary{border:1px solid #aebfc8!important;background:#fff!important;color:var(--agent-ink)!important}.meeting-agent-page button:disabled{opacity:.55;cursor:not-allowed}.meeting-agent-page .screen-actions{margin-top:1rem}.meeting-agent-page .excluded{margin-top:1rem;border:1px solid var(--agent-border);border-radius:10px;background:var(--agent-soft)}.meeting-agent-page summary{cursor:pointer;padding:.75rem;font-weight:700;color:var(--agent-ink)}.meeting-agent-page .excluded-list{display:grid;gap:.55rem;padding:0 .75rem .75rem}.meeting-agent-page .excluded-row,.meeting-agent-page .evidence-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.75rem;padding:.7rem;border:1px solid #d7e1e5;border-radius:8px;background:#fff}.meeting-agent-page .source-meta{font-size:.78rem;color:#687985;margin-bottom:.25rem}.meeting-agent-page .editor-shell{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,310px);gap:1rem;align-items:start}.meeting-agent-page .paper{min-width:0}.meeting-agent-page .discussion-card{border:1px solid var(--agent-border);border-radius:11px;padding:.8rem;margin-top:.75rem;background:#fbfdfe}.meeting-agent-page .card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem}.meeting-agent-page .record-section{margin-top:.7rem}.meeting-agent-page .record-section h3{font-size:.86rem;color:#53636d;margin:.2rem 0 .35rem}.meeting-agent-page .record-row{border-left:3px solid #83b9c4;padding:.55rem .55rem .55rem .7rem;margin:.45rem 0;background:#fff}.meeting-agent-page .record-row textarea{overflow:hidden;min-height:52px}.meeting-agent-page .record-tools{display:flex;gap:.45rem;align-items:center;justify-content:space-between;margin-top:.35rem}.meeting-agent-page .evidence-toggle{font-size:.78rem;padding:.3rem .5rem}.meeting-agent-page .evidence-panel{margin-top:.4rem;padding:.55rem;background:#edf5f7;border-radius:7px}.meeting-agent-page .evidence-row{display:block;margin:.35rem 0}.meeting-agent-page .evidence-row.cited{border-left:3px solid var(--agent-brand)}.meeting-agent-page .delete{border:1px solid #e3aaa6;border-radius:7px;background:#fff;color:var(--agent-danger);padding:.42rem .6rem;cursor:pointer}.meeting-agent-page .agent-edit{position:sticky;top:.75rem;padding:0!important;background:#f7fafb}.meeting-agent-page .agent-edit summary{list-style:none}.meeting-agent-page .agent-edit summary::-webkit-details-marker{display:none}.meeting-agent-page .agent-edit-body{padding:0 .8rem .8rem}.meeting-agent-page .agent-edit textarea{min-height:130px;margin:.55rem 0}.meeting-agent-page .status-dot{display:inline-block;width:.62rem;height:.62rem;border-radius:50%;background:#1a9a62;margin-right:.4rem}.meeting-agent-page .review-flags{margin-bottom:.7rem;background:var(--agent-warn);border-color:#e7c98e}.meeting-agent-page .flag-list{display:grid;gap:.5rem}.meeting-agent-page .flag{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;padding:.6rem;border-radius:8px;background:#fff;border:1px solid #ead6ac}.meeting-agent-page .flag.resolved{opacity:.68}.meeting-agent-page .flag-actions{display:flex;gap:.35rem;flex-wrap:wrap}.meeting-agent-page .flag-actions button{font-size:.76rem;padding:.32rem .48rem}.meeting-agent-page .actions-wrap{width:100%;overflow:visible}.meeting-agent-page .actions-table{width:100%;table-layout:fixed;border-collapse:collapse}.meeting-agent-page .actions-table th,.meeting-agent-page .actions-table td{padding:.55rem;vertical-align:top;border-bottom:1px solid #d8e2e6;text-align:left}.meeting-agent-page .actions-table th{background:#edf3f5;color:#40545f;font-size:.78rem;text-transform:uppercase}.meeting-agent-page .actions-table th:nth-child(1){width:49%}.meeting-agent-page .actions-table th:nth-child(2){width:24%}.meeting-agent-page .actions-table th:nth-child(3){width:20%}.meeting-agent-page .actions-table th:nth-child(4){width:7%}.meeting-agent-page .actions-table textarea{min-height:90px;overflow:hidden}.meeting-agent-page .owner-options{display:grid;gap:.35rem}.meeting-agent-page .owner-options label{display:flex;gap:.4rem;align-items:flex-start;font-size:.86rem}.meeting-agent-page .owner-options input[type="checkbox"]{width:auto;margin-top:.15rem}.meeting-agent-page .timing-editor{display:grid;gap:.4rem}.meeting-agent-page .proposal{margin:.8rem 0;border:2px solid #6aaeb6;background:#f2fbfa}.meeting-agent-page .proposal-change{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.65rem;padding:.65rem;border-top:1px solid #d1e2e4}.meeting-agent-page .proposal-change pre{white-space:pre-wrap;margin:.25rem 0;padding:.5rem;border-radius:7px;background:#fff;font:inherit;font-size:.84rem}.meeting-agent-page .final-document{max-width:940px;margin:auto}.meeting-agent-page .final-document h2{color:var(--agent-ink)}.meeting-agent-page .final-document section{border-top:1px solid var(--agent-border);margin-top:1rem;padding-top:.8rem}.meeting-agent-page .final-actions{position:sticky;bottom:.5rem;background:#fff;border:1px solid var(--agent-border);padding:.65rem;border-radius:10px;box-shadow:0 5px 18px rgba(18,53,68,.14)}.meeting-agent-page.busy button,.meeting-agent-page.busy input,.meeting-agent-page.busy textarea,.meeting-agent-page.busy select{pointer-events:none;opacity:.65}
+@media(max-width:900px){.meeting-agent-page .editor-shell{grid-template-columns:1fr}.meeting-agent-page .agent-edit{position:static}.meeting-agent-page .actions-table,.meeting-agent-page .actions-table tbody,.meeting-agent-page .actions-table tr,.meeting-agent-page .actions-table td{display:block;width:100%}.meeting-agent-page .actions-table thead{display:none}.meeting-agent-page .actions-table tr{border:1px solid var(--agent-border);border-radius:9px;margin:.75rem 0;padding:.55rem}.meeting-agent-page .actions-table td{border:0;padding:.35rem}.meeting-agent-page .actions-table td[data-label]::before{content:attr(data-label);display:block;color:#687985;font-size:.74rem;font-weight:700;text-transform:uppercase;margin-bottom:.25rem}.meeting-agent-page .actions-table .delete{width:100%}}
+@media(max-width:650px){.meeting-agent-page{padding:.55rem}.meeting-agent-page .steps,.meeting-agent-page .form-grid{grid-template-columns:1fr}.meeting-agent-page .field.full{grid-column:auto}.meeting-agent-page .save-strip,.meeting-agent-page .flag,.meeting-agent-page .excluded-row{grid-template-columns:1fr;display:grid}.meeting-agent-page .screen-actions>*{width:100%}}
+@media print{.meeting-agent-page .nav,.meeting-agent-page .hero,.meeting-agent-page .steps,.meeting-agent-page .save-strip,.meeting-agent-page .notice,.meeting-agent-page .review-flags,.meeting-agent-page .screen:not([data-screen="3"]),.meeting-agent-page .screen-actions{display:none!important}.meeting-agent-page,.meeting-agent-page .container,.meeting-agent-page .panel{background:#fff!important;border:0;box-shadow:none;padding:0;margin:0}.meeting-agent-page .screen[data-screen="3"]{display:block}}
+.meeting-agent-page .secondary{border-radius:8px!important;padding:.55rem .75rem!important;font:inherit;font-weight:600;cursor:pointer}
 </style>
 <script defer src="/static/meeting-minutes-agent.js"></script>
 <script defer src="/static/trinzo.js"></script>
@@ -137,48 +22,28 @@
 <body class="meeting-agent-page">
 <main class="container">
   <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a><a href="/meeting-minutes-final">Meeting transcript to minutes</a><a href="/meeting-minutes-agent">Meeting Minutes Agent</a><a href="/jobs">Library</a></nav>
-  <section class="panel hero"><p class="eyebrow">MiniLM v3 + Copilot Studio</p><h1>Meeting Minutes Agent</h1><p class="intro">Upload a Word transcript, review its meeting details, then work with the agent to produce editable discussion points and actions.</p></section>
-  <div class="steps" aria-label="Meeting minutes workflow">
-    <button class="step active" data-step="0" type="button">1. Upload &amp; details</button><button class="step" data-step="1" type="button" disabled>2. Discussion</button><button class="step" data-step="2" type="button" disabled>3. Actions</button><button class="step" data-step="3" type="button" disabled>4. Final review</button>
-  </div>
+  <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p><p class="tool-note"><strong>Which minutes tool?</strong> This guided tool supports source evidence, review flags and agent-assisted editing. <a href="/meeting-minutes-final">Meeting transcript to minutes</a> is the quicker single-pass option.</p></section>
+  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" type="button">1. Upload &amp; details</button><button class="step" data-step="1" type="button" disabled>2. Discussion</button><button class="step" data-step="2" type="button" disabled>3. Actions</button><button class="step" data-step="3" type="button" disabled>4. Final review</button></div>
+  <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><a href="/jobs">Resume later from Library</a></div>
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" hidden></p>
+  <p id="staleNotice" class="notice" hidden>The prepared transcript changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
+  <section id="reviewFlags" class="panel review-flags" hidden><div class="toolbar"><h2>Review flags</h2><span id="flagCount" class="muted"></span></div><p class="muted">Check, correct or dismiss uncertainty before sharing. Open flags do not prevent export.</p><div id="flagList" class="flag-list"></div></section>
 
   <section class="panel screen active" data-screen="0">
-    <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript">
-      <input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
-      <div><strong>Drop a Word transcript here</strong><p class="muted">or click to choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div>
-    </div>
-    <div id="detailsEditor" hidden>
-      <div class="toolbar"><h2>Meeting details</h2><span id="denoiseSummary" class="muted"></span></div>
-      <p class="muted">MiniLM v3 has removed likely transcript noise. Check this information before sending the denoised transcript to the agent.</p>
-      <div class="form-grid">
-        <label class="field full">Meeting title<input id="meetingTitle"></label>
-        <label class="field">Date<input id="meetingDate" type="date"></label>
-        <label class="field">Location<input id="meetingLocation"></label>
-        <label class="field">Organisation<input id="organisation"></label>
-        <label class="field">Meeting type<input id="meetingType"></label>
-        <label class="field full">Attendees<textarea id="attendees" placeholder="One attendee per line"></textarea></label>
-      </div>
-      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="generateDiscussion" class="button" type="button">Generate discussion points</button></div>
+    <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div></div>
+    <div id="detailsEditor" hidden><div class="toolbar"><h2>Meeting details</h2><span id="denoiseSummary" class="muted"></span></div><p class="muted">The prepared transcript removes likely noise while retaining source references for review.</p><div class="form-grid"><label class="field full">Meeting title<input id="meetingTitle"></label><label class="field">Date<input id="meetingDate" type="date"></label><label class="field">Location<input id="meetingLocation"></label><label class="field">Meeting type<input id="meetingType"></label><label class="field full">Attendees<textarea id="attendees" placeholder="One attendee per line"></textarea></label></div>
+      <details class="excluded"><summary>Excluded transcript passages <span id="excludedCount"></span></summary><div id="excludedList" class="excluded-list"></div></details>
+      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="generateDiscussion" class="button" type="button">Generate discussion</button></div>
     </div>
   </section>
 
-  <section class="panel screen" data-screen="1">
-    <div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Discussion points</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div><p class="muted">Edit any field directly. Each line in a discussion box is treated as a separate point.</p><div id="discussionList"></div></div>
-      <aside class="panel agent-edit"><div class="agent-label"><span class="status-dot"></span>Ask the agent for bulk edits</div><p class="muted">For example: “Combine overlapping topics and make the wording more concise.”</p><textarea id="discussionInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyDiscussionEdit" class="button" type="button">Apply with agent</button></aside></div>
-    <div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="generateActions" class="button" type="button">Generate actions</button></div>
-  </section>
+  <section class="panel screen" data-screen="1"><div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Discussion, decisions and questions</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div><p class="muted">Edit directly and open Evidence beneath any record to inspect its source.</p><div id="discussionList"></div></div><details class="panel agent-edit"><summary><span class="status-dot"></span>Ask the agent for bulk edits</summary><div class="agent-edit-body"><p class="muted">Changes are previewed before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview agent changes</button></div></details></div><div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="generateActions" class="button" type="button">Generate actions</button></div></section>
 
-  <section class="panel screen" data-screen="2">
-    <div class="editor-shell actions-editor-shell"><div class="paper"><div class="toolbar"><h2>Actions and deadlines</h2><button id="addAction" class="secondary" type="button">Add action</button></div><p class="muted">Choose an owner from the meeting participants or enter another evidenced name. Relative deadlines are preserved; use the date picker when an exact date is known.</p><div class="table-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th></th></tr></thead><tbody id="actionsBody"></tbody></table></div></div>
-      <aside class="panel agent-edit"><div class="agent-label"><span class="status-dot"></span>Ask the agent for bulk edits</div><p class="muted">For example: “Merge duplicates, but keep separate deliverables separate.”</p><textarea id="actionsInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyActionsEdit" class="button" type="button">Apply with agent</button></aside></div>
-    <div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="openFinalReview" class="button" type="button">Review complete minutes</button></div>
-  </section>
+  <section class="panel screen" data-screen="2"><div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div><p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th><th></th></tr></thead><tbody id="actionsBody"></tbody></table></div></div><details class="panel agent-edit"><summary><span class="status-dot"></span>Ask the agent for bulk edits</summary><div class="agent-edit-body"><p class="muted">For example: “Merge true duplicates and make the wording concise.”</p><textarea id="actionsInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details></div><div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="openFinalReview" class="button" type="button">Review complete minutes</button></div></section>
 
-  <section class="panel screen" data-screen="3">
-    <div id="finalDocument" class="paper final-document"></div>
-    <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to actions</button><div class="toolbar"><button id="printMinutes" class="secondary" type="button">Print</button><button id="newMinutes" class="button" type="button">Start new minutes</button></div></div>
-  </section>
+  <section id="proposalPanel" class="panel proposal" hidden><div class="toolbar"><h2>Proposed AI changes</h2><button id="rejectProposal" class="secondary" type="button">Reject all</button></div><p class="muted">Select only the changes you want. Nothing has been applied yet.</p><div id="proposalChanges"></div><div class="screen-actions"><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button></div></section>
+
+  <section class="panel screen" data-screen="3"><div id="finalDocument" class="paper final-document"></div><div class="screen-actions final-actions"><button class="secondary" data-back="2" type="button">Back to actions</button><label><input id="includeEvidence" type="checkbox" style="width:auto"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button">Print</button><button id="saveMinutes" class="button" type="button">Save minutes</button><button id="downloadWord" class="button" type="button">Download Word</button><button id="undoAgentChange" class="secondary" type="button">Undo last AI change</button><button id="newMinutes" class="secondary" type="button">Start new minutes</button></div></section>
 </main>
 </body>
 </html>

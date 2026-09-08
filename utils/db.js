@@ -3591,6 +3591,126 @@ async function saveStagedMeetingMinutesReviewEvent(payload = {}) {
   return result.rows[0];
 }
 
+async function ensureMeetingMinutesAgentDraftSchema() {
+  await query(`
+CREATE TABLE IF NOT EXISTS meeting_minutes_agent_drafts (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+  revision INT NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'draft',
+  title TEXT NOT NULL DEFAULT 'Meeting minutes',
+  file_name TEXT NOT NULL DEFAULT '',
+  raw_transcript TEXT NOT NULL DEFAULT '',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_agent_drafts_user_updated
+  ON meeting_minutes_agent_drafts (user_id, updated_at DESC);
+`);
+}
+
+function meetingMinutesAgentDraftFromRow(row, includeTranscript = false) {
+  if (!row) return null;
+  const payload = parseJsonObject(row.payload);
+  const draft = {
+    draftId: String(row.id),
+    revision: Number(row.revision || 1),
+    status: row.status || 'draft',
+    title: row.title || 'Meeting minutes',
+    fileName: row.file_name || '',
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    ...payload
+  };
+  if (includeTranscript) draft.rawTranscript = row.raw_transcript || '';
+  return draft;
+}
+
+async function createMeetingMinutesAgentDraft(payload = {}) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const userId = Number(payload.userId || 0);
+  if (!userId) throw new Error('An authenticated user is required to create a meeting-minutes draft.');
+  const title = String(payload.title || 'Meeting minutes').trim().slice(0, 300) || 'Meeting minutes';
+  const fileName = String(payload.fileName || '').trim().slice(0, 500);
+  const rawTranscript = String(payload.rawTranscript || '');
+  const draftPayload = payload.payload && typeof payload.payload === 'object' ? payload.payload : {};
+  const result = await query(
+    `INSERT INTO meeting_minutes_agent_drafts (user_id, title, file_name, raw_transcript, payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     RETURNING *`,
+    [userId, title, fileName, rawTranscript, JSON.stringify(draftPayload)]
+  );
+  return meetingMinutesAgentDraftFromRow(result.rows[0], true);
+}
+
+async function getMeetingMinutesAgentDraft(draftId, userId, options = {}) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const result = await query(
+    `SELECT * FROM meeting_minutes_agent_drafts WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [Number(draftId), Number(userId)]
+  );
+  return meetingMinutesAgentDraftFromRow(result.rows[0], options.includeTranscript === true);
+}
+
+async function listMeetingMinutesAgentDrafts(userId, limit = 50) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const result = await query(
+    `SELECT id, revision, status, title, file_name, payload, created_at, updated_at
+     FROM meeting_minutes_agent_drafts
+     WHERE user_id = $1
+     ORDER BY updated_at DESC
+     LIMIT $2`,
+    [Number(userId), safeLimit]
+  );
+  return result.rows.map((row) => meetingMinutesAgentDraftFromRow(row, false));
+}
+
+async function updateMeetingMinutesAgentDraft(draftId, userId, expectedRevision, updates = {}) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const current = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
+  if (!current) {
+    const error = new Error('Meeting-minutes draft not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (Number(expectedRevision) !== current.revision) {
+    const error = new Error('This draft was updated elsewhere. Reload it before saving again.');
+    error.statusCode = 409;
+    error.currentDraft = current;
+    throw error;
+  }
+  const nextPayload = updates.payload && typeof updates.payload === 'object' ? updates.payload : (() => {
+    const { rawTranscript, draftId: _draftId, revision: _revision, status: _status, title: _title, fileName: _fileName, createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = current;
+    return rest;
+  })();
+  const nextTitle = String(updates.title || current.title || 'Meeting minutes').trim().slice(0, 300) || 'Meeting minutes';
+  const nextStatus = ['draft', 'review', 'complete'].includes(updates.status) ? updates.status : current.status;
+  const result = await query(
+    `UPDATE meeting_minutes_agent_drafts
+     SET revision = revision + 1, status = $4, title = $5, payload = $6::jsonb, updated_at = NOW()
+     WHERE id = $1 AND user_id = $2 AND revision = $3
+     RETURNING *`,
+    [Number(draftId), Number(userId), Number(expectedRevision), nextStatus, nextTitle, JSON.stringify(nextPayload)]
+  );
+  if (!result.rows[0]) {
+    const error = new Error('This draft was updated elsewhere. Reload it before saving again.');
+    error.statusCode = 409;
+    throw error;
+  }
+  return meetingMinutesAgentDraftFromRow(result.rows[0], true);
+}
+
+async function deleteMeetingMinutesAgentDraft(draftId, userId) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const result = await query(
+    `DELETE FROM meeting_minutes_agent_drafts WHERE id = $1 AND user_id = $2 RETURNING id`,
+    [Number(draftId), Number(userId)]
+  );
+  return Boolean(result.rows[0]);
+}
+
 async function listStagedMeetingMinutesReviewEvents(limit = 100, filters = {}) {
   await ensureStagedReviewAnalyticsSchema();
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
@@ -3758,6 +3878,12 @@ module.exports = {
   ensureStagedReviewAnalyticsSchema,
   saveStagedMeetingMinutesReviewEvent,
   listStagedMeetingMinutesReviewEvents,
+  ensureMeetingMinutesAgentDraftSchema,
+  createMeetingMinutesAgentDraft,
+  getMeetingMinutesAgentDraft,
+  listMeetingMinutesAgentDrafts,
+  updateMeetingMinutesAgentDraft,
+  deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,
   saveTerminologyQaDecision,
   createPasswordResetToken,
