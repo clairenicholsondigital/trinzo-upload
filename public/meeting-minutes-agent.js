@@ -199,7 +199,7 @@
   function renderDiscussion() {
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
-      return '<article class="discussion-card"><div class="card-head"><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic"><button class="delete" data-delete-topic="' + index + '" type="button">Remove topic</button></div>' + pointSection(topic, index, 'points', 'Discussion') + pointSection(topic, index, 'decisions', 'Decisions') + pointSection(topic, index, 'openQuestions', 'Open questions') + '</article>';
+      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="topic-label">Topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic"></label><button class="delete" data-delete-topic="' + index + '" type="button">Remove topic</button></div>' + pointSection(topic, index, 'points', 'Discussion') + pointSection(topic, index, 'decisions', 'Decisions') + pointSection(topic, index, 'openQuestions', 'Open questions') + '</article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
   }
