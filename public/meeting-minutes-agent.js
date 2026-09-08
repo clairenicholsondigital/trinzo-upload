@@ -192,9 +192,11 @@
 
   function pointSection(topic, topicIndex, field, heading) {
     var rows = topic[field] || [];
-    return '<div class="record-section"><div class="toolbar"><h3>' + escapeHtml(heading) + '</h3><button class="secondary" data-add-record="' + field + '" data-topic-index="' + topicIndex + '" type="button">Add</button></div>' + (rows.map(function (item, itemIndex) {
-      return '<div class="record-row"><textarea data-record-field="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" aria-label="' + escapeHtml(heading) + '">' + escapeHtml(item.text || '') + '</textarea><div class="record-tools"><details><summary class="evidence-toggle">Evidence (' + (item.evidenceIds || []).length + ')</summary><div class="evidence-panel">' + evidenceHtml(item.evidenceIds) + '</div></details><button class="delete" data-remove-record="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" type="button">Remove</button></div></div>';
-    }).join('') || '<p class="muted">None recorded.</p>') + '</div>';
+    var labels = { points: 'Discussion point', decisions: 'Decision', openQuestions: 'Open question' };
+    var rowLabel = labels[field] || 'Item';
+    return '<div class="record-section"><div class="toolbar record-section-head"><h3>' + escapeHtml(heading) + '</h3><button class="secondary" data-add-record="' + field + '" data-topic-index="' + topicIndex + '" type="button">Add ' + escapeHtml(rowLabel.toLowerCase()) + '</button></div><div class="record-list">' + (rows.map(function (item, itemIndex) {
+      return '<div class="record-row"><div class="record-position">' + escapeHtml(rowLabel) + ' ' + (itemIndex + 1) + '</div><textarea data-record-field="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" aria-label="' + escapeHtml(rowLabel + ' ' + (itemIndex + 1)) + '">' + escapeHtml(item.text || '') + '</textarea><div class="record-tools"><details><summary class="evidence-toggle">Evidence (' + (item.evidenceIds || []).length + ')</summary><div class="evidence-panel">' + evidenceHtml(item.evidenceIds) + '</div></details><button class="delete" data-remove-record="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" type="button">Remove</button></div></div>';
+    }).join('') || '<p class="muted record-empty">None recorded.</p>') + '</div></div>';
   }
 
   function renderDiscussion() {
