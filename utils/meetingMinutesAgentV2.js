@@ -21,6 +21,9 @@ function normaliseKnownTermsDeep(value) {
   if (typeof value === 'string') return normaliseKnownTerms(value);
   if (Array.isArray(value)) return value.map(normaliseKnownTermsDeep);
   if (value && typeof value === 'object') {
+    if (value instanceof Date) return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value;
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseKnownTermsDeep(item)]));
   }
   return value;

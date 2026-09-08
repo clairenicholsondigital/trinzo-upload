@@ -64,6 +64,9 @@ test('MDSAP spoken variants are corrected before generation and never become rev
   assert.equal(result.reviewFlags.length, 0);
   assert.equal(normaliseKnownTerms('medsapp and meds app'), 'MDSAP and MDSAP');
   assert.deepEqual(normaliseKnownTermsDeep({ label: 'Meds-app' }), { label: 'MDSAP' });
+  const savedAt = new Date('2026-09-08T12:34:00.000Z');
+  assert.equal(normaliseKnownTermsDeep(savedAt), savedAt);
+  assert.equal(JSON.stringify(normaliseKnownTermsDeep({ updatedAt: savedAt })), '{"updatedAt":"2026-09-08T12:34:00.000Z"}');
   assert.equal(isAutomaticTerminologyFlag({ message: 'Confirm Meds app.' }), true);
 });
 

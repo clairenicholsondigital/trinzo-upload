@@ -35,6 +35,12 @@
     element.dataset.state = kind || '';
   }
 
+  function savedStatusText(value) {
+    var savedAt = value ? new Date(value) : new Date();
+    if (Number.isNaN(savedAt.getTime())) return 'Saved';
+    return 'Saved at ' + savedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  }
+
   function setBusy(busy, message) {
     document.body.classList.toggle('busy', busy);
     status.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -321,7 +327,7 @@
     state.draft = draft;
     state.currentStep = draft.currentStep || 0;
     renderAll();
-    setSaveStatus('Saved at ' + new Date(draft.updatedAt || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), 'saved');
+    setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
   }
 
   function readEditors() { if (!state.draft) return; readDetails(); readDiscussion(); readActions(); state.draft.currentStep = state.currentStep; }
