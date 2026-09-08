@@ -12,6 +12,10 @@
   var detailsEditor = document.getElementById('detailsEditor');
   var status = document.getElementById('workflowStatus');
 
+  function renderIcons() {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+  }
+
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
@@ -500,4 +504,5 @@
 
   var requestedDraft = new URLSearchParams(window.location.search).get('draftId');
   if (requestedDraft) loadDraft(requestedDraft); else renderAll();
+  renderIcons();
 })();
