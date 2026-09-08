@@ -89,6 +89,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Excluded transcript passages", page)
         self.assertIn("Include evidence appendix", page)
         self.assertIn("Download Word", page)
+        self.assertNotIn("Undo last AI change", page)
+        self.assertNotIn("undoAgentChange", client)
         self.assertNotIn("Organisation", page)
         self.assertNotIn("MiniLM", page)
         self.assertNotIn("denoisedTranscript", client)

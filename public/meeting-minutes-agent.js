@@ -426,16 +426,6 @@
     finally { setBusy(false); }
   }
 
-  async function undoAgentChange() {
-    try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, 'Undoing the last accepted agent change…');
-    try {
-      var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(state.draft.draftId) + '/undo', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
-      adoptDraft(payload.draft); setStatus('Last accepted agent change undone.', false);
-    } catch (error) { setStatus(error.message, true); }
-    finally { setBusy(false); }
-  }
-
   async function downloadWord() {
     try { await saveDraftNow('complete'); } catch (error) { return setStatus(error.message, true); }
     setBusy(true, 'Creating the Word document…');
@@ -507,7 +497,6 @@
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false);}).catch(function(error){setStatus(error.message,true);}); });
   document.getElementById('downloadWord').addEventListener('click', downloadWord);
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
-  document.getElementById('undoAgentChange').addEventListener('click', undoAgentChange);
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
   document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back);});});
   document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===3)renderFinal();showStep(button.dataset.step);}});});
