@@ -15,6 +15,22 @@
 @media(max-width:650px){.meeting-agent-page{padding:.55rem}.meeting-agent-page .steps,.meeting-agent-page .form-grid{grid-template-columns:1fr}.meeting-agent-page .field.full{grid-column:auto}.meeting-agent-page .save-strip,.meeting-agent-page .flag,.meeting-agent-page .excluded-row{grid-template-columns:1fr;display:grid}.meeting-agent-page .screen-actions>*{width:100%}}
 @media print{.meeting-agent-page .nav,.meeting-agent-page .hero,.meeting-agent-page .steps,.meeting-agent-page .save-strip,.meeting-agent-page .notice,.meeting-agent-page .review-flags,.meeting-agent-page .screen:not([data-screen="3"]),.meeting-agent-page .screen-actions{display:none!important}.meeting-agent-page,.meeting-agent-page .container,.meeting-agent-page .panel{background:#fff!important;border:0;box-shadow:none;padding:0;margin:0}.meeting-agent-page .screen[data-screen="3"]{display:block}}
 .meeting-agent-page .secondary{border-radius:8px!important;padding:.55rem .75rem!important;font:inherit;font-weight:600;cursor:pointer}
+.meeting-agent-page .review-flags{margin-bottom:.7rem;padding:0;background:#fffaf0;border-color:#e3bd70}
+.meeting-agent-page .review-flags-summary{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem 1rem;list-style:none}
+.meeting-agent-page .review-flags-summary::-webkit-details-marker{display:none}
+.meeting-agent-page .review-flags-summary::after{content:"Show";color:#566b76;font-size:.8rem;font-weight:600}
+.meeting-agent-page .review-flags[open] .review-flags-summary::after{content:"Hide"}
+.meeting-agent-page .review-flags-heading{display:flex;align-items:center;gap:.65rem;font-size:1.02rem}
+.meeting-agent-page .review-flags-icon{display:grid;place-items:center;width:1.65rem;height:1.65rem;border-radius:50%;background:#f3b942;color:#523900;font-weight:800}
+.meeting-agent-page .flag-count{flex:0 0 auto;margin-left:auto;padding:.28rem .62rem;border-radius:999px;background:#fff0c9;border:1px solid #e5c475;color:#624700;font-size:.78rem;font-weight:700}
+.meeting-agent-page .review-flags-body{padding:0 1rem 1rem;border-top:1px solid #efd79f}
+.meeting-agent-page .review-flags-body>.muted{margin:.75rem 0}
+.meeting-agent-page .flag{align-items:start;gap:.75rem;padding:.8rem;border-radius:10px;border-color:#e7d3a7;box-shadow:0 1px 3px rgba(18,53,68,.06)}
+.meeting-agent-page .flag-kind{display:inline-flex;margin-bottom:.35rem;padding:.2rem .5rem;border-radius:999px;background:#fff1cc;color:#644800;font-size:.74rem;font-weight:700;letter-spacing:.01em}
+.meeting-agent-page .flag-message{line-height:1.45}
+.meeting-agent-page .flag input{margin-top:.55rem}
+.meeting-agent-page .flag-actions{align-items:center}
+.meeting-agent-page .flag-actions button{min-height:36px;padding:.4rem .58rem;white-space:nowrap}
 .meeting-agent-page #workflowStatus{display:flex;align-items:center;gap:.8rem;min-height:62px;margin:.85rem 0;padding:.9rem 1.05rem;border:2px solid #4c94a6;border-left:8px solid var(--agent-brand);border-radius:11px;background:linear-gradient(90deg,#dff2f4 0%,#edf8f9 100%);color:#123544;font-size:1rem;font-weight:700;line-height:1.4;box-shadow:0 4px 14px rgba(18,53,68,.14);transition:background-color .2s ease,border-color .2s ease,box-shadow .2s ease}
 .meeting-agent-page #workflowStatus[hidden]{display:none!important}
 .meeting-agent-page #workflowStatus::before{content:"";width:.78rem;height:.78rem;flex:0 0 auto;border-radius:50%;background:var(--agent-brand);box-shadow:0 0 0 4px rgba(8,127,130,.14)}
@@ -35,7 +51,7 @@
   <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><a href="/jobs">Resume later from Library</a></div>
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
   <p id="staleNotice" class="notice" hidden>The prepared transcript changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
-  <section id="reviewFlags" class="panel review-flags" hidden><div class="toolbar"><h2>Review flags</h2><span id="flagCount" class="muted"></span></div><p class="muted">Check, correct or dismiss uncertainty before sharing. Open flags do not prevent export.</p><div id="flagList" class="flag-list"></div></section>
+  <details id="reviewFlags" class="panel review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading"><span class="review-flags-icon" aria-hidden="true">!</span><span>Details to review</span></span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
 
   <section class="panel screen active" data-screen="0">
     <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div></div>

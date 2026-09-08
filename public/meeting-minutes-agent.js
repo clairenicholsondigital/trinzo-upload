@@ -234,10 +234,15 @@
   function renderFlags() {
     var flags = (state.draft && state.draft.reviewFlags) || [];
     var open = flags.filter(function (flag) { return flag.status === 'open'; });
-    document.getElementById('reviewFlags').hidden = !flags.length;
-    document.getElementById('flagCount').textContent = open.length + ' open';
+    var panel = document.getElementById('reviewFlags');
+    var wasHidden = panel.hidden;
+    panel.hidden = !flags.length;
+    if (flags.length && wasHidden) panel.open = false;
+    document.getElementById('flagCount').textContent = open.length + (open.length === 1 ? ' item' : ' items');
+    var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Source evidence needed', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
-      return '<div class="flag' + (flag.status === 'open' ? '' : ' resolved') + '"><div><strong>' + escapeHtml(flag.kind.replace(/_/g, ' ')) + '</strong><div>' + escapeHtml(flag.message) + '</div>' + (flag.status === 'open' ? '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Optional correction note">' : (flag.correctionNote ? '<div class="muted">Correction: ' + escapeHtml(flag.correctionNote) + '</div>' : '')) + ((flag.evidenceIds || []).length ? '<details><summary class="evidence-toggle">Evidence</summary><div class="evidence-panel">' + evidenceHtml(flag.evidenceIds) + '</div></details>' : '') + '</div><div class="flag-actions">' + (flag.status === 'open' ? '<button class="secondary" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Confirm</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Corrected</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>' : '<button class="secondary" data-flag-index="' + index + '" data-flag-status="open" type="button">Reopen</button>') + '</div></div>';
+      var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
+      return '<div class="flag' + (flag.status === 'open' ? '' : ' resolved') + '"><div><span class="flag-kind">' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>' + (flag.status === 'open' ? '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)">' : (flag.correctionNote ? '<div class="muted">Correction: ' + escapeHtml(flag.correctionNote) + '</div>' : '')) + ((flag.evidenceIds || []).length ? '<details><summary class="evidence-toggle">View evidence</summary><div class="evidence-panel">' + evidenceHtml(flag.evidenceIds) + '</div></details>' : '') + '</div><div class="flag-actions">' + (flag.status === 'open' ? '<button class="secondary" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Looks correct</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save correction</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>' : '<button class="secondary" data-flag-index="' + index + '" data-flag-status="open" type="button">Reopen</button>') + '</div></div>';
     }).join('');
   }
 
