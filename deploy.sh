@@ -14,7 +14,8 @@
 #   2. npm test    - against the new revision, BEFORE it serves traffic; a failure rolls
 #                    the tree straight back and never restarts
 #   3. restart     - only past a green suite
-#   4. smoke check - the route must answer; a dead app rolls back and restarts the old one
+#   4. smoke check - every listed route must answer; a dead app rolls back and
+#                    restarts the old one
 #   5. marker      - written last, by the same script, so it cannot say something is live
 #                    that is not. The old marker went stale precisely because deploys and
 #                    the marker were separate manual steps.
@@ -22,7 +23,13 @@
 set -euo pipefail
 
 APP_NAME="${APP_NAME:-trinzo}"
-SMOKE_URL="${SMOKE_URL:-http://localhost:3978/staged-meeting-minutes}"
+BASE_URL="${BASE_URL:-http://localhost:3978}"
+# Every route this tree serves that is worth proving after a restart. One URL
+# was not enough: it only ever exercised the staged page, so a break anywhere
+# else - the agent page included - passed the gate untouched. /dashboard is here
+# deliberately as the one unauthenticated route: 302 everywhere would also be
+# what a login-loop looks like, and a 200 proves the app actually renders.
+SMOKE_URLS="${SMOKE_URLS:-$BASE_URL/dashboard $BASE_URL/staged-meeting-minutes $BASE_URL/meeting-minutes-agent $BASE_URL/meeting-minutes-final $BASE_URL/jobs}"
 MARKER=".openclaw-deployed-revision"
 export CANONICAL_MINILM_DISK_CACHE="${CANONICAL_MINILM_DISK_CACHE:-.minilm-cache}"
 
@@ -96,18 +103,26 @@ for worker in $(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data
 done
 sleep 5
 
-status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SMOKE_URL" || echo 000)"
-case "$status" in
-  200|302)
-    say "smoke check: $SMOKE_URL -> $status"
-    ;;
-  *)
-    say "smoke check failed ($SMOKE_URL -> $status) - rolling back and restarting the previous revision"
-    if [ "$pulled" = "1" ]; then git reset --hard "$before"; fi
-    pm2 restart "$APP_NAME" --update-env >/dev/null
-    fail "the new revision did not answer; the previous one is serving again"
-    ;;
-esac
+# Check them all before deciding, so a failure names every route that is down
+# rather than only the first one tried.
+smoke_failures=""
+for url in $SMOKE_URLS; do
+  status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)"
+  case "$status" in
+    200|302) say "smoke check: $url -> $status" ;;
+    *)
+      say "smoke check FAILED: $url -> $status"
+      smoke_failures="$smoke_failures $url($status)"
+      ;;
+  esac
+done
+
+if [ -n "$smoke_failures" ]; then
+  say "rolling back and restarting the previous revision -${smoke_failures}"
+  if [ "$pulled" = "1" ]; then git reset --hard "$before"; fi
+  pm2 restart "$APP_NAME" --update-env >/dev/null
+  fail "the new revision did not answer on:${smoke_failures}; the previous one is serving again"
+fi
 
 git rev-parse HEAD > "$MARKER"
 say "deployed $(git rev-parse --short HEAD); marker updated"
