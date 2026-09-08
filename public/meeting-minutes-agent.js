@@ -65,11 +65,26 @@
   }
 
   function participantNames() {
-    var input = document.getElementById('attendees');
-    var names = input ? input.value.split(/\r?\n/) : ((state.draft && state.draft.details && state.draft.details.allAttendees) || []);
+    var inputs = document.querySelectorAll('[data-attendee-name]');
+    var names = inputs.length ? Array.from(inputs).map(function (input) { return input.value; }) : ((state.draft && state.draft.details && state.draft.details.allAttendees) || []);
     return names.map(function (name) { return name.trim(); }).filter(Boolean).filter(function (name, index, all) {
       return all.findIndex(function (candidate) { return candidate.toLowerCase() === name.toLowerCase(); }) === index;
     });
+  }
+
+  function attendeeNames(group) {
+    return Array.from(document.querySelectorAll('[data-attendee-name="' + group + '"]')).map(function (input) { return input.value.trim(); }).filter(Boolean).filter(function (name, index, all) {
+      return all.findIndex(function (candidate) { return candidate.toLowerCase() === name.toLowerCase(); }) === index;
+    });
+  }
+
+  function attendeeChip(name, group) {
+    var destination = group === 'internal' ? 'Client' : 'Internal';
+    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button">Move to ' + destination + '</button><button class="delete attendee-remove" data-remove-attendee type="button" aria-label="Remove ' + escapeHtml(name || 'attendee') + '">Remove</button></div>';
+  }
+
+  function renderAttendeeGroup(group, names) {
+    document.getElementById(group + 'Attendees').innerHTML = (names || []).map(function (name) { return attendeeChip(name, group); }).join('');
   }
 
   function sourceUnits() { return (state.draft && state.draft.sourceUnits) || []; }
@@ -121,12 +136,17 @@
 
   function readDetails() {
     if (!state.draft) return {};
+    var internalAttendees = attendeeNames('internal');
+    var clientAttendees = attendeeNames('client');
     state.draft.details = {
       meetingTitle: document.getElementById('meetingTitle').value.trim(),
       meetingDate: document.getElementById('meetingDate').value,
       meetingLocation: document.getElementById('meetingLocation').value.trim(),
       meetingType: document.getElementById('meetingType').value.trim(),
-      allAttendees: participantNames()
+      clientAttendeeLabel: document.getElementById('clientAttendeeLabelSelect').value === 'External' ? 'External' : 'Client',
+      internalAttendees: internalAttendees,
+      clientAttendees: clientAttendees,
+      allAttendees: internalAttendees.concat(clientAttendees)
     };
     return state.draft.details;
   }
@@ -138,7 +158,10 @@
     document.getElementById('meetingDate').value = details.meetingDate || '';
     document.getElementById('meetingLocation').value = details.meetingLocation || '';
     document.getElementById('meetingType').value = details.meetingType || '';
-    document.getElementById('attendees').value = (details.allAttendees || []).join('\n');
+    renderAttendeeGroup('internal', details.internalAttendees || []);
+    renderAttendeeGroup('client', details.clientAttendees || []);
+    document.getElementById('clientAttendeeLabelSelect').value = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
+    document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
     var denoise = draft.denoise || {};
     document.getElementById('denoiseSummary').textContent = denoise.totalUnitCount ? denoise.keptUnitCount + ' of ' + denoise.totalUnitCount + ' passages retained' : '';
     renderExcluded();
@@ -279,7 +302,7 @@
     var draft = state.draft || {}; var details = draft.details || {};
     var decisions = (draft.discussion || []).flatMap(function (topic) { return (topic.decisions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
     var questions = (draft.discussion || []).flatMap(function (topic) { return (topic.openQuestions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
-    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Attendees:</strong> ' + escapeHtml((details.allAttendees || []).join(', ') || 'Not stated') + '</p><section><h3>Discussion</h3>' + ((draft.discussion || []).map(function (topic) { return '<h4>' + escapeHtml(topic.topic) + '</h4><ul>' + (topic.points || []).map(function (point) { return '<li>' + escapeHtml(point.text) + '</li>'; }).join('') + '</ul>'; }).join('') || '<p>No discussion recorded.</p>') + '</section><section><h3>Decisions</h3>' + (decisions.length ? '<ul>' + decisions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No decisions recorded.</p>') + '</section><section><h3>Open questions</h3>' + (questions.length ? '<ul>' + questions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No open questions recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
+    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p><section><h3>Discussion</h3>' + ((draft.discussion || []).map(function (topic) { return '<h4>' + escapeHtml(topic.topic) + '</h4><ul>' + (topic.points || []).map(function (point) { return '<li>' + escapeHtml(point.text) + '</li>'; }).join('') + '</ul>'; }).join('') || '<p>No discussion recorded.</p>') + '</section><section><h3>Decisions</h3>' + (decisions.length ? '<ul>' + decisions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No decisions recorded.</p>') + '</section><section><h3>Open questions</h3>' + (questions.length ? '<ul>' + questions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No open questions recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
   }
 
   function renderAll() {
@@ -441,6 +464,31 @@
   uploadZone.addEventListener('drop', function (event) { prepareFile(event.dataTransfer.files[0]); });
   fileInput.addEventListener('change', function () { prepareFile(fileInput.files[0]); });
   document.getElementById('replaceTranscript').addEventListener('click', function () { fileInput.value=''; fileInput.click(); });
+  detailsEditor.addEventListener('click', function (event) {
+    var add = event.target.closest('[data-add-attendee]');
+    var move = event.target.closest('[data-move-attendee]');
+    var remove = event.target.closest('[data-remove-attendee]');
+    if (add) {
+      var group = add.dataset.addAttendee;
+      document.getElementById(group + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip('', group));
+      var addedInputs = document.querySelectorAll('[data-attendee-name="' + group + '"]');
+      if (addedInputs.length) addedInputs[addedInputs.length - 1].focus();
+      return;
+    }
+    if (move) {
+      var chip = move.closest('.attendee-chip');
+      var input = chip && chip.querySelector('[data-attendee-name]');
+      var destination = move.dataset.moveAttendee === 'internal' ? 'client' : 'internal';
+      document.getElementById(destination + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip(input ? input.value : '', destination));
+      chip.remove();
+    } else if (remove) {
+      remove.closest('.attendee-chip').remove();
+    }
+    if (move || remove) { readDetails(); renderActions(); scheduleSave(); }
+  });
+  document.getElementById('clientAttendeeLabelSelect').addEventListener('change', function (event) {
+    document.getElementById('clientAttendeeHeading').textContent = event.target.value === 'External' ? 'External' : 'Client';
+  });
   document.getElementById('generateDiscussion').addEventListener('click', function () { runAgent('discussion',''); });
   document.getElementById('generateActions').addEventListener('click', function () { runAgent('actions',''); });
   document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });

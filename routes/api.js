@@ -8067,6 +8067,7 @@ function meetingAgentDraftPayload(draft = {}) {
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, ...safe } = draft;
+  safe.details = sanitiseMeetingAgentDetails(safe.details);
   if (options.summary) {
     return {
       draftId: safe.draftId,
@@ -8406,8 +8407,9 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
 router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
-    const buffer = await generateMeetingMinutesAgentDocx(draft, req.body?.includeEvidence === true);
-    const filename = docxFilename(draft).replace(/["\\]/g, '');
+    const exportDraft = { ...draft, details: sanitiseMeetingAgentDetails(draft.details) };
+    const buffer = await generateMeetingMinutesAgentDocx(exportDraft, req.body?.includeEvidence === true);
+    const filename = docxFilename(exportDraft).replace(/["\\]/g, '');
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `attachment; filename="${filename}"`,

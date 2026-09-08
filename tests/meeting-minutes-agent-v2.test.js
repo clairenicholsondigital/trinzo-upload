@@ -27,12 +27,23 @@ test('agent details omit organisation and prepared transcript has stable source 
     meetingTitle: 'Review', organisation: 'Must disappear', organization: 'Also disappear',
     meetingDate: '2026-06-23', allAttendees: ['Alex', 'Alex', 'Priya']
   }), {
-    meetingTitle: 'Review', meetingDate: '2026-06-23', meetingLocation: '', meetingType: '', allAttendees: ['Alex', 'Priya']
+    meetingTitle: 'Review', meetingDate: '2026-06-23', meetingLocation: '', meetingType: '',
+    clientAttendeeLabel: 'Client', internalAttendees: [], clientAttendees: ['Alex', 'Priya'], allAttendees: ['Alex', 'Priya']
   });
   const prepared = preparedTranscriptFromUnits(sourceUnits);
   assert.match(prepared, /^\[T0001\] Alex 00:01:02:/);
   assert.doesNotMatch(prepared, /Recording stopped/);
   assert.match(prepared, /\[T0003\]/);
+});
+
+test('legacy attendee lists classify known Trinzo people as internal and retain an editable external label', () => {
+  assert.deepEqual(sanitiseDetails({
+    allAttendees: ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch'], clientAttendeeLabel: 'External'
+  }), {
+    meetingTitle: '', meetingDate: '', meetingLocation: '', meetingType: '', clientAttendeeLabel: 'External',
+    internalAttendees: ['Jacqui Fox', 'Stuart Smith'], clientAttendees: ['Niamh Lynch'],
+    allAttendees: ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch']
+  });
 });
 
 test('restoring a removed source unit preserves order', () => {
@@ -125,6 +136,8 @@ test('Word export uses UK dates, timing labels and contains no organisation fiel
   const zip = await JSZip.loadAsync(buffer);
   const documentXml = await zip.file('word/document.xml').async('string');
   assert.match(documentXml, /23 Jun 2026/);
+  assert.match(documentXml, /Internal attendees:/);
+  assert.match(documentXml, /Client attendees:/);
   assert.doesNotMatch(documentXml, /Organisation|Hidden/);
   assert.match(documentXml, /Evidence appendix/);
 });

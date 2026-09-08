@@ -76,7 +76,8 @@ function documentBody(draft = {}, includeEvidence = false) {
   body += paragraph(`Date: ${details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated'}`, 'Subtitle');
   body += paragraph(`Location: ${details.meetingLocation || 'Not stated'}`, 'Subtitle');
   body += paragraph(`Meeting type: ${details.meetingType || 'Not stated'}`, 'Subtitle');
-  body += paragraph(`Attendees: ${(details.allAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
+  body += paragraph(`Internal attendees: ${(details.internalAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
+  body += paragraph(`${details.clientAttendeeLabel === 'External' ? 'External' : 'Client'} attendees: ${(details.clientAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
   body += paragraph('Discussion', 'Heading1');
   for (const topic of draft.discussion || []) {
     body += paragraph(topic.topic || 'Discussion', 'Heading2');

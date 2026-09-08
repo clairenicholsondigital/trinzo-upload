@@ -7,6 +7,10 @@ const FLAG_KINDS = new Set([
   'uncertain_fact', 'unclear_reference', 'ownership', 'timing',
   'unresolved_decision', 'missing_evidence', 'possible_missed_follow_up'
 ]);
+const KNOWN_INTERNAL_ATTENDEE_KEYS = new Set([
+  'colm o’rourke', 'jacqui fox', 'david didsbury', 'conor flynn', 'claire nicholson',
+  'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally'
+].map((name) => name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`]/g, "'").toLowerCase()));
 
 function text(value, max = 2000) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
@@ -17,13 +21,32 @@ function stableId(prefix, value, index = 0) {
 }
 
 function sanitiseDetails(candidate = {}) {
+  const names = (value) => [...new Set((Array.isArray(value) ? value : [])
+    .map((name) => text(name, 180)).filter(Boolean))].slice(0, 100);
+  const attendeeKey = (name) => text(name, 180).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’‘`]/g, "'").toLowerCase();
+  const suppliedAll = names(candidate.allAttendees || candidate.participants);
+  let internalAttendees = names(candidate.internalAttendees);
+  let clientAttendees = names(candidate.clientAttendees);
+  if (!internalAttendees.length && !clientAttendees.length) {
+    internalAttendees = suppliedAll.filter((name) => KNOWN_INTERNAL_ATTENDEE_KEYS.has(attendeeKey(name)));
+    clientAttendees = suppliedAll.filter((name) => !KNOWN_INTERNAL_ATTENDEE_KEYS.has(attendeeKey(name)));
+  } else {
+    const assigned = new Set([...internalAttendees, ...clientAttendees].map(attendeeKey));
+    clientAttendees.push(...suppliedAll.filter((name) => !assigned.has(attendeeKey(name))));
+  }
+  const internalKeys = new Set(internalAttendees.map(attendeeKey));
+  clientAttendees = clientAttendees.filter((name) => !internalKeys.has(attendeeKey(name)));
+  const allAttendees = names([...suppliedAll, ...internalAttendees, ...clientAttendees]);
   return {
     meetingTitle: text(candidate.meetingTitle, 300),
     meetingDate: /^\d{4}-\d{2}-\d{2}$/.test(text(candidate.meetingDate, 20)) ? text(candidate.meetingDate, 20) : '',
     meetingLocation: text(candidate.meetingLocation, 200),
     meetingType: text(candidate.meetingType, 200),
-    allAttendees: [...new Set((Array.isArray(candidate.allAttendees) ? candidate.allAttendees : [])
-      .map((name) => text(name, 180)).filter(Boolean))].slice(0, 100)
+    clientAttendeeLabel: candidate.clientAttendeeLabel === 'External' ? 'External' : 'Client',
+    internalAttendees,
+    clientAttendees,
+    allAttendees
   };
 }
 
