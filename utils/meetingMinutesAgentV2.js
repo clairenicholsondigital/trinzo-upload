@@ -11,9 +11,27 @@ const KNOWN_INTERNAL_ATTENDEE_KEYS = new Set([
   'colm o’rourke', 'jacqui fox', 'david didsbury', 'conor flynn', 'claire nicholson',
   'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally'
 ].map((name) => name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`]/g, "'").toLowerCase()));
+const MDSAP_SPOKEN_FORM = /\bmeds[\s-]*app\b/i;
+
+function normaliseKnownTerms(value) {
+  return String(value == null ? '' : value).replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
+}
+
+function normaliseKnownTermsDeep(value) {
+  if (typeof value === 'string') return normaliseKnownTerms(value);
+  if (Array.isArray(value)) return value.map(normaliseKnownTermsDeep);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseKnownTermsDeep(item)]));
+  }
+  return value;
+}
+
+function isAutomaticTerminologyFlag(flag = {}) {
+  return MDSAP_SPOKEN_FORM.test(String(flag.message || flag.text || ''));
+}
 
 function text(value, max = 2000) {
-  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
+  return normaliseKnownTerms(value).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 function stableId(prefix, value, index = 0) {
@@ -247,7 +265,7 @@ function unresolvedReferenceFlags(units = []) {
 function normaliseAgentResult(candidate = {}, units = [], stage = '') {
   const discussion = normaliseDiscussion(candidate, units);
   const actions = normaliseActions(candidate, units);
-  const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).map(normaliseFlag);
+  const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map(normaliseFlag);
   const records = [
     ...discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]),
     ...actions
@@ -390,5 +408,8 @@ module.exports = {
   surroundingEvidence,
   buildProposal,
   applyProposal,
-  isIdeaOnlyContemplation
+  isIdeaOnlyContemplation,
+  normaliseKnownTerms,
+  normaliseKnownTermsDeep,
+  isAutomaticTerminologyFlag
 };

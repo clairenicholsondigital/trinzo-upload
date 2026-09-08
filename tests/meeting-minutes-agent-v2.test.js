@@ -11,7 +11,10 @@ const {
   normaliseAgentResult,
   buildProposal,
   applyProposal,
-  isIdeaOnlyContemplation
+  isIdeaOnlyContemplation,
+  normaliseKnownTerms,
+  normaliseKnownTermsDeep,
+  isAutomaticTerminologyFlag
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 
@@ -34,6 +37,34 @@ test('agent details omit organisation and prepared transcript has stable source 
   assert.match(prepared, /^\[T0001\] Alex 00:01:02:/);
   assert.doesNotMatch(prepared, /Recording stopped/);
   assert.match(prepared, /\[T0003\]/);
+});
+
+test('MDSAP spoken variants are corrected before generation and never become review flags', () => {
+  const terminologyUnits = normaliseSourceUnits([
+    { id: 'T0100', speaker: 'Alex', timestamp: '00:04:00', text: 'The Meds app audit is next month.', classification: 'keep', confidence: 0.96 }
+  ]);
+  assert.equal(terminologyUnits[0].text, 'The MDSAP audit is next month.');
+  assert.match(preparedTranscriptFromUnits(terminologyUnits), /MDSAP audit/);
+  assert.doesNotMatch(preparedTranscriptFromUnits(terminologyUnits), /Meds app/i);
+
+  const result = normaliseAgentResult({
+    discussion: [{
+      topic: 'Meds app programme',
+      points: [{ text: 'The Meds-app audit is next month.', evidenceIds: ['T0100'] }]
+    }],
+    reviewFlags: [{
+      kind: 'uncertain_fact',
+      message: "The programme reference was spoken as 'Meds app' and has been preserved without correction.",
+      evidenceIds: ['T0100']
+    }]
+  }, terminologyUnits, 'discussion');
+
+  assert.equal(result.discussion[0].topic, 'MDSAP programme');
+  assert.equal(result.discussion[0].points[0].text, 'The MDSAP audit is next month.');
+  assert.equal(result.reviewFlags.length, 0);
+  assert.equal(normaliseKnownTerms('medsapp and meds app'), 'MDSAP and MDSAP');
+  assert.deepEqual(normaliseKnownTermsDeep({ label: 'Meds-app' }), { label: 'MDSAP' });
+  assert.equal(isAutomaticTerminologyFlag({ message: 'Confirm Meds app.' }), true);
 });
 
 test('legacy attendee lists classify known Trinzo people as internal and retain an editable external label', () => {

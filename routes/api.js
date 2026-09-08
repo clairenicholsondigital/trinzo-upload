@@ -161,7 +161,10 @@ const {
   coverageFlags,
   surroundingEvidence,
   buildProposal,
-  applyProposal
+  applyProposal,
+  normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
+  normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
+  isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -8052,13 +8055,13 @@ function meetingAgentDraftPayload(draft = {}) {
     transcriptSha256: draft.transcriptSha256 || '',
     denoise: draft.denoise || {},
     sourceUnits: normaliseSourceUnits(draft.sourceUnits),
-    preparedTranscript: String(draft.preparedTranscript || ''),
-    salientDetails: Array.isArray(draft.salientDetails) ? draft.salientDetails : [],
+    preparedTranscript: normaliseMeetingAgentKnownTerms(draft.preparedTranscript || ''),
+    salientDetails: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.salientDetails) ? draft.salientDetails : []),
     details: sanitiseMeetingAgentDetails(draft.details),
-    discussion: Array.isArray(draft.discussion) ? draft.discussion : [],
-    actions: Array.isArray(draft.actions) ? draft.actions : [],
-    reviewFlags: Array.isArray(draft.reviewFlags) ? draft.reviewFlags : [],
-    pendingProposal: draft.pendingProposal || null,
+    discussion: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.discussion) ? draft.discussion : []),
+    actions: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.actions) ? draft.actions : []),
+    reviewFlags: normaliseMeetingAgentKnownTermsDeep((Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag))),
+    pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
     changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
     staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
     currentStep: Math.max(0, Math.min(3, Number(draft.currentStep || 0)))
@@ -8095,8 +8098,10 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
-  const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, ...safe } = draft;
+  const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, ...publicFields } = draft;
+  const safe = normaliseMeetingAgentKnownTermsDeep(publicFields);
   safe.details = sanitiseMeetingAgentDetails(safe.details);
+  safe.reviewFlags = (Array.isArray(safe.reviewFlags) ? safe.reviewFlags : []).filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag));
   if (options.summary) {
     return {
       draftId: safe.draftId,
@@ -8116,7 +8121,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
 
 function mergeMeetingAgentFlags(existing = [], added = []) {
   const byId = new Map();
-  for (const raw of [...existing, ...added]) {
+  for (const raw of [...existing, ...added].filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag))) {
     const flag = normaliseMeetingAgentFlag(raw, byId.size);
     const prior = byId.get(flag.id);
     byId.set(flag.id, prior && prior.status !== 'open' ? { ...flag, status: prior.status } : flag);

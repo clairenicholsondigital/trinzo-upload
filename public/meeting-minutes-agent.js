@@ -280,8 +280,9 @@
     var panel = document.getElementById('proposalPanel');
     panel.hidden = !proposal || !(proposal.changes || []).length;
     if (panel.hidden) return;
+    var changeLabels = { add:'New item', modify:'Suggested edit', remove:'Suggested removal' };
     document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
-      return '<label class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked style="width:auto"><div><strong>' + escapeHtml(change.type) + '</strong>' + (change.before ? '<div class="muted">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre>' : '') + (change.after ? '<div class="muted">Proposed</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre>' : '') + '</div></label>';
+      return '<label class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked style="width:auto"><div><span class="proposal-kind">' + escapeHtml(changeLabels[change.type] || 'Suggested change') + '</span>' + (change.before ? '<div class="muted">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre>' : '') + (change.after ? '<div class="muted">Proposed</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre>' : '') + '</div></label>';
     }).join('');
     panel.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
