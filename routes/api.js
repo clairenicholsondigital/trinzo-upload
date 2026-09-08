@@ -11,7 +11,6 @@ const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerPr
 
 const {
   generateToken,
-  askM365Agent,
   startConversation,
   sendMessage,
   getBotMessages
@@ -7930,6 +7929,83 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
   return shared.join('\n\n');
 }
 
+async function askPowerAutomateMeetingMinutesAgent(prompt) {
+  const webhookUrl = String(process.env.POWER_AUTOMATE_AGENT_WEBHOOK_URL || '').trim();
+  if (!webhookUrl) {
+    const error = new Error('POWER_AUTOMATE_AGENT_WEBHOOK_URL is not configured.');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(webhookUrl);
+  } catch {
+    const error = new Error('POWER_AUTOMATE_AGENT_WEBHOOK_URL is invalid.');
+    error.statusCode = 500;
+    throw error;
+  }
+  if (parsedUrl.protocol !== 'https:') {
+    const error = new Error('The Power Automate agent endpoint must use HTTPS.');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = Math.max(10000, Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000));
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: { prompt } }),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('The meeting-minutes agent did not reply in time.');
+      timeoutError.statusCode = 504;
+      throw timeoutError;
+    }
+    const requestError = new Error('Power Automate could not be reached.');
+    requestError.statusCode = 502;
+    throw requestError;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const rawBody = await response.text();
+  if (!response.ok) {
+    const error = new Error(`Power Automate agent call failed with status ${response.status}.`);
+    error.statusCode = response.status === 429 || response.status >= 500 ? 503 : 502;
+    error.retryable = response.status === 429 || response.status >= 500;
+    error.upstreamStatus = response.status;
+    throw error;
+  }
+  if (!rawBody.trim()) {
+    const error = new Error('Power Automate returned an empty agent response.');
+    error.statusCode = 502;
+    throw error;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawBody);
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+  } catch {
+    const error = new Error('Power Automate did not return valid JSON.');
+    error.statusCode = 502;
+    throw error;
+  }
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.discussion) || !Array.isArray(parsed.actions)) {
+    const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
+    error.statusCode = 502;
+    throw error;
+  }
+  return parsed;
+}
+
 router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
@@ -7978,8 +8054,14 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
       current: req.body?.current,
       instruction: req.body?.instruction
     });
-    const agent = await askM365Agent(prompt);
-    if (/usage limit/i.test(agent.finalText)) {
+    const parsed = await askPowerAutomateMeetingMinutesAgent(prompt);
+    const output = stage === 'discussion'
+      ? { discussion: normaliseAgentDiscussion(parsed) }
+      : { actions: normaliseAgentActions(parsed) };
+    return res.json({ ok: true, stage, agentName: 'Meeting Minutes Agent', ...output });
+  } catch (error) {
+    safeLogError('[meeting-minutes-agent/generate] failed', error);
+    if (error.retryable) {
       return res.status(503).json({
         ok: false,
         code: 'M365_AGENT_USAGE_LIMIT',
@@ -7987,19 +8069,11 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
         error: 'Microsoft is temporarily busy.'
       });
     }
-    const parsed = extractJsonFromText(agent.finalText);
-    if (!parsed) {
-      return res.status(502).json({ ok: false, error: 'The agent did not return structured meeting-minutes data.' });
-    }
-    const output = stage === 'discussion'
-      ? { discussion: normaliseAgentDiscussion(parsed) }
-      : { actions: normaliseAgentActions(parsed) };
-    return res.json({ ok: true, stage, agentName: agent.botName || 'Document Processing Assistant', ...output });
-  } catch (error) {
-    safeLogError('[meeting-minutes-agent/generate] failed', error);
     return res.status(error.statusCode || 500).json({
       ok: false,
-      error: error.statusCode === 504 ? error.message : 'The meeting-minutes agent could not complete this request.'
+      error: [502, 504].includes(error.statusCode)
+        ? error.message
+        : 'The meeting-minutes agent could not complete this request.'
     });
   }
 });
