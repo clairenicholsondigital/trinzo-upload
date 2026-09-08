@@ -280,7 +280,12 @@ function unresolvedReferenceFlags(units = []) {
   }, index));
 }
 
-function normaliseAgentResult(candidate = {}, units = [], stage = '') {
+function normaliseAgentResult(candidate = {}, units = [], stage = '', options = {}) {
+  // enforceEvidence strips owners and timings the cited passages do not support.
+  // That is right for agent output. It is wrong for a reviewer's own edits: the
+  // reviewer is the human check on the agent, so their entry is flagged for
+  // confirmation but never silently reverted.
+  const enforceEvidence = options.enforceEvidence !== false;
   const discussion = normaliseDiscussion(candidate, units);
   const actions = normaliseActions(candidate, units);
   const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map(normaliseFlag);
@@ -300,7 +305,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '') {
       return words.length && !words.every((word) => haystack.includes(word));
     });
     if (unsupportedOwners.length) {
-      action.owners = action.owners.filter((owner) => !unsupportedOwners.includes(owner));
+      if (enforceEvidence) action.owners = action.owners.filter((owner) => !unsupportedOwners.includes(owner));
       const flag = normaliseFlag({
         kind: 'ownership',
         message: `Confirm or correct unsupported action ownership: ${unsupportedOwners.join(', ')}.`,
@@ -323,7 +328,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '') {
       }
       if (!wordingSupported && !exactDateSupported) {
         const unsupportedTiming = action.timing.wording || action.timing.exactDate;
-        action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
+        if (enforceEvidence) action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
         const flag = normaliseFlag({
           kind: 'timing',
           message: `Confirm or correct unsupported action timing: ${unsupportedTiming}.`,
@@ -381,36 +386,137 @@ function surroundingEvidence(units = [], ids = []) {
   return [...include].sort((a, b) => a - b).map((index) => ({ ...rows[index], cited: wanted.has(rows[index].id) }));
 }
 
+// Anchors on rows that are unchanged, so an insertion is ONE change rather than
+// a modify of every row after it. Positional diffing made partial acceptance
+// unsound: accepting a lone "add" duplicated a row, accepting a lone "modify"
+// deleted one. Lists here are capped at 250 rows, so the DP table is cheap.
+function unchangedRowPairs(before, after) {
+  const a = before.map((row) => JSON.stringify(row));
+  const b = after.map((row) => JSON.stringify(row));
+  const table = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      table[i][j] = a[i] === b[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const pairs = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { pairs.push([i, j]); i += 1; j += 1; }
+    else if (table[i + 1][j] >= table[i][j + 1]) i += 1;
+    else j += 1;
+  }
+  return pairs;
+}
+
+function proposalRowText(row) {
+  if (!row) return '';
+  if (typeof row === 'string') return row;
+  const parts = [row.action, row.topic, row.text].filter((value) => typeof value === 'string' && value);
+  return parts.length ? parts.join(' ') : JSON.stringify(row);
+}
+
+// Inside a run of changed rows, decide which old row became which new row.
+// Identity first (a stable id survives an edit), then content similarity.
+// Pairing by position instead is what made a rewritten row read as "delete this
+// one, add an unrelated one" and corrupted partial acceptance.
+function pairGapRows(oldRows, newRows, removed, added) {
+  const pairs = new Map();
+  const takenNew = new Set();
+  const rowId = (row) => (row && typeof row.id === 'string' ? row.id : '');
+  for (const oldIndex of removed) {
+    const id = rowId(oldRows[oldIndex]);
+    if (!id) continue;
+    const match = added.find((newIndex) => !takenNew.has(newIndex) && rowId(newRows[newIndex]) === id);
+    if (match !== undefined) { pairs.set(oldIndex, match); takenNew.add(match); }
+  }
+  for (const oldIndex of removed) {
+    if (pairs.has(oldIndex)) continue;
+    let best = -1;
+    let bestScore = 0;
+    for (const newIndex of added) {
+      if (takenNew.has(newIndex)) continue;
+      const score = tokenOverlap(proposalRowText(oldRows[oldIndex]), proposalRowText(newRows[newIndex]));
+      if (score > bestScore) { bestScore = score; best = newIndex; }
+    }
+    if (best >= 0 && bestScore >= 0.5) { pairs.set(oldIndex, best); takenNew.add(best); }
+  }
+  return pairs;
+}
+
+function proposalChange(stage, type, previous, next, beforeIndex, afterIndex) {
+  return {
+    id: stableId('change', `${stage}|${type}|${JSON.stringify(previous)}|${JSON.stringify(next)}`, afterIndex == null ? beforeIndex : afterIndex),
+    type,
+    before: previous,
+    after: next,
+    // Positions in the ORIGINAL list. An add carries the original index it is
+    // inserted in front of, so accepting any subset lands in the right place.
+    beforeIndex,
+    afterIndex,
+    index: afterIndex == null ? beforeIndex : afterIndex
+  };
+}
+
 function buildProposal(stage, before = [], after = []) {
   const oldRows = Array.isArray(before) ? before : [];
   const newRows = Array.isArray(after) ? after : [];
   const changes = [];
-  const length = Math.max(oldRows.length, newRows.length);
-  for (let index = 0; index < length; index += 1) {
-    const previous = oldRows[index] || null;
-    const next = newRows[index] || null;
-    if (JSON.stringify(previous) === JSON.stringify(next)) continue;
-    changes.push({
-      id: stableId('change', `${stage}|${JSON.stringify(previous)}|${JSON.stringify(next)}`, index),
-      type: !previous ? 'add' : (!next ? 'remove' : 'modify'),
-      before: previous,
-      after: next,
-      index
-    });
+  let oldCursor = 0;
+  let newCursor = 0;
+  const emitGap = (oldEnd, newEnd) => {
+    const removed = [];
+    for (let i = oldCursor; i < oldEnd; i += 1) removed.push(i);
+    const added = [];
+    for (let j = newCursor; j < newEnd; j += 1) added.push(j);
+    if (!removed.length && !added.length) return;
+    const pairs = pairGapRows(oldRows, newRows, removed, added);
+    for (const oldIndex of removed) {
+      if (pairs.has(oldIndex)) changes.push(proposalChange(stage, 'modify', oldRows[oldIndex], newRows[pairs.get(oldIndex)], oldIndex, pairs.get(oldIndex)));
+      else changes.push(proposalChange(stage, 'remove', oldRows[oldIndex], null, oldIndex, null));
+    }
+    const pairedNew = new Set([...pairs.values()]);
+    for (const newIndex of added) {
+      if (pairedNew.has(newIndex)) continue;
+      let insertAt = oldCursor;
+      for (const [oldIndex, partner] of pairs) if (partner < newIndex) insertAt = Math.max(insertAt, oldIndex + 1);
+      changes.push(proposalChange(stage, 'add', null, newRows[newIndex], insertAt, newIndex));
+    }
+  };
+  for (const [oldIndex, newIndex] of unchangedRowPairs(oldRows, newRows)) {
+    emitGap(oldIndex, newIndex);
+    oldCursor = oldIndex + 1;
+    newCursor = newIndex + 1;
   }
+  emitGap(oldRows.length, newRows.length);
   return { id: stableId('proposal', `${stage}|${Date.now()}`), stage, createdAt: new Date().toISOString(), changes };
 }
 
 function applyProposal(before = [], proposal = {}, acceptedIds = []) {
   const accepted = new Set(acceptedIds);
-  const rows = [...(Array.isArray(before) ? before : [])];
-  const selected = (proposal.changes || []).filter((change) => accepted.has(change.id)).sort((a, b) => b.index - a.index);
-  for (const change of selected) {
-    if (change.type === 'remove') rows.splice(change.index, 1);
-    else if (change.type === 'add') rows.splice(change.index, 0, change.after);
-    else rows[change.index] = change.after;
+  const rows = Array.isArray(before) ? before : [];
+  const originalIndex = (change) => (Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0);
+  const modified = new Map();
+  const removed = new Set();
+  const inserted = new Map();
+  for (const change of proposal.changes || []) {
+    if (!accepted.has(change.id)) continue;
+    const at = originalIndex(change);
+    if (change.type === 'remove') removed.add(at);
+    else if (change.type === 'add') inserted.set(at, [...(inserted.get(at) || []), change.after]);
+    else modified.set(at, change.after);
   }
-  return rows;
+  // Rebuild from the original rows rather than splicing, so each accepted change
+  // is independent of which other changes were accepted.
+  const result = [];
+  for (let i = 0; i <= rows.length; i += 1) {
+    for (const row of inserted.get(i) || []) result.push(row);
+    if (i === rows.length) break;
+    if (removed.has(i)) continue;
+    result.push(modified.has(i) ? modified.get(i) : rows[i]);
+  }
+  return result;
 }
 
 module.exports = {

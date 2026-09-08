@@ -144,6 +144,8 @@
 .meeting-agent-page .save-status[data-state="error"]{color:var(--danger-text)}
 .meeting-agent-page .save-status[data-state="dirty"],
 .meeting-agent-page .save-status[data-state="saving"]{color:var(--muted)}
+.meeting-agent-page .save-strip-actions{display:flex;align-items:center;gap:.75rem}
+.meeting-agent-page .save-strip-actions button{padding:.35rem .65rem;font-size:var(--fs-cap)}
 
 /* ------------------------------------------------------ status / notice -- */
 .meeting-agent-page .notice{
@@ -475,7 +477,6 @@
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
-  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.3 2.6L3 13"/></symbol>
 </svg>
 
 <main class="container">
@@ -485,7 +486,7 @@
 
   <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button">Upload &amp; details</button><button class="step" data-step="1" data-num="2" type="button" disabled>Discussion</button><button class="step" data-step="2" data-num="3" type="button" disabled>Actions</button><button class="step" data-step="3" data-num="4" type="button" disabled>Final review</button></div>
 
-  <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><a href="/jobs">Resume later from Library</a></div>
+  <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a href="/jobs">Resume later from Library</a></span></div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
   <p id="staleNotice" class="notice" hidden>The prepared transcript changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
@@ -547,7 +548,6 @@
     <div id="finalDocument" class="paper final-document"></div>
     <div class="screen-actions final-actions">
       <button class="secondary quiet" data-back="2" type="button">Back to actions</button>
-      <button id="undoChange" class="secondary" type="button" hidden><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg>Undo agent change</button>
       <span class="spacer"></span>
       <label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label>
       <span class="divider"></span>

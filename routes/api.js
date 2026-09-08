@@ -8098,7 +8098,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
-  const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, ...publicFields } = draft;
+  const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, changeHistory, ...publicFields } = draft;
   const visibleReviewFlags = (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : [])
     .filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag));
   const safe = normaliseMeetingAgentKnownTermsDeep({
@@ -8106,6 +8106,9 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
     reviewFlags: visibleReviewFlags
   });
   safe.details = sanitiseMeetingAgentDetails(safe.details);
+  // The client only needs to know whether an undo exists. Shipping up to 30
+  // full before/after snapshots on every save was pure weight.
+  safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
   if (options.summary) {
     return {
       draftId: safe.draftId,
@@ -8232,11 +8235,13 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       throw error;
     }
     const details = sanitiseMeetingAgentDetails(req.body?.details || draft.details);
+    // A save carries the reviewer's edits: flag what the evidence does not
+    // support, but never strip it back out from under them.
     const normalised = normaliseAgentResult({
       discussion: req.body?.discussion ?? draft.discussion,
       actions: req.body?.actions ?? draft.actions,
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
-    }, draft.sourceUnits);
+    }, draft.sourceUnits, '', { enforceEvidence: false });
     const saved = await saveMeetingAgentDraft(draft, req, {
       details,
       discussion: normalised.discussion,
@@ -8365,7 +8370,9 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       salientDetails: draft.salientDetails || []
     }));
     const audited = normaliseAgentResult(parsed, draft.sourceUnits, 'actions');
-    const combined = normaliseAgentResult({ actions: [...(draft.actions || []), ...audited.actions] }, draft.sourceUnits, 'actions').actions;
+    // audited rows were already enforced above; the existing register holds the
+    // reviewer's edits and must not be re-stripped when the two are merged.
+    const combined = normaliseAgentResult({ actions: [...(draft.actions || []), ...audited.actions] }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
     const proposal = buildProposal('actions', draft.actions || [], combined);
     const missedFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
       kind: 'possible_missed_follow_up',

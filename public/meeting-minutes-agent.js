@@ -353,7 +353,7 @@
     var wasHidden = panel.hidden;
     panel.hidden = !flags.length;
     if (flags.length && wasHidden) panel.open = false;
-    document.getElementById('flagCount').textContent = open.length + (open.length === 1 ? ' open' : ' open');
+    document.getElementById('flagCount').textContent = open.length + ' open';
     var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Source evidence needed', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
       var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
@@ -427,7 +427,6 @@
       document.getElementById('staleNotice').hidden = !stale.length;
       document.getElementById('staleStages').textContent = stale.join(' and ');
     } else document.getElementById('staleNotice').hidden = true;
-    document.getElementById('undoChange').hidden = !((state.draft && state.draft.changeHistory) || []).length;
     showStep(state.draft ? (state.draft.currentStep || state.currentStep || 0) : 0);
     rendering = false;
     restoreFocus(snapshot);
@@ -435,6 +434,7 @@
 
   function adoptDraft(draft) {
     if (!draft) return;
+    document.getElementById('reloadDraft').hidden = true;
     state.draft = draft;
     state.currentStep = draft.currentStep || 0;
     renderAll();
@@ -469,7 +469,14 @@
     saveInFlight = jsonRequest(draftUrl(), {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftPatchBody(statusValue))}).then(function (payload) {
       adoptDraft(payload.draft); return state.draft;
     }).catch(function (error) {
-      if (error.currentDraft) adoptDraft(error.currentDraft);
+      // A conflict used to adopt the server copy, silently destroying the edits
+      // the message was warning about. Keep them on screen and let the reviewer
+      // decide to take the saved version instead.
+      if (error.currentDraft) {
+        document.getElementById('reloadDraft').hidden = false;
+        setSaveStatus('Changed elsewhere - your edits are here but unsaved.', 'error');
+        throw error;
+      }
       setSaveStatus(error.message, 'error'); throw error;
     }).finally(function () { saveInFlight = null; });
     return saveInFlight;
@@ -530,20 +537,7 @@
     setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...');
     try {
       var payload = await jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
-      adoptDraft(payload.draft); setStatus(decision === 'reject' ? 'Proposed changes rejected.' : 'Selected agent changes applied. Undo is available in final review.', false);
-    } catch (error) { setStatus(error.message, true); }
-    finally { setBusy(false); }
-  }
-
-  async function undoAgentChange() {
-    if (!state.draft) return;
-    try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, 'Undoing the last accepted agent change...');
-    try {
-      var payload = await jsonRequest(draftUrl('/undo'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
-      adoptDraft(payload.draft);
-      renderFinal();
-      setStatus('The last accepted agent change was undone.', false);
+      adoptDraft(payload.draft); setStatus(decision === 'reject' ? 'Proposed changes rejected.' : 'Selected agent changes applied.', false);
     } catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }
@@ -671,7 +665,14 @@
     var index = Number(input.dataset.actionIndex);
     var added = addOwner(index, input.value);
     input.value = '';
-    if (added) { rerenderActions(); scheduleSave(); }
+    if (!added) return;
+    renderActions();
+    // The field this was typed into is hidden again by the re-render, so focus
+    // has to be placed deliberately or it falls back to <body> and the tab
+    // order restarts at the top of the page.
+    var select = document.querySelector('#actionsBody [data-action-row="' + index + '"] [data-add-owner]');
+    if (select) select.focus({ preventScroll: true });
+    scheduleSave();
   }
   document.getElementById('actionsBody').addEventListener('keydown', function (event) {
     if (event.key !== 'Enter') return;
@@ -692,7 +693,9 @@
   document.getElementById('rejectProposal').addEventListener('click', function () { reviewProposal('reject',false); });
   document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(3, { scroll: true }); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false); });
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false);}).catch(function(error){setStatus(error.message,true);}); });
-  document.getElementById('undoChange').addEventListener('click', undoAgentChange);
+  document.getElementById('reloadDraft').addEventListener('click', function () {
+    if (state.draft) loadDraft(state.draft.draftId);
+  });
   document.getElementById('downloadWord').addEventListener('click', function () { downloadExport('docx'); });
   document.getElementById('downloadPdf').addEventListener('click', function () { downloadExport('pdf'); });
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
@@ -717,7 +720,8 @@
     // keepalive lets the PATCH outlive the page. sendBeacon cannot be used
     // here: it always POSTs, and this endpoint is a PATCH. Its body cap is
     // 64KB, so a very large draft falls back to the browser's own prompt.
-    if (window.fetch && body.length < 60000) {
+    var byteLength = window.Blob ? new Blob([body]).size : body.length;
+    if (window.fetch && byteLength < 60000) {
       try {
         fetch(draftUrl(), {method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body,keepalive:true});
         delivered = true;
