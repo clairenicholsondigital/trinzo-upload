@@ -13,6 +13,7 @@ const {
   applyProposal,
   isIdeaOnlyContemplation,
   normaliseKnownTerms,
+  normaliseColloquialTimes,
   normaliseKnownTermsDeep,
   isAutomaticTerminologyFlag
 } = require('../utils/meetingMinutesAgentV2');
@@ -68,6 +69,26 @@ test('MDSAP spoken variants are corrected before generation and never become rev
   assert.equal(normaliseKnownTermsDeep(savedAt), savedAt);
   assert.equal(JSON.stringify(normaliseKnownTermsDeep({ updatedAt: savedAt })), '{"updatedAt":"2026-09-08T12:34:00.000Z"}');
   assert.equal(isAutomaticTerminologyFlag({ message: 'Confirm Meds app.' }), true);
+});
+
+test('UK half-hour wording is parsed and does not create a false uncertainty flag', () => {
+  const timeUnits = normaliseSourceUnits([
+    { id: 'T0200', speaker: 'Priya', timestamp: '00:08:00', text: 'The warm-up rehearsal is at half eight tomorrow.', classification: 'keep', confidence: 0.98 }
+  ]);
+  assert.equal(timeUnits[0].text, 'The warm-up rehearsal is at 8:30 tomorrow.');
+  assert.equal(normaliseColloquialTimes('Half past eleven today and half 7 on Friday.'), '11:30 today and 7:30 on Friday.');
+
+  const result = normaliseAgentResult({
+    discussion: [{ topic: 'Rehearsal', points: [{ text: 'The rehearsal is at half eight tomorrow.', evidenceIds: ['T0200'] }] }],
+    reviewFlags: [{
+      kind: 'uncertain_fact',
+      message: "A rehearsal at 'half eight tomorrow' was referenced without a fully specified timestamp.",
+      evidenceIds: ['T0200']
+    }]
+  }, timeUnits, 'discussion');
+
+  assert.equal(result.discussion[0].points[0].text, 'The rehearsal is at 8:30 tomorrow.');
+  assert.equal(result.reviewFlags.length, 0);
 });
 
 test('legacy attendee lists classify known Trinzo people as internal and retain an editable external label', () => {

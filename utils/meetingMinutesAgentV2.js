@@ -12,9 +12,21 @@ const KNOWN_INTERNAL_ATTENDEE_KEYS = new Set([
   'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally'
 ].map((name) => name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`]/g, "'").toLowerCase()));
 const MDSAP_SPOKEN_FORM = /\bmeds[\s-]*app\b/i;
+const HALF_HOUR_SPOKEN_FORM = /\bhalf(?:[\s-]+past)?[\s-]+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\b/i;
+const HOUR_VALUES = Object.freeze({
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
+});
+
+function normaliseColloquialTimes(value) {
+  return String(value == null ? '' : value).replace(new RegExp(HALF_HOUR_SPOKEN_FORM.source, 'gi'), (match, spokenHour) => {
+    const hour = HOUR_VALUES[String(spokenHour).toLowerCase()] || Number(spokenHour);
+    return hour >= 1 && hour <= 12 ? `${hour}:30` : match;
+  });
+}
 
 function normaliseKnownTerms(value) {
-  return String(value == null ? '' : value).replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
+  return normaliseColloquialTimes(value).replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
 }
 
 function normaliseKnownTermsDeep(value) {
@@ -30,7 +42,10 @@ function normaliseKnownTermsDeep(value) {
 }
 
 function isAutomaticTerminologyFlag(flag = {}) {
-  return MDSAP_SPOKEN_FORM.test(String(flag.message || flag.text || ''));
+  const message = String(flag.message || flag.text || '');
+  const resolvedColloquialTime = HALF_HOUR_SPOKEN_FORM.test(message)
+    && /\b(?:without (?:a )?(?:fully |completely )?specified timestamp|time (?:was|is) (?:not fully specified|unclear)|confirm (?:the )?time)\b/i.test(message);
+  return MDSAP_SPOKEN_FORM.test(message) || resolvedColloquialTime;
 }
 
 function text(value, max = 2000) {
@@ -413,6 +428,7 @@ module.exports = {
   applyProposal,
   isIdeaOnlyContemplation,
   normaliseKnownTerms,
+  normaliseColloquialTimes,
   normaliseKnownTermsDeep,
   isAutomaticTerminologyFlag
 };

@@ -8099,9 +8099,13 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, ...publicFields } = draft;
-  const safe = normaliseMeetingAgentKnownTermsDeep(publicFields);
+  const visibleReviewFlags = (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : [])
+    .filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag));
+  const safe = normaliseMeetingAgentKnownTermsDeep({
+    ...publicFields,
+    reviewFlags: visibleReviewFlags
+  });
   safe.details = sanitiseMeetingAgentDetails(safe.details);
-  safe.reviewFlags = (Array.isArray(safe.reviewFlags) ? safe.reviewFlags : []).filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag));
   if (options.summary) {
     return {
       draftId: safe.draftId,

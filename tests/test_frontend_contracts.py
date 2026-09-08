@@ -96,6 +96,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.proposal-kind', page)
         self.assertIn("normaliseKnownTerms: normaliseMeetingAgentKnownTerms", api)
         self.assertIn("isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag", api)
+        public_draft = api.split("function publicMeetingAgentDraft", 1)[1].split("function mergeMeetingAgentFlags", 1)[0]
+        self.assertLess(public_draft.index("const visibleReviewFlags"), public_draft.index("normaliseMeetingAgentKnownTermsDeep"))
         self.assertIn("Ask the agent for bulk edits", page)
         self.assertEqual(page.count('class="agent-edit-summary"'), 2)
         self.assertEqual(page.count('class="agent-edit-toggle-closed">Open editor'), 2)
