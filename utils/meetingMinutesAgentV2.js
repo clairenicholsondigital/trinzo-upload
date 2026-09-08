@@ -158,6 +158,13 @@ function timingFrom(item = {}) {
   return { kind: wording || exactDate ? kind : 'not_stated', wording, exactDate };
 }
 
+function isIdeaOnlyContemplation(value) {
+  const action = text(value, 2000).toLowerCase();
+  if (!/\b(?:think|thinking|consider|considering)\s+(?:about|through|of)\b/.test(action)) return false;
+  if (!/\b(?:idea|ideas|thought|thoughts|possibilit(?:y|ies)|options?)\b/.test(action)) return false;
+  return !/\b(?:analysis|assessment|decision|document|draft|plan|recommendation|report|specification|test results?|written proposal)\b/.test(action);
+}
+
 function actionSimilarity(left, right) {
   return tokenOverlap(left.action, right.action);
 }
@@ -172,7 +179,7 @@ function ownersCompatible(left, right) {
 function normaliseActions(candidate = {}, units = []) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
-    if (!action) return null;
+    if (!action || isIdeaOnlyContemplation(action)) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const knownIds = new Set(units.map((unit) => unit.id));
     const evidenceIds = evidenceIdsFor(action, units, item?.evidenceIds);
@@ -359,5 +366,6 @@ module.exports = {
   coverageFlags,
   surroundingEvidence,
   buildProposal,
-  applyProposal
+  applyProposal,
+  isIdeaOnlyContemplation
 };

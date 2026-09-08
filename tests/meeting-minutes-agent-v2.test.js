@@ -10,7 +10,8 @@ const {
   salientDetailInventory,
   normaliseAgentResult,
   buildProposal,
-  applyProposal
+  applyProposal,
+  isIdeaOnlyContemplation
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 
@@ -94,6 +95,17 @@ test('actions deduplicate only compatible owners and retain distinct deliverable
     { action: 'Review the completed report', owner: 'Alex', evidenceIds: ['T0001'] }
   ] }, sourceUnits, 'actions');
   assert.equal(result.actions.length, 2);
+});
+
+test('idea-only contemplation is not promoted but a concrete recommendation remains', () => {
+  assert.equal(isIdeaOnlyContemplation('Think about the parking issue and come back with a best idea.'), true);
+  assert.equal(isIdeaOnlyContemplation('Consider the evidence and provide a written recommendation.'), false);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Think about the parking issue and come back with a best idea.', owner: 'Trevor', evidenceIds: ['T0001'] },
+    { action: 'Consider the evidence and provide a written recommendation.', owner: 'Alex', evidenceIds: ['T0001'] }
+  ] }, sourceUnits, 'actions');
+  assert.equal(result.actions.length, 1);
+  assert.match(result.actions[0].action, /written recommendation/);
 });
 
 test('proposal changes can be partially accepted without altering unselected records', () => {
