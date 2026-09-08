@@ -4,147 +4,562 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Meeting Minutes Agent | Trinzo</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/trinzo.css">
+<link rel="stylesheet" href="/static/trinzo-fonts.css">
 <style>
-:root{--agent-brand:#087f82;--agent-ink:#123544;--agent-border:#cbd8de;--agent-soft:#f4f8f9;--agent-warn:#fff7e6;--agent-danger:#9f2d26;--agent-ok:#18724f}
-*{box-sizing:border-box}.meeting-agent-page{margin:0;padding:1rem;background:#eef3f5;color:#17222c;font-family:Roboto,Arial,sans-serif}.meeting-agent-page .container{max-width:1280px;margin:0 auto}.meeting-agent-page .nav{min-height:48px;margin-bottom:.65rem}.meeting-agent-page .hero{padding:1rem 1.2rem;margin-bottom:.7rem;border-top:3px solid #6bb5c5}.meeting-agent-page .hero h1{margin:.1rem 0 .3rem;font-size:clamp(1.65rem,3vw,2.15rem);color:var(--agent-ink)}.meeting-agent-page .hero p{margin:.25rem 0;color:#53636d;line-height:1.45}.meeting-agent-page .tool-note{font-size:.88rem}.meeting-agent-page .steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin:.7rem 0}.meeting-agent-page .step{padding:.62rem;border:1px solid var(--agent-border);border-radius:9px;background:#fff;color:#53636d;font-weight:700}.meeting-agent-page .step.active{border-color:var(--agent-brand);box-shadow:inset 0 0 0 1px var(--agent-brand);color:var(--agent-ink)}.meeting-agent-page .step.complete{background:#e9f7f5}.meeting-agent-page .step:disabled{opacity:.55}.meeting-agent-page .save-strip{display:flex;justify-content:space-between;gap:1rem;align-items:center;min-height:42px;padding:.55rem .8rem;margin-bottom:.65rem;background:#fff;border:1px solid var(--agent-border);border-radius:9px;font-size:.88rem}.meeting-agent-page .save-status[data-state="error"]{color:var(--agent-danger)}.meeting-agent-page .save-status[data-state="saved"]{color:var(--agent-ok)}.meeting-agent-page .notice{padding:.72rem .85rem;margin:.65rem 0;border-radius:9px;background:#e7f2f6;border:1px solid #8bb6c7}.meeting-agent-page .notice.error{background:#fff0ef;border-color:#e1aaa6;color:var(--agent-danger)}.meeting-agent-page .panel{background:#fff;border:1px solid var(--agent-border);border-radius:14px;padding:1rem;box-shadow:0 2px 8px rgba(18,53,68,.07)}.meeting-agent-page .screen{display:none}.meeting-agent-page .screen.active{display:block}.meeting-agent-page .drop-zone{display:grid;place-items:center;min-height:260px;text-align:center;border:2px dashed #76a4bc;border-radius:14px;background:#f7fafb;padding:2rem;cursor:pointer}.meeting-agent-page .drop-zone.dragover{border-color:var(--agent-brand);background:#eaf8f7}.meeting-agent-page #transcriptFile{display:none!important}.meeting-agent-page .toolbar,.meeting-agent-page .screen-actions{display:flex;align-items:center;justify-content:space-between;gap:.65rem;flex-wrap:wrap}.meeting-agent-page .toolbar h2{margin:0;color:var(--agent-ink)}.meeting-agent-page .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;margin-top:1rem}.meeting-agent-page .field{display:grid;gap:.35rem;color:var(--agent-ink);font-weight:700}.meeting-agent-page .field.full{grid-column:1/-1}.meeting-agent-page input,.meeting-agent-page textarea,.meeting-agent-page select{width:100%;min-width:0;border:1px solid #aebfc8;border-radius:8px;background:#fff;color:#17222c;padding:.65rem;font:inherit}.meeting-agent-page textarea{resize:vertical;line-height:1.45}.meeting-agent-page .muted{color:#687985}.meeting-agent-page .button,.meeting-agent-page button.button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:linear-gradient(180deg,#17d0c4,#10aca6);color:#072a38;padding:.65rem .9rem;font-weight:700;cursor:pointer;text-decoration:none}.meeting-agent-page .secondary{border:1px solid #aebfc8!important;background:#fff!important;color:var(--agent-ink)!important}.meeting-agent-page button:disabled{opacity:.55;cursor:not-allowed}.meeting-agent-page .screen-actions{margin-top:1rem}.meeting-agent-page .excluded{margin-top:1rem;border:1px solid var(--agent-border);border-radius:10px;background:var(--agent-soft)}.meeting-agent-page summary{cursor:pointer;padding:.75rem;font-weight:700;color:var(--agent-ink)}.meeting-agent-page .excluded-list{display:grid;gap:.55rem;padding:0 .75rem .75rem}.meeting-agent-page .excluded-row,.meeting-agent-page .evidence-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.75rem;padding:.7rem;border:1px solid #d7e1e5;border-radius:8px;background:#fff}.meeting-agent-page .source-meta{font-size:.78rem;color:#687985;margin-bottom:.25rem}.meeting-agent-page .editor-shell{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,310px);gap:1rem;align-items:start}.meeting-agent-page .paper{min-width:0}.meeting-agent-page .discussion-card{border:1px solid var(--agent-border);border-radius:11px;padding:.8rem;margin-top:.75rem;background:#fbfdfe}.meeting-agent-page .card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem}.meeting-agent-page .record-section{margin-top:.7rem}.meeting-agent-page .record-section h3{font-size:.86rem;color:#53636d;margin:.2rem 0 .35rem}.meeting-agent-page .record-row{border-left:3px solid #83b9c4;padding:.55rem .55rem .55rem .7rem;margin:.45rem 0;background:#fff}.meeting-agent-page .record-row textarea{overflow:hidden;min-height:52px}.meeting-agent-page .record-tools{display:flex;gap:.45rem;align-items:center;justify-content:space-between;margin-top:.35rem}.meeting-agent-page .evidence-toggle{font-size:.78rem;padding:.3rem .5rem}.meeting-agent-page .evidence-panel{margin-top:.4rem;padding:.55rem;background:#edf5f7;border-radius:7px}.meeting-agent-page .evidence-row{display:block;margin:.35rem 0}.meeting-agent-page .evidence-row.cited{border-left:3px solid var(--agent-brand)}.meeting-agent-page .delete{border:1px solid #e3aaa6;border-radius:7px;background:#fff;color:var(--agent-danger);padding:.42rem .6rem;cursor:pointer}.meeting-agent-page .agent-edit{position:sticky;top:.75rem;padding:0!important;background:#f7fafb}.meeting-agent-page .agent-edit summary{list-style:none}.meeting-agent-page .agent-edit summary::-webkit-details-marker{display:none}.meeting-agent-page .agent-edit-body{padding:0 .8rem .8rem}.meeting-agent-page .agent-edit textarea{min-height:130px;margin:.55rem 0}.meeting-agent-page .status-dot{display:inline-block;width:.62rem;height:.62rem;border-radius:50%;background:#1a9a62;margin-right:.4rem}.meeting-agent-page .review-flags{margin-bottom:.7rem;background:var(--agent-warn);border-color:#e7c98e}.meeting-agent-page .flag-list{display:grid;gap:.5rem}.meeting-agent-page .flag{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;padding:.6rem;border-radius:8px;background:#fff;border:1px solid #ead6ac}.meeting-agent-page .flag.resolved{opacity:.68}.meeting-agent-page .flag-actions{display:flex;gap:.35rem;flex-wrap:wrap}.meeting-agent-page .flag-actions button{font-size:.76rem;padding:.32rem .48rem}.meeting-agent-page .actions-wrap{width:100%;overflow:visible}.meeting-agent-page .actions-table{width:100%;table-layout:fixed;border-collapse:collapse}.meeting-agent-page .actions-table th,.meeting-agent-page .actions-table td{padding:.55rem;vertical-align:top;border-bottom:1px solid #d8e2e6;text-align:left}.meeting-agent-page .actions-table th{background:#edf3f5;color:#40545f;font-size:.78rem;text-transform:uppercase}.meeting-agent-page .actions-table th:nth-child(1){width:49%}.meeting-agent-page .actions-table th:nth-child(2){width:24%}.meeting-agent-page .actions-table th:nth-child(3){width:20%}.meeting-agent-page .actions-table th:nth-child(4){width:7%}.meeting-agent-page .actions-table textarea{min-height:90px;overflow:hidden}.meeting-agent-page .owner-options{display:grid;gap:.35rem}.meeting-agent-page .owner-options label{display:flex;gap:.4rem;align-items:flex-start;font-size:.86rem}.meeting-agent-page .owner-options input[type="checkbox"]{width:auto;margin-top:.15rem}.meeting-agent-page .timing-editor{display:grid;gap:.4rem}.meeting-agent-page .proposal{margin:.8rem 0;border:2px solid #6aaeb6;background:#f2fbfa}.meeting-agent-page .proposal-change{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.65rem;padding:.65rem;border-top:1px solid #d1e2e4}.meeting-agent-page .proposal-change pre{white-space:pre-wrap;margin:.25rem 0;padding:.5rem;border-radius:7px;background:#fff;font:inherit;font-size:.84rem}.meeting-agent-page .final-document{max-width:940px;margin:auto}.meeting-agent-page .final-document h2{color:var(--agent-ink)}.meeting-agent-page .final-document section{border-top:1px solid var(--agent-border);margin-top:1rem;padding-top:.8rem}.meeting-agent-page .final-actions{position:sticky;bottom:.5rem;background:#fff;border:1px solid var(--agent-border);padding:.65rem;border-radius:10px;box-shadow:0 5px 18px rgba(18,53,68,.14)}.meeting-agent-page.busy button,.meeting-agent-page.busy input,.meeting-agent-page.busy textarea,.meeting-agent-page.busy select{pointer-events:none;opacity:.65}
-@media(max-width:900px){.meeting-agent-page .editor-shell{grid-template-columns:1fr}.meeting-agent-page .agent-edit{position:static}.meeting-agent-page .actions-table,.meeting-agent-page .actions-table tbody,.meeting-agent-page .actions-table tr,.meeting-agent-page .actions-table td{display:block;width:100%}.meeting-agent-page .actions-table thead{display:none}.meeting-agent-page .actions-table tr{border:1px solid var(--agent-border);border-radius:9px;margin:.75rem 0;padding:.55rem}.meeting-agent-page .actions-table td{border:0;padding:.35rem}.meeting-agent-page .actions-table td[data-label]::before{content:attr(data-label);display:block;color:#687985;font-size:.74rem;font-weight:700;text-transform:uppercase;margin-bottom:.25rem}.meeting-agent-page .actions-table .delete{width:100%}}
-@media(max-width:650px){.meeting-agent-page{padding:.55rem}.meeting-agent-page .steps,.meeting-agent-page .form-grid,.meeting-agent-page .attendee-groups{grid-template-columns:1fr}.meeting-agent-page .field.full{grid-column:auto}.meeting-agent-page .save-strip,.meeting-agent-page .flag,.meeting-agent-page .excluded-row{grid-template-columns:1fr;display:grid}.meeting-agent-page .attendee-chip{grid-template-columns:1fr 1fr}.meeting-agent-page .attendee-chip input{grid-column:1/-1}.meeting-agent-page .screen-actions>*{width:100%}}
-@media print{.meeting-agent-page .nav,.meeting-agent-page .hero,.meeting-agent-page .steps,.meeting-agent-page .save-strip,.meeting-agent-page .notice,.meeting-agent-page .review-flags,.meeting-agent-page .screen:not([data-screen="3"]),.meeting-agent-page .screen-actions{display:none!important}.meeting-agent-page,.meeting-agent-page .container,.meeting-agent-page .panel{background:#fff!important;border:0;box-shadow:none;padding:0;margin:0}.meeting-agent-page .screen[data-screen="3"]{display:block}}
-.meeting-agent-page .secondary{border-radius:8px!important;padding:.55rem .75rem!important;font:inherit;font-weight:600;cursor:pointer}
-.meeting-agent-page .review-flags{margin-bottom:.7rem;padding:0;background:#fffaf0;border-color:#e3bd70}
-.meeting-agent-page .review-flags-summary{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem 1rem;list-style:none}
-.meeting-agent-page .review-flags-summary::-webkit-details-marker{display:none}
-.meeting-agent-page .review-flags-summary::after{content:"Show";color:#566b76;font-size:.8rem;font-weight:600}
-.meeting-agent-page .review-flags[open] .review-flags-summary::after{content:"Hide"}
-.meeting-agent-page .review-flags-heading{display:flex;align-items:center;gap:.65rem;font-size:1.02rem}
-.meeting-agent-page .review-flags-icon{display:grid;place-items:center;width:1.65rem;height:1.65rem;border-radius:50%;background:#f3b942;color:#523900;font-weight:800}
-.meeting-agent-page .flag-count{flex:0 0 auto;margin-left:auto;padding:.28rem .62rem;border-radius:999px;background:#fff0c9;border:1px solid #e5c475;color:#624700;font-size:.78rem;font-weight:700}
-.meeting-agent-page .review-flags-body{padding:0 1rem 1rem;border-top:1px solid #efd79f}
-.meeting-agent-page .review-flags-body>.muted{margin:.75rem 0}
-.meeting-agent-page .flag{align-items:start;gap:.75rem;padding:.8rem;border-radius:10px;border-color:#e7d3a7;box-shadow:0 1px 3px rgba(18,53,68,.06)}
-.meeting-agent-page .flag-kind{display:inline-flex;margin-bottom:.35rem;padding:.2rem .5rem;border-radius:999px;background:#fff1cc;color:#644800;font-size:.74rem;font-weight:700;letter-spacing:.01em}
-.meeting-agent-page .flag-message{line-height:1.45}
-.meeting-agent-page .flag input{margin-top:.55rem}
-.meeting-agent-page .flag-actions{align-items:center}
-.meeting-agent-page .flag-actions button{min-height:36px;padding:.4rem .58rem;white-space:nowrap}
-.meeting-agent-page .attendee-classifier{padding:.85rem;border:1px solid var(--agent-border);border-radius:11px;background:#f7fafb}
-.meeting-agent-page .attendee-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
-.meeting-agent-page .attendee-group{min-width:0;padding:.75rem;border:1px solid #d5e0e4;border-radius:9px;background:#fff}
-.meeting-agent-page .attendee-group-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.55rem}
-.meeting-agent-page .attendee-list{display:grid;gap:.45rem}
-.meeting-agent-page .attendee-chip{display:grid;grid-template-columns:minmax(130px,1fr) auto auto;align-items:center;gap:.4rem}
-.meeting-agent-page .attendee-chip input{padding:.5rem .6rem}
-.meeting-agent-page .attendee-chip button{min-height:38px;white-space:nowrap}
-.meeting-agent-page .attendee-label-control{display:flex;align-items:center;gap:.6rem;margin:.75rem 0 0;color:#40545f;font-size:.86rem;font-weight:600}
-.meeting-agent-page .attendee-label-control select{width:auto;min-width:110px;padding:.45rem .55rem}
-.meeting-agent-page .attendee-help{margin-top:.6rem;font-size:.8rem;color:#687985}
-.meeting-agent-page .attendee-group{font-size:.9rem}
-.meeting-agent-page .attendee-group-head strong{font-size:.95rem;line-height:1.25}
-.meeting-agent-page .attendee-group-head .secondary{padding:.45rem .6rem!important;font-size:.84rem;line-height:1.2}
-.meeting-agent-page .attendee-chip input{font-size:.9rem;font-weight:500;line-height:1.25}
-.meeting-agent-page .attendee-chip .attendee-move{font-size:.82rem;line-height:1.2}
-.meeting-agent-page .attendee-remove-icon{display:inline-grid;place-items:center;width:40px;min-width:40px;height:40px;padding:0;border-radius:8px}
-.meeting-agent-page .attendee-remove-icon [data-lucide],.meeting-agent-page .attendee-remove-icon svg{width:1.05rem;height:1.05rem;stroke-width:2.2}
-.meeting-agent-page .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-.meeting-agent-page .card-head{align-items:end;padding:.15rem .15rem .7rem;border-bottom:2px solid #d6e5e8}
-.meeting-agent-page .topic-field{display:grid;gap:.3rem;color:var(--agent-ink)}
-.meeting-agent-page .topic-label{font-size:.74rem;font-weight:800;letter-spacing:.055em;text-transform:uppercase;color:#46626d}
-.meeting-agent-page .topic-field input{border:2px solid #87aeba;background:#fff;font-size:1.05rem;font-weight:700;color:#123544}
-.meeting-agent-page .topic-field input:focus{border-color:var(--agent-brand);box-shadow:0 0 0 3px rgba(8,127,130,.12)}
-.meeting-agent-page .proposal-kind{display:inline-flex;margin-bottom:.35rem;padding:.2rem .52rem;border-radius:999px;background:#dceff1;color:#174c5b;font-size:.76rem;font-weight:700}
-.meeting-agent-page .proposal{padding:.8rem 1rem}
-.meeting-agent-page .proposal-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-bottom:.7rem}
-.meeting-agent-page .proposal-heading{min-width:0}
-.meeting-agent-page .proposal-heading h2{margin:0 0 .15rem;font-size:1.12rem;color:var(--agent-ink)}
-.meeting-agent-page .proposal-heading p{margin:0;font-size:.86rem}
-.meeting-agent-page .proposal-actions{display:flex;align-items:center;gap:.45rem;flex:0 0 auto}
-.meeting-agent-page .proposal-actions button{padding:.48rem .68rem!important;font-size:.82rem;white-space:nowrap}
-.meeting-agent-page #proposalChanges{border:1px solid #cfe0e4;border-radius:9px;overflow:hidden;background:#fff}
-.meeting-agent-page .proposal-change{grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:.55rem;padding:.52rem .65rem;border:0;border-bottom:1px solid #d9e5e8;background:#fff}
-.meeting-agent-page .proposal-change:nth-child(even){background:#f5fafb}
-.meeting-agent-page .proposal-change:last-child{border-bottom:0}
-.meeting-agent-page .proposal-change:focus-within{background:#edf8f8}
-.meeting-agent-page .proposal-change>input{margin:0}
-.meeting-agent-page .proposal-kind{margin:0;white-space:nowrap}
-.meeting-agent-page .proposal-content{min-width:0}
-.meeting-agent-page .proposal-change pre{margin:0;padding:.38rem .5rem;background:#f5f7f8;line-height:1.35}
-.meeting-agent-page .proposal-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
-.meeting-agent-page .proposal-value-label{margin:0 0 .2rem;color:#60737d;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.035em}
-.meeting-agent-page .agent-edit{overflow:hidden;border:2px solid #9dbbc4;background:#fff;transition:border-color .18s ease,box-shadow .18s ease}
-.meeting-agent-page .agent-edit:hover{border-color:#5f9eaa;box-shadow:0 4px 14px rgba(18,53,68,.13)}
-.meeting-agent-page .agent-edit[open]{border-color:var(--agent-brand);box-shadow:0 5px 16px rgba(8,127,130,.15)}
-.meeting-agent-page .agent-edit-summary{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.9rem 1rem}
-.meeting-agent-page .agent-edit-summary:focus-visible{outline:3px solid rgba(8,127,130,.24);outline-offset:-3px}
-.meeting-agent-page .agent-edit-title{display:flex;align-items:center;gap:.15rem}
-.meeting-agent-page .agent-edit-toggle{display:inline-flex;align-items:center;gap:.3rem;padding:.3rem .48rem;border-radius:7px;background:#e1f1f3;color:#174c5b;font-size:.75rem;font-weight:700;white-space:nowrap}
-.meeting-agent-page .agent-edit-toggle [data-lucide],.meeting-agent-page .agent-edit-toggle svg{width:1rem;height:1rem;transition:transform .18s ease}
-.meeting-agent-page .agent-edit[open] .agent-edit-toggle [data-lucide],.meeting-agent-page .agent-edit[open] .agent-edit-toggle svg{transform:rotate(180deg)}
+/* ==========================================================================
+   Meeting Minutes Agent
+   Colour, radius and shadow come from /static/trinzo.css. This file adds no
+   palette of its own - if a colour is needed that is not a token, add it to
+   the design system rather than here.
+
+   Type scale (5 steps) and weights (2) are declared once, below, and every
+   rule uses them. Each selector appears exactly once; append nothing to the
+   end of this file - edit the rule where it lives.
+   ========================================================================== */
+
+.meeting-agent-page{
+  /* type scale - 12 / 14 / 16 / 18 / 22px at the 16px base trinzo.css sets */
+  --fs-cap:.75rem;
+  --fs-sm:.875rem;
+  --fs-md:1rem;
+  --fs-lg:1.125rem;
+  --fs-xl:1.375rem;
+  /* two weights, no others */
+  --fw:400;
+  --fw-bold:700;
+  --rail:3px;
+}
+
+/* --------------------------------------------------------------- shell -- */
+*{box-sizing:border-box}
+.meeting-agent-page{margin:0;padding:1rem;background:var(--bg);color:var(--text)}
+.meeting-agent-page .container{max-width:1180px;margin:0 auto;padding:0}
+.meeting-agent-page .nav{min-height:48px;margin-bottom:.75rem}
+.meeting-agent-page .panel{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow-sm)}
+.meeting-agent-page .screen{display:none}
+.meeting-agent-page .screen.active{display:block}
+
+.meeting-agent-page .hero{padding:1.1rem 1.25rem;margin-bottom:.75rem}
+.meeting-agent-page .hero h1{margin:0 0 .35rem}
+.meeting-agent-page .hero p{margin:.25rem 0;color:var(--muted);line-height:1.5}
+.meeting-agent-page .tool-note{font-size:var(--fs-sm)}
+
+/* ---------------------------------------------------------- typography -- */
+/* the one uppercase micro-label treatment - every label on the page is this */
+.meeting-agent-page .lbl,
+.meeting-agent-page .field>span,
+.meeting-agent-page .record-section-head h3,
+.meeting-agent-page .actions-table th,
+.meeting-agent-page .flag-kind,
+.meeting-agent-page .proposal-value-label{
+  font-size:var(--fs-cap);font-weight:var(--fw-bold);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.meeting-agent-page .muted{color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .visually-hidden{
+  position:absolute!important;width:1px!important;height:1px!important;
+  padding:0!important;margin:-1px!important;overflow:hidden!important;
+  clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+
+/* -------------------------------------------------------------- icons -- */
+.meeting-agent-page .ic{
+  width:1.05rem;height:1.05rem;flex:none;fill:none;stroke:currentColor;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.meeting-agent-page .icon-sprite{position:absolute;width:0;height:0;overflow:hidden}
+
+/* ----------------------------------------------------------- controls -- */
+.meeting-agent-page input,
+.meeting-agent-page textarea,
+.meeting-agent-page select{
+  width:100%;min-width:0;padding:.55rem .65rem;
+  border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--text);
+  /* explicit, so a bold <label> ancestor cannot leak into the value */
+  font-family:inherit;font-size:var(--fs-md);font-weight:var(--fw);line-height:1.5}
+.meeting-agent-page textarea{resize:vertical;display:block}
+.meeting-agent-page input[type="checkbox"]{width:auto;min-width:0}
+.meeting-agent-page input:focus-visible,
+.meeting-agent-page textarea:focus-visible,
+.meeting-agent-page select:focus-visible,
+.meeting-agent-page button:focus-visible,
+.meeting-agent-page summary:focus-visible,
+.meeting-agent-page [role="button"]:focus-visible{
+  outline:2px solid var(--accent);outline-offset:1px}
+
+.meeting-agent-page .button,
+.meeting-agent-page .secondary,
+.meeting-agent-page .delete{
+  display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
+  border-radius:var(--radius-sm);cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:var(--fs-sm);font-weight:var(--fw-bold);
+  line-height:1.2;padding:.55rem .85rem}
+.meeting-agent-page .button{
+  border:1px solid var(--accent);background:var(--accent);color:#fff}
+.meeting-agent-page .button:hover{background:var(--accent-600);border-color:var(--accent-600)}
+.meeting-agent-page .secondary{
+  border:1px solid var(--border-strong);background:var(--surface);color:var(--heading)}
+.meeting-agent-page .secondary:hover{background:var(--soft)}
+.meeting-agent-page .delete{
+  border:1px solid var(--danger-border);background:var(--surface);color:var(--danger-text)}
+.meeting-agent-page .delete:hover{background:var(--danger-bg)}
+/* quiet: a real button that should not compete - used for Dismiss and Back */
+.meeting-agent-page .quiet{
+  border-color:transparent;background:transparent;color:var(--muted);font-weight:var(--fw)}
+.meeting-agent-page .quiet:hover{background:var(--soft);color:var(--heading)}
+/* a Remove that repeats once per row should not shout; it colours on hover */
+.meeting-agent-page .delete.quiet{border-color:transparent;background:transparent;color:var(--muted)}
+.meeting-agent-page .delete.quiet:hover{background:var(--danger-bg);color:var(--danger-text)}
+.meeting-agent-page button:disabled{opacity:.55;cursor:not-allowed}
+.meeting-agent-page .icon-only{width:2.3rem;min-width:2.3rem;height:2.3rem;padding:0}
+
+/* --------------------------------------------------------------- steps -- */
+.meeting-agent-page .steps{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
+.meeting-agent-page .step{
+  display:flex;align-items:center;gap:.5rem;padding:.6rem .7rem;cursor:pointer;
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--muted);text-align:left;
+  font-family:inherit;font-size:var(--fs-sm);font-weight:var(--fw-bold)}
+.meeting-agent-page .step::before{
+  content:attr(data-num);display:grid;place-items:center;flex:none;
+  width:1.4rem;height:1.4rem;border-radius:50%;
+  background:var(--soft-2);color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .step.active{
+  border-color:var(--accent);color:var(--heading);box-shadow:inset 0 0 0 1px var(--accent)}
+.meeting-agent-page .step.active::before{background:var(--accent);color:#fff}
+.meeting-agent-page .step.complete{color:var(--heading)}
+.meeting-agent-page .step.complete::before{
+  content:"\2713";background:var(--ok-bg);color:var(--ok-text)}
+.meeting-agent-page .step:disabled{opacity:.55}
+
+/* ---------------------------------------------------------- save strip -- */
+.meeting-agent-page .save-strip{
+  display:flex;justify-content:space-between;align-items:center;gap:1rem;
+  min-height:42px;padding:.5rem .85rem;margin-bottom:.75rem;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);font-size:var(--fs-sm)}
+.meeting-agent-page .save-status[data-state="saved"]{color:var(--ok-text)}
+.meeting-agent-page .save-status[data-state="error"]{color:var(--danger-text)}
+.meeting-agent-page .save-status[data-state="dirty"],
+.meeting-agent-page .save-status[data-state="saving"]{color:var(--muted)}
+
+/* ------------------------------------------------------ status / notice -- */
+.meeting-agent-page .notice{
+  display:flex;align-items:center;gap:.7rem;margin:.75rem 0;padding:.75rem .9rem;
+  border:1px solid var(--info-border);border-left:var(--rail) solid var(--accent);
+  border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);
+  font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .notice[hidden]{display:none!important}
+.meeting-agent-page #workflowStatus::before{
+  content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--accent)}
+.meeting-agent-page.busy #workflowStatus::before{
+  width:1.05rem;height:1.05rem;background:transparent;
+  border:2px solid var(--brand-200);border-top-color:var(--accent);
+  animation:agent-spin .75s linear infinite}
+.meeting-agent-page #workflowStatus.error{
+  border-color:var(--danger-border);border-left-color:var(--danger-text);
+  background:var(--danger-bg);color:var(--danger-text)}
+.meeting-agent-page #workflowStatus.error::before{
+  content:"!";display:grid;place-items:center;width:1.05rem;height:1.05rem;
+  background:var(--danger-text);color:#fff;border:0;
+  font-size:var(--fs-cap);font-weight:var(--fw-bold);animation:none}
+@keyframes agent-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){
+  .meeting-agent-page.busy #workflowStatus::before{animation:none}}
+.meeting-agent-page.busy button,
+.meeting-agent-page.busy input,
+.meeting-agent-page.busy textarea,
+.meeting-agent-page.busy select{pointer-events:none;opacity:.65}
+
+/* -------------------------------------------------------------- upload -- */
+.meeting-agent-page .drop-zone{
+  display:grid;place-items:center;min-height:240px;padding:2rem;text-align:center;
+  border:2px dashed var(--border-strong);border-radius:var(--radius);
+  background:var(--soft);cursor:pointer}
+.meeting-agent-page .drop-zone:hover,
+.meeting-agent-page .drop-zone.dragover{border-color:var(--accent);background:var(--brand-050)}
+.meeting-agent-page .drop-zone strong{display:block;font-size:var(--fs-lg);color:var(--heading)}
+.meeting-agent-page .drop-zone p{margin:.35rem 0 .9rem}
+.meeting-agent-page #transcriptFile{display:none!important}
+
+/* ------------------------------------------------------- details form -- */
+.meeting-agent-page .toolbar,
+.meeting-agent-page .screen-actions{
+  display:flex;align-items:center;justify-content:space-between;gap:.65rem;flex-wrap:wrap}
+.meeting-agent-page .toolbar h2{margin:0;font-size:var(--fs-xl)}
+.meeting-agent-page .screen-actions{margin-top:1rem}
+.meeting-agent-page .form-grid{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;margin-top:1rem}
+.meeting-agent-page .field{display:grid;gap:.3rem}
+.meeting-agent-page .field.full{grid-column:1/-1}
+
+
+.meeting-agent-page .attendee-classifier{
+  padding:.9rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--soft)}
+.meeting-agent-page .attendee-groups{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+.meeting-agent-page .attendee-group{
+  min-width:0;padding:.75rem;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--surface)}
+.meeting-agent-page .attendee-group-head{
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem}
+.meeting-agent-page .attendee-group-head strong{font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .attendee-list{display:grid;gap:.4rem}
+.meeting-agent-page .attendee-chip{
+  display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:.35rem;align-items:center}
+.meeting-agent-page .attendee-chip input{font-size:var(--fs-sm);padding:.45rem .55rem}
+.meeting-agent-page .attendee-chip .secondary{padding:.4rem .6rem;font-size:var(--fs-cap)}
+.meeting-agent-page .attendee-label-control{
+  display:flex;align-items:center;gap:.6rem;margin-top:.8rem;
+  font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .attendee-label-control select{width:auto;min-width:110px;padding:.4rem .5rem}
+.meeting-agent-page .attendee-help{margin-top:.6rem;font-size:var(--fs-cap);color:var(--muted)}
+
+/* -------------------------------------------------- editor + agent bar -- */
+.meeting-agent-page .paper{min-width:0}
+.meeting-agent-page .agent-edit{
+  margin-bottom:.85rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);overflow:hidden}
+.meeting-agent-page .agent-edit[open]{border-color:var(--accent)}
+.meeting-agent-page .agent-edit-summary{
+  display:flex;align-items:center;gap:.6rem;padding:.65rem .85rem;
+  cursor:pointer;list-style:none;font-size:var(--fs-sm)}
+.meeting-agent-page .agent-edit-summary::-webkit-details-marker{display:none}
+.meeting-agent-page .agent-edit-title{font-weight:var(--fw-bold);color:var(--heading)}
+.meeting-agent-page .status-dot{
+  display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
+  background:var(--ok-text);margin-right:.15rem}
+.meeting-agent-page .agent-edit-hint{color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .agent-edit-toggle{
+  display:inline-flex;align-items:center;gap:.3rem;margin-left:auto;
+  color:var(--accent);font-weight:var(--fw-bold);font-size:var(--fs-cap);white-space:nowrap}
+.meeting-agent-page .agent-edit[open] .agent-edit-toggle .ic{transform:rotate(180deg)}
 .meeting-agent-page .agent-edit-toggle-open{display:none}
 .meeting-agent-page .agent-edit[open] .agent-edit-toggle-closed{display:none}
 .meeting-agent-page .agent-edit[open] .agent-edit-toggle-open{display:inline}
-.meeting-agent-page .record-section{overflow:hidden;margin-top:.65rem;border:1px solid #ccdbe0;border-radius:9px;background:#fff}
-.meeting-agent-page .record-section-head{min-height:46px;padding:.45rem .6rem;background:#edf4f6;border-bottom:1px solid #ccdbe0}
-.meeting-agent-page .record-section-head h3{margin:0;color:#294653;font-size:.86rem;font-weight:800}
-.meeting-agent-page .record-section-head .secondary{padding:.4rem .62rem!important;font-size:.8rem}
-.meeting-agent-page .record-list{display:grid}
-.meeting-agent-page .record-row{margin:0;padding:.55rem .65rem;border:0;border-left:4px solid #74b1bd;border-bottom:1px solid #d8e3e7;background:#fff}
-.meeting-agent-page .record-row:nth-child(even){background:#f6fafb}
-.meeting-agent-page .record-row:last-child{border-bottom:0}
-.meeting-agent-page .record-row:focus-within{background:#edf8f8;box-shadow:inset 0 0 0 2px rgba(8,127,130,.18)}
-.meeting-agent-page .record-position{margin-bottom:.3rem;color:#49626d;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.035em}
-.meeting-agent-page .record-row textarea{min-height:48px;padding:.5rem .6rem;line-height:1.35}
-.meeting-agent-page .record-tools{margin-top:.25rem}
-.meeting-agent-page .record-empty{margin:0;padding:.7rem}
-.meeting-agent-page .actions-table tbody tr:nth-child(even){background:#f5f9fa}
-.meeting-agent-page .actions-table tbody tr:focus-within{background:#edf8f8;box-shadow:inset 3px 0 0 var(--agent-brand)}
-.meeting-agent-page .actions-table th,.meeting-agent-page .actions-table td{padding:.45rem .5rem}
-.meeting-agent-page .actions-table textarea{min-height:68px;padding:.5rem .6rem;line-height:1.35}
-.meeting-agent-page .button-with-icon{display:inline-flex;align-items:center;justify-content:center;gap:.45rem}
-.meeting-agent-page .button-with-icon [data-lucide],.meeting-agent-page .button-with-icon svg{width:1.05rem;height:1.05rem;stroke-width:2.4}
-.meeting-agent-page #workflowStatus{display:flex;align-items:center;gap:.8rem;min-height:62px;margin:.85rem 0;padding:.9rem 1.05rem;border:2px solid #4c94a6;border-left:8px solid var(--agent-brand);border-radius:11px;background:linear-gradient(90deg,#dff2f4 0%,#edf8f9 100%);color:#123544;font-size:1rem;font-weight:700;line-height:1.4;box-shadow:0 4px 14px rgba(18,53,68,.14);transition:background-color .2s ease,border-color .2s ease,box-shadow .2s ease}
-.meeting-agent-page #workflowStatus[hidden]{display:none!important}
-.meeting-agent-page #workflowStatus::before{content:"";width:.78rem;height:.78rem;flex:0 0 auto;border-radius:50%;background:var(--agent-brand);box-shadow:0 0 0 4px rgba(8,127,130,.14)}
-.meeting-agent-page.busy #workflowStatus{border-color:#087f82;background:linear-gradient(90deg,#ccefed 0%,#e8f8f7 100%);box-shadow:0 5px 18px rgba(8,127,130,.24)}
-.meeting-agent-page.busy #workflowStatus::before{width:1.25rem;height:1.25rem;border:3px solid rgba(8,127,130,.22);border-top-color:#087f82;background:transparent;box-shadow:none;animation:agent-status-spin .75s linear infinite}
-.meeting-agent-page #workflowStatus.error{border-color:#c8544b;border-left-color:var(--agent-danger);background:#fff0ef;color:#7d241f;box-shadow:0 4px 14px rgba(159,45,38,.16)}
-.meeting-agent-page #workflowStatus.error::before{content:"!";display:grid;place-items:center;width:1.35rem;height:1.35rem;border:0;background:var(--agent-danger);color:#fff;font-size:.88rem;line-height:1;box-shadow:none;animation:none}
-@keyframes agent-status-spin{to{transform:rotate(360deg)}}
-@media(max-width:650px){.meeting-agent-page .attendee-chip{grid-template-columns:minmax(0,1fr) auto}.meeting-agent-page .attendee-chip input{grid-column:1/-1}.meeting-agent-page .attendee-remove-icon{width:40px!important}.meeting-agent-page .attendee-move{width:100%}}
-@media(max-width:760px){.meeting-agent-page .proposal-header{align-items:flex-start;flex-direction:column}.meeting-agent-page .proposal-actions{width:100%;flex-wrap:wrap}.meeting-agent-page .proposal-change{grid-template-columns:auto minmax(0,1fr)}.meeting-agent-page .proposal-content{grid-column:1/-1}.meeting-agent-page .proposal-comparison{grid-template-columns:1fr}}
+.meeting-agent-page .agent-edit-body{
+  display:grid;gap:.6rem;padding:.85rem;border-top:1px solid var(--border);
+  background:var(--soft)}
+.meeting-agent-page .agent-edit-body textarea{min-height:90px;background:var(--surface)}
+.meeting-agent-page .agent-edit-body .button{justify-self:start}
+
+/* ---------------------------------------------------- discussion cards -- */
+.meeting-agent-page .discussion-card{
+  margin-top:.85rem;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface);overflow:hidden}
+.meeting-agent-page .card-head{
+  display:flex;align-items:center;gap:.75rem;padding:.7rem .85rem;
+  border-bottom:1px solid var(--border);background:var(--soft)}
+.meeting-agent-page .topic-field{flex:1;min-width:0}
+.meeting-agent-page .topic-field input{
+  font-size:var(--fs-lg);font-weight:var(--fw-bold);color:var(--heading);
+  border-color:transparent;background:transparent;padding:.3rem .4rem}
+.meeting-agent-page .topic-field input:hover{border-color:var(--border-strong);background:var(--surface)}
+.meeting-agent-page .topic-field input:focus{border-color:var(--accent);background:var(--surface)}
+.meeting-agent-page .record-section{padding:.85rem}
+.meeting-agent-page .record-section+.record-section{border-top:1px solid var(--border)}
+.meeting-agent-page .record-section-head{
+  display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.5rem}
+.meeting-agent-page .record-section-head h3{margin:0}
+.meeting-agent-page .record-list{display:grid;gap:.5rem}
+.meeting-agent-page .record-row{display:grid;gap:.4rem}
+.meeting-agent-page .record-row+.record-row{padding-top:.5rem;border-top:1px solid var(--border)}
+.meeting-agent-page .record-row textarea{min-height:52px}
+.meeting-agent-page .record-tools,
+.meeting-agent-page .action-tools{display:flex;align-items:flex-start;gap:.5rem}
+.meeting-agent-page .record-tools>details,
+.meeting-agent-page .action-tools>details{flex:1;min-width:0}
+.meeting-agent-page .record-tools .delete,
+.meeting-agent-page .action-tools .delete{margin-left:auto;flex:none}
+.meeting-agent-page .record-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .add-record{
+  width:100%;margin-top:.6rem;border-style:dashed;color:var(--accent);font-weight:var(--fw)}
+
+/* ------------------------------------------------------------ evidence -- */
+.meeting-agent-page .evidence-toggle{
+  display:inline-flex;align-items:center;padding:.3rem .6rem;cursor:pointer;
+  border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--muted);
+  font-size:var(--fs-cap);font-weight:var(--fw);list-style:none}
+.meeting-agent-page .evidence-toggle::-webkit-details-marker{display:none}
+.meeting-agent-page .evidence-panel{
+  margin-top:.45rem;padding:.6rem;border-radius:var(--radius-sm);background:var(--soft-2)}
+.meeting-agent-page .evidence-row{
+  padding:.5rem .6rem;margin:.35rem 0;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
+.meeting-agent-page .evidence-row.cited{border-left:var(--rail) solid var(--accent)}
+.meeting-agent-page .source-meta{
+  margin-bottom:.25rem;font-size:var(--fs-cap);color:var(--muted)}
+
+/* ------------------------------------------------------- actions table -- */
+.meeting-agent-page .actions-wrap{width:100%;overflow-x:auto}
+.meeting-agent-page .actions-table{width:100%;table-layout:fixed;border-collapse:collapse}
+.meeting-agent-page .actions-table th{
+  padding:.5rem .6rem;text-align:left;vertical-align:bottom;
+  border-bottom:1px solid var(--border-strong)}
+.meeting-agent-page .actions-table td{
+  padding:.7rem .6rem;vertical-align:top;border-bottom:1px solid var(--border)}
+.meeting-agent-page .actions-table th:nth-child(1){width:52%}
+.meeting-agent-page .actions-table th:nth-child(2){width:24%}
+.meeting-agent-page .actions-table th:nth-child(3){width:24%}
+.meeting-agent-page .actions-table textarea{min-height:56px}
+.meeting-agent-page .action-tools{margin-top:.4rem}
+
+.meeting-agent-page .owner-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem}
+.meeting-agent-page .owner-chip{
+  display:inline-flex;align-items:center;gap:.15rem;padding:.15rem .2rem .15rem .55rem;
+  border-radius:var(--radius-pill);background:var(--brand-100);color:var(--accent-700);
+  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .owner-chip button{
+  display:grid;place-items:center;width:1.15rem;height:1.15rem;padding:0;
+  border:0;border-radius:50%;background:transparent;color:inherit;
+  font-family:inherit;font-size:var(--fs-sm);line-height:1;cursor:pointer}
+.meeting-agent-page .owner-chip button:hover{background:var(--brand-200)}
+.meeting-agent-page .owner-add{display:grid;gap:.3rem}
+.meeting-agent-page .owner-add select,
+.meeting-agent-page .owner-add input{font-size:var(--fs-sm);padding:.4rem .5rem}
+.meeting-agent-page .owner-add input[hidden]{display:none}
+
+.meeting-agent-page .timing-editor{display:grid;gap:.4rem}
+.meeting-agent-page .seg{
+  display:inline-flex;overflow:hidden;border:1px solid var(--border-strong);
+  border-radius:var(--radius-sm);background:var(--surface)}
+.meeting-agent-page .seg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.meeting-agent-page .seg span{
+  display:block;padding:.3rem .5rem;cursor:pointer;color:var(--muted);
+  font-size:var(--fs-cap);font-weight:var(--fw-bold);white-space:nowrap}
+.meeting-agent-page .seg label+label span{border-left:1px solid var(--border)}
+.meeting-agent-page .seg input:checked+span{background:var(--brand-100);color:var(--accent-700)}
+.meeting-agent-page .seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:-2px}
+.meeting-agent-page .timing-editor input{font-size:var(--fs-sm);padding:.4rem .5rem}
+
+/* -------------------------------------------------------- review flags -- */
+.meeting-agent-page .review-flags{margin-bottom:.75rem;padding:0;overflow:hidden}
+.meeting-agent-page .review-flags-summary{
+  display:flex;align-items:center;gap:.65rem;padding:.8rem 1rem;cursor:pointer;list-style:none}
+.meeting-agent-page .review-flags-summary::-webkit-details-marker{display:none}
+.meeting-agent-page .review-flags-heading{font-size:var(--fs-lg);font-weight:var(--fw-bold);color:var(--heading)}
+.meeting-agent-page .flag-count{
+  padding:.15rem .5rem;border-radius:var(--radius-pill);
+  background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);
+  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .review-flags-summary::after{
+  content:"Show";margin-left:auto;color:var(--muted);
+  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .review-flags[open] .review-flags-summary::after{content:"Hide"}
+.meeting-agent-page .review-flags-body{padding:0 1rem 1rem;border-top:1px solid var(--border)}
+.meeting-agent-page .review-flags-body>.muted{margin:.75rem 0}
+.meeting-agent-page .flag-list{display:grid;gap:.6rem}
+.meeting-agent-page .flag{
+  padding:.75rem .85rem;border:1px solid var(--border);
+  border-left:var(--rail) solid var(--warn-text);border-radius:var(--radius-sm)}
+.meeting-agent-page .flag.resolved{border-left-color:var(--border-strong);opacity:.7}
+.meeting-agent-page .flag-kind{display:block;margin-bottom:.3rem;color:var(--warn-text)}
+.meeting-agent-page .flag.resolved .flag-kind{color:var(--muted)}
+.meeting-agent-page .flag-message{line-height:1.5}
+.meeting-agent-page .flag input{margin-top:.55rem;font-size:var(--fs-sm)}
+.meeting-agent-page .flag details{margin-top:.5rem}
+.meeting-agent-page .flag-actions{
+  display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.6rem}
+.meeting-agent-page .flag-actions .quiet{margin-left:auto}
+
+/* ------------------------------------------------------------ proposal -- */
+.meeting-agent-page .proposal{margin:.85rem 0;border-color:var(--accent)}
+.meeting-agent-page .proposal-header{
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  flex-wrap:wrap;padding-bottom:.7rem}
+.meeting-agent-page .proposal-heading{min-width:0}
+.meeting-agent-page .proposal-heading h2{margin:0 0 .1rem;font-size:var(--fs-lg)}
+.meeting-agent-page .proposal-actions{display:flex;align-items:center;gap:.45rem;flex:0 0 auto}
+.meeting-agent-page #proposalChanges{
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);overflow:hidden}
+.meeting-agent-page .proposal-change{
+  display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:.55rem;
+  align-items:center;padding:.55rem .7rem;cursor:pointer}
+.meeting-agent-page .proposal-change+.proposal-change{border-top:1px solid var(--border)}
+.meeting-agent-page .proposal-change:hover{background:var(--soft)}
+.meeting-agent-page .proposal-kind{
+  padding:.15rem .5rem;border-radius:var(--radius-pill);white-space:nowrap;
+  background:var(--brand-100);color:var(--accent-700);
+  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .proposal-content{min-width:0}
+.meeting-agent-page .proposal-change pre{
+  margin:0;padding:.35rem .5rem;border-radius:var(--radius-sm);background:var(--soft);
+  font-family:inherit;font-size:var(--fs-sm);line-height:1.45;white-space:pre-wrap}
+.meeting-agent-page .proposal-comparison{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+.meeting-agent-page .proposal-value-label{margin:0 0 .2rem}
+
+/* ------------------------------------------------------ final document -- */
+.meeting-agent-page .final-document{max-width:76ch;margin:0 auto}
+.meeting-agent-page .final-document h2{font-size:var(--fs-xl)}
+.meeting-agent-page .final-document h3{font-size:var(--fs-lg)}
+.meeting-agent-page .final-document h4{font-size:var(--fs-md);margin:.9rem 0 .3rem}
+.meeting-agent-page .final-document section{
+  margin-top:1.2rem;padding-top:.9rem;border-top:1px solid var(--border)}
+.meeting-agent-page .final-actions{
+  position:sticky;bottom:.5rem;gap:.5rem;margin-top:1.2rem;padding:.7rem .85rem;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .final-actions .spacer{flex:1}
+.meeting-agent-page .final-actions .divider{
+  width:1px;height:1.4rem;background:var(--border);flex:none}
+.meeting-agent-page .export-group{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.meeting-agent-page .evidence-choice{
+  display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:var(--fs-sm)}
+
+/* -------------------------------------------------------- responsive -- */
+@media(max-width:900px){
+  .meeting-agent-page .actions-table,
+  .meeting-agent-page .actions-table tbody,
+  .meeting-agent-page .actions-table tr,
+  .meeting-agent-page .actions-table td{display:block;width:100%}
+  .meeting-agent-page .actions-table thead{display:none}
+  .meeting-agent-page .actions-table tr{
+    margin:.75rem 0;padding:.6rem;border:1px solid var(--border);
+    border-radius:var(--radius-sm)}
+  .meeting-agent-page .actions-table td{border:0;padding:.35rem}
+  .meeting-agent-page .actions-table td[data-label]::before{
+    content:attr(data-label);display:block;margin-bottom:.25rem;
+    font-size:var(--fs-cap);font-weight:var(--fw-bold);letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted)}
+}
+@media(max-width:650px){
+  .meeting-agent-page{padding:.6rem}
+  .meeting-agent-page .steps,
+  .meeting-agent-page .form-grid,
+  .meeting-agent-page .attendee-groups{grid-template-columns:1fr}
+  .meeting-agent-page .field.full{grid-column:auto}
+  .meeting-agent-page .save-strip{flex-direction:column;align-items:flex-start;gap:.35rem}
+  .meeting-agent-page .attendee-chip{grid-template-columns:minmax(0,1fr) auto}
+  .meeting-agent-page .attendee-chip input{grid-column:1/-1}
+  .meeting-agent-page .proposal-comparison{grid-template-columns:1fr}
+  .meeting-agent-page .screen-actions>*{width:100%}
+  .meeting-agent-page .final-actions{position:static}
+  .meeting-agent-page .final-actions .divider,
+  .meeting-agent-page .final-actions .spacer{display:none}
+  .meeting-agent-page .export-group{width:100%}
+  .meeting-agent-page .export-group>*{flex:1}
+}
+
+/* ------------------------------------------------------------- print -- */
+@media print{
+  .meeting-agent-page .nav,
+  .meeting-agent-page .hero,
+  .meeting-agent-page .steps,
+  .meeting-agent-page .save-strip,
+  .meeting-agent-page .notice,
+  .meeting-agent-page .review-flags,
+  .meeting-agent-page .screen:not([data-screen="3"]),
+  .meeting-agent-page .screen-actions{display:none!important}
+  .meeting-agent-page,
+  .meeting-agent-page .container,
+  .meeting-agent-page .panel{
+    background:#fff!important;border:0;box-shadow:none;padding:0;margin:0}
+  .meeting-agent-page .screen[data-screen="3"]{display:block}
+}
 </style>
-<script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script defer src="/static/meeting-minutes-agent.js"></script>
 <script defer src="/static/trinzo.js"></script>
-<link rel="stylesheet" href="/static/trinzo-fonts.css">
 </head>
 <body class="meeting-agent-page">
+
+<svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.3 2.6L3 13"/></symbol>
+</svg>
+
 <main class="container">
-  <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a><a href="/meeting-minutes-final">Meeting transcript to minutes</a><a href="/meeting-minutes-agent">Meeting Minutes Agent</a><a href="/jobs">Library</a></nav>
+  <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a><a href="/meeting-minutes-final">Meeting transcript to minutes</a><a href="/meeting-minutes-agent" aria-current="page">Meeting Minutes Agent</a><a href="/jobs">Library</a></nav>
+
   <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p><p class="tool-note"><strong>Which minutes tool?</strong> This guided tool supports source evidence, review flags and agent-assisted editing. <a href="/meeting-minutes-final">Meeting transcript to minutes</a> is the quicker single-pass option.</p></section>
-  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" type="button">1. Upload &amp; details</button><button class="step" data-step="1" type="button" disabled>2. Discussion</button><button class="step" data-step="2" type="button" disabled>3. Actions</button><button class="step" data-step="3" type="button" disabled>4. Final review</button></div>
+
+  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button">Upload &amp; details</button><button class="step" data-step="1" data-num="2" type="button" disabled>Discussion</button><button class="step" data-step="2" data-num="3" type="button" disabled>Actions</button><button class="step" data-step="3" data-num="4" type="button" disabled>Final review</button></div>
+
   <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><a href="/jobs">Resume later from Library</a></div>
+
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
   <p id="staleNotice" class="notice" hidden>The prepared transcript changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
-  <details id="reviewFlags" class="panel review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading"><span class="review-flags-icon" aria-hidden="true">!</span><span>Details to review</span></span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
 
+  <details id="reviewFlags" class="panel review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading">Details to review</span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
+
+  <!-- ============================================ 0 - upload and details -->
   <section class="panel screen active" data-screen="0">
     <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div></div>
-    <div id="detailsEditor" hidden><div class="toolbar"><h2>Meeting details</h2><span id="denoiseSummary" class="muted"></span></div><p class="muted">The prepared transcript removes likely noise while retaining source references for review.</p><div class="form-grid"><label class="field full">Meeting title<input id="meetingTitle"></label><label class="field">Date<input id="meetingDate" type="date"></label><label class="field">Location<input id="meetingLocation"></label><label class="field">Meeting type<input id="meetingType"></label><div class="field full attendee-classifier"><div class="attendee-groups"><section class="attendee-group"><div class="attendee-group-head"><strong>Internal attendees</strong><button class="secondary" data-add-attendee="internal" type="button">Add person</button></div><div id="internalAttendees" class="attendee-list"></div></section><section class="attendee-group"><div class="attendee-group-head"><strong><span id="clientAttendeeHeading">Client</span> attendees</strong><button class="secondary" data-add-attendee="client" type="button">Add person</button></div><div id="clientAttendees" class="attendee-list"></div></section></div><label class="attendee-label-control" for="clientAttendeeLabelSelect">Label the client group in the minutes as <select id="clientAttendeeLabelSelect"><option value="Client">Client</option><option value="External">External</option></select></label><div class="attendee-help">Edit names directly, or move a person between the Internal and Client groups. Choosing External changes only the heading used in the minutes.</div></div></div>
-      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="generateDiscussion" class="button button-with-icon" type="button"><span>Generate discussion</span><i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+
+    <div id="detailsEditor" hidden>
+      <div class="toolbar"><h2>Meeting details</h2><span id="denoiseSummary" class="muted"></span></div>
+      <p class="muted">The prepared transcript removes likely noise while retaining source references for review.</p>
+      <div class="form-grid">
+        <label class="field full"><span>Meeting title</span><input id="meetingTitle"></label>
+        <label class="field"><span>Date</span><input id="meetingDate" type="date"></label>
+        <label class="field"><span>Location</span><input id="meetingLocation"></label>
+        <label class="field"><span>Meeting type</span><input id="meetingType"></label>
+        <div class="field full attendee-classifier">
+          <div class="attendee-groups">
+            <section class="attendee-group"><div class="attendee-group-head"><strong>Internal attendees</strong><button class="secondary" data-add-attendee="internal" type="button">Add person</button></div><div id="internalAttendees" class="attendee-list"></div></section>
+            <section class="attendee-group"><div class="attendee-group-head"><strong><span id="clientAttendeeHeading">Client</span> attendees</strong><button class="secondary" data-add-attendee="client" type="button">Add person</button></div><div id="clientAttendees" class="attendee-list"></div></section>
+          </div>
+          <label class="attendee-label-control" for="clientAttendeeLabelSelect">Label the client group in the minutes as <select id="clientAttendeeLabelSelect"><option value="Client">Client</option><option value="External">External</option></select></label>
+          <div class="attendee-help">Edit names directly, or move a person between the Internal and Client groups. Choosing External changes only the heading used in the minutes.</div>
+        </div>
+      </div>
+      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="generateDiscussion" class="button" type="button">Generate discussion<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
     </div>
   </section>
 
-  <section class="panel screen" data-screen="1"><div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Discussion, decisions and questions</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div><p class="muted">Edit directly and open Evidence beneath any record to inspect its source.</p><div id="discussionList"></div></div><details class="panel agent-edit"><summary class="agent-edit-summary"><span class="agent-edit-title"><span class="status-dot"></span>Ask the agent for bulk edits</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open editor</span><span class="agent-edit-toggle-open">Close editor</span><i data-lucide="chevron-down" aria-hidden="true"></i></span></summary><div class="agent-edit-body"><p class="muted">Changes are previewed before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview agent changes</button></div></details></div><div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="generateActions" class="button button-with-icon" type="button"><span>Generate actions</span><i data-lucide="arrow-right" aria-hidden="true"></i></button></div></section>
+  <!-- ================================================== 1 - discussion -->
+  <section class="panel screen" data-screen="1">
+    <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">Changes are previewed before anything is applied</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview agent changes</button></div></details>
+    <div class="paper">
+      <div class="toolbar"><h2>Discussion, decisions and questions</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div>
+      <p class="muted">Edit directly and open Evidence beneath any record to inspect its source.</p>
+      <div id="discussionList"></div>
+    </div>
+    <div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="generateActions" class="button" type="button">Generate actions<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+  </section>
 
-  <section class="panel screen" data-screen="2"><div class="editor-shell"><div class="paper"><div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div><p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th><th></th></tr></thead><tbody id="actionsBody"></tbody></table></div></div><details class="panel agent-edit"><summary class="agent-edit-summary"><span class="agent-edit-title"><span class="status-dot"></span>Ask the agent for bulk edits</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open editor</span><span class="agent-edit-toggle-open">Close editor</span><i data-lucide="chevron-down" aria-hidden="true"></i></span></summary><div class="agent-edit-body"><p class="muted">For example: “Merge true duplicates and make the wording concise.”</p><textarea id="actionsInstruction" placeholder="Describe the changes to make…"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details></div><div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="openFinalReview" class="button button-with-icon" type="button"><span>Review complete minutes</span><i data-lucide="arrow-right" aria-hidden="true"></i></button></div></section>
+  <!-- ===================================================== 2 - actions -->
+  <section class="panel screen" data-screen="2">
+    <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">For example: merge true duplicates and make the wording concise.</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details>
+    <div class="paper">
+      <div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div>
+      <p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p>
+      <div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
+    </div>
+    <div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="openFinalReview" class="button" type="button">Review complete minutes<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+  </section>
 
-  <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Proposed AI changes</h2><p class="muted">Select only the changes you want. Nothing has been applied yet.</p></div><div class="proposal-actions"><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button><button id="rejectProposal" class="secondary" type="button">Reject all</button></div></div><div id="proposalChanges"></div></section>
+  <!-- ==================================================== ai proposals -->
+  <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Proposed AI changes</h2><p class="muted">Select only the changes you want. Nothing has been applied yet.</p></div><div class="proposal-actions"><button id="rejectProposal" class="secondary" type="button">Reject all</button><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button></div></div><div id="proposalChanges"></div></section>
 
-  <section class="panel screen" data-screen="3"><div id="finalDocument" class="paper final-document"></div><div class="screen-actions final-actions"><button class="secondary" data-back="2" type="button">Back to actions</button><label><input id="includeEvidence" type="checkbox" style="width:auto"> Include evidence appendix</label><button id="printMinutes" class="secondary button-with-icon" type="button"><i data-lucide="printer" aria-hidden="true"></i><span>Print</span></button><button id="saveMinutes" class="button button-with-icon" type="button"><i data-lucide="save" aria-hidden="true"></i><span>Save minutes</span></button><button id="downloadPdf" class="button button-with-icon" type="button"><i data-lucide="download" aria-hidden="true"></i><span>Download PDF</span></button><button id="downloadWord" class="button button-with-icon" type="button"><i data-lucide="download" aria-hidden="true"></i><span>Download Word</span></button><button id="newMinutes" class="secondary" type="button">Start new minutes</button></div></section>
+  <!-- ================================================ 3 - final review -->
+  <section class="panel screen" data-screen="3">
+    <div id="finalDocument" class="paper final-document"></div>
+    <div class="screen-actions final-actions">
+      <button class="secondary quiet" data-back="2" type="button">Back to actions</button>
+      <button id="undoChange" class="secondary" type="button" hidden><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg>Undo agent change</button>
+      <span class="spacer"></span>
+      <label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label>
+      <span class="divider"></span>
+      <div class="export-group">
+        <button id="printMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>Print</button>
+        <button id="downloadPdf" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>PDF</button>
+        <button id="downloadWord" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Word</button>
+      </div>
+      <button id="saveMinutes" class="button" type="button"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save minutes</button>
+    </div>
+    <div class="screen-actions"><button id="newMinutes" class="secondary quiet" type="button">Start new minutes</button></div>
+  </section>
 </main>
 </body>
 </html>
