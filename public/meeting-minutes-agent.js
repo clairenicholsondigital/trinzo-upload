@@ -90,7 +90,8 @@
 
   function attendeeChip(name, group) {
     var destination = group === 'internal' ? 'Client' : 'Internal';
-    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button">Move to ' + destination + '</button><button class="delete attendee-remove" data-remove-attendee type="button" aria-label="Remove ' + escapeHtml(name || 'attendee') + '">Remove</button></div>';
+    var removeLabel = 'Remove ' + (name || 'attendee');
+    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button">Move to ' + destination + '</button><button class="delete attendee-remove attendee-remove-icon" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '" title="' + escapeHtml(removeLabel) + '"><i data-lucide="trash-2" aria-hidden="true"></i><span class="visually-hidden">' + escapeHtml(removeLabel) + '</span></button></div>';
   }
 
   function renderAttendeeGroup(group, names) {
@@ -322,6 +323,7 @@
     } else document.getElementById('staleNotice').hidden = true;
     showStep(state.draft ? (state.draft.currentStep || state.currentStep || 0) : 0);
     rendering = false;
+    renderIcons();
   }
 
   function adoptDraft(draft) {
@@ -468,6 +470,7 @@
     if (add) {
       var group = add.dataset.addAttendee;
       document.getElementById(group + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip('', group));
+      renderIcons();
       var addedInputs = document.querySelectorAll('[data-attendee-name="' + group + '"]');
       if (addedInputs.length) addedInputs[addedInputs.length - 1].focus();
       return;
@@ -477,6 +480,7 @@
       var input = chip && chip.querySelector('[data-attendee-name]');
       var destination = move.dataset.moveAttendee === 'internal' ? 'client' : 'internal';
       document.getElementById(destination + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip(input ? input.value : '', destination));
+      renderIcons();
       chip.remove();
     } else if (remove) {
       remove.closest('.attendee-chip').remove();

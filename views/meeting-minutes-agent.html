@@ -42,6 +42,14 @@
 .meeting-agent-page .attendee-label-control{display:flex;align-items:center;gap:.6rem;margin:.75rem 0 0;color:#40545f;font-size:.86rem;font-weight:600}
 .meeting-agent-page .attendee-label-control select{width:auto;min-width:110px;padding:.45rem .55rem}
 .meeting-agent-page .attendee-help{margin-top:.6rem;font-size:.8rem;color:#687985}
+.meeting-agent-page .attendee-group{font-size:.9rem}
+.meeting-agent-page .attendee-group-head strong{font-size:.95rem;line-height:1.25}
+.meeting-agent-page .attendee-group-head .secondary{padding:.45rem .6rem!important;font-size:.84rem;line-height:1.2}
+.meeting-agent-page .attendee-chip input{font-size:.9rem;font-weight:500;line-height:1.25}
+.meeting-agent-page .attendee-chip .attendee-move{font-size:.82rem;line-height:1.2}
+.meeting-agent-page .attendee-remove-icon{display:inline-grid;place-items:center;width:40px;min-width:40px;height:40px;padding:0;border-radius:8px}
+.meeting-agent-page .attendee-remove-icon [data-lucide],.meeting-agent-page .attendee-remove-icon svg{width:1.05rem;height:1.05rem;stroke-width:2.2}
+.meeting-agent-page .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .meeting-agent-page .card-head{align-items:end;padding:.15rem .15rem .7rem;border-bottom:2px solid #d6e5e8}
 .meeting-agent-page .topic-field{display:grid;gap:.3rem;color:var(--agent-ink)}
 .meeting-agent-page .topic-label{font-size:.74rem;font-weight:800;letter-spacing:.055em;text-transform:uppercase;color:#46626d}
@@ -87,6 +95,7 @@
 .meeting-agent-page #workflowStatus.error{border-color:#c8544b;border-left-color:var(--agent-danger);background:#fff0ef;color:#7d241f;box-shadow:0 4px 14px rgba(159,45,38,.16)}
 .meeting-agent-page #workflowStatus.error::before{content:"!";display:grid;place-items:center;width:1.35rem;height:1.35rem;border:0;background:var(--agent-danger);color:#fff;font-size:.88rem;line-height:1;box-shadow:none;animation:none}
 @keyframes agent-status-spin{to{transform:rotate(360deg)}}
+@media(max-width:650px){.meeting-agent-page .attendee-chip{grid-template-columns:minmax(0,1fr) auto}.meeting-agent-page .attendee-chip input{grid-column:1/-1}.meeting-agent-page .attendee-remove-icon{width:40px!important}.meeting-agent-page .attendee-move{width:100%}}
 </style>
 <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script defer src="/static/meeting-minutes-agent.js"></script>
