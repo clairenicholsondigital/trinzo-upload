@@ -7,6 +7,8 @@ Create a `.env` file using existing pattern:
 - `DIRECTLINE_SECRET` (required, Copilot Studio Direct Line secret)
 - `POWER_AUTOMATE_AGENT_WEBHOOK_URL` (required for `/meeting-minutes-agent`; synchronous HTTP flow returning JSON with `discussion` and `actions` arrays)
 - `POWER_AUTOMATE_AGENT_TIMEOUT_MS` (optional, default `120000`)
+- `MEETING_MINUTES_AGENT_HYBRID_V4` (optional feature flag; set to `1` to enable the staged-candidate plus Power Automate referee workflow)
+- `MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS` (optional, default `600000`; maximum age of a background hybrid generation before it is treated as interrupted)
 - `POWER_AUTOMATE_WEBHOOK_URL` (required for finalisation step; HTTP trigger URL from your Power Automate flow)
 - `DATABASE_URL` (optional; Postgres connection string) or `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`
 - `PGPOOL_MAX` (optional, default `5`) and `PGCONNECT_TIMEOUT_MS` (optional, default `5000`) for the pooled Postgres client used by persistence and migrations.

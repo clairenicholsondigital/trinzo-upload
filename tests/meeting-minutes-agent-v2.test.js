@@ -29,7 +29,10 @@ const {
   discussionCandidateInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
+  discussionRecoveryNeeded,
+  actionRecoveryNeeded,
   groundedObjectives,
+  groundedObjectiveRecords,
   groundedExecutiveSummary,
   relativeExactDate
 } = require('../utils/meetingMinutesAgentV2');
@@ -142,7 +145,7 @@ test('expanded result supports decisions, questions, joint owners, targets and e
       timing: { kind: 'target', wording: 'Friday', exactDate: '' }, evidenceIds: ['T0002']
     }]
   }, sourceUnits, 'discussion');
-  assert.equal(result.schemaVersion, 3);
+  assert.equal(result.schemaVersion, 4);
   assert.equal(result.discussion[0].decisions.length, 1);
   assert.equal(result.discussion[0].openQuestions.length, 1);
   assert.deepEqual(result.actions[0].owners, ['Priya', 'Alex']);
@@ -282,6 +285,24 @@ test('the completeness audit candidate set excludes represented evidence and kee
   }]);
   assert.ok(!uncovered.some((candidate) => candidate.focusEvidenceId === 'T0760'));
   assert.ok(uncovered.some((candidate) => candidate.focusEvidenceId === 'T0761'));
+});
+
+test('adaptive recovery triggers for uncovered high-value discussion and action evidence', () => {
+  const discussionCandidates = discussionCandidateInventory(normaliseSourceUnits([
+    { id: 'T0770', speaker: 'Alex', text: 'We agreed that approval will follow the three alarm tests.', classification: 'keep' }
+  ]));
+  assert.equal(discussionRecoveryNeeded(discussionCandidates, []).needed, true);
+  const actionCandidates = actionCandidateInventory(normaliseSourceUnits([
+    { id: 'T0771', speaker: 'Priya', text: 'I will send the completed report tomorrow.', classification: 'keep' }
+  ]));
+  assert.equal(actionRecoveryNeeded(actionCandidates, []).needed, true);
+  assert.equal(actionRecoveryNeeded(actionCandidates, [{ action: 'Send the completed report.', evidenceIds: ['T0771'] }]).needed, false);
+});
+
+test('objective records retain valid source evidence', () => {
+  const records = groundedObjectiveRecords([{ text: 'Review the three alarm tests before approval.', evidenceIds: ['T0001'] }], sourceUnits);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].evidenceIds[0], 'T0001');
 });
 
 test('discussion consolidation removes repeated records but preserves distinct decisions', () => {
@@ -446,11 +467,10 @@ test('a draft saved before the flow gained two screens opens where its owner lef
   assert.equal(migrateDraftPayload(current), current);
 });
 
-test('the wire contract version is not the storage version', () => {
-  // SCHEMA_VERSION is interpolated into the prompt sent to Power Automate, so it
-  // moves for the dependency-timing contract independently of stored drafts.
-  assert.equal(SCHEMA_VERSION, 3);
-  assert.equal(PAYLOAD_VERSION, 3);
+test('the hybrid wire and storage contracts are version four', () => {
+  assert.equal(SCHEMA_VERSION, 4);
+  assert.equal(PAYLOAD_VERSION, 4);
+  assert.equal(migrateDraftPayload({ payloadVersion: 3, currentStep: 4 }).currentStep, 4);
 });
 
 test('meeting admin is never inventoried as a detail to check', () => {

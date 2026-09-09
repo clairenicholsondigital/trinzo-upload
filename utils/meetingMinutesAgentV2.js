@@ -5,10 +5,10 @@ const crypto = require('crypto');
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
 // told to return - do NOT bump it to describe a change in what we store on disk.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // What is stored in the draft payload. Separate from SCHEMA_VERSION on purpose.
-const PAYLOAD_VERSION = 3;
+const PAYLOAD_VERSION = 4;
 
 // Step indices changed meaning when the workflow gained a steer screen (1) and a
 // summary screen (4): what was saved as "actions" (2) is now 3, and "final review"
@@ -21,6 +21,7 @@ function migrateDraftPayload(payload = {}) {
   if (!payload || typeof payload !== 'object') return payload;
   // `Number(undefined) >= 3` is false, but be explicit: an absent version is 0.
   if ((Number(payload.payloadVersion) || 0) >= PAYLOAD_VERSION) return payload;
+  if ((Number(payload.payloadVersion) || 0) >= 3) return { ...payload, payloadVersion: PAYLOAD_VERSION };
   const stored = Math.max(0, Math.min(3, Number(payload.currentStep) || 0));
   return { ...payload, payloadVersion: PAYLOAD_VERSION, currentStep: STEP_V2_TO_V3[stored] };
 }
@@ -704,10 +705,13 @@ function candidateRepresented(candidate, records = []) {
   const candidateIds = new Set(candidate?.evidenceIds || []);
   return (Array.isArray(records) ? records : []).some((record) => {
     const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
-    if (focus && recordIds.includes(focus)) return true;
+    const recordText = record?.action || record?.text || '';
+    if (focus && recordIds.includes(focus)) {
+      if (record?.action && !actionEvidenceFits(record.action, candidate.focusText || '')) return false;
+      return evidenceSupportScore(recordText, candidate.focusText || candidate.context || '') >= 0.16;
+    }
     const sharesEvidence = recordIds.some((id) => candidateIds.has(id));
     if (!sharesEvidence) return false;
-    const recordText = record?.action || record?.text || '';
     if (record?.action && !actionEvidenceFits(record.action, candidate.focusText || '')) return false;
     return evidenceSupportScore(recordText, candidate.focusText || candidate.context || '') >= 0.24;
   });
@@ -715,6 +719,29 @@ function candidateRepresented(candidate, records = []) {
 
 function uncoveredCandidateInventory(candidates = [], records = []) {
   return (Array.isArray(candidates) ? candidates : []).filter((candidate) => !candidateRepresented(candidate, records));
+}
+
+function discussionRecoveryNeeded(candidates = [], records = []) {
+  const source = Array.isArray(candidates) ? candidates : [];
+  const uncovered = uncoveredCandidateInventory(source, records);
+  const highPriority = uncovered.filter((candidate) => Number(candidate?.priority || 0) >= 5);
+  return {
+    needed: highPriority.length > 0 || (source.length > 0 && uncovered.length / source.length > 0.1),
+    uncovered,
+    highPriorityCount: highPriority.length
+  };
+}
+
+function actionRecoveryNeeded(candidates = [], records = []) {
+  const uncovered = uncoveredCandidateInventory(candidates, records);
+  const explicit = uncovered.filter((candidate) => ['committed', 'accepted_request'].includes(candidate?.dispositionHint));
+  const medium = uncovered.filter((candidate) => Number(candidate?.priority || 0) >= 4);
+  return {
+    needed: explicit.length > 0 || medium.length >= 2,
+    uncovered,
+    explicitCount: explicit.length,
+    mediumCount: medium.length
+  };
 }
 
 function actionSimilarity(left, right) {
@@ -939,6 +966,24 @@ function groundedObjectives(values = [], units = []) {
     .slice(0, 6);
 }
 
+function groundedObjectiveRecords(values = [], units = []) {
+  const rows = normaliseSourceUnits(units).filter(includedUnit);
+  const opening = rows.slice(0, 40).filter((unit) => /\b(?:agenda|aim|objective|purpose|focus|today|here to|want to|need to (?:cover|discuss|review)|going to (?:cover|discuss|review)|session|meeting)\b/i.test(unit.text));
+  const source = opening.length ? opening : rows.slice(0, 20);
+  return (Array.isArray(values) ? values : []).map((value, index) => {
+    const objective = text(typeof value === 'string' ? value : value?.text, 400);
+    if (!objective) return null;
+    const supplied = Array.isArray(value?.evidenceIds) ? value.evidenceIds : [];
+    const resolved = resolveEvidence(objective, source, supplied);
+    if (!resolved.evidenceIds.length || evidenceSupportScore(objective, evidenceWindowText(rows, resolved.evidenceIds, 1)) < 0.16) return null;
+    return {
+      id: text(value?.id, 80) || stableId('objective', objective, index),
+      text: objective,
+      evidenceIds: resolved.evidenceIds
+    };
+  }).filter(Boolean).slice(0, 6);
+}
+
 function groundedExecutiveSummary(value, discussion = [], actions = []) {
   const source = JSON.stringify({ discussion, actions });
   const supported = text(value, 3000).split(/(?<=[.!?])\s+/).filter(Boolean)
@@ -1123,7 +1168,10 @@ module.exports = {
   discussionCandidateInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
+  discussionRecoveryNeeded,
+  actionRecoveryNeeded,
   groundedObjectives,
+  groundedObjectiveRecords,
   groundedExecutiveSummary,
   relativeExactDate
 };

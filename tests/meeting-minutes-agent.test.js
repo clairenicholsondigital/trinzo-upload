@@ -7,9 +7,34 @@ const api = require('../routes/api');
 const {
   meetingMinutesAgentPrompt,
   meetingMinutesAgentAuditPrompt,
+  meetingMinutesAgentRecoveryPrompt,
+  meetingMinutesAgentRefereePrompt,
+  meetingMinutesAgentCriticPrompt,
+  hybridCandidateLedgerFromResult,
+  hybridActionSourceInfo,
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
+
+test('hybrid recovery, referee and critic prompts keep the complete transcript last', () => {
+  const transcript = '[T0001] Priya: I will send the report tomorrow.';
+  const candidate = { candidateId: 'c1', sourcePass: 'staged', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001'], record: { action: 'Send the report.', owners: ['Priya'], evidenceIds: ['T0001'] } };
+  const recovery = meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, candidates: [candidate], salientDetails: [] });
+  const referee = meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [candidate], salientDetails: [] });
+  const critic = meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [candidate], salientDetails: [] });
+  for (const prompt of [recovery, referee, critic]) {
+    assert.ok(prompt.endsWith(transcript));
+    assert.match(prompt, /schemaVersion 4/);
+    assert.match(prompt, /evidence/i);
+  }
+});
+
+test('hybrid action provenance distinguishes corroborated and single-source records', () => {
+  const action = { action: 'Send the report.', owners: ['Priya'], evidenceIds: ['T0001'] };
+  const from = (sourcePass) => hybridCandidateLedgerFromResult({ actions: [action] }, sourcePass)[0];
+  assert.deepEqual(hybridActionSourceInfo(action, [from('primary')]).discoverySources, ['primary']);
+  assert.deepEqual(hybridActionSourceInfo(action, [from('primary'), from('staged')]).discoverySources.sort(), ['primary', 'staged']);
+});
 
 test('discussion prompt treats the prepared transcript as evidence and requires the versioned structure', () => {
   const prompt = meetingMinutesAgentPrompt({
@@ -73,7 +98,8 @@ test('discussion prompt carries the hybrid coverage ledger without replacing the
   });
   assert.match(prompt, /DISCUSSION EVIDENCE WINDOWS TO ACCOUNT FOR/);
   assert.match(prompt, /discussion-candidate-1/);
-  assert.match(prompt, /high-recall coverage ledger/);
+  assert.match(prompt, /recall aids, not an allowlist/);
+  assert.match(prompt, /rather than producing one point per source window/);
   assert.match(prompt, /separate atomic points/);
   assert.ok(prompt.endsWith(transcript));
 });

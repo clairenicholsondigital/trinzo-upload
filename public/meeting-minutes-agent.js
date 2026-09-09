@@ -228,9 +228,13 @@
     if (!state.draft) return;
     var summary = document.getElementById('executiveSummary');
     if (summary) state.draft.executiveSummary = summary.value.trim();
+    var prior = state.draft.meetingObjectives || [];
     state.draft.meetingObjectives = Array.from(document.querySelectorAll('[data-objective-index]'))
-      .map(function (field) { return field.value.trim(); })
-      .filter(Boolean);
+      .map(function (field, index) {
+        var value = field.value.trim(); var old = prior[index];
+        if (!value) return null;
+        return typeof old === 'object' ? Object.assign({}, old, {text:value}) : {id:'objective-'+(index+1),text:value,evidenceIds:[]};
+      }).filter(Boolean);
   }
 
   function renderSummary() {
@@ -241,8 +245,9 @@
       if (summary.value !== value) summary.value = value;
     }
     var objectives = draft.meetingObjectives || [];
-    document.getElementById('objectivesList').innerHTML = objectives.map(function (text, index) {
-      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="2" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(text) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
+    document.getElementById('objectivesList').innerHTML = objectives.map(function (item, index) {
+      var objectiveText = typeof item === 'string' ? item : item.text;
+      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="2" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
     autoGrow(document.getElementById('objectivesList'));
   }
@@ -460,7 +465,7 @@
   function renderFinal() {
     readDetails(); readSteer(); readDiscussion(); readActions(); readSummary();
     var draft = state.draft || {}; var details = draft.details || {};
-    var objectives = (draft.meetingObjectives || []).filter(Boolean);
+    var objectives = (draft.meetingObjectives || []).map(function(item){return typeof item === 'string' ? item : item.text;}).filter(Boolean);
     var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></section>' : '')
       + (draft.executiveSummary ? '<section><h3>Executive summary</h3><p>' + escapeHtml(draft.executiveSummary) + '</p></section>' : '');
     var decisions = (draft.discussion || []).flatMap(function (topic) { return (topic.decisions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
@@ -512,7 +517,7 @@
       // Tells the server this client speaks the six-step numbering. A tab loaded
       // before the deploy will not send it, and its currentStep is then ignored
       // rather than being read as a screen it did not mean.
-      payloadVersion: 3,
+      payloadVersion: 4,
       details: state.draft.details,
       steer: state.draft.steer || '',
       discussion: state.draft.discussion,
@@ -573,8 +578,8 @@
       adoptDraft(payload.draft);
       state.draft.generation = payload.generation;
       showStep(STAGE_STEP[stage], { scroll: true });
-      renderDiscussion();
-      setStatus('Working on the discussion now. You can keep reading.', false);
+      renderAll();
+      setStatus((payload.generation && payload.generation.message) || 'Preparing independent quality checks…', false);
       pollGeneration();
     } catch (error) { setStatus(error.message, true); }
   }
@@ -586,8 +591,12 @@
       if (!state.draft) return;
       try {
         var payload = await jsonRequest(draftUrl('/generation'));
+        var activeStage = (state.draft.generation && state.draft.generation.stage) || 'discussion';
         state.draft.generation = payload.generation;
-        if (payload.generation && payload.generation.status === 'running') { pollGeneration(); return; }
+        if (payload.generation && payload.generation.status === 'running') {
+          setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false);
+          pollGeneration(); return;
+        }
         if (payload.draft) {
           // The run wrote one content field the reviewer could not have edited,
           // because it did not exist while it ran. Everything they CAN have
@@ -600,12 +609,12 @@
           state.draft.generation = payload.generation;
           renderDetails();
           renderSteer();
-          renderDiscussion();
+          renderAll();
         }
         if (payload.generation && payload.generation.status === 'failed') {
           setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true);
         } else {
-          setStatus('Discussion draft generated. Review its evidence and flags.', false);
+          setStatus(state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), Boolean(state.draft.qualityNotice));
         }
         scheduleSave();
       } catch (error) { setStatus(error.message, true); }
@@ -742,10 +751,10 @@
   document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(1, { scroll: true }); });
   document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); startBackgroundStage('discussion'); });
   document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
-  document.getElementById('generateSummary').addEventListener('click', function () { runAgent('summary',''); });
+  document.getElementById('generateSummary').addEventListener('click', function () { startBackgroundStage('summary'); });
   document.getElementById('addObjective').addEventListener('click', function () {
     readSummary();
-    state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat('');
+    state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat({id:'objective-'+Date.now(),text:'',evidenceIds:[]});
     renderSummary();
     var fields = document.querySelectorAll('[data-objective-index]');
     if (fields.length) fields[fields.length - 1].focus();
@@ -758,7 +767,7 @@
     renderSummary();
     scheduleSave();
   });
-  document.getElementById('generateActions').addEventListener('click', function () { runAgent('actions',''); });
+  document.getElementById('generateActions').addEventListener('click', function () { startBackgroundStage('actions'); });
   document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
