@@ -258,6 +258,14 @@ function actionPredicateSupported(action, evidence) {
   });
   const firstGroup = ACTION_VERB_GROUPS.find((values) => values.includes(first));
   if (firstGroup && groupSupported(firstGroup)) return true;
+  // Conversational commitments to resolve a decision commonly use "work
+  // out" or "work through" where formal minutes use determine, decide or
+  // resolve. Treat that as a predicate match only when the evidence also
+  // passes the commitment/status classifier; a bare speculative discussion
+  // about working something out must not ground an action.
+  const decisionVerbs = new Set(['confirm', 'clarify', 'determine', 'decide', 'agree', 'resolve', 'figure']);
+  if (decisionVerbs.has(first) && ACTION_DECISION_RESOLUTION_PATTERN.test(source)
+    && ['committed', 'accepted_request', 'conditional_commitment'].includes(actionEvidenceDisposition(action, evidence))) return true;
 
   // Some formalised records use "complete" as a wrapper around the actual
   // evidenced operation (for example, "complete and sign the forms"). In that
@@ -284,6 +292,33 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   const rows = normaliseSourceUnits(units).filter(includedUnit);
   const known = new Set(rows.map((unit) => unit.id));
   const indexById = new Map(rows.map((unit, index) => [unit.id, index]));
+  const resolutionStopWords = new Set([
+    'action', 'after', 'again', 'also', 'and', 'are', 'before', 'been', 'being', 'but', 'can', 'complete',
+    'completed', 'could', 'did', 'discussion', 'does', 'done', 'follow', 'for', 'from', 'had', 'has', 'have',
+    'including', 'into', 'just', 'may', 'meeting', 'might', 'more', 'most', 'need', 'needed', 'only', 'our',
+    'over', 'review', 'reviewed', 'said', 'send', 'sent', 'shall', 'should', 'that', 'the', 'their', 'them',
+    'then', 'there', 'these', 'they', 'this', 'those', 'was', 'week', 'were', 'when', 'whether', 'will',
+    'with', 'without', 'work', 'would', 'you', 'your'
+  ]);
+  const resolutionTokens = (source) => [...new Set(comparisonText(String(source || '').replace(/[-–]/g, ' '))
+    .match(/[a-z0-9][a-z0-9]{2,}/g) || [])].filter((token) => !resolutionStopWords.has(token));
+  const claimTokens = resolutionTokens(value);
+  const documentFrequency = new Map(claimTokens.map((token) => [
+    token,
+    rows.filter((unit) => resolutionTokens(unit.text).includes(token)).length
+  ]));
+  const maximumDistinctiveFrequency = Math.max(3, Math.ceil(rows.length * 0.04));
+  const distinctiveClaimTokens = claimTokens.filter((token) => {
+    const frequency = documentFrequency.get(token) || 0;
+    return frequency > 0 && frequency <= maximumDistinctiveFrequency;
+  });
+  const resolutionScore = (window) => {
+    const base = evidenceSupportScore(value, window);
+    if (distinctiveClaimTokens.length < 2) return base;
+    const evidenceTokens = new Set(resolutionTokens(window));
+    const distinctiveCoverage = distinctiveClaimTokens.filter((token) => evidenceTokens.has(token)).length / distinctiveClaimTokens.length;
+    return (base * 0.25) + (distinctiveCoverage * 0.75);
+  };
   const windowTextFor = (ids) => {
     const indexes = [...new Set((ids || []).map((id) => indexById.get(id)).filter((index) => Number.isInteger(index))
       .flatMap((index) => [index - 1, index, index + 1]).filter((index) => index >= 0 && index < rows.length))].sort((a, b) => a - b);
@@ -292,22 +327,94 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   const suppliedIds = [...new Set((Array.isArray(supplied) ? supplied : []).map((id) => text(id, 30)).filter(Boolean))];
   const invalidIds = suppliedIds.filter((id) => !known.has(id));
   const validIds = suppliedIds.filter((id) => known.has(id));
-  const suppliedWindow = windowTextFor(validIds);
-  const suppliedScore = !speakerMentionsSupported(value, suppliedWindow, rows) || (options.action && !actionEvidenceFits(value, suppliedWindow))
+  const scoreWindow = (window) => !speakerMentionsSupported(value, window, rows)
+    || (options.action && !actionEvidenceFits(value, window))
     ? 0
-    : evidenceSupportScore(value, suppliedWindow);
-  if (validIds.length && suppliedScore >= 0.2) {
-    return { evidenceIds: validIds.slice(0, 8), invalidIds, weakIds: [], supportScore: suppliedScore };
-  }
+    : resolutionScore(window);
+  const suppliedWindow = windowTextFor(validIds);
+  const suppliedScore = scoreWindow(suppliedWindow);
+  // Score each supplied anchor independently as well as their combined window.
+  // Concatenating several adjacent but generic passages can inflate token
+  // overlap and conceal a clearly better workstream elsewhere.
+  const suppliedAnchorScore = validIds.reduce((best, id) => Math.max(best, scoreWindow(windowTextFor([id]))), 0);
   const ranked = rows.map((unit) => {
     const window = windowTextFor([unit.id]);
-    return { id: unit.id, score: !speakerMentionsSupported(value, window, rows) || (options.action && !actionEvidenceFits(value, window)) ? 0 : evidenceSupportScore(value, window) };
+    return {
+      id: unit.id,
+      index: indexById.get(unit.id),
+      score: scoreWindow(window)
+    };
   }).filter((item) => item.score >= 0.24).sort((a, b) => b.score - a.score);
+  const bestScore = ranked[0]?.score || 0;
+  const supportingRanked = options.action ? rows.map((unit) => {
+    const window = windowTextFor([unit.id]);
+    return {
+      id: unit.id,
+      index: indexById.get(unit.id),
+      score: speakerMentionsSupported(value, window, rows) ? resolutionScore(window) : 0
+    };
+  }).filter((item) => item.score >= 0.24).sort((a, b) => b.score - a.score) : ranked;
+  // A valid ID is not necessarily the right evidence. Long transcripts often
+  // contain an earlier passage with the same generic verbs and participant
+  // names as a later deliverable. Previously any supplied window scoring 0.20
+  // was accepted immediately, so an early "determine the calendar" passage
+  // could remain attached to a later decision about a different workstream.
+  // Keep a plausible supplied citation unless the transcript contains a
+  // materially stronger passage; this preserves exact Agent citations while
+  // allowing the server to repair clear workstream drift.
+  const strongerAlternative = bestScore >= 0.28 && bestScore > suppliedAnchorScore + 0.08;
+  if (validIds.length && suppliedScore >= 0.2 && !strongerAlternative) {
+    return { evidenceIds: validIds.slice(0, 8), invalidIds, weakIds: [], supportScore: suppliedScore };
+  }
+
+  // When remapping, do not return the three highest-scoring anchors from
+  // unrelated parts of the meeting. Retain only anchors close to the best
+  // score, then cite the most directly supportive turn inside each anchor's
+  // context window. This keeps multi-part evidence (for example a constraint
+  // followed by the commitment that resolves it) without pulling in a weaker
+  // lookalike workstream elsewhere in the transcript.
+  const remapBestScore = Math.max(bestScore, supportingRanked[0]?.score || 0);
+  const remapFloor = Math.max(0.24, remapBestScore - 0.15);
+  const remapAnchors = [...new Map([...ranked, ...supportingRanked]
+    .filter((item) => item.score >= remapFloor)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map((item) => [item.id, item])).values()].slice(0, 6);
+  const remappedEvidence = remapAnchors.map((anchor) => {
+    const nearby = [anchor.index - 1, anchor.index, anchor.index + 1]
+      .filter((index) => index >= 0 && index < rows.length)
+      .map((index) => {
+        const unit = rows[index];
+        const direct = `${unit.speaker}: ${unit.text}`;
+        return {
+          id: unit.id,
+          index,
+          // The surrounding anchor has already established named speakers.
+          // Score the direct turn on its content here so a commitment using
+          // "you" is not discarded merely because the addressee's full name
+          // appears in the immediately preceding turn rather than this one.
+          score: resolutionScore(direct)
+        };
+      }).sort((left, right) => right.score - left.score || left.index - right.index);
+    return nearby[0] || { id: anchor.id, index: anchor.index, score: anchor.score };
+  });
+  const strongestById = new Map();
+  for (const item of remappedEvidence) {
+    const prior = strongestById.get(item.id);
+    if (!prior || item.score > prior.score) strongestById.set(item.id, item);
+  }
+  // Select by evidence strength before restoring transcript order. Slicing
+  // after an order-only sort previously discarded a later, stronger turn in
+  // favour of an earlier contextual question.
+  const remappedIds = [...strongestById.values()]
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, 3)
+    .sort((left, right) => left.index - right.index)
+    .map((item) => item.id);
   return {
-    evidenceIds: ranked.slice(0, 3).map((item) => item.id),
+    evidenceIds: remappedIds,
     invalidIds,
-    weakIds: validIds,
-    supportScore: ranked[0]?.score || 0
+    weakIds: suppliedScore >= 0.2 || (remappedIds.length && remapBestScore >= 0.28) ? [] : validIds,
+    supportScore: bestScore
   };
 }
 

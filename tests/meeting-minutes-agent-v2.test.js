@@ -231,6 +231,35 @@ test('valid but unrelated evidence IDs cannot launder an unsupported action', ()
   assert.deepEqual(result.actions, []);
 });
 
+test('a plausible but weaker citation is remapped to the strongest matching workstream', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0090', speaker: 'Stuart', text: 'That is half the battle.', classification: 'keep' },
+    { id: 'T0091', speaker: 'Jacqui', text: 'Stuart will determine a calendar of training and preparation activity over the next two weeks.', classification: 'keep' },
+    { id: 'T0092', speaker: 'Jacqui', text: 'Niamh needs to plan her preparation time.', classification: 'keep' },
+    { id: 'T0093', speaker: 'Jacqui', text: 'That covers the preparation schedule.', classification: 'keep' },
+    { id: 'T0300', speaker: 'Jacqui', text: 'Moving to the final audit arrangements.', classification: 'keep' },
+    { id: 'T0301', speaker: 'Niamh', text: 'There will be three people there during the third week.', classification: 'keep' },
+    { id: 'T0302', speaker: 'Niamh', text: 'Are you going to have three audit tracks?', classification: 'keep' },
+    { id: 'T0303', speaker: 'Niamh', text: 'Will everyone support each other?', classification: 'keep' },
+    { id: 'T0304', speaker: 'Niamh', text: 'How will that work?', classification: 'keep' },
+    { id: 'T0305', speaker: 'Stuart', text: 'That is what I am trying to work out in terms of logistics.', classification: 'keep' },
+    { id: 'T0306', speaker: 'Stuart', text: 'I am thinking of having Niamh in a separate audit track, but I have got to work through the logistics and risk analysis.', classification: 'keep' },
+    { id: 'T0307', speaker: 'Stuart', text: 'A separate track would give her freedom to focus on the software work.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Determine the audit-track structure and logistics for the week when three auditors are participating, including whether Niamh will operate on a separate audit track.',
+    owners: ['Stuart'],
+    evidenceIds: ['T0091', 'T0092']
+  }] }, units, 'actions');
+
+  assert.equal(result.actions.length, 1);
+  assert.ok(result.actions[0].evidenceIds.includes('T0302'));
+  assert.ok(result.actions[0].evidenceIds.includes('T0306'));
+  assert.ok(!result.actions[0].evidenceIds.includes('T0091'));
+  assert.ok(!result.actions[0].evidenceIds.includes('T0092'));
+  assert.ok(!result.reviewFlags.some((flag) => flag.kind === 'missing_evidence'));
+});
+
 test('an accepted request spanning adjacent turns is retained as one action candidate', () => {
   const units = normaliseSourceUnits([
     { id: 'T0700', speaker: 'Alex', text: 'Could you send the test report by Friday?', classification: 'keep' },
