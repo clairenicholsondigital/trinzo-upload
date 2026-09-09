@@ -26,6 +26,9 @@ const {
   evidenceSupportScore,
   actionEvidenceDisposition,
   actionCandidateInventory,
+  discussionCandidateInventory,
+  candidatePromptPack,
+  uncoveredCandidateInventory,
   groundedObjectives,
   groundedExecutiveSummary,
   relativeExactDate
@@ -236,6 +239,49 @@ test('an accepted request spanning adjacent turns is retained as one action cand
   assert.equal(result.actions.length, 1);
   assert.equal(actionEvidenceDisposition('Send the test report.', 'Could you send it? Yes, I will do that.'), 'accepted_request');
   assert.ok(actionCandidateInventory(units).some((candidate) => candidate.evidenceIds.includes('T0700') && candidate.evidenceIds.includes('T0701')));
+});
+
+test('hybrid candidate ledgers retain implicit obligations and do not discard long-meeting candidates', () => {
+  const units = normaliseSourceUnits(Array.from({ length: 90 }, (_, index) => ({
+    id: `T${String(index + 1).padStart(4, '0')}`,
+    speaker: index % 2 ? 'Priya' : 'Alex',
+    text: index === 89
+      ? 'The final validation report is required to be approved once testing finishes.'
+      : `We need to review deliverable ${index + 1} and confirm its documented status.`,
+    classification: 'keep'
+  })));
+  const actions = actionCandidateInventory(units);
+  assert.ok(actions.length > 60, 'the internal ledger must not silently sample away later candidates');
+  assert.ok(actions.some((candidate) => candidate.focusEvidenceId === 'T0090' && candidate.cueKinds.includes('obligation')));
+
+  const packed = candidatePromptPack(actions, { maxCandidates: 20, maxChars: 50000 });
+  assert.ok(packed.length <= 20);
+  assert.ok(packed.some((candidate) => candidate.sequence > 75), 'bounded prompt packs must retain late-meeting coverage');
+});
+
+test('discussion ledger identifies facts, decisions and questions while excluding acknowledgements', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0750', speaker: 'Alex', text: 'The test programme covers three alarm configurations.', classification: 'keep' },
+    { id: 'T0751', speaker: 'Priya', text: 'We agreed that clinical review will happen before approval.', classification: 'keep' },
+    { id: 'T0752', speaker: 'Alex', text: 'Whether the mute behaviour is acceptable remains to be confirmed.', classification: 'keep' },
+    { id: 'T0753', speaker: 'Priya', text: 'Okay.', classification: 'keep' }
+  ]);
+  const candidates = discussionCandidateInventory(units);
+  assert.equal(candidates.length, 3);
+  assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0751').kindHints.includes('decision'));
+  assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0752').kindHints.includes('open_question'));
+});
+
+test('the completeness audit candidate set excludes represented evidence and keeps uncovered work', () => {
+  const candidates = actionCandidateInventory(normaliseSourceUnits([
+    { id: 'T0760', speaker: 'Priya', text: 'I will send the report tomorrow.', classification: 'keep' },
+    { id: 'T0761', speaker: 'Alex', text: 'I will review the risk file next week.', classification: 'keep' }
+  ]));
+  const uncovered = uncoveredCandidateInventory(candidates, [{
+    action: 'Send the report.', evidenceIds: ['T0760']
+  }]);
+  assert.ok(!uncovered.some((candidate) => candidate.focusEvidenceId === 'T0760'));
+  assert.ok(uncovered.some((candidate) => candidate.focusEvidenceId === 'T0761'));
 });
 
 test('discussion consolidation removes repeated records but preserves distinct decisions', () => {

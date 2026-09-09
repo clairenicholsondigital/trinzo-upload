@@ -6,6 +6,7 @@ const api = require('../routes/api');
 
 const {
   meetingMinutesAgentPrompt,
+  meetingMinutesAgentAuditPrompt,
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
@@ -57,6 +58,39 @@ test('action prompt carries bounded contextual candidates without replacing the 
   assert.match(prompt, /candidate-1/);
   assert.match(prompt, /recall aid, not an allowlist/);
   assert.match(prompt, /unaccepted suggestions/);
+  assert.ok(prompt.endsWith(transcript));
+});
+
+test('discussion prompt carries the hybrid coverage ledger without replacing the full transcript', () => {
+  const transcript = '[T0001] Alex: The launch date remains Friday.\n[T0002] Priya: The approval question is unresolved.';
+  const prompt = meetingMinutesAgentPrompt({
+    stage: 'discussion', transcript, details: {},
+    discussionCandidates: [{
+      candidateId: 'discussion-candidate-1', focusEvidenceId: 'T0002', evidenceIds: ['T0001', 'T0002'],
+      kindHints: ['open_question', 'discussion_fact'], priority: 4, sequence: 2,
+      context: 'Alex: The launch date remains Friday. Priya: The approval question is unresolved.'
+    }]
+  });
+  assert.match(prompt, /DISCUSSION EVIDENCE WINDOWS TO ACCOUNT FOR/);
+  assert.match(prompt, /discussion-candidate-1/);
+  assert.match(prompt, /high-recall coverage ledger/);
+  assert.match(prompt, /separate atomic points/);
+  assert.ok(prompt.endsWith(transcript));
+});
+
+test('action audit is explicitly limited to uncovered candidate windows', () => {
+  const transcript = '[T0001] Priya: I will send the report.\n[T0002] Alex: I will review it.';
+  const prompt = meetingMinutesAgentAuditPrompt({
+    transcript, details: {}, actions: [{ action: 'Send the report.', owners: ['Priya'], evidenceIds: ['T0001'] }],
+    actionCandidates: [{
+      candidateId: 'candidate-uncovered', focusEvidenceId: 'T0002', evidenceIds: ['T0001', 'T0002'],
+      cueKinds: ['commitment'], dispositionHint: 'committed', priority: 4, sequence: 2,
+      focusText: 'I will review it.', context: 'Priya: I will send the report. Alex: I will review it.'
+    }]
+  });
+  assert.match(prompt, /specifically those not represented by the existing register/i);
+  assert.match(prompt, /UNCOVERED ACTION CANDIDATE EVIDENCE WINDOWS TO RECHECK/);
+  assert.match(prompt, /candidate-uncovered/);
   assert.ok(prompt.endsWith(transcript));
 });
 

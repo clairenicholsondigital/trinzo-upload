@@ -536,6 +536,12 @@ const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|con
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
 const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite)\b/i;
+const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
+const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
+const ACTION_IMPERATIVE_PATTERN = /^\s*(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
+const DISCUSSION_DECISION_PATTERN = /\b(?:agreed|decided|confirmed|approved|accepted|selected|settled|concluded|signed off|will proceed|going ahead|the decision)\b/i;
+const DISCUSSION_QUESTION_PATTERN = /\?|\b(?:open question|outstanding|to be confirmed|to be decided|not (?:yet )?(?:decided|confirmed|clear|resolved)|need to (?:confirm|clarify|determine|decide)|whether|which option|who will)\b/i;
+const LOW_INFORMATION_UTTERANCE = /^(?:yes|yeah|yep|no|nope|okay|ok|right|fine|great|thanks|thank you|sure|agreed|exactly|correct|perfect|lovely|brilliant|understood|makes sense|i see|mm+|uh+|hello|hi|bye)[.!? ]*$/i;
 
 function actionEvidenceDisposition(action, evidence) {
   const source = text(evidence, 15000);
@@ -559,26 +565,156 @@ function actionCandidateInventory(units = []) {
   const candidates = [];
   for (let index = 0; index < rows.length; index += 1) {
     const unit = rows[index];
-    const previous = rows[index - 1]?.text || '';
-    const directCue = ACTION_COMMITMENT_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) || ACTION_REQUEST_PATTERN.test(unit.text);
+    const previous = rows.slice(Math.max(0, index - 2), index).map((row) => row.text).join(' ');
+    const following = rows.slice(index + 1, Math.min(rows.length, index + 3)).map((row) => row.text).join(' ');
+    const directCue = ACTION_COMMITMENT_PATTERN.test(unit.text)
+      || NAMED_WILL_PATTERN.test(unit.text)
+      || ACTION_REQUEST_PATTERN.test(unit.text)
+      || ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text)
+      || ACTION_FOLLOW_UP_PATTERN.test(unit.text)
+      || ACTION_IMPERATIVE_PATTERN.test(unit.text);
     const contextualAcceptance = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
-      && (ACTION_REQUEST_PATTERN.test(previous) || ACTION_COMMITMENT_PATTERN.test(previous) || NAMED_WILL_PATTERN.test(previous));
+      && (ACTION_REQUEST_PATTERN.test(previous) || ACTION_COMMITMENT_PATTERN.test(previous) || NAMED_WILL_PATTERN.test(previous)
+        || ACTION_PASSIVE_OBLIGATION_PATTERN.test(previous) || ACTION_FOLLOW_UP_PATTERN.test(previous));
+    const acceptedRequestAhead = ACTION_REQUEST_PATTERN.test(unit.text) && ACTION_ACCEPTANCE_PATTERN.test(following);
     if (!directCue && !contextualAcceptance) continue;
-    const ids = rows.slice(Math.max(0, index - 1), Math.min(rows.length, index + 2)).map((item) => item.id);
-    const context = rows.slice(Math.max(0, index - 1), Math.min(rows.length, index + 2))
+    const windowStart = Math.max(0, index - 2);
+    const windowEnd = Math.min(rows.length, index + 3);
+    const ids = rows.slice(windowStart, windowEnd).map((item) => item.id);
+    const context = rows.slice(windowStart, windowEnd)
       .map((item) => `${item.speaker}: ${item.text}`).join(' ');
+    const cueKinds = [
+      ACTION_COMMITMENT_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
+      ACTION_REQUEST_PATTERN.test(unit.text) ? 'request' : '',
+      contextualAcceptance || acceptedRequestAhead ? 'acceptance' : '',
+      ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text) ? 'obligation' : '',
+      ACTION_FOLLOW_UP_PATTERN.test(unit.text) ? 'follow_up' : '',
+      ACTION_IMPERATIVE_PATTERN.test(unit.text) ? 'imperative' : ''
+    ].filter(Boolean);
     candidates.push({
       candidateId: stableId('candidate', unit.id),
       focusEvidenceId: unit.id,
       evidenceIds: ids,
       dispositionHint: actionEvidenceDisposition('', context),
-      context: text(context, 650)
+      cueKinds,
+      priority: (contextualAcceptance || acceptedRequestAhead ? 4 : 0)
+        + (cueKinds.includes('commitment') ? 3 : 0)
+        + (cueKinds.includes('obligation') || cueKinds.includes('follow_up') ? 2 : 0)
+        + 1,
+      sequence: unit.sequence,
+      focusText: text(unit.text, 500),
+      context: text(context, 900)
     });
   }
-  if (candidates.length <= 60) return candidates;
-  // Preserve coverage of the whole meeting rather than returning only the
-  // earliest sixty candidates from a long technical transcript.
-  return Array.from({ length: 60 }, (_, index) => candidates[Math.floor(index * candidates.length / 60)]);
+  // This is the full server-side ledger. Prompt-size control happens separately
+  // so a candidate omitted from the first request remains available to the
+  // targeted completeness audit rather than disappearing at extraction time.
+  return candidates;
+}
+
+function discussionCandidateInventory(units = []) {
+  const rows = normaliseSourceUnits(units).filter(includedUnit);
+  const salientIds = new Set(salientDetailInventory(rows).flatMap((item) => item.evidenceIds || []));
+  const actionIds = new Set(actionCandidateInventory(rows).map((item) => item.focusEvidenceId));
+  const candidates = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const unit = rows[index];
+    const words = contentTokens(unit.text);
+    if (LOW_INFORMATION_UTTERANCE.test(unit.text) || words.length < 4) continue;
+    if (MEETING_ADMIN_PATTERN.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+    const kindHints = [
+      DISCUSSION_DECISION_PATTERN.test(unit.text) ? 'decision' : '',
+      DISCUSSION_QUESTION_PATTERN.test(unit.text) ? 'open_question' : '',
+      salientIds.has(unit.id) ? 'important_detail' : '',
+      actionIds.has(unit.id) ? 'action_context' : '',
+      'discussion_fact'
+    ].filter(Boolean);
+    const window = rows.slice(Math.max(0, index - 1), Math.min(rows.length, index + 2));
+    const context = window.map((item) => `${item.speaker}: ${item.text}`).join(' ');
+    candidates.push({
+      candidateId: stableId('discussion-candidate', unit.id),
+      focusEvidenceId: unit.id,
+      evidenceIds: window.map((item) => item.id),
+      kindHints,
+      priority: (kindHints.includes('decision') ? 4 : 0)
+        + (kindHints.includes('open_question') ? 3 : 0)
+        + (kindHints.includes('important_detail') ? 3 : 0)
+        + (kindHints.includes('action_context') ? 2 : 0)
+        + Math.min(2, Math.floor(words.length / 12)),
+      sequence: unit.sequence,
+      focusText: text(unit.text, 500),
+      context: text(context, 900)
+    });
+  }
+  return candidates;
+}
+
+function candidatePromptPack(candidates = [], options = {}) {
+  const source = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.context);
+  const rows = options.compact === true ? source.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    focusEvidenceId: candidate.focusEvidenceId,
+    evidenceIds: candidate.evidenceIds,
+    ...(candidate.kindHints ? { kindHints: candidate.kindHints } : {}),
+    ...(candidate.cueKinds ? { cueKinds: candidate.cueKinds } : {}),
+    ...(candidate.dispositionHint ? { dispositionHint: candidate.dispositionHint } : {}),
+    priority: candidate.priority,
+    sequence: candidate.sequence,
+    focusText: candidate.focusText
+  })) : source;
+  const maxCandidates = Math.max(1, Number(options.maxCandidates || 160));
+  const maxChars = Math.max(1000, Number(options.maxChars || 60000));
+  if (!rows.length) return [];
+  const selected = [];
+  const selectedIds = new Set();
+  let chars = 2;
+  const add = (candidate) => {
+    if (!candidate || selectedIds.has(candidate.candidateId) || selected.length >= maxCandidates) return false;
+    const size = JSON.stringify(candidate).length + 1;
+    if (chars + size > maxChars) return false;
+    selected.push(candidate);
+    selectedIds.add(candidate.candidateId);
+    chars += size;
+    return true;
+  };
+
+  // First retain the strongest decision/acceptance/detail anchors. Then fill the
+  // remaining budget evenly across the whole transcript, preventing a long
+  // opening discussion from crowding out late workstreams.
+  const highPriority = rows.filter((candidate) => Number(candidate.priority || 0) >= 5)
+    .sort((left, right) => (left.sequence || 0) - (right.sequence || 0));
+  const prioritySlots = Math.min(highPriority.length, Math.max(1, Math.floor(maxCandidates / 2)));
+  for (let index = 0; index < prioritySlots; index += 1) {
+    add(highPriority[Math.floor(index * highPriority.length / prioritySlots)]);
+  }
+  const remaining = rows.filter((candidate) => !selectedIds.has(candidate.candidateId));
+  const slots = Math.max(0, maxCandidates - selected.length);
+  if (slots && remaining.length) {
+    const ordered = [];
+    for (let index = 0; index < Math.min(slots, remaining.length); index += 1) {
+      ordered.push(remaining[Math.floor(index * remaining.length / Math.min(slots, remaining.length))]);
+    }
+    ordered.forEach(add);
+  }
+  return selected.sort((left, right) => (left.sequence || 0) - (right.sequence || 0));
+}
+
+function candidateRepresented(candidate, records = []) {
+  const focus = candidate?.focusEvidenceId;
+  const candidateIds = new Set(candidate?.evidenceIds || []);
+  return (Array.isArray(records) ? records : []).some((record) => {
+    const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
+    if (focus && recordIds.includes(focus)) return true;
+    const sharesEvidence = recordIds.some((id) => candidateIds.has(id));
+    if (!sharesEvidence) return false;
+    const recordText = record?.action || record?.text || '';
+    if (record?.action && !actionEvidenceFits(record.action, candidate.focusText || '')) return false;
+    return evidenceSupportScore(recordText, candidate.focusText || candidate.context || '') >= 0.24;
+  });
+}
+
+function uncoveredCandidateInventory(candidates = [], records = []) {
+  return (Array.isArray(candidates) ? candidates : []).filter((candidate) => !candidateRepresented(candidate, records));
 }
 
 function actionSimilarity(left, right) {
@@ -984,6 +1120,9 @@ module.exports = {
   evidenceSupportScore,
   actionEvidenceDisposition,
   actionCandidateInventory,
+  discussionCandidateInventory,
+  candidatePromptPack,
+  uncoveredCandidateInventory,
   groundedObjectives,
   groundedExecutiveSummary,
   relativeExactDate

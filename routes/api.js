@@ -170,6 +170,9 @@ const {
   isSalientCoverageFlag: isMeetingAgentCoverageFlag,
   isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
   actionCandidateInventory,
+  discussionCandidateInventory,
+  candidatePromptPack,
+  uncoveredCandidateInventory,
   groundedObjectives,
   groundedExecutiveSummary
 } = require('../utils/meetingMinutesAgentV2');
@@ -7987,7 +7990,7 @@ function normaliseAgentActions(candidate) {
     .filter((item) => item.action);
 }
 
-function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [] }) {
+function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const shared = [
     'You are preparing formal, evidence-backed meeting minutes from a prepared transcript.',
@@ -8006,6 +8009,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push(returnContract(''));
     shared.push('Populate discussion as [{"id":"string","topic":"string","points":[{"id":"string","text":"string","evidenceIds":["T0001"]}],"decisions":[{"id":"string","text":"string","evidenceIds":["T0001"]}],"openQuestions":[{"id":"string","text":"string","evidenceIds":["T0001"]}]}]. Return actions as an empty array.');
     shared.push('Write concise formal discussion points, while keeping decisions and unresolved questions separate. Keep distinct workstreams separate and do not turn proposals or completed work into new actions.');
+    shared.push('The discussion evidence windows below are a high-recall coverage ledger, not an allowlist and not finished minutes. Account for every substantive window: represent its material content once, merge it with an equivalent point, or omit it only when it is administrative, repeated or immaterial. Preserve distinct facts within the same topic as separate atomic points.');
   } else if (stage === 'summary') {
     shared.push(returnContract('executiveSummary, meetingObjectives, '));
     shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
@@ -8040,25 +8044,34 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
   }
   shared.push(`CONFIRMED MEETING DETAILS:\n${JSON.stringify(details || {})}`);
   if (salientDetails.length) shared.push(`IMPORTANT DETAIL INVENTORY TO CHECK:\n${JSON.stringify(salientDetails.slice(0, 80))}`);
-  if (stage === 'actions' && actionCandidates.length) shared.push(`ACTION CANDIDATE EVIDENCE WINDOWS TO ASSESS:\n${JSON.stringify(actionCandidates.slice(0, 120))}`);
+  // Leave room for the complete transcript and response instructions. Candidate
+  // ledgers are deliberately complete in memory, but their prompt projection is
+  // coverage sampled when a transcript is unusually large.
+  const candidateBudget = Math.max(4000, Math.min(60000, 170000 - String(transcript || '').length));
+  const packedDiscussionCandidates = candidatePromptPack(discussionCandidates, { compact: true, maxCandidates: 300, maxChars: candidateBudget });
+  const packedActionCandidates = candidatePromptPack(actionCandidates, { maxCandidates: 160, maxChars: candidateBudget });
+  if (stage === 'discussion' && packedDiscussionCandidates.length) shared.push(`DISCUSSION EVIDENCE WINDOWS TO ACCOUNT FOR:\n${JSON.stringify(packedDiscussionCandidates)}`);
+  if (stage === 'actions' && packedActionCandidates.length) shared.push(`ACTION CANDIDATE EVIDENCE WINDOWS TO ASSESS:\n${JSON.stringify(packedActionCandidates)}`);
   shared.push(`PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`);
   return shared.join('\n\n');
 }
 
 function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, salientDetails = [], actionCandidates = [] }) {
   const steerText = meetingAgentSteerText(steer);
+  const candidateBudget = Math.max(4000, Math.min(60000, 170000 - String(transcript || '').length));
+  const packedActionCandidates = candidatePromptPack(actionCandidates, { maxCandidates: 160, maxChars: candidateBudget });
   return [
     'Audit an existing meeting action register against the complete prepared transcript.',
     'Return valid JSON only with schemaVersion, discussion, actions and reviewFlags. Return discussion as an empty array.',
     'In actions, return only genuine actions missing from the existing register. Do not repeat or reword an existing deliverable.',
-    'Specifically check accepted follow-ups, continuing reviews with a concrete next step, and work dependent on another task finishing.',
+    'The candidate windows supplied here are specifically those not represented by the existing register. Assess every one, prioritising accepted follow-ups, continuing reviews with a concrete next step, and work dependent on another task finishing.',
     'Every proposed action must cite valid transcript IDs and use the same owners/timing structure as the existing action schema.',
     'Do not invent owners or timing. Preserve provisional targets as target rather than deadline.',
     'Use reviewFlags only for genuinely ambiguous or conflicting source wording, unclear references, unsupported ownership or timing, or missing evidence. Do not flag a supported fact merely because it is pending or conditional.',
     ...(steerText ? [`REVIEWER EMPHASIS - prioritisation only, never a licence to invent:\n${steerText}`] : []),
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAIL INVENTORY:\n${JSON.stringify(salientDetails.slice(0, 80))}`,
-    `ACTION CANDIDATE EVIDENCE WINDOWS TO RECHECK:\n${JSON.stringify(actionCandidates.slice(0, 120))}`,
+    `UNCOVERED ACTION CANDIDATE EVIDENCE WINDOWS TO RECHECK:\n${JSON.stringify(packedActionCandidates)}`,
     `EXISTING ACTION REGISTER:\n${JSON.stringify(actions || [])}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
@@ -8435,7 +8448,8 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
     instruction,
     steer: draft.steer,
     salientDetails: draft.salientDetails || [],
-    actionCandidates: stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : []
+    actionCandidates: stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : [],
+    discussionCandidates: stage === 'discussion' ? discussionCandidateInventory(draft.sourceUnits) : []
   });
   const parsed = await askPowerAutomateMeetingMinutesAgent(prompt);
   if (stage === 'summary') {
@@ -8654,13 +8668,17 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       error.currentDraft = draft;
       throw error;
     }
+    const uncoveredActionCandidates = uncoveredCandidateInventory(
+      actionCandidateInventory(draft.sourceUnits),
+      draft.actions || []
+    );
     const parsed = await askPowerAutomateMeetingMinutesAgent(meetingMinutesAgentAuditPrompt({
       transcript: draft.preparedTranscript,
       details: sanitiseMeetingAgentDetails(draft.details),
       actions: draft.actions || [],
       steer: draft.steer,
       salientDetails: draft.salientDetails || [],
-      actionCandidates: actionCandidateInventory(draft.sourceUnits)
+      actionCandidates: uncoveredActionCandidates
     }));
     const audited = normaliseAgentResult(parsed, draft.sourceUnits, 'actions', {
       meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate
@@ -8841,6 +8859,7 @@ router.stagedEvaluation = {
   // somebody happened to say, not from what the meeting is.
   inferStagedMeetingType,
   meetingMinutesAgentPrompt,
+  meetingMinutesAgentAuditPrompt,
   normaliseAgentDiscussion,
   normaliseAgentActions
 };
