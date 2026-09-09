@@ -342,7 +342,7 @@
   }
 
   function timingEditor(timing, index) {
-    var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline']];
+    var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline'], ['dependency', 'Dependency']];
     var segments = kinds.map(function (pair) {
       var checked = timing.kind === pair[0] ? ' checked' : '';
       return '<label><input type="radio" name="timing-' + index + '" value="' + pair[0] + '" data-timing-kind data-action-index="' + index + '"' + checked + '><span>' + pair[1] + '</span></label>';
@@ -453,7 +453,8 @@
   function timingText(timing) {
     timing = timing || {};
     if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'Not stated';
-    return (timing.kind === 'target' ? 'Target: ' : 'Deadline: ') + (timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording);
+    var prefix = timing.kind === 'target' ? 'Target: ' : (timing.kind === 'dependency' ? 'Dependent on: ' : 'Deadline: ');
+    return prefix + (timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording);
   }
 
   function renderFinal() {

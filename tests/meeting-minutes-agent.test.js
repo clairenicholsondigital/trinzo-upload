@@ -47,6 +47,19 @@ test('bulk edit prompt sends the complete prepared transcript and current draft'
   assert.ok(prompt.endsWith(transcript), 'the complete prepared transcript, including its final turn, must reach the agent');
 });
 
+test('action prompt carries bounded contextual candidates without replacing the full transcript', () => {
+  const transcript = '[T0001] Alex: Could you send the report?\n[T0002] Priya: Yes, I will do that.';
+  const prompt = meetingMinutesAgentPrompt({
+    stage: 'actions', transcript, details: {},
+    actionCandidates: [{ candidateId: 'candidate-1', focusEvidenceId: 'T0001', evidenceIds: ['T0001', 'T0002'], dispositionHint: 'accepted_request', context: 'Alex: Could you send the report? Priya: Yes.' }]
+  });
+  assert.match(prompt, /ACTION CANDIDATE EVIDENCE WINDOWS TO ASSESS/);
+  assert.match(prompt, /candidate-1/);
+  assert.match(prompt, /recall aid, not an allowlist/);
+  assert.match(prompt, /unaccepted suggestions/);
+  assert.ok(prompt.endsWith(transcript));
+});
+
 test('agent discussion and action payloads are bounded and normalised', () => {
   assert.deepEqual(normaliseAgentDiscussion({ discussion: [
     { topic: '  Launch   status ', points: ['  Date remained fixed.  ', '', null] },

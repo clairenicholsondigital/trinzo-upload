@@ -37,7 +37,7 @@ function cell(value, width, options = {}) {
 
 function timingLabel(timing = {}) {
   if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'Not stated';
-  const prefix = timing.kind === 'target' ? 'Target' : 'Deadline';
+  const prefix = timing.kind === 'target' ? 'Target' : (timing.kind === 'dependency' ? 'Dependent on' : 'Deadline');
   const value = timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording;
   return `${prefix}: ${value}`;
 }

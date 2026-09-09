@@ -22,7 +22,13 @@ const {
   normaliseFlag,
   coverageFlags,
   isSalientCoverageFlag,
-  isUsefulReviewFlag
+  isUsefulReviewFlag,
+  evidenceSupportScore,
+  actionEvidenceDisposition,
+  actionCandidateInventory,
+  groundedObjectives,
+  groundedExecutiveSummary,
+  relativeExactDate
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 
@@ -133,7 +139,7 @@ test('expanded result supports decisions, questions, joint owners, targets and e
       timing: { kind: 'target', wording: 'Friday', exactDate: '' }, evidenceIds: ['T0002']
     }]
   }, sourceUnits, 'discussion');
-  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.schemaVersion, 3);
   assert.equal(result.discussion[0].decisions.length, 1);
   assert.equal(result.discussion[0].openQuestions.length, 1);
   assert.deepEqual(result.actions[0].owners, ['Priya', 'Alex']);
@@ -180,23 +186,112 @@ test('a first-name assignment can resolve to an established full transcript spea
 });
 
 test('actions deduplicate only compatible owners and retain distinct deliverables', () => {
+  const actionUnits = normaliseSourceUnits([
+    { id: 'T0400', speaker: 'Priya', text: 'I will send the completed report to Alex.', classification: 'keep' },
+    { id: 'T0401', speaker: 'Alex', text: 'I will review the completed report.', classification: 'keep' }
+  ]);
   const result = normaliseAgentResult({ actions: [
-    { action: 'Send the completed report to Alex', owner: 'Priya', evidenceIds: ['T0002'] },
-    { action: 'Send completed report to Alex', owner: 'Priya', evidenceIds: ['T0002'] },
-    { action: 'Review the completed report', owner: 'Alex', evidenceIds: ['T0001'] }
-  ] }, sourceUnits, 'actions');
+    { action: 'Send the completed report to Alex', owner: 'Priya', evidenceIds: ['T0400'] },
+    { action: 'Send completed report to Alex', owner: 'Priya', evidenceIds: ['T0400'] },
+    { action: 'Review the completed report', owner: 'Alex', evidenceIds: ['T0401'] }
+  ] }, actionUnits, 'actions');
   assert.equal(result.actions.length, 2);
 });
 
 test('idea-only contemplation is not promoted but a concrete recommendation remains', () => {
   assert.equal(isIdeaOnlyContemplation('Think about the parking issue and come back with a best idea.'), true);
   assert.equal(isIdeaOnlyContemplation('Consider the evidence and provide a written recommendation.'), false);
+  const contemplationUnits = normaliseSourceUnits([
+    { id: 'T0500', speaker: 'Trevor', text: 'Maybe think about the parking issue and come back with a best idea.', classification: 'keep' },
+    { id: 'T0501', speaker: 'Alex', text: 'I will consider the evidence and provide a written recommendation.', classification: 'keep' }
+  ]);
   const result = normaliseAgentResult({ actions: [
-    { action: 'Think about the parking issue and come back with a best idea.', owner: 'Trevor', evidenceIds: ['T0001'] },
-    { action: 'Consider the evidence and provide a written recommendation.', owner: 'Alex', evidenceIds: ['T0001'] }
-  ] }, sourceUnits, 'actions');
+    { action: 'Think about the parking issue and come back with a best idea.', owner: 'Trevor', evidenceIds: ['T0500'] },
+    { action: 'Consider the evidence and provide a written recommendation.', owner: 'Alex', evidenceIds: ['T0501'] }
+  ] }, contemplationUnits, 'actions');
   assert.equal(result.actions.length, 1);
   assert.match(result.actions[0].action, /written recommendation/);
+});
+
+test('valid but unrelated evidence IDs cannot launder an unsupported action', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0600', speaker: 'Alex', text: 'The report was discussed as background.', classification: 'keep' },
+    { id: 'T0601', speaker: 'Priya', text: 'Maybe we could create a dashboard one day.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Send the report to Priya.', owner: 'Alex', evidenceIds: ['T0600'] },
+    { action: 'Create a dashboard.', owner: 'Priya', evidenceIds: ['T0601'] }
+  ] }, units, 'actions');
+  assert.deepEqual(result.actions, []);
+});
+
+test('an accepted request spanning adjacent turns is retained as one action candidate', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0700', speaker: 'Alex', text: 'Could you send the test report by Friday?', classification: 'keep' },
+    { id: 'T0701', speaker: 'Priya', text: 'Yes, I will do that.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Send the test report.', owner: 'Priya', timing: { kind: 'deadline', wording: 'Friday' }, evidenceIds: ['T0700', 'T0701']
+  }] }, units, 'actions');
+  assert.equal(result.actions.length, 1);
+  assert.equal(actionEvidenceDisposition('Send the test report.', 'Could you send it? Yes, I will do that.'), 'accepted_request');
+  assert.ok(actionCandidateInventory(units).some((candidate) => candidate.evidenceIds.includes('T0700') && candidate.evidenceIds.includes('T0701')));
+});
+
+test('discussion consolidation removes repeated records but preserves distinct decisions', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0800', speaker: 'Alex', text: 'The entry fee remains £15.', classification: 'keep' },
+    { id: 'T0801', speaker: 'Priya', text: 'We agreed that the closing date is Friday.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ discussion: [
+    { topic: 'Entry fees', points: [
+      { text: 'The entry fee was confirmed as £15.', evidenceIds: ['T0800'] },
+      { text: 'The £15 entry fee was confirmed.', evidenceIds: ['T0800'] }
+    ] },
+    { topic: 'Entry fee', decisions: [{ text: 'The closing date was agreed as Friday.', evidenceIds: ['T0801'] }] }
+  ] }, units, 'discussion');
+  assert.equal(result.discussion.length, 1);
+  assert.equal(result.discussion[0].points.length, 1);
+  assert.equal(result.discussion[0].decisions.length, 1);
+});
+
+test('one source passage can contribute several salient detail categories', () => {
+  const inventory = salientDetailInventory(normaliseSourceUnits([
+    { id: 'T0900', speaker: 'Alex', text: 'Three alarm tests remain pending approval before validation can finish.', classification: 'keep' }
+  ]));
+  assert.ok(inventory.some((item) => item.kind === 'quantity'));
+  assert.ok(inventory.some((item) => item.kind === 'alarm_behaviour'));
+  assert.ok(inventory.some((item) => item.kind === 'approval_status'));
+  assert.ok(inventory.some((item) => item.kind === 'blocker_dependency'));
+});
+
+test('relative timing is resolved from the meeting date while dependency timing remains distinct', () => {
+  assert.equal(relativeExactDate('tomorrow', '2026-09-09'), '2026-09-10');
+  const timingUnits = normaliseSourceUnits([
+    { id: 'T1000', speaker: 'Priya', text: 'I will send the report tomorrow.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Send the report.', owner: 'Priya', timing: { kind: 'deadline', wording: 'tomorrow' }, evidenceIds: ['T1000']
+  }] }, timingUnits, 'actions', { meetingDate: '2026-09-09' });
+  assert.equal(result.actions[0].timing.exactDate, '2026-09-10');
+  assert.equal(normaliseAgentResult({ actions: [{
+    action: 'Send the report.', owner: 'Priya', timing: { kind: 'dependency', wording: 'once approval is received' }, evidenceIds: ['T0002']
+  }] }, sourceUnits, 'actions', { enforceEvidence: false }).actions[0].timing.kind, 'dependency');
+});
+
+test('summary and objectives are grounded in validated content rather than filled to a quota', () => {
+  assert.ok(evidenceSupportScore('Three alarms require testing.', 'We need to test all three alarms before approval.') > 0.2);
+  const objectiveUnits = normaliseSourceUnits([
+    { id: 'T1100', speaker: 'Alex', text: "Today's objective is to test all three alarms before approval.", classification: 'keep' }
+  ]);
+  assert.deepEqual(groundedObjectives(['Test all three alarms', 'Plan an unrelated office move'], objectiveUnits), ['Test all three alarms']);
+  const summary = groundedExecutiveSummary(
+    'Three alarms require testing before approval. The company will open a new office in Paris.',
+    [{ topic: 'Testing', points: [{ text: 'Three alarms require testing before approval.' }] }],
+    []
+  );
+  assert.match(summary, /Three alarms/);
+  assert.doesNotMatch(summary, /Paris/);
 });
 
 test('proposal changes can be partially accepted without altering unselected records', () => {
@@ -307,8 +402,8 @@ test('a draft saved before the flow gained two screens opens where its owner lef
 
 test('the wire contract version is not the storage version', () => {
   // SCHEMA_VERSION is interpolated into the prompt sent to Power Automate, so it
-  // must not move when only the stored payload shape changes.
-  assert.equal(SCHEMA_VERSION, 2);
+  // moves for the dependency-timing contract independently of stored drafts.
+  assert.equal(SCHEMA_VERSION, 3);
   assert.equal(PAYLOAD_VERSION, 3);
 });
 

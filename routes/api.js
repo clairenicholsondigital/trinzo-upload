@@ -168,7 +168,10 @@ const {
   normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
   isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag,
   isSalientCoverageFlag: isMeetingAgentCoverageFlag,
-  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag
+  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
+  actionCandidateInventory,
+  groundedObjectives,
+  groundedExecutiveSummary
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -7984,7 +7987,7 @@ function normaliseAgentActions(candidate) {
     .filter((item) => item.action);
 }
 
-function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [] }) {
+function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const shared = [
     'You are preparing formal, evidence-backed meeting minutes from a prepared transcript.',
@@ -8006,14 +8009,17 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
   } else if (stage === 'summary') {
     shared.push(returnContract('executiveSummary, meetingObjectives, '));
     shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
-    shared.push('Populate meetingObjectives as ["string"] - at most six short statements of what the meeting set out to achieve, in the order they were taken. State each as an aim, not as a report of what happened.');
+    shared.push('Use CONFIRMED DISCUSSION AND ACTIONS as the sole factual source for the executive summary. Do not introduce a fact just because it appears elsewhere in the transcript.');
+    shared.push('Populate meetingObjectives as ["string"] - at most six short aims explicitly stated in the opening, agenda or purpose of the transcript. Do not infer objectives from topics that happened to be discussed. Return an empty array when no objective was stated.');
     shared.push('Return discussion and actions as empty arrays.');
     shared.push('Return reviewFlags as an empty array. Review issues have already been assessed against the detailed discussion and action records.');
     shared.push(`CONFIRMED DISCUSSION AND ACTIONS:\n${JSON.stringify(current || {})}`);
   } else {
     shared.push(returnContract(''));
-    shared.push('Populate actions as [{"id":"string","action":"string","owners":["string"],"timing":{"kind":"deadline|target|not_stated","wording":"string","exactDate":"YYYY-MM-DD or empty"},"evidenceIds":["T0001"]}]. Return discussion as an empty array.');
+    shared.push('Populate actions as [{"id":"string","action":"string","owners":["string"],"timing":{"kind":"deadline|target|dependency|not_stated","wording":"string","exactDate":"YYYY-MM-DD or empty"},"evidenceIds":["T0001"]}]. Return discussion as an empty array.');
     shared.push('Include every genuine future commitment, accepted follow-up, ongoing review with a required next step, and work triggered when another task finishes. Support joint owners. Deduplicate only the same deliverable with compatible ownership; preserve distinct testing, reviewing, approving, updating, sending and follow-up work.');
+    shared.push('Exclude unaccepted suggestions, hypothetical possibilities, status-only statements, completed or historical work, and routine meeting administration. A question is an action only when the transcript also records acceptance or assignment.');
+    shared.push('The action candidate windows below are a recall aid, not an allowlist. Evaluate every candidate window, then sweep the full transcript for commitments that use less explicit wording. The window may contain a request in one turn and acceptance in the next.');
     shared.push('Use timing kind target for provisional aims such as “this week”; use deadline only for a firm commitment. Keep unsupported timing as not_stated with empty wording and exactDate.');
   }
   if (isEdit) {
@@ -8034,11 +8040,12 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
   }
   shared.push(`CONFIRMED MEETING DETAILS:\n${JSON.stringify(details || {})}`);
   if (salientDetails.length) shared.push(`IMPORTANT DETAIL INVENTORY TO CHECK:\n${JSON.stringify(salientDetails.slice(0, 80))}`);
+  if (stage === 'actions' && actionCandidates.length) shared.push(`ACTION CANDIDATE EVIDENCE WINDOWS TO ASSESS:\n${JSON.stringify(actionCandidates.slice(0, 120))}`);
   shared.push(`PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`);
   return shared.join('\n\n');
 }
 
-function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, salientDetails = [] }) {
+function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, salientDetails = [], actionCandidates = [] }) {
   const steerText = meetingAgentSteerText(steer);
   return [
     'Audit an existing meeting action register against the complete prepared transcript.',
@@ -8051,6 +8058,7 @@ function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, s
     ...(steerText ? [`REVIEWER EMPHASIS - prioritisation only, never a licence to invent:\n${steerText}`] : []),
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAIL INVENTORY:\n${JSON.stringify(salientDetails.slice(0, 80))}`,
+    `ACTION CANDIDATE EVIDENCE WINDOWS TO RECHECK:\n${JSON.stringify(actionCandidates.slice(0, 120))}`,
     `EXISTING ACTION REGISTER:\n${JSON.stringify(actions || [])}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
@@ -8426,7 +8434,8 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
     current,
     instruction,
     steer: draft.steer,
-    salientDetails: draft.salientDetails || []
+    salientDetails: draft.salientDetails || [],
+    actionCandidates: stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : []
   });
   const parsed = await askPowerAutomateMeetingMinutesAgent(prompt);
   if (stage === 'summary') {
@@ -8435,8 +8444,8 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
     // whole draft; model-created summary flags otherwise duplicate issues that
     // are already represented by the evidence-backed records.
     const changes = {
-      executiveSummary: normaliseExecutiveSummary(parsed.executiveSummary),
-      meetingObjectives: meetingAgentObjectives(parsed.meetingObjectives)
+      executiveSummary: groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []),
+      meetingObjectives: groundedObjectives(parsed.meetingObjectives, draft.sourceUnits)
     };
     return {
       changes,
@@ -8448,7 +8457,9 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
       replaceCoverageFlags: true
     };
   }
-  const normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage);
+  const normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage, {
+    meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate
+  });
   normalised.reviewFlags = normalised.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
   // Discussion is generated before Actions, so judging the whole salient-detail
   // inventory against Discussion alone creates omissions by construction. Start
@@ -8648,9 +8659,12 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       details: sanitiseMeetingAgentDetails(draft.details),
       actions: draft.actions || [],
       steer: draft.steer,
-      salientDetails: draft.salientDetails || []
+      salientDetails: draft.salientDetails || [],
+      actionCandidates: actionCandidateInventory(draft.sourceUnits)
     }));
-    const audited = normaliseAgentResult(parsed, draft.sourceUnits, 'actions');
+    const audited = normaliseAgentResult(parsed, draft.sourceUnits, 'actions', {
+      meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate
+    });
     audited.reviewFlags = audited.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
     // audited rows were already enforced above; the existing register holds the
     // reviewer's edits and must not be re-stripped when the two are merged.
