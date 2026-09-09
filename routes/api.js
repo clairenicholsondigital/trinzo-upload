@@ -8328,20 +8328,44 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   let parsed;
   try {
     parsed = JSON.parse(rawBody);
-    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
   } catch {
-    const error = new Error('Power Automate did not return valid JSON.');
-    error.statusCode = 502;
-    error.retryable = true;
-    throw error;
+    parsed = null;
   }
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.discussion) || !Array.isArray(parsed.actions)) {
+  const queue = [parsed];
+  const seen = new Set();
+  let structured = null;
+  while (queue.length && !structured) {
+    const candidate = queue.shift();
+    if (candidate == null || (typeof candidate !== 'object' && typeof candidate !== 'string')) continue;
+    if (typeof candidate === 'object' && seen.has(candidate)) continue;
+    if (typeof candidate === 'object') seen.add(candidate);
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.discussion) && Array.isArray(candidate.actions)) {
+      structured = candidate;
+      break;
+    }
+    if (typeof candidate === 'string') {
+      try { queue.push(JSON.parse(candidate)); } catch { /* prose is rejected below */ }
+    } else if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      for (const key of ['result', 'output', 'response', 'lastResponse', 'body', 'value']) {
+        if (Object.prototype.hasOwnProperty.call(candidate, key)) queue.push(candidate[key]);
+      }
+    }
+  }
+  if (!structured) {
     const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
     error.statusCode = 502;
     error.retryable = true;
     throw error;
   }
-  return parsed;
+  const parsedResult = structured;
+  if (!parsedResult || typeof parsedResult !== 'object' || !Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)) {
+    const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
+    error.statusCode = 502;
+    error.retryable = true;
+    throw error;
+  }
+  return parsedResult;
 }
 
 async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}) {
