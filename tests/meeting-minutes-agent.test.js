@@ -24,6 +24,8 @@ test('discussion prompt treats the prepared transcript as evidence and requires 
   assert.match(prompt, /decisions/);
   assert.match(prompt, /openQuestions/);
   assert.match(prompt, /evidenceIds/);
+  assert.match(prompt, /Do not flag a supported fact merely because it is conditional, provisional, pending or not yet confirmed/);
+  assert.match(prompt, /Use uncertain_fact only when ambiguity or conflict/);
   assert.match(prompt, /Testing found an accessibility defect/);
 });
 
@@ -97,6 +99,7 @@ test('the summary stage gets its own contract rather than the action instruction
   // The response validator rejects a payload without both arrays, so the summary
   // prompt must still ask for them.
   assert.match(summary, /Return discussion and actions as empty arrays/);
+  assert.match(summary, /Return reviewFlags as an empty array/);
   // The old bare `else` branch would have handed summary the action rules.
   assert.doesNotMatch(summary, /Populate actions as/);
   assert.doesNotMatch(actions, /executiveSummary/);

@@ -28,6 +28,14 @@ const FLAG_KINDS = new Set([
   'uncertain_fact', 'unclear_reference', 'ownership', 'timing',
   'unresolved_decision', 'missing_evidence', 'possible_missed_follow_up'
 ]);
+const FLAG_KIND_ALIASES = Object.freeze({
+  ownership_uncertain: 'ownership',
+  timing_uncertain: 'timing',
+  unresolved_question: 'unresolved_decision',
+  uncertain_reference: 'unclear_reference'
+});
+const COVERAGE_FLAG_MESSAGE = 'Check whether this important transcript detail should appear in the minutes:';
+const MATERIAL_UNCERTAINTY_PATTERN = /\b(?:ambiguous|ambiguity|unclear wording|conflict(?:ing)?|inconsisten|inaudible|cannot (?:determine|identify|verify)|could not (?:determine|identify|verify)|uncertain (?:wording|reference|identity|value)|multiple (?:possible|plausible)|not (?:clear|clarified) (?:which|whether|who|what))\b/i;
 const KNOWN_INTERNAL_ATTENDEE_KEYS = new Set([
   'colm o’rourke', 'jacqui fox', 'david didsbury', 'conor flynn', 'claire nicholson',
   'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally'
@@ -160,6 +168,23 @@ function evidenceIdsFor(value, units = [], supplied = []) {
 // often survive denoising, but they are not minutes content, so they must never
 // be inventoried as an important detail and surfaced as something to check.
 const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute))\b/i;
+const DELIVERABLE_CONTEXT_PATTERN = /\b(?:action|approval|audit|assessment|CAPA|change|compliance|decision|document|file|finding|plan|procedure|report|review|risk|scope|software|standard|submission|test|tracker|training|translation|validation|version)\b/i;
+
+function salientExcerpt(value, pattern) {
+  const source = text(value, 5000);
+  const sentences = source.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const sentence = sentences.find((part) => pattern.test(part)) || source;
+  if (sentence.length <= 360) return sentence;
+  const match = sentence.search(pattern);
+  if (match < 0) return sentence.slice(0, 360);
+  let start = Math.max(0, match - 140);
+  if (start) {
+    const nextBoundary = sentence.indexOf(' ', start);
+    if (nextBoundary > start && nextBoundary < match) start = nextBoundary + 1;
+  }
+  const end = Math.min(sentence.length, match + 220);
+  return `${start ? '…' : ''}${sentence.slice(start, end).trim()}${end < sentence.length ? '…' : ''}`;
+}
 
 function salientDetailInventory(units = []) {
   const patterns = [
@@ -177,7 +202,10 @@ function salientDetailInventory(units = []) {
     if (MEETING_ADMIN_PATTERN.test(unit.text)) continue;
     for (const [kind, pattern] of patterns) {
       if (!pattern.test(unit.text)) continue;
-      result.push({ id: stableId('detail', `${kind}|${unit.id}`), kind, text: unit.text, evidenceIds: [unit.id] });
+      if (kind === 'alarm_behaviour' && /\bno alarm bells?\b/i.test(unit.text)) continue;
+      if (kind === 'blocker_dependency' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+      if (kind === 'quantity' && /\b(?:weeks?|days?|sites?)\b/i.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+      result.push({ id: stableId('detail', `${kind}|${unit.id}`), kind, text: salientExcerpt(unit.text, pattern), evidenceIds: [unit.id] });
       break;
     }
   }
@@ -185,7 +213,9 @@ function salientDetailInventory(units = []) {
 }
 
 function normaliseFlag(flag = {}, index = 0) {
-  const kind = FLAG_KINDS.has(flag.kind) ? flag.kind : 'uncertain_fact';
+  const suppliedKind = text(flag.kind || flag.type, 80).toLowerCase();
+  const aliasedKind = FLAG_KIND_ALIASES[suppliedKind] || suppliedKind;
+  const kind = FLAG_KINDS.has(aliasedKind) ? aliasedKind : 'uncertain_fact';
   const message = text(flag.message || flag.text || 'Review this item against the transcript.', 500);
   return {
     id: text(flag.id, 80) || stableId('flag', `${kind}|${message}`, index),
@@ -195,6 +225,27 @@ function normaliseFlag(flag = {}, index = 0) {
     status: ['open', 'confirmed', 'corrected', 'dismissed'].includes(flag.status) ? flag.status : 'open',
     correctionNote: text(flag.correctionNote, 500)
   };
+}
+
+function isSalientCoverageFlag(flag = {}) {
+  return /^coverage-detail-/i.test(String(flag.id || ''))
+    || String(flag.message || flag.text || '').startsWith(COVERAGE_FLAG_MESSAGE);
+}
+
+// A supported statement can itself say that something is pending, conditional or
+// undecided. That is meeting content, not uncertainty about the extraction. Keep
+// `uncertain_fact` for genuinely ambiguous/conflicting source wording; the other
+// flag kinds already cover owners, timing, references and missing evidence.
+function isUsefulReviewFlag(flag = {}) {
+  if (isAutomaticTerminologyFlag(flag)) return false;
+  const normalised = normaliseFlag(flag);
+  if (isSalientCoverageFlag(flag)) {
+    return /^coverage-detail-/i.test(String(flag.id || ''))
+      || normalised.status !== 'open' || Boolean(normalised.correctionNote);
+  }
+  if (normalised.kind !== 'uncertain_fact') return true;
+  if (normalised.status !== 'open' || normalised.correctionNote) return true;
+  return MATERIAL_UNCERTAINTY_PATTERN.test(normalised.message);
 }
 
 function normalisePoint(value, units, prefix, index) {
@@ -263,6 +314,23 @@ function ownersCompatible(left, right) {
   const a = new Set(left.owners.map((owner) => owner.toLowerCase()));
   const b = new Set(right.owners.map((owner) => owner.toLowerCase()));
   return a.size === b.size && [...a].every((owner) => b.has(owner));
+}
+
+function ownerSupportedByEvidence(owner, evidenceText, units = []) {
+  const ownerWords = contentTokens(owner);
+  const evidenceWords = contentTokens(evidenceText);
+  if (!ownerWords.length) return false;
+  if (ownerWords.every((word) => evidenceWords.includes(word))) return true;
+  // Meeting speech commonly assigns work using a first name while the agent
+  // returns the person's full speaker name. Accept that expansion only when the
+  // complete identity is independently present in a transcript speaker label.
+  // This does not let an invented surname pass: every owner token must belong to
+  // the same known speaker, and the cited evidence must still name that person.
+  const knownSpeaker = normaliseSourceUnits(units).some((unit) => {
+    const speakerWords = contentTokens(unit.speaker);
+    return ownerWords.every((word) => speakerWords.includes(word));
+  });
+  return knownSpeaker && ownerWords.some((word) => evidenceWords.includes(word));
 }
 
 function normaliseActions(candidate = {}, units = []) {
@@ -339,11 +407,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
       const unit = unitById.get(id);
       return unit ? `${unit.speaker} ${unit.text}` : '';
     }).join(' ');
-    const unsupportedOwners = action.owners.filter((owner) => {
-      const words = contentTokens(owner);
-      const haystack = contentTokens(evidenceText);
-      return words.length && !words.every((word) => haystack.includes(word));
-    });
+    const unsupportedOwners = action.owners.filter((owner) => !ownerSupportedByEvidence(owner, evidenceText, units));
     if (unsupportedOwners.length) {
       if (enforceEvidence) action.owners = action.owners.filter((owner) => !unsupportedOwners.includes(owner));
       const flag = normaliseFlag({
@@ -410,10 +474,16 @@ function uniqueFlags(flags = []) {
 }
 
 function coverageFlags(inventory = [], result = {}) {
-  const output = JSON.stringify({ discussion: result.discussion || [], actions: result.actions || [] });
+  const output = JSON.stringify({
+    discussion: result.discussion || [],
+    actions: result.actions || [],
+    executiveSummary: result.executiveSummary || '',
+    meetingObjectives: result.meetingObjectives || result.objectives || []
+  });
   return inventory.filter((item) => tokenOverlap(item.text, output) < 0.28).slice(0, 12).map((item, index) => normaliseFlag({
+    id: `coverage-${item.id}`,
     kind: item.kind === 'standard_reference' ? 'unclear_reference' : 'uncertain_fact',
-    message: `Check whether this important transcript detail should appear in the minutes: “${item.text.slice(0, 220)}”`,
+    message: `${COVERAGE_FLAG_MESSAGE} “${item.text.slice(0, 220)}”`,
     evidenceIds: item.evidenceIds
   }, index));
 }
@@ -579,5 +649,7 @@ module.exports = {
   normaliseKnownTerms,
   normaliseColloquialTimes,
   normaliseKnownTermsDeep,
-  isAutomaticTerminologyFlag
+  isAutomaticTerminologyFlag,
+  isSalientCoverageFlag,
+  isUsefulReviewFlag
 };

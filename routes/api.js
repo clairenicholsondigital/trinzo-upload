@@ -166,7 +166,9 @@ const {
   applyProposal,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
   normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
-  isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag
+  isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag,
+  isSalientCoverageFlag: isMeetingAgentCoverageFlag,
+  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -7991,7 +7993,9 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     'Every generated point, decision, open question and action must cite one or more supplied transcript IDs in evidenceIds. Never invent an evidence ID.',
     'Preserve exact quantities, language counts, alarm behaviour, approval status, blockers and dependencies when material.',
     'Preserve unclear standard references exactly as spoken and add an unclear_reference review flag instead of silently correcting them.',
-    'Use reviewFlags for uncertain facts, ownership, timing, unresolved decisions, unclear references and missing evidence.',
+    'Use reviewFlags only when human review is genuinely required: ambiguous or conflicting source wording, unclear references, unsupported ownership or timing, unresolved decisions, or missing evidence.',
+    'Do not flag a supported fact merely because it is conditional, provisional, pending or not yet confirmed. Put unresolved matters in openQuestions and provisional timing in the action timing field.',
+    'Use uncertain_fact only when ambiguity or conflict in the transcript prevents a safe factual statement. Do not create uncertainty flags for omitted non-material detail.',
     'Return one valid JSON object only, with no markdown or commentary.'
   ];
   const returnContract = (extra) => `Return schemaVersion ${MEETING_AGENT_SCHEMA_VERSION} with exactly these top-level properties: schemaVersion, ${extra}discussion, actions, reviewFlags.`;
@@ -8004,6 +8008,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
     shared.push('Populate meetingObjectives as ["string"] - at most six short statements of what the meeting set out to achieve, in the order they were taken. State each as an aim, not as a report of what happened.');
     shared.push('Return discussion and actions as empty arrays.');
+    shared.push('Return reviewFlags as an empty array. Review issues have already been assessed against the detailed discussion and action records.');
     shared.push(`CONFIRMED DISCUSSION AND ACTIONS:\n${JSON.stringify(current || {})}`);
   } else {
     shared.push(returnContract(''));
@@ -8042,6 +8047,7 @@ function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, s
     'Specifically check accepted follow-ups, continuing reviews with a concrete next step, and work dependent on another task finishing.',
     'Every proposed action must cite valid transcript IDs and use the same owners/timing structure as the existing action schema.',
     'Do not invent owners or timing. Preserve provisional targets as target rather than deadline.',
+    'Use reviewFlags only for genuinely ambiguous or conflicting source wording, unclear references, unsupported ownership or timing, or missing evidence. Do not flag a supported fact merely because it is pending or conditional.',
     ...(steerText ? [`REVIEWER EMPHASIS - prioritisation only, never a licence to invent:\n${steerText}`] : []),
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAIL INVENTORY:\n${JSON.stringify(salientDetails.slice(0, 80))}`,
@@ -8139,7 +8145,7 @@ function meetingAgentDraftPayload(draft = {}) {
     details: sanitiseMeetingAgentDetails(draft.details),
     discussion: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.discussion) ? draft.discussion : []),
     actions: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.actions) ? draft.actions : []),
-    reviewFlags: normaliseMeetingAgentKnownTermsDeep((Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag))),
+    reviewFlags: normaliseMeetingAgentKnownTermsDeep((Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)),
     pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
     changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
     staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
@@ -8178,14 +8184,14 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     for (const id of action?.evidenceIds || []) evidenceIds.add(id);
   }
   minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
-  minutes.reviewFlags = Array.isArray(draft.reviewFlags) ? draft.reviewFlags : [];
+  minutes.reviewFlags = (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag);
   return minutes;
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, changeHistory, ...publicFields } = draft;
   const visibleReviewFlags = (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : [])
-    .filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag));
+    .filter(isUsefulMeetingAgentReviewFlag);
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
     reviewFlags: visibleReviewFlags
@@ -8216,12 +8222,17 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
 
 function mergeMeetingAgentFlags(existing = [], added = []) {
   const byId = new Map();
-  for (const raw of [...existing, ...added].filter((flag) => !isAutomaticMeetingAgentTerminologyFlag(flag))) {
+  for (const raw of [...existing, ...added].filter(isUsefulMeetingAgentReviewFlag)) {
     const flag = normaliseMeetingAgentFlag(raw, byId.size);
     const prior = byId.get(flag.id);
     byId.set(flag.id, prior && prior.status !== 'open' ? { ...flag, status: prior.status } : flag);
   }
   return [...byId.values()].slice(0, 250);
+}
+
+function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false) {
+  const prior = replaceCoverage ? existing.filter((flag) => !isMeetingAgentCoverageFlag(flag)) : existing;
+  return mergeMeetingAgentFlags(prior, added);
 }
 
 async function loadOwnedMeetingAgentDraft(req, options = {}) {
@@ -8420,21 +8431,43 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
   const parsed = await askPowerAutomateMeetingMinutesAgent(prompt);
   if (stage === 'summary') {
     // A prose summary has no evidence structure to normalise, so it does not go
-    // through normaliseAgentResult; only the flags are sanitised.
+    // through normaliseAgentResult. Coverage is recalculated once against the
+    // whole draft; model-created summary flags otherwise duplicate issues that
+    // are already represented by the evidence-backed records.
+    const changes = {
+      executiveSummary: normaliseExecutiveSummary(parsed.executiveSummary),
+      meetingObjectives: meetingAgentObjectives(parsed.meetingObjectives)
+    };
     return {
-      changes: {
-        executiveSummary: normaliseExecutiveSummary(parsed.executiveSummary),
-        meetingObjectives: meetingAgentObjectives(parsed.meetingObjectives)
-      },
-      reviewFlags: (Array.isArray(parsed.reviewFlags) ? parsed.reviewFlags : []).map((flag) => normaliseMeetingAgentFlag(flag))
+      changes,
+      reviewFlags: coverageFlags(draft.salientDetails || [], {
+        discussion: draft.discussion || [],
+        actions: draft.actions || [],
+        ...changes
+      }),
+      replaceCoverageFlags: true
     };
   }
   const normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage);
-  normalised.reviewFlags = mergeMeetingAgentFlags(normalised.reviewFlags, coverageFlags(draft.salientDetails || [], normalised));
+  normalised.reviewFlags = normalised.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
+  // Discussion is generated before Actions, so judging the whole salient-detail
+  // inventory against Discussion alone creates omissions by construction. Start
+  // the holistic coverage check once both substantive stages exist.
+  const shouldCheckCoverage = stage === 'actions'
+    || (stage === 'discussion' && ((draft.actions || []).length > 0 || Number(draft.currentStep || 0) >= MEETING_AGENT_STAGE_STEP.actions));
+  if (shouldCheckCoverage) {
+    normalised.reviewFlags = mergeMeetingAgentFlags(normalised.reviewFlags, coverageFlags(draft.salientDetails || [], {
+      discussion: stage === 'discussion' ? normalised.discussion : (draft.discussion || []),
+      actions: stage === 'actions' ? normalised.actions : (draft.actions || []),
+      executiveSummary: draft.executiveSummary || '',
+      meetingObjectives: draft.meetingObjectives || []
+    }));
+  }
   return {
     normalised,
     changes: stage === 'discussion' ? { discussion: normalised.discussion } : { actions: normalised.actions },
-    reviewFlags: normalised.reviewFlags
+    reviewFlags: normalised.reviewFlags,
+    replaceCoverageFlags: shouldCheckCoverage
   };
 }
 
@@ -8478,7 +8511,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
     const changes = result
       ? {
         ...result.changes,
-        reviewFlags: mergeMeetingAgentFlags(fresh.reviewFlags, result.reviewFlags),
+        reviewFlags: mergeMeetingAgentGenerationFlags(fresh.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
         staleStages: (fresh.staleStages || []).filter((value) => value !== stage),
         currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
         generation: null
@@ -8584,13 +8617,13 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
       const proposal = buildProposal(stage, before, after);
       const saved = await saveMeetingAgentDraft(draft, req, {
         pendingProposal: proposal,
-        reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, result.reviewFlags)
+        reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags)
       });
       return res.json({ ok: true, stage, proposal, draft: publicMeetingAgentDraft(saved) });
     }
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...result.changes,
-      reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, result.reviewFlags),
+      reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
       staleStages: (draft.staleStages || []).filter((value) => value !== stage),
       currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
     });
@@ -8618,6 +8651,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       salientDetails: draft.salientDetails || []
     }));
     const audited = normaliseAgentResult(parsed, draft.sourceUnits, 'actions');
+    audited.reviewFlags = audited.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
     // audited rows were already enforced above; the existing register holds the
     // reviewer's edits and must not be re-stripped when the two are merged.
     const combined = normaliseAgentResult({ actions: [...(draft.actions || []), ...audited.actions] }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
@@ -8700,7 +8734,11 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
 router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
-    const exportDraft = { ...draft, details: sanitiseMeetingAgentDetails(draft.details) };
+    const exportDraft = {
+      ...draft,
+      details: sanitiseMeetingAgentDetails(draft.details),
+      reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
+    };
     const buffer = await generateMeetingMinutesAgentDocx(exportDraft, req.body?.includeEvidence === true);
     const filename = docxFilename(exportDraft).replace(/["\\]/g, '');
     res.set({

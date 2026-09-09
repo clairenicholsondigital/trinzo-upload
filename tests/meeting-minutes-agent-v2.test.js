@@ -18,7 +18,11 @@ const {
   normaliseKnownTerms,
   normaliseColloquialTimes,
   normaliseKnownTermsDeep,
-  isAutomaticTerminologyFlag
+  isAutomaticTerminologyFlag,
+  normaliseFlag,
+  coverageFlags,
+  isSalientCoverageFlag,
+  isUsefulReviewFlag
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 
@@ -155,6 +159,24 @@ test('unsupported owners and timing are blanked and flagged without requiring pa
   assert.deepEqual(result.actions[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
   assert.ok(result.reviewFlags.some((flag) => flag.kind === 'ownership'));
   assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing'));
+});
+
+test('a first-name assignment can resolve to an established full transcript speaker identity', () => {
+  const identityUnits = normaliseSourceUnits([
+    { id: 'T0300', speaker: 'Smith, Stuart M', text: 'Earlier context.', classification: 'keep' },
+    { id: 'T0301', speaker: 'Jacqui Fox', text: 'Stuart will determine the training calendar.', classification: 'keep' }
+  ]);
+  const supported = normaliseAgentResult({ actions: [{
+    action: 'Determine the training calendar.', owners: ['Stuart Smith'], evidenceIds: ['T0301']
+  }] }, identityUnits, 'actions');
+  assert.deepEqual(supported.actions[0].owners, ['Stuart Smith']);
+  assert.ok(!supported.reviewFlags.some((flag) => flag.kind === 'ownership'));
+
+  const inventedSurname = normaliseAgentResult({ actions: [{
+    action: 'Determine the training calendar.', owners: ['Stuart Jones'], evidenceIds: ['T0301']
+  }] }, identityUnits, 'actions');
+  assert.deepEqual(inventedSurname.actions[0].owners, []);
+  assert.ok(inventedSurname.reviewFlags.some((flag) => flag.kind === 'ownership'));
 });
 
 test('actions deduplicate only compatible owners and retain distinct deliverables', () => {
@@ -305,6 +327,46 @@ test('meeting admin is never inventoried as a detail to check', () => {
   assert.equal(inventoried('Maybe it is standard 60601 something; I am not sure.'), true);
   assert.equal(inventoried('The alarm must be audible at three metres.'), true);
   assert.equal(inventoried('We shipped 1200 units last quarter.'), true);
+  // Casual logistics and anecdotes used to account for two Abbott review flags.
+  assert.equal(inventoried("We can get an Uber, but it depends on the cost because it's the back end of the World Cup."), false);
+  assert.equal(inventoried('I remember wandering around one site and realising they did not make that product there.'), false);
+  assert.equal(inventoried('I had a quick look and there were no alarm bells for me.'), false);
+  // A dependency attached to real work remains salient.
+  assert.equal(inventoried('The audit plan depends on the risk assessment being approved.'), true);
+});
+
+test('review flags distinguish extraction uncertainty from ordinary pending meeting content', () => {
+  const pending = normaliseFlag({ kind: 'uncertain_fact', message: 'Document access had not yet been confirmed.' });
+  const ambiguous = normaliseFlag({ kind: 'uncertain_fact', message: 'The language count contains unclear wording and could not be verified.' });
+  const corrected = normaliseFlag({ ...pending, status: 'corrected', correctionNote: 'Access was confirmed later.' });
+  assert.equal(isUsefulReviewFlag(pending), false);
+  assert.equal(isUsefulReviewFlag(ambiguous), true);
+  assert.equal(isUsefulReviewFlag(corrected), true, 'a reviewer correction remains part of the audit trail');
+
+  assert.equal(normaliseFlag({ type: 'timing_uncertain', text: 'Confirm the target.' }).kind, 'timing');
+  assert.equal(normaliseFlag({ type: 'ownership_uncertain', text: 'Confirm the owner.' }).kind, 'ownership');
+  assert.equal(normaliseFlag({ type: 'unresolved_decision', text: 'A decision remains open.' }).kind, 'unresolved_decision');
+});
+
+test('salient coverage flags are stable, whole-draft flags and legacy stage-only flags are retired', () => {
+  const inventory = salientDetailInventory(sourceUnits);
+  const flags = coverageFlags(inventory, {
+    discussion: [{ topic: 'Alarm testing', points: [{ text: 'All three alarms require testing before approval.' }] }],
+    actions: [],
+    executiveSummary: '',
+    meetingObjectives: []
+  });
+  assert.ok(flags.every((flag) => /^coverage-detail-/.test(flag.id)));
+  assert.ok(flags.every(isSalientCoverageFlag));
+  assert.ok(flags.every(isUsefulReviewFlag));
+  assert.equal(isUsefulReviewFlag({
+    id: 'flag-old-stage-check', kind: 'uncertain_fact',
+    message: 'Check whether this important transcript detail should appear in the minutes: “old stage-only check”'
+  }), false);
+  assert.equal(isUsefulReviewFlag({
+    id: 'flag-old-stage-check', kind: 'uncertain_fact', status: 'corrected', correctionNote: 'Reviewed by the user.',
+    message: 'Check whether this important transcript detail should appear in the minutes: “old stage-only check”'
+  }), true);
 });
 
 test('summary and objectives normalise alongside the rest of the draft', () => {
