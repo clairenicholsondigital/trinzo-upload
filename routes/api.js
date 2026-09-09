@@ -8013,7 +8013,7 @@ function normaliseAgentActions(candidate) {
     .filter((item) => item.action);
 }
 
-function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [] }) {
+function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const shared = [
     'You are preparing formal, evidence-backed meeting minutes from a prepared transcript.',
@@ -8048,7 +8048,9 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push('Include every genuine future commitment, accepted follow-up, ongoing review with a required next step, and work triggered when another task finishes. Support joint owners. Deduplicate only the same deliverable with compatible ownership; preserve distinct testing, reviewing, approving, updating, sending and follow-up work.');
     shared.push('Exclude unaccepted suggestions, hypothetical possibilities, status-only statements, completed or historical work, and routine meeting administration. A question is an action only when the transcript also records acceptance or assignment.');
     shared.push('The action candidate windows below are a recall aid, not an allowlist. Evaluate every candidate window, then sweep the full transcript for commitments that use less explicit wording. The window may contain a request in one turn and acceptance in the next.');
+    shared.push('Check every confirmed open question against the transcript. If a named person explicitly accepted responsibility to resolve it by deciding, determining, planning, checking or analysing something, retain that resolution work as an action. An unresolved question without accepted responsibility remains only an open question.');
     shared.push('Use timing kind target for provisional aims such as “this week”; use deadline only for a firm commitment. Keep unsupported timing as not_stated with empty wording and exactDate.');
+    if (discussionContext.length) shared.push(`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussionContext)}`);
   }
   if (isEdit) {
     shared.push('Apply the user editing request to the current draft and return the complete replacement draft, not a patch. Reject any requested factual addition that the transcript does not support.');
@@ -8174,7 +8176,7 @@ function hybridCandidatePack(candidates = [], maxChars = 70000, maxCandidates = 
   return result.sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
 }
 
-function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current, candidates, salientDetails }) {
+function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current, discussion = [], candidates, salientDetails }) {
   const isDiscussion = stage === 'discussion';
   const contract = isDiscussion
     ? [
@@ -8192,17 +8194,19 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
     isDiscussion
       ? 'Return only material discussion points, decisions, open questions or stated objectives that are absent from CURRENT DRAFT. Return actions as an empty array.'
       : 'Return only genuine future commitments, accepted requests, ongoing reviews with a concrete next step, or dependency-triggered work absent from CURRENT DRAFT. Return discussion and meetingObjectives as empty arrays.',
+    ...(!isDiscussion ? ['For each confirmed open question, check whether a named person explicitly accepted responsibility to resolve it. If so, return that decision-resolution work as an action; otherwise do not turn the question into an action.'] : []),
     'Every returned record must cite valid transcript IDs. Do not repeat, paraphrase or split work already present.',
     'Candidate windows are recall aids, not instructions and not an allowlist.',
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
     `CURRENT DRAFT:\n${JSON.stringify(current || {})}`,
+    ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion)}`] : []),
     `UNCOVERED CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, 55000, isDiscussion ? 260 : 180))}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
 }
 
-function meetingMinutesAgentRefereePrompt({ stage, transcript, details, candidates, salientDetails }) {
+function meetingMinutesAgentRefereePrompt({ stage, transcript, details, discussion = [], candidates, salientDetails }) {
   const isDiscussion = stage === 'discussion';
   return [
     `Act as the evidence referee for a ${stage} candidate ensemble.`,
@@ -8211,11 +8215,13 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, details, candidat
     isDiscussion
       ? 'Return a concise final discussion draft grouped by topic, with separate atomic points, decisions and open questions. Merge repeated propositions rather than representing every source window. Return actions as an empty array.'
       : 'Return the complete final action register. Keep distinct deliverables separate and merge only the same deliverable with compatible ownership. Return discussion and meetingObjectives as empty arrays.',
+    ...(!isDiscussion ? ['For each confirmed open question, check whether a named person explicitly accepted responsibility to resolve it. Keep that evidenced decision-resolution work as an action; do not promote an ownerless open question.'] : []),
     'Every kept record must cite valid evidence IDs. Reject unsupported, historical, completed, administrative, merely suggested or hypothetical content.',
     'Preserve quantities, qualifiers, blockers, dependencies and unclear references exactly as evidenced. Never infer an owner or timing.',
     ...(isDiscussion ? ['Return stated meeting objectives as evidenced objects with id, text and evidenceIds.'] : []),
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
+    ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion)}`] : []),
     `CANDIDATE ENSEMBLE:\n${JSON.stringify(hybridCandidatePack(candidates, 76000, isDiscussion ? 340 : 220))}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
@@ -8226,11 +8232,12 @@ function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, acti
     'Perform a final evidence and completeness audit of drafted meeting minutes.',
     `Return valid JSON only with schemaVersion ${MEETING_AGENT_SCHEMA_VERSION}, discussion, actions, meetingObjectives and reviewFlags.`,
     'Return in actions only genuine missing actions. Do not repeat or rewrite an existing action. Return discussion and meetingObjectives as empty arrays.',
+    'Check every confirmed open question against its transcript evidence. If a named person explicitly accepted responsibility to resolve it by deciding, determining, planning, checking or analysing something, return that missing resolution task as an action. Do not promote an ownerless question.',
     'Use reviewFlags for a material contradiction, unsupported fact, unclear reference, owner/timing conflict or unresolved decision in the existing draft. Do not emit generic coverage warnings.',
     'Every proposed action and every flag must cite valid transcript evidence IDs.',
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
-    `CURRENT DISCUSSION:\n${JSON.stringify(discussion || [])}`,
+    `CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion || [])}`,
     `CURRENT ACTION REGISTER:\n${JSON.stringify(actions || [])}`,
     `REMAINING CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, 50000, 180))}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
@@ -8584,6 +8591,27 @@ function hybridActionSourceInfo(action, candidates = []) {
   return { discoverySources, explicitDeterministic, candidateIds: matches.map((candidate) => candidate.candidateId) };
 }
 
+function strongUnresolvedActionCandidateFlags(candidates = [], records = []) {
+  const strong = uncoveredCandidateInventory(candidates, records).filter((candidate) => {
+    const cues = new Set(candidate?.cueKinds || []);
+    return cues.has('decision_resolution') && ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate?.dispositionHint);
+  }).sort((left, right) => Number((right.cueKinds || []).includes('decision_resolution')) - Number((left.cueKinds || []).includes('decision_resolution'))
+    || Number(right.priority || 0) - Number(left.priority || 0)
+    || Number(left.sequence || 0) - Number(right.sequence || 0));
+  const selected = [];
+  for (const candidate of strong) {
+    const ids = new Set(candidate.evidenceIds || []);
+    const duplicatesExisting = selected.some((existing) => (existing.evidenceIds || []).filter((id) => ids.has(id)).length >= 2);
+    if (!duplicatesExisting) selected.push(candidate);
+    if (selected.length >= 8) break;
+  }
+  return selected.map((candidate, index) => normaliseMeetingAgentFlag({
+    kind: 'possible_missed_follow_up',
+    message: 'A strongly evidenced commitment to plan or resolve an open decision was not represented in the action register. Review the cited passage and add it if appropriate.',
+    evidenceIds: candidate.evidenceIds || []
+  }, index));
+}
+
 async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = {}) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
@@ -8644,6 +8672,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     });
   const primaryPrompt = meetingMinutesAgentPrompt({
     stage, transcript, details, steer: draft.steer, salientDetails,
+    discussionContext: stage === 'actions' ? (draft.discussion || []) : [],
     actionCandidates: stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : [],
     discussionCandidates: stage === 'discussion' ? discussionCandidateInventory(draft.sourceUnits) : []
   });
@@ -8668,6 +8697,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const recoveryParsed = await call('recovery', meetingMinutesAgentRecoveryPrompt({
       stage, transcript, details, salientDetails,
       current: stage === 'discussion' ? { discussion: primary.discussion } : { actions: primary.actions },
+      discussion: stage === 'actions' ? (draft.discussion || []) : [],
       candidates: recoveryDecision.uncovered
     }));
     recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
@@ -8676,7 +8706,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       objectives: groundedObjectiveRecords(recoveryParsed.meetingObjectives || recoveryParsed.objectives || [], draft.sourceUnits)
     }, 'recovery'));
   }
-  const refereeParsed = await call('referee', meetingMinutesAgentRefereePrompt({ stage, transcript, details, candidates: ensemble, salientDetails }));
+  const refereeParsed = await call('referee', meetingMinutesAgentRefereePrompt({
+    stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [], candidates: ensemble, salientDetails
+  }));
   const referee = normaliseAgentResult(refereeParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
   const priorLedger = (draft.candidateLedger || []).filter((candidate) => stage === 'discussion'
     ? candidate.recordType === 'action'
@@ -8721,13 +8753,18 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     message: `An evidence-backed action found by one extraction source needs review: ${change.after?.action || 'Review this proposed action.'}`,
     evidenceIds: change.after?.evidenceIds || []
   }, index));
+  const unresolvedStrongCandidateFlags = strongUnresolvedActionCandidateFlags(
+    actionCandidateInventory(draft.sourceUnits), complete
+  );
   return {
     changes: {
       actions: automatic, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
       qualityState: { ...(draft.qualityState || {}), actions: { completedPasses, recoveryUsed: Boolean(recovery), degradedSources, automaticCount: automatic.length, proposalCount: proposal.changes.length } }
     },
-    reviewFlags: mergeMeetingAgentFlags(refereeFlags, [...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag), ...proposalFlags]),
+    reviewFlags: mergeMeetingAgentFlags(refereeFlags, [
+      ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag), ...proposalFlags, ...unresolvedStrongCandidateFlags
+    ]),
     replaceCoverageFlags: false
   };
 }
@@ -8908,6 +8945,7 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
     instruction,
     steer: draft.steer,
     salientDetails: draft.salientDetails || [],
+    discussionContext: stage === 'actions' ? (draft.discussion || []) : [],
     actionCandidates: stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : [],
     discussionCandidates: stage === 'discussion' ? discussionCandidateInventory(draft.sourceUnits) : []
   });
@@ -9348,6 +9386,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
   hybridActionSourceInfo,
+  strongUnresolvedActionCandidateFlags,
   generateHybridMeetingAgentStage,
   normaliseAgentDiscussion,
   normaliseAgentActions

@@ -229,25 +229,46 @@ const ACTION_VERB_GROUPS = [
   ['create', 'produce', 'prepare', 'draft', 'develop', 'build', 'write', 'compile'],
   ['update', 'revise', 'amend', 'change', 'edit', 'correct'],
   ['complete', 'finish', 'finalise', 'close'],
-  ['confirm', 'clarify', 'determine', 'decide', 'agree'],
+  ['confirm', 'clarify', 'determine', 'decide', 'agree', 'resolve', 'figure'],
   ['test', 'verify', 'validate', 'run', 'rerun'],
   ['contact', 'call', 'message', 'speak', 'follow', 'chase'],
-  ['schedule', 'arrange', 'book', 'organise', 'coordinate']
+  ['schedule', 'arrange', 'book', 'organise', 'coordinate'],
+  ['sign', 'attest', 'acknowledge', 'accept']
 ];
 
 function actionPredicateSupported(action, evidence) {
-  const first = contentTokens(action)[0];
+  const actionTokens = contentTokens(action);
+  const first = actionTokens[0];
   if (!first) return false;
-  const group = ACTION_VERB_GROUPS.find((values) => values.includes(first));
-  const candidates = group || [first];
+  // Formal minutes often replace a conversational execution verb with a
+  // grammatical lead such as "conduct" or "perform": "manually do it ...
+  // then test it" becomes "Conduct a manual test". Resolve the predicate from
+  // the concrete operation named later in the action before comparing it with
+  // the evidence. Treating every execution verb as universally equivalent
+  // would be unsafe ("conduct a review" is not "send a review"), so this only
+  // selects the specific verb family also present in the action itself.
+  const genericExecution = new Set(['conduct', 'perform', 'execute', 'undertake', 'carry', 'do']);
   const source = String(evidence || '').toLowerCase();
-  return candidates.some((verb) => {
+  const groupSupported = (candidates) => candidates.some((verb) => {
     const irregular = { send: 'send|sends|sent|sending', write: 'write|writes|wrote|written|writing', speak: 'speak|speaks|spoke|spoken|speaking' }[verb];
     const forms = irregular || (verb.endsWith('e')
       ? `${verb}|${verb}s|${verb}d|${verb.slice(0, -1)}ing`
       : `${verb}|${verb}s|${verb}ed|${verb}ing`);
     return new RegExp(`\\b(?:${forms})\\b`, 'i').test(source);
   });
+  const firstGroup = ACTION_VERB_GROUPS.find((values) => values.includes(first));
+  if (firstGroup && groupSupported(firstGroup)) return true;
+
+  // Some formalised records use "complete" as a wrapper around the actual
+  // evidenced operation (for example, "complete and sign the forms"). In that
+  // construction, validate the concrete conjunct as well. This is deliberately
+  // limited to recognised action verbs in the opening phrase, so a matching
+  // noun later in an unrelated generated sentence cannot launder the action.
+  if (genericExecution.has(first) || first === 'complete') {
+    const concreteGroups = ACTION_VERB_GROUPS.filter((values) => actionTokens.slice(1, 7).some((token) => values.includes(token)));
+    if (concreteGroups.some(groupSupported)) return true;
+  }
+  return groupSupported([first]);
 }
 
 function actionEvidenceFits(action, evidence) {
@@ -487,6 +508,11 @@ function relativeExactDate(wording, meetingDate) {
   if (/\btoday\b/.test(value)) return meetingDate;
   if (/\btomorrow\b/.test(value)) return isoDateOffset(meetingDate, 1);
   const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  // A weekday nested inside a relational phrase is context, not necessarily
+  // the event date. "The weekend before Monday" must remain useful wording; it
+  // must not be silently converted into Monday's calendar date.
+  const relationalWeekday = /\b(?:weekend|day|week)\s+(?:before|after|following|prior to)\s+(?:this |next )?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|\b(?:before|after|following|prior to)\s+(?:the )?(?:this |next )?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(value);
+  if (relationalWeekday) return '';
   const named = weekdays.findIndex((day) => new RegExp(`\\b(?:this |next )?${day}\\b`).test(value));
   if (named >= 0) {
     const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
@@ -540,17 +566,37 @@ const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?mi
 const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
 const ACTION_IMPERATIVE_PATTERN = /^\s*(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
+const ACTION_DECISION_RESOLUTION_PATTERN = /\b(?:try(?:ing)? to work out|(?:have|has|got|need(?:s)?) to (?:work (?:out|through)|decide|determine|resolve|plan through)|need(?:s)? to (?:confirm|clarify)|figure out)\b/i;
 const DISCUSSION_DECISION_PATTERN = /\b(?:agreed|decided|confirmed|approved|accepted|selected|settled|concluded|signed off|will proceed|going ahead|the decision)\b/i;
 const DISCUSSION_QUESTION_PATTERN = /\?|\b(?:open question|outstanding|to be confirmed|to be decided|not (?:yet )?(?:decided|confirmed|clear|resolved)|need to (?:confirm|clarify|determine|decide)|whether|which option|who will)\b/i;
 const LOW_INFORMATION_UTTERANCE = /^(?:yes|yeah|yep|no|nope|okay|ok|right|fine|great|thanks|thank you|sure|agreed|exactly|correct|perfect|lovely|brilliant|understood|makes sense|i see|mm+|uh+|hello|hi|bye)[.!? ]*$/i;
 
+function isDecisionResolutionCommitment(value) {
+  const source = text(value, 2000);
+  if (!ACTION_DECISION_RESOLUTION_PATTERN.test(source)) return false;
+  // Questions about whether clarification is needed are not themselves an
+  // accepted task. The surrounding acceptance machinery can still promote a
+  // request when a later turn genuinely accepts it.
+  return !/\?\s*$/.test(source) && !/^\s*(?:who|what|when|where|why|how|do|does|did|is|are|can|could|would|will|anything)\b/i.test(source);
+}
+
 function actionEvidenceDisposition(action, evidence) {
   const source = text(evidence, 15000);
   if (!source) return 'unclear';
-  if (/\b(?:will not|won't|shall not|no action|do not need to|does not need to|not going to)\b/i.test(source)) return 'rejected';
+  const actionTokens = contentTokens(action).slice(0, 12);
+  const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
+  const predicateWords = [...new Set(predicateGroups.flat())];
+  const directlyNegatedPredicate = predicateWords.some((verb) => new RegExp(
+    `\\b(?:will not|won't|shall not|not going to)\\b(?:[\\s\\S]*?\\b\\w+\\b){0,5}[\\s\\S]*?\\b${verb}(?:s|ed|ing)?\\b`, 'i'
+  ).test(source));
+  // Negation belongs to its clause. An availability constraint such as “I
+  // won't be around” can be the reason another person must plan or reschedule;
+  // it must not reject every action in the surrounding evidence window.
+  if (/\b(?:no action|do not need to|does not need to)\b/i.test(source) || directlyNegatedPredicate) return 'rejected';
   const accepted = ACTION_ACCEPTANCE_PATTERN.test(source);
   const requested = ACTION_REQUEST_PATTERN.test(source);
-  const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source) || accepted;
+  const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source)
+    || isDecisionResolutionCommitment(source) || accepted;
   if (ACTION_ADMIN_PATTERN.test(action) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
   if (ACTION_COMPLETED_PATTERN.test(source) && !hasCommitment) return 'completed';
   if (requested && !accepted && !ACTION_COMMITMENT_PATTERN.test(source.replace(ACTION_REQUEST_PATTERN, '')) && !NAMED_WILL_PATTERN.test(source)) return 'unaccepted_request';
@@ -573,6 +619,7 @@ function actionCandidateInventory(units = []) {
       || ACTION_REQUEST_PATTERN.test(unit.text)
       || ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text)
       || ACTION_FOLLOW_UP_PATTERN.test(unit.text)
+      || isDecisionResolutionCommitment(unit.text)
       || ACTION_IMPERATIVE_PATTERN.test(unit.text);
     const contextualAcceptance = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
       && (ACTION_REQUEST_PATTERN.test(previous) || ACTION_COMMITMENT_PATTERN.test(previous) || NAMED_WILL_PATTERN.test(previous)
@@ -590,16 +637,18 @@ function actionCandidateInventory(units = []) {
       contextualAcceptance || acceptedRequestAhead ? 'acceptance' : '',
       ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text) ? 'obligation' : '',
       ACTION_FOLLOW_UP_PATTERN.test(unit.text) ? 'follow_up' : '',
+      isDecisionResolutionCommitment(unit.text) ? 'decision_resolution' : '',
       ACTION_IMPERATIVE_PATTERN.test(unit.text) ? 'imperative' : ''
     ].filter(Boolean);
     candidates.push({
       candidateId: stableId('candidate', unit.id),
       focusEvidenceId: unit.id,
       evidenceIds: ids,
-      dispositionHint: actionEvidenceDisposition('', context),
+      dispositionHint: actionEvidenceDisposition(unit.text, context),
       cueKinds,
       priority: (contextualAcceptance || acceptedRequestAhead ? 4 : 0)
         + (cueKinds.includes('commitment') ? 3 : 0)
+        + (cueKinds.includes('decision_resolution') ? 3 : 0)
         + (cueKinds.includes('obligation') || cueKinds.includes('follow_up') ? 2 : 0)
         + 1,
       sequence: unit.sequence,
@@ -703,17 +752,24 @@ function candidatePromptPack(candidates = [], options = {}) {
 function candidateRepresented(candidate, records = []) {
   const focus = candidate?.focusEvidenceId;
   const candidateIds = new Set(candidate?.evidenceIds || []);
+  const candidateEvidence = candidate?.context || candidate?.focusText || '';
   return (Array.isArray(records) ? records : []).some((record) => {
     const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
     const recordText = record?.action || record?.text || '';
     if (focus && recordIds.includes(focus)) {
-      if (record?.action && !actionEvidenceFits(record.action, candidate.focusText || '')) return false;
-      return evidenceSupportScore(recordText, candidate.focusText || candidate.context || '') >= 0.16;
+      if (record?.action && !actionEvidenceFits(record.action, candidateEvidence)) return false;
+      return evidenceSupportScore(recordText, candidateEvidence) >= 0.16;
     }
-    const sharesEvidence = recordIds.some((id) => candidateIds.has(id));
+    const sharedIds = recordIds.filter((id) => candidateIds.has(id));
+    const sharesEvidence = sharedIds.length > 0;
     if (!sharesEvidence) return false;
-    if (record?.action && !actionEvidenceFits(record.action, candidate.focusText || '')) return false;
-    return evidenceSupportScore(recordText, candidate.focusText || candidate.context || '') >= 0.24;
+    // A neighbouring candidate window can overlap another action's evidence.
+    // Unless the generated record cites this candidate's focus turn directly,
+    // keep the comparison anchored to that focus so adjacent deliverables do
+    // not incorrectly mark one another as covered.
+    const comparisonEvidence = sharedIds.length >= 2 ? candidateEvidence : (candidate?.focusText || candidateEvidence);
+    if (record?.action && !actionEvidenceFits(record.action, comparisonEvidence)) return false;
+    return evidenceSupportScore(recordText, comparisonEvidence) >= 0.24;
   });
 }
 
@@ -874,6 +930,19 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         const monthNames = ['', 'jan(?:uary)?', 'feb(?:ruary)?', 'mar(?:ch)?', 'apr(?:il)?', 'may', 'jun(?:e)?', 'jul(?:y)?', 'aug(?:ust)?', 'sep(?:tember)?', 'oct(?:ober)?', 'nov(?:ember)?', 'dec(?:ember)?'];
         exactDateSupported = new RegExp(`\\b0?${Number(day)}(?:st|nd|rd|th)?\\b[\\s\\S]{0,20}\\b${monthNames[Number(month)]}\\b[\\s\\S]{0,20}\\b${year}\\b`, 'i').test(evidenceText)
           || evidenceText.includes(action.timing.exactDate);
+        const safelyDerivedDate = wordingSupported ? relativeExactDate(action.timing.wording, options.meetingDate) : '';
+        exactDateSupported = exactDateSupported || safelyDerivedDate === action.timing.exactDate;
+        if (!exactDateSupported) {
+          const unsupportedExactDate = action.timing.exactDate;
+          if (enforceEvidence) action.timing.exactDate = '';
+          const flag = normaliseFlag({
+            kind: 'timing',
+            message: `The exact date ${unsupportedExactDate} was not supported by the cited wording and has been removed; confirm the retained timing wording if needed.`,
+            evidenceIds: action.evidenceIds
+          }, flags.length);
+          flags.push(flag);
+          action.reviewFlagIds.push(flag.id);
+        }
       }
       if (!wordingSupported && !exactDateSupported) {
         const unsupportedTiming = action.timing.wording || action.timing.exactDate;

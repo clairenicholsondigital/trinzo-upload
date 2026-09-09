@@ -244,6 +244,71 @@ test('an accepted request spanning adjacent turns is retained as one action cand
   assert.ok(actionCandidateInventory(units).some((candidate) => candidate.evidenceIds.includes('T0700') && candidate.evidenceIds.includes('T0701')));
 });
 
+test('an availability constraint does not reject the planning commitment it explains', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0702', speaker: 'Stuart', text: "I won't be available because I'll be carrying out another audit.", classification: 'keep' },
+    { id: 'T0703', speaker: 'Stuart', text: 'You might want to review the preparation timeline, Jacqui.', classification: 'keep' },
+    { id: 'T0704', speaker: 'Jacqui', text: 'Okay, Niamh, we need to plan through that then.', classification: 'keep' },
+    { id: 'T0705', speaker: 'Stuart', text: "I won't be around between the 14th and the 17th.", classification: 'keep' }
+  ]);
+  const candidate = actionCandidateInventory(units).find((item) => item.focusEvidenceId === 'T0704');
+  assert.ok(candidate);
+  assert.equal(candidate.dispositionHint, 'accepted_request');
+  assert.ok(candidate.cueKinds.includes('acceptance'));
+});
+
+test('assigned work to resolve an open decision is a dedicated action candidate', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0706', speaker: 'Niamh', text: 'Will this be a separate software track?', classification: 'keep' },
+    { id: 'T0707', speaker: 'Stuart', text: "I'm trying to work that out at the moment.", classification: 'keep' },
+    { id: 'T0708', speaker: 'Stuart', text: "I've got to work through the logistics and look at the risk analysis before deciding.", classification: 'keep' }
+  ]);
+  const candidate = actionCandidateInventory(units).find((item) => item.focusEvidenceId === 'T0708');
+  assert.ok(candidate);
+  assert.equal(candidate.dispositionHint, 'committed');
+  assert.ok(candidate.cueKinds.includes('decision_resolution'));
+});
+
+test('a polished execution verb can be grounded by an accepted multi-turn commitment chain', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0710', speaker: 'Alex', text: 'The way Priya and I are going to approach the proposed lead-generation process is to check it with you first.', classification: 'keep' },
+    { id: 'T0711', speaker: 'Alex', text: 'If you agree, what we want to do is take a very small slice and manually do it.', classification: 'keep' },
+    { id: 'T0712', speaker: 'Sam', text: 'Yeah, I agree.', classification: 'keep' },
+    { id: 'T0713', speaker: 'Alex', text: "Then we're going to test it.", classification: 'keep' }
+  ]);
+  const supported = normaliseAgentResult({ actions: [{
+    action: 'Conduct a small-scale manual test of the proposed lead-generation process after stakeholder review to evaluate whether it produces the desired outcomes.',
+    owners: ['Alex', 'Priya'],
+    evidenceIds: ['T0710', 'T0711', 'T0712', 'T0713']
+  }] }, units, 'actions');
+  assert.equal(supported.actions.length, 1);
+  assert.deepEqual(supported.actions[0].evidenceIds, ['T0710', 'T0711', 'T0712', 'T0713']);
+
+  const unsupported = normaliseAgentResult({ actions: [{
+    action: 'Book the external audit visit.',
+    owners: ['Alex'],
+    evidenceIds: ['T0710', 'T0711', 'T0712', 'T0713']
+  }] }, units, 'actions');
+  assert.deepEqual(unsupported.actions, []);
+});
+
+test('a compound completion action is grounded by its evidenced concrete signing step', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0720', speaker: 'Jacqui', text: 'There are a few audit participation documents that need signing.', classification: 'keep' },
+    { id: 'T0721', speaker: 'Niamh', text: 'Okay, I can sign the compliance guidance acknowledgement and code of conduct.', classification: 'keep' },
+    { id: 'T0722', speaker: 'Jacqui', text: 'The training attestation is part of that same required package.', classification: 'keep' },
+    { id: 'T0723', speaker: 'Niamh', text: 'Yes, I will do all of those before taking part in the audit.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Complete and sign the required audit participation documentation, including the compliance acknowledgement, code of conduct and training attestation.',
+    owners: ['Niamh'],
+    timing: { kind: 'deadline', wording: 'Before taking part in the audit', exactDate: '' },
+    evidenceIds: ['T0720', 'T0721', 'T0722', 'T0723']
+  }] }, units, 'actions');
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].owners, ['Niamh']);
+});
+
 test('hybrid candidate ledgers retain implicit obligations and do not discard long-meeting candidates', () => {
   const units = normaliseSourceUnits(Array.from({ length: 90 }, (_, index) => ({
     id: `T${String(index + 1).padStart(4, '0')}`,
@@ -344,6 +409,24 @@ test('relative timing is resolved from the meeting date while dependency timing 
   assert.equal(normaliseAgentResult({ actions: [{
     action: 'Send the report.', owner: 'Priya', timing: { kind: 'dependency', wording: 'once approval is received' }, evidenceIds: ['T0002']
   }] }, sourceUnits, 'actions', { enforceEvidence: false }).actions[0].timing.kind, 'dependency');
+});
+
+test('unsupported exact dates are removed independently without deleting supported timing wording', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T1010', speaker: 'Stuart', text: 'We will hold a face-to-face catch-up at the hotel at the weekend before the Monday audit start.', classification: 'keep' }
+  ]);
+  assert.equal(relativeExactDate('At the weekend before the Monday audit start', '2026-06-22'), '');
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Hold a face-to-face catch-up at the hotel before the audit starts.',
+    owners: ['Stuart'],
+    timing: { kind: 'target', wording: 'At the weekend before the Monday audit start', exactDate: '2026-06-29' },
+    evidenceIds: ['T1010']
+  }] }, units, 'actions', { meetingDate: '2026-06-22' });
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].timing, {
+    kind: 'target', wording: 'At the weekend before the Monday audit start', exactDate: ''
+  });
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /exact date/i.test(flag.message)));
 });
 
 test('summary and objectives are grounded in validated content rather than filled to a quota', () => {

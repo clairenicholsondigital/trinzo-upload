@@ -12,6 +12,7 @@ const {
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
   hybridActionSourceInfo,
+  strongUnresolvedActionCandidateFlags,
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
@@ -19,13 +20,16 @@ const {
 test('hybrid recovery, referee and critic prompts keep the complete transcript last', () => {
   const transcript = '[T0001] Priya: I will send the report tomorrow.';
   const candidate = { candidateId: 'c1', sourcePass: 'staged', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001'], record: { action: 'Send the report.', owners: ['Priya'], evidenceIds: ['T0001'] } };
-  const recovery = meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, candidates: [candidate], salientDetails: [] });
-  const referee = meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [candidate], salientDetails: [] });
-  const critic = meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [candidate], salientDetails: [] });
+  const discussion = [{ topic: 'Delivery', openQuestions: [{ text: 'Who will resolve the release route?', evidenceIds: ['T0001'] }] }];
+  const recovery = meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, discussion, candidates: [candidate], salientDetails: [] });
+  const referee = meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, discussion, candidates: [candidate], salientDetails: [] });
+  const critic = meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion, actions: [], candidates: [candidate], salientDetails: [] });
   for (const prompt of [recovery, referee, critic]) {
     assert.ok(prompt.endsWith(transcript));
     assert.match(prompt, /schemaVersion 4/);
     assert.match(prompt, /evidence/i);
+    assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
+    assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
 });
 
@@ -34,6 +38,31 @@ test('hybrid action provenance distinguishes corroborated and single-source reco
   const from = (sourcePass) => hybridCandidateLedgerFromResult({ actions: [action] }, sourcePass)[0];
   assert.deepEqual(hybridActionSourceInfo(action, [from('primary')]).discoverySources, ['primary']);
   assert.deepEqual(hybridActionSourceInfo(action, [from('primary'), from('staged')]).discoverySources.sort(), ['primary', 'staged']);
+});
+
+test('strong unresolved decision and accepted-planning candidates remain visible for review', () => {
+  const candidates = [
+    {
+      candidateId: 'decision', focusEvidenceId: 'T0100', evidenceIds: ['T0100', 'T0101'],
+      cueKinds: ['decision_resolution'], dispositionHint: 'committed', priority: 7,
+      focusText: 'I have got to work through the logistics before deciding.'
+    },
+    {
+      candidateId: 'planning', focusEvidenceId: 'T0200', evidenceIds: ['T0200', 'T0201'],
+      cueKinds: ['commitment', 'acceptance', 'decision_resolution'], dispositionHint: 'accepted_request', priority: 8,
+      focusText: 'Okay, we need to plan through that timeline.'
+    }
+  ];
+  const flags = strongUnresolvedActionCandidateFlags(candidates, []);
+  assert.equal(flags.length, 2);
+  assert.ok(flags.every((flag) => flag.kind === 'possible_missed_follow_up'));
+
+  const represented = strongUnresolvedActionCandidateFlags(candidates, [{
+    action: 'Work through the logistics before deciding.', evidenceIds: ['T0100', 'T0101']
+  }]);
+  assert.equal(represented.length, 1);
+  assert.match(represented[0].message, /open decision/i);
+  assert.deepEqual(represented[0].evidenceIds, ['T0200', 'T0201']);
 });
 
 test('discussion prompt treats the prepared transcript as evidence and requires the versioned structure', () => {
@@ -77,12 +106,15 @@ test('action prompt carries bounded contextual candidates without replacing the 
   const transcript = '[T0001] Alex: Could you send the report?\n[T0002] Priya: Yes, I will do that.';
   const prompt = meetingMinutesAgentPrompt({
     stage: 'actions', transcript, details: {},
+    discussionContext: [{ topic: 'Report', openQuestions: [{ text: 'Whether the report is ready.', evidenceIds: ['T0001'] }] }],
     actionCandidates: [{ candidateId: 'candidate-1', focusEvidenceId: 'T0001', evidenceIds: ['T0001', 'T0002'], dispositionHint: 'accepted_request', context: 'Alex: Could you send the report? Priya: Yes.' }]
   });
   assert.match(prompt, /ACTION CANDIDATE EVIDENCE WINDOWS TO ASSESS/);
   assert.match(prompt, /candidate-1/);
   assert.match(prompt, /recall aid, not an allowlist/);
   assert.match(prompt, /unaccepted suggestions/);
+  assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
+  assert.match(prompt, /responsibility to resolve it/i);
   assert.ok(prompt.endsWith(transcript));
 });
 
