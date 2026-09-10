@@ -251,6 +251,10 @@ test('idea-only contemplation is not promoted but a concrete recommendation rema
   assert.match(result.actions[0].action, /written recommendation/);
 });
 
+test('returning later with an idea remains contemplation rather than an action', () => {
+  assert.equal(isIdeaOnlyContemplation('Come back next month with a proposed solution idea for the visitor parking problem.'), true);
+});
+
 test('valid but unrelated evidence IDs cannot launder an unsupported action', () => {
   const units = normaliseSourceUnits([
     { id: 'T0600', speaker: 'Alex', text: 'The report was discussed as background.', classification: 'keep' },

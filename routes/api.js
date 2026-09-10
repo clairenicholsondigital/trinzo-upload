@@ -166,6 +166,7 @@ const {
   applyProposal,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
   normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
+  isIdeaOnlyContemplation,
   isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag,
   isSalientCoverageFlag: isMeetingAgentCoverageFlag,
   isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
@@ -8974,6 +8975,7 @@ function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
   const sourceInfo = hybridActionSourceInfo(action, candidates);
   const evidence = surroundingEvidence(sourceUnits, action.evidenceIds).filter((unit) => unit.cited)
     .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
+  if (isIdeaOnlyContemplation(`${action.action} ${evidence}`)) return false;
   const support = evidenceSupportScore(action.action, evidence);
   const disposition = actionEvidenceDisposition(action.action, evidence);
   if (!['committed', 'accepted_request', 'conditional_commitment'].includes(disposition)) return false;
