@@ -16,6 +16,7 @@ const {
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
   acceptedVisitAssignmentActions,
+  strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,
@@ -290,6 +291,20 @@ test('corroborated actions omitted by the referee are recovered only as review p
   assert.deepEqual(recovered[0].owners, []);
   assert.deepEqual(corroboratedOmittedActionProposals([primary], [], units), []);
   assert.deepEqual(corroboratedOmittedActionProposals([primary, staged], [recovered[0]], units), []);
+});
+
+test('one strong Agent discovery plus a deterministic commitment remains reviewable after consolidation', () => {
+  const units = [{ id: 'T0001', sequence: 1, speaker: 'Alex', text: 'We will run a four-week pilot after the manual test succeeds.', classification: 'keep' }];
+  const action = { action: 'Run a four-week pilot after the manual test succeeds.', owners: ['Alex'], timing: { kind: 'dependency', wording: 'after the manual test succeeds', exactDate: '' }, evidenceIds: ['T0001'] };
+  const primary = hybridCandidateLedgerFromResult({ actions: [action] }, 'primary')[0];
+  const deterministic = {
+    candidateId: 'det-1', sourcePass: 'deterministic', recordType: 'action', text: units[0].text,
+    dispositionHint: 'conditional_commitment', evidenceIds: ['T0001'], record: { action: units[0].text, owners: [], evidenceIds: ['T0001'] }
+  };
+  const proposals = strongOmittedDiscoveryProposals([primary, deterministic], [], units);
+  assert.equal(proposals.length, 1);
+  assert.match(proposals[0].action, /four-week pilot/i);
+  assert.deepEqual(strongOmittedDiscoveryProposals([primary, deterministic], [action], units), []);
 });
 
 test('an evidenced operational gap is reviewable but an unaccepted suggestion is not promoted', () => {

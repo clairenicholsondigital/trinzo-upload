@@ -9044,9 +9044,15 @@ function acceptedVisitAssignmentActions(sourceUnits = [], records = [], options 
     };
     if (!(records || []).some((record) => hybridCandidateMatchesRecord({ recordType: 'action', text: action.action, evidenceIds: action.evidenceIds, record: action }, record))) results.push(action);
   }
-  return normaliseAgentResult({ actions: results }, sourceUnits, 'actions', {
+  const normalised = normaliseAgentResult({ actions: results }, sourceUnits, 'actions', {
     enforceEvidence: false, meetingDate: options.meetingDate
   }).actions;
+  const validIds = new Set(units.map((unit) => unit.id));
+  for (const action of normalised) {
+    const source = results.find((candidate) => candidate.id === action.id);
+    if (source) action.evidenceIds = (source.evidenceIds || []).filter((id) => validIds.has(id));
+  }
+  return normalised;
 }
 
 function operationalGapActionText(questionText = '') {
@@ -10286,6 +10292,7 @@ router.stagedEvaluation = {
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
   acceptedVisitAssignmentActions,
+  strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
   criticConfirmedActionPromotions,
