@@ -8712,10 +8712,16 @@ function hybridActionType(value = '') {
   return verb;
 }
 
+function hybridActionTypes(value = '') {
+  const source = meetingMinutesAgentText(value, 1600).toLowerCase();
+  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(confirm|clarify|determine|decide|resolve|figure out|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|update|revise|amend|change|edit|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
+  return new Set([...matches].map((match) => hybridActionType(match[1])).filter(Boolean));
+}
+
 function hybridActionsEquivalent(left = '', right = '') {
-  const leftType = hybridActionType(left);
-  const rightType = hybridActionType(right);
-  if (leftType && rightType && leftType !== rightType) return false;
+  const leftTypes = hybridActionTypes(left);
+  const rightTypes = hybridActionTypes(right);
+  if (leftTypes.size && rightTypes.size && ![...leftTypes].some((type) => rightTypes.has(type))) return false;
   return hybridTokenOverlap(left, right) >= 0.55;
 }
 
@@ -8728,13 +8734,13 @@ function hybridCandidateMatchesRecord(candidate, record) {
   if (!sharesEvidence && score < 0.55) return false;
   if (sharesEvidence && score < 0.25) return false;
   if (candidate?.recordType === 'action') {
-    const candidateType = hybridActionType(candidate?.text || candidate?.record?.action);
-    const recordType = hybridActionType(hybridRecordText(record));
+    const candidateTypes = hybridActionTypes(candidate?.text || candidate?.record?.action);
+    const recordTypes = hybridActionTypes(hybridRecordText(record));
     // Adjacent actions routinely cite the same exchange. Testing, sending and
     // deciding are separate accountability items even when their nouns and
     // evidence IDs overlap, so incompatible predicates can never cover one
     // another.
-    if (candidateType && recordType && candidateType !== recordType) return false;
+    if (candidateTypes.size && recordTypes.size && ![...candidateTypes].some((type) => recordTypes.has(type))) return false;
     const candidateOwners = candidate?.record?.owners || [];
     const recordOwners = record?.owners || [];
     if (candidateOwners.length && recordOwners.length && !candidateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()))) return false;

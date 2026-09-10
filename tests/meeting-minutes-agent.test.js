@@ -157,6 +157,12 @@ test('shared evidence cannot make a different action type cover a deliverable', 
   assert.equal(hybridCandidateMatchesRecord(candidate, {
     action: 'Check the validation report.', owners: ['Priya'], evidenceIds: ['T0001']
   }), true);
+  assert.equal(hybridCandidateMatchesRecord({
+    ...candidate, text: 'Share the completed risk analysis.'
+  }, {
+    action: 'Complete the risk assessment, determine the applicable standards and share the risk analysis.',
+    owners: ['Priya'], evidenceIds: ['T0001']
+  }), true, 'a compound action is compatible when it contains the candidate deliverable type');
 });
 
 test('the independent critic can promote a strongly evidenced single-source referee action', () => {
