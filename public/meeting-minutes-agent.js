@@ -445,7 +445,12 @@
       } else {
         content = '<pre>' + escapeHtml(proposalRecord(change.after || change.before)) + '</pre>';
       }
-      return '<label class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked><span class="proposal-kind">' + escapeHtml(changeLabels[change.type] || 'Suggested change') + '</span><div class="proposal-content">' + content + '</div></label>';
+      if (change.reviewContext) {
+        content += '<div class="proposal-rationale"><div><strong>Why this needs review:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
+          + (change.reviewContext.label ? '<div class="commitment-chain"><span>Evidence path</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
+          + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds) : '') + '</div>';
+      }
+      return '<div class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked aria-label="Select this proposed change"><span class="proposal-kind">' + escapeHtml(changeLabels[change.type] || 'Suggested change') + '</span><div class="proposal-content">' + content + '</div></div>';
     }).join('');
     panel.scrollIntoView({behavior:'smooth',block:'nearest'});
   }

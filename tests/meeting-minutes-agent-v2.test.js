@@ -27,6 +27,7 @@ const {
   actionEvidenceDisposition,
   actionCandidateInventory,
   actionCommitmentThreadInventory,
+  actionCommitmentChainInventory,
   discussionCandidateInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
@@ -455,6 +456,62 @@ test('the completeness audit candidate set excludes represented evidence and kee
   }]);
   assert.ok(!uncovered.some((candidate) => candidate.focusEvidenceId === 'T0760'));
   assert.ok(uncovered.some((candidate) => candidate.focusEvidenceId === 'T0761'));
+});
+
+test('commitment chains reconnect a scoped assignment after unrelated intervening turns', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T1000', sequence: 1000, speaker: 'Priya Shah', text: 'Could somebody inspect the training room?', classification: 'keep' },
+    { id: 'T1001', sequence: 1001, speaker: 'Morgan Reed', text: 'I can visit on Thursday.', classification: 'keep' },
+    ...Array.from({ length: 25 }, (_, index) => ({
+      id: `T${String(1002 + index).padStart(4, '0')}`, sequence: 1002 + index,
+      speaker: index % 2 ? 'Alex Green' : 'Priya Shah', text: `Background update number ${index + 1} was discussed.`, classification: 'keep'
+    })),
+    { id: 'T1027', sequence: 1027, speaker: 'Priya Shah', text: 'Morgan, when you are there, check the screen, wifi, lectern and clicker.', classification: 'keep' },
+    { id: 'T1028', sequence: 1028, speaker: 'Morgan Reed', text: 'Yes, I will do that.', classification: 'keep' }
+  ]);
+  const chains = actionCommitmentChainInventory(units);
+  const chain = chains.find((candidate) => candidate.evidenceIds.includes('T1000') && candidate.evidenceIds.includes('T1028'));
+  assert.ok(chain);
+  assert.equal(chain.recordType, 'action_chain');
+  assert.equal(chain.dispositionHint, 'accepted_request');
+  assert.deepEqual(chain.ownerHints, ['Morgan Reed']);
+  assert.ok(chain.timingEvidenceIds.includes('T1001'));
+  assert.ok(chain.signals.request && chain.signals.offer && chain.signals.commitment);
+});
+
+test('commitment chains keep an unaccepted offer reviewable and reject completed work', () => {
+  const offer = normaliseSourceUnits([
+    { id: 'T1100', sequence: 1100, speaker: 'Jenny Gough', text: 'I could review the proposed label if you wanted.', classification: 'keep' }
+  ]);
+  const offered = actionCommitmentChainInventory(offer);
+  assert.equal(offered.length, 1);
+  assert.equal(offered[0].dispositionHint, 'proposal');
+  assert.deepEqual(offered[0].ownerHints, ['Jenny Gough']);
+
+  const completed = normaliseSourceUnits([
+    { id: 'T1110', sequence: 1110, speaker: 'Jenny Gough', text: 'I sent the final label yesterday.', classification: 'keep' }
+  ]);
+  assert.deepEqual(actionCommitmentChainInventory(completed), []);
+});
+
+test('commitment chains flag an ambiguous pronoun instead of selecting an antecedent', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T1200', sequence: 1200, speaker: 'Alex Green', text: 'Please review the safety report and the validation plan.', classification: 'keep' },
+    { id: 'T1201', sequence: 1201, speaker: 'Morgan Reed', text: 'I will update it tomorrow.', classification: 'keep' }
+  ]);
+  const chain = actionCommitmentChainInventory(units).find((candidate) => candidate.evidenceIds.includes('T1201'));
+  assert.ok(chain);
+  assert.ok(chain.uncertainties.some((item) => item.kind === 'unclear_reference'));
+  assert.ok(chain.scores.action < 0.78);
+});
+
+test('commitment chains do not turn idea parking or rhetorical consequences into committed work', () => {
+  const chains = actionCommitmentChainInventory(normaliseSourceUnits([
+    { id: 'T1300', sequence: 1300, speaker: 'Alex Green', text: "I'm not doing clipboards, I'll get lynched.", classification: 'keep' },
+    { id: 'T1301', sequence: 1301, speaker: 'Priya Shah', text: 'Shall we all just have a think about it and maybe come back next month with our best idea?', classification: 'keep' }
+  ]));
+  assert.ok(chains.every((chain) => !['committed', 'accepted_request'].includes(chain.dispositionHint)));
+  assert.ok(chains.every((chain) => chain.scores.action < 0.5));
 });
 
 test('adaptive recovery triggers for uncovered high-value discussion and action evidence', () => {

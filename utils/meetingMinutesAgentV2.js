@@ -752,7 +752,7 @@ const ACTION_CONCRETE_INTENTION_PATTERN = /\b(?:(?:i|we)\s+(?:want|intend|plan|e
 const ACTION_JOINT_INTENTION_PATTERN = /\b(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+and\s+I|I\s+and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,})\s+(?:am\s+|are\s+)?going\s+to\s+(?:arrange|assess|book|build|check|clarify|complete|confirm|contact|create|decide|define|determine|document|draft|email|establish|finalise|finalize|fix|forward|investigate|issue|message|prepare|provide|record|resolve|review|run|schedule|send|share|submit|take|test|track|update|validate|verify|write)\b/i;
 const ACTION_SCHEDULED_DELIVERABLE_PATTERN = /\b(?:assessment|audit|call|check|follow[- ]?up|inspection|review|session|test|testing|validation|workshop)\s+(?:is|are|has been|have been|was|were)\s+(?:agreed|booked|planned|scheduled)\s+(?:for|to|on)\b/i;
 const NAMED_WILL_PATTERN = /\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+will\b/;
-const ACTION_REQUEST_PATTERN = /\b(?:please|can you|could you|would you|will you)\b/i;
+const ACTION_REQUEST_PATTERN = /\b(?:please|can (?:you|somebody|someone)|could (?:you|somebody|someone)|would (?:you|somebody|someone)|will (?:you|somebody|someone))\b/i;
 const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will do|can do|i can|we can|that's fine|that works)\b/i;
 const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|consider|considering|possible|potentially|it would be good|worth thinking)\b/i;
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
@@ -760,8 +760,8 @@ const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status
 const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite)\b/i;
 const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
-const ACTION_IMPERATIVE_PATTERN = /^\s*(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
-const ACTION_CONCRETE_OFFER_PATTERN = /\bI\s+(?:can|could|would be able to|am available to)\s+(?:attend|check|collect|contact|deliver|go|handle|prepare|provide|review|send|test|visit)\b/i;
+const ACTION_IMPERATIVE_PATTERN = /^\s*(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s*,\s*)?(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
+const ACTION_CONCRETE_OFFER_PATTERN = /\b(?:I|we)\s+(?:can|could|would be able to|am available to|are available to)\s+(?:have a look at|attend|check|collect|contact|deliver|go|handle|prepare|provide|review|send|speak|test|visit)\b/i;
 const ACTION_DECISION_RESOLUTION_PATTERN = /\b(?:try(?:ing)? to work out|(?:have|has|got|need(?:s)?) to (?:work (?:out|through)|decide|determine|resolve|plan through)|need(?:s)? to (?:confirm|clarify)|figure out)\b/i;
 const DISCUSSION_DECISION_PATTERN = /\b(?:agreed|decided|confirmed|approved|accepted|selected|settled|concluded|signed off|will proceed|going ahead|the decision)\b/i;
 const DISCUSSION_QUESTION_PATTERN = /\?|\b(?:open question|outstanding|to be confirmed|to be decided|not (?:yet )?(?:decided|confirmed|clear|resolved)|need to (?:confirm|clarify|determine|decide)|whether|which option|who will)\b/i;
@@ -822,6 +822,7 @@ function actionCandidateInventory(units = []) {
       || ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text)
       || ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(unit.text)
       || ACTION_FOLLOW_UP_PATTERN.test(unit.text)
+      || ACTION_CONCRETE_OFFER_PATTERN.test(unit.text)
       || isDecisionResolutionCommitment(unit.text)
       || ACTION_IMPERATIVE_PATTERN.test(unit.text);
     const contextualAcceptance = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
@@ -830,6 +831,8 @@ function actionCandidateInventory(units = []) {
     const acceptedRequestAhead = ACTION_REQUEST_PATTERN.test(unit.text) && ACTION_ACCEPTANCE_PATTERN.test(following);
     const acceptedOfferAhead = ACTION_CONCRETE_OFFER_PATTERN.test(unit.text)
       && (ACTION_REQUEST_PATTERN.test(following) || ACTION_IMPERATIVE_PATTERN.test(following));
+    const explicitAcceptedCommitment = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
+      && (ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text));
     if (!directCue && !contextualAcceptance && !acceptedOfferAhead) continue;
     const windowStart = Math.max(0, index - 2);
     const windowEnd = Math.min(rows.length, index + 3);
@@ -840,7 +843,8 @@ function actionCandidateInventory(units = []) {
       ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text)
         || ACTION_JOINT_INTENTION_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
       ACTION_REQUEST_PATTERN.test(unit.text) ? 'request' : '',
-      contextualAcceptance || acceptedRequestAhead ? 'acceptance' : '',
+      ACTION_CONCRETE_OFFER_PATTERN.test(unit.text) ? 'offer' : '',
+      contextualAcceptance || acceptedRequestAhead || explicitAcceptedCommitment ? 'acceptance' : '',
       acceptedOfferAhead ? 'acceptance' : '',
       ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text) ? 'obligation' : '',
       ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(unit.text) ? 'scheduled' : '',
@@ -868,6 +872,233 @@ function actionCandidateInventory(units = []) {
   // so a candidate omitted from the first request remains available to the
   // targeted completeness audit rather than disappearing at extraction time.
   return candidates;
+}
+
+const CHAIN_REFERENCE_PATTERN = /\b(?:it|that|this|these|those|there|the former|the latter|that one|this one)\b/i;
+const CHAIN_REJECTION_PATTERN = /\b(?:(?:will not|won't|do not|don't|not going to)\s+(?:do|proceed|continue|send|share|review|update|complete|test|schedule|arrange|accept|approve|need|plan|intend|want)|no action|leave (?:it|that) for now|defer(?:red)?|park(?:ed|ing)?)\b/i;
+const CHAIN_TIME_PATTERN = /\b(?:today|tomorrow|this (?:week|month)|next (?:week|month)|(?:next )?(?:monday|tuesday|wednesday|thursday|friday)|before [^.,;]{2,60}|after [^.,;]{2,60}|once [^.,;]{2,60}|until [^.,;]{2,60}|by (?:the )?\d{1,2}(?:st|nd|rd|th)?(?:\s+[A-Za-z]+)?|\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)\b/i;
+const CHAIN_GENERIC_TOKENS = new Set([
+  'about', 'action', 'actually', 'after', 'again', 'also', 'another', 'before', 'could',
+  'discussion', 'going', 'have', 'just', 'meeting', 'might', 'need', 'needed', 'please',
+  'probably', 'really', 'should', 'something', 'that', 'their', 'them', 'then', 'there',
+  'these', 'they', 'thing', 'things', 'this', 'those', 'want', 'will', 'with', 'would'
+]);
+
+function chainActionFamily(value = '') {
+  const words = contentTokens(value);
+  const group = ACTION_VERB_GROUPS.find((verbs) => words.some((word) => verbs.includes(word)));
+  return group ? group[0] : '';
+}
+
+function chainAnchors(value = '', speakerNames = []) {
+  const people = new Set(speakerNames.flatMap((name) => contentTokens(name)));
+  const verbs = new Set(ACTION_VERB_GROUPS.flat());
+  return [...new Set(materialTokens(value).filter((word) => word.length > 2
+    && !CHAIN_GENERIC_TOKENS.has(word) && !people.has(word) && !verbs.has(word)))].slice(0, 18);
+}
+
+function chainMentionedSpeakers(value = '', speakers = []) {
+  const sourceTokens = new Set(contentTokens(value));
+  return speakers.filter((speaker) => {
+    const parts = contentTokens(speaker);
+    if (!parts.length) return false;
+    return parts.every((part) => sourceTokens.has(part))
+      || (parts[0].length >= 3 && sourceTokens.has(parts[0]));
+  });
+}
+
+function chainEventKind(candidate, unit) {
+  const cues = new Set(candidate.cueKinds || []);
+  const source = unit?.text || candidate.focusText || '';
+  if (CHAIN_REJECTION_PATTERN.test(source)) return 'rejection_or_deferral';
+  if (ACTION_COMPLETED_PATTERN.test(source)) return 'completion_or_status';
+  if (cues.has('acceptance') && LOW_INFORMATION_UTTERANCE.test(source)) return 'acceptance';
+  if (cues.has('offer')) return 'offer';
+  if (cues.has('request') || cues.has('imperative')) return 'request_or_assignment';
+  if (cues.has('obligation')) return 'obligation';
+  if (cues.has('scheduled')) return 'scheduled_work';
+  if (cues.has('commitment') || cues.has('follow_up') || cues.has('decision_resolution')) return 'commitment';
+  return 'candidate';
+}
+
+function chainSetOverlap(left = [], right = []) {
+  const a = new Set(left);
+  const b = new Set(right);
+  if (!a.size || !b.size) return 0;
+  const shared = [...a].filter((item) => b.has(item)).length;
+  return shared / Math.min(a.size, b.size);
+}
+
+function chainLinkScore(event, chain) {
+  const prior = chain.events.at(-1);
+  const distance = Number(event.sequence || 0) - Number(prior?.sequence || 0);
+  const totalSpan = Number(event.sequence || 0) - Number(chain.events[0]?.sequence || 0);
+  if (distance < 0 || distance > 48 || totalSpan > 48) return { score: -1, reasons: [] };
+  const reasons = [];
+  let score = 0;
+  const anchorOverlap = chainSetOverlap(event.anchors, chain.anchors);
+  if (anchorOverlap >= 0.5) { score += 5; reasons.push('shared deliverable terms'); }
+  else if (anchorOverlap > 0) { score += 3; reasons.push('shared topic term'); }
+  const chainSpeakers = new Set(chain.speakers);
+  const namedBridge = event.mentionedSpeakers.some((name) => chainSpeakers.has(name))
+    || chain.events.some((item) => item.mentionedSpeakers.includes(event.speaker));
+  if (namedBridge) { score += 3; reasons.push('named participant link'); }
+  const sharedSpeaker = Boolean(event.speaker && chainSpeakers.has(event.speaker));
+  if (sharedSpeaker && distance <= 12) { score += 1; reasons.push('same speaker'); }
+  const lifecycle = new Set(chain.events.map((item) => item.kind));
+  const completesRequest = ['acceptance', 'commitment', 'offer', 'scheduled_work'].includes(event.kind)
+    && (lifecycle.has('request_or_assignment') || lifecycle.has('offer'));
+  if (completesRequest) { score += 2; reasons.push('commitment lifecycle'); }
+  if (event.actionFamily && event.actionFamily === chain.actionFamily) { score += 2; reasons.push('compatible action type'); }
+  const sameTiming = event.timingText && chain.timingTexts.includes(event.timingText.toLowerCase());
+  if (sameTiming) { score += 2; reasons.push('shared timing'); }
+  if (event.referential && (namedBridge || distance <= 4)) { score += 2; reasons.push('referential continuation'); }
+  if (distance <= 4) { score += 2; reasons.push('adjacent exchange'); }
+  else if (distance > 24) score -= 1;
+  const strongLongLink = (namedBridge && event.referential)
+    || (sameTiming && event.actionFamily && event.actionFamily === chain.actionFamily)
+    || (anchorOverlap >= 0.75 && event.actionFamily && event.actionFamily === chain.actionFamily);
+  if (totalSpan > 20 && !strongLongLink) score = -1;
+  // Distant same-speaker chatter is not a chain without a shared object,
+  // participant, timing or compatible lifecycle.
+  if (distance > 12 && !anchorOverlap && !namedBridge && !sameTiming) score = -1;
+  return { score, reasons };
+}
+
+function summariseCommitmentChain(events, speakers = []) {
+  const signalKinds = new Set(events.map((event) => event.kind));
+  const signalCues = new Set(events.flatMap((event) => event.cueKinds || []));
+  const combinedText = events.map((event) => event.text).join(' ');
+  const evidenceIds = [...new Set(events.map((event) => event.unitId))].slice(0, 12);
+  const ownerEvidence = events.filter((event) => {
+    if (!event.speaker || /^we\b/i.test(event.text)) return false;
+    return ['offer', 'commitment', 'acceptance', 'scheduled_work'].includes(event.kind)
+      && /\bI\b|\bI['’](?:ll|m|ve)\b/i.test(event.text);
+  });
+  const ownerHints = [...new Set(ownerEvidence.map((event) => event.speaker))];
+  const hasRequest = signalKinds.has('request_or_assignment') || signalCues.has('request') || signalCues.has('imperative');
+  const hasAcceptance = signalKinds.has('acceptance') || signalCues.has('acceptance');
+  const hasCommitment = signalKinds.has('commitment') || signalKinds.has('scheduled_work') || signalCues.has('commitment');
+  const hasOffer = signalKinds.has('offer') || signalCues.has('offer');
+  const offerEvents = events.filter((event) => event.kind === 'offer');
+  const offerAccepted = !offerEvents.length || offerEvents.some((offer) => events.some((event) => {
+    if (Number(event.sequence || 0) <= Number(offer.sequence || 0)) return false;
+    const explicitAcceptance = (event.cueKinds || []).includes('acceptance')
+      && ['acceptance', 'commitment'].includes(event.kind);
+    const scopedAssignment = event.kind === 'request_or_assignment' && event.speaker !== offer.speaker
+      && event.linkReasons.includes('referential continuation');
+    return explicitAcceptance || scopedAssignment;
+  }));
+  const rejected = signalKinds.has('rejection_or_deferral');
+  const completed = signalKinds.has('completion_or_status') && !hasCommitment;
+  const ideaOnly = isIdeaOnlyContemplation(combinedText);
+  const hasConcreteActionFamily = events.some((event) => event.actionFamily);
+  const referentialEvents = events.filter((event) => event.referential);
+  const unresolvedReferences = referentialEvents.filter((event) => {
+    const hasObjectLink = event.linkReasons.some((reason) => ['shared deliverable terms', 'shared topic term'].includes(reason));
+    const hasNamedContinuation = event.linkReasons.includes('named participant link')
+      && event.linkReasons.includes('referential continuation');
+    const acceptedShorthand = /^(?:yes|yeah|yep|okay|ok|sure)?[, ]*(?:I|we)\s+(?:will|'ll|can)\s+(?:do|handle|take)\s+(?:it|that)\b/i.test(event.text);
+    const earlierObjectCount = new Set(events.filter((other) => Number(other.sequence || 0) < Number(event.sequence || 0))
+      .flatMap((other) => other.anchors)).size;
+    return !hasObjectLink && !hasNamedContinuation && !acceptedShorthand
+      && (earlierObjectCount > 1 || !event.anchors.length);
+  })
+    .map((event) => event.unitId);
+  let actionConfidence = hasCommitment ? 0.82 : hasRequest && hasAcceptance ? 0.84 : hasOffer && hasAcceptance ? 0.82
+    : hasOffer ? 0.48 : hasRequest ? 0.42 : 0.55;
+  if (rejected || completed) actionConfidence = 0.05;
+  if (ideaOnly) actionConfidence = 0.1;
+  if (hasCommitment && !hasConcreteActionFamily && !hasRequest && !hasOffer) actionConfidence = Math.min(actionConfidence, 0.25);
+  if (hasOffer && !offerAccepted) actionConfidence = Math.min(actionConfidence, 0.68);
+  if (unresolvedReferences.length) actionConfidence = Math.min(actionConfidence, 0.64);
+  const ownerConfidence = ownerHints.length === 1 ? 0.9 : ownerHints.length > 1 ? 0.72 : 0;
+  const timingEvents = events.filter((event) => event.timingText);
+  const timingConfidence = timingEvents.length ? 0.85 : 0;
+  const dispositionHint = rejected ? 'rejected' : completed ? 'completed' : ideaOnly ? 'suggestion'
+    : actionConfidence >= 0.78 ? (hasRequest || hasAcceptance ? 'accepted_request' : 'committed')
+      : (hasOffer || hasRequest ? 'proposal' : 'unclear');
+  const focus = [...events].sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0))[0];
+  return {
+    candidateId: stableId('commitment-chain', evidenceIds.join('|')),
+    sourcePass: 'deterministic', recordType: 'action_chain',
+    focusEvidenceId: focus?.unitId || evidenceIds[0],
+    candidateIds: events.map((event) => event.candidateId), evidenceIds,
+    cueKinds: [...new Set(events.flatMap((event) => event.cueKinds))],
+    dispositionHint,
+    priority: Math.round(actionConfidence * 10) + (hasRequest && (hasAcceptance || hasCommitment) ? 3 : 0),
+    sequence: Math.min(...events.map((event) => Number(event.sequence || 0))),
+    ownerHints, timingEvidenceIds: timingEvents.map((event) => event.unitId),
+    dependencyEvidenceIds: events.filter((event) => /\b(?:if|once|after|before|until|subject to|depends? on)\b/i.test(event.text)).map((event) => event.unitId),
+    signals: {
+      request: hasRequest, offer: hasOffer, acceptance: hasAcceptance, offerAccepted,
+      commitment: hasCommitment, completed, rejected
+    },
+    scores: { action: actionConfidence, owner: ownerConfidence, timing: timingConfidence },
+    uncertainties: [
+      ...(unresolvedReferences.length ? [{ kind: 'unclear_reference', evidenceIds: unresolvedReferences }] : []),
+      ...(hasOffer && !offerAccepted ? [{ kind: 'acceptance', evidenceIds: offerEvents.map((event) => event.unitId) }] : []),
+      ...(!ownerHints.length ? [{ kind: 'ownership', evidenceIds }] : [])
+    ],
+    eventUnits: events.map((event) => ({
+      evidenceId: event.unitId, kind: event.kind, speaker: event.speaker, actionFamily: event.actionFamily,
+      linkReasons: event.linkReasons
+    })),
+    topicAnchors: [...new Set(events.flatMap((event) => event.anchors))].slice(0, 18),
+    text: combinedText,
+    context: events.map((event) => `[${event.unitId}] ${event.speaker}: ${event.text}`).join('\n')
+  };
+}
+
+// Build a second, bounded cross-turn graph alongside the deliberately local
+// action-thread inventory. It can reconnect a request, later acceptance and
+// recap across intervening conversation, but only through compatible topic,
+// participant, timing or reference evidence.
+function actionCommitmentChainInventory(units = [], suppliedCandidates) {
+  const rows = normaliseSourceUnits(units).filter(includedUnit);
+  const byId = new Map(rows.map((unit) => [unit.id, unit]));
+  const speakers = [...new Set(rows.map((unit) => text(unit.speaker, 180)).filter(Boolean))];
+  const candidates = (Array.isArray(suppliedCandidates) ? suppliedCandidates : actionCandidateInventory(rows))
+    .filter((candidate) => byId.has(candidate.focusEvidenceId))
+    .sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+  const events = candidates.map((candidate) => {
+    const unit = byId.get(candidate.focusEvidenceId);
+    const timingText = text(String(unit.text || '').match(CHAIN_TIME_PATTERN)?.[0], 100);
+    return {
+      candidateId: candidate.candidateId, unitId: unit.id, sequence: unit.sequence,
+      speaker: unit.speaker, text: text(unit.text, 700), priority: candidate.priority,
+      cueKinds: candidate.cueKinds || [], kind: chainEventKind(candidate, unit),
+      anchors: chainAnchors(unit.text, speakers), mentionedSpeakers: chainMentionedSpeakers(unit.text, speakers),
+      actionFamily: chainActionFamily(unit.text), timingText,
+      referential: CHAIN_REFERENCE_PATTERN.test(unit.text), linkReasons: []
+    };
+  });
+  const chains = [];
+  for (const event of events) {
+    let best = null;
+    for (const chain of chains) {
+      const link = chainLinkScore(event, chain);
+      if (link.score >= 4 && (!best || link.score > best.link.score)) best = { chain, link };
+    }
+    if (!best) {
+      chains.push({
+        events: [event], anchors: [...event.anchors], speakers: [event.speaker].filter(Boolean),
+        actionFamily: event.actionFamily, timingTexts: event.timingText ? [event.timingText.toLowerCase()] : []
+      });
+      continue;
+    }
+    event.linkReasons = best.link.reasons;
+    best.chain.events.push(event);
+    best.chain.anchors = [...new Set([...best.chain.anchors, ...event.anchors])];
+    best.chain.speakers = [...new Set([...best.chain.speakers, event.speaker].filter(Boolean))];
+    if (!best.chain.actionFamily && event.actionFamily) best.chain.actionFamily = event.actionFamily;
+    if (event.timingText) best.chain.timingTexts.push(event.timingText.toLowerCase());
+  }
+  return chains.map((chain) => summariseCommitmentChain(chain.events, speakers))
+    .filter((chain) => chain.evidenceIds.length && chain.dispositionHint !== 'completed')
+    .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0)
+      || Number(left.sequence || 0) - Number(right.sequence || 0))
+    .slice(0, 160);
 }
 
 function actionCommitmentThreadInventory(units = [], suppliedCandidates) {
@@ -1511,6 +1742,7 @@ module.exports = {
   actionEvidenceDisposition,
   actionCandidateInventory,
   actionCommitmentThreadInventory,
+  actionCommitmentChainInventory,
   discussionCandidateInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,

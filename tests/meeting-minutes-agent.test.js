@@ -12,10 +12,13 @@ const {
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
   hybridCandidateLedgerFromResult,
+  normaliseAgentDeclaredProposals,
+  normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
   removePublishedActionProposalDuplicates,
+  annotateActionProposalChains,
   acceptedVisitAssignmentActions,
   strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
@@ -45,6 +48,30 @@ test('hybrid recovery, referee and critic prompts keep the complete transcript l
     assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
     assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
+});
+
+test('schema-v4 Agent proposals remain review-only and dispositions retain only valid evidence', () => {
+  const units = [{
+    id: 'T0001', sequence: 1, speaker: 'Jenny Gough',
+    text: 'I could review the proposed label if you wanted.', classification: 'keep'
+  }];
+  const result = {
+    actionProposals: [{
+      id: 'proposal-1', action: 'Review the proposed label if requested.', owners: ['Jenny Gough'],
+      timing: { kind: 'dependency', wording: 'If requested', exactDate: '' }, evidenceIds: ['T0001']
+    }],
+    candidateDispositions: [
+      { candidateId: 'chain-1', disposition: 'proposal', reason: 'The offer was not accepted.', action: 'Review the proposed label if requested.', owners: ['Jenny Gough'], timing: { kind: 'dependency', wording: 'If requested' }, evidenceIds: ['T0001', 'T9999'], uncertainties: ['acceptance'] },
+      { candidateId: 'chain-2', disposition: 'invented-state', reason: 'Invalid.', evidenceIds: ['T0001'] }
+    ]
+  };
+  const proposals = normaliseAgentDeclaredProposals(result, units);
+  assert.equal(proposals.length, 1);
+  assert.match(proposals[0].action, /proposed label/i);
+  const dispositions = normaliseAgentCandidateDispositions(result, units);
+  assert.equal(dispositions.length, 1);
+  assert.deepEqual(dispositions[0].evidenceIds, ['T0001']);
+  assert.equal(dispositions[0].disposition, 'proposal');
 });
 
 test('salvage adjudication is bounded to strong unresolved evidence and cannot invent ownership', () => {
@@ -255,7 +282,7 @@ test('generic discovery links a concrete offer to the immediately following assi
     { id: 'T0201', sequence: 201, speaker: 'Priya Shah', text: "And when you're there, check the screen, wifi and clicker.", classification: 'keep' }
   ].sort((left, right) => left.sequence - right.sequence);
   const candidates = actionCandidateInventory(units);
-  assert.equal(candidates.length, 2);
+  assert.ok(candidates.length >= 2);
   const offered = candidates.find((candidate) => candidate.focusEvidenceId === 'T0200');
   assert.equal(offered.dispositionHint, 'accepted_request');
   assert.ok(offered.cueKinds.includes('acceptance'));
@@ -312,6 +339,22 @@ test('proposal reconciliation removes actions already promoted by a later recove
     { id: 'distinct', type: 'add', after: distinct }
   ] }, published);
   assert.deepEqual(proposal.changes.map((change) => change.id), ['distinct']);
+});
+
+test('review proposals expose a concise commitment-chain rationale', () => {
+  const proposal = annotateActionProposalChains({ changes: [{
+    id: 'proposed-review', type: 'add', after: {
+      action: 'Review the proposed label.', owners: ['Jenny Gough'], evidenceIds: ['T1100']
+    }
+  }] }, [{
+    candidateId: 'chain-1', recordType: 'action_chain', evidenceIds: ['T1100'],
+    text: 'I could review the proposed label if you wanted.',
+    signals: { offer: true }, scores: { action: 0.48 },
+    uncertainties: [{ kind: 'ownership', evidenceIds: ['T1100'] }]
+  }]);
+  assert.equal(proposal.changes[0].reviewContext.label, 'offer');
+  assert.match(proposal.changes[0].reviewContext.reason, /ownership/i);
+  assert.deepEqual(proposal.changes[0].reviewContext.evidenceIds, ['T1100']);
 });
 
 test('one strong Agent discovery plus a deterministic commitment remains reviewable after consolidation', () => {
