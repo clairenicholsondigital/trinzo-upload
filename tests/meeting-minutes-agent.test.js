@@ -15,6 +15,7 @@ const {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  removePublishedActionProposalDuplicates,
   acceptedVisitAssignmentActions,
   strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
@@ -293,6 +294,26 @@ test('corroborated actions omitted by the referee are recovered only as review p
   assert.deepEqual(corroboratedOmittedActionProposals([primary, staged], [recovered[0]], units), []);
 });
 
+test('proposal reconciliation removes actions already promoted by a later recovery', () => {
+  const published = [{
+    id: 'accepted-visit', action: 'Visit the room and check the screen, wifi and clicker.',
+    owners: ['Morgan Reed'], evidenceIds: ['T0199', 'T0200', 'T0201']
+  }];
+  const duplicate = {
+    id: 'candidate-visit', action: 'Visit the room and check the screen, wifi and clicker.',
+    owners: ['Morgan Reed'], evidenceIds: ['T0201']
+  };
+  const distinct = {
+    id: 'candidate-intro', action: 'Revise the opening section.',
+    owners: ['Priya Shah'], evidenceIds: ['T0100']
+  };
+  const proposal = removePublishedActionProposalDuplicates({ changes: [
+    { id: 'duplicate', type: 'add', after: duplicate },
+    { id: 'distinct', type: 'add', after: distinct }
+  ] }, published);
+  assert.deepEqual(proposal.changes.map((change) => change.id), ['distinct']);
+});
+
 test('one strong Agent discovery plus a deterministic commitment remains reviewable after consolidation', () => {
   const units = [{ id: 'T0001', sequence: 1, speaker: 'Alex', text: 'We will run a four-week pilot after the manual test succeeds.', classification: 'keep' }];
   const action = { action: 'Run a four-week pilot after the manual test succeeds.', owners: ['Alex'], timing: { kind: 'dependency', wording: 'after the manual test succeeds', exactDate: '' }, evidenceIds: ['T0001'] };
@@ -316,13 +337,13 @@ test('an evidenced operational gap is reviewable but an unaccepted suggestion is
   const discussion = [{
     topic: 'Feedback process', points: [], decisions: [],
     openQuestions: [
-      { text: 'How customer feedback is currently captured and tracked.', evidenceIds: ['T0001'] },
+      { text: 'How is customer feedback currently captured and tracked?', evidenceIds: ['T0001'] },
       { text: 'Whether to think about a different reporting process someday.', evidenceIds: ['T0003'] }
     ]
   }];
   const proposals = unresolvedOperationalGapProposals(discussion, [], units);
   assert.equal(proposals.length, 1);
-  assert.match(proposals[0].action, /^Clarify how customer feedback/i);
+  assert.equal(proposals[0].action, 'Clarify how customer feedback is currently captured and tracked');
   assert.deepEqual(proposals[0].owners, []);
   assert.deepEqual(proposals[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
   assert.ok(proposals[0].evidenceIds.includes('T0002'));

@@ -9057,7 +9057,22 @@ function acceptedVisitAssignmentActions(sourceUnits = [], records = [], options 
 
 function operationalGapActionText(questionText = '') {
   const clean = meetingMinutesAgentText(questionText, 1200).replace(/[?.!]+$/, '');
-  if (/^how\s+/i.test(clean)) return clean.replace(/^how\s+/i, 'Clarify how ');
+  if (/^how\s+/i.test(clean)) {
+    // Turn question word order into minute/action word order.  Leaving the
+    // auxiliary in front of the subject produced text such as "Clarify how is
+    // feedback captured", which is needlessly awkward in the review UI.
+    const inverted = clean.match(/^how\s+(is|are|was|were|do|does|did|has|have|had|can|could|will|would|should)\s+(.+)$/i);
+    if (inverted) {
+      const [, auxiliary, remainder] = inverted;
+      const words = remainder.split(/\s+/);
+      const boundary = words.findIndex((word, index) => index > 0 && /^(?:being|captured|recorded|tracked|logged|documented|reported|stored|routed|monitored|provided|handled|managed|processed|working|work|operate|operating)$/i.test(word));
+      if (boundary > 0) {
+        return `Clarify how ${words.slice(0, boundary).join(' ')} ${auxiliary.toLowerCase()} ${words.slice(boundary).join(' ')}`
+          .replace(/\b(currently|usually|normally|consistently)\s+(is|are|was|were|has|have|had)\b/i, '$2 $1');
+      }
+    }
+    return clean.replace(/^how\s+/i, 'Clarify how ');
+  }
   if (/^whether\s+/i.test(clean)) return clean.replace(/^whether\s+/i, 'Determine whether ');
   if (/^who\s+/i.test(clean)) return clean.replace(/^who\s+/i, 'Confirm who ');
   if (/^what\s+/i.test(clean)) return clean.replace(/^what\s+/i, 'Define what ');
@@ -9142,6 +9157,25 @@ function unresolvedOperationalGapProposals(discussion = [], records = [], source
     ])].slice(0, 8);
   }
   return normalised;
+}
+
+function removePublishedActionProposalDuplicates(proposal = {}, published = []) {
+  const publishedRows = Array.isArray(published) ? published : [];
+  return {
+    ...proposal,
+    changes: (Array.isArray(proposal?.changes) ? proposal.changes : []).filter((change) => {
+      if (change?.type !== 'add' || !change.after?.action) return true;
+      const candidate = {
+        recordType: 'action', text: change.after.action,
+        evidenceIds: change.after.evidenceIds, record: change.after
+      };
+      return !publishedRows.some((record) => hybridCandidateMatchesRecord(candidate, record)
+        && hybridCandidateMatchesRecord({
+          recordType: 'action', text: record.action,
+          evidenceIds: record.evidenceIds, record
+        }, change.after));
+    })
+  };
 }
 
 function strongUnresolvedActionCandidateFlags(candidates = [], records = []) {
@@ -9613,7 +9647,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
     actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
-  const proposal = buildProposal('actions', publishedActions, complete);
+  const proposal = removePublishedActionProposalDuplicates(
+    buildProposal('actions', publishedActions, complete), publishedActions
+  );
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
   const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
@@ -10291,6 +10327,7 @@ router.stagedEvaluation = {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  removePublishedActionProposalDuplicates,
   acceptedVisitAssignmentActions,
   strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
