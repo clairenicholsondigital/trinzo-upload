@@ -63,7 +63,7 @@ const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
-const { generateMiniLmTrooperStage, prepareMiniLmTranscript } = require('../utils/stagedMiniLmTrooper');
+const { generateMiniLmTrooperStage, generatePreparedTrooperStage, prepareMiniLmTranscript } = require('../utils/stagedMiniLmTrooper');
 const { filterActionsForPresentation } = require('../utils/stagedActionPresentation');
 const {
   buildConfirmedUnderstanding,
@@ -234,7 +234,7 @@ function meetingAgentObjectiveRecords(value) {
 function meetingAgentGenerationState(generation) {
   if (!generation || generation.status !== 'running') return generation || null;
   const timeoutMs = meetingMinutesAgentHybridEnabled()
-    ? Math.max(300000, Number(process.env.MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS || 600000))
+    ? Math.max(300000, Number(process.env.MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS || 420000))
     : Math.max(10000, Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000)) + 60000;
   const orphaned = generation.bootId !== MEETING_AGENT_BOOT_ID;
   const expired = Date.now() - Number(new Date(generation.startedAt || 0)) > timeoutMs;
@@ -8321,7 +8321,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
 
   const release = options.paced === true ? await acquireMeetingAgentCallSlot() : () => {};
   const controller = new AbortController();
-  const timeoutMs = Math.max(10000, Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000));
+  const timeoutMs = Math.max(10000, Number(options.timeoutMs || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000));
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
@@ -8408,18 +8408,39 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
 async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}) {
   const timings = [];
   let lastError;
-  for (let attempt = 0; attempt <= MEETING_AGENT_RETRY_MS.length; attempt += 1) {
-    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, MEETING_AGENT_RETRY_MS[attempt - 1]));
+  const maxAttempts = Math.max(1, Math.min(MEETING_AGENT_RETRY_MS.length + 1, Number(options.maxAttempts || MEETING_AGENT_RETRY_MS.length + 1)));
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      const delay = MEETING_AGENT_RETRY_MS[attempt - 1];
+      const remaining = options.deadlineAt ? options.deadlineAt - Date.now() : Infinity;
+      if (remaining <= delay + 1000) break;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    const remaining = options.deadlineAt ? options.deadlineAt - Date.now() : Infinity;
+    if (remaining <= 1000) break;
     const started = Date.now();
+    const attemptInfo = {
+      pass: options.pass || '', attempt: attempt + 1, maxAttempts,
+      promptChars: String(prompt || '').length, startedAt: new Date().toISOString()
+    };
+    if (options.onAttempt) await options.onAttempt(attemptInfo).catch(() => {});
     try {
-      const result = await askPowerAutomateMeetingMinutesAgent(prompt, { paced: true });
-      timings.push({ pass: options.pass || '', attempt: attempt + 1, elapsedMs: Date.now() - started, ok: true });
+      const attemptTimeoutMs = Number.isFinite(remaining)
+        ? Math.max(10000, Math.min(Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000), remaining))
+        : undefined;
+      const result = await askPowerAutomateMeetingMinutesAgent(prompt, { paced: true, timeoutMs: attemptTimeoutMs });
+      timings.push({ ...attemptInfo, elapsedMs: Date.now() - started, ok: true });
       return { result, timings };
     } catch (error) {
       lastError = error;
-      timings.push({ pass: options.pass || '', attempt: attempt + 1, elapsedMs: Date.now() - started, ok: false });
-      if (!error.retryable || attempt === MEETING_AGENT_RETRY_MS.length) break;
+      timings.push({ ...attemptInfo, elapsedMs: Date.now() - started, ok: false, statusCode: Number(error.statusCode || 0) || undefined });
+      if (!error.retryable || attempt === maxAttempts - 1) break;
     }
+  }
+  if (!lastError) {
+    lastError = new Error('The meeting-minutes generation exceeded its stage time budget.');
+    lastError.statusCode = 504;
+    lastError.retryable = true;
   }
   if (lastError) lastError.callTimings = timings;
   throw lastError;
@@ -8446,8 +8467,32 @@ function normaliseStagedCandidateResult(run, draft) {
   return { discussion: discussion.discussion, actions: actions.actions, objectives };
 }
 
-async function buildPrivateStagedCandidateLedger(draft) {
-  const run = await runStagedSequenceForEvaluation(draft.preparedTranscript, { fileName: draft.fileName || 'transcript.txt' });
+async function buildPrivateStagedCandidateLedger(draft, stage = '') {
+  const requestedStage = ['discussion', 'actions'].includes(stage) ? stage : '';
+  if (!requestedStage) {
+    const run = await runStagedSequenceForEvaluation(draft.preparedTranscript, { fileName: draft.fileName || 'transcript.txt' });
+    return hybridCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), 'staged');
+  }
+  const details = sanitiseMeetingAgentDetails(draft.details);
+  const meetingIdentity = `${details.meetingTitle || ''} ${draft.fileName || ''}`;
+  // The public staged parser expects Teams-style speaker/timestamp lines. The
+  // Agent's prepared transcript deliberately prefixes stable [Txxxx] IDs,
+  // which are useful to the Agent but make that parser report no speakers.
+  // Production drafts retain the original upload; the reconstruction keeps
+  // tests and migrated drafts functional without exposing it to the browser.
+  const stagedTranscript = normaliseSourceUnits(draft.sourceUnits)
+    .filter((unit) => unit.classification !== 'remove' || unit.restored)
+    .map((unit) => `${unit.speaker}   ${unit.timestamp || '0:00'} ${unit.text}`)
+    .join('\n\n');
+  const payload = await generatePreparedTrooperStage(requestedStage, stagedTranscript, {
+    meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
+    timeoutMs: Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_TIMEOUT_MS || 50000)
+  });
+  const run = { state: {
+    discussion: requestedStage === 'discussion' ? (payload?.screens?.discussion || []) : [],
+    actions: requestedStage === 'actions' ? (payload?.screens?.actions || []) : [],
+    summary: {}
+  } };
   return hybridCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), 'staged');
 }
 
@@ -8876,15 +8921,45 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const passProvenance = [];
   const completedPasses = [];
   const degradedSources = [];
-  const progress = async (pass, message) => {
-    if (options.onProgress) await options.onProgress({ pass, message, completedPasses, callTimings: passProvenance.flatMap((item) => item.timings || []), degradedSources });
+  const stageStartedAt = Date.now();
+  const stageDeadlineAt = stageStartedAt + Math.max(180000, Number(process.env.MEETING_MINUTES_AGENT_STAGE_TIMEOUT_MS || 360000));
+  const progress = async (pass, message, activeTimings = []) => {
+    if (options.onProgress) await options.onProgress({
+      pass, message, completedPasses,
+      callTimings: [...passProvenance.flatMap((item) => item.timings || []), ...activeTimings], degradedSources
+    });
   };
-  const call = async (pass, prompt) => {
-    await progress(pass, pass === 'primary' ? 'Building a coverage map…' : pass === 'recovery' ? `Recovering missed ${stage}…` : pass === 'referee' ? `Checking ${stage} evidence…` : 'Verifying the draft…');
-    const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, { pass: `${stage}:${pass}` });
-    completedPasses.push(pass);
-    passProvenance.push({ stage, pass, completedAt: new Date().toISOString(), timings: response.timings });
-    return response.result;
+  const call = async (pass, prompt, callOptions = {}) => {
+    const baseMessage = pass === 'primary' ? 'Building a coverage map…' : pass === 'recovery' ? `Recovering missed ${stage}…` : pass === 'referee' ? `Checking ${stage} evidence…` : 'Verifying the draft…';
+    await progress(pass, baseMessage);
+    const maxAttempts = pass === 'primary' ? 3 : 2;
+    try {
+      const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
+        pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
+        onAttempt: (attempt) => progress(pass,
+          attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — retry ${attempt.attempt} of ${attempt.maxAttempts}…` : baseMessage,
+          [{ ...attempt, ok: null }])
+      });
+      completedPasses.push(pass);
+      passProvenance.push({
+        stage, pass, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
+        elapsedMs: response.timings.reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0), timings: response.timings
+      });
+      console.info(JSON.stringify({
+        event: 'meeting_agent_pass', stage, pass, promptChars: String(prompt || '').length,
+        attempts: response.timings.length, elapsedMs: passProvenance.at(-1).elapsedMs, ok: true
+      }));
+      return response.result;
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: 'meeting_agent_pass', stage, pass, promptChars: String(prompt || '').length,
+        attempts: error.callTimings?.length || 0,
+        elapsedMs: (error.callTimings || []).reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0), ok: false
+      }));
+      if (!callOptions.optional) throw error;
+      degradedSources.push(`The optional ${pass} quality pass did not complete: ${error.message}`);
+      return null;
+    }
   };
 
   if (stage === 'summary') {
@@ -8910,13 +8985,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const actionDiscoveryInventory = stage === 'actions'
     ? [...actionThreads, ...deterministicActionCandidates]
     : [];
-  const cachedStaged = (draft.candidateLedger || []).filter((candidate) => candidate.sourcePass === 'staged');
+  const stagedRecordTypes = stage === 'discussion'
+    ? new Set(['discussion_point', 'decision', 'open_question', 'objective'])
+    : new Set(['action']);
+  const cachedStaged = (draft.candidateLedger || []).filter((candidate) =>
+    candidate.sourcePass === 'staged' && stagedRecordTypes.has(candidate.recordType));
+  const stagedCandidateStartedAt = Date.now();
+  let stagedCandidateElapsedMs = 0;
   const stagedPromise = cachedStaged.length
     ? Promise.resolve(cachedStaged)
-    : buildPrivateStagedCandidateLedger(draft).catch((error) => {
+    : buildPrivateStagedCandidateLedger(draft, stage).catch((error) => {
       degradedSources.push(`Staged candidate extraction failed: ${error.message}`);
       return [];
-    });
+    }).finally(() => { stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt; });
   const primaryPrompt = meetingMinutesAgentPrompt({
     stage, transcript, details, steer: draft.steer, salientDetails,
     discussionContext: stage === 'actions' ? (draft.discussion || []) : [],
@@ -8946,12 +9027,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       current: stage === 'discussion' ? { discussion: primary.discussion } : { actions: primary.actions },
       discussion: stage === 'actions' ? (draft.discussion || []) : [],
       candidates: recoveryDecision.uncovered
-    }));
-    recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
-    ensemble.push(...hybridCandidateLedgerFromResult({
-      ...recovery,
-      objectives: groundedObjectiveRecords(recoveryParsed.meetingObjectives || recoveryParsed.objectives || [], draft.sourceUnits)
-    }, 'recovery'));
+    }), { optional: true });
+    if (recoveryParsed) {
+      recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+      ensemble.push(...hybridCandidateLedgerFromResult({
+        ...recovery,
+        objectives: groundedObjectiveRecords(recoveryParsed.meetingObjectives || recoveryParsed.objectives || [], draft.sourceUnits)
+      }, 'recovery'));
+    }
   }
   const refereeParsed = await call('referee', meetingMinutesAgentRefereePrompt({
     stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [], candidates: ensemble, salientDetails
@@ -8969,7 +9052,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       changes: {
         discussion: referee.discussion, meetingObjectives: objectives, candidateLedger,
         passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
-        qualityState: { ...(draft.qualityState || {}), discussion: { completedPasses, recoveryUsed: Boolean(recovery), degradedSources } }
+        qualityState: { ...(draft.qualityState || {}), discussion: {
+          completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
+          stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
+          stagedCandidatesFromCache: cachedStaged.length > 0
+        } }
       },
       reviewFlags: refereeFlags, replaceCoverageFlags: false
     };
@@ -8991,8 +9078,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, refereeActions);
   const criticParsed = await call('critic', meetingMinutesAgentCriticPrompt({
     transcript, details, discussion: draft.discussion || [], actions: refereeActions, candidates: remaining, salientDetails
-  }));
-  const critic = normaliseAgentResult(criticParsed, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
+  }), { optional: true });
+  const critic = normaliseAgentResult(criticParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
   const candidateBackstop = corroboratedOmittedActionProposals(
     ensemble, [...refereeActions, ...critic.actions], draft.sourceUnits, { meetingDate: details.meetingDate }
   );
@@ -9031,6 +9118,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
       qualityState: { ...(draft.qualityState || {}), actions: {
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
+        stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
+        stagedCandidatesFromCache: cachedStaged.length > 0,
         automaticCount: automatic.length, proposalCount: proposal.changes.length,
         corroboratedBackstopCount: candidateBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
@@ -9665,6 +9754,7 @@ router.stagedEvaluation = {
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
+  buildPrivateStagedCandidateLedger,
   generateHybridMeetingAgentStage,
   normaliseAgentDiscussion,
   normaliseAgentActions

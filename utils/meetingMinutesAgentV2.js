@@ -133,6 +133,81 @@ function includedUnit(unit) {
   return unit.classification !== 'remove' || unit.restored === true;
 }
 
+// Evidence validation touches the same immutable source-unit array many times
+// during one generation. Keep its derived indexes with that array so every
+// action does not rebuild the transcript, speakers and token frequencies.
+const evidenceContextCache = new WeakMap();
+const RESOLUTION_STOP_WORDS = new Set([
+  'action', 'after', 'again', 'also', 'and', 'are', 'before', 'been', 'being', 'but', 'can', 'complete',
+  'completed', 'could', 'did', 'discussion', 'does', 'done', 'follow', 'for', 'from', 'had', 'has', 'have',
+  'including', 'into', 'just', 'may', 'meeting', 'might', 'more', 'most', 'need', 'needed', 'only', 'our',
+  'over', 'review', 'reviewed', 'said', 'send', 'sent', 'shall', 'should', 'that', 'the', 'their', 'them',
+  'then', 'there', 'these', 'they', 'this', 'those', 'was', 'week', 'were', 'when', 'whether', 'will',
+  'with', 'without', 'work', 'would', 'you', 'your'
+]);
+
+function resolutionTokens(source) {
+  return [...new Set(comparisonText(String(source || '').replace(/[-–]/g, ' '))
+    .match(/[a-z0-9][a-z0-9]{2,}/g) || [])].filter((token) => !RESOLUTION_STOP_WORDS.has(token));
+}
+
+function evidenceScoreProfile(source) {
+  const value = text(source, 15000);
+  const tokens = contentTokens(value);
+  return {
+    value,
+    lower: value.toLowerCase(),
+    tokens,
+    tokenSet: new Set(tokens),
+    material: materialTokens(value),
+    values: explicitValues(value),
+    polarity: polarity(value),
+    resolutionTokenSet: new Set(resolutionTokens(value))
+  };
+}
+
+function evidenceSupportScoreFromProfiles(claim, evidence) {
+  if (!claim.value || !evidence.value) return 0;
+  if (claim.values.some((value) => !evidence.lower.includes(value))) return 0;
+  const materialCoverage = claim.material.length
+    ? claim.material.filter((token) => evidence.tokenSet.has(token)).length / claim.material.length
+    : 0;
+  const lexical = claim.tokens.length && evidence.tokens.length
+    ? claim.tokens.filter((token) => evidence.tokenSet.has(token)).length / Math.min(claim.tokens.length, evidence.tokens.length)
+    : 0;
+  const polarityPenalty = claim.polarity !== evidence.polarity
+    && /\b(?:not|never|cannot|can't|won't|without)\b/i.test(claim.value) ? 0.35 : 0;
+  return Math.max(0, (lexical * 0.55) + (materialCoverage * 0.45) - polarityPenalty);
+}
+
+function evidenceContextFor(units = []) {
+  const key = Array.isArray(units) ? units : [];
+  const cached = evidenceContextCache.get(key);
+  if (cached) return cached;
+  const rows = normaliseSourceUnits(key).filter(includedUnit);
+  const indexById = new Map(rows.map((unit, index) => [unit.id, index]));
+  const known = new Set(indexById.keys());
+  const speakerTokens = [...new Set(rows.map((unit) => unit.speaker).filter(Boolean))]
+    .map((speaker) => contentTokens(speaker)).filter((tokens) => tokens.length);
+  const speakers = [...new Set(rows.map((unit) => unit.speaker).filter(Boolean))];
+  const directTexts = rows.map((unit) => `${unit.speaker}: ${unit.text}`);
+  const windowTexts = rows.map((unit, index) => [index - 1, index, index + 1]
+    .filter((position) => position >= 0 && position < rows.length)
+    .map((position) => directTexts[position]).join(' '));
+  const directProfiles = directTexts.map(evidenceScoreProfile);
+  const windowProfiles = windowTexts.map(evidenceScoreProfile);
+  const documentFrequency = new Map();
+  for (const unit of rows) {
+    for (const token of resolutionTokens(unit.text)) documentFrequency.set(token, (documentFrequency.get(token) || 0) + 1);
+  }
+  const context = {
+    rows, indexById, known, speakers, speakerTokens, directTexts, windowTexts, directProfiles, windowProfiles, documentFrequency,
+    resolutionCache: new Map()
+  };
+  evidenceContextCache.set(key, context);
+  return context;
+}
+
 function preparedTranscriptFromUnits(units = []) {
   return normaliseSourceUnits(units).filter(includedUnit).map((unit) => {
     const stamp = unit.timestamp ? ` ${unit.timestamp}` : '';
@@ -159,7 +234,7 @@ function comparisonText(value) {
 }
 
 function evidenceWindowUnits(units = [], ids = [], radius = 1) {
-  const rows = normaliseSourceUnits(units).filter(includedUnit);
+  const rows = evidenceContextFor(units).rows;
   const wanted = new Set((Array.isArray(ids) ? ids : []).map((id) => text(id, 30)));
   const indexes = rows.map((unit, index) => wanted.has(unit.id) ? index : -1).filter((index) => index >= 0);
   const included = new Set(indexes.flatMap((index) => {
@@ -208,12 +283,12 @@ function evidenceSupportScore(claim, evidence) {
   return Math.max(0, (lexical * 0.55) + (materialCoverage * 0.45) - polarityPenalty);
 }
 
-function speakerMentionsSupported(claim, evidence, units = []) {
+function speakerMentionsSupported(claim, evidence, units = [], suppliedSpeakerTokens = null) {
   const claimWords = new Set(contentTokens(claim));
   const evidenceWords = new Set(contentTokens(evidence));
-  const speakers = [...new Set((Array.isArray(units) ? units : []).map((unit) => text(unit?.speaker, 180)).filter(Boolean))];
-  for (const speaker of speakers) {
-    const speakerWords = contentTokens(speaker);
+  const speakers = suppliedSpeakerTokens || [...new Set((Array.isArray(units) ? units : []).map((unit) => text(unit?.speaker, 180)).filter(Boolean))]
+    .map((speaker) => contentTokens(speaker)).filter((tokens) => tokens.length);
+  for (const speakerWords of speakers) {
     if (!speakerWords.length) continue;
     const mentioned = speakerWords.length === 1
       ? claimWords.has(speakerWords[0])
@@ -289,56 +364,67 @@ function actionEvidenceFits(action, evidence) {
 }
 
 function resolveEvidence(value, units = [], supplied = [], options = {}) {
-  const rows = normaliseSourceUnits(units).filter(includedUnit);
-  const known = new Set(rows.map((unit) => unit.id));
-  const indexById = new Map(rows.map((unit, index) => [unit.id, index]));
-  const resolutionStopWords = new Set([
-    'action', 'after', 'again', 'also', 'and', 'are', 'before', 'been', 'being', 'but', 'can', 'complete',
-    'completed', 'could', 'did', 'discussion', 'does', 'done', 'follow', 'for', 'from', 'had', 'has', 'have',
-    'including', 'into', 'just', 'may', 'meeting', 'might', 'more', 'most', 'need', 'needed', 'only', 'our',
-    'over', 'review', 'reviewed', 'said', 'send', 'sent', 'shall', 'should', 'that', 'the', 'their', 'them',
-    'then', 'there', 'these', 'they', 'this', 'those', 'was', 'week', 'were', 'when', 'whether', 'will',
-    'with', 'without', 'work', 'would', 'you', 'your'
-  ]);
-  const resolutionTokens = (source) => [...new Set(comparisonText(String(source || '').replace(/[-–]/g, ' '))
-    .match(/[a-z0-9][a-z0-9]{2,}/g) || [])].filter((token) => !resolutionStopWords.has(token));
+  const context = evidenceContextFor(units);
+  const { rows, known, indexById } = context;
   const claimTokens = resolutionTokens(value);
-  const documentFrequency = new Map(claimTokens.map((token) => [
-    token,
-    rows.filter((unit) => resolutionTokens(unit.text).includes(token)).length
-  ]));
+  const claimProfile = evidenceScoreProfile(value);
   const maximumDistinctiveFrequency = Math.max(3, Math.ceil(rows.length * 0.04));
   const distinctiveClaimTokens = claimTokens.filter((token) => {
-    const frequency = documentFrequency.get(token) || 0;
+    const frequency = context.documentFrequency.get(token) || 0;
     return frequency > 0 && frequency <= maximumDistinctiveFrequency;
   });
-  const resolutionScore = (window) => {
-    const base = evidenceSupportScore(value, window);
+  const resolutionScore = (windowProfile) => {
+    const base = evidenceSupportScoreFromProfiles(claimProfile, windowProfile);
     if (distinctiveClaimTokens.length < 2) return base;
-    const evidenceTokens = new Set(resolutionTokens(window));
-    const distinctiveCoverage = distinctiveClaimTokens.filter((token) => evidenceTokens.has(token)).length / distinctiveClaimTokens.length;
+    const distinctiveCoverage = distinctiveClaimTokens.filter((token) => windowProfile.resolutionTokenSet.has(token)).length / distinctiveClaimTokens.length;
     return (base * 0.25) + (distinctiveCoverage * 0.75);
   };
-  const windowTextFor = (ids) => {
+  const windowProfileFor = (ids) => {
     const indexes = [...new Set((ids || []).map((id) => indexById.get(id)).filter((index) => Number.isInteger(index))
       .flatMap((index) => [index - 1, index, index + 1]).filter((index) => index >= 0 && index < rows.length))].sort((a, b) => a - b);
-    return indexes.map((index) => `${rows[index].speaker}: ${rows[index].text}`).join(' ');
+    if (indexes.length === 3 && indexes[1] === indexes[0] + 1 && indexes[2] === indexes[1] + 1) {
+      const centre = indexes[1];
+      if (context.windowProfiles[centre]?.value === indexes.map((index) => context.directTexts[index]).join(' ')) return context.windowProfiles[centre];
+    }
+    return evidenceScoreProfile(indexes.map((index) => context.directTexts[index]).join(' '));
   };
   const suppliedIds = [...new Set((Array.isArray(supplied) ? supplied : []).map((id) => text(id, 30)).filter(Boolean))];
+  const cacheKey = `${options.action ? 'a' : 'p'}|${text(value, 5000)}|${suppliedIds.join(',')}`;
+  const cached = context.resolutionCache.get(cacheKey);
+  if (cached) return { ...cached, evidenceIds: [...cached.evidenceIds], invalidIds: [...cached.invalidIds], weakIds: [...cached.weakIds] };
+  const finish = (result) => {
+    if (context.resolutionCache.size >= 2000) context.resolutionCache.clear();
+    context.resolutionCache.set(cacheKey, result);
+    return { ...result, evidenceIds: [...result.evidenceIds], invalidIds: [...result.invalidIds], weakIds: [...result.weakIds] };
+  };
   const invalidIds = suppliedIds.filter((id) => !known.has(id));
   const validIds = suppliedIds.filter((id) => known.has(id));
-  const scoreWindow = (window) => !speakerMentionsSupported(value, window, rows)
-    || (options.action && !actionEvidenceFits(value, window))
-    ? 0
-    : resolutionScore(window);
-  const suppliedWindow = windowTextFor(validIds);
+  const claimWordSet = claimProfile.tokenSet;
+  const speakersSupported = (profile) => context.speakerTokens.every((speakerWords) => {
+    const mentioned = speakerWords.length === 1
+      ? claimWordSet.has(speakerWords[0])
+      : speakerWords.every((word) => claimWordSet.has(word));
+    return !mentioned || speakerWords.some((word) => profile.tokenSet.has(word));
+  });
+  const scoreWindow = (profile) => {
+    if (!speakersSupported(profile)) return 0;
+    const lexicalScore = resolutionScore(profile);
+    // The action classifier contains deliberately broad conversational
+    // patterns. Running it over every unrelated transcript window is both
+    // wasteful and susceptible to pathological regex work. A window with no
+    // plausible lexical support cannot become evidence regardless.
+    if (lexicalScore < 0.12) return 0;
+    if (options.action && !actionEvidenceFits(value, profile.value)) return 0;
+    return lexicalScore;
+  };
+  const suppliedWindow = windowProfileFor(validIds);
   const suppliedScore = scoreWindow(suppliedWindow);
   // Score each supplied anchor independently as well as their combined window.
   // Concatenating several adjacent but generic passages can inflate token
   // overlap and conceal a clearly better workstream elsewhere.
-  const suppliedAnchorScore = validIds.reduce((best, id) => Math.max(best, scoreWindow(windowTextFor([id]))), 0);
-  const ranked = rows.map((unit) => {
-    const window = windowTextFor([unit.id]);
+  const suppliedAnchorScore = validIds.reduce((best, id) => Math.max(best, scoreWindow(windowProfileFor([id]))), 0);
+  const ranked = rows.map((unit, index) => {
+    const window = context.windowProfiles[index];
     return {
       id: unit.id,
       index: indexById.get(unit.id),
@@ -346,12 +432,12 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     };
   }).filter((item) => item.score >= 0.24).sort((a, b) => b.score - a.score);
   const bestScore = ranked[0]?.score || 0;
-  const supportingRanked = options.action ? rows.map((unit) => {
-    const window = windowTextFor([unit.id]);
+  const supportingRanked = options.action ? rows.map((unit, index) => {
+    const window = context.windowProfiles[index];
     return {
       id: unit.id,
       index: indexById.get(unit.id),
-      score: speakerMentionsSupported(value, window, rows) ? resolutionScore(window) : 0
+      score: speakersSupported(window) ? resolutionScore(window) : 0
     };
   }).filter((item) => item.score >= 0.24).sort((a, b) => b.score - a.score) : ranked;
   // A valid ID is not necessarily the right evidence. Long transcripts often
@@ -364,7 +450,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   // allowing the server to repair clear workstream drift.
   const strongerAlternative = bestScore >= 0.28 && bestScore > suppliedAnchorScore + 0.08;
   if (validIds.length && suppliedScore >= 0.2 && !strongerAlternative) {
-    return { evidenceIds: validIds.slice(0, 8), invalidIds, weakIds: [], supportScore: suppliedScore };
+    return finish({ evidenceIds: validIds.slice(0, 8), invalidIds, weakIds: [], supportScore: suppliedScore });
   }
 
   // When remapping, do not return the three highest-scoring anchors from
@@ -384,7 +470,6 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
       .filter((index) => index >= 0 && index < rows.length)
       .map((index) => {
         const unit = rows[index];
-        const direct = `${unit.speaker}: ${unit.text}`;
         return {
           id: unit.id,
           index,
@@ -392,7 +477,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
           // Score the direct turn on its content here so a commitment using
           // "you" is not discarded merely because the addressee's full name
           // appears in the immediately preceding turn rather than this one.
-          score: resolutionScore(direct)
+          score: resolutionScore(context.directProfiles[index])
         };
       }).sort((left, right) => right.score - left.score || left.index - right.index);
     return nearby[0] || { id: anchor.id, index: anchor.index, score: anchor.score };
@@ -410,12 +495,12 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     .slice(0, 3)
     .sort((left, right) => left.index - right.index)
     .map((item) => item.id);
-  return {
+  return finish({
     evidenceIds: remappedIds,
     invalidIds,
     weakIds: suppliedScore >= 0.2 || (remappedIds.length && remapBestScore >= 0.28) ? [] : validIds,
     supportScore: bestScore
-  };
+  });
 }
 
 function evidenceIdsFor(value, units = [], supplied = []) {
@@ -591,7 +676,7 @@ function normaliseOwnerIdentity(owner, units = []) {
   const raw = text(owner, 180);
   const ownerWords = contentTokens(raw);
   if (!ownerWords.length) return raw;
-  const speakers = [...new Set(normaliseSourceUnits(units).map((unit) => text(unit.speaker, 180)).filter(Boolean))];
+  const speakers = evidenceContextFor(units).speakers;
   const exact = speakers.find((speaker) => {
     const words = contentTokens(speaker);
     return words.length === ownerWords.length && words.every((word) => ownerWords.includes(word));
@@ -694,7 +779,7 @@ function actionEvidenceDisposition(action, evidence) {
   const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
   const predicateWords = [...new Set(predicateGroups.flat())];
   const directlyNegatedPredicate = predicateWords.some((verb) => new RegExp(
-    `\\b(?:will not|won't|shall not|not going to)\\b(?:[\\s\\S]*?\\b\\w+\\b){0,5}[\\s\\S]*?\\b${verb}(?:s|ed|ing)?\\b`, 'i'
+    `\\b(?:will not|won't|shall not|not going to)\\b(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,6}\\s+${verb}(?:s|ed|ing)?\\b`, 'i'
   ).test(source));
   // Negation belongs to its clause. An availability constraint such as “I
   // won't be around” can be the reason another person must plan or reschedule;
@@ -994,8 +1079,7 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
   // complete identity is independently present in a transcript speaker label.
   // This does not let an invented surname pass: every owner token must belong to
   // the same known speaker, and the cited evidence must still name that person.
-  const knownSpeaker = normaliseSourceUnits(units).some((unit) => {
-    const speakerWords = contentTokens(unit.speaker);
+  const knownSpeaker = evidenceContextFor(units).speakerTokens.some((speakerWords) => {
     return ownerWords.every((word) => speakerWords.includes(word));
   });
   return knownSpeaker && ownerWords.some((word) => evidenceWords.includes(word));
@@ -1048,7 +1132,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
 function unresolvedReferenceFlags(units = []) {
   const standardLike = /\b(?:standard|IEC|ISO|EN|BS|ASTM|six(?:ty)?[- ]?oh[- ]?one|eight[- ]?ten[- ]?oh[- ]?one|twenty[- ]?seven)\b/i;
   const uncertainty = /\b(?:something|whatever|I think|maybe|roughly|approximately|or so|not sure|can't remember|cannot remember)\b/i;
-  return normaliseSourceUnits(units).filter(includedUnit).filter((unit) => standardLike.test(unit.text) && uncertainty.test(unit.text)).map((unit, index) => normaliseFlag({
+  return evidenceContextFor(units).rows.filter((unit) => standardLike.test(unit.text) && uncertainty.test(unit.text)).map((unit, index) => normaliseFlag({
     kind: 'unclear_reference',
     message: `Confirm the standard reference exactly as spoken: “${unit.text.slice(0, 220)}”`,
     evidenceIds: [unit.id]
@@ -1078,7 +1162,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     ...discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]),
     ...actions
   ];
-  const unitById = new Map(normaliseSourceUnits(units).map((unit) => [unit.id, unit]));
+  const unitById = new Map(evidenceContextFor(units).rows.map((unit) => [unit.id, unit]));
   for (const action of actions) {
     const evidenceText = evidenceWindowText(units, action.evidenceIds, 1);
     const unsupportedOwners = action.owners.filter((owner) => !ownerSupportedByEvidence(owner, evidenceText, units));
@@ -1405,6 +1489,9 @@ module.exports = {
   isUsefulReviewFlag,
   evidenceWindowUnits,
   evidenceSupportScore,
+  evidenceContextFor,
+  resolveEvidence,
+  normaliseActions,
   actionEvidenceDisposition,
   actionCandidateInventory,
   actionCommitmentThreadInventory,

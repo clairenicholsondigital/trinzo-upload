@@ -15,12 +15,24 @@ function runJson(script, args, timeoutMs) {
     });
     let stdout = '';
     let stderr = '';
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
     child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      if (timedOut) {
+        const error = new Error(`Staged MiniLM/Trooper process timed out after ${timeoutMs}ms.`);
+        error.code = 'STAGED_TIMEOUT';
+        error.retryable = true;
+        error.details = stderr.slice(0, 2000);
+        reject(error);
+        return;
+      }
       if (code !== 0) {
         const error = new Error(`Staged MiniLM/Trooper process failed (${code ?? signal}).`);
         error.details = stderr.slice(0, 2000);
@@ -34,6 +46,35 @@ function runJson(script, args, timeoutMs) {
       }
     });
   });
+}
+
+function stagedStageResult(stage, result, telemetry = {}) {
+  return {
+    stagedStage: stage,
+    screens: stage === 'discussion' ? { discussion: result.discussion || [] } : splitActionTiers(result.actions),
+    validationFlags: [],
+    preparedTranscriptTelemetry: {
+      source: telemetry.source || 'prepared_minilm_v3',
+      model: telemetry.model || null,
+      embeddingModel: telemetry.embeddingModel || null,
+      rawLength: telemetry.rawLength ?? null,
+      preparedLength: telemetry.preparedLength ?? null,
+      removedUnitCount: telemetry.removedUnitCount ?? null,
+      keptUnitCount: telemetry.keptUnitCount ?? null,
+      totalUnitCount: telemetry.totalUnitCount ?? null,
+      removedRatio: telemetry.removedRatio ?? null,
+      chunkCount: result.chunkCount || null,
+      turnCount: result.turnCount || null,
+      actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null,
+      actionSampleCount: stage === 'actions' ? (result.actionSampleCount || 1) : null,
+      discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null,
+      discussionCallCount: stage === 'discussion' ? (result.discussionCallCount || 1) : null,
+      discussionSplitAfterTurn: stage === 'discussion' ? (result.splitAfterTurn || null) : null,
+      discussionSplitAfterTurns: stage === 'discussion' ? (result.splitAfterTurns || null) : null,
+      discussionCandidateCount: stage === 'discussion' ? (result.discussionCandidateCount ?? null) : null,
+      discussionAcceptedCandidateCount: stage === 'discussion' ? (result.discussionAcceptedCandidateCount ?? null) : null
+    }
+  };
 }
 
 // Tier 1 rows were agreed by most independent extraction samples and are shown as actions.
@@ -88,30 +129,45 @@ async function generateMiniLmTrooperStage(stage, transcriptText, options = {}) {
       scriptArgs.push('--meeting-type', String(options.meetingType).trim());
     }
     const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
-      Number(process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000));
-    return {
-      stagedStage: stage,
-      screens: stage === 'discussion' ? { discussion: result.discussion || [] } : splitActionTiers(result.actions),
-      validationFlags: [],
-      preparedTranscriptTelemetry: {
-        source: 'minilm_v3_denoiser', model: prepared.model, embeddingModel: prepared.embeddingModel,
-        rawLength: prepared.rawLength, preparedLength: prepared.preparedLength,
-        removedUnitCount: prepared.removedUnitCount, keptUnitCount: prepared.keptUnitCount,
-        totalUnitCount: prepared.totalUnitCount, removedRatio,
-        chunkCount: result.chunkCount || null, turnCount: result.turnCount || null,
-        actionPrompt: stage === 'actions' ? (result.actionPromptProfile || 'general') : null,
-        actionSampleCount: stage === 'actions' ? (result.actionSampleCount || 1) : null,
-        discussionPrompt: stage === 'discussion' ? (result.discussionPromptProfile || 'general') : null,
-        discussionCallCount: stage === 'discussion' ? (result.discussionCallCount || 1) : null,
-        discussionSplitAfterTurn: stage === 'discussion' ? (result.splitAfterTurn || null) : null,
-        discussionSplitAfterTurns: stage === 'discussion' ? (result.splitAfterTurns || null) : null,
-        discussionCandidateCount: stage === 'discussion' ? (result.discussionCandidateCount ?? null) : null,
-        discussionAcceptedCandidateCount: stage === 'discussion' ? (result.discussionAcceptedCandidateCount ?? null) : null
-      }
-    };
+      Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000));
+    return stagedStageResult(stage, result, {
+      source: 'minilm_v3_denoiser', model: prepared.model, embeddingModel: prepared.embeddingModel,
+      rawLength: prepared.rawLength, preparedLength: prepared.preparedLength,
+      removedUnitCount: prepared.removedUnitCount, keptUnitCount: prepared.keptUnitCount,
+      totalUnitCount: prepared.totalUnitCount, removedRatio
+    });
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 }
 
-module.exports = { generateMiniLmTrooperStage, prepareMiniLmTranscript, splitActionTiers };
+// The Meeting Minutes Agent already owns a MiniLM-prepared transcript. Re-running
+// the denoiser here wastes time and can alter the stable evidence-unit boundary.
+// This entry point gives the private staged candidate branch the prepared units
+// directly and applies a real child-process deadline rather than leaving a
+// timed-out request consuming CPU in the background.
+async function generatePreparedTrooperStage(stage, preparedTranscriptText, options = {}) {
+  if (!['discussion', 'actions'].includes(stage)) throw new Error(`Unsupported simplified stage: ${stage}`);
+  const preparedText = String(preparedTranscriptText || '').trim();
+  if (!preparedText) throw new Error('A prepared transcript is required.');
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-prepared-trooper-'));
+  const denoisedPath = path.join(tempDir, 'denoised-v3.txt');
+  try {
+    await fs.writeFile(denoisedPath, preparedText, 'utf8');
+    const scriptArgs = [denoisedPath, '--stage', stage];
+    if (String(options.meetingType || '').trim()) {
+      scriptArgs.push('--meeting-type', String(options.meetingType).trim());
+    }
+    const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
+      Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000));
+    return stagedStageResult(stage, result, {
+      source: 'prepared_minilm_v3',
+      preparedLength: preparedText.length,
+      keptUnitCount: preparedText.split(/\n\s*\n/).filter(Boolean).length
+    });
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+module.exports = { generateMiniLmTrooperStage, generatePreparedTrooperStage, prepareMiniLmTranscript, splitActionTiers };

@@ -287,6 +287,14 @@ test('an availability constraint does not reject the planning commitment it expl
   assert.ok(candidate.cueKinds.includes('acceptance'));
 });
 
+test('long availability evidence cannot cause pathological action-classifier backtracking', () => {
+  const filler = 'The product classification and standards context were reviewed in detail. '.repeat(120);
+  const evidence = `Morgan won't be available next week. ${filler} Alex agreed to provide the classifications and standards pack.`;
+  const started = Date.now();
+  assert.equal(actionEvidenceDisposition('Provide the classifications and standards pack.', evidence), 'committed');
+  assert.ok(Date.now() - started < 1000);
+});
+
 test('multi-turn scheduling conflicts become one context-rich commitment thread', () => {
   const units = normaliseSourceUnits([
     { id: 'T0730', speaker: 'Morgan', text: "I won't be available between Tuesday and Thursday.", classification: 'keep' },
