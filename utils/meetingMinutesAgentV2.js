@@ -1580,7 +1580,14 @@ function groundedObjectiveRecords(values = [], units = []) {
     const objective = text(typeof value === 'string' ? value : value?.text, 400);
     if (!objective) return null;
     const supplied = Array.isArray(value?.evidenceIds) ? value.evidenceIds : [];
-    const resolved = resolveEvidence(objective, source, supplied);
+    // A meeting's aims are often clarified after the chair's opening remarks.
+    // Honour valid evidence supplied by the Agent anywhere in the transcript;
+    // retain the narrow opening/agenda search only when it supplied no citation.
+    // This keeps objectives evidence-backed without collapsing a multi-purpose
+    // meeting into whichever aim happened to be mentioned first.
+    const resolved = supplied.length
+      ? resolveEvidence(objective, rows, supplied)
+      : resolveEvidence(objective, source, supplied);
     if (!resolved.evidenceIds.length || evidenceSupportScore(objective, evidenceWindowText(rows, resolved.evidenceIds, 1)) < 0.16) return null;
     return {
       id: text(value?.id, 80) || stableId('objective', objective, index),
@@ -1588,6 +1595,28 @@ function groundedObjectiveRecords(values = [], units = []) {
       evidenceIds: resolved.evidenceIds
     };
   }).filter(Boolean).slice(0, 6);
+}
+
+function mergeGroundedObjectiveRecords(groups = [], units = []) {
+  const merged = [];
+  for (const group of Array.isArray(groups) ? groups : []) {
+    for (const record of groundedObjectiveRecords(Array.isArray(group) ? group : [], units)) {
+      const duplicate = merged.find((existing) => {
+        const overlap = tokenOverlap(existing.text, record.text);
+        const sharedEvidence = record.evidenceIds.some((id) => existing.evidenceIds.includes(id));
+        return overlap >= 0.55 || (sharedEvidence && overlap >= 0.34);
+      });
+      if (!duplicate) {
+        merged.push(record);
+        continue;
+      }
+      duplicate.evidenceIds = [...new Set([...duplicate.evidenceIds, ...record.evidenceIds])].slice(0, 12);
+      // Prefer the more descriptive evidence-grounded wording; never compose a
+      // new objective from fragments of two Agent responses.
+      if (record.text.length > duplicate.text.length) duplicate.text = record.text;
+    }
+  }
+  return merged.slice(0, 6);
 }
 
 function groundedExecutiveSummary(value, discussion = [], actions = []) {
@@ -1783,6 +1812,7 @@ module.exports = {
   actionRecoveryNeeded,
   groundedObjectives,
   groundedObjectiveRecords,
+  mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
   relativeExactDate
 };

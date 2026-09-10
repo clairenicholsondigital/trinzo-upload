@@ -35,13 +35,16 @@ const {
   actionRecoveryNeeded,
   groundedObjectives,
   groundedObjectiveRecords,
+  mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
   relativeExactDate
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 const {
   hybridCandidateLedgerFromResult,
-  highConfidenceRefereedAction
+  highConfidenceRefereedAction,
+  safeAgentProposalPromotion,
+  dedupeHybridActionProposals
 } = require('../routes/api').stagedEvaluation;
 
 const sourceUnits = normaliseSourceUnits([
@@ -553,6 +556,63 @@ test('objective records retain valid source evidence', () => {
   const records = groundedObjectiveRecords([{ text: 'Review the three alarm tests before approval.', evidenceIds: ['T0001'] }], sourceUnits);
   assert.equal(records.length, 1);
   assert.equal(records[0].evidenceIds[0], 'T0001');
+});
+
+test('objective records accumulate distinct evidenced aims from later passes', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2000', speaker: 'Chair', text: 'Today we need to plan the audit visit.', classification: 'keep' },
+    { id: 'T2050', speaker: 'Chair', text: 'The other purpose is to agree how the documents will be shared securely.', classification: 'keep' }
+  ]);
+  const records = mergeGroundedObjectiveRecords([
+    [{ text: 'Plan the audit visit.', evidenceIds: ['T2000'] }],
+    [
+      { text: 'Plan the audit visit and arrangements.', evidenceIds: ['T2000'] },
+      { text: 'Agree how audit documents will be shared securely.', evidenceIds: ['T2050'] }
+    ]
+  ], units);
+  assert.equal(records.length, 2);
+  assert.ok(records.some((record) => record.evidenceIds.includes('T2050')));
+});
+
+test('proposal deduplication merges paraphrased deliverables and combines evidence', () => {
+  const records = dedupeHybridActionProposals([
+    {
+      id: 'A1', action: 'Determine and implement a secure method for document access and external SharePoint access.',
+      owners: ['Alex'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2100']
+    },
+    {
+      id: 'A2', action: 'Work out a secure method to provide access to the documents using external SharePoint if needed.',
+      owners: ['Alex'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2101']
+    }
+  ]);
+  assert.equal(records.length, 1);
+  assert.deepEqual(records[0].evidenceIds, ['T2100', 'T2101']);
+});
+
+test('proposal deduplication preserves distinct predicates from one evidence window', () => {
+  const records = dedupeHybridActionProposals([
+    { id: 'A1', action: 'Send the validation report.', owners: ['Alex'], evidenceIds: ['T2200'] },
+    { id: 'A2', action: 'Review the validation report.', owners: ['Alex'], evidenceIds: ['T2200'] }
+  ]);
+  assert.equal(records.length, 2);
+});
+
+test('safe Agent proposals require grounded commitments plus independent support', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2300', speaker: 'Alex', text: 'We will work out a secure way to provide document access.', classification: 'keep' },
+    { id: 'T2301', speaker: 'Priya', text: 'We could perhaps think about parking options.', classification: 'keep' }
+  ]);
+  const action = {
+    action: 'Work out a secure way to provide document access.', owners: ['Alex'], evidenceIds: ['T2300'], reviewFlagIds: []
+  };
+  const candidates = ['primary', 'recovery'].map((sourcePass, index) => ({
+    candidateId: `C${index}`, sourcePass, recordType: 'action', text: action.action,
+    evidenceIds: ['T2300'], record: action
+  }));
+  assert.equal(safeAgentProposalPromotion(action, candidates, units), true);
+  assert.equal(safeAgentProposalPromotion({
+    action: 'Think about parking options.', owners: ['Priya'], evidenceIds: ['T2301'], reviewFlagIds: []
+  }, candidates.map((candidate) => ({ ...candidate, text: 'Think about parking options.', evidenceIds: ['T2301'] })), units), false);
 });
 
 test('discussion consolidation removes repeated records but preserves distinct decisions', () => {
