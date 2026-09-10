@@ -13,6 +13,7 @@ const {
   hybridCandidateLedgerFromResult,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
+  dedupeHybridActionRecords,
   hybridActionSourceInfo,
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,
@@ -191,6 +192,17 @@ test('candidate dispositions expose publish, proposal and reject outcomes', () =
     [{ id: 'published', action: 'one report', evidenceIds: ['T0001'] }],
     [{ id: 'proposed', action: 'two report', evidenceIds: ['T0002'] }]);
   assert.deepEqual(dispositions.map((item) => item.disposition), ['publish', 'proposal', 'reject']);
+});
+
+test('hybrid deduplication merges the same compound deliverable but preserves a different action type', () => {
+  const rows = dedupeHybridActionRecords([
+    { id: 'a1', action: 'Determine whether document access is available and arrange secure transmission.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0002'] },
+    { id: 'a2', action: 'Determine whether documents can be shared and arrange secure transmission and external access.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0002', 'T0003'] },
+    { id: 'a3', action: 'Review the document access controls.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0002'] }
+  ]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0].evidenceIds, ['T0001', 'T0002', 'T0003']);
+  assert.equal(rows[1].id, 'a3');
 });
 
 test('corroborated discussion omitted by the referee is recovered once by proposition', () => {

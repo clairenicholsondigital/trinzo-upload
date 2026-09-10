@@ -8699,6 +8699,17 @@ function hybridTokenOverlap(left, right) {
   return shared / Math.min(a.size, b.size);
 }
 
+function hybridContentTokenOverlap(left, right) {
+  const stop = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should']);
+  const tokens = (value) => new Set((String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || [])
+    .filter((token) => !stop.has(token)));
+  const a = tokens(left); const b = tokens(right);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
 function hybridActionType(value = '') {
   const verb = meetingMinutesAgentText(value, 300).toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:\s+out)?)/)?.[1] || '';
   if (['confirm', 'clarify', 'determine', 'decide', 'resolve', 'figure out'].includes(verb)) return 'decision';
@@ -8740,7 +8751,8 @@ function hybridCandidateMatchesRecord(candidate, record) {
     // deciding are separate accountability items even when their nouns and
     // evidence IDs overlap, so incompatible predicates can never cover one
     // another.
-    if (candidateTypes.size && recordTypes.size && ![...candidateTypes].some((type) => recordTypes.has(type))) return false;
+    if (candidateTypes.size && recordTypes.size && ![...candidateTypes].some((type) => recordTypes.has(type))
+      && hybridContentTokenOverlap(candidate?.text || candidate?.record?.action, hybridRecordText(record)) < 0.7) return false;
     const candidateOwners = candidate?.record?.owners || [];
     const recordOwners = record?.owners || [];
     if (candidateOwners.length && recordOwners.length && !candidateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()))) return false;
@@ -8768,6 +8780,23 @@ function hybridCandidateDispositions(candidates = [], published = [], proposed =
           : 'Not retained after deliverable-aware evidence adjudication.'
     };
   }).slice(0, 1200);
+}
+
+function dedupeHybridActionRecords(records = []) {
+  const merged = [];
+  for (const record of Array.isArray(records) ? records : []) {
+    const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
+    const duplicate = merged.find((existing) => hybridCandidateMatchesRecord(candidate, existing)
+      && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record));
+    if (!duplicate) {
+      merged.push(record);
+      continue;
+    }
+    duplicate.evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(record.evidenceIds || [])])].slice(0, 8);
+    if (!(duplicate.owners || []).length && (record.owners || []).length) duplicate.owners = record.owners;
+    if (duplicate.timing?.kind === 'not_stated' && record.timing?.kind !== 'not_stated') duplicate.timing = record.timing;
+  }
+  return merged;
 }
 
 function hybridActionSourceInfo(action, candidates = []) {
@@ -9464,10 +9493,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actionThreads, [...refereeActions, ...critic.actions, ...candidateBackstop, ...processGapBackstop], draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
-  const complete = normaliseAgentResult({
+  const publishedActions = dedupeHybridActionRecords(automatic);
+  const complete = dedupeHybridActionRecords(normaliseAgentResult({
     actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...candidateBackstop, ...processGapBackstop, ...threadBackstop]
-  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions;
-  const proposal = buildProposal('actions', automatic, complete);
+  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
+  const proposal = buildProposal('actions', publishedActions, complete);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
   const threadBackstopProposalIds = new Set(threadBackstop.map((action) => action.id));
@@ -9486,16 +9516,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actionDiscoveryInventory, complete
   );
   const proposedRecords = proposal.changes.filter((change) => change.type === 'add').map((change) => change.after).filter(Boolean);
-  const candidateDispositions = hybridCandidateDispositions(ensemble, automatic, proposedRecords);
+  const candidateDispositions = hybridCandidateDispositions(ensemble, publishedActions, proposedRecords);
   return {
     changes: {
-      actions: automatic, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
+      actions: publishedActions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
       qualityState: { ...(draft.qualityState || {}), actions: {
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
         stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
         stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
-        automaticCount: automatic.length, proposalCount: proposal.changes.length,
+        automaticCount: publishedActions.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
         criticPromotionCount: criticPromotions.length,
         corroboratedBackstopCount: candidateBackstop.length,
@@ -10135,6 +10165,7 @@ router.stagedEvaluation = {
   hybridCandidateLedgerFromResult,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
+  dedupeHybridActionRecords,
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
   criticConfirmedActionPromotions,
