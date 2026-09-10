@@ -15,6 +15,7 @@ const {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  acceptedVisitAssignmentActions,
   hybridActionSourceInfo,
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,
@@ -246,14 +247,27 @@ test('generic discovery includes named joint intentions and scheduled future wor
 });
 
 test('generic discovery links a concrete offer to the immediately following assignment', () => {
-  const candidates = actionCandidateInventory([
+  const units = [
     { id: 'T0200', sequence: 200, speaker: 'Morgan Reed', text: 'I could go Thursday.', classification: 'keep' },
+    { id: 'T0199', sequence: 199, speaker: 'Priya Shah', text: 'Can somebody go and look at the room?', classification: 'keep' },
     { id: 'T0201', sequence: 201, speaker: 'Priya Shah', text: "And when you're there, check the screen, wifi and clicker.", classification: 'keep' }
-  ]);
+  ].sort((left, right) => left.sequence - right.sequence);
+  const candidates = actionCandidateInventory(units);
   assert.equal(candidates.length, 2);
-  assert.equal(candidates[0].dispositionHint, 'accepted_request');
-  assert.ok(candidates[0].cueKinds.includes('acceptance'));
-  assert.ok(candidates[1].cueKinds.includes('imperative'));
+  const offered = candidates.find((candidate) => candidate.focusEvidenceId === 'T0200');
+  assert.equal(offered.dispositionHint, 'accepted_request');
+  assert.ok(offered.cueKinds.includes('acceptance'));
+  assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0201').cueKinds.includes('imperative'));
+  const actions = acceptedVisitAssignmentActions(units, []);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].action, 'Visit the room and check the screen, wifi and clicker.');
+  assert.deepEqual(actions[0].owners, ['Morgan Reed']);
+  assert.deepEqual(actions[0].timing, { kind: 'target', wording: 'Thursday', exactDate: '' });
+
+  assert.deepEqual(acceptedVisitAssignmentActions([
+    { id: 'T0300', sequence: 300, speaker: 'Morgan Reed', text: 'I could visit the room someday.', classification: 'keep' },
+    { id: 'T0301', sequence: 301, speaker: 'Priya Shah', text: 'Maybe check the screen if useful.', classification: 'keep' }
+  ], []), []);
 });
 
 test('corroborated actions omitted by the referee are recovered only as review proposals', () => {

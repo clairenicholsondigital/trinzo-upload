@@ -8284,6 +8284,7 @@ function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candid
     `Return valid JSON only with schemaVersion ${MEETING_AGENT_SCHEMA_VERSION}, discussion, actions, meetingObjectives and reviewFlags. Return discussion and meetingObjectives as empty arrays.`,
     'Assess every supplied candidate independently. Return an action only for a genuine future commitment, accepted request, scheduled deliverable, passive obligation or conditional commitment supported by the cited exchange.',
     'Resolve compound and multi-turn speech, including an offer immediately followed by an accepted assignment. Preserve separate deliverables and do not repeat anything in CURRENT PUBLISHED ACTIONS.',
+    'A concrete offer to perform a visit followed immediately by another speaker assigning what to inspect during that visit is an accepted commitment chain, not an unaccepted hypothetical. Combine the visit and its assigned checks into one action, using only the actual cited details.',
     'Every returned action must use the standard owners, timing and evidenceIds structure. Do not infer owners or dates. Reject suggestions, status, completed work and meeting administration.',
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `CURRENT PUBLISHED ACTIONS:\n${JSON.stringify(actions || [])}`,
@@ -8992,6 +8993,62 @@ function corroboratedOmittedActionProposals(candidates = [], records = [], sourc
   }).actions.slice(0, 8);
 }
 
+function strongOmittedDiscoveryProposals(candidates = [], records = [], sourceUnits = [], options = {}) {
+  const deterministic = (candidates || []).filter((candidate) => candidate.sourcePass === 'deterministic'
+    && candidate.recordType === 'action'
+    && ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate.dispositionHint));
+  const proposals = [];
+  for (const candidate of (candidates || []).filter((item) => ['primary', 'recovery'].includes(item.sourcePass)
+    && item.recordType === 'action' && item.record?.action && item.evidenceIds?.length)) {
+    if ((records || []).some((record) => hybridCandidateMatchesRecord(candidate, record))) continue;
+    if (!deterministic.some((cue) => hybridCandidateMatchesRecord(cue, candidate.record))) continue;
+    const evidence = surroundingEvidence(sourceUnits, candidate.evidenceIds).filter((unit) => unit.cited)
+      .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
+    if (evidenceSupportScore(candidate.record.action, evidence) < 0.3) continue;
+    if (!['committed', 'accepted_request', 'conditional_commitment'].includes(actionEvidenceDisposition(candidate.record.action, evidence))) continue;
+    proposals.push(candidate.record);
+  }
+  return dedupeHybridActionRecords(normaliseAgentResult({ actions: proposals }, sourceUnits, 'actions', {
+    meetingDate: options.meetingDate
+  }).actions).slice(0, 8);
+}
+
+// A concrete volunteered visit followed immediately by the requester defining
+// the checks is a complete accepted assignment even without a literal “yes”.
+// This is a general discourse pattern (offer -> scope acceptance), not a
+// meeting-type rule. Keep its wording close to the cited request.
+function acceptedVisitAssignmentActions(sourceUnits = [], records = [], options = {}) {
+  const units = normaliseSourceUnits(sourceUnits).filter((unit) => unit.classification !== 'remove' || unit.restored);
+  const offer = /\bI\s+(?:can|could|would be able to)\s+(?:go|visit|attend)\b/i;
+  const request = /\b(?:can|could|would)\s+(?:somebody|someone|you)\s+(?:go|visit|attend|look|inspect|check)\b/i;
+  const scopedCheck = /^\s*(?:(?:and|then|also)\s+)?(?:(?:when|once|after)\b.{0,100}?,\s*)?(?:please\s+)?(?:check|inspect|verify|test)\b/i;
+  const results = [];
+  for (let index = 0; index < units.length; index += 1) {
+    const offered = units[index];
+    if (!offer.test(offered.text || '')) continue;
+    const prior = units.slice(Math.max(0, index - 2), index).reverse().find((unit) => request.test(unit.text || ''));
+    const scope = units.slice(index + 1, Math.min(units.length, index + 3)).find((unit) => scopedCheck.test(unit.text || ''));
+    if (!prior || !scope) continue;
+    const object = meetingMinutesAgentText(String(prior.text || '').match(/\b(?:look at|visit|inspect|check)\s+(?:the\s+)?([^?.!,]{2,80})/i)?.[1], 100);
+    const checks = meetingMinutesAgentText(String(scope.text || '')
+      .replace(/^\s*(?:(?:and|then|also)\s+)?(?:(?:when|once|after)\b.{0,100}?,\s*)?/i, ''), 700)
+      .replace(/[.]+$/, '');
+    if (!checks || !object) continue;
+    const timingWord = meetingMinutesAgentText(String(offered.text || '').match(/\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|next week)\b/i)?.[0], 80);
+    const action = {
+      id: `accepted-visit-${offered.id}`,
+      action: `Visit the ${object} and ${checks.charAt(0).toLowerCase()}${checks.slice(1)}.`,
+      owners: [offered.speaker].filter(Boolean),
+      timing: timingWord ? { kind: 'target', wording: timingWord, exactDate: '' } : { kind: 'not_stated', wording: '', exactDate: '' },
+      evidenceIds: [prior.id, offered.id, scope.id]
+    };
+    if (!(records || []).some((record) => hybridCandidateMatchesRecord({ recordType: 'action', text: action.action, evidenceIds: action.evidenceIds, record: action }, record))) results.push(action);
+  }
+  return normaliseAgentResult({ actions: results }, sourceUnits, 'actions', {
+    enforceEvidence: false, meetingDate: options.meetingDate
+  }).actions;
+}
+
 function operationalGapActionText(questionText = '') {
   const clean = meetingMinutesAgentText(questionText, 1200).replace(/[?.!]+$/, '');
   if (/^how\s+/i.test(clean)) return clean.replace(/^how\s+/i, 'Clarify how ');
@@ -9476,6 +9533,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       if (sourceInfo.discoverySources.length < 2 && !sourceInfo.explicitDeterministic) highConfidencePromotionCount += 1;
     } else singleSource.push(action);
   }
+  const acceptedVisitAssignments = acceptedVisitAssignmentActions(
+    draft.sourceUnits, refereeActions, { meetingDate: details.meetingDate }
+  );
+  automatic.push(...acceptedVisitAssignments);
   // Audit the publication set, not the referee's entire working set. This lets
   // the critic independently confirm a strong single-source referee action;
   // auditing refereeActions would instruct it not to return the very records
@@ -9510,7 +9571,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       transcript, details, actions: automatic, candidates: salvageCandidates
     }), { optional: true });
     salvage = normaliseAgentResult(salvageParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
-    ensemble.push(...hybridCandidateLedgerFromResult(salvage, 'salvage'));
+    const salvageLedger = hybridCandidateLedgerFromResult(salvage, 'salvage');
+    ensemble.push(...salvageLedger);
+    for (const candidate of salvageLedger) {
+      if (!candidateLedger.some((existing) => existing.candidateId === candidate.candidateId)) candidateLedger.push(candidate);
+    }
+    candidateLedger.splice(1200);
   }
   const salvageAutomatic = [];
   const salvageProposal = [];
@@ -9523,26 +9589,35 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const candidateBackstop = corroboratedOmittedActionProposals(
     ensemble, [...refereeActions, ...critic.actions], draft.sourceUnits, { meetingDate: details.meetingDate }
   );
+  const strongDiscoveryBackstop = strongOmittedDiscoveryProposals(
+    ensemble,
+    [...refereeActions, ...critic.actions, ...salvage.actions, ...candidateBackstop],
+    draft.sourceUnits,
+    { meetingDate: details.meetingDate }
+  );
   const processGapBackstop = unresolvedOperationalGapProposals(
-    draft.discussion || [], [...refereeActions, ...critic.actions, ...candidateBackstop], draft.sourceUnits,
+    draft.discussion || [], [...refereeActions, ...critic.actions, ...candidateBackstop, ...strongDiscoveryBackstop], draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
   const threadBackstop = commitmentThreadBackstopProposals(
-    actionThreads, [...refereeActions, ...critic.actions, ...candidateBackstop, ...processGapBackstop], draft.sourceUnits,
+    actionThreads, [...refereeActions, ...critic.actions, ...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop], draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
   const publishedActions = dedupeHybridActionRecords(automatic);
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
-    actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...candidateBackstop, ...processGapBackstop, ...threadBackstop]
+    actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
   const proposal = buildProposal('actions', publishedActions, complete);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
+  const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
   const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
   const threadBackstopProposalIds = new Set(threadBackstop.map((action) => action.id));
   const proposalFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
     kind: 'possible_missed_follow_up',
     message: corroboratedProposalIds.has(change.after?.id)
       ? `Two independent extraction passes found an evidence-backed action omitted by the final referee. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
+      : strongDiscoveryProposalIds.has(change.after?.id)
+        ? `A strong transcript commitment found by an Agent pass was omitted during consolidation. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
       : processGapProposalIds.has(change.after?.id)
         ? `An unresolved operational question is supported by evidence of a current process gap. Decide whether to add this ownerless follow-up: ${change.after?.action || 'Review this proposed follow-up.'}`
         : threadBackstopProposalIds.has(change.after?.id)
@@ -9565,11 +9640,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
         automaticCount: publishedActions.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
+        acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
         salvageCandidateCount: salvageCandidates.length,
         salvageAutomaticCount: salvageAutomatic.length,
         salvageProposalCount: salvageProposal.length,
         corroboratedBackstopCount: candidateBackstop.length,
+        strongDiscoveryProposalCount: strongDiscoveryBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
         commitmentThreadProposalCount: threadBackstop.length,
         candidateDispositions
@@ -10208,6 +10285,7 @@ router.stagedEvaluation = {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  acceptedVisitAssignmentActions,
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
   criticConfirmedActionPromotions,
