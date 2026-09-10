@@ -8871,6 +8871,35 @@ function dedupeHybridActionRecords(records = []) {
   return merged;
 }
 
+function sameActionPresentation(left = {}, right = {}) {
+  const actionMatches = meetingMinutesAgentText(left.action || '', 1600).toLowerCase()
+    === meetingMinutesAgentText(right.action || '', 1600).toLowerCase();
+  const ownerKey = (record) => [...new Set((record.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean))]
+    .sort().join('|');
+  const timingKey = (record) => {
+    const timing = record.timing || {};
+    return [timing.kind || 'not_stated', timing.wording || '', timing.exactDate || '']
+      .map((value) => String(value).trim().toLowerCase()).join('|');
+  };
+  return actionMatches && ownerKey(left) === ownerKey(right) && timingKey(left) === timingKey(right);
+}
+
+// Evidence is supporting metadata, not a user-facing rewrite. Later passes often
+// find extra source turns for an action that is already published. Merge those
+// citations (and their linked flags) into the existing row before calculating
+// the proposal diff so the reviewer is not asked to approve an invisible edit.
+function mergePublishedActionEvidence(published = [], complete = []) {
+  return (Array.isArray(published) ? published : []).map((record) => {
+    const matches = (Array.isArray(complete) ? complete : []).filter((candidate) => sameActionPresentation(record, candidate));
+    if (!matches.length) return record;
+    return {
+      ...record,
+      evidenceIds: [...new Set([...(record.evidenceIds || []), ...matches.flatMap((candidate) => candidate.evidenceIds || [])])].slice(0, 12),
+      reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), ...matches.flatMap((candidate) => candidate.reviewFlagIds || [])])].slice(0, 24)
+    };
+  });
+}
+
 function hybridActionSourceInfo(action, candidates = []) {
   const matches = candidates.filter((candidate) => candidate.recordType === 'action' && hybridCandidateMatchesRecord(candidate, action));
   const discoverySources = [...new Set(matches.map((candidate) => candidate.sourcePass).filter((source) => ['staged', 'primary', 'recovery', 'salvage'].includes(source)))];
@@ -9758,8 +9787,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
     actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...agentDeclaredProposals, ...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
+  const reconciledPublishedActions = mergePublishedActionEvidence(publishedActions, complete);
   const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
-    buildProposal('actions', publishedActions, complete), publishedActions
+    buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
   ), actionChains);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
@@ -9782,16 +9812,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actionDiscoveryInventory, complete
   );
   const proposedRecords = proposal.changes.filter((change) => change.type === 'add').map((change) => change.after).filter(Boolean);
-  const candidateDispositions = hybridCandidateDispositions(ensemble, publishedActions, proposedRecords);
+  const candidateDispositions = hybridCandidateDispositions(ensemble, reconciledPublishedActions, proposedRecords);
   return {
     changes: {
-      actions: publishedActions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
+      actions: reconciledPublishedActions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
       qualityState: { ...(draft.qualityState || {}), actions: {
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
         stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
         stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
-        automaticCount: publishedActions.length, proposalCount: proposal.changes.length,
+        automaticCount: reconciledPublishedActions.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
@@ -10266,8 +10296,9 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     const combined = normaliseAgentResult({
       actions: [...(draft.actions || []), ...audited.actions, ...declaredProposals]
     }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
+    const reconciledActions = mergePublishedActionEvidence(draft.actions || [], combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
-      buildProposal('actions', draft.actions || [], combined), draft.actions || []
+      buildProposal('actions', reconciledActions, combined), reconciledActions
     ), actionChains);
     const missedFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
       kind: 'possible_missed_follow_up',
@@ -10275,6 +10306,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       evidenceIds: change.after?.evidenceIds || []
     }, index));
     const saved = await saveMeetingAgentDraft(draft, req, {
+      actions: reconciledActions,
       pendingProposal: proposal.changes.length ? proposal : null,
       reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...missedFlags])
     });
@@ -10451,6 +10483,7 @@ router.stagedEvaluation = {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  mergePublishedActionEvidence,
   removePublishedActionProposalDuplicates,
   annotateActionProposalChains,
   acceptedVisitAssignmentActions,

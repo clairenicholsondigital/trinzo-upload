@@ -17,6 +17,7 @@ const {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  mergePublishedActionEvidence,
   removePublishedActionProposalDuplicates,
   annotateActionProposalChains,
   acceptedVisitAssignmentActions,
@@ -339,6 +340,40 @@ test('proposal reconciliation removes actions already promoted by a later recove
     { id: 'distinct', type: 'add', after: distinct }
   ] }, published);
   assert.deepEqual(proposal.changes.map((change) => change.id), ['distinct']);
+});
+
+test('additional evidence is merged without creating an invisible action edit', () => {
+  const published = [{
+    id: 'access-action', action: 'Arrange secure document access.', owners: ['Stuart Smith'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0080'], reviewFlagIds: []
+  }];
+  const complete = [{
+    id: 'access-action', action: 'Arrange secure document access.', owners: ['Stuart Smith'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0080', 'T0083', 'T0084'], reviewFlagIds: ['access-check']
+  }];
+  const reconciled = mergePublishedActionEvidence(published, complete);
+  assert.deepEqual(reconciled[0].evidenceIds, ['T0080', 'T0083', 'T0084']);
+  assert.deepEqual(reconciled[0].reviewFlagIds, ['access-check']);
+  const proposal = removePublishedActionProposalDuplicates(
+    require('../utils/meetingMinutesAgentV2').buildProposal('actions', reconciled, complete), reconciled
+  );
+  assert.deepEqual(proposal.changes, []);
+});
+
+test('evidence reconciliation never hides a visible owner, timing or wording change', () => {
+  const published = [{
+    id: 'report-action', action: 'Send the report.', owners: ['Priya Shah'],
+    timing: { kind: 'target', wording: 'This week', exactDate: '' }, evidenceIds: ['T0010'], reviewFlagIds: []
+  }];
+  const changed = [
+    { ...published[0], owners: ['Alex Smith'], evidenceIds: ['T0010', 'T0011'] },
+    { ...published[0], timing: { kind: 'deadline', wording: 'Friday', exactDate: '' }, evidenceIds: ['T0010', 'T0012'] },
+    { ...published[0], action: 'Send the revised report.', evidenceIds: ['T0010', 'T0013'] }
+  ];
+  for (const candidate of changed) {
+    const reconciled = mergePublishedActionEvidence(published, [candidate]);
+    assert.deepEqual(reconciled[0].evidenceIds, ['T0010']);
+  }
 });
 
 test('review proposals expose a concise commitment-chain rationale', () => {
