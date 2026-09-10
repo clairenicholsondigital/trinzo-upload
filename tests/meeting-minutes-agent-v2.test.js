@@ -38,6 +38,10 @@ const {
   relativeExactDate
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
+const {
+  hybridCandidateLedgerFromResult,
+  highConfidenceRefereedAction
+} = require('../routes/api').stagedEvaluation;
 
 const sourceUnits = normaliseSourceUnits([
   { id: 'T0001', speaker: 'Alex', timestamp: '00:01:02', text: 'We need to test all three alarms before approval.', classification: 'keep', confidence: 0.98 },
@@ -295,6 +299,17 @@ test('long availability evidence cannot cause pathological action-classifier bac
   assert.ok(Date.now() - started < 1000);
 });
 
+test('concrete future intentions are commitments but aspirations to think are not', () => {
+  assert.equal(actionEvidenceDisposition(
+    'Run a four-week pilot if the manual test succeeds.',
+    'What we want to do is take a small slice and test it, and then if that succeeds we plan to run a four-week pilot.'
+  ), 'conditional_commitment');
+  assert.equal(actionEvidenceDisposition(
+    'Consider replacement ideas.',
+    'We want to think about possible replacement ideas at some point.'
+  ), 'suggestion');
+});
+
 test('multi-turn scheduling conflicts become one context-rich commitment thread', () => {
   const units = normaliseSourceUnits([
     { id: 'T0730', speaker: 'Morgan', text: "I won't be available between Tuesday and Thursday.", classification: 'keep' },
@@ -391,6 +406,30 @@ test('hybrid candidate ledgers retain implicit obligations and do not discard lo
   const packed = candidatePromptPack(actions, { maxCandidates: 20, maxChars: 50000 });
   assert.ok(packed.length <= 20);
   assert.ok(packed.some((candidate) => candidate.sequence > 75), 'bounded prompt packs must retain late-meeting coverage');
+});
+
+test('referee-approved single-source commitments can be promoted without promoting suggestions or flagged fields', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0740', speaker: 'Priya', text: 'Can you send the completed validation report to me?', classification: 'keep' },
+    { id: 'T0741', speaker: 'Alex', text: 'Yes, I will send the completed validation report on Friday.', classification: 'keep' },
+    { id: 'T0742', speaker: 'Priya', text: 'Perhaps we could consider replacing the reporting tool.', classification: 'keep' }
+  ]);
+  const committed = {
+    action: 'Send the completed validation report on Friday.', owners: ['Alex'],
+    timing: { kind: 'deadline', wording: 'Friday', exactDate: '' }, evidenceIds: ['T0740', 'T0741'], reviewFlagIds: []
+  };
+  const discovered = hybridCandidateLedgerFromResult({ actions: [committed] }, 'primary');
+  assert.equal(highConfidenceRefereedAction(committed, discovered, units), true);
+  assert.equal(highConfidenceRefereedAction({ ...committed, reviewFlagIds: ['ownership-check'] }, discovered, units), false);
+  assert.equal(highConfidenceRefereedAction(committed, hybridCandidateLedgerFromResult({ actions: [committed] }, 'staged'), units), false);
+
+  const suggestion = {
+    action: 'Replace the reporting tool.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' },
+    evidenceIds: ['T0742'], reviewFlagIds: []
+  };
+  assert.equal(highConfidenceRefereedAction(
+    suggestion, hybridCandidateLedgerFromResult({ actions: [suggestion] }, 'primary'), units
+  ), false);
 });
 
 test('discussion ledger identifies facts, decisions and questions while excluding acknowledgements', () => {

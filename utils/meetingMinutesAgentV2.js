@@ -748,6 +748,7 @@ function isIdeaOnlyContemplation(value) {
 }
 
 const ACTION_COMMITMENT_PATTERN = /\b(?:i|we)\s*(?:'ll|will|shall|can do|am going to|are going to)|\b(?:he|she|they)\s+(?:will|shall)|\b(?:agreed|committed|assigned|action(?:\s+for)?|need(?:s)? to|must|shall|is to|are to|due to)\b/i;
+const ACTION_CONCRETE_INTENTION_PATTERN = /\b(?:(?:i|we)\s+(?:want|intend|plan|expect)\s+to|what\s+(?:i|we)\s+want\s+to\s+do\s+is(?:\s+to)?)\s+(?:arrange|assess|book|build|check|clarify|complete|confirm|contact|create|decide|define|determine|document|draft|email|establish|finalise|finalize|fix|forward|investigate|issue|message|prepare|provide|record|resolve|review|run|schedule|send|share|submit|take|test|track|update|validate|verify|write)\b/i;
 const NAMED_WILL_PATTERN = /\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+will\b/;
 const ACTION_REQUEST_PATTERN = /\b(?:please|can you|could you|would you|will you)\b/i;
 const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will do|can do|i can|we can|that's fine|that works)\b/i;
@@ -787,14 +788,17 @@ function actionEvidenceDisposition(action, evidence) {
   if (/\b(?:no action|do not need to|does not need to)\b/i.test(source) || directlyNegatedPredicate) return 'rejected';
   const accepted = ACTION_ACCEPTANCE_PATTERN.test(source);
   const requested = ACTION_REQUEST_PATTERN.test(source);
-  const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source)
+  const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source)
     || isDecisionResolutionCommitment(source) || accepted;
   if (ACTION_ADMIN_PATTERN.test(action) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
   if (ACTION_COMPLETED_PATTERN.test(source) && !hasCommitment) return 'completed';
-  if (requested && !accepted && !ACTION_COMMITMENT_PATTERN.test(source.replace(ACTION_REQUEST_PATTERN, '')) && !NAMED_WILL_PATTERN.test(source)) return 'unaccepted_request';
+  if (requested && !accepted
+    && !ACTION_COMMITMENT_PATTERN.test(source.replace(ACTION_REQUEST_PATTERN, ''))
+    && !ACTION_CONCRETE_INTENTION_PATTERN.test(source.replace(ACTION_REQUEST_PATTERN, ''))
+    && !NAMED_WILL_PATTERN.test(source)) return 'unaccepted_request';
   if (ACTION_SUGGESTION_PATTERN.test(source) && !hasCommitment) return 'suggestion';
   if (ACTION_STATUS_PATTERN.test(source) && !hasCommitment) return 'status_only';
-  if (/\b(?:once|after|when|subject to|dependent on|depends on|cannot .* until)\b/i.test(source) && hasCommitment) return 'conditional_commitment';
+  if (/\b(?:if|once|after|when|subject to|dependent on|depends on|cannot .* until)\b/i.test(source) && hasCommitment) return 'conditional_commitment';
   if (hasCommitment) return accepted ? 'accepted_request' : 'committed';
   return 'unclear';
 }
@@ -807,6 +811,7 @@ function actionCandidateInventory(units = []) {
     const previous = rows.slice(Math.max(0, index - 2), index).map((row) => row.text).join(' ');
     const following = rows.slice(index + 1, Math.min(rows.length, index + 3)).map((row) => row.text).join(' ');
     const directCue = ACTION_COMMITMENT_PATTERN.test(unit.text)
+      || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text)
       || NAMED_WILL_PATTERN.test(unit.text)
       || ACTION_REQUEST_PATTERN.test(unit.text)
       || ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text)
@@ -824,7 +829,7 @@ function actionCandidateInventory(units = []) {
     const context = rows.slice(windowStart, windowEnd)
       .map((item) => `${item.speaker}: ${item.text}`).join(' ');
     const cueKinds = [
-      ACTION_COMMITMENT_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
+      ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
       ACTION_REQUEST_PATTERN.test(unit.text) ? 'request' : '',
       contextualAcceptance || acceptedRequestAhead ? 'acceptance' : '',
       ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text) ? 'obligation' : '',

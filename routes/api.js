@@ -179,6 +179,7 @@ const {
   groundedObjectives,
   groundedObjectiveRecords,
   evidenceSupportScore,
+  actionEvidenceDisposition,
   groundedExecutiveSummary
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
@@ -8657,6 +8658,23 @@ function hybridActionSourceInfo(action, candidates = []) {
   return { discoverySources, explicitDeterministic, candidateIds: matches.map((candidate) => candidate.candidateId) };
 }
 
+// A referee-approved action does not need two discovery passes when the one
+// discovery pass and the transcript itself provide strong, compatible proof.
+// This is intentionally narrower than the normal evidence gate: anything with
+// a field-level review flag, suggestion/status evidence, staged-only provenance
+// or weak lexical grounding remains in the proposal UI.
+function highConfidenceRefereedAction(action, candidates = [], sourceUnits = []) {
+  if (!action?.action || !Array.isArray(action.evidenceIds) || !action.evidenceIds.length) return false;
+  if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length) return false;
+  const sourceInfo = hybridActionSourceInfo(action, candidates);
+  if (!sourceInfo.discoverySources.some((source) => source === 'primary' || source === 'recovery')) return false;
+  const evidence = surroundingEvidence(sourceUnits, action.evidenceIds).filter((unit) => unit.cited)
+    .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
+  if (evidenceSupportScore(action.action, evidence) < 0.3) return false;
+  return ['committed', 'accepted_request', 'conditional_commitment']
+    .includes(actionEvidenceDisposition(action.action, evidence));
+}
+
 // A referee is another probabilistic pass, so it can occasionally omit a
 // deliverable which two independent discovery passes both found. Do not publish
 // that work automatically: recover it into the existing accept/reject proposal
@@ -9070,10 +9088,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
   const automatic = [];
   const singleSource = [];
+  let highConfidencePromotionCount = 0;
   for (const action of refereeActions) {
     const sourceInfo = hybridActionSourceInfo(action, ensemble);
-    if (sourceInfo.discoverySources.length >= 2 || sourceInfo.explicitDeterministic) automatic.push(action);
-    else singleSource.push(action);
+    if (sourceInfo.discoverySources.length >= 2 || sourceInfo.explicitDeterministic
+      || highConfidenceRefereedAction(action, ensemble, draft.sourceUnits)) {
+      automatic.push(action);
+      if (sourceInfo.discoverySources.length < 2 && !sourceInfo.explicitDeterministic) highConfidencePromotionCount += 1;
+    } else singleSource.push(action);
   }
   const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, refereeActions);
   const criticParsed = await call('critic', meetingMinutesAgentCriticPrompt({
@@ -9121,6 +9143,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
         stagedCandidatesFromCache: cachedStaged.length > 0,
         automaticCount: automatic.length, proposalCount: proposal.changes.length,
+        highConfidencePromotionCount,
         corroboratedBackstopCount: candidateBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
         commitmentThreadProposalCount: threadBackstop.length
@@ -9750,6 +9773,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
   hybridActionSourceInfo,
+  highConfidenceRefereedAction,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
