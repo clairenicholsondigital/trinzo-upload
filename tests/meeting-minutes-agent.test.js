@@ -14,6 +14,7 @@ const {
   hybridActionSourceInfo,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
+  commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
   normaliseAgentDiscussion,
   normaliseAgentActions
@@ -33,6 +34,49 @@ test('hybrid recovery, referee and critic prompts keep the complete transcript l
     assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
     assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
+});
+
+test('later hybrid passes retain complete context and role hints for commitment threads', () => {
+  const transcript = '[T0100] Morgan: Could you review the timeline?\n[T0101] Alex: Yes, I will revise it.';
+  const thread = {
+    candidateId: 'thread-1', sourcePass: 'deterministic', recordType: 'action_thread',
+    text: 'Could you review the timeline? Yes, I will revise it.',
+    focusEvidenceId: 'T0101', candidateIds: ['c1', 'c2'], evidenceIds: ['T0100', 'T0101'],
+    cueKinds: ['request', 'acceptance', 'commitment'], dispositionHint: 'accepted_request',
+    priority: 14, sequence: 100, ownerHints: ['Alex'], timingEvidenceIds: [], dependencyEvidenceIds: [],
+    context: '[T0100] Morgan: Could you review the timeline?\n[T0101] Alex: Yes, I will revise it.'
+  };
+  const prompts = [
+    meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, candidates: [thread], salientDetails: [] }),
+    meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [thread], salientDetails: [] }),
+    meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [thread], salientDetails: [] })
+  ];
+  for (const prompt of prompts) {
+    assert.match(prompt, /action_thread/);
+    assert.match(prompt, /ownerHints/);
+    assert.match(prompt, /\[T0100\] Morgan: Could you review the timeline/);
+    assert.match(prompt, /no single turn contains the whole action|individual utterances are incomplete|multi-turn exchange/i);
+  }
+});
+
+test('an unresolved accepted reference becomes a joint-owner review proposal, not an automatic action', () => {
+  const units = [
+    { id: 'T0100', sequence: 100, speaker: 'Morgan Reed', text: "I won't be available between Tuesday and Thursday.", classification: 'keep' },
+    { id: 'T0101', sequence: 101, speaker: 'Morgan Reed', text: 'Could you have a look at the delivery timeline, Alex?', classification: 'keep' },
+    { id: 'T0102', sequence: 102, speaker: 'Alex Green', text: 'Okay, Priya, we need to plan through that then.', classification: 'keep' },
+    { id: 'T0103', sequence: 103, speaker: 'Priya Shah', text: 'Understood.', classification: 'keep' }
+  ];
+  const thread = {
+    candidateId: 'thread-1', sourcePass: 'deterministic', recordType: 'action_thread',
+    evidenceIds: ['T0100', 'T0101', 'T0102'], focusEvidenceId: 'T0102',
+    cueKinds: ['request', 'acceptance', 'decision_resolution'], dispositionHint: 'accepted_request',
+    priority: 15, sequence: 100, dependencyEvidenceIds: ['T0100']
+  };
+  const proposed = commitmentThreadBackstopProposals([thread], [], units);
+  assert.equal(proposed.length, 1);
+  assert.equal(proposed[0].action, 'Plan the delivery timeline around the recorded availability constraint.');
+  assert.deepEqual(proposed[0].owners, ['Alex Green', 'Priya Shah']);
+  assert.deepEqual(proposed[0].evidenceIds, ['T0101', 'T0102', 'T0100']);
 });
 
 test('hybrid action provenance distinguishes corroborated and single-source records', () => {

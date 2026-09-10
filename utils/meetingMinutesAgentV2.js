@@ -769,6 +769,72 @@ function actionCandidateInventory(units = []) {
   return candidates;
 }
 
+function actionCommitmentThreadInventory(units = [], suppliedCandidates) {
+  const rows = normaliseSourceUnits(units).filter(includedUnit);
+  const byId = new Map(rows.map((unit) => [unit.id, unit]));
+  const candidates = (Array.isArray(suppliedCandidates) ? suppliedCandidates : actionCandidateInventory(rows))
+    .filter((candidate) => candidate?.focusEvidenceId && byId.has(candidate.focusEvidenceId))
+    .sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+  const groups = [];
+  for (const candidate of candidates) {
+    const previous = groups.at(-1);
+    const sequence = Number(candidate.sequence || byId.get(candidate.focusEvidenceId)?.sequence || 0);
+    const previousSequence = Number(previous?.at(-1)?.sequence || 0);
+    const groupStart = Number(previous?.[0]?.sequence || sequence);
+    const previousEvidence = new Set((previous || []).flatMap((item) => item.evidenceIds || []));
+    const sharesEvidence = (candidate.evidenceIds || []).some((id) => previousEvidence.has(id));
+    if (previous && sequence - previousSequence <= 4 && sequence - groupStart <= 14 && sharesEvidence) previous.push(candidate);
+    else groups.push([candidate]);
+  }
+  const firstPersonCommitment = /\bI\s+(?:will|'ll|can|shall|am going to|need to|have to|aim to)\b/i;
+  const personalStatus = /\bI\s+(?:will|'ll)\s+be\s+(?:physically\s+)?(?:in|at|away|unavailable)|\bI\s+won't\s+be\s+(?:available|around)\b/i;
+  const acceptedWork = /\b(?:I|we)\b[\s\S]{0,80}\b(?:need to|will|can|aim|plan|do|take|handle|sort|review|check|prepare|front[ -]?end)\b/i;
+  const timing = /\b(?:today|tomorrow|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday)|next\s+(?:week|month)|this\s+(?:week|month)|before|after|until|by\s+|\d{1,2}(?:st|nd|rd|th)?|first week|second week|contingency|unavailable|(?:not|won't) be (?:available|around))\b/i;
+  const dependency = /\b(?:because|if|unless|until|once|after|before|subject to|depend(?:s|ent)? on|contingency|unavailable|(?:not|won't) be (?:available|around)|cannot|can't)\b/i;
+  const threads = [];
+  for (const group of groups) {
+    if (group.length < 2) continue;
+    const cues = [...new Set(group.flatMap((candidate) => candidate.cueKinds || []))];
+    const focusUnits = group.map((candidate) => byId.get(candidate.focusEvidenceId)).filter(Boolean);
+    const hasFirstPersonCommitment = focusUnits.some((unit) => firstPersonCommitment.test(unit.text || ''));
+    const acceptedChain = cues.includes('acceptance') && (cues.includes('request') || cues.includes('commitment') || cues.includes('decision_resolution'));
+    if (!hasFirstPersonCommitment && !acceptedChain) continue;
+    const evidenceIds = [...new Set(group.flatMap((candidate) => candidate.evidenceIds || []))]
+      .sort((left, right) => Number(byId.get(left)?.sequence || 0) - Number(byId.get(right)?.sequence || 0));
+    const evidenceUnits = evidenceIds.map((id) => byId.get(id)).filter(Boolean);
+    const ownerHints = [...new Set(focusUnits.filter((unit, index) => {
+      const candidate = group[index];
+      return (firstPersonCommitment.test(unit.text || '') && !personalStatus.test(unit.text || ''))
+        || ((candidate.cueKinds || []).includes('acceptance') && acceptedWork.test(unit.text || ''));
+    }).map((unit) => unit.speaker).filter(Boolean))];
+    for (const unit of focusUnits.filter((item) => /\bwe\s+(?:probably\s+)?need to\b/i.test(item.text || ''))) {
+      const prefix = String(unit.text || '').split(/\bwe\s+(?:probably\s+)?need to\b/i)[0];
+      for (const speaker of [...new Set(rows.map((item) => item.speaker).filter(Boolean))]) {
+        const first = String(speaker).split(/[\s,]+/)[0];
+        if (first && new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,`, 'i').test(prefix)) ownerHints.push(speaker);
+      }
+    }
+    const uniqueOwnerHints = [...new Set(ownerHints)];
+    const timingEvidenceIds = evidenceUnits.filter((unit) => timing.test(unit.text || '')).map((unit) => unit.id);
+    const dependencyEvidenceIds = evidenceUnits.filter((unit) => dependency.test(unit.text || '')).map((unit) => unit.id);
+    const context = evidenceUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n');
+    const sequence = Math.min(...focusUnits.map((unit) => Number(unit.sequence || 0)));
+    threads.push({
+      candidateId: stableId('action-thread', evidenceIds.join('|')),
+      sourcePass: 'deterministic', recordType: 'action_thread',
+      focusEvidenceId: group.find((candidate) => Number(candidate.priority || 0) === Math.max(...group.map((item) => Number(item.priority || 0))))?.focusEvidenceId,
+      candidateIds: group.map((candidate) => candidate.candidateId), evidenceIds,
+      cueKinds: cues, dispositionHint: acceptedChain ? 'accepted_request' : 'committed',
+      priority: Math.max(...group.map((candidate) => Number(candidate.priority || 0)))
+        + (acceptedChain ? 4 : 0) + Math.min(2, uniqueOwnerHints.length),
+      sequence, ownerHints: uniqueOwnerHints, timingEvidenceIds, dependencyEvidenceIds,
+      text: group.map((candidate) => candidate.focusText).filter(Boolean).join(' '),
+      context: text(context, 5000)
+    });
+  }
+  return threads.slice(0, 120);
+}
+
 function discussionCandidateInventory(units = []) {
   const rows = normaliseSourceUnits(units).filter(includedUnit);
   const salientIds = new Set(salientDetailInventory(rows).flatMap((item) => item.evidenceIds || []));
@@ -1341,6 +1407,7 @@ module.exports = {
   evidenceSupportScore,
   actionEvidenceDisposition,
   actionCandidateInventory,
+  actionCommitmentThreadInventory,
   discussionCandidateInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,

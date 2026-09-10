@@ -26,6 +26,7 @@ const {
   evidenceSupportScore,
   actionEvidenceDisposition,
   actionCandidateInventory,
+  actionCommitmentThreadInventory,
   discussionCandidateInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
@@ -284,6 +285,34 @@ test('an availability constraint does not reject the planning commitment it expl
   assert.ok(candidate);
   assert.equal(candidate.dispositionHint, 'accepted_request');
   assert.ok(candidate.cueKinds.includes('acceptance'));
+});
+
+test('multi-turn scheduling conflicts become one context-rich commitment thread', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0730', speaker: 'Morgan', text: "I won't be available between Tuesday and Thursday.", classification: 'keep' },
+    { id: 'T0731', speaker: 'Morgan', text: 'Could you review the delivery timeline, Alex?', classification: 'keep' },
+    { id: 'T0732', speaker: 'Alex', text: 'Okay, Priya, we need to plan through that.', classification: 'keep' },
+    { id: 'T0733', speaker: 'Priya', text: 'I will front-load the preparation during the first week.', classification: 'keep' },
+    { id: 'T0734', speaker: 'Morgan', text: 'If that is not possible, the second week is the contingency.', classification: 'keep' }
+  ]);
+  const threads = actionCommitmentThreadInventory(units);
+  assert.equal(threads.length, 1);
+  assert.equal(threads[0].recordType, 'action_thread');
+  assert.ok(threads[0].priority >= 10);
+  assert.ok(threads[0].ownerHints.includes('Alex'));
+  assert.ok(threads[0].ownerHints.includes('Priya'));
+  assert.ok(threads[0].timingEvidenceIds.includes('T0730'));
+  assert.ok(threads[0].dependencyEvidenceIds.includes('T0734'));
+  assert.match(threads[0].context, /\[T0731\] Morgan: Could you review/);
+  assert.match(threads[0].context, /\[T0733\] Priya: I will front-load/);
+});
+
+test('adjacent suggestions without acceptance do not become commitment threads', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0740', speaker: 'Morgan', text: 'Maybe we could think about changing the reporting process.', classification: 'keep' },
+    { id: 'T0741', speaker: 'Alex', text: 'There may be other possibilities to consider.', classification: 'keep' }
+  ]);
+  assert.deepEqual(actionCommitmentThreadInventory(units), []);
 });
 
 test('assigned work to resolve an open decision is a dedicated action candidate', () => {
