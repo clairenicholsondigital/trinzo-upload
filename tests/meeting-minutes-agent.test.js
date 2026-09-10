@@ -11,7 +11,12 @@ const {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
+  hybridCandidateMatchesRecord,
+  hybridCandidateDispositions,
   hybridActionSourceInfo,
+  criticConfirmedActionPromotions,
+  corroboratedOmittedDiscussionRecords,
+  mergeHybridDiscussionTopics,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
@@ -19,6 +24,7 @@ const {
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
+const { actionCandidateInventory } = require('../utils/meetingMinutesAgentV2');
 
 test('hybrid recovery, referee and critic prompts keep the complete transcript last', () => {
   const transcript = '[T0001] Priya: I will send the report tomorrow.';
@@ -138,6 +144,73 @@ test('hybrid action provenance distinguishes corroborated and single-source reco
   const from = (sourcePass) => hybridCandidateLedgerFromResult({ actions: [action] }, sourcePass)[0];
   assert.deepEqual(hybridActionSourceInfo(action, [from('primary')]).discoverySources, ['primary']);
   assert.deepEqual(hybridActionSourceInfo(action, [from('primary'), from('staged')]).discoverySources.sort(), ['primary', 'staged']);
+});
+
+test('shared evidence cannot make a different action type cover a deliverable', () => {
+  const candidate = {
+    candidateId: 'review', sourcePass: 'primary', recordType: 'action', text: 'Review the validation report.',
+    evidenceIds: ['T0001'], record: { action: 'Review the validation report.', owners: ['Priya'], evidenceIds: ['T0001'] }
+  };
+  assert.equal(hybridCandidateMatchesRecord(candidate, {
+    action: 'Send the validation report.', owners: ['Priya'], evidenceIds: ['T0001']
+  }), false);
+  assert.equal(hybridCandidateMatchesRecord(candidate, {
+    action: 'Check the validation report.', owners: ['Priya'], evidenceIds: ['T0001']
+  }), true);
+});
+
+test('the independent critic can promote a strongly evidenced single-source referee action', () => {
+  const units = [{ id: 'T0001', sequence: 1, speaker: 'Priya Shah', text: 'I will review the validation report on Friday.', classification: 'keep' }];
+  const refereeAction = {
+    id: 'ref-1', action: 'Review the validation report.', owners: ['Priya Shah'],
+    timing: { kind: 'deadline', wording: 'Friday', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+  };
+  const criticAction = { ...refereeAction, id: 'critic-1' };
+  const primary = hybridCandidateLedgerFromResult({ actions: [refereeAction] }, 'primary');
+  const promoted = criticConfirmedActionPromotions([criticAction], [refereeAction], primary, units);
+  assert.equal(promoted.length, 1);
+  assert.equal(promoted[0].action, 'Review the validation report.');
+
+  const suggestionUnits = [{ id: 'T0002', sequence: 2, speaker: 'Priya Shah', text: 'Maybe we could consider reviewing the report.', classification: 'keep' }];
+  const suggestion = { ...refereeAction, evidenceIds: ['T0002'], timing: { kind: 'not_stated', wording: '', exactDate: '' } };
+  assert.deepEqual(criticConfirmedActionPromotions([suggestion], [suggestion], [], suggestionUnits), []);
+});
+
+test('candidate dispositions expose publish, proposal and reject outcomes', () => {
+  const candidates = ['one', 'two', 'three'].map((word, index) => ({
+    candidateId: word, sourcePass: 'primary', recordType: 'action',
+    text: `${word} report`, evidenceIds: [`T000${index + 1}`], record: { action: `${word} report`, evidenceIds: [`T000${index + 1}`] }
+  }));
+  const dispositions = hybridCandidateDispositions(candidates,
+    [{ id: 'published', action: 'one report', evidenceIds: ['T0001'] }],
+    [{ id: 'proposed', action: 'two report', evidenceIds: ['T0002'] }]);
+  assert.deepEqual(dispositions.map((item) => item.disposition), ['publish', 'proposal', 'reject']);
+});
+
+test('corroborated discussion omitted by the referee is recovered once by proposition', () => {
+  const units = [{ id: 'T0001', sequence: 1, speaker: 'Alex', text: 'The launch remains blocked by supplier approval.', classification: 'keep' }];
+  const result = { discussion: [{ topic: 'Launch', points: [{ text: 'The launch remains blocked by supplier approval.', evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] }] };
+  const candidates = [
+    ...hybridCandidateLedgerFromResult(result, 'primary'),
+    ...hybridCandidateLedgerFromResult(result, 'staged')
+  ];
+  const recovered = corroboratedOmittedDiscussionRecords(candidates, [], units);
+  assert.equal(recovered.length, 1);
+  assert.equal(recovered[0].points.length, 1);
+  const merged = mergeHybridDiscussionTopics([{ topic: 'Launch', points: [], decisions: [], openQuestions: [] }], recovered);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].points.length, 1);
+  assert.deepEqual(corroboratedOmittedDiscussionRecords(candidates, merged, units), []);
+});
+
+test('generic discovery includes named joint intentions and scheduled future work', () => {
+  const candidates = actionCandidateInventory([
+    { id: 'T0100', sequence: 100, speaker: 'Alex Green', text: 'The way Morgan and I are going to test this is with a small manual pilot.', classification: 'keep' },
+    { id: 'T0101', sequence: 101, speaker: 'Priya Shah', text: 'The validation review is scheduled for Friday.', classification: 'keep' }
+  ]);
+  assert.equal(candidates.length, 2);
+  assert.ok(candidates[0].cueKinds.includes('commitment'));
+  assert.ok(candidates[1].cueKinds.includes('scheduled'));
 });
 
 test('corroborated actions omitted by the referee are recovered only as review proposals', () => {

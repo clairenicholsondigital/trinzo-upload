@@ -196,6 +196,13 @@ const MEETING_AGENT_STEP_LABELS = Object.freeze(['details', 'focus', 'discussion
 // Identifies this process. A generation record still marked running but stamped
 // with a different boot id can only be one thing: orphaned by a restart.
 const MEETING_AGENT_BOOT_ID = crypto.randomUUID();
+// Private staged extraction is deliberately a candidate source rather than a
+// user-visible draft. Start it while the reviewer is checking the transcript
+// and reuse it across generation requests instead of paying the full staged
+// latency after every button press.
+const privateStagedCandidateCache = new Map();
+const PRIVATE_STAGED_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const PRIVATE_STAGED_CACHE_MAX_ENTRIES = 60;
 
 // The reviewer's steer is prose they may have laid out in lines or bullets.
 // Deliberately NOT meetingMinutesAgentText() or the v2 text() helper - both
@@ -8048,6 +8055,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push(returnContract(''));
     shared.push('Populate actions as [{"id":"string","action":"string","owners":["string"],"timing":{"kind":"deadline|target|dependency|not_stated","wording":"string","exactDate":"YYYY-MM-DD or empty"},"evidenceIds":["T0001"]}]. Return discussion as an empty array.');
     shared.push('Include every genuine future commitment, accepted follow-up, ongoing review with a required next step, and work triggered when another task finishes. Support joint owners. Deduplicate only the same deliverable with compatible ownership; preserve distinct testing, reviewing, approving, updating, sending and follow-up work.');
+    shared.push('Resolve compound and multi-turn commitment chains: named-person-plus-“I/we are going to” language, passive obligations, scheduled future work, conditional commitments and accepted requests all require assessment. Split one sentence into separate actions when it commits to different deliverables, but keep a true continuation as one action.');
     shared.push('Exclude unaccepted suggestions, hypothetical possibilities, status-only statements, completed or historical work, and routine meeting administration. A question is an action only when the transcript also records acceptance or assignment.');
     shared.push('The action candidate windows below are a recall aid, not an allowlist. Evaluate every candidate window, then sweep the full transcript for commitments that use less explicit wording. The window may contain a request in one turn and acceptance in the next.');
     shared.push('Check every confirmed open question against the transcript. If a named person explicitly accepted responsibility to resolve it by deciding, determining, planning, checking or analysing something, retain that resolution work as an action. An unresolved question without accepted responsibility remains only an open question.');
@@ -8213,6 +8221,7 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
     isDiscussion
       ? 'Return only material discussion points, decisions, open questions or stated objectives that are absent from CURRENT DRAFT. Return actions as an empty array.'
       : 'Return only genuine future commitments, accepted requests, ongoing reviews with a concrete next step, or dependency-triggered work absent from CURRENT DRAFT. Return discussion and meetingObjectives as empty arrays.',
+    ...(!isDiscussion ? ['Assess compound intentions, named joint commitments, passive obligations, scheduled future work and conditional work explicitly. Split different deliverables; do not split a single continued deliverable.'] : []),
     ...(!isDiscussion ? ['For each confirmed open question, check whether a named person explicitly accepted responsibility to resolve it. If so, return that decision-resolution work as an action; otherwise do not turn the question into an action.'] : []),
     ...(!isDiscussion ? ['An action_thread groups adjacent requests, blockers, acceptances and commitments. Read its complete context as one exchange even when no single turn contains the whole action, resolve references across its turns, and preserve distinct deliverables. ownerHints are evidence-navigation hints only: use an owner only when the cited turns show that person accepting or committing to the work.'] : []),
     'Every returned record must cite valid transcript IDs. Do not repeat, paraphrase or split work already present.',
@@ -8235,6 +8244,7 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, details, discussi
     isDiscussion
       ? 'Return a concise final discussion draft grouped by topic, with separate atomic points, decisions and open questions. Merge repeated propositions rather than representing every source window. Return actions as an empty array.'
       : 'Return the complete final action register. Keep distinct deliverables separate and merge only the same deliverable with compatible ownership. Return discussion and meetingObjectives as empty arrays.',
+    ...(!isDiscussion ? ['Adjudicate compound intentions, named joint commitments, passive obligations, scheduled future work, conditional work and accepted requests. A later clause in the same sentence or exchange must not be lost merely because an earlier clause was represented.'] : []),
     ...(!isDiscussion ? ['For each confirmed open question, check whether a named person explicitly accepted responsibility to resolve it. Keep that evidenced decision-resolution work as an action; do not promote an ownerless open question.'] : []),
     ...(!isDiscussion ? ['Treat every high-priority action_thread as an accountability item. Read its complete multi-turn context and either represent each supported deliverable in the action register or reject it under the evidence rules. Do not discard a thread merely because no single turn contains the whole action. ownerHints are not authority; confirm ownership from the cited acceptance or commitment.'] : []),
     'Every kept record must cite valid evidence IDs. Reject unsupported, historical, completed, administrative, merely suggested or hypothetical content.',
@@ -8255,6 +8265,7 @@ function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, acti
     'Return in actions only genuine missing actions. Do not repeat or rewrite an existing action. Return discussion and meetingObjectives as empty arrays.',
     'Check every confirmed open question against its transcript evidence. If a named person explicitly accepted responsibility to resolve it by deciding, determining, planning, checking or analysing something, return that missing resolution task as an action. Do not promote an ownerless question.',
     'Prioritise high-priority action_thread candidates. Each thread is a multi-turn exchange: combine its request, blocker, acceptance, commitment, timing and dependency evidence when they describe one deliverable. Return every genuine missing deliverable supported by a thread; do not reject it merely because the individual utterances are incomplete.',
+    'Specifically recheck compound intentions, named joint commitments, passive obligations, scheduled future work and conditional commitments. Treat each distinct deliverable independently when deciding whether it is already covered.',
     'Use reviewFlags for a material contradiction, unsupported fact, unclear reference, owner/timing conflict or unresolved decision in the existing draft. Do not emit generic coverage warnings.',
     'Every proposed action and every flag must cite valid transcript evidence IDs.',
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
@@ -8487,7 +8498,7 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     .join('\n\n');
   const payload = await generatePreparedTrooperStage(requestedStage, stagedTranscript, {
     meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
-    timeoutMs: Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_TIMEOUT_MS || 50000)
+    timeoutMs: Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_TIMEOUT_MS || 150000)
   });
   const run = { state: {
     discussion: requestedStage === 'discussion' ? (payload?.screens?.discussion || []) : [],
@@ -8495,6 +8506,58 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     summary: {}
   } };
   return hybridCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), 'staged');
+}
+
+function privateStagedCandidateCacheKey(draft, stage) {
+  const preparedHash = crypto.createHash('sha256').update(String(draft?.preparedTranscript || '')).digest('hex');
+  const meetingType = sanitiseMeetingAgentDetails(draft?.details).meetingType || '';
+  return `${draft?.transcriptSha256 || preparedHash}:${preparedHash}:${meetingType}:${stage}`;
+}
+
+function prunePrivateStagedCandidateCache(now = Date.now()) {
+  for (const [key, entry] of privateStagedCandidateCache) {
+    if (Number(entry.expiresAt || 0) <= now) privateStagedCandidateCache.delete(key);
+  }
+  while (privateStagedCandidateCache.size > PRIVATE_STAGED_CACHE_MAX_ENTRIES) {
+    privateStagedCandidateCache.delete(privateStagedCandidateCache.keys().next().value);
+  }
+}
+
+function startPrivateStagedCandidateLedger(draft, stage) {
+  prunePrivateStagedCandidateCache();
+  const key = privateStagedCandidateCacheKey(draft, stage);
+  const existing = privateStagedCandidateCache.get(key);
+  if (existing) return existing.promise;
+  const entry = { expiresAt: Date.now() + PRIVATE_STAGED_CACHE_TTL_MS, promise: null };
+  entry.promise = buildPrivateStagedCandidateLedger(draft, stage).catch((error) => {
+    // Failed work is not cached: a later stage/rerun must be able to retry it.
+    if (privateStagedCandidateCache.get(key) === entry) privateStagedCandidateCache.delete(key);
+    throw error;
+  });
+  privateStagedCandidateCache.set(key, entry);
+  prunePrivateStagedCandidateCache();
+  return entry.promise;
+}
+
+async function awaitPrivateStagedCandidateLedger(draft, stage, maxWaitMs = 12000) {
+  const promise = startPrivateStagedCandidateLedger(draft, stage);
+  if (!Number.isFinite(maxWaitMs) || maxWaitMs <= 0) return [];
+  let timer;
+  try {
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), maxWaitMs); });
+    const value = await Promise.race([promise, timeout]);
+    return value === null ? null : value;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function prewarmPrivateStagedCandidateLedgers(draft) {
+  for (const stage of ['discussion', 'actions']) {
+    startPrivateStagedCandidateLedger(draft, stage).catch((error) => {
+      console.warn(JSON.stringify({ event: 'meeting_agent_staged_prewarm', stage, ok: false, message: error.message }));
+    });
+  }
 }
 
 function meetingAgentDraftPayload(draft = {}) {
@@ -8657,6 +8720,7 @@ function hybridActionsEquivalent(left = '', right = '') {
 }
 
 function hybridCandidateMatchesRecord(candidate, record) {
+  if (record?._recordType && candidate?.recordType && record._recordType !== candidate.recordType) return false;
   const candidateIds = new Set(candidate?.evidenceIds || []);
   const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
   const sharesEvidence = recordIds.some((id) => candidateIds.has(id));
@@ -8664,11 +8728,40 @@ function hybridCandidateMatchesRecord(candidate, record) {
   if (!sharesEvidence && score < 0.55) return false;
   if (sharesEvidence && score < 0.25) return false;
   if (candidate?.recordType === 'action') {
+    const candidateType = hybridActionType(candidate?.text || candidate?.record?.action);
+    const recordType = hybridActionType(hybridRecordText(record));
+    // Adjacent actions routinely cite the same exchange. Testing, sending and
+    // deciding are separate accountability items even when their nouns and
+    // evidence IDs overlap, so incompatible predicates can never cover one
+    // another.
+    if (candidateType && recordType && candidateType !== recordType) return false;
     const candidateOwners = candidate?.record?.owners || [];
     const recordOwners = record?.owners || [];
     if (candidateOwners.length && recordOwners.length && !candidateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()))) return false;
   }
   return true;
+}
+
+function hybridCandidateDispositions(candidates = [], published = [], proposed = []) {
+  const publishedRows = Array.isArray(published) ? published : [];
+  const proposedRows = Array.isArray(proposed) ? proposed : [];
+  return (Array.isArray(candidates) ? candidates : []).map((candidate) => {
+    const publishMatch = publishedRows.find((record) => hybridCandidateMatchesRecord(candidate, record));
+    const proposalMatch = proposedRows.find((record) => hybridCandidateMatchesRecord(candidate, record));
+    const disposition = publishMatch ? 'publish' : proposalMatch ? 'proposal' : 'reject';
+    return {
+      candidateId: candidate.candidateId,
+      sourcePass: candidate.sourcePass,
+      recordType: candidate.recordType,
+      disposition,
+      matchedRecordId: (publishMatch || proposalMatch)?.id || '',
+      reason: publishMatch
+        ? 'Represented by an evidence-grounded published record.'
+        : proposalMatch
+          ? 'Evidence-grounded but retained for reviewer acceptance.'
+          : 'Not retained after deliverable-aware evidence adjudication.'
+    };
+  }).slice(0, 1200);
 }
 
 function hybridActionSourceInfo(action, candidates = []) {
@@ -8693,6 +8786,98 @@ function highConfidenceRefereedAction(action, candidates = [], sourceUnits = [])
   if (evidenceSupportScore(action.action, evidence) < 0.3) return false;
   return ['committed', 'accepted_request', 'conditional_commitment']
     .includes(actionEvidenceDisposition(action.action, evidence));
+}
+
+// Reuse the existing final critic as the targeted promotion referee. An action
+// remains a proposal after one discovery/referee result, but a materially
+// matching result from the independent critic supplies the second judgement
+// needed for safe automatic publication. Deterministic commitments may also be
+// promoted when the critic independently reconstructs and validates them.
+function criticConfirmedActionPromotions(criticActions = [], singleSource = [], candidates = [], sourceUnits = [], options = {}) {
+  const promoted = [];
+  for (const criticAction of Array.isArray(criticActions) ? criticActions : []) {
+    if (!criticAction?.action || !criticAction.evidenceIds?.length || criticAction.reviewFlagIds?.length) continue;
+    const evidence = surroundingEvidence(sourceUnits, criticAction.evidenceIds).filter((unit) => unit.cited)
+      .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
+    if (evidenceSupportScore(criticAction.action, evidence) < 0.3) continue;
+    if (!['committed', 'accepted_request', 'conditional_commitment'].includes(actionEvidenceDisposition(criticAction.action, evidence))) continue;
+    const matchingReferee = (singleSource || []).find((record) => hybridCandidateMatchesRecord({
+      recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
+    }, criticAction));
+    const deterministic = hybridActionSourceInfo(criticAction, candidates).explicitDeterministic;
+    if (!matchingReferee && !deterministic) continue;
+    const preferred = matchingReferee || criticAction;
+    promoted.push({
+      ...preferred,
+      evidenceIds: [...new Set([...(preferred.evidenceIds || []), ...(criticAction.evidenceIds || [])])].slice(0, 8)
+    });
+  }
+  return normaliseAgentResult({ actions: promoted }, sourceUnits, 'actions', {
+    meetingDate: options.meetingDate
+  }).actions;
+}
+
+function corroboratedOmittedDiscussionRecords(candidates = [], discussion = [], sourceUnits = []) {
+  const eligible = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
+    ['discussion_point', 'decision', 'open_question'].includes(candidate?.recordType)
+    && ['primary', 'recovery', 'staged'].includes(candidate?.sourcePass)
+    && candidate?.text && candidate?.evidenceIds?.length
+  );
+  const represented = flattenHybridDiscussion(discussion);
+  const groups = [];
+  for (const candidate of eligible) {
+    const group = groups.find((items) => items[0].recordType === candidate.recordType
+      && items.some((other) => hybridCandidateMatchesRecord(other, candidate.record || candidate)));
+    if (group) group.push(candidate);
+    else groups.push([candidate]);
+  }
+  const additions = [];
+  const sourceRank = { primary: 3, recovery: 2, staged: 1 };
+  for (const group of groups) {
+    const sources = new Set(group.map((candidate) => candidate.sourcePass));
+    if (sources.size < 2 || !sources.has('primary')) continue;
+    if (group.some((candidate) => represented.some((item) => item.recordType === candidate.recordType
+      && hybridCandidateMatchesRecord(candidate, item.record)))) continue;
+    const preferred = [...group].sort((left, right) => Number(sourceRank[right.sourcePass] || 0) - Number(sourceRank[left.sourcePass] || 0)
+      || String(right.text).length - String(left.text).length)[0];
+    additions.push(preferred);
+    if (additions.length >= 8) break;
+  }
+  const byTopic = new Map();
+  for (const candidate of additions) {
+    const topic = meetingMinutesAgentText(candidate.topic || 'Additional evidenced points', 240);
+    if (!byTopic.has(topic)) byTopic.set(topic, { topic, points: [], decisions: [], openQuestions: [] });
+    const key = candidate.recordType === 'decision' ? 'decisions'
+      : candidate.recordType === 'open_question' ? 'openQuestions' : 'points';
+    byTopic.get(topic)[key].push({
+      ...(candidate.record || {}), text: candidate.text,
+      evidenceIds: [...new Set(candidate.evidenceIds || [])].slice(0, 8)
+    });
+  }
+  return normaliseAgentResult({ discussion: [...byTopic.values()] }, sourceUnits, 'discussion').discussion;
+}
+
+function mergeHybridDiscussionTopics(base = [], additions = []) {
+  const merged = (Array.isArray(base) ? base : []).map((topic) => ({
+    ...topic, points: [...(topic.points || [])], decisions: [...(topic.decisions || [])], openQuestions: [...(topic.openQuestions || [])]
+  }));
+  for (const addition of Array.isArray(additions) ? additions : []) {
+    let target = merged.find((topic) => topic.topic.toLowerCase() === addition.topic.toLowerCase());
+    if (!target) target = merged.find((topic) => hybridTokenOverlap(topic.topic, addition.topic) >= 0.6);
+    if (!target) {
+      merged.push(addition);
+      continue;
+    }
+    for (const key of ['points', 'decisions', 'openQuestions']) {
+      for (const record of addition[key] || []) {
+        if (!(target[key] || []).some((existing) => hybridCandidateMatchesRecord({
+          recordType: key === 'points' ? 'discussion_point' : key === 'decisions' ? 'decision' : 'open_question',
+          text: record.text, evidenceIds: record.evidenceIds
+        }, existing))) target[key].push(record);
+      }
+    }
+  }
+  return merged;
 }
 
 // A referee is another probabilistic pass, so it can occasionally omit a
@@ -9137,9 +9322,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     candidate.sourcePass === 'staged' && stagedRecordTypes.has(candidate.recordType));
   const stagedCandidateStartedAt = Date.now();
   let stagedCandidateElapsedMs = 0;
+  let stagedCandidatesFromPrewarm = false;
   const stagedPromise = cachedStaged.length
     ? Promise.resolve(cachedStaged)
-    : buildPrivateStagedCandidateLedger(draft, stage).catch((error) => {
+    : awaitPrivateStagedCandidateLedger(draft, stage, Number(process.env.MEETING_MINUTES_AGENT_STAGED_JOIN_WAIT_MS || 12000)).then((rows) => {
+      if (rows === null) {
+        degradedSources.push('Private staged candidates are still processing in the background; this draft continued without blocking on them.');
+        return [];
+      }
+      stagedCandidatesFromPrewarm = true;
+      return rows;
+    }).catch((error) => {
       degradedSources.push(`Staged candidate extraction failed: ${error.message}`);
       return [];
     }).finally(() => { stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt; });
@@ -9192,15 +9385,24 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeFlags = referee.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
 
   if (stage === 'discussion') {
+    const recoveredDiscussion = corroboratedOmittedDiscussionRecords(ensemble, referee.discussion, draft.sourceUnits);
+    const finalDiscussion = mergeHybridDiscussionTopics(referee.discussion, recoveredDiscussion);
     const objectives = groundedObjectiveRecords(refereeParsed.meetingObjectives || refereeParsed.objectives || primaryParsed.meetingObjectives || [], draft.sourceUnits);
+    const candidateDispositions = hybridCandidateDispositions(
+      ensemble,
+      flattenHybridDiscussion(finalDiscussion).map((item) => ({ ...item.record, _recordType: item.recordType })),
+      []
+    );
     return {
       changes: {
-        discussion: referee.discussion, meetingObjectives: objectives, candidateLedger,
+        discussion: finalDiscussion, meetingObjectives: objectives, candidateLedger,
         passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
         qualityState: { ...(draft.qualityState || {}), discussion: {
           completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
           stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
-          stagedCandidatesFromCache: cachedStaged.length > 0
+          stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
+          corroboratedRecoveryCount: flattenHybridDiscussion(recoveredDiscussion).length,
+          candidateDispositions
         } }
       },
       reviewFlags: refereeFlags, replaceCoverageFlags: false
@@ -9214,7 +9416,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     refereeActions = primary.actions;
   }
   const automatic = [];
-  const singleSource = [];
+  let singleSource = [];
   let highConfidencePromotionCount = 0;
   for (const action of refereeActions) {
     const sourceInfo = hybridActionSourceInfo(action, ensemble);
@@ -9224,11 +9426,27 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       if (sourceInfo.discoverySources.length < 2 && !sourceInfo.explicitDeterministic) highConfidencePromotionCount += 1;
     } else singleSource.push(action);
   }
-  const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, refereeActions);
+  // Audit the publication set, not the referee's entire working set. This lets
+  // the critic independently confirm a strong single-source referee action;
+  // auditing refereeActions would instruct it not to return the very records
+  // that need a second judgement before automatic publication.
+  const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, automatic);
   const criticParsed = await call('critic', meetingMinutesAgentCriticPrompt({
-    transcript, details, discussion: draft.discussion || [], actions: refereeActions, candidates: remaining, salientDetails
+    transcript, details, discussion: draft.discussion || [], actions: automatic, candidates: remaining, salientDetails
   }), { optional: true });
   const critic = normaliseAgentResult(criticParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
+  const criticPromotions = criticConfirmedActionPromotions(
+    critic.actions, singleSource, ensemble, draft.sourceUnits, { meetingDate: details.meetingDate }
+  ).filter((record) => !automatic.some((existing) => hybridActionsEquivalent(existing.action, record.action)));
+  if (criticPromotions.length) {
+    automatic.push(...criticPromotions);
+    singleSource = singleSource.filter((record) => !criticPromotions.some((promoted) =>
+      hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
+    ));
+  }
+  const unpromotedCriticActions = critic.actions.filter((record) => !criticPromotions.some((promoted) =>
+    hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
+  ));
   const candidateBackstop = corroboratedOmittedActionProposals(
     ensemble, [...refereeActions, ...critic.actions], draft.sourceUnits, { meetingDate: details.meetingDate }
   );
@@ -9241,7 +9459,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     { meetingDate: details.meetingDate }
   );
   const complete = normaliseAgentResult({
-    actions: [...automatic, ...singleSource, ...critic.actions, ...candidateBackstop, ...processGapBackstop, ...threadBackstop]
+    actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...candidateBackstop, ...processGapBackstop, ...threadBackstop]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions;
   const proposal = buildProposal('actions', automatic, complete);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
@@ -9261,6 +9479,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const unresolvedStrongCandidateFlags = strongUnresolvedActionCandidateFlags(
     actionDiscoveryInventory, complete
   );
+  const proposedRecords = proposal.changes.filter((change) => change.type === 'add').map((change) => change.after).filter(Boolean);
+  const candidateDispositions = hybridCandidateDispositions(ensemble, automatic, proposedRecords);
   return {
     changes: {
       actions: automatic, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
@@ -9268,12 +9488,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       qualityState: { ...(draft.qualityState || {}), actions: {
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
         stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
-        stagedCandidatesFromCache: cachedStaged.length > 0,
+        stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
         automaticCount: automatic.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
+        criticPromotionCount: criticPromotions.length,
         corroboratedBackstopCount: candidateBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
-        commitmentThreadProposalCount: threadBackstop.length
+        commitmentThreadProposalCount: threadBackstop.length,
+        candidateDispositions
       } }
     },
     reviewFlags: mergeMeetingAgentFlags(refereeFlags, [
@@ -9325,6 +9547,12 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
         }
       })
     });
+    if (meetingMinutesAgentHybridEnabled()) {
+      // The cache owns no user-visible state and the draft remains authoritative.
+      // Starting here hides most of the staged candidate latency behind the
+      // reviewer's details/discussion work.
+      setImmediate(() => prewarmPrivateStagedCandidateLedgers({ ...created, rawTranscript: transcript.text }));
+    }
     return res.json({
       ok: true,
       draft: publicMeetingAgentDraft(created),
@@ -9899,13 +10127,19 @@ router.stagedEvaluation = {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
+  hybridCandidateMatchesRecord,
+  hybridCandidateDispositions,
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
+  criticConfirmedActionPromotions,
+  corroboratedOmittedDiscussionRecords,
+  mergeHybridDiscussionTopics,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
   buildPrivateStagedCandidateLedger,
+  prewarmPrivateStagedCandidateLedgers,
   generateHybridMeetingAgentStage,
   normaliseAgentDiscussion,
   normaliseAgentActions

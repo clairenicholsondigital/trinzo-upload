@@ -749,6 +749,8 @@ function isIdeaOnlyContemplation(value) {
 
 const ACTION_COMMITMENT_PATTERN = /\b(?:i|we)\s*(?:'ll|will|shall|can do|am going to|are going to)|\b(?:he|she|they)\s+(?:will|shall)|\b(?:agreed|committed|assigned|action(?:\s+for)?|need(?:s)? to|must|shall|is to|are to|due to)\b/i;
 const ACTION_CONCRETE_INTENTION_PATTERN = /\b(?:(?:i|we)\s+(?:want|intend|plan|expect)\s+to|what\s+(?:i|we)\s+want\s+to\s+do\s+is(?:\s+to)?)\s+(?:arrange|assess|book|build|check|clarify|complete|confirm|contact|create|decide|define|determine|document|draft|email|establish|finalise|finalize|fix|forward|investigate|issue|message|prepare|provide|record|resolve|review|run|schedule|send|share|submit|take|test|track|update|validate|verify|write)\b/i;
+const ACTION_JOINT_INTENTION_PATTERN = /\b(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+and\s+I|I\s+and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,})\s+(?:am\s+|are\s+)?going\s+to\s+(?:arrange|assess|book|build|check|clarify|complete|confirm|contact|create|decide|define|determine|document|draft|email|establish|finalise|finalize|fix|forward|investigate|issue|message|prepare|provide|record|resolve|review|run|schedule|send|share|submit|take|test|track|update|validate|verify|write)\b/i;
+const ACTION_SCHEDULED_DELIVERABLE_PATTERN = /\b(?:assessment|audit|call|check|follow[- ]?up|inspection|review|session|test|testing|validation|workshop)\s+(?:is|are|has been|have been|was|were)\s+(?:agreed|booked|planned|scheduled)\s+(?:for|to|on)\b/i;
 const NAMED_WILL_PATTERN = /\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+will\b/;
 const ACTION_REQUEST_PATTERN = /\b(?:please|can you|could you|would you|will you)\b/i;
 const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will do|can do|i can|we can|that's fine|that works)\b/i;
@@ -789,6 +791,7 @@ function actionEvidenceDisposition(action, evidence) {
   const accepted = ACTION_ACCEPTANCE_PATTERN.test(source);
   const requested = ACTION_REQUEST_PATTERN.test(source);
   const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source)
+    || ACTION_JOINT_INTENTION_PATTERN.test(source) || ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(source)
     || isDecisionResolutionCommitment(source) || accepted;
   if (ACTION_ADMIN_PATTERN.test(action) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
   if (ACTION_COMPLETED_PATTERN.test(source) && !hasCommitment) return 'completed';
@@ -812,9 +815,11 @@ function actionCandidateInventory(units = []) {
     const following = rows.slice(index + 1, Math.min(rows.length, index + 3)).map((row) => row.text).join(' ');
     const directCue = ACTION_COMMITMENT_PATTERN.test(unit.text)
       || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text)
+      || ACTION_JOINT_INTENTION_PATTERN.test(unit.text)
       || NAMED_WILL_PATTERN.test(unit.text)
       || ACTION_REQUEST_PATTERN.test(unit.text)
       || ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text)
+      || ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(unit.text)
       || ACTION_FOLLOW_UP_PATTERN.test(unit.text)
       || isDecisionResolutionCommitment(unit.text)
       || ACTION_IMPERATIVE_PATTERN.test(unit.text);
@@ -829,10 +834,12 @@ function actionCandidateInventory(units = []) {
     const context = rows.slice(windowStart, windowEnd)
       .map((item) => `${item.speaker}: ${item.text}`).join(' ');
     const cueKinds = [
-      ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
+      ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text)
+        || ACTION_JOINT_INTENTION_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
       ACTION_REQUEST_PATTERN.test(unit.text) ? 'request' : '',
       contextualAcceptance || acceptedRequestAhead ? 'acceptance' : '',
       ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text) ? 'obligation' : '',
+      ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(unit.text) ? 'scheduled' : '',
       ACTION_FOLLOW_UP_PATTERN.test(unit.text) ? 'follow_up' : '',
       isDecisionResolutionCommitment(unit.text) ? 'decision_resolution' : '',
       ACTION_IMPERATIVE_PATTERN.test(unit.text) ? 'imperative' : ''
@@ -876,7 +883,7 @@ function actionCommitmentThreadInventory(units = [], suppliedCandidates) {
     if (previous && sequence - previousSequence <= 4 && sequence - groupStart <= 14 && sharesEvidence) previous.push(candidate);
     else groups.push([candidate]);
   }
-  const firstPersonCommitment = /\bI\s+(?:will|'ll|can|shall|am going to|need to|have to|aim to)\b/i;
+  const firstPersonCommitment = /\b(?:I\s+(?:will|'ll|can|shall|am going to|need to|have to|aim to)|(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+and\s+I|I\s+and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,})\s+(?:am\s+|are\s+)?going\s+to)\b/i;
   const personalStatus = /\bI\s+(?:will|'ll)\s+be\s+(?:physically\s+)?(?:in|at|away|unavailable)|\bI\s+won't\s+be\s+(?:available|around)\b/i;
   const acceptedWork = /\b(?:I|we)\b[\s\S]{0,80}\b(?:need to|will|can|aim|plan|do|take|handle|sort|review|check|prepare|front[ -]?end)\b/i;
   const timing = /\b(?:today|tomorrow|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday)|next\s+(?:week|month)|this\s+(?:week|month)|before|after|until|by\s+|\d{1,2}(?:st|nd|rd|th)?|first week|second week|contingency|unavailable|(?:not|won't) be (?:available|around))\b/i;
