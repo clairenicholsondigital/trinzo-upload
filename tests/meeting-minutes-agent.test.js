@@ -12,6 +12,8 @@ const {
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
   hybridActionSourceInfo,
+  corroboratedOmittedActionProposals,
+  unresolvedOperationalGapProposals,
   strongUnresolvedActionCandidateFlags,
   normaliseAgentDiscussion,
   normaliseAgentActions
@@ -38,6 +40,54 @@ test('hybrid action provenance distinguishes corroborated and single-source reco
   const from = (sourcePass) => hybridCandidateLedgerFromResult({ actions: [action] }, sourcePass)[0];
   assert.deepEqual(hybridActionSourceInfo(action, [from('primary')]).discoverySources, ['primary']);
   assert.deepEqual(hybridActionSourceInfo(action, [from('primary'), from('staged')]).discoverySources.sort(), ['primary', 'staged']);
+});
+
+test('corroborated actions omitted by the referee are recovered only as review proposals', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Priya Shah', text: 'Yes, I will define the acceptance criteria for the handover.', classification: 'keep', confidence: 0.99 }
+  ];
+  const primary = hybridCandidateLedgerFromResult({ actions: [{
+    action: 'Define the acceptance criteria for the handover.', owners: ['Priya Shah'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
+  }] }, 'primary')[0];
+  const staged = hybridCandidateLedgerFromResult({ actions: [{
+    action: 'Define handover acceptance criteria.', owners: [],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
+  }] }, 'staged')[0];
+
+  const recovered = corroboratedOmittedActionProposals([primary, staged], [], units);
+  assert.equal(recovered.length, 1);
+  assert.match(recovered[0].action, /acceptance criteria/i);
+  // Ownership found by just one pass is not promoted by the deterministic backstop.
+  assert.deepEqual(recovered[0].owners, []);
+  assert.deepEqual(corroboratedOmittedActionProposals([primary], [], units), []);
+  assert.deepEqual(corroboratedOmittedActionProposals([primary, staged], [recovered[0]], units), []);
+});
+
+test('an evidenced operational gap is reviewable but an unaccepted suggestion is not promoted', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alex', text: 'How is customer feedback currently captured and tracked?', classification: 'keep', confidence: 0.99 },
+    { id: 'T0002', sequence: 2, speaker: 'Priya', text: 'The method varies and it is not always tracked in the system.', classification: 'keep', confidence: 0.99 },
+    { id: 'T0003', sequence: 3, speaker: 'Alex', text: 'Could we think about a different reporting process someday?', classification: 'keep', confidence: 0.99 }
+  ];
+  const discussion = [{
+    topic: 'Feedback process', points: [], decisions: [],
+    openQuestions: [
+      { text: 'How customer feedback is currently captured and tracked.', evidenceIds: ['T0001'] },
+      { text: 'Whether to think about a different reporting process someday.', evidenceIds: ['T0003'] }
+    ]
+  }];
+  const proposals = unresolvedOperationalGapProposals(discussion, [], units);
+  assert.equal(proposals.length, 1);
+  assert.match(proposals[0].action, /^Clarify how customer feedback/i);
+  assert.deepEqual(proposals[0].owners, []);
+  assert.deepEqual(proposals[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
+  assert.ok(proposals[0].evidenceIds.includes('T0002'));
+
+  assert.deepEqual(unresolvedOperationalGapProposals([{
+    topic: 'Parking ideas', points: [], decisions: [],
+    openQuestions: [{ text: 'Whether to think about a different reporting process someday.', evidenceIds: ['T0003'] }]
+  }], [], units), []);
 });
 
 test('strong unresolved decision and accepted-planning candidates remain visible for review', () => {

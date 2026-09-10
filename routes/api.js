@@ -8591,6 +8591,122 @@ function hybridActionSourceInfo(action, candidates = []) {
   return { discoverySources, explicitDeterministic, candidateIds: matches.map((candidate) => candidate.candidateId) };
 }
 
+// A referee is another probabilistic pass, so it can occasionally omit a
+// deliverable which two independent discovery passes both found. Do not publish
+// that work automatically: recover it into the existing accept/reject proposal
+// UI. Single-source staged rows deliberately do not qualify here.
+function corroboratedOmittedActionProposals(candidates = [], records = [], sourceUnits = [], options = {}) {
+  const eligible = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
+    candidate?.recordType === 'action'
+    && ['staged', 'primary', 'recovery'].includes(candidate?.sourcePass)
+    && hybridRecordText(candidate?.record || candidate)
+    && Array.isArray(candidate?.evidenceIds)
+    && candidate.evidenceIds.length
+  );
+  const groups = [];
+  for (const candidate of eligible) {
+    const group = groups.find((items) => items.some((other) =>
+      hybridCandidateMatchesRecord(candidate, other.record || other)
+      || hybridCandidateMatchesRecord(other, candidate.record || candidate)
+    ));
+    if (group) group.push(candidate);
+    else groups.push([candidate]);
+  }
+  const sourceRank = { primary: 3, recovery: 2, staged: 1 };
+  const proposed = [];
+  for (const group of groups) {
+    const sources = [...new Set(group.map((candidate) => candidate.sourcePass))];
+    if (sources.length < 2) continue;
+    if (group.some((candidate) => (records || []).some((record) => hybridCandidateMatchesRecord(candidate, record)))) continue;
+    const ordered = [...group].sort((left, right) => Number(sourceRank[right.sourcePass] || 0) - Number(sourceRank[left.sourcePass] || 0)
+      || hybridRecordText(right.record || right).length - hybridRecordText(left.record || left).length);
+    const preferred = ordered[0];
+    // Ownership or timing reported by only one pass is not corroborated. The
+    // normal evidence validator remains the final authority even when fields do
+    // agree across sources.
+    const ownerCounts = new Map();
+    const timingCounts = new Map();
+    for (const candidate of group) {
+      for (const owner of candidate.record?.owners || []) {
+        const key = String(owner).trim().toLowerCase();
+        if (key) ownerCounts.set(key, { owner, sources: new Set([...(ownerCounts.get(key)?.sources || []), candidate.sourcePass]) });
+      }
+      const timing = candidate.record?.timing;
+      if (timing && timing.kind && timing.kind !== 'not_stated') {
+        const key = JSON.stringify(timing);
+        timingCounts.set(key, { timing, sources: new Set([...(timingCounts.get(key)?.sources || []), candidate.sourcePass]) });
+      }
+    }
+    const owners = [...ownerCounts.values()].filter((entry) => entry.sources.size >= 2).map((entry) => entry.owner);
+    const timing = [...timingCounts.values()].find((entry) => entry.sources.size >= 2)?.timing
+      || { kind: 'not_stated', wording: '', exactDate: '' };
+    proposed.push({
+      ...(preferred.record || {}),
+      action: hybridRecordText(preferred.record || preferred),
+      owners,
+      timing,
+      evidenceIds: [...new Set(group.flatMap((candidate) => candidate.evidenceIds || []))].slice(0, 8)
+    });
+  }
+  return normaliseAgentResult({ actions: proposed }, sourceUnits, 'actions', {
+    meetingDate: options.meetingDate
+  }).actions.slice(0, 8);
+}
+
+function operationalGapActionText(questionText = '') {
+  const clean = meetingMinutesAgentText(questionText, 1200).replace(/[?.!]+$/, '');
+  if (/^how\s+/i.test(clean)) return clean.replace(/^how\s+/i, 'Clarify how ');
+  if (/^whether\s+/i.test(clean)) return clean.replace(/^whether\s+/i, 'Determine whether ');
+  if (/^who\s+/i.test(clean)) return clean.replace(/^who\s+/i, 'Confirm who ');
+  if (/^what\s+/i.test(clean)) return clean.replace(/^what\s+/i, 'Define what ');
+  return `Resolve: ${clean}`;
+}
+
+// An unresolved operational question is not an agreed action. When its nearby
+// evidence explicitly describes a current process gap, however, it is useful to
+// offer an ownerless follow-up for human acceptance rather than silently lose
+// the issue. This path can never auto-publish an action.
+function unresolvedOperationalGapProposals(discussion = [], records = [], sourceUnits = [], options = {}) {
+  const units = normaliseSourceUnits(sourceUnits);
+  const byId = new Map(units.map((unit, index) => [unit.id, { unit, index }]));
+  const operational = /\b(?:captur(?:e|ed|ing)|record(?:ed|ing)?|track(?:ed|ing)?|log(?:ged|ging)?|document(?:ed|ing)?|monitor(?:ed|ing)?|measure(?:d|ment|ing)?|store(?:d|ing)?|rout(?:e|ed|ing)|report(?:ed|ing)?|workflow|process)\b/i;
+  const currentStateQuestion = /^(?:how|what)\b[\s\S]*\b(?:current|currently|today|at present|now)\b/i;
+  const gap = /\b(?:not always|not consistently|inconsisten(?:t|tly)|var(?:y|ies|ied|ying)|depends? on|not yet|unclear|ad[ -]?hoc|no (?:clear|consistent|formal)|without (?:a )?(?:clear|consistent|formal))\b/i;
+  const proposed = [];
+  for (const topic of Array.isArray(discussion) ? discussion : []) {
+    for (const question of topic?.openQuestions || []) {
+      if (!operational.test(question?.text || '') || !currentStateQuestion.test(question?.text || '')) continue;
+      const anchorIndexes = (question.evidenceIds || []).map((id) => byId.get(id)?.index).filter(Number.isInteger);
+      if (!anchorIndexes.length) continue;
+      const nearby = units.filter((_unit, index) => anchorIndexes.some((anchor) => Math.abs(index - anchor) <= 10));
+      const gapUnits = nearby.filter((unit) => gap.test(unit.text || ''));
+      if (!gapUnits.length) continue;
+      const evidenceIds = [...new Set([...(question.evidenceIds || []), ...gapUnits.map((unit) => unit.id)])].slice(0, 8);
+      const proposal = {
+        action: operationalGapActionText(question.text), owners: [],
+        timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds
+      };
+      if ((records || []).some((record) => hybridTokenOverlap(proposal.action, hybridRecordText(record)) >= 0.55)) continue;
+      proposed.push(proposal);
+      if (proposed.length >= 4) break;
+    }
+    if (proposed.length >= 4) break;
+  }
+  // These are intentionally allowed to retain a question/status evidence
+  // disposition because acceptance by the reviewer is what promotes them.
+  const normalised = normaliseAgentResult({ actions: proposed }, sourceUnits, 'actions', {
+    enforceEvidence: false, meetingDate: options.meetingDate
+  }).actions;
+  const validIds = new Set(units.map((unit) => unit.id));
+  for (const action of normalised) {
+    const source = proposed.find((candidate) => candidate.action === action.action);
+    if (source) action.evidenceIds = [...new Set([
+      ...(action.evidenceIds || []), ...(source.evidenceIds || []).filter((id) => validIds.has(id))
+    ])].slice(0, 8);
+  }
+  return normalised;
+}
+
 function strongUnresolvedActionCandidateFlags(candidates = [], records = []) {
   const strong = uncoveredCandidateInventory(candidates, records).filter((candidate) => {
     const cues = new Set(candidate?.cueKinds || []);
@@ -8746,11 +8862,26 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     transcript, details, discussion: draft.discussion || [], actions: refereeActions, candidates: remaining, salientDetails
   }));
   const critic = normaliseAgentResult(criticParsed, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
-  const complete = normaliseAgentResult({ actions: [...automatic, ...singleSource, ...critic.actions] }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
+  const candidateBackstop = corroboratedOmittedActionProposals(
+    ensemble, [...refereeActions, ...critic.actions], draft.sourceUnits, { meetingDate: details.meetingDate }
+  );
+  const processGapBackstop = unresolvedOperationalGapProposals(
+    draft.discussion || [], [...refereeActions, ...critic.actions, ...candidateBackstop], draft.sourceUnits,
+    { meetingDate: details.meetingDate }
+  );
+  const complete = normaliseAgentResult({
+    actions: [...automatic, ...singleSource, ...critic.actions, ...candidateBackstop, ...processGapBackstop]
+  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions;
   const proposal = buildProposal('actions', automatic, complete);
+  const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
+  const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
   const proposalFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
     kind: 'possible_missed_follow_up',
-    message: `An evidence-backed action found by one extraction source needs review: ${change.after?.action || 'Review this proposed action.'}`,
+    message: corroboratedProposalIds.has(change.after?.id)
+      ? `Two independent extraction passes found an evidence-backed action omitted by the final referee. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
+      : processGapProposalIds.has(change.after?.id)
+        ? `An unresolved operational question is supported by evidence of a current process gap. Decide whether to add this ownerless follow-up: ${change.after?.action || 'Review this proposed follow-up.'}`
+        : `An evidence-backed action found by one extraction source needs review: ${change.after?.action || 'Review this proposed action.'}`,
     evidenceIds: change.after?.evidenceIds || []
   }, index));
   const unresolvedStrongCandidateFlags = strongUnresolvedActionCandidateFlags(
@@ -8760,7 +8891,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     changes: {
       actions: automatic, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
-      qualityState: { ...(draft.qualityState || {}), actions: { completedPasses, recoveryUsed: Boolean(recovery), degradedSources, automaticCount: automatic.length, proposalCount: proposal.changes.length } }
+      qualityState: { ...(draft.qualityState || {}), actions: {
+        completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
+        automaticCount: automatic.length, proposalCount: proposal.changes.length,
+        corroboratedBackstopCount: candidateBackstop.length,
+        operationalGapProposalCount: processGapBackstop.length
+      } }
     },
     reviewFlags: mergeMeetingAgentFlags(refereeFlags, [
       ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag), ...proposalFlags, ...unresolvedStrongCandidateFlags
@@ -9386,6 +9522,8 @@ router.stagedEvaluation = {
   meetingMinutesAgentCriticPrompt,
   hybridCandidateLedgerFromResult,
   hybridActionSourceInfo,
+  corroboratedOmittedActionProposals,
+  unresolvedOperationalGapProposals,
   strongUnresolvedActionCandidateFlags,
   generateHybridMeetingAgentStage,
   normaliseAgentDiscussion,
