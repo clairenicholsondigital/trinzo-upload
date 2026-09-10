@@ -672,19 +672,52 @@ function splitOwners(value) {
   return [...new Set(source.map((owner) => text(owner, 180)).filter((owner) => owner && !/^not stated$/i.test(owner)))].slice(0, 12);
 }
 
+function ownerIdentityTokens(value) {
+  const titles = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'professor']);
+  return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .match(/[a-z0-9]+/g)?.filter((token) => token.length > 1 && !titles.has(token)) || [];
+}
+
+function ownerIdentityKey(value) {
+  return [...new Set(ownerIdentityTokens(value))].sort().join('|');
+}
+
+function canonicalSpeakerDisplayName(value) {
+  const raw = text(value, 180);
+  const comma = raw.indexOf(',');
+  if (comma < 0) return raw;
+  const family = raw.slice(0, comma).trim();
+  const given = raw.slice(comma + 1).trim().split(/\s+/).filter((part) => {
+    return part.replace(/[^A-Za-z0-9]/g, '').length > 1;
+  }).join(' ');
+  return text(`${given} ${family}`, 180) || raw;
+}
+
 function normaliseOwnerIdentity(owner, units = []) {
   const raw = text(owner, 180);
-  const ownerWords = contentTokens(raw);
+  const ownerWords = ownerIdentityTokens(raw);
   if (!ownerWords.length) return raw;
   const speakers = evidenceContextFor(units).speakers;
-  const exact = speakers.find((speaker) => {
-    const words = contentTokens(speaker);
-    return words.length === ownerWords.length && words.every((word) => ownerWords.includes(word));
-  });
-  if (exact) return raw;
-  if (ownerWords.length !== 1) return raw;
-  const matches = speakers.filter((speaker) => contentTokens(speaker).includes(ownerWords[0]));
-  return matches.length === 1 ? matches[0] : raw;
+  const exactKey = ownerIdentityKey(raw);
+  let matches = speakers.filter((speaker) => ownerIdentityKey(speaker) === exactKey);
+  if (!matches.length && ownerWords.length === 1) {
+    matches = speakers.filter((speaker) => ownerIdentityTokens(speaker).includes(ownerWords[0]));
+  }
+  // Teams may alternate between "Surname, Given Initial" and "Given Surname"
+  // for the same participant. Count canonical identities rather than raw labels,
+  // while still refusing to expand an ambiguous first name.
+  const identities = new Map();
+  for (const speaker of matches) {
+    const key = ownerIdentityKey(speaker);
+    if (!identities.has(key)) identities.set(key, []);
+    identities.get(key).push(speaker);
+  }
+  if (identities.size !== 1) return raw;
+  const aliases = [...identities.values()][0];
+  const displays = aliases.map(canonicalSpeakerDisplayName);
+  // Prefer an already human-readable source label, then the deterministic
+  // inversion of Teams' comma form. Either way every pass gets one spelling.
+  return displays.find((name, index) => !aliases[index].includes(',')) || displays[0] || raw;
 }
 
 function isoDateOffset(meetingDate, days) {

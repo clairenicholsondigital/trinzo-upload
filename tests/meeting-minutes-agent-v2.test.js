@@ -197,6 +197,29 @@ test('a first-name assignment can resolve to an established full transcript spea
   assert.ok(inventedSurname.reviewFlags.some((flag) => flag.kind === 'ownership'));
 });
 
+test('Teams surname-first speaker labels canonicalise before action deduplication', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0310', speaker: 'Smith, Stuart M', text: 'I will send the audit code to Niamh today.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Send the audit code to Niamh today.', owners: ['Smith, Stuart M'], evidenceIds: ['T0310'] },
+    { action: 'Send the audit code to Niamh today.', owners: ['Stuart Smith'], evidenceIds: ['T0310'] }
+  ] }, units, 'actions');
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].owners, ['Stuart Smith']);
+});
+
+test('a first name is not expanded when multiple transcript speakers share it', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0320', speaker: 'Alex Smith', text: 'I will send the report tomorrow.', classification: 'keep' },
+    { id: 'T0321', speaker: 'Alex Jones', text: 'I will review it after that.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Send the report tomorrow.', owners: ['Alex'], evidenceIds: ['T0320'] }
+  ] }, units, 'actions');
+  assert.deepEqual(result.actions[0].owners, ['Alex']);
+});
+
 test('actions deduplicate only compatible owners and retain distinct deliverables', () => {
   const actionUnits = normaliseSourceUnits([
     { id: 'T0400', speaker: 'Priya', text: 'I will send the completed report to Alex.', classification: 'keep' },
