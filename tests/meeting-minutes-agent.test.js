@@ -10,6 +10,7 @@ const {
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentCriticPrompt,
+  meetingMinutesAgentSalvagePrompt,
   hybridCandidateLedgerFromResult,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
@@ -41,6 +42,19 @@ test('hybrid recovery, referee and critic prompts keep the complete transcript l
     assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
     assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
+});
+
+test('salvage adjudication is bounded to strong unresolved evidence and cannot invent ownership', () => {
+  const transcript = '[T0001] Morgan: I could visit Thursday.\n[T0002] Priya: When you are there, check the screen and wifi.';
+  const prompt = meetingMinutesAgentSalvagePrompt({
+    transcript, details: {}, actions: [], candidates: [{
+      candidateId: 'visit-check', sourcePass: 'deterministic', recordType: 'action',
+      dispositionHint: 'accepted_request', priority: 8, context: transcript, evidenceIds: ['T0001', 'T0002']
+    }]
+  });
+  assert.match(prompt, /Assess every supplied candidate independently/);
+  assert.match(prompt, /Do not infer owners or dates/);
+  assert.ok(prompt.endsWith(transcript));
 });
 
 test('later hybrid passes retain complete context and role hints for commitment threads', () => {
@@ -229,6 +243,17 @@ test('generic discovery includes named joint intentions and scheduled future wor
   assert.equal(candidates.length, 2);
   assert.ok(candidates[0].cueKinds.includes('commitment'));
   assert.ok(candidates[1].cueKinds.includes('scheduled'));
+});
+
+test('generic discovery links a concrete offer to the immediately following assignment', () => {
+  const candidates = actionCandidateInventory([
+    { id: 'T0200', sequence: 200, speaker: 'Morgan Reed', text: 'I could go Thursday.', classification: 'keep' },
+    { id: 'T0201', sequence: 201, speaker: 'Priya Shah', text: "And when you're there, check the screen, wifi and clicker.", classification: 'keep' }
+  ]);
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates[0].dispositionHint, 'accepted_request');
+  assert.ok(candidates[0].cueKinds.includes('acceptance'));
+  assert.ok(candidates[1].cueKinds.includes('imperative'));
 });
 
 test('corroborated actions omitted by the referee are recovered only as review proposals', () => {

@@ -760,7 +760,8 @@ const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status
 const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite)\b/i;
 const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
-const ACTION_IMPERATIVE_PATTERN = /^\s*(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
+const ACTION_IMPERATIVE_PATTERN = /^\s*(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
+const ACTION_CONCRETE_OFFER_PATTERN = /\bI\s+(?:can|could|would be able to|am available to)\s+(?:attend|check|collect|contact|deliver|go|handle|prepare|provide|review|send|test|visit)\b/i;
 const ACTION_DECISION_RESOLUTION_PATTERN = /\b(?:try(?:ing)? to work out|(?:have|has|got|need(?:s)?) to (?:work (?:out|through)|decide|determine|resolve|plan through)|need(?:s)? to (?:confirm|clarify)|figure out)\b/i;
 const DISCUSSION_DECISION_PATTERN = /\b(?:agreed|decided|confirmed|approved|accepted|selected|settled|concluded|signed off|will proceed|going ahead|the decision)\b/i;
 const DISCUSSION_QUESTION_PATTERN = /\?|\b(?:open question|outstanding|to be confirmed|to be decided|not (?:yet )?(?:decided|confirmed|clear|resolved)|need to (?:confirm|clarify|determine|decide)|whether|which option|who will)\b/i;
@@ -827,7 +828,9 @@ function actionCandidateInventory(units = []) {
       && (ACTION_REQUEST_PATTERN.test(previous) || ACTION_COMMITMENT_PATTERN.test(previous) || NAMED_WILL_PATTERN.test(previous)
         || ACTION_PASSIVE_OBLIGATION_PATTERN.test(previous) || ACTION_FOLLOW_UP_PATTERN.test(previous));
     const acceptedRequestAhead = ACTION_REQUEST_PATTERN.test(unit.text) && ACTION_ACCEPTANCE_PATTERN.test(following);
-    if (!directCue && !contextualAcceptance) continue;
+    const acceptedOfferAhead = ACTION_CONCRETE_OFFER_PATTERN.test(unit.text)
+      && (ACTION_REQUEST_PATTERN.test(following) || ACTION_IMPERATIVE_PATTERN.test(following));
+    if (!directCue && !contextualAcceptance && !acceptedOfferAhead) continue;
     const windowStart = Math.max(0, index - 2);
     const windowEnd = Math.min(rows.length, index + 3);
     const ids = rows.slice(windowStart, windowEnd).map((item) => item.id);
@@ -838,6 +841,7 @@ function actionCandidateInventory(units = []) {
         || ACTION_JOINT_INTENTION_PATTERN.test(unit.text) || NAMED_WILL_PATTERN.test(unit.text) ? 'commitment' : '',
       ACTION_REQUEST_PATTERN.test(unit.text) ? 'request' : '',
       contextualAcceptance || acceptedRequestAhead ? 'acceptance' : '',
+      acceptedOfferAhead ? 'acceptance' : '',
       ACTION_PASSIVE_OBLIGATION_PATTERN.test(unit.text) ? 'obligation' : '',
       ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(unit.text) ? 'scheduled' : '',
       ACTION_FOLLOW_UP_PATTERN.test(unit.text) ? 'follow_up' : '',
@@ -848,9 +852,9 @@ function actionCandidateInventory(units = []) {
       candidateId: stableId('candidate', unit.id),
       focusEvidenceId: unit.id,
       evidenceIds: ids,
-      dispositionHint: actionEvidenceDisposition(unit.text, context),
+      dispositionHint: acceptedOfferAhead ? 'accepted_request' : actionEvidenceDisposition(unit.text, context),
       cueKinds,
-      priority: (contextualAcceptance || acceptedRequestAhead ? 4 : 0)
+      priority: (contextualAcceptance || acceptedRequestAhead || acceptedOfferAhead ? 4 : 0)
         + (cueKinds.includes('commitment') ? 3 : 0)
         + (cueKinds.includes('decision_resolution') ? 3 : 0)
         + (cueKinds.includes('obligation') || cueKinds.includes('follow_up') ? 2 : 0)
@@ -883,7 +887,7 @@ function actionCommitmentThreadInventory(units = [], suppliedCandidates) {
     if (previous && sequence - previousSequence <= 4 && sequence - groupStart <= 14 && sharesEvidence) previous.push(candidate);
     else groups.push([candidate]);
   }
-  const firstPersonCommitment = /\b(?:I\s+(?:will|'ll|can|shall|am going to|need to|have to|aim to)|(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+and\s+I|I\s+and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,})\s+(?:am\s+|are\s+)?going\s+to)\b/i;
+  const firstPersonCommitment = /\b(?:I\s+(?:will|'ll|can|could|shall|am going to|need to|have to|aim to)|(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+and\s+I|I\s+and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,})\s+(?:am\s+|are\s+)?going\s+to)\b/i;
   const personalStatus = /\bI\s+(?:will|'ll)\s+be\s+(?:physically\s+)?(?:in|at|away|unavailable)|\bI\s+won't\s+be\s+(?:available|around)\b/i;
   const acceptedWork = /\b(?:I|we)\b[\s\S]{0,80}\b(?:need to|will|can|aim|plan|do|take|handle|sort|review|check|prepare|front[ -]?end)\b/i;
   const timing = /\b(?:today|tomorrow|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday)|next\s+(?:week|month)|this\s+(?:week|month)|before|after|until|by\s+|\d{1,2}(?:st|nd|rd|th)?|first week|second week|contingency|unavailable|(?:not|won't) be (?:available|around))\b/i;

@@ -8277,6 +8277,21 @@ function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, acti
   ].join('\n\n');
 }
 
+function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candidates }) {
+  return [
+    'Adjudicate a small set of strong action candidates that all earlier meeting-minutes passes left unresolved.',
+    'The prepared transcript is the sole authority. Candidate text is navigation material, never authority.',
+    `Return valid JSON only with schemaVersion ${MEETING_AGENT_SCHEMA_VERSION}, discussion, actions, meetingObjectives and reviewFlags. Return discussion and meetingObjectives as empty arrays.`,
+    'Assess every supplied candidate independently. Return an action only for a genuine future commitment, accepted request, scheduled deliverable, passive obligation or conditional commitment supported by the cited exchange.',
+    'Resolve compound and multi-turn speech, including an offer immediately followed by an accepted assignment. Preserve separate deliverables and do not repeat anything in CURRENT PUBLISHED ACTIONS.',
+    'Every returned action must use the standard owners, timing and evidenceIds structure. Do not infer owners or dates. Reject suggestions, status, completed work and meeting administration.',
+    `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
+    `CURRENT PUBLISHED ACTIONS:\n${JSON.stringify(actions || [])}`,
+    `STRONG UNRESOLVED CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, 18000, 36))}`,
+    `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
+  ].join('\n\n');
+}
+
 const meetingAgentCallQueue = [];
 let meetingAgentActiveCalls = 0;
 let meetingAgentLastCallStartedAt = 0;
@@ -8801,7 +8816,7 @@ function dedupeHybridActionRecords(records = []) {
 
 function hybridActionSourceInfo(action, candidates = []) {
   const matches = candidates.filter((candidate) => candidate.recordType === 'action' && hybridCandidateMatchesRecord(candidate, action));
-  const discoverySources = [...new Set(matches.map((candidate) => candidate.sourcePass).filter((source) => ['staged', 'primary', 'recovery'].includes(source)))];
+  const discoverySources = [...new Set(matches.map((candidate) => candidate.sourcePass).filter((source) => ['staged', 'primary', 'recovery', 'salvage'].includes(source)))];
   const explicitDeterministic = matches.some((candidate) => candidate.sourcePass === 'deterministic' && ['committed', 'accepted_request'].includes(candidate.dispositionHint));
   return { discoverySources, explicitDeterministic, candidateIds: matches.map((candidate) => candidate.candidateId) };
 }
@@ -9482,6 +9497,29 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const unpromotedCriticActions = critic.actions.filter((record) => !criticPromotions.some((promoted) =>
     hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
   ));
+  const salvageCandidates = uncoveredCandidateInventory(
+    actionDiscoveryInventory,
+    [...automatic, ...critic.actions]
+  ).filter((candidate) => candidate?.context
+    && Number(candidate.priority || 0) >= 4
+    && ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate.dispositionHint))
+    .slice(0, 36);
+  let salvage = { actions: [], reviewFlags: [] };
+  if (salvageCandidates.length) {
+    const salvageParsed = await call('salvage', meetingMinutesAgentSalvagePrompt({
+      transcript, details, actions: automatic, candidates: salvageCandidates
+    }), { optional: true });
+    salvage = normaliseAgentResult(salvageParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
+    ensemble.push(...hybridCandidateLedgerFromResult(salvage, 'salvage'));
+  }
+  const salvageAutomatic = [];
+  const salvageProposal = [];
+  for (const action of salvage.actions) {
+    const sourceInfo = hybridActionSourceInfo(action, ensemble);
+    if (sourceInfo.discoverySources.length >= 2 || sourceInfo.explicitDeterministic) salvageAutomatic.push(action);
+    else salvageProposal.push(action);
+  }
+  automatic.push(...salvageAutomatic.filter((record) => !automatic.some((existing) => hybridActionsEquivalent(existing.action, record.action))));
   const candidateBackstop = corroboratedOmittedActionProposals(
     ensemble, [...refereeActions, ...critic.actions], draft.sourceUnits, { meetingDate: details.meetingDate }
   );
@@ -9495,7 +9533,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   );
   const publishedActions = dedupeHybridActionRecords(automatic);
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
-    actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...candidateBackstop, ...processGapBackstop, ...threadBackstop]
+    actions: [...automatic, ...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...candidateBackstop, ...processGapBackstop, ...threadBackstop]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
   const proposal = buildProposal('actions', publishedActions, complete);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
@@ -9528,6 +9566,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         automaticCount: publishedActions.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
         criticPromotionCount: criticPromotions.length,
+        salvageCandidateCount: salvageCandidates.length,
+        salvageAutomaticCount: salvageAutomatic.length,
+        salvageProposalCount: salvageProposal.length,
         corroboratedBackstopCount: candidateBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
         commitmentThreadProposalCount: threadBackstop.length,
@@ -10162,6 +10203,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentCriticPrompt,
+  meetingMinutesAgentSalvagePrompt,
   hybridCandidateLedgerFromResult,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
