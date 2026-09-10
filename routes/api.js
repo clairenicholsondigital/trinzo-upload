@@ -8636,6 +8636,26 @@ function hybridTokenOverlap(left, right) {
   return shared / Math.min(a.size, b.size);
 }
 
+function hybridActionType(value = '') {
+  const verb = meetingMinutesAgentText(value, 300).toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:\s+out)?)/)?.[1] || '';
+  if (['confirm', 'clarify', 'determine', 'decide', 'resolve', 'figure out'].includes(verb)) return 'decision';
+  if (['send', 'share', 'provide', 'forward', 'circulate', 'email', 'issue', 'deliver', 'submit'].includes(verb)) return 'transmission';
+  if (['review', 'check', 'assess', 'inspect', 'evaluate', 'analyse', 'audit'].includes(verb)) return 'review';
+  if (['create', 'produce', 'prepare', 'draft', 'develop', 'build', 'write', 'compile'].includes(verb)) return 'creation';
+  if (['update', 'revise', 'amend', 'change', 'edit', 'correct'].includes(verb)) return 'update';
+  if (['complete', 'finish', 'finalise', 'finalize', 'close', 'sign', 'attest'].includes(verb)) return 'completion';
+  if (['test', 'verify', 'validate', 'run', 'rerun'].includes(verb)) return 'testing';
+  if (['schedule', 'arrange', 'book', 'organise', 'coordinate', 'plan'].includes(verb)) return 'planning';
+  return verb;
+}
+
+function hybridActionsEquivalent(left = '', right = '') {
+  const leftType = hybridActionType(left);
+  const rightType = hybridActionType(right);
+  if (leftType && rightType && leftType !== rightType) return false;
+  return hybridTokenOverlap(left, right) >= 0.55;
+}
+
 function hybridCandidateMatchesRecord(candidate, record) {
   const candidateIds = new Set(candidate?.evidenceIds || []);
   const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
@@ -8847,6 +8867,97 @@ function strongUnresolvedActionCandidateFlags(candidates = [], records = []) {
   }, index));
 }
 
+// Recover two common multi-turn commitments which do not contain the simple
+// "we need to do that" wording handled below:
+//   1. a concrete question whose answer is explicitly deferred until a known
+//      meeting/check ("I'll know after Wednesday"); and
+//   2. a proposed option followed by a first-person commitment to work through
+//      the criteria needed to decide it.
+// These are deliberately proposals, never automatic actions. The goal is to
+// keep strongly evidenced work reviewable when an optional discovery source
+// times out without weakening the publication threshold.
+function deferredCommitmentThreadProposal(thread, evidenceUnits = [], resolveSpeaker = (value) => value) {
+  const ordered = [...evidenceUnits].sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+  const replacePerspective = (value, referencedSpeaker, addressedSpeaker = referencedSpeaker) => meetingMinutesAgentText(value, 300)
+    .replace(/\b(?:I|me)\b/gi, referencedSpeaker || 'the requester')
+    .replace(/\bmy\b/gi, referencedSpeaker ? `${referencedSpeaker}'s` : "the requester's")
+    .replace(/\bhaving\s+you\b/i, referencedSpeaker ? `${referencedSpeaker} should be` : 'the requester should be')
+    .replace(/\bputting\s+you\b/i, referencedSpeaker ? `put ${referencedSpeaker}` : 'put the requester')
+    .replace(/\bassigning\s+you\b/i, referencedSpeaker ? `assign ${referencedSpeaker}` : 'assign the requester')
+    .replace(/\bmoving\s+you\b/i, referencedSpeaker ? `move ${referencedSpeaker}` : 'move the requester')
+    .replace(/\bkeeping\s+you\b/i, referencedSpeaker ? `keep ${referencedSpeaker}` : 'keep the requester')
+    .replace(/\byou\b/gi, addressedSpeaker || 'the other participant')
+    .replace(/\byour\b/gi, addressedSpeaker ? `${addressedSpeaker}'s` : "the other participant's")
+    .replace(/\s+/g, ' ').trim();
+
+  const deferredAnswer = /\b(?:i|we)\s*(?:'ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i;
+  const resolution = ordered.find((unit) => deferredAnswer.test(unit.text || ''));
+  const earlierQuestions = resolution ? ordered.filter((unit) =>
+    Number(unit.sequence || 0) < Number(resolution.sequence || 0) && /\?\s*$/.test(unit.text || '')
+  ) : [];
+  const question = earlierQuestions.find((unit) => /^\s*(?:so\s+)?(?:will|can|could|would|do|does|is|are)\b/i.test(unit.text || ''))
+    || earlierQuestions.at(-1);
+  if (resolution && question) {
+    const rewrittenQuestion = replacePerspective(String(question.text || '').replace(/\?+$/, ''), question.speaker, resolution.speaker)
+      .replace(/^so\s+/i, '').trim();
+    const auxiliary = rewrittenQuestion.match(/^(will|can|could|would|is|are|do|does)\s+(.+)$/i);
+    let subject = auxiliary?.[2] || rewrittenQuestion.replace(/^whether\s+/i, '');
+    if (auxiliary && question.speaker) {
+      const escapedSpeaker = question.speaker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const remainder = subject.replace(new RegExp(`^${escapedSpeaker}\\s+`, 'i'), '');
+      if (remainder !== subject) {
+        const verb = auxiliary[1].toLowerCase();
+        subject = /^(?:do|does)$/i.test(verb) ? `${question.speaker} ${remainder}` : `${question.speaker} ${verb} ${remainder}`;
+      }
+      subject = subject.replace(new RegExp(`\\bso that ${escapedSpeaker} can\\b`, 'i'), 'so that they can');
+    }
+    subject = subject.trim();
+    const timed = ordered.find((unit) => Number(unit.sequence || 0) <= Number(resolution.sequence || 0)
+      && /\b(?:monday|tuesday|wednesday|thursday|friday|today|tomorrow|next week)\b/i.test(unit.text || ''))
+      || ordered.find((unit) => Number(unit.sequence || 0) <= Number(resolution.sequence || 0)
+        && /\b(?:meeting|call|review|session|workshop)\b/i.test(unit.text || ''));
+    const timeText = meetingMinutesAgentText(String(timed?.text || '').match(/\b(?:monday|tuesday|wednesday|thursday|friday|today|tomorrow|next week)\b/i)?.[0]
+      || String(timed?.text || '').match(/\b(?:meeting|call|review|session|workshop)\b/i)?.[0], 80);
+    if (subject.split(/\s+/).length >= 3) return {
+      action: `Confirm whether ${subject}${timeText ? ` after ${timeText}` : ''}.`,
+      owners: [resolveSpeaker(resolution.speaker)].filter(Boolean),
+      timing: timeText ? { kind: 'target', wording: `After ${timeText}`, exactDate: '' } : { kind: 'not_stated', wording: '', exactDate: '' },
+      evidenceIds: [...new Set([question.id, resolution.id, ...(timed ? [timed.id] : [])])].slice(0, 8)
+    };
+  }
+
+  const pendingResolution = /\b(?:i(?:'m| am) trying to|i(?:'ve| have) (?:just )?got to|i (?:need|have) to|we (?:need|have) to)\s+(?:work (?:out|through)|decide|determine|resolve|check|review)\b/i;
+  const resolver = ordered.find((unit) => pendingResolution.test(unit.text || ''));
+  const optionPattern = /\b(?:i(?:'m| am)\s+)?(?:thinking|considering)\s+(?:about\s+|of\s+)?((?:having|putting|using|running|splitting|assigning|allocating|keeping|moving|making)\b.{3,150}?)(?=,|\bbut\b|\bwhich\b|\bso\b|\.|$)/i;
+  const optionUnit = resolver && ordered.find((unit) => Math.abs(Number(unit.sequence || 0) - Number(resolver.sequence || 0)) <= 2
+    && optionPattern.test(unit.text || ''));
+  const option = String(optionUnit?.text || '').match(optionPattern)?.[1];
+  if (!resolver || !optionUnit || !option) return null;
+  const referencedSpeaker = ordered.filter((unit) =>
+    Number(unit.sequence || 0) < Number(resolver.sequence || 0) && unit.speaker && unit.speaker !== resolver.speaker
+  ).at(-1)?.speaker || '';
+  let optionText = replacePerspective(option, referencedSpeaker)
+    .replace(/^having\s+/i, '')
+    .replace(/^using\s+/i, 'use ')
+    .replace(/^running\s+/i, 'run ')
+    .replace(/^splitting\s+/i, 'split ')
+    .replace(/^allocating\s+/i, 'allocate ')
+    .trim();
+  if (optionText.split(/\s+/).length < 3) return null;
+  const combined = ordered.map((unit) => unit.text || '').join(' ');
+  const criteria = [];
+  if (/\blogistics\b/i.test(combined)) criteria.push('logistics');
+  const risk = combined.match(/\brisk (?:analysis|assessment)\b/i)?.[0]?.toLowerCase();
+  if (risk) criteria.push(risk);
+  const criteriaText = criteria.length ? ` based on ${criteria.length === 1 ? criteria[0] : `${criteria[0]} and ${criteria[1]}`}` : '';
+  return {
+    action: `Determine whether ${optionText}${criteriaText}.`,
+    owners: [resolveSpeaker(resolver.speaker)].filter(Boolean),
+    timing: criteria.length ? { kind: 'dependency', wording: `Based on ${criteria.length === 1 ? criteria[0] : `${criteria[0]} and ${criteria[1]}`}`, exactDate: '' } : { kind: 'not_stated', wording: '', exactDate: '' },
+    evidenceIds: [...new Set([resolver.id, optionUnit.id, ...(thread.dependencyEvidenceIds || [])])].slice(0, 8)
+  };
+}
+
 function commitmentThreadBackstopProposals(candidates = [], records = [], sourceUnits = [], options = {}) {
   const units = normaliseSourceUnits(sourceUnits).filter((unit) => unit.classification !== 'remove' || unit.restored);
   const byId = new Map(units.map((unit) => [unit.id, unit]));
@@ -8862,7 +8973,12 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
   const acceptedReference = /\bwe\s+(?:probably\s+)?need to\s+(plan|review|check|resolve|decide|determine|sort out|work through)\s+(?:through\s+)?(?:that|this)\b/i;
   const antecedentObject = /\b(?:have a look at|look at|look into|review|check|resolve|plan|decide|determine|sort out|work through)\s+(?:just\s+)?(?:the\s+)?(.{3,100}?)(?=,|\.|\s+in terms of|$)/i;
   const proposals = [];
-  const unresolvedThreads = uncoveredCandidateInventory(candidates, records)
+  // Do not discard a whole thread merely because one deliverable within its
+  // evidence window is already represented. A deferred confirmation and the
+  // contingent work that follows it, for example, are separate accountability
+  // items even though they share adjacent turns. The final action-level
+  // similarity check below still removes genuine duplicates.
+  const unresolvedThreads = (Array.isArray(candidates) ? candidates : [])
     .filter((candidate) => candidate?.recordType === 'action_thread'
       && Number(candidate.priority || 0) >= 10
       && (candidate.cueKinds || []).includes('decision_resolution')
@@ -8871,7 +8987,18 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
     const evidenceUnits = (thread.evidenceIds || []).map((id) => byId.get(id)).filter(Boolean)
       .sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
     const acceptance = evidenceUnits.find((unit) => acceptedReference.test(unit.text || ''));
-    if (!acceptance) continue;
+    if (!acceptance) {
+      const deferred = deferredCommitmentThreadProposal(thread, evidenceUnits, resolveSpeaker);
+      if (!deferred) continue;
+      const proposal = normaliseAgentResult({ actions: [{
+        id: `thread-proposal-${thread.candidateId}`,
+        ...deferred
+      }] }, sourceUnits, 'actions', { enforceEvidence: false, meetingDate: options.meetingDate }).actions[0];
+      if (!proposal) continue;
+      if ([...(records || []), ...proposals].some((record) => hybridActionsEquivalent(proposal.action, hybridRecordText(record)))) continue;
+      proposals.push(proposal);
+      continue;
+    }
     const referenceMatch = String(acceptance.text || '').match(acceptedReference);
     const earlier = evidenceUnits.filter((unit) => Number(unit.sequence || 0) < Number(acceptance.sequence || 0)).reverse();
     let antecedent = null;
@@ -8909,7 +9036,7 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
       action, owners, timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds
     }] }, sourceUnits, 'actions', { enforceEvidence: false, meetingDate: options.meetingDate }).actions[0];
     if (!proposal) continue;
-    if ([...(records || []), ...proposals].some((record) => hybridTokenOverlap(proposal.action, hybridRecordText(record)) >= 0.55)) continue;
+    if ([...(records || []), ...proposals].some((record) => hybridActionsEquivalent(proposal.action, hybridRecordText(record)))) continue;
     proposals.push(proposal);
   }
   return proposals;

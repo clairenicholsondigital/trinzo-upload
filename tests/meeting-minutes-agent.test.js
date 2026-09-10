@@ -79,6 +79,60 @@ test('an unresolved accepted reference becomes a joint-owner review proposal, no
   assert.deepEqual(proposed[0].evidenceIds, ['T0101', 'T0102', 'T0100']);
 });
 
+test('deferred answers and pending decisions survive as evidence-backed review proposals', () => {
+  const deferredUnits = [
+    { id: 'T0200', sequence: 200, speaker: 'Morgan Reed', text: 'Will I have access to the release files before validation?', classification: 'keep' },
+    { id: 'T0201', sequence: 201, speaker: 'Alex Green', text: "I don't know yet.", classification: 'keep' },
+    { id: 'T0202', sequence: 202, speaker: 'Alex Green', text: "I have a supplier meeting on Wednesday, so I'll know more then.", classification: 'keep' }
+  ];
+  const deferredThread = {
+    candidateId: 'thread-deferred', sourcePass: 'deterministic', recordType: 'action_thread',
+    evidenceIds: ['T0200', 'T0201', 'T0202'], focusEvidenceId: 'T0202',
+    cueKinds: ['commitment', 'decision_resolution'], dispositionHint: 'conditional_commitment',
+    priority: 12, sequence: 200, dependencyEvidenceIds: ['T0202']
+  };
+  const deferred = commitmentThreadBackstopProposals([deferredThread], [], deferredUnits);
+  assert.equal(deferred.length, 1);
+  assert.equal(deferred[0].action, 'Confirm whether Morgan Reed will have access to the release files before validation after Wednesday.');
+  assert.deepEqual(deferred[0].owners, ['Alex Green']);
+  assert.deepEqual(deferred[0].timing, { kind: 'target', wording: 'After Wednesday', exactDate: '' });
+  const alongsideContingentWork = commitmentThreadBackstopProposals([deferredThread], [{
+    action: 'Provide secure access to the release files if required.', owners: ['Alex Green'], evidenceIds: ['T0200', 'T0202']
+  }], deferredUnits);
+  assert.equal(alongsideContingentWork.length, 1, 'a different deliverable in the same evidence window must not mask the deferred confirmation');
+
+  const decisionUnits = [
+    { id: 'T0300', sequence: 300, speaker: 'Morgan Reed', text: 'How will the validation review be split?', classification: 'keep' },
+    { id: 'T0301', sequence: 301, speaker: 'Alex Green', text: "I'm trying to work out the logistics.", classification: 'keep' },
+    { id: 'T0302', sequence: 302, speaker: 'Alex Green', text: "I'm thinking having you in a separate review track, but I've got to work through the logistics and look at the risk assessment.", classification: 'keep' },
+    { id: 'T0303', sequence: 303, speaker: 'Morgan Reed', text: 'That makes sense.', classification: 'keep' }
+  ];
+  const decisionThread = {
+    candidateId: 'thread-decision', sourcePass: 'deterministic', recordType: 'action_thread',
+    evidenceIds: ['T0300', 'T0301', 'T0302', 'T0303'], focusEvidenceId: 'T0302',
+    cueKinds: ['commitment', 'acceptance', 'decision_resolution'], dispositionHint: 'accepted_request',
+    priority: 13, sequence: 300, dependencyEvidenceIds: ['T0301', 'T0302']
+  };
+  const decision = commitmentThreadBackstopProposals([decisionThread], [], decisionUnits);
+  assert.equal(decision.length, 1);
+  assert.equal(decision[0].action, 'Determine whether Morgan Reed should be in a separate review track based on logistics and risk assessment.');
+  assert.deepEqual(decision[0].owners, ['Alex Green']);
+  assert.deepEqual(decision[0].timing, { kind: 'dependency', wording: 'Based on logistics and risk assessment', exactDate: '' });
+});
+
+test('a merely contemplated option is not recovered as a commitment-thread action', () => {
+  const units = [
+    { id: 'T0400', sequence: 400, speaker: 'Morgan Reed', text: 'How might the validation review be split?', classification: 'keep' },
+    { id: 'T0401', sequence: 401, speaker: 'Alex Green', text: 'Maybe we could consider having you in a separate review track.', classification: 'keep' }
+  ];
+  const thread = {
+    candidateId: 'thread-suggestion', sourcePass: 'deterministic', recordType: 'action_thread',
+    evidenceIds: ['T0400', 'T0401'], focusEvidenceId: 'T0401',
+    cueKinds: ['decision_resolution'], dispositionHint: 'suggestion', priority: 13, sequence: 400
+  };
+  assert.deepEqual(commitmentThreadBackstopProposals([thread], [], units), []);
+});
+
 test('hybrid action provenance distinguishes corroborated and single-source records', () => {
   const action = { action: 'Send the report.', owners: ['Priya'], evidenceIds: ['T0001'] };
   const from = (sourcePass) => hybridCandidateLedgerFromResult({ actions: [action] }, sourcePass)[0];
