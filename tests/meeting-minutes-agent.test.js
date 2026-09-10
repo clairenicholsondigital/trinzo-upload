@@ -87,7 +87,19 @@ test('an evidenced operational gap is reviewable but an unaccepted suggestion is
   assert.deepEqual(unresolvedOperationalGapProposals([{
     topic: 'Parking ideas', points: [], decisions: [],
     openQuestions: [{ text: 'Whether to think about a different reporting process someday.', evidenceIds: ['T0003'] }]
-  }], [], units), []);
+  }], [], [units[2]]), []);
+});
+
+test('operational-gap recovery uses the prepared source when the referee omits the current-state question', () => {
+  const units = [
+    { id: 'T0100', sequence: 100, speaker: 'Alex', text: 'How are we capturing client feedback until now and are consultants providing it regularly?', classification: 'keep', confidence: 0.99 },
+    { id: 'T0101', sequence: 101, speaker: 'Priya', text: 'It depends on the project and the feedback is probably not always tracked in the system.', classification: 'keep', confidence: 0.99 }
+  ];
+  const proposals = unresolvedOperationalGapProposals([], [], units);
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].action, 'Clarify the current process for capturing and tracking client feedback.');
+  assert.deepEqual(proposals[0].owners, []);
+  assert.deepEqual(proposals[0].evidenceIds, ['T0100', 'T0101']);
 });
 
 test('strong unresolved decision and accepted-planning candidates remain visible for review', () => {

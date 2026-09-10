@@ -8662,6 +8662,21 @@ function operationalGapActionText(questionText = '') {
   return `Resolve: ${clean}`;
 }
 
+function sourceOperationalGapActionText(questionText = '', gapText = '') {
+  const combined = `${questionText} ${gapText}`;
+  const verbs = [];
+  if (/\bcaptur(?:e|ed|ing)\b/i.test(combined)) verbs.push('capturing');
+  if (/\btrack(?:ed|ing)?\b/i.test(combined)) verbs.push('tracking');
+  if (/\brecord(?:ed|ing)?\b/i.test(combined)) verbs.push('recording');
+  if (/\breport(?:ed|ing)?\b/i.test(combined)) verbs.push('reporting');
+  if (/\bmonitor(?:ed|ing)?\b/i.test(combined)) verbs.push('monitoring');
+  const object = combined.match(/\b(?:client(?:[- ]delivery)?|customer|project|quality|staff|consultant)?\s*(?:feedback|information|data|issues|requests|leads?|opportunities|decisions|actions)\b/i)?.[0]?.trim();
+  const activities = [...new Set(verbs)].slice(0, 3);
+  if (!activities.length) return 'Clarify the current operational process described in the cited passages.';
+  const activityText = activities.length === 1 ? activities[0] : `${activities.slice(0, -1).join(', ')} and ${activities.at(-1)}`;
+  return `Clarify the current process for ${activityText} ${object || 'the relevant information'}.`;
+}
+
 // An unresolved operational question is not an agreed action. When its nearby
 // evidence explicitly describes a current process gap, however, it is useful to
 // offer an ownerless follow-up for human acceptance rather than silently lose
@@ -8671,6 +8686,7 @@ function unresolvedOperationalGapProposals(discussion = [], records = [], source
   const byId = new Map(units.map((unit, index) => [unit.id, { unit, index }]));
   const operational = /\b(?:captur(?:e|ed|ing)|record(?:ed|ing)?|track(?:ed|ing)?|log(?:ged|ging)?|document(?:ed|ing)?|monitor(?:ed|ing)?|measure(?:d|ment|ing)?|store(?:d|ing)?|rout(?:e|ed|ing)|report(?:ed|ing)?|workflow|process)\b/i;
   const currentStateQuestion = /^(?:how|what)\b[\s\S]*\b(?:current|currently|today|at present|now)\b/i;
+  const sourceCurrentState = /\b(?:current|currently|today|at present|at the moment|until now|now)\b/i;
   const gap = /\b(?:not always|not consistently|inconsisten(?:t|tly)|var(?:y|ies|ied|ying)|depends? on|not yet|unclear|ad[ -]?hoc|no (?:clear|consistent|formal)|without (?:a )?(?:clear|consistent|formal))\b/i;
   const proposed = [];
   for (const topic of Array.isArray(discussion) ? discussion : []) {
@@ -8691,6 +8707,25 @@ function unresolvedOperationalGapProposals(discussion = [], records = [], source
       if (proposed.length >= 4) break;
     }
     if (proposed.length >= 4) break;
+  }
+  // The referee may compress or omit the current-state question. Fall back to
+  // the source exchange itself: a question about the present process followed
+  // nearby by an explicit inconsistency is strong enough for a proposal, but
+  // never for automatic publication.
+  for (let index = 0; index < units.length && proposed.length < 4; index += 1) {
+    const questionUnit = units[index];
+    if (!questionUnit.text?.includes('?') || !operational.test(questionUnit.text) || !sourceCurrentState.test(questionUnit.text)) continue;
+    if (proposed.some((record) => (record.evidenceIds || []).includes(questionUnit.id))) continue;
+    const nearby = units.slice(Math.max(0, index - 2), Math.min(units.length, index + 11));
+    const gapUnits = nearby.filter((unit) => gap.test(unit.text || ''));
+    if (!gapUnits.length) continue;
+    const proposal = {
+      action: sourceOperationalGapActionText(questionUnit.text, gapUnits.map((unit) => unit.text).join(' ')),
+      owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' },
+      evidenceIds: [...new Set([questionUnit.id, ...gapUnits.map((unit) => unit.id)])].slice(0, 8)
+    };
+    if ([...(records || []), ...proposed].some((record) => hybridTokenOverlap(proposal.action, hybridRecordText(record)) >= 0.55)) continue;
+    proposed.push(proposal);
   }
   // These are intentionally allowed to retain a question/status evidence
   // disposition because acceptance by the reviewer is what promotes them.
