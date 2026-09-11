@@ -6,6 +6,7 @@ const api = require('../routes/api');
 
 const {
   meetingMinutesAgentPrompt,
+  meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
@@ -14,6 +15,7 @@ const {
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
+  meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
   normaliseAgentCandidateDispositions,
@@ -95,6 +97,26 @@ test('referee validation requires exactly one disposition per supplied candidate
   assert.equal(meetingAgentDispositionError({
     candidateDispositions: [{ candidateId: 'D1' }, { candidateId: 'D2' }]
   }, candidates), null);
+});
+
+test('referee validates the same bounded candidate set placed in its prompt', () => {
+  const candidates = Array.from({ length: 240 }, (_, index) => ({
+    candidateId: `D${index + 1}`,
+    sourcePass: index % 2 ? 'deterministic' : 'primary',
+    recordType: index % 5 === 0 ? 'decision' : 'discussion_point',
+    text: `Material candidate ${index + 1} with enough descriptive wording to consume a realistic prompt budget.`,
+    evidenceIds: [`T${String(index + 1).padStart(4, '0')}`],
+    priority: 10 - (index % 10), sequence: index + 1
+  }));
+  const supplied = meetingAgentRefereeCandidates('discussion', candidates);
+  const prompt = meetingMinutesAgentRefereePrompt({
+    stage: 'discussion', transcript: '[T0001] Alice: Test.', details: {}, candidates: supplied
+  });
+  assert.ok(supplied.length < candidates.length);
+  assert.ok(JSON.stringify(supplied).length <= 32000);
+  for (const candidate of supplied) assert.match(prompt, new RegExp(`"candidateId":"${candidate.candidateId}"`));
+  const dispositions = supplied.map((candidate) => ({ candidateId: candidate.candidateId, disposition: 'reject' }));
+  assert.equal(meetingAgentDispositionError({ candidateDispositions: dispositions }, supplied), null);
 });
 const { actionCandidateInventory, normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
 
@@ -806,6 +828,16 @@ test('discussion prompt carries the hybrid coverage ledger without replacing the
   assert.match(prompt, /Find material propositions/);
   assert.match(prompt, /core and what is supporting context/);
   assert.ok(prompt.endsWith(transcript));
+});
+
+test('hybrid primary discovery stays independent of candidate-ledger wording', () => {
+  const transcript = '[T0001] Alice: The launch is blocked pending approval.';
+  const prompt = meetingMinutesAgentPrimaryPrompt({
+    stage: 'discussion', transcript, details: {}, salientDetails: []
+  });
+  assert.match(prompt, /PREPARED TRANSCRIPT:[\s\S]*\[T0001\]/);
+  assert.doesNotMatch(prompt, /DISCUSSION EVIDENCE WINDOWS TO ACCOUNT FOR/);
+  assert.doesNotMatch(prompt, /ACTION CANDIDATE EVIDENCE WINDOWS TO ASSESS/);
 });
 
 test('action audit is explicitly limited to uncovered candidate windows', () => {

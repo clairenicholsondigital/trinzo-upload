@@ -8106,6 +8106,13 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
   return shared.join('\n\n');
 }
 
+function meetingMinutesAgentPrimaryPrompt({ stage, transcript, details, steer, salientDetails = [] }) {
+  // Discovery is deliberately independent. Deterministic and staged candidates
+  // are adjudicated by the referee; repeating them here duplicates long portions
+  // of the transcript and makes connected-agent hand-offs materially less reliable.
+  return meetingMinutesAgentPrompt({ stage, transcript, details, steer, salientDetails });
+}
+
 function meetingMinutesAgentAuditPrompt({ transcript, details, actions, steer, salientDetails = [], actionCandidates = [] }) {
   const steerText = meetingAgentSteerText(steer);
   const candidateBudget = Math.max(4000, Math.min(60000, 170000 - String(transcript || '').length));
@@ -8276,6 +8283,14 @@ function hybridCandidatePack(candidates = [], maxChars = 70000, maxCandidates = 
   return result.sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
 }
 
+function meetingAgentRefereeCandidates(stage, candidates = []) {
+  return hybridCandidatePack(
+    candidates,
+    stage === 'discussion' ? 32000 : 28000,
+    stage === 'discussion' ? 180 : 140
+  );
+}
+
 function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current, discussion = [], candidates, salientDetails }) {
   const isDiscussion = stage === 'discussion';
   const contract = isDiscussion
@@ -8328,7 +8343,7 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, details, discussi
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
     ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion)}`] : []),
-    `CANDIDATE ENSEMBLE:\n${JSON.stringify(hybridCandidatePack(candidates, isDiscussion ? 76000 : 42000, isDiscussion ? 340 : 220))}`,
+    `CANDIDATE ENSEMBLE:\n${JSON.stringify(meetingAgentRefereeCandidates(stage, candidates))}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
 }
@@ -8596,8 +8611,10 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
     };
     if (options.onAttempt) await options.onAttempt(attemptInfo).catch(() => {});
     try {
+      const configuredAttemptTimeoutMs = Number(options.attemptTimeoutMs
+        || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000);
       const attemptTimeoutMs = Number.isFinite(remaining)
-        ? Math.max(10000, Math.min(Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000), remaining))
+        ? Math.max(10000, Math.min(configuredAttemptTimeoutMs, remaining))
         : undefined;
       const result = await askPowerAutomateMeetingMinutesAgent(prompt, { paced: true, timeoutMs: attemptTimeoutMs });
       const reportedError = meetingAgentResultError(result);
@@ -10070,10 +10087,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // A connected-agent referee can transiently return the parent's contract error
     // while Copilot Studio is still completing the child hand-off. Use the complete
     // retry ladder for this pass; successful first responses still make one call.
-    const maxAttempts = pass === 'referee' ? 4 : pass === 'primary' ? 3 : 2;
+    const maxAttempts = pass === 'referee'
+      ? (String(prompt || '').length > 50000 ? 2 : 4)
+      : pass === 'primary' ? 3 : 2;
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
         pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
+        attemptTimeoutMs: pass === 'referee' && String(prompt || '').length > 50000 ? 45000 : undefined,
         validateResult: callOptions.validateResult,
         onAttempt: (attempt) => progress(pass,
           attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — retry ${attempt.attempt} of ${attempt.maxAttempts}…` : baseMessage,
@@ -10151,16 +10171,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       return [];
     }).finally(() => { stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt; });
   const primaryDiscussionCandidates = stage === 'discussion' ? discussionCandidateInventory(draft.sourceUnits) : [];
-  const primaryPrompt = meetingMinutesAgentPrompt({
-    stage, transcript, details, steer: draft.steer, salientDetails,
-    discussionContext: stage === 'actions' ? (draft.discussion || []) : [],
-    actionCandidates: actionDiscoveryInventory,
-    discussionCandidates: primaryDiscussionCandidates
+  const primaryPrompt = meetingMinutesAgentPrimaryPrompt({
+    stage, transcript, details, steer: draft.steer, salientDetails
   });
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
-  const [primaryParsed, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
+  const [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
+    optional: true,
     validateResult: (result) => meetingAgentEmptyDiscoveryError(result, stage, primaryValidationCandidates)
   }), stagedPromise]);
+  const primaryParsed = primaryResult || {
+    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+    meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
+    candidateDispositions: [], reviewFlags: []
+  };
   const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
   const primaryDeclaredProposals = stage === 'actions'
     ? normaliseAgentDeclaredProposals(primaryParsed, draft.sourceUnits, { meetingDate: details.meetingDate })
@@ -10210,11 +10233,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }, 'recovery'));
     }
   }
+  const suppliedRefereeCandidates = meetingAgentRefereeCandidates(stage, ensemble);
   const refereeParsed = await call('referee', meetingMinutesAgentRefereePrompt({
-    stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [], candidates: ensemble, salientDetails
+    stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [], candidates: suppliedRefereeCandidates, salientDetails
   }), {
-    validateResult: (result) => meetingAgentDispositionError(result, ensemble)
-  });
+    optional: true,
+    validateResult: (result) => meetingAgentDispositionError(result, suppliedRefereeCandidates)
+  }) || {
+    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+    meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
+    candidateDispositions: [], reviewFlags: []
+  };
   const refereeInput = stage === 'discussion' ? {
     ...refereeParsed,
     discussion: enrichDiscussionEvidenceFromDispositions(
@@ -10238,7 +10267,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const refereeDiscussionDispositions = (Array.isArray(refereeParsed?.candidateDispositions)
       ? refereeParsed.candidateDispositions : []);
     const rawContractDiagnostics = refereeDiscussionContractDiagnostics(
-      referee.discussion, refereeDiscussionDispositions, ensemble
+      referee.discussion, refereeDiscussionDispositions, suppliedRefereeCandidates
     );
     const reconstructed = reconstructMissingRefereeDiscussion(
       referee.discussion, refereeDiscussionDispositions, ensemble, draft.sourceUnits
@@ -11128,6 +11157,7 @@ router.stagedEvaluation = {
   // somebody happened to say, not from what the meeting is.
   inferStagedMeetingType,
   meetingMinutesAgentPrompt,
+  meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
@@ -11136,6 +11166,7 @@ router.stagedEvaluation = {
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
+  meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
   normaliseAgentCandidateDispositions,
