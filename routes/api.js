@@ -8527,15 +8527,52 @@ function meetingAgentResultError(result) {
 }
 
 function meetingAgentEmptyDiscoveryError(result, stage, candidates = []) {
-  if (stage !== 'discussion' || !Array.isArray(result?.discussion) || result.discussion.length) return null;
-  const hasSubstantiveEvidence = (Array.isArray(candidates) ? candidates : []).some((candidate) =>
-    ['decision', 'open_question', 'objective'].includes(String(candidate?.recordType || candidate?.kind || ''))
-      || Number(candidate?.priority || 0) >= 7);
+  const isDiscussion = stage === 'discussion';
+  const isActions = stage === 'actions';
+  if (!isDiscussion && !isActions) return null;
+  const hasOutput = isDiscussion
+    ? Array.isArray(result?.discussion) && result.discussion.length > 0
+    : (Array.isArray(result?.actions) && result.actions.length > 0)
+      || (Array.isArray(result?.actionProposals) && result.actionProposals.length > 0);
+  if (hasOutput) return null;
+  const hasSubstantiveEvidence = (Array.isArray(candidates) ? candidates : []).some((candidate) => {
+    const recordType = String(candidate?.recordType || candidate?.kind || '');
+    if (isDiscussion) {
+      return ['decision', 'open_question', 'objective'].includes(recordType)
+        || Number(candidate?.priority || 0) >= 7;
+    }
+    const owners = candidate?.owners || candidate?.record?.owners || candidate?.ownerHints || [];
+    const signals = candidate?.signals || {};
+    return ['action_chain', 'action_thread'].includes(recordType)
+      ? Boolean(signals.commitment || signals.acceptance || signals.assignment || signals.scheduled)
+      : recordType === 'action' && Number(candidate?.priority || 0) >= 8
+        && (Array.isArray(owners) ? owners.length > 0 : Boolean(owners));
+  });
   if (!hasSubstantiveEvidence) return null;
-  const error = new Error('The discussion agent returned an empty draft despite substantive evidence candidates.');
-  error.code = 'empty_discussion_with_substantive_candidates';
+  const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates.`);
+  error.code = `empty_${isDiscussion ? 'discussion' : 'action'}_with_substantive_candidates`;
   error.statusCode = 502;
   error.retryable = true;
+  return error;
+}
+
+function meetingAgentDispositionError(result, candidates = []) {
+  const expectedIds = [...new Set((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean))];
+  if (!expectedIds.length) return null;
+  const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
+  const counts = new Map();
+  for (const disposition of dispositions) {
+    const candidateId = meetingMinutesAgentText(disposition?.candidateId, 160);
+    if (candidateId) counts.set(candidateId, Number(counts.get(candidateId) || 0) + 1);
+  }
+  const missing = expectedIds.filter((candidateId) => counts.get(candidateId) !== 1);
+  if (!missing.length) return null;
+  const error = new Error(`The evidence referee did not return exactly one disposition for ${missing.length} supplied candidate${missing.length === 1 ? '' : 's'}.`);
+  error.code = 'incomplete_candidate_dispositions';
+  error.statusCode = 502;
+  error.retryable = true;
+  error.missingCandidateIds = missing;
   return error;
 }
 
@@ -10120,8 +10157,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actionCandidates: actionDiscoveryInventory,
     discussionCandidates: primaryDiscussionCandidates
   });
+  const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
   const [primaryParsed, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
-    validateResult: (result) => meetingAgentEmptyDiscoveryError(result, stage, primaryDiscussionCandidates)
+    validateResult: (result) => meetingAgentEmptyDiscoveryError(result, stage, primaryValidationCandidates)
   }), stagedPromise]);
   const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
   const primaryDeclaredProposals = stage === 'actions'
@@ -10174,7 +10212,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
   const refereeParsed = await call('referee', meetingMinutesAgentRefereePrompt({
     stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [], candidates: ensemble, salientDetails
-  }));
+  }), {
+    validateResult: (result) => meetingAgentDispositionError(result, ensemble)
+  });
   const refereeInput = stage === 'discussion' ? {
     ...refereeParsed,
     discussion: enrichDiscussionEvidenceFromDispositions(
@@ -11095,6 +11135,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentSalvagePrompt,
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
+  meetingAgentDispositionError,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
   normaliseAgentCandidateDispositions,

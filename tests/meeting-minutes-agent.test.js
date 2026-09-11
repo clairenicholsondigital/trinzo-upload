@@ -13,6 +13,7 @@ const {
   meetingMinutesAgentSalvagePrompt,
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
+  meetingAgentDispositionError,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
   normaliseAgentCandidateDispositions,
@@ -75,8 +76,25 @@ test('empty discussion discovery retries only when substantive evidence exists',
     [{ candidateId: 'D3', recordType: 'open_question', priority: 8 }]
   ), null);
   assert.equal(meetingAgentEmptyDiscoveryError(
-    { discussion: [], actions: [] }, 'actions', [{ candidateId: 'A1', priority: 10 }]
+    { discussion: [], actions: [] }, 'actions', [{ candidateId: 'A1', recordType: 'action', priority: 10, owners: ['Bob'] }]
+  )?.code, 'empty_action_with_substantive_candidates');
+  assert.equal(meetingAgentEmptyDiscoveryError(
+    { discussion: [], actions: [] }, 'actions', [{ candidateId: 'A2', recordType: 'action', priority: 10, owners: [] }]
   ), null);
+});
+
+test('referee validation requires exactly one disposition per supplied candidate', () => {
+  const candidates = [{ candidateId: 'D1' }, { candidateId: 'D2' }];
+  const missing = meetingAgentDispositionError({ candidateDispositions: [{ candidateId: 'D1' }] }, candidates);
+  assert.equal(missing?.code, 'incomplete_candidate_dispositions');
+  assert.deepEqual(missing?.missingCandidateIds, ['D2']);
+  const duplicate = meetingAgentDispositionError({
+    candidateDispositions: [{ candidateId: 'D1' }, { candidateId: 'D1' }, { candidateId: 'D2' }]
+  }, candidates);
+  assert.deepEqual(duplicate?.missingCandidateIds, ['D1']);
+  assert.equal(meetingAgentDispositionError({
+    candidateDispositions: [{ candidateId: 'D1' }, { candidateId: 'D2' }]
+  }, candidates), null);
 });
 const { actionCandidateInventory, normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
 
