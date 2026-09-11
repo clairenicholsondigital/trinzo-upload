@@ -8554,6 +8554,11 @@ function meetingAgentRefereeBatches(candidates = [], batchSize = 5) {
   return batches;
 }
 
+function shouldStopMeetingAgentRefereeBatches(primaryError, repairError) {
+  return primaryError?.code === 'invalid_referee_output'
+    && repairError?.code === 'invalid_referee_output';
+}
+
 function mergeBatchedMeetingAgentRefereeResults(results = [], contract = {}) {
   const expectedIds = Array.isArray(contract.expectedCandidateIds) ? contract.expectedCandidateIds : [];
   const expected = new Set(expectedIds);
@@ -10904,6 +10909,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         unresolvedRefereeIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
         const reason = repairError?.message || batchError?.message || 'The referee batch did not complete.';
         degradedSources.push(`Referee batch ${batchIndex + 1} remained unavailable for ${repairCandidates.length} candidate${repairCandidates.length === 1 ? '' : 's'} after targeted repair: ${reason}`);
+        const deterministicContractFailure = shouldStopMeetingAgentRefereeBatches(batchError, repairError);
+        if (deterministicContractFailure && batchIndex + 1 < refereeBatches.length) {
+          const skippedCandidates = refereeBatches.slice(batchIndex + 1).flat();
+          unresolvedRefereeIds.push(...skippedCandidates.map((candidate) => candidate.candidateId));
+          degradedSources.push(`The remaining ${skippedCandidates.length} referee candidate${skippedCandidates.length === 1 ? '' : 's'} skipped repeated calls after the same strict contract failure occurred twice.`);
+          break;
+        }
       }
     }
     if (batchResult) refereeBatchResults.push(batchResult);
@@ -11882,6 +11894,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
   meetingAgentRefereeBatches,
+  shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,

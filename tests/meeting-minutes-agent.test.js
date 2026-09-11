@@ -13,6 +13,7 @@ const {
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
   meetingAgentRefereeBatches,
+  shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
@@ -198,6 +199,15 @@ test('referee candidates are split into bounded batches without changing order',
   assert.deepEqual(batches.map((batch) => batch.length), [5, 5, 4]);
   assert.deepEqual(batches.flat().map((candidate) => candidate.candidateId),
     candidates.map((candidate) => candidate.candidateId));
+});
+
+test('repeated strict referee contract failures stop further batch calls', () => {
+  assert.equal(shouldStopMeetingAgentRefereeBatches(
+    { code: 'invalid_referee_output' }, { code: 'invalid_referee_output' }
+  ), true);
+  assert.equal(shouldStopMeetingAgentRefereeBatches(
+    { code: 'invalid_referee_output' }, { code: 'SystemError' }
+  ), false);
 });
 
 test('batched referee results merge deterministically in the original candidate order', () => {
