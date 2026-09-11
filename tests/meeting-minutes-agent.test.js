@@ -15,6 +15,8 @@ const {
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
+  meetingAgentRefereeRoute,
+  meetingMinutesAgentRefereeContract,
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
@@ -34,6 +36,7 @@ const {
   compactDiscussionPropositions,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
+  reconstructRefereeActions,
   refereeDiscussionContractDiagnostics,
   isVagueReconstructedAction,
   publishedActionCoversProposal,
@@ -44,6 +47,10 @@ const {
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
+
+function refereePayloadFromPrompt(prompt) {
+  return JSON.parse(prompt.split('refereePayload:\n')[1]);
+}
 
 test('connected-agent contract errors trigger retries instead of becoming empty drafts', () => {
   const malformedDiscussion = meetingAgentResultError({
@@ -109,8 +116,31 @@ test('referee validation requires exactly one disposition per supplied candidate
   }, candidates);
   assert.deepEqual(duplicate?.missingCandidateIds, ['D1']);
   assert.equal(meetingAgentDispositionError({
-    candidateDispositions: [{ candidateId: 'D1' }, { candidateId: 'D2' }]
+    discussion: [], actions: [], candidateDispositions: [{ candidateId: 'D1' }, { candidateId: 'D2' }]
   }, candidates), null);
+});
+
+test('structured referee validation binds request, stage and declared accounting', () => {
+  const candidates = [{ candidateId: 'D1' }, { candidateId: 'D2' }];
+  const contract = { requestId: 'request-1', stage: 'DISCUSSION_REFEREE' };
+  const valid = {
+    schemaVersion: 4, requestId: 'request-1', stage: 'DISCUSSION_REFEREE',
+    status: 'complete', expectedCandidateCount: 2, returnedDispositionCount: 2,
+    candidateDispositions: [
+      { candidateId: 'D1', disposition: 'core', reason: 'Material decision.', evidenceIds: ['T1'] },
+      { candidateId: 'D2', disposition: 'reject', reason: 'Repeated context.', evidenceIds: ['T2'] }
+    ]
+  };
+  assert.equal(meetingAgentDispositionError(valid, candidates, contract), null);
+  assert.equal(meetingAgentRefereeRoute(valid, contract), 'structured_prompt');
+  assert.equal(meetingAgentDispositionError({ ...valid, requestId: 'wrong' }, candidates, contract)?.code, 'invalid_referee_contract');
+  assert.equal(meetingAgentDispositionError({ ...valid, expectedCandidateCount: 3 }, candidates, contract)?.code, 'invalid_referee_accounting');
+  assert.equal(meetingAgentDispositionError({ ...valid,
+    candidateDispositions: valid.candidateDispositions.map((item) => ({ ...item, reason: '' }))
+  }, candidates, contract)?.code, 'invalid_referee_disposition');
+  assert.equal(meetingAgentDispositionError({ ...valid,
+    candidateDispositions: [...valid.candidateDispositions, { candidateId: 'D3' }], returnedDispositionCount: 3
+  }, candidates, contract)?.code, 'unexpected_candidate_dispositions');
 });
 
 test('referee validates the same bounded candidate set placed in its prompt', () => {
@@ -124,13 +154,39 @@ test('referee validates the same bounded candidate set placed in its prompt', ()
   }));
   const supplied = meetingAgentRefereeCandidates('discussion', candidates);
   const prompt = meetingMinutesAgentRefereePrompt({
-    stage: 'discussion', transcript: '[T0001] Alice: Test.', details: {}, candidates: supplied
+    stage: 'discussion', transcript: '[T0001] Alice: Test.', details: {}, candidates: supplied,
+    requestId: 'bounded-request'
   });
   assert.ok(supplied.length < candidates.length);
+  assert.ok(supplied.length <= 14);
   assert.ok(JSON.stringify(supplied).length <= 32000);
   for (const candidate of supplied) assert.match(prompt, new RegExp(`"candidateId":"${candidate.candidateId}"`));
+  const payload = refereePayloadFromPrompt(prompt);
+  assert.equal(payload.requestId, 'bounded-request');
+  assert.equal(payload.expectedCandidateCount, supplied.length);
+  assert.deepEqual(payload.expectedCandidateIds, supplied.map((candidate) => candidate.candidateId));
   const dispositions = supplied.map((candidate) => ({ candidateId: candidate.candidateId, disposition: 'reject' }));
-  assert.equal(meetingAgentDispositionError({ candidateDispositions: dispositions }, supplied), null);
+  assert.equal(meetingAgentDispositionError({ discussion: [], actions: [], candidateDispositions: dispositions }, supplied), null);
+});
+
+test('action referee batch retains polished records as well as lifecycle evidence', () => {
+  const candidates = [
+    ...Array.from({ length: 20 }, (_, index) => ({
+      candidateId: `A${index}`, sourcePass: 'primary', recordType: 'action',
+      text: `Complete distinct deliverable ${index}.`, evidenceIds: [`T${String(index).padStart(4, '0')}`],
+      owners: ['Alex'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, priority: 10, sequence: index
+    })),
+    ...Array.from({ length: 20 }, (_, index) => ({
+      candidateId: `C${index}`, sourcePass: 'deterministic', recordType: 'action_chain',
+      text: `Request and acceptance chain ${index}.`, context: `Long lifecycle context ${index}.`,
+      evidenceIds: [`T${String(index + 100).padStart(4, '0')}`], priority: 12, sequence: index + 100
+    }))
+  ];
+  const supplied = meetingAgentRefereeCandidates('actions', candidates);
+  assert.ok(supplied.length <= 14);
+  assert.ok(supplied.some((candidate) => candidate.recordType === 'action'));
+  assert.ok(supplied.some((candidate) => candidate.recordType === 'action_chain'));
+  assert.ok(supplied.filter((candidate) => candidate.recordType === 'action').length >= 10);
 });
 const { actionCandidateInventory, normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
 
@@ -178,24 +234,31 @@ test('hybrid recovery, referee and critic prompts keep the complete transcript l
   const recovery = meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, discussion, candidates: [candidate], salientDetails: [] });
   const referee = meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, discussion, candidates: [candidate], salientDetails: [] });
   const critic = meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion, actions: [], candidates: [candidate], salientDetails: [] });
-  for (const prompt of [recovery, referee, critic]) {
+  for (const prompt of [recovery, critic]) {
     assert.ok(prompt.endsWith(transcript));
     assert.match(prompt, /schemaVersion 4/);
     assert.match(prompt, /evidence/i);
     assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
     assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
+  const payload = refereePayloadFromPrompt(referee);
+  assert.equal(payload.preparedTranscript, transcript);
+  assert.deepEqual(payload.confirmedDiscussionContext, discussion);
+  assert.equal(payload.expectedCandidateCount, 1);
 });
 
-test('discussion referee is authoritative for core versus supporting content', () => {
+test('discussion referee sends an explicit typed payload to the structured tool', () => {
   const transcript = '[T0001] Priya: The release remains blocked by approval.';
   const prompt = meetingMinutesAgentRefereePrompt({
-    stage: 'discussion', transcript, details: {}, candidates: [], salientDetails: []
+    stage: 'discussion', transcript, details: {}, candidates: [], salientDetails: [], requestId: 'discussion-request'
   });
-  assert.match(prompt, /core, supporting, merge or reject/);
-  assert.match(prompt, /one core proposition per issue/);
-  assert.match(prompt, /at most four meeting objectives/);
-  assert.ok(prompt.endsWith(transcript));
+  const payload = refereePayloadFromPrompt(prompt);
+  assert.equal(payload.schemaVersion, 4);
+  assert.equal(payload.requestId, 'discussion-request');
+  assert.equal(payload.stage, 'DISCUSSION_REFEREE');
+  assert.equal(payload.preparedTranscript, transcript);
+  assert.deepEqual(payload.expectedCandidateIds, []);
+  assert.match(prompt, /Pass refereePayload intact/);
 });
 
 test('referee target dispositions restore candidate evidence onto consolidated propositions', () => {
@@ -239,6 +302,47 @@ test('missing referee target records are reconstructed from classified evidence 
   assert.equal(rebuilt.discussion[0].points[0].id, 'd1');
   assert.deepEqual(rebuilt.discussion[0].points[0].evidenceIds, ['T0001', 'T0002']);
   assert.equal(rebuilt.discussion[0].points[0].supportingDetails.length, 1);
+});
+
+test('disposition-only action referee output reconstructs polished candidate records', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Carol', text: 'I will finish the access checklist and send it to Alice by Friday.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Bob', text: 'We could perhaps redesign the dashboard someday.', classification: 'keep' }
+  ];
+  const candidates = [
+    {
+      candidateId: 'a1', recordType: 'action', sourcePass: 'primary',
+      text: 'Finish the access checklist and send it to Alice.', owners: ['Carol'],
+      timing: { kind: 'deadline', wording: 'by Friday', exactDate: '' }, evidenceIds: ['T0001']
+    },
+    {
+      candidateId: 'a2', recordType: 'action', sourcePass: 'recovery',
+      text: 'Redesign the dashboard.', owners: [],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0002']
+    }
+  ];
+  const rebuilt = reconstructRefereeActions([
+    { candidateId: 'a1', disposition: 'publish', reason: 'Explicit commitment.', evidenceIds: ['T0001'] },
+    { candidateId: 'a2', disposition: 'proposal', reason: 'Unaccepted suggestion.', evidenceIds: ['T0002'] }
+  ], candidates, units);
+  assert.equal(rebuilt.actions.length, 1);
+  assert.equal(rebuilt.actions[0].action, 'Finish the access checklist and send it to Alice.');
+  assert.deepEqual(rebuilt.actions[0].owners, ['Carol']);
+  assert.equal(rebuilt.actionProposals.length, 1);
+  assert.equal(rebuilt.actionProposals[0].action, 'Redesign the dashboard.');
+});
+
+test('a core disposition without a generated target reconstructs its discussion candidate', () => {
+  const units = [{ id: 'T0001', sequence: 1, speaker: 'Alex', text: 'Approval remains the release blocker.', classification: 'keep' }];
+  const candidates = [{
+    candidateId: 'c1', sourcePass: 'primary', recordType: 'discussion_point', topic: 'Release',
+    text: 'Approval remains the release blocker.', evidenceIds: ['T0001']
+  }];
+  const rebuilt = reconstructMissingRefereeDiscussion([], [
+    { candidateId: 'c1', disposition: 'core', reason: 'Material blocker.', evidenceIds: ['T0001'] }
+  ], candidates, units);
+  assert.deepEqual(rebuilt.reconstructedTargetIds, ['c1']);
+  assert.equal(rebuilt.discussion[0].points[0].text, 'Approval remains the release blocker.');
 });
 
 test('referee contract diagnostics expose dangling targets and undisposed candidates', () => {
@@ -319,7 +423,6 @@ test('later hybrid passes retain complete context and role hints for commitment 
   };
   const prompts = [
     meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, candidates: [thread], salientDetails: [] }),
-    meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [thread], salientDetails: [] }),
     meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [thread], salientDetails: [] })
   ];
   for (const prompt of prompts) {
@@ -328,6 +431,12 @@ test('later hybrid passes retain complete context and role hints for commitment 
     assert.match(prompt, /\[T0100\] Morgan: Could you review the timeline/);
     assert.match(prompt, /no single turn contains the whole action|individual utterances are incomplete|multi-turn exchange/i);
   }
+  const refereePayload = refereePayloadFromPrompt(meetingMinutesAgentRefereePrompt({
+    stage: 'actions', transcript, details: {}, candidates: [thread], salientDetails: []
+  }));
+  assert.equal(refereePayload.candidateEnsemble[0].recordType, 'action_thread');
+  assert.deepEqual(refereePayload.candidateEnsemble[0].ownerHints, ['Alex']);
+  assert.match(refereePayload.candidateEnsemble[0].context, /\[T0100\] Morgan: Could you review the timeline/);
 });
 
 test('an unresolved accepted reference becomes a joint-owner review proposal, not an automatic action', () => {
