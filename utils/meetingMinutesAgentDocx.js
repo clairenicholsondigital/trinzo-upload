@@ -55,10 +55,18 @@ function evidenceAppendix(draft = {}) {
   for (const topic of draft.discussion || []) {
     for (const item of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) {
       for (const id of item.evidenceIds || []) used.add(id);
+      for (const detail of item.supportingDetails || []) for (const id of detail.evidenceIds || []) used.add(id);
     }
   }
   for (const action of draft.actions || []) for (const id of action.evidenceIds || []) used.add(id);
   let body = paragraph('Evidence appendix', 'Heading1');
+  const supporting = (draft.discussion || []).flatMap((topic) =>
+    [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])].flatMap((item) =>
+      (item.supportingDetails || []).map((detail) => ({ topic: topic.topic || 'Discussion', text: detail.text }))));
+  if (supporting.length) {
+    body += paragraph('Supporting context', 'Heading2');
+    for (const detail of supporting) body += bullet(`${detail.topic}: ${detail.text}`);
+  }
   for (const unit of units.filter((item) => used.has(item.id))) {
     body += paragraph(`${unit.id} · ${unit.speaker}${unit.timestamp ? ` · ${unit.timestamp}` : ''}`, 'Heading3');
     body += paragraph(unit.text, 'BodyText');
@@ -91,17 +99,13 @@ function documentBody(draft = {}, includeEvidence = false) {
     body += paragraph('Executive summary', 'Heading1');
     body += paragraph(draft.executiveSummary, 'BodyText');
   }
-  body += paragraph('Discussion', 'Heading1');
+  body += paragraph('Meeting content', 'Heading1');
   for (const topic of draft.discussion || []) {
     body += paragraph(topic.topic || 'Discussion', 'Heading2');
     for (const point of topic.points || []) body += bullet(point.text);
+    for (const decision of topic.decisions || []) body += bullet(`Decision — ${decision.text}`);
+    for (const question of topic.openQuestions || []) body += bullet(`Open question — ${question.text}`);
   }
-  const decisions = (draft.discussion || []).flatMap((topic) => (topic.decisions || []).map((item) => ({ topic: topic.topic, ...item })));
-  body += paragraph('Decisions', 'Heading1');
-  body += decisions.length ? decisions.map((item) => bullet(`${item.topic}: ${item.text}`)).join('') : paragraph('No decisions recorded.', 'BodyText');
-  const questions = (draft.discussion || []).flatMap((topic) => (topic.openQuestions || []).map((item) => ({ topic: topic.topic, ...item })));
-  body += paragraph('Open questions', 'Heading1');
-  body += questions.length ? questions.map((item) => bullet(`${item.topic}: ${item.text}`)).join('') : paragraph('No open questions recorded.', 'BodyText');
   body += paragraph('Actions', 'Heading1');
   body += (draft.actions || []).length ? actionTable(draft.actions) : paragraph('No actions recorded.', 'BodyText');
   if (includeEvidence) body += evidenceAppendix(draft);

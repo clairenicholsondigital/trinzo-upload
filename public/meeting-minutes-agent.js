@@ -298,13 +298,23 @@
     finally { setBusy(false); }
   }
 
-  function pointSection(topic, topicIndex, field, heading) {
-    var rows = topic[field] || [];
-    var labels = { points: 'Discussion point', decisions: 'Decision', openQuestions: 'Open question' };
-    var rowLabel = labels[field] || 'Item';
-    return '<div class="record-section"><div class="record-section-head"><h3>' + escapeHtml(heading) + '</h3></div><div class="record-list">' + (rows.map(function (item, itemIndex) {
-      return '<div class="record-row"><textarea data-record-field="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" aria-label="' + escapeHtml(rowLabel + ' ' + (itemIndex + 1)) + '">' + escapeHtml(item.text || '') + '</textarea><div class="record-tools">' + evidenceBlock(item.evidenceIds) + '<button class="delete quiet" data-remove-record="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" type="button">Remove</button></div></div>';
-    }).join('') || '<p class="muted record-empty">None recorded.</p>') + '</div><button class="secondary add-record" data-add-record="' + field + '" data-topic-index="' + topicIndex + '" type="button">Add ' + escapeHtml(rowLabel.toLowerCase()) + '</button></div>';
+  function supportingDetails(item, topicIndex, field, itemIndex) {
+    var details = item.supportingDetails || [];
+    if (!details.length) return '';
+    return '<details class="supporting-details"><summary>Supporting details (' + details.length + ')</summary><div class="supporting-detail-list">' + details.map(function (detail, detailIndex) {
+      return '<div class="supporting-detail"><p>' + escapeHtml(detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + detailIndex + '" data-parent-field="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" type="button">Promote to minutes</button></div></div>';
+    }).join('') + '</div></details>';
+  }
+
+  function discussionPropositions(topic, topicIndex) {
+    var labels = { points: 'Discussion', decisions: 'Decision', openQuestions: 'Open question' };
+    var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
+      return (topic[field] || []).map(function (item, itemIndex) { return {field:field,item:item,itemIndex:itemIndex}; });
+    });
+    return '<div class="record-section proposition-section"><div class="record-section-head"><h3>Key meeting content</h3><div class="proposition-add"><button class="secondary compact" data-add-record="points" data-topic-index="' + topicIndex + '" type="button">Add discussion</button><button class="secondary compact" data-add-record="decisions" data-topic-index="' + topicIndex + '" type="button">Add decision</button><button class="secondary compact" data-add-record="openQuestions" data-topic-index="' + topicIndex + '" type="button">Add open question</button></div></div><div class="record-list proposition-list">' + (rows.map(function (row) {
+      var label = labels[row.field];
+      return '<div class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + supportingDetails(row.item, topicIndex, row.field, row.itemIndex) + '<div class="record-tools">' + evidenceBlock(row.item.evidenceIds) + (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button></div></div>';
+    }).join('') || '<p class="muted record-empty">No meeting content recorded.</p>') + '</div></div>';
   }
 
   function renderDiscussion() {
@@ -314,7 +324,7 @@
     }
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
-      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic" placeholder="Topic"></label><button class="delete" data-delete-topic="' + index + '" type="button">Remove topic</button></div>' + pointSection(topic, index, 'points', 'Discussion') + pointSection(topic, index, 'decisions', 'Decisions') + pointSection(topic, index, 'openQuestions', 'Open questions') + '</article>';
+      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic" placeholder="Topic"></label><button class="delete" data-delete-topic="' + index + '" type="button">Remove topic</button></div>' + discussionPropositions(topic, index) + '</article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
   }
@@ -432,6 +442,20 @@
     return value.topic || value.text || JSON.stringify(value);
   }
 
+  function discussionProposalLabel(change) {
+    if (!change || !change.before || !change.after) return '';
+    function counts(topic) {
+      var records=['points','decisions','openQuestions'].flatMap(function(field){return (topic[field]||[]);});
+      return { core:records.length, supporting:records.reduce(function(total,item){return total+(item.supportingDetails||[]).length;},0) };
+    }
+    var before=counts(change.before), after=counts(change.after);
+    if(after.core<before.core && after.supporting>before.supporting) return 'Proposed merge or move to context';
+    if(after.core>before.core && after.supporting<before.supporting) return 'Proposed promotion to minutes';
+    if(after.core>before.core+1) return 'Proposed split';
+    if(after.core<before.core) return 'Proposed merge';
+    return '';
+  }
+
   function renderProposal() {
     var proposal = state.draft && state.draft.pendingProposal;
     var panel = document.getElementById('proposalPanel');
@@ -450,7 +474,8 @@
           + (change.reviewContext.label ? '<div class="commitment-chain"><span>Evidence path</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
           + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds) : '') + '</div>';
       }
-      return '<div class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked aria-label="Select this proposed change"><span class="proposal-kind">' + escapeHtml(changeLabels[change.type] || 'Suggested change') + '</span><div class="proposal-content">' + content + '</div></div>';
+      var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
+      return '<div class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked aria-label="Select this proposed change"><span class="proposal-kind">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Suggested change') + '</span><div class="proposal-content">' + content + '</div></div>';
     }).join('');
     panel.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
@@ -473,9 +498,12 @@
     var objectives = (draft.meetingObjectives || []).map(function(item){return typeof item === 'string' ? item : item.text;}).filter(Boolean);
     var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></section>' : '')
       + (draft.executiveSummary ? '<section><h3>Executive summary</h3><p>' + escapeHtml(draft.executiveSummary) + '</p></section>' : '');
-    var decisions = (draft.discussion || []).flatMap(function (topic) { return (topic.decisions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
-    var questions = (draft.discussion || []).flatMap(function (topic) { return (topic.openQuestions || []).map(function (item) { return {topic:topic.topic,text:item.text}; }); });
-    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Discussion</h3>' + ((draft.discussion || []).map(function (topic) { return '<h4>' + escapeHtml(topic.topic) + '</h4><ul>' + (topic.points || []).map(function (point) { return '<li>' + escapeHtml(point.text) + '</li>'; }).join('') + '</ul>'; }).join('') || '<p>No discussion recorded.</p>') + '</section><section><h3>Decisions</h3>' + (decisions.length ? '<ul>' + decisions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No decisions recorded.</p>') + '</section><section><h3>Open questions</h3>' + (questions.length ? '<ul>' + questions.map(function (item) { return '<li><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '<p>No open questions recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
+    var finalDiscussion = (draft.discussion || []).map(function (topic) {
+      var rows = [{key:'points',label:'Discussion'}, {key:'decisions',label:'Decision'}, {key:'openQuestions',label:'Open question'}]
+        .flatMap(function (group) { return (topic[group.key] || []).map(function (item) { return {label:group.label,text:item.text}; }); });
+      return '<h4>' + escapeHtml(topic.topic) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><span class="final-kind">' + escapeHtml(item.label) + '</span>' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '');
+    }).join('');
+    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
   }
 
   function renderAll() {
@@ -781,11 +809,31 @@
   document.getElementById('discussionList').addEventListener('click', function (event) {
     var add=event.target.closest('[data-add-record]');
     var remove=event.target.closest('[data-remove-record]');
+    var demote=event.target.closest('[data-demote-record]');
+    var promote=event.target.closest('[data-promote-supporting]');
     var topicButton=event.target.closest('[data-delete-topic]');
-    if(!add && !remove && !topicButton) return;
+    if(!add && !remove && !demote && !promote && !topicButton) return;
     readDiscussion();
-    if(add){state.draft.discussion[Number(add.dataset.topicIndex)][add.dataset.addRecord].push({id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[]});}
+    if(add){state.draft.discussion[Number(add.dataset.topicIndex)][add.dataset.addRecord].push({id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[]});}
     if(remove){state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1);}
+    if(demote){
+      var demoteTopic=state.draft.discussion[Number(demote.dataset.topicIndex)];
+      var demoteList=demoteTopic && demoteTopic[demote.dataset.demoteRecord];
+      var demoted=demoteList && demoteList[Number(demote.dataset.itemIndex)];
+      var targets=demoteTopic && ['decisions','openQuestions','points'].flatMap(function(field){return (demoteTopic[field]||[]).filter(function(item){return item!==demoted;});});
+      if(demoted && targets && targets.length){
+        var target=targets[0];
+        target.supportingDetails=(target.supportingDetails||[]).concat([{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[]}],demoted.supportingDetails||[]);
+        demoteList.splice(Number(demote.dataset.itemIndex),1);
+      }
+    }
+    if(promote){
+      var promoteTopic=state.draft.discussion[Number(promote.dataset.topicIndex)];
+      var promoteList=promoteTopic && promoteTopic[promote.dataset.parentField];
+      var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
+      var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
+      if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:[],supportingDetails:[]});
+    }
     if(topicButton){state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1);}
     renderDiscussion();
     scheduleSave();

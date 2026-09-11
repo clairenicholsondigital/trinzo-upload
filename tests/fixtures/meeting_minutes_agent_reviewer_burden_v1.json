@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "note": "Human adjudications for reviewer burden only. This file is test data and is never loaded by runtime processing.",
+  "categories": [
+    "valid_core_content",
+    "valid_supporting_context",
+    "avoidable_visible_excess",
+    "unsupported"
+  ],
+  "adjudications": []
+}

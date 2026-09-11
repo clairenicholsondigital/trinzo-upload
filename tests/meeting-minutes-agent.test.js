@@ -26,6 +26,12 @@ const {
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,
   mergeHybridDiscussionTopics,
+  compactDiscussionPropositions,
+  enrichDiscussionEvidenceFromDispositions,
+  reconstructMissingRefereeDiscussion,
+  refereeDiscussionContractDiagnostics,
+  isVagueReconstructedAction,
+  publishedActionCoversProposal,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
@@ -49,6 +55,89 @@ test('hybrid recovery, referee and critic prompts keep the complete transcript l
     assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
     assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
+});
+
+test('discussion referee is authoritative for core versus supporting content', () => {
+  const transcript = '[T0001] Priya: The release remains blocked by approval.';
+  const prompt = meetingMinutesAgentRefereePrompt({
+    stage: 'discussion', transcript, details: {}, candidates: [], salientDetails: []
+  });
+  assert.match(prompt, /core, supporting, merge or reject/);
+  assert.match(prompt, /one core proposition per issue/);
+  assert.match(prompt, /at most four meeting objectives/);
+  assert.ok(prompt.endsWith(transcript));
+});
+
+test('referee target dispositions restore candidate evidence onto consolidated propositions', () => {
+  const discussion = [{ topic: 'Release', points: [{ id: 'P1', text: 'The release remains blocked.', evidenceIds: [] }], decisions: [], openQuestions: [] }];
+  const enriched = enrichDiscussionEvidenceFromDispositions(discussion, [
+    { candidateId: 'c1', classification: 'core', discussionId: 'P1' },
+    { candidateId: 'c2', disposition: 'merge', mergeTarget: 'P1' }
+  ], [
+    { candidateId: 'c1', evidenceIds: ['T1'] },
+    { candidateId: 'c2', evidenceIds: ['T2'] }
+  ]);
+  assert.deepEqual(enriched[0].points[0].evidenceIds, ['T1', 'T2']);
+  assert.deepEqual(discussion[0].points[0].evidenceIds, [], 'the raw Agent response is not mutated');
+});
+
+test('referee evidence can be recovered by proposition similarity when it omits a target field', () => {
+  const enriched = enrichDiscussionEvidenceFromDispositions(
+    [{ topic: 'Approval', points: [{ id: 'P9', text: 'Supplier approval remains the release blocker.', evidenceIds: [] }], decisions: [], openQuestions: [] }],
+    [{ candidateId: 'c9', disposition: 'core' }],
+    [{ candidateId: 'c9', topic: 'Approval', text: 'The release is blocked pending supplier approval.', evidenceIds: ['T9'] }]
+  );
+  assert.deepEqual(enriched[0].points[0].evidenceIds, ['T9']);
+});
+
+test('missing referee target records are reconstructed from classified evidence candidates', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alex', text: 'The release remains blocked pending supplier approval.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Priya', text: 'The supplier provides a weekly progress note.', classification: 'keep' }
+  ];
+  const candidates = [
+    { candidateId: 'c1', sourcePass: 'primary', recordType: 'discussion_point', topic: 'Release approval', text: 'The release remains blocked pending supplier approval.', evidenceIds: ['T0001'], record: { id: 'p1', text: 'The release remains blocked pending supplier approval.', evidenceIds: ['T0001'] } },
+    { candidateId: 'c2', sourcePass: 'recovery', recordType: 'discussion_point', topic: 'Release approval', text: 'The supplier provides a weekly progress note.', evidenceIds: ['T0002'], record: { id: 'p2', text: 'The supplier provides a weekly progress note.', evidenceIds: ['T0002'] } }
+  ];
+  const dispositions = [
+    { candidateId: 'c1', disposition: 'core', targetId: 'd1', reason: 'Material blocker.', evidenceIds: ['T0001'] },
+    { candidateId: 'c2', disposition: 'supporting', targetId: 'd1', reason: 'Supporting status context.', evidenceIds: ['T0002'] }
+  ];
+  const rebuilt = reconstructMissingRefereeDiscussion([], dispositions, candidates, units);
+  assert.deepEqual(rebuilt.reconstructedTargetIds, ['d1']);
+  assert.equal(rebuilt.discussion.length, 1);
+  assert.equal(rebuilt.discussion[0].points[0].id, 'd1');
+  assert.deepEqual(rebuilt.discussion[0].points[0].evidenceIds, ['T0001', 'T0002']);
+  assert.equal(rebuilt.discussion[0].points[0].supportingDetails.length, 1);
+});
+
+test('referee contract diagnostics expose dangling targets and undisposed candidates', () => {
+  const candidates = [
+    { candidateId: 'c1', recordType: 'discussion_point' },
+    { candidateId: 'c2', recordType: 'decision' }
+  ];
+  const diagnostics = refereeDiscussionContractDiagnostics([], [{
+    candidateId: 'c1', disposition: 'core', targetId: 'd1', reason: 'Material decision.', evidenceIds: ['T0001']
+  }], candidates);
+  assert.equal(diagnostics.undisposedCandidateCount, 1);
+  assert.deepEqual(diagnostics.danglingTargetIds, ['d1']);
+});
+
+test('vague reconstructed actions are rejected and implemented deliverables cover equivalent proposals', () => {
+  assert.equal(isVagueReconstructedAction('Plan the timeline around the recorded availability constraint.'), true);
+  assert.equal(isVagueReconstructedAction('Develop the audit preparation calendar for the first audit week.'), false);
+  assert.equal(publishedActionCoversProposal({
+    action: 'Determine and implement a secure method for providing document access, including external SharePoint access.',
+    owners: ['Alex'], evidenceIds: ['T0001']
+  }, {
+    action: 'Provide access to the documents through secure transmission or external SharePoint.',
+    owners: ['Alex'], evidenceIds: ['T0002']
+  }), true);
+  assert.equal(publishedActionCoversProposal({
+    action: 'Review the software test report.', owners: ['Alex'], evidenceIds: ['T0003']
+  }, {
+    action: 'Send the software test report.', owners: ['Alex'], evidenceIds: ['T0003']
+  }), false);
 });
 
 test('schema-v4 Agent proposals remain review-only and dispositions retain only valid evidence', () => {
@@ -264,6 +353,90 @@ test('corroborated discussion omitted by the referee is recovered once by propos
   assert.equal(merged.length, 1);
   assert.equal(merged[0].points.length, 1);
   assert.deepEqual(corroboratedOmittedDiscussionRecords(candidates, merged, units), []);
+});
+
+test('compact discussion chooses a decision once and preserves companion facts as context', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alex', text: 'The release remains blocked by supplier approval.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Priya', text: 'We agreed the release will wait for supplier approval.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions([{ topic: 'Release approval',
+    points: [{ id: 'p1', text: 'The release remains blocked by supplier approval.', evidenceIds: ['T0001'] }],
+    decisions: [{ id: 'd1', text: 'The release will wait for supplier approval.', evidenceIds: ['T0002'] }],
+    openQuestions: [{ id: 'q1', text: 'Whether the release could proceed before supplier approval was unresolved.', evidenceIds: ['T0001'] }]
+  }], [], units);
+  assert.equal(compact.length, 1);
+  assert.equal(compact[0].decisions.length, 1);
+  assert.equal(compact[0].points.length, 0);
+  assert.equal(compact[0].openQuestions.length, 0);
+  assert.deepEqual(compact[0].decisions[0].evidenceIds, ['T0001', 'T0002']);
+  assert.ok(compact[0].decisions[0].supportingDetails.length >= 1);
+});
+
+test('compact discussion does not merge conflicting quantities', () => {
+  const units = [
+    { id: 'T0100', sequence: 100, speaker: 'Alex', text: 'Three alarms are in scope.', classification: 'keep' },
+    { id: 'T0101', sequence: 101, speaker: 'Alex', text: 'Five alarms remain for the later release.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions([{ topic: 'Alarm scope', points: [
+    { id: 'p1', text: 'Three alarms are in scope.', evidenceIds: ['T0100'] },
+    { id: 'p2', text: 'Five alarms remain for the later release.', evidenceIds: ['T0101'] }
+  ], decisions: [], openQuestions: [] }], [], units);
+  assert.equal(compact[0].points.length, 2);
+});
+
+test('ordinary corroborated recovery becomes collapsed context instead of another visible row', () => {
+  const units = [
+    { id: 'T0200', sequence: 200, speaker: 'Alex', text: 'Supplier approval is the current release blocker.', classification: 'keep' },
+    { id: 'T0201', sequence: 201, speaker: 'Priya', text: 'The supplier normally sends a weekly status note.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions(
+    [{ topic: 'Release', points: [{ id: 'p1', text: 'Supplier approval is the current release blocker.', evidenceIds: ['T0200'] }], decisions: [], openQuestions: [] }],
+    [{ topic: 'Release', points: [{ id: 'p2', text: 'The supplier normally sends a weekly status note.', evidenceIds: ['T0201'] }], decisions: [], openQuestions: [] }],
+    units
+  );
+  assert.equal(compact[0].points.length, 1);
+  assert.equal(compact[0].points[0].supportingDetails.length, 1);
+  assert.equal(compact[0].points[0].supportingDetails[0].text, 'The supplier normally sends a weekly status note.');
+});
+
+test('collapsed context removes shorter evidence-overlapping restatements', () => {
+  const units = [{ id: 'T0250', sequence: 250, speaker: 'Alex', text: "The council has not inspected the fence for three months, a whole panel is down and Bertie's dog escaped through it last week.", classification: 'keep' }];
+  const compact = compactDiscussionPropositions([{ topic: 'Fence hazard', points: [{
+    id: 'p1', text: 'A boundary fence panel was down and a dog escaped through it last week, creating a safety hazard.', evidenceIds: ['T0250'],
+    supportingDetails: [
+      { id: 's1', text: 'A whole fence panel is down.', evidenceIds: ['T0250'] },
+      { id: 's2', text: "Bertie's dog escaped through it last week.", evidenceIds: ['T0250'] },
+      { id: 's3', text: 'The council had not inspected the fence for three months.', evidenceIds: ['T0250'] }
+    ]
+  }], decisions: [], openQuestions: [] }], [], units);
+  assert.deepEqual(compact[0].points[0].supportingDetails.map((detail) => detail.id), ['s3']);
+});
+
+test('referee-classified supporting candidates remain recoverable under the closest proposition', () => {
+  const units = [
+    { id: 'T0300', sequence: 300, speaker: 'Alex', text: 'The release is blocked until supplier approval.', classification: 'keep' },
+    { id: 'T0301', sequence: 301, speaker: 'Priya', text: 'The supplier provides a weekly progress note.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions(
+    [{ topic: 'Supplier approval', points: [{ id: 'P1', text: 'The release is blocked until supplier approval.', evidenceIds: ['T0300'] }], decisions: [], openQuestions: [] }],
+    [], units,
+    { supportingCandidates: [{ candidate: {
+      candidateId: 'support-1', topic: 'Supplier approval', text: 'The supplier provides a weekly progress note.', evidenceIds: ['T0301']
+    }, mergeTarget: 'P1' }] }
+  );
+  assert.equal(compact[0].points[0].supportingDetails.length, 1);
+  assert.equal(compact[0].points[0].supportingDetails[0].text, 'The supplier provides a weekly progress note.');
+});
+
+test('compact visible propositions require valid source evidence', () => {
+  const units = [{ id: 'T0400', sequence: 400, speaker: 'Alex', text: 'Supplier approval remains pending.', classification: 'keep' }];
+  const compact = compactDiscussionPropositions([{ topic: 'Approval', points: [
+    { id: 'good', text: 'Supplier approval remains pending.', evidenceIds: ['T0400'] },
+    { id: 'bad', text: 'The release was approved.', evidenceIds: ['T9999'] }
+  ], decisions: [], openQuestions: [] }], [], units);
+  assert.equal(compact[0].points.length, 1);
+  assert.equal(compact[0].points[0].id, 'good');
 });
 
 test('generic discovery includes named joint intentions and scheduled future work', () => {
@@ -536,7 +709,8 @@ test('discussion prompt carries the hybrid coverage ledger without replacing the
   assert.match(prompt, /discussion-candidate-1/);
   assert.match(prompt, /recall aids, not an allowlist/);
   assert.match(prompt, /rather than producing one point per source window/);
-  assert.match(prompt, /separate atomic points/);
+  assert.match(prompt, /Find material propositions/);
+  assert.match(prompt, /core and what is supporting context/);
   assert.ok(prompt.endsWith(transcript));
 });
 

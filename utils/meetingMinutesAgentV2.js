@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const SCHEMA_VERSION = 4;
 
 // What is stored in the draft payload. Separate from SCHEMA_VERSION on purpose.
-const PAYLOAD_VERSION = 4;
+const PAYLOAD_VERSION = 5;
 
 // Step indices changed meaning when the workflow gained a steer screen (1) and a
 // summary screen (4): what was saved as "actions" (2) is now 3, and "final review"
@@ -21,9 +21,22 @@ function migrateDraftPayload(payload = {}) {
   if (!payload || typeof payload !== 'object') return payload;
   // `Number(undefined) >= 3` is false, but be explicit: an absent version is 0.
   if ((Number(payload.payloadVersion) || 0) >= PAYLOAD_VERSION) return payload;
-  if ((Number(payload.payloadVersion) || 0) >= 3) return { ...payload, payloadVersion: PAYLOAD_VERSION };
+  const priorVersion = Number(payload.payloadVersion) || 0;
   const stored = Math.max(0, Math.min(3, Number(payload.currentStep) || 0));
-  return { ...payload, payloadVersion: PAYLOAD_VERSION, currentStep: STEP_V2_TO_V3[stored] };
+  const discussion = (Array.isArray(payload.discussion) ? payload.discussion : []).map((topic) => ({
+    ...topic,
+    ...Object.fromEntries(['points', 'decisions', 'openQuestions'].map((key) => [key,
+      (Array.isArray(topic?.[key]) ? topic[key] : []).map((record) => typeof record === 'string'
+        ? record
+        : { ...record, supportingDetails: Array.isArray(record?.supportingDetails) ? record.supportingDetails : [] })
+    ]))
+  }));
+  return {
+    ...payload,
+    payloadVersion: PAYLOAD_VERSION,
+    discussion,
+    ...(priorVersion < 3 ? { currentStep: STEP_V2_TO_V3[stored] } : {})
+  };
 }
 const FLAG_KINDS = new Set([
   'uncertain_fact', 'unclear_reference', 'ownership', 'timing',
@@ -597,6 +610,13 @@ function isUsefulReviewFlag(flag = {}) {
     return /^coverage-detail-/i.test(String(flag.id || ''))
       || normalised.status !== 'open' || Boolean(normalised.correctionNote);
   }
+  // Unsupported owner/timing fields are removed before the draft reaches the
+  // reviewer. Asking somebody to confirm a value which is no longer present is
+  // duplicate work, not a useful warning. Genuine ambiguity/conflict flags use
+  // different wording and remain visible.
+  if (['ownership', 'timing'].includes(normalised.kind)
+    && /^(?:confirm or correct unsupported action|the exact date .+ was not supported .+ and has been removed)/i.test(normalised.message)
+    && normalised.status === 'open' && !normalised.correctionNote) return false;
   if (normalised.kind !== 'uncertain_fact') return true;
   if (normalised.status !== 'open' || normalised.correctionNote) return true;
   return MATERIAL_UNCERTAINTY_PATTERN.test(normalised.message);
@@ -608,10 +628,23 @@ function normalisePoint(value, units, prefix, index) {
   if (!pointText) return null;
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
   const resolved = resolveEvidence(pointText, units, candidate.evidenceIds);
+  const supportingDetails = (Array.isArray(candidate.supportingDetails) ? candidate.supportingDetails : [])
+    .map((detail, detailIndex) => {
+      const source = typeof detail === 'string' ? { text: detail } : (detail || {});
+      const detailText = text(source.text || source.point || source.value, 1600);
+      if (!detailText) return null;
+      const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds);
+      return {
+        id: text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex),
+        text: detailText,
+        evidenceIds: detailEvidence.evidenceIds
+      };
+    }).filter(Boolean).slice(0, 50);
   return {
     id: text(candidate.id, 80) || stableId(prefix, pointText, index),
     text: pointText,
     evidenceIds: resolved.evidenceIds,
+    supportingDetails,
     reviewFlagIds: [...new Set((Array.isArray(candidate.reviewFlagIds) ? candidate.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
     _unsupportedEvidenceIds: resolved.invalidIds,
     _weakEvidenceIds: resolved.weakIds
@@ -634,7 +667,12 @@ function dedupePointList(values = []) {
   for (const value of values) {
     const duplicate = kept.find((existing) => recordSimilarity(existing, value) >= 0.86);
     if (!duplicate) kept.push(value);
-    else duplicate.evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(value.evidenceIds || [])])].slice(0, 8);
+    else {
+      duplicate.evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(value.evidenceIds || [])])].slice(0, 8);
+      const details = [...(duplicate.supportingDetails || []), ...(value.supportingDetails || [])];
+      duplicate.supportingDetails = details.filter((detail, index) => details.findIndex((other) =>
+        comparisonText(other.text) === comparisonText(detail.text)) === index).slice(0, 50);
+    }
   }
   return kept;
 }
@@ -1596,7 +1634,7 @@ function groundedObjectiveRecords(values = [], units = []) {
       text: objective,
       evidenceIds: resolved.evidenceIds
     };
-  }).filter(Boolean).slice(0, 6);
+  }).filter(Boolean).slice(0, 4);
 }
 
 function mergeGroundedObjectiveRecords(groups = [], units = []) {
@@ -1618,7 +1656,7 @@ function mergeGroundedObjectiveRecords(groups = [], units = []) {
       if (record.text.length > duplicate.text.length) duplicate.text = record.text;
     }
   }
-  return merged.slice(0, 6);
+  return merged.slice(0, 4);
 }
 
 function groundedExecutiveSummary(value, discussion = [], actions = []) {

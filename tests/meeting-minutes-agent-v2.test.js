@@ -646,6 +646,18 @@ test('one source passage can contribute several salient detail categories', () =
   assert.ok(inventory.some((item) => item.kind === 'blocker_dependency'));
 });
 
+test('supporting discussion details retain only valid source evidence', () => {
+  const result = normaliseAgentResult({ discussion: [{
+    topic: 'Approval',
+    decisions: [{
+      id: 'd1', text: 'Testing remains subject to approval.', evidenceIds: ['T0001'],
+      supportingDetails: [{ id: 's1', text: 'All three alarms are in scope.', evidenceIds: ['T0001', 'T9999'] }]
+    }]
+  }] }, sourceUnits, 'discussion');
+  assert.equal(result.discussion[0].decisions[0].supportingDetails.length, 1);
+  assert.deepEqual(result.discussion[0].decisions[0].supportingDetails[0].evidenceIds, ['T0001']);
+});
+
 test('relative timing is resolved from the meeting date while dependency timing remains distinct', () => {
   assert.equal(relativeExactDate('tomorrow', '2026-09-09'), '2026-09-10');
   const timingUnits = normaliseSourceUnits([
@@ -703,10 +715,21 @@ test('proposal changes can be partially accepted without altering unselected rec
 
 test('Word export uses UK dates, timing labels and contains no organisation field', async () => {
   assert.equal(timingLabel({ kind: 'deadline', exactDate: '2026-06-23' }), 'Deadline: 23 Jun 2026');
-  const buffer = await generateMeetingMinutesAgentDocx({
+  const draft = {
     title: 'Review', details: { meetingTitle: 'Review', meetingDate: '2026-06-23', organisation: 'Hidden' },
-    discussion: [], actions: [], sourceUnits, reviewFlags: []
-  }, true);
+    discussion: [{
+      topic: 'Testing', points: [],
+      decisions: [{ id: 'd1', text: 'The three-alarm test was approved.', evidenceIds: ['T0001'], supportingDetails: [
+        { id: 's1', text: 'The approval followed the scope review.', evidenceIds: ['T0001'] }
+      ] }], openQuestions: []
+    }], actions: [], sourceUnits, reviewFlags: []
+  };
+  const cleanBuffer = await generateMeetingMinutesAgentDocx(draft, false);
+  const cleanXml = await (await JSZip.loadAsync(cleanBuffer)).file('word/document.xml').async('string');
+  assert.match(cleanXml, /Meeting content/);
+  assert.match(cleanXml, /Decision —/);
+  assert.doesNotMatch(cleanXml, /Supporting context/);
+  const buffer = await generateMeetingMinutesAgentDocx(draft, true);
   const zip = await JSZip.loadAsync(buffer);
   const documentXml = await zip.file('word/document.xml').async('string');
   assert.match(documentXml, /23 Jun 2026/);
@@ -714,6 +737,8 @@ test('Word export uses UK dates, timing labels and contains no organisation fiel
   assert.match(documentXml, /Client attendees:/);
   assert.doesNotMatch(documentXml, /Organisation|Hidden/);
   assert.match(documentXml, /Evidence appendix/);
+  assert.match(documentXml, /Supporting context/);
+  assert.match(documentXml, /approval followed the scope review/);
 });
 
 test('an inserted row is one change, and any subset of changes applies correctly', () => {
@@ -799,10 +824,24 @@ test('a draft saved before the flow gained two screens opens where its owner lef
   assert.equal(migrateDraftPayload(current), current);
 });
 
-test('the hybrid wire and storage contracts are version four', () => {
+test('the Agent wire contract stays at four while stored drafts migrate to version five', () => {
   assert.equal(SCHEMA_VERSION, 4);
-  assert.equal(PAYLOAD_VERSION, 4);
+  assert.equal(PAYLOAD_VERSION, 5);
   assert.equal(migrateDraftPayload({ payloadVersion: 3, currentStep: 4 }).currentStep, 4);
+  const legacy = {
+    payloadVersion: 4,
+    currentStep: 2,
+    discussion: [{
+      topic: 'Launch',
+      points: [{ id: 'p1', text: 'The launch remains blocked.', evidenceIds: ['T0001'] }],
+      decisions: [],
+      openQuestions: []
+    }]
+  };
+  const migrated = migrateDraftPayload(legacy);
+  assert.equal(migrated.payloadVersion, 5);
+  assert.deepEqual(migrated.discussion[0].points[0].supportingDetails, []);
+  assert.deepEqual(migrateDraftPayload(migrated), migrated, 'migration is idempotent');
 });
 
 test('meeting admin is never inventoried as a detail to check', () => {
@@ -835,6 +874,15 @@ test('review flags distinguish extraction uncertainty from ordinary pending meet
   assert.equal(isUsefulReviewFlag(pending), false);
   assert.equal(isUsefulReviewFlag(ambiguous), true);
   assert.equal(isUsefulReviewFlag(corrected), true, 'a reviewer correction remains part of the audit trail');
+  assert.equal(isUsefulReviewFlag(normaliseFlag({
+    kind: 'ownership', message: 'Confirm or correct unsupported action owner “Alex”; it has been removed.'
+  })), false);
+  assert.equal(isUsefulReviewFlag(normaliseFlag({
+    kind: 'timing', message: 'The exact date 23 June was not supported by the cited evidence and has been removed.'
+  })), false);
+  assert.equal(isUsefulReviewFlag(normaliseFlag({
+    kind: 'ownership', message: 'The transcript contains conflicting ownership between Alex and Priya.'
+  })), true);
 
   assert.equal(normaliseFlag({ type: 'timing_uncertain', text: 'Confirm the target.' }).kind, 'timing');
   assert.equal(normaliseFlag({ type: 'ownership_uncertain', text: 'Confirm the owner.' }).kind, 'ownership');
