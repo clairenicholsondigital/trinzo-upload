@@ -677,8 +677,39 @@ function dedupePointList(values = []) {
   return kept;
 }
 
+function discussionTopicItems(candidate = {}) {
+  return (Array.isArray(candidate.discussion) ? candidate.discussion : []).map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    const hasTopicArrays = ['points', 'decisions', 'openQuestions'].some((key) => Array.isArray(item[key]));
+    if (hasTopicArrays) return item;
+
+    // Some Copilot topic versions have returned valid, grounded records in a
+    // flat discussion array even though the schema asks for topic containers.
+    // Preserve that evidence rather than turning a shape error into an empty
+    // draft. Only explicit record labels/text prefixes affect the record type;
+    // otherwise the safe default is an ordinary discussion point.
+    const recordText = text(item.text || item.point || item.value, 1600);
+    if (!recordText) return item;
+    const suppliedType = text(item.recordType || item.type || item.kind, 80).toLowerCase().replace(/[\s-]+/g, '_');
+    const isDecision = suppliedType === 'decision' || /^decision\s*[:—-]/i.test(recordText);
+    const isQuestion = ['open_question', 'openquestion', 'question'].includes(suppliedType)
+      || /^open\s+question\s*[:—-]/i.test(recordText);
+    const cleanedText = recordText.replace(isDecision
+      ? /^decision\s*[:—-]\s*/i
+      : isQuestion ? /^open\s+question\s*[:—-]\s*/i : /$^/, '');
+    const record = { ...item, text: cleanedText };
+    return {
+      id: item.topicId,
+      topic: text(item.topic || item.category || item.subject, 220) || 'Discussion',
+      points: isDecision || isQuestion ? [] : [record],
+      decisions: isDecision ? [record] : [],
+      openQuestions: isQuestion ? [record] : []
+    };
+  });
+}
+
 function normaliseDiscussion(candidate = {}, units = []) {
-  const topics = (Array.isArray(candidate.discussion) ? candidate.discussion : []).slice(0, 80).map((item, index) => {
+  const topics = discussionTopicItems(candidate).slice(0, 80).map((item, index) => {
     const topic = text(item?.topic, 220) || 'Discussion';
     return {
       id: text(item?.id, 80) || stableId('topic', topic, index),

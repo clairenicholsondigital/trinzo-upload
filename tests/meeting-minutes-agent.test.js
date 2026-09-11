@@ -11,6 +11,8 @@ const {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
+  meetingAgentResultError,
+  meetingAgentEmptyDiscoveryError,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
   normaliseAgentCandidateDispositions,
@@ -39,7 +41,81 @@ const {
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
-const { actionCandidateInventory } = require('../utils/meetingMinutesAgentV2');
+
+test('connected-agent contract errors trigger retries instead of becoming empty drafts', () => {
+  const malformedDiscussion = meetingAgentResultError({
+    discussion: [], actions: [],
+    error: { code: 'invalid_discussion_structure', message: 'The child returned flat records.' }
+  });
+  assert.equal(malformedDiscussion?.code, 'invalid_discussion_structure');
+  assert.equal(malformedDiscussion?.retryable, true);
+
+  const missingDispositions = meetingAgentResultError({
+    discussion: [], actions: [],
+    error: { code: 'missing_candidate_dispositions', message: 'No dispositions were returned.' }
+  });
+  assert.equal(missingDispositions?.retryable, true);
+  assert.equal(meetingAgentResultError({ discussion: [], actions: [] }), null);
+});
+
+test('empty discussion discovery retries only when substantive evidence exists', () => {
+  const error = meetingAgentEmptyDiscoveryError(
+    { discussion: [], actions: [] },
+    'discussion',
+    [{ candidateId: 'D1', recordType: 'decision', priority: 9 }]
+  );
+  assert.equal(error?.code, 'empty_discussion_with_substantive_candidates');
+  assert.equal(error?.retryable, true);
+  assert.equal(meetingAgentEmptyDiscoveryError(
+    { discussion: [], actions: [] }, 'discussion', [{ candidateId: 'D2', priority: 2 }]
+  ), null);
+  assert.equal(meetingAgentEmptyDiscoveryError(
+    { discussion: [{ topic: 'Parking', points: [] }], actions: [] },
+    'discussion',
+    [{ candidateId: 'D3', recordType: 'open_question', priority: 8 }]
+  ), null);
+  assert.equal(meetingAgentEmptyDiscoveryError(
+    { discussion: [], actions: [] }, 'actions', [{ candidateId: 'A1', priority: 10 }]
+  ), null);
+});
+const { actionCandidateInventory, normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
+
+test('every website Agent prompt begins with its published routing marker', () => {
+  const transcript = '[T0001] Priya: I will send the report tomorrow.';
+  const candidate = { candidateId: 'c1', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001'] };
+  assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {} }), /^DISCUSSION_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {} }), /^ACTION_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentPrompt({ stage: 'summary', transcript, details: {}, current: {} }), /^SUMMARY\n/);
+  assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: DISCUSSION\n/);
+  assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: ACTIONS\n/);
+  assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'discussion', transcript, details: {}, current: {}, candidates: [] }), /^DISCUSSION_GAP_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: {}, candidates: [candidate] }), /^ACTION_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentRefereePrompt({ stage: 'discussion', transcript, details: {}, candidates: [] }), /^DISCUSSION_REFEREE\n/);
+  assert.match(meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [candidate] }), /^ACTION_REFEREE\n/);
+  assert.match(meetingMinutesAgentAuditPrompt({ transcript, details: {}, actions: [], actionCandidates: [candidate] }), /^ACTION_REFEREE\n/);
+  assert.match(meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [candidate] }), /^ACTION_REFEREE\n/);
+  assert.match(meetingMinutesAgentSalvagePrompt({ transcript, details: {}, actions: [], candidates: [candidate] }), /^ACTION_REFEREE\n/);
+});
+
+test('flat grounded Copilot discussion records are adapted to schema-v4 topic records', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Alice', text: 'We agreed to increase the pilot from ten users to twenty users.', classification: 'keep' },
+    { id: 'T0002', speaker: 'Bob', text: 'Deployment remains blocked until security approval is received.', classification: 'keep' },
+    { id: 'T0003', speaker: 'Bob', text: 'Whether approval will arrive by Friday remains unresolved.', classification: 'keep' }
+  ];
+  const result = normaliseAgentResult({ discussion: [
+    { id: 'D1', text: 'Decision: The pilot was increased from ten users to twenty users.', evidenceIds: ['T0001'] },
+    { id: 'D2', text: 'Deployment remains blocked until security approval is received.', evidenceIds: ['T0002'] },
+    { id: 'D3', recordType: 'open_question', text: 'Whether approval will arrive by Friday remains unresolved.', evidenceIds: ['T0003'] }
+  ] }, units, 'discussion');
+  assert.equal(result.discussion.length, 1);
+  assert.equal(result.discussion[0].topic, 'Discussion');
+  assert.equal(result.discussion[0].decisions.length, 1);
+  assert.equal(result.discussion[0].decisions[0].text, 'The pilot was increased from ten users to twenty users.');
+  assert.equal(result.discussion[0].points.length, 1);
+  assert.equal(result.discussion[0].openQuestions.length, 1);
+  assert.deepEqual(result.discussion[0].openQuestions[0].evidenceIds, ['T0003']);
+});
 
 test('hybrid recovery, referee and critic prompts keep the complete transcript last', () => {
   const transcript = '[T0001] Priya: I will send the report tomorrow.';
