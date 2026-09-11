@@ -96,6 +96,18 @@ test('empty discussion discovery retries only when substantive evidence exists',
   assert.equal(meetingAgentEmptyDiscoveryError(
     { discussion: [], actions: [] }, 'actions', [{ candidateId: 'A2', recordType: 'action', priority: 10, owners: [] }]
   ), null);
+  assert.equal(meetingAgentEmptyDiscoveryError(
+    { discussion: [], actions: [] }, 'actions', [{
+      candidateId: 'parking', recordType: 'action_chain', priority: 3, dispositionHint: 'suggestion',
+      signals: { commitment: true }, ownerHints: []
+    }]
+  ), null, 'a suggestion-like chain must not make a correct zero-action response retry');
+  assert.equal(meetingAgentEmptyDiscoveryError(
+    { discussion: [], actions: [] }, 'actions', [{
+      candidateId: 'accepted', recordType: 'action_chain', priority: 10, dispositionHint: 'accepted_request',
+      signals: { acceptance: true }, ownerHints: ['Priya']
+    }]
+  )?.code, 'empty_action_with_substantive_candidates');
 });
 
 test('discovery validation rejects raw records that do not survive evidence normalisation', () => {

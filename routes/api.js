@@ -8784,7 +8784,8 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
     const owners = candidate?.owners || candidate?.record?.owners || candidate?.ownerHints || [];
     const signals = candidate?.signals || {};
     return ['action_chain', 'action_thread'].includes(recordType)
-      ? Boolean(signals.commitment || signals.acceptance || signals.assignment || signals.scheduled)
+      ? ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate?.dispositionHint)
+        && Boolean(signals.commitment || signals.acceptance || signals.assignment || signals.scheduled)
       : recordType === 'action' && Number(candidate?.priority || 0) >= 8
         && (Array.isArray(owners) ? owners.length > 0 : Boolean(owners));
   });
