@@ -192,6 +192,25 @@ test('discussion referee batches cover topics before taking repeated rows from o
   assert.ok(supplied.filter((candidate) => candidate.topic === 'Schedule').length < 12);
 });
 
+test('discussion referee takes distinct propositions before a same-topic paraphrase', () => {
+  const otherTopics = Array.from({ length: 12 }, (_, index) => ({
+    candidateId: `other-${index}`, sourcePass: 'primary', recordType: 'discussion_point',
+    topic: `Topic ${index}`, text: `A distinct material dependency ${index} requires resolution.`,
+    evidenceIds: [`T${String(index + 20).padStart(4, '0')}`], priority: 5, sequence: index + 20
+  }));
+  const candidates = [
+    { candidateId: 'risk-1', sourcePass: 'primary', recordType: 'discussion_point', topic: 'Software review', text: 'Cybersecurity rollout risk requires assessment.', evidenceIds: ['T0001'], priority: 9, sequence: 1 },
+    { candidateId: 'risk-2', sourcePass: 'recovery', recordType: 'discussion_point', topic: 'Software review', text: 'The cybersecurity rollout risks require further assessment.', evidenceIds: ['T0001'], priority: 8, sequence: 2 },
+    { candidateId: 'scope-1', sourcePass: 'primary', recordType: 'discussion_point', topic: 'Software review', text: 'The product scope includes embedded monitoring software.', evidenceIds: ['T0003'], priority: 7, sequence: 3 },
+    ...otherTopics
+  ];
+  const supplied = meetingAgentRefereeCandidates('discussion', candidates);
+  assert.equal(supplied.length, 14);
+  assert.ok(supplied.some((candidate) => candidate.candidateId === 'risk-1'));
+  assert.ok(supplied.some((candidate) => candidate.candidateId === 'scope-1'));
+  assert.ok(!supplied.some((candidate) => candidate.candidateId === 'risk-2'));
+});
+
 test('orphaned supporting discussion gets a visible topic anchor and explicit targets', () => {
   const candidates = [
     { candidateId: 'background', recordType: 'discussion_point', topic: 'Context', text: 'Background information was reviewed.', evidenceIds: ['T1'] },
@@ -203,6 +222,19 @@ test('orphaned supporting discussion gets a visible topic anchor and explicit ta
   ], candidates);
   assert.equal(effective.filter((item) => item.disposition === 'core').length, 1);
   assert.ok(effective.every((item) => item.targetId));
+});
+
+test('related supporting topics share one visible facet anchor', () => {
+  const candidates = [
+    { candidateId: 'product', recordType: 'discussion_point', topic: 'Product coverage', text: 'The product scope includes two monitored devices.', evidenceIds: ['T1'] },
+    { candidateId: 'standards', recordType: 'discussion_point', topic: 'Applicable standards', text: 'The compliance standards follow the final scope.', evidenceIds: ['T2'] },
+    { candidateId: 'requirements', recordType: 'discussion_point', topic: 'Regulatory requirements', text: 'Additional regulatory requirements were reviewed.', evidenceIds: ['T3'] }
+  ];
+  const effective = effectiveDiscussionRefereeDispositions(candidates.map((candidate) => ({
+    candidateId: candidate.candidateId, disposition: 'supporting', reason: 'Context.', evidenceIds: candidate.evidenceIds
+  })), candidates);
+  assert.equal(effective.filter((item) => item.disposition === 'core').length, 1);
+  assert.equal(new Set(effective.map((item) => item.targetId)).size, 1);
 });
 
 test('discussion referee sufficiency rejects drafts that lose most discovered topic groups', () => {
@@ -638,6 +670,31 @@ test('corroborated discussion omitted by the referee is recovered once by propos
   assert.equal(merged.length, 1);
   assert.equal(merged[0].points.length, 1);
   assert.deepEqual(corroboratedOmittedDiscussionRecords(candidates, merged, units), []);
+});
+
+test('an evidence-grounded material unresolved matter survives one discovery source', () => {
+  const units = [{ id: 'T0010', sequence: 10, speaker: 'Alex', text: 'Whether regulatory approval is required remains unresolved.', classification: 'keep' }];
+  const candidates = hybridCandidateLedgerFromResult({ discussion: [{
+    topic: 'Regulatory approval', points: [], decisions: [],
+    openQuestions: [{ id: 'q1', text: 'Whether regulatory approval is required remains unresolved.', evidenceIds: ['T0010'] }]
+  }] }, 'primary');
+  const recovered = corroboratedOmittedDiscussionRecords(candidates, [], units);
+  assert.equal(recovered.length, 1);
+  assert.equal(recovered[0].openQuestions.length, 1);
+});
+
+test('cross-type discovery corroboration combines evidence for one omitted proposition', () => {
+  const units = [
+    { id: 'T0020', sequence: 20, speaker: 'Alex', text: 'The launch depends on supplier approval.', classification: 'keep' },
+    { id: 'T0021', sequence: 21, speaker: 'Priya', text: 'Supplier approval is still unresolved.', classification: 'keep' }
+  ];
+  const candidates = [
+    ...hybridCandidateLedgerFromResult({ discussion: [{ topic: 'Launch', points: [{ id: 'p1', text: 'The launch depends on supplier approval.', evidenceIds: ['T0020'] }], decisions: [], openQuestions: [] }] }, 'primary'),
+    ...hybridCandidateLedgerFromResult({ discussion: [{ topic: 'Launch', points: [], decisions: [], openQuestions: [{ id: 'q1', text: 'Supplier approval remains unresolved for the launch.', evidenceIds: ['T0021'] }] }] }, 'staged')
+  ];
+  const recovered = corroboratedOmittedDiscussionRecords(candidates, [], units);
+  assert.equal(recovered.length, 1);
+  assert.deepEqual(recovered[0].points[0].evidenceIds, ['T0020', 'T0021']);
 });
 
 test('compact discussion chooses a decision once and preserves companion facts as context', () => {

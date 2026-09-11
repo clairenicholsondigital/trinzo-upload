@@ -8318,6 +8318,22 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
       + Number(sourceRank[candidate?.sourcePass] || 0) * 10
       + Number(candidate?.priority || 0);
   };
+  const propositionClusters = (items) => {
+    const clusters = [];
+    for (const candidate of items) {
+      const evidence = new Set(candidate.evidenceIds || []);
+      const cluster = clusters.find((group) => group.some((other) => {
+        const lexical = hybridContentTokenOverlap(other.text, candidate.text);
+        const sharedEvidence = (other.evidenceIds || []).some((id) => evidence.has(id));
+        return lexical >= 0.56 || (sharedEvidence && lexical >= 0.28);
+      }));
+      if (cluster) cluster.push(candidate);
+      else clusters.push([candidate]);
+    }
+    return clusters.map((cluster) => [...cluster].sort((left, right) =>
+      discussionSalience(right) - discussionSalience(left)
+      || Number(left.sequence || 0) - Number(right.sequence || 0))[0]);
+  };
   const balancedDiscussion = (items, limit) => {
     const groups = new Map();
     items.forEach((candidate) => {
@@ -8325,9 +8341,14 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(candidate);
     });
-    for (const group of groups.values()) group.sort((left, right) =>
-      discussionSalience(right) - discussionSalience(left)
-      || Number(left.sequence || 0) - Number(right.sequence || 0));
+    // A broad Agent topic can contain several genuinely different
+    // propositions. Collapse source-level paraphrases first, then round-robin
+    // the distinct propositions so repeated schedule or background rows do not
+    // displace scope, risk, dependency or decision content.
+    for (const [key, group] of groups) groups.set(key,
+      propositionClusters(group).sort((left, right) =>
+        discussionSalience(right) - discussionSalience(left)
+        || Number(left.sequence || 0) - Number(right.sequence || 0)));
     const selected = [];
     while (selected.length < limit) {
       let added = false;
@@ -8695,14 +8716,28 @@ function effectiveDiscussionRefereeDispositions(dispositions = [], candidates = 
   const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
     .filter((candidate) => candidate?.candidateId)
     .map((candidate) => [String(candidate.candidateId), candidate]));
+  const facetKey = (candidate) => {
+    const value = `${candidate?.topic || ''} ${candidate?.text || ''}`.toLowerCase();
+    const facets = [
+      ['risk-dependency', /\b(?:risk|block(?:ed|er|ing)?|depend(?:s|ent|ency)?|subject to|constraint|unresolved|pending|awaiting)\b/],
+      ['access-confidentiality', /\b(?:access|confidential|sharepoint|document sharing|secure transmission|permission)\b/],
+      ['software-security', /\b(?:software|cyber|security|sbom|component|version|validation)\b/],
+      ['scope-standards', /\b(?:scope|standard|regulat(?:ion|ory)|compliance|product|requirement|audit focus)\b/],
+      ['timing-logistics', /\b(?:schedule|timing|date|day|week|month|travel|hotel|site|logistics|calendar)\b/],
+      ['roles-responsibilities', /\b(?:role|responsib(?:le|ility)|owner|lead|staff|team|attendee)\b/]
+    ];
+    const matched = facets.filter(([, pattern]) => pattern.test(value)).map(([name]) => name);
+    if (matched.length) return matched.slice(0, 2).join('|');
+    const topicTokens = [...discussionInformationTokens(candidate?.topic || '')].slice(0, 3);
+    return topicTokens.length ? `topic:${topicTokens.join('-')}` : 'general-context';
+  };
   const groups = new Map();
   for (const row of rows) {
     const candidate = candidatesById.get(String(row?.candidateId || ''));
     if (!candidate) continue;
-    const topic = meetingMinutesAgentText(candidate.topic, 240).toLowerCase()
-      || `untitled-${Math.floor(Number(candidate.sequence || String(candidate.evidenceIds?.[0] || '').match(/\d+/)?.[0] || 0) / 40)}`;
-    if (!groups.has(topic)) groups.set(topic, []);
-    groups.get(topic).push({ row, candidate });
+    const facet = facetKey(candidate);
+    if (!groups.has(facet)) groups.set(facet, []);
+    groups.get(facet).push({ row, candidate });
   }
   const materiallyVisible = (candidate) => candidate?.recordType === 'decision'
     || candidate?.recordType === 'open_question'
@@ -8714,20 +8749,13 @@ function effectiveDiscussionRefereeDispositions(dispositions = [], candidates = 
     + Number(candidate?.priority || 0);
   for (const group of groups.values()) {
     const usable = group.filter(({ row }) => ['core', 'supporting'].includes(row.disposition || row.classification));
-    for (const item of usable) {
-      const kind = item.row.disposition || item.row.classification;
-      if (kind === 'supporting' && materiallyVisible(item.candidate)) {
-        item.row.disposition = 'core';
-        item.row.targetId = item.row.targetId || item.candidate.candidateId;
-        item.row.websitePromotedFrom = 'supporting';
-      }
-    }
     let anchors = usable.filter(({ row }) => (row.disposition || row.classification) === 'core');
     if (!anchors.length && usable.length) {
       const anchor = [...usable].sort((left, right) => rank(right) - rank(left))[0];
       anchor.row.disposition = 'core';
       anchor.row.targetId = anchor.row.targetId || anchor.candidate.candidateId;
-      anchor.row.websitePromotedFrom = 'orphaned_supporting';
+      anchor.row.websitePromotedFrom = materiallyVisible(anchor.candidate)
+        ? 'material_supporting_anchor' : 'orphaned_supporting';
       anchors = [anchor];
     }
     if (!anchors.length) continue;
@@ -9409,30 +9437,57 @@ function criticConfirmedActionPromotions(criticActions = [], singleSource = [], 
 }
 
 function corroboratedOmittedDiscussionRecords(candidates = [], discussion = [], sourceUnits = []) {
+  const unitsById = new Map(normaliseSourceUnits(sourceUnits).map((unit) => [unit.id, unit]));
   const eligible = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
     ['discussion_point', 'decision', 'open_question'].includes(candidate?.recordType)
     && ['primary', 'recovery', 'staged'].includes(candidate?.sourcePass)
     && candidate?.text && candidate?.evidenceIds?.length
-  );
+  ).filter((candidate) => {
+    const evidence = (candidate.evidenceIds || []).map((id) => unitsById.get(id)).filter(Boolean)
+      .map((unit) => `${unit.speaker || ''}: ${unit.text || ''}`).join(' ');
+    return evidence && evidenceSupportScore(candidate.text, evidence) >= 0.22;
+  });
   const represented = flattenHybridDiscussion(discussion);
   const groups = [];
   for (const candidate of eligible) {
-    const group = groups.find((items) => items[0].recordType === candidate.recordType
-      && items.some((other) => hybridCandidateMatchesRecord(other, candidate.record || candidate)));
+    const group = groups.find((items) => items.some((other) => {
+      const sameTopic = String(other.topic || '').toLowerCase() === String(candidate.topic || '').toLowerCase()
+        || hybridTokenOverlap(other.topic, candidate.topic) >= 0.55;
+      const lexical = hybridContentTokenOverlap(other.text, candidate.text);
+      const evidence = new Set(other.evidenceIds || []);
+      const sharedEvidence = (candidate.evidenceIds || []).some((id) => evidence.has(id));
+      return sameTopic && (lexical >= 0.5 || (sharedEvidence && lexical >= 0.25));
+    }));
     if (group) group.push(candidate);
     else groups.push([candidate]);
   }
   const additions = [];
   const sourceRank = { primary: 3, recovery: 2, staged: 1 };
+  const typeRank = { decision: 3, open_question: 2, discussion_point: 1 };
+  const explicitlyMaterial = (candidate) => candidate.recordType === 'decision'
+    || candidate.recordType === 'open_question'
+    || /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|block(?:ed|er|ing)?|risk|depend(?:s|ent|ency)?|subject to|unresolved|required|must|standard|regulation|scope|deadline|target|increase|decrease|quantity|total|percent|%|\d+(?:[.,]\d+)?)\b/i
+      .test(String(candidate.text || ''));
   for (const group of groups) {
     const sources = new Set(group.map((candidate) => candidate.sourcePass));
-    if (sources.size < 2 || !sources.has('primary')) continue;
-    if (group.some((candidate) => represented.some((item) => item.recordType === candidate.recordType
-      && hybridCandidateMatchesRecord(candidate, item.record)))) continue;
+    // Independent discovery corroboration is the normal route. A strongly
+    // material decision or unresolved matter may also survive from one source,
+    // but it remains subject to evidence validation above and compacting below.
+    if (sources.size < 2 && !group.some(explicitlyMaterial)) continue;
+    if (group.some((candidate) => represented.some((item) => {
+      const sameTopic = String(item.topic || '').toLowerCase() === String(candidate.topic || '').toLowerCase()
+        || hybridTokenOverlap(item.topic, candidate.topic) >= 0.55;
+      return sameTopic && (hybridCandidateMatchesRecord(candidate, item.record)
+        || hybridContentTokenOverlap(candidate.text, item.record?.text) >= 0.58);
+    }))) continue;
     const preferred = [...group].sort((left, right) => Number(sourceRank[right.sourcePass] || 0) - Number(sourceRank[left.sourcePass] || 0)
+      || Number(typeRank[right.recordType] || 0) - Number(typeRank[left.recordType] || 0)
       || String(right.text).length - String(left.text).length)[0];
-    additions.push(preferred);
-    if (additions.length >= 8) break;
+    additions.push({
+      ...preferred,
+      evidenceIds: [...new Set(group.flatMap((candidate) => candidate.evidenceIds || []))].slice(0, 12),
+      sourcePasses: [...sources]
+    });
   }
   const byTopic = new Map();
   for (const candidate of additions) {
@@ -9746,9 +9801,10 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // Explicit decisions remain core; other accurate recovery material is kept as
   // collapsed context on the closest proposition in the same topic.
   const recoveredRows = flattenHybridDiscussion(recovered);
-  const materialBlocker = /\b(?:block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|risk|unresolved|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation))\b/i;
+  const materialCore = /\b(?:block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|significant risk|material risk|unresolved|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation))\b/i;
   const recoveredCore = recoveredRows.filter((item) => item.recordType === 'decision'
-    || materialBlocker.test(String(item.record?.text || '')));
+    || item.recordType === 'open_question'
+    || materialCore.test(String(item.record?.text || '')));
   if (recoveredCore.length) {
     const visibleCore = normaliseAgentResult({ discussion: recoveredCore.map((item) => ({
       topic: item.topic,
@@ -10455,11 +10511,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const stagedCandidateStartedAt = Date.now();
   let stagedCandidateElapsedMs = 0;
   let stagedCandidatesFromPrewarm = false;
+  let stagedJoinPending = false;
   const stagedPromise = cachedStaged.length
     ? Promise.resolve(cachedStaged)
     : awaitPrivateStagedCandidateLedger(draft, stage, Number(process.env.MEETING_MINUTES_AGENT_STAGED_JOIN_WAIT_MS || 12000)).then((rows) => {
       if (rows === null) {
-        degradedSources.push('Private staged candidates are still processing in the background; this draft continued without blocking on them.');
+        stagedJoinPending = true;
         return [];
       }
       stagedCandidatesFromPrewarm = true;
@@ -10473,12 +10530,32 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     stage, transcript, details, steer: draft.steer, salientDetails
   });
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
-  const [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
+  let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
     validateResult: (result) => meetingAgentEmptyDiscoveryError(
       result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
     )
   }), stagedPromise]);
+  if (stage === 'discussion' && !cachedStaged.length && stagedJoinPending && !stagedAll.length) {
+    // Discussion completeness benefits from the private staged comparison.
+    // Recheck the same cached job once discovery has returned: in the common
+    // case it is already complete, and otherwise only this small bounded wait
+    // is added before candidate adjudication. Actions retain their existing
+    // latency/noise profile and do not wait a second time for staged output.
+    const lateRows = await awaitPrivateStagedCandidateLedger(
+      draft, stage, Number(process.env.MEETING_MINUTES_AGENT_STAGED_LATE_JOIN_WAIT_MS || 20000)
+    ).catch((error) => {
+      degradedSources.push(`Staged candidate extraction failed: ${error.message}`);
+      return [];
+    });
+    if (Array.isArray(lateRows)) {
+      stagedAll = lateRows;
+      stagedCandidatesFromPrewarm = true;
+    } else {
+      degradedSources.push('Private staged candidates are still processing in the background; this draft continued without blocking on them.');
+    }
+    stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt;
+  }
   const primaryParsed = primaryResult || {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
