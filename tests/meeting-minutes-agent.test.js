@@ -12,6 +12,8 @@ const {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
+  meetingAgentRefereeBatches,
+  mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
   meetingAgentResultError,
@@ -188,6 +190,58 @@ test('referee repair requests only missing candidates and merges complete accoun
   assert.equal(meetingAgentDispositionError(merged, candidates, {
     requestId: 'request-1', stage: 'ACTION_REFEREE'
   }), null);
+});
+
+test('referee candidates are split into bounded batches without changing order', () => {
+  const candidates = Array.from({ length: 14 }, (_, index) => ({ candidateId: `C${index + 1}` }));
+  const batches = meetingAgentRefereeBatches(candidates, 5);
+  assert.deepEqual(batches.map((batch) => batch.length), [5, 5, 4]);
+  assert.deepEqual(batches.flat().map((candidate) => candidate.candidateId),
+    candidates.map((candidate) => candidate.candidateId));
+});
+
+test('batched referee results merge deterministically in the original candidate order', () => {
+  const contract = {
+    requestId: 'full-request', stage: 'ACTION_REFEREE',
+    expectedCandidateIds: ['A1', 'A2', 'A3', 'A4']
+  };
+  const merged = mergeBatchedMeetingAgentRefereeResults([{
+    repairAttempted: false,
+    candidateDispositions: [
+      { candidateId: 'A2', disposition: 'reject', reason: 'Not future work.', evidenceIds: ['T2'] },
+      { candidateId: 'A1', disposition: 'publish', reason: 'Committed.', evidenceIds: ['T1'] }
+    ], reviewFlags: []
+  }, {
+    repairAttempted: true,
+    candidateDispositions: [
+      { candidateId: 'A4', disposition: 'proposal', reason: 'Ambiguous acceptance.', evidenceIds: ['T4'] },
+      { candidateId: 'A3', disposition: 'completed', reason: 'Already complete.', evidenceIds: ['T3'] },
+      { candidateId: 'unexpected', disposition: 'publish', reason: 'Ignore.', evidenceIds: ['T9'] }
+    ], reviewFlags: []
+  }], contract);
+  assert.deepEqual(merged.candidateDispositions.map((item) => item.candidateId), ['A1', 'A2', 'A3', 'A4']);
+  assert.equal(merged.expectedCandidateCount, 4);
+  assert.equal(merged.returnedDispositionCount, 4);
+  assert.equal(merged.repairAttempted, true);
+  assert.equal(meetingAgentDispositionError(merged, contract.expectedCandidateIds.map((candidateId) => ({ candidateId })), contract), null);
+});
+
+test('strict referee errors retain invalid candidate diagnostics for targeted repair', () => {
+  const error = meetingAgentResultError({
+    error: {
+      code: 'invalid_referee_output', message: 'Invalid candidates.',
+      invalidCandidateIds: ['A2', 'A2', 'A3'],
+      reasons: ['A2: missing reason', 'A3: invalid disposition'], retryable: false,
+      validCandidateDispositions: [
+        { candidateId: 'A1', disposition: 'publish', reason: 'Committed.', evidenceIds: ['T1'] }
+      ]
+    }
+  });
+  assert.equal(error.code, 'invalid_referee_output');
+  assert.equal(error.retryable, false);
+  assert.deepEqual(error.invalidCandidateIds, ['A2', 'A3']);
+  assert.deepEqual(error.invalidReasons, ['A2: missing reason', 'A3: invalid disposition']);
+  assert.equal(error.validCandidateDispositions[0].candidateId, 'A1');
 });
 
 test('successful pass cache is private, bounded and keyed by the exact prompt', () => {

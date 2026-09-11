@@ -8546,6 +8546,52 @@ function mergeMeetingAgentRefereeResults(previous = {}, repair = {}, contract = 
   };
 }
 
+function meetingAgentRefereeBatches(candidates = [], batchSize = 5) {
+  const rows = Array.isArray(candidates) ? candidates : [];
+  const size = Math.max(1, Math.min(8, Number(batchSize) || 5));
+  const batches = [];
+  for (let index = 0; index < rows.length; index += size) batches.push(rows.slice(index, index + size));
+  return batches;
+}
+
+function mergeBatchedMeetingAgentRefereeResults(results = [], contract = {}) {
+  const expectedIds = Array.isArray(contract.expectedCandidateIds) ? contract.expectedCandidateIds : [];
+  const expected = new Set(expectedIds);
+  const dispositions = new Map();
+  const discussion = [];
+  const actions = [];
+  const actionProposals = [];
+  const reviewFlags = [];
+  let repairAttempted = false;
+  for (const result of Array.isArray(results) ? results : []) {
+    if (!result || typeof result !== 'object') continue;
+    repairAttempted = repairAttempted || Boolean(result.repairAttempted);
+    for (const item of Array.isArray(result.candidateDispositions) ? result.candidateDispositions : []) {
+      const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
+      if (candidateId && expected.has(candidateId) && !dispositions.has(candidateId)) dispositions.set(candidateId, item);
+    }
+    discussion.push(...(Array.isArray(result.discussion) ? result.discussion : []));
+    actions.push(...(Array.isArray(result.actions) ? result.actions : []));
+    actionProposals.push(...(Array.isArray(result.actionProposals) ? result.actionProposals : []));
+    reviewFlags.push(...(Array.isArray(result.reviewFlags) ? result.reviewFlags : []));
+  }
+  const ordered = expectedIds.map((candidateId) => dispositions.get(candidateId)).filter(Boolean);
+  return {
+    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+    requestId: contract.requestId || '',
+    stage: contract.stage || '',
+    expectedCandidateCount: expectedIds.length,
+    returnedDispositionCount: ordered.length,
+    repairAttempted,
+    candidateDispositions: ordered,
+    discussion,
+    actions: dedupeHybridActionRecords(actions),
+    actionProposals: dedupeHybridActionProposals(actionProposals),
+    meetingObjectives: [],
+    reviewFlags: mergeMeetingAgentFlags([], reviewFlags)
+  };
+}
+
 function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, actions, candidates, salientDetails }) {
   return [
     'ACTION_REFEREE',
@@ -8753,6 +8799,14 @@ function meetingAgentResultError(result) {
   error.code = code;
   error.statusCode = 502;
   error.retryable = /(?:system|timeout|noresponse|no_response|invalid_.+_structure|missing_candidate_dispositions|child|handoff)/i.test(code);
+  if (typeof reported === 'object') {
+    error.invalidCandidateIds = [...new Set((Array.isArray(reported.invalidCandidateIds)
+      ? reported.invalidCandidateIds : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean))];
+    error.invalidReasons = (Array.isArray(reported.reasons) ? reported.reasons : [])
+      .map((value) => meetingMinutesAgentText(value, 500)).filter(Boolean).slice(0, 40);
+    error.validCandidateDispositions = Array.isArray(reported.validCandidateDispositions)
+      ? reported.validCandidateDispositions : [];
+  }
   return error;
 }
 
@@ -8930,6 +8984,22 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   error.retryable = true;
   error.missingCandidateIds = missing;
   error.unexpectedCandidateIds = unexpected;
+  if (code === 'invalid_referee_disposition') {
+    const allowed = contract.stage === 'DISCUSSION_REFEREE'
+      ? new Set(['core', 'supporting', 'merge', 'reject'])
+      : new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
+    const invalid = dispositions.filter((item) => !allowed.has(item?.disposition || item?.classification)
+      || !meetingMinutesAgentText(item?.reason, 500)
+      || !Array.isArray(item?.evidenceIds));
+    error.invalidCandidateIds = [...new Set(invalid
+      .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean))];
+    error.invalidReasons = invalid.map((item) => {
+      const candidateId = meetingMinutesAgentText(item?.candidateId, 160) || '(missing candidateId)';
+      if (!allowed.has(item?.disposition || item?.classification)) return `${candidateId}: invalid disposition`;
+      if (!meetingMinutesAgentText(item?.reason, 500)) return `${candidateId}: missing reason`;
+      return `${candidateId}: evidenceIds must be an array`;
+    });
+  }
   return error;
 }
 
@@ -10548,7 +10618,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     });
   };
   const call = async (pass, prompt, callOptions = {}) => {
-    const baseMessage = pass === 'primary' ? 'Building a coverage map…' : pass === 'recovery' ? `Recovering missed ${stage}…` : pass === 'referee' ? `Checking ${stage} evidence…` : 'Verifying the draft…';
+    const isRefereeCall = callOptions.responseKind === 'referee' || pass === 'referee' || pass.startsWith('referee-');
+    const baseMessage = pass === 'primary' ? 'Building a coverage map…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
     const promptSha256 = meetingAgentPassCacheKey(prompt);
     const cached = passCache.find((entry) => entry.stage === stage && entry.pass === pass
       && entry.promptSha256 === promptSha256);
@@ -10561,7 +10632,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         passProvenance.push({
           stage, pass, completedAt: cached.completedAt || new Date().toISOString(),
           promptChars: String(prompt || '').length, elapsedMs: 0, timings: [], cached: true,
-          ...(pass === 'referee' ? {
+          ...(isRefereeCall ? {
             refereeRoute: meetingAgentRefereeRoute(cached.result, callOptions.refereeContract || {})
           } : {})
         });
@@ -10574,17 +10645,18 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // A connected-agent referee can transiently return the parent's contract error
     // while Copilot Studio is still completing the child hand-off. Use the complete
     // retry ladder for this pass; successful first responses still make one call.
-    const maxAttempts = pass === 'referee' ? 2 : pass === 'primary' ? 3 : 2;
+    const maxAttempts = Math.max(1, Number(callOptions.maxAttempts
+      || (isRefereeCall ? 2 : pass === 'primary' ? 3 : 2)));
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
         pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
         // Referee calls have repeatedly completed just beyond the former
         // 65-second boundary. Give the structured tool enough time to return
         // instead of turning valid in-flight work into a duplicate request.
-        attemptTimeoutMs: pass === 'referee'
+        attemptTimeoutMs: isRefereeCall
           ? Number(process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 90000)
           : undefined,
-        responseKind: pass === 'referee' ? 'referee' : undefined,
+        responseKind: isRefereeCall ? 'referee' : undefined,
         validateResult: callOptions.validateResult,
         repairPrompt: callOptions.repairPrompt,
         combineResults: callOptions.combineResults,
@@ -10596,7 +10668,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       passProvenance.push({
         stage, pass, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
         elapsedMs: response.timings.reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0), timings: response.timings,
-        ...(pass === 'referee' ? {
+        ...(isRefereeCall ? {
           refereeRoute: meetingAgentRefereeRoute(response.result, callOptions.refereeContract || {})
         } : {})
       });
@@ -10621,6 +10693,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         errorMessage: meetingMinutesAgentText(error.message, 300) || undefined,
         callTimings: error.callTimings || []
       }));
+      if (typeof callOptions.captureError === 'function') callOptions.captureError(error);
       if (!callOptions.optional) throw error;
       degradedSources.push(`The optional ${pass} quality pass did not complete: ${error.message}`);
       return null;
@@ -10770,37 +10843,82 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
   const refereeContract = meetingMinutesAgentRefereeContract(stage, ensemble);
   const suppliedRefereeCandidates = refereeContract.candidates;
-  const refereeParsed = await call('referee', meetingMinutesAgentRefereePrompt({
-    stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [],
-    candidates: suppliedRefereeCandidates, salientDetails, requestId: refereeContract.requestId
-  }), {
-    optional: true,
-    refereeContract,
-    validateResult: (result) => meetingAgentDispositionError(result, suppliedRefereeCandidates, refereeContract),
-    repairPrompt: ({ result, error }) => {
-      const returnedIds = new Set((Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [])
-        .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean));
-      const missingIds = Array.isArray(error?.missingCandidateIds) && error.missingCandidateIds.length
-        ? new Set(error.missingCandidateIds)
-        : new Set(refereeContract.expectedCandidateIds.filter((candidateId) => !returnedIds.has(candidateId)));
-      const missingCandidates = suppliedRefereeCandidates.filter((candidate) => missingIds.has(candidate.candidateId));
-      // Contract errors other than missing candidate accounting still receive
-      // the ordinary full retry; a narrow repair cannot safely correct them.
-      if (!missingCandidates.length) return meetingMinutesAgentRefereePrompt({
+  const refereeBatchSize = Math.max(1, Math.min(8,
+    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 5)));
+  const refereeBatches = meetingAgentRefereeBatches(suppliedRefereeCandidates, refereeBatchSize);
+  const refereeBatchResults = [];
+  const unresolvedRefereeIds = [];
+  for (let batchIndex = 0; batchIndex < refereeBatches.length; batchIndex += 1) {
+    const batchCandidates = refereeBatches[batchIndex];
+    const batchContract = meetingMinutesAgentRefereeContract(
+      stage, batchCandidates, `${refereeContract.requestId}:batch:${batchIndex + 1}`
+    );
+    let batchError = null;
+    let batchResult = await call(`referee-batch-${batchIndex + 1}`, meetingMinutesAgentRefereePrompt({
+      stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [],
+      candidates: batchCandidates, salientDetails, requestId: batchContract.requestId
+    }), {
+      optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: batchContract,
+      validateResult: (result) => meetingAgentDispositionError(result, batchCandidates, batchContract),
+      captureError: (error) => { batchError = error; }
+    });
+    if (!batchResult) {
+      const invalidIds = new Set([
+        ...(Array.isArray(batchError?.missingCandidateIds) ? batchError.missingCandidateIds : []),
+        ...(Array.isArray(batchError?.invalidCandidateIds) ? batchError.invalidCandidateIds : [])
+      ]);
+      const retainedValid = Array.isArray(batchError?.validCandidateDispositions)
+        ? batchError.validCandidateDispositions : [];
+      // A strict error normally carries no partial Referee output. In that
+      // case retry the entire small batch: repairing only the named invalid
+      // rows would silently lose the valid rows which never reached Node.
+      const repairCandidates = invalidIds.size && retainedValid.length
+        ? batchCandidates.filter((candidate) => invalidIds.has(candidate.candidateId))
+        : batchCandidates;
+      const repairContract = meetingMinutesAgentRefereeContract(
+        stage, repairCandidates, `${batchContract.requestId}:repair`
+      );
+      let repairError = null;
+      const repaired = await call(`referee-repair-${batchIndex + 1}`, meetingMinutesAgentRefereeRepairPrompt({
         stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [],
-        candidates: suppliedRefereeCandidates, salientDetails, requestId: refereeContract.requestId
+        candidates: repairCandidates, salientDetails, requestId: repairContract.requestId
+      }), {
+        optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: repairContract,
+        validateResult: (result) => meetingAgentDispositionError(result, repairCandidates, repairContract),
+        captureError: (error) => { repairError = error; }
       });
-      return meetingMinutesAgentRefereeRepairPrompt({
-        stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [],
-        candidates: missingCandidates, salientDetails, requestId: refereeContract.requestId
-      });
-    },
-    combineResults: (previous, repair) => mergeMeetingAgentRefereeResults(previous, repair, refereeContract)
-  }) || {
+      if (repaired) {
+        batchResult = retainedValid.length
+          ? mergeMeetingAgentRefereeResults({
+            requestId: batchContract.requestId, stage: batchContract.stage,
+            candidateDispositions: retainedValid
+          }, repaired, batchContract)
+          : repaired;
+        const mergedError = meetingAgentDispositionError(batchResult, batchCandidates, batchContract);
+        if (mergedError) {
+          unresolvedRefereeIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
+          degradedSources.push(`Referee batch ${batchIndex + 1} could not be reconciled after targeted repair: ${mergedError.message}`);
+          batchResult = null;
+        }
+      } else {
+        unresolvedRefereeIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
+        const reason = repairError?.message || batchError?.message || 'The referee batch did not complete.';
+        degradedSources.push(`Referee batch ${batchIndex + 1} remained unavailable for ${repairCandidates.length} candidate${repairCandidates.length === 1 ? '' : 's'} after targeted repair: ${reason}`);
+      }
+    }
+    if (batchResult) refereeBatchResults.push(batchResult);
+  }
+  const refereeParsed = refereeBatchResults.length
+    ? mergeBatchedMeetingAgentRefereeResults(refereeBatchResults, refereeContract)
+    : {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
     candidateDispositions: [], reviewFlags: []
   };
+  if (refereeBatchResults.length && !completedPasses.includes('referee')) completedPasses.push('referee');
+  if (unresolvedRefereeIds.length) {
+    degradedSources.push(`${unresolvedRefereeIds.length} referee candidate${unresolvedRefereeIds.length === 1 ? '' : 's'} remained unresolved; only those candidates use evidence-grounded fallback handling.`);
+  }
   const refereeRoute = completedPasses.includes('referee')
     ? meetingAgentRefereeRoute(refereeParsed, refereeContract)
     : 'not_completed';
@@ -11763,6 +11881,8 @@ router.stagedEvaluation = {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
+  meetingAgentRefereeBatches,
+  mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
   meetingAgentResultError,
