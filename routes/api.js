@@ -8289,6 +8289,8 @@ function hybridCandidatePack(candidates = [], maxChars = 70000, maxCandidates = 
 
 function meetingAgentRefereeCandidates(stage, candidates = []) {
   const rows = Array.isArray(candidates) ? candidates : [];
+  const sourceRank = { recovery: 4, primary: 3, staged: 2, deterministic: 1 };
+  const recordRank = { decision: 4, open_question: 3, discussion_point: 2 };
   const distinct = (items) => {
     const retained = [];
     for (const candidate of items) {
@@ -8300,15 +8302,53 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
     }
     return retained;
   };
+  const discussionTopicKey = (candidate) => {
+    const topic = meetingMinutesAgentText(candidate?.topic, 240).toLowerCase();
+    if (topic) return topic;
+    // Raw deterministic windows have no editorial topic. Treat them as one
+    // source group so they cannot consume most of the finite Referee batch at
+    // the expense of already structured topic candidates.
+    return 'untitled-evidence';
+  };
+  const discussionSalience = (candidate) => {
+    const text = String(candidate?.text || '');
+    const material = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|block(?:ed|er|ing)?|risk|depend(?:s|ent|ency)?|subject to|unresolved|required|must|standard|regulation|scope|deadline|target|responsib(?:le|ility)|owner|lead|increase|decrease|\d+(?:[.,]\d+)?%?)\b/i.test(text);
+    return Number(recordRank[candidate?.recordType] || 0) * 100
+      + Number(material) * 30
+      + Number(sourceRank[candidate?.sourcePass] || 0) * 10
+      + Number(candidate?.priority || 0);
+  };
+  const balancedDiscussion = (items, limit) => {
+    const groups = new Map();
+    items.forEach((candidate) => {
+      const key = discussionTopicKey(candidate);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(candidate);
+    });
+    for (const group of groups.values()) group.sort((left, right) =>
+      discussionSalience(right) - discussionSalience(left)
+      || Number(left.sequence || 0) - Number(right.sequence || 0));
+    const selected = [];
+    while (selected.length < limit) {
+      let added = false;
+      for (const group of groups.values()) {
+        if (!group.length || selected.length >= limit) continue;
+        selected.push(group.shift());
+        added = true;
+      }
+      if (!added) break;
+    }
+    return selected;
+  };
   if (stage === 'discussion') {
     // The structured Prompt emits one record per candidate. Large, repetitive
     // discovery ledgers can exceed its response budget even when their input
     // fits. Referee only the strongest distinct propositions; the complete
     // ledger remains available to the deterministic recovery path below.
-    return distinct(hybridCandidatePack(
+    return balancedDiscussion(distinct(hybridCandidatePack(
       rows.filter((candidate) => ['discussion_point', 'decision', 'open_question'].includes(candidate?.recordType)),
       28000, 60
-    )).slice(0, 14).sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+    )), 14).sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
   }
   // Preserve both polished action candidates and the strongest multi-turn
   // lifecycle evidence. If chains are allowed to consume the whole character
@@ -8650,6 +8690,74 @@ function meetingAgentRefereeRoute(result = {}, contract = {}) {
   return 'unknown';
 }
 
+function effectiveDiscussionRefereeDispositions(dispositions = [], candidates = []) {
+  const rows = (Array.isArray(dispositions) ? dispositions : []).map((item) => ({ ...item }));
+  const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
+    .filter((candidate) => candidate?.candidateId)
+    .map((candidate) => [String(candidate.candidateId), candidate]));
+  const groups = new Map();
+  for (const row of rows) {
+    const candidate = candidatesById.get(String(row?.candidateId || ''));
+    if (!candidate) continue;
+    const topic = meetingMinutesAgentText(candidate.topic, 240).toLowerCase()
+      || `untitled-${Math.floor(Number(candidate.sequence || String(candidate.evidenceIds?.[0] || '').match(/\d+/)?.[0] || 0) / 40)}`;
+    if (!groups.has(topic)) groups.set(topic, []);
+    groups.get(topic).push({ row, candidate });
+  }
+  const materiallyVisible = (candidate) => candidate?.recordType === 'decision'
+    || candidate?.recordType === 'open_question'
+    || /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|block(?:ed|er|ing)?|risk|depend(?:s|ent|ency)?|subject to|unresolved|required|must|standard|regulation|scope|deadline|target|responsib(?:le|ility)|owner|lead|increase|decrease|monday|tuesday|wednesday|thursday|friday|week|month|year|\d+(?:[.,]\d+)?%?)\b/i
+      .test(String(candidate?.text || ''));
+  const rank = ({ candidate }) => Number(candidate?.recordType === 'decision') * 50
+    + Number(candidate?.recordType === 'open_question') * 40
+    + Number(materiallyVisible(candidate)) * 20
+    + Number(candidate?.priority || 0);
+  for (const group of groups.values()) {
+    const usable = group.filter(({ row }) => ['core', 'supporting'].includes(row.disposition || row.classification));
+    for (const item of usable) {
+      const kind = item.row.disposition || item.row.classification;
+      if (kind === 'supporting' && materiallyVisible(item.candidate)) {
+        item.row.disposition = 'core';
+        item.row.targetId = item.row.targetId || item.candidate.candidateId;
+        item.row.websitePromotedFrom = 'supporting';
+      }
+    }
+    let anchors = usable.filter(({ row }) => (row.disposition || row.classification) === 'core');
+    if (!anchors.length && usable.length) {
+      const anchor = [...usable].sort((left, right) => rank(right) - rank(left))[0];
+      anchor.row.disposition = 'core';
+      anchor.row.targetId = anchor.row.targetId || anchor.candidate.candidateId;
+      anchor.row.websitePromotedFrom = 'orphaned_supporting';
+      anchors = [anchor];
+    }
+    if (!anchors.length) continue;
+    const anchorTarget = refereeDiscussionTargetId(anchors[0].row) || anchors[0].candidate.candidateId;
+    for (const item of usable) {
+      if ((item.row.disposition || item.row.classification) !== 'supporting') continue;
+      if (!refereeDiscussionTargetId(item.row)) item.row.targetId = anchorTarget;
+    }
+  }
+  return rows;
+}
+
+function discussionRefereeSufficiency(discussion = [], baseline = []) {
+  const visible = flattenHybridDiscussion(discussion);
+  const baselineTopics = [...new Set((Array.isArray(baseline) ? baseline : [])
+    .map((topic) => meetingMinutesAgentText(topic?.topic, 240).toLowerCase()).filter(Boolean))];
+  const visibleTopics = [...new Set(visible
+    .map((item) => meetingMinutesAgentText(item?.topic, 240).toLowerCase()).filter(Boolean))];
+  const coveredTopics = baselineTopics.filter((topic) => visibleTopics.some((candidate) =>
+    candidate === topic || hybridTokenOverlap(candidate, topic) >= 0.55));
+  const topicCoverage = baselineTopics.length ? coveredTopics.length / baselineTopics.length : (visible.length ? 1 : 0);
+  return {
+    sufficient: visible.length > 0 && (baselineTopics.length <= 2 || topicCoverage >= 0.65),
+    visibleCount: visible.length,
+    baselineTopicCount: baselineTopics.length,
+    coveredTopicCount: coveredTopics.length,
+    topicCoverage
+  };
+}
+
 function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   const expectedIds = [...new Set((Array.isArray(candidates) ? candidates : [])
     .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean))];
@@ -8790,7 +8898,10 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     .join('\n\n');
   const payload = await generatePreparedTrooperStage(requestedStage, stagedTranscript, {
     meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
-    timeoutMs: Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_TIMEOUT_MS || 150000)
+    // Long transcripts routinely finish just beyond the previous 150-second
+    // boundary. This work is private and prewarmed, so allow it to finish and
+    // populate the cache instead of killing useful work near completion.
+    timeoutMs: Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_TIMEOUT_MS || 240000)
   });
   const run = { state: {
     discussion: requestedStage === 'discussion' ? (payload?.screens?.discussion || []) : [],
@@ -8816,7 +8927,10 @@ function prunePrivateStagedCandidateCache(now = Date.now()) {
 }
 
 const PRIVATE_STAGED_MAX_CONCURRENCY = Math.max(1, Math.min(2,
-  Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_CONCURRENCY || 2)));
+  // Two simultaneous staged/Trooper subprocesses compete for the same local
+  // worker and external allowance. Serial prewarming is faster in practice
+  // because it avoids both branches timing out together.
+  Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_CONCURRENCY || 1)));
 let privateStagedActive = 0;
 const privateStagedQueue = [];
 
@@ -10268,7 +10382,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
         pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
-        attemptTimeoutMs: pass === 'referee' ? 45000 : undefined,
+        // Structured Prompt-tool responses in live Abbott checks completed in
+        // roughly 46-52 seconds. A 45-second deadline converted valid replies
+        // into retries and fallback output, so keep a small operational margin.
+        attemptTimeoutMs: pass === 'referee'
+          ? Number(process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 65000)
+          : undefined,
         responseKind: pass === 'referee' ? 'referee' : undefined,
         validateResult: callOptions.validateResult,
         onAttempt: (attempt) => progress(pass,
@@ -10475,15 +10594,21 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeFlags = referee.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
 
   if (stage === 'discussion') {
-    const refereeDiscussionDispositions = (Array.isArray(refereeParsed?.candidateDispositions)
+    const rawRefereeDiscussionDispositions = (Array.isArray(refereeParsed?.candidateDispositions)
       ? refereeParsed.candidateDispositions : []);
+    const refereeDiscussionDispositions = effectiveDiscussionRefereeDispositions(
+      rawRefereeDiscussionDispositions, suppliedRefereeCandidates
+    );
     const rawContractDiagnostics = refereeDiscussionContractDiagnostics(
-      referee.discussion, refereeDiscussionDispositions, suppliedRefereeCandidates
+      referee.discussion, rawRefereeDiscussionDispositions, suppliedRefereeCandidates
     );
     const reconstructed = reconstructMissingRefereeDiscussion(
       referee.discussion, refereeDiscussionDispositions, ensemble, draft.sourceUnits
     );
     let refereeDiscussion = reconstructed.discussion;
+    const baselineDiscussion = mergeHybridDiscussionTopics(
+      primary.discussion, recovery?.discussion || []
+    );
     if (reconstructed.reconstructedTargetIds.length) {
       degradedSources.push(`The discussion referee omitted ${reconstructed.reconstructedTargetIds.length} referenced primary record${reconstructed.reconstructedTargetIds.length === 1 ? '' : 's'}; the website rebuilt them from their evidence-backed candidates.`);
     }
@@ -10491,12 +10616,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       degradedSources.push(`The discussion referee did not classify ${rawContractDiagnostics.undisposedCandidateCount} supplied candidate${rawContractDiagnostics.undisposedCandidateCount === 1 ? '' : 's'}; corroborated discovery results were retained as a safety backstop.`);
     }
     if (!flattenHybridDiscussion(refereeDiscussion).length) {
-      const fallbackDiscussion = mergeHybridDiscussionTopics(
-        primary.discussion,
-        recovery?.discussion || []
-      );
-      if (flattenHybridDiscussion(fallbackDiscussion).length) {
-        refereeDiscussion = fallbackDiscussion;
+      if (flattenHybridDiscussion(baselineDiscussion).length) {
+        refereeDiscussion = baselineDiscussion;
         degradedSources.push('The discussion referee returned no usable primary propositions; the evidence-normalised primary and recovery drafts were retained for safety.');
       }
     }
@@ -10512,12 +10633,21 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         mergeTarget: item.mergeTarget || item.targetId
           || item.discussionId || item.targetRecordId || item.primaryId
       }));
-    const compactPreview = (compactEnabled || compactShadowEnabled)
+    const structuredReferee = refereeRoute === 'structured_prompt';
+    const compactPreview = (compactEnabled || compactShadowEnabled || structuredReferee)
       ? compactDiscussionPropositions(refereeDiscussion, recoveredDiscussion, draft.sourceUnits, { supportingCandidates })
       : null;
-    const finalDiscussion = compactEnabled
+    const compactSufficiency = discussionRefereeSufficiency(compactPreview || [], baselineDiscussion);
+    let finalDiscussion = (compactEnabled || structuredReferee)
       ? compactPreview
       : mergeHybridDiscussionTopics(refereeDiscussion, recoveredDiscussion);
+    if (structuredReferee && !compactSufficiency.sufficient
+      && flattenHybridDiscussion(baselineDiscussion).length) {
+      finalDiscussion = compactEnabled
+        ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits)
+        : baselineDiscussion;
+      degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
+    }
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -10546,13 +10676,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
           refereeRoute,
+          refereeSufficiency: compactSufficiency,
           refereeContract: {
             ...rawContractDiagnostics,
             reconstructedTargetIds: reconstructed.reconstructedTargetIds,
             unresolvedTargetIds: reconstructed.unresolvedTargetIds
           },
-          refereeCandidateDispositions: (Array.isArray(refereeParsed?.candidateDispositions)
-            ? refereeParsed.candidateDispositions : []).slice(0, 400),
+          refereeCandidateDispositions: rawRefereeDiscussionDispositions.slice(0, 400),
+          effectiveRefereeCandidateDispositions: refereeDiscussionDispositions.slice(0, 400),
           candidateDispositions
         } }
       },
@@ -11380,6 +11511,8 @@ router.stagedEvaluation = {
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
   meetingAgentRefereeRoute,
+  effectiveDiscussionRefereeDispositions,
+  discussionRefereeSufficiency,
   meetingMinutesAgentRefereeContract,
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,

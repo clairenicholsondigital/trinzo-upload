@@ -16,6 +16,8 @@ const {
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
   meetingAgentRefereeRoute,
+  effectiveDiscussionRefereeDispositions,
+  discussionRefereeSufficiency,
   meetingMinutesAgentRefereeContract,
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
@@ -167,6 +169,50 @@ test('referee validates the same bounded candidate set placed in its prompt', ()
   assert.deepEqual(payload.expectedCandidateIds, supplied.map((candidate) => candidate.candidateId));
   const dispositions = supplied.map((candidate) => ({ candidateId: candidate.candidateId, disposition: 'reject' }));
   assert.equal(meetingAgentDispositionError({ discussion: [], actions: [], candidateDispositions: dispositions }, supplied), null);
+});
+
+test('discussion referee batches cover topics before taking repeated rows from one topic', () => {
+  const candidates = [
+    ...Array.from({ length: 12 }, (_, index) => ({
+      candidateId: `schedule-${index}`, sourcePass: 'primary', recordType: 'discussion_point',
+      topic: 'Schedule', text: `Schedule detail ${index} for week ${index + 1}.`,
+      evidenceIds: [`T${String(index + 1).padStart(4, '0')}`], priority: 5, sequence: index + 1
+    })),
+    ...['Scope', 'Security', 'Training', 'Logistics', 'Reporting'].map((topic, index) => ({
+      candidateId: `topic-${index}`, sourcePass: 'primary', recordType: 'discussion_point',
+      topic, text: `${topic} has a material dependency requiring review.`,
+      evidenceIds: [`T${String(index + 100).padStart(4, '0')}`], priority: 5, sequence: index + 100
+    }))
+  ];
+  const supplied = meetingAgentRefereeCandidates('discussion', candidates);
+  assert.ok(supplied.length <= 14);
+  for (const topic of ['Scope', 'Security', 'Training', 'Logistics', 'Reporting']) {
+    assert.ok(supplied.some((candidate) => candidate.topic === topic), `${topic} was omitted`);
+  }
+  assert.ok(supplied.filter((candidate) => candidate.topic === 'Schedule').length < 12);
+});
+
+test('orphaned supporting discussion gets a visible topic anchor and explicit targets', () => {
+  const candidates = [
+    { candidateId: 'background', recordType: 'discussion_point', topic: 'Context', text: 'Background information was reviewed.', evidenceIds: ['T1'] },
+    { candidateId: 'prior-report', recordType: 'discussion_point', topic: 'Context', text: 'The prior report described the existing process.', evidenceIds: ['T2'] }
+  ];
+  const effective = effectiveDiscussionRefereeDispositions([
+    { candidateId: 'background', disposition: 'supporting', reason: 'Background context.', evidenceIds: ['T1'] },
+    { candidateId: 'prior-report', disposition: 'supporting', reason: 'Prior context.', evidenceIds: ['T2'] }
+  ], candidates);
+  assert.equal(effective.filter((item) => item.disposition === 'core').length, 1);
+  assert.ok(effective.every((item) => item.targetId));
+});
+
+test('discussion referee sufficiency rejects drafts that lose most discovered topic groups', () => {
+  const record = (id, text) => ({ id, text, evidenceIds: [id] });
+  const baseline = ['Schedule', 'Scope', 'Security', 'Training'].map((topic, index) => ({
+    topic, points: [record(`T${index}`, `${topic} detail.`)], decisions: [], openQuestions: []
+  }));
+  const sparse = [{ topic: 'Schedule', points: [record('T0', 'Schedule detail.')], decisions: [], openQuestions: [] }];
+  assert.equal(discussionRefereeSufficiency(sparse, baseline).sufficient, false);
+  assert.equal(discussionRefereeSufficiency(baseline.slice(0, 3), baseline).sufficient, true);
 });
 
 test('action referee batch retains polished records as well as lifecycle evidence', () => {
