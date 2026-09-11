@@ -85,6 +85,20 @@ test('empty discussion discovery retries only when substantive evidence exists',
   ), null);
 });
 
+test('discovery validation rejects raw records that do not survive evidence normalisation', () => {
+  const units = [{ id: 'T0001', speaker: 'Alice', text: 'The launch is blocked pending approval.', classification: 'keep' }];
+  const candidates = [{ candidateId: 'D1', recordType: 'open_question', priority: 9 }];
+  const error = meetingAgentEmptyDiscoveryError({
+    discussion: [{ topic: 'Budget', points: [{ text: 'A £500 budget was approved.', evidenceIds: ['T9999'] }] }],
+    actions: []
+  }, 'discussion', candidates, units);
+  assert.equal(error?.code, 'empty_discussion_with_substantive_candidates');
+  assert.equal(meetingAgentEmptyDiscoveryError({
+    discussion: [{ topic: 'Launch', points: [{ text: 'The launch is blocked pending approval.', evidenceIds: ['T0001'] }] }],
+    actions: []
+  }, 'discussion', candidates, units), null);
+});
+
 test('referee validation requires exactly one disposition per supplied candidate', () => {
   const candidates = [{ candidateId: 'D1' }, { candidateId: 'D2' }];
   const missing = meetingAgentDispositionError({ candidateDispositions: [{ candidateId: 'D1' }] }, candidates);

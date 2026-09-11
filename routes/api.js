@@ -8541,14 +8541,24 @@ function meetingAgentResultError(result) {
   return error;
 }
 
-function meetingAgentEmptyDiscoveryError(result, stage, candidates = []) {
+function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceUnits = [], options = {}) {
   const isDiscussion = stage === 'discussion';
   const isActions = stage === 'actions';
   if (!isDiscussion && !isActions) return null;
+  const normalised = Array.isArray(sourceUnits) && sourceUnits.length
+    ? normaliseAgentResult(result, sourceUnits, stage, { meetingDate: options.meetingDate })
+    : null;
   const hasOutput = isDiscussion
-    ? Array.isArray(result?.discussion) && result.discussion.length > 0
-    : (Array.isArray(result?.actions) && result.actions.length > 0)
-      || (Array.isArray(result?.actionProposals) && result.actionProposals.length > 0);
+    ? normalised
+      ? flattenHybridDiscussion(normalised.discussion).some((item) =>
+        Array.isArray(item?.record?.evidenceIds) && item.record.evidenceIds.length > 0)
+      : Array.isArray(result?.discussion) && result.discussion.length > 0
+    : normalised
+      ? normalised.actions.some((item) => Array.isArray(item?.evidenceIds) && item.evidenceIds.length > 0)
+        || normaliseAgentDeclaredProposals(result, sourceUnits, { meetingDate: options.meetingDate })
+          .some((item) => Array.isArray(item?.evidenceIds) && item.evidenceIds.length > 0)
+      : (Array.isArray(result?.actions) && result.actions.length > 0)
+        || (Array.isArray(result?.actionProposals) && result.actionProposals.length > 0);
   if (hasOutput) return null;
   const hasSubstantiveEvidence = (Array.isArray(candidates) ? candidates : []).some((candidate) => {
     const recordType = String(candidate?.recordType || candidate?.kind || '');
@@ -10087,13 +10097,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // A connected-agent referee can transiently return the parent's contract error
     // while Copilot Studio is still completing the child hand-off. Use the complete
     // retry ladder for this pass; successful first responses still make one call.
-    const maxAttempts = pass === 'referee'
-      ? (String(prompt || '').length > 50000 ? 2 : 4)
-      : pass === 'primary' ? 3 : 2;
+    const maxAttempts = pass === 'referee' ? 2 : pass === 'primary' ? 3 : 2;
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
         pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
-        attemptTimeoutMs: pass === 'referee' && String(prompt || '').length > 50000 ? 45000 : undefined,
+        attemptTimeoutMs: pass === 'referee' ? 45000 : undefined,
         validateResult: callOptions.validateResult,
         onAttempt: (attempt) => progress(pass,
           attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — retry ${attempt.attempt} of ${attempt.maxAttempts}…` : baseMessage,
@@ -10177,7 +10185,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
   const [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
-    validateResult: (result) => meetingAgentEmptyDiscoveryError(result, stage, primaryValidationCandidates)
+    validateResult: (result) => meetingAgentEmptyDiscoveryError(
+      result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
+    )
   }), stagedPromise]);
   const primaryParsed = primaryResult || {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
@@ -10216,7 +10226,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       current: stage === 'discussion' ? { discussion: primary.discussion } : { actions: primary.actions },
       discussion: stage === 'actions' ? (draft.discussion || []) : [],
       candidates: recoveryDecision.uncovered
-    }), { optional: true });
+    }), {
+      optional: true,
+      validateResult: (result) => meetingAgentEmptyDiscoveryError(
+        result, stage, recoveryDecision.uncovered, draft.sourceUnits, { meetingDate: details.meetingDate }
+      )
+    });
     if (recoveryParsed) {
       recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
       if (stage === 'actions') {
