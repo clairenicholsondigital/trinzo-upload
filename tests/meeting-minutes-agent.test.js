@@ -10,6 +10,8 @@ const {
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
+  meetingMinutesAgentRefereeRepairPrompt,
+  mergeMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
   meetingAgentResultError,
@@ -46,6 +48,8 @@ const {
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
+  normaliseMeetingAgentPassCache,
+  meetingAgentPassCacheKey,
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
@@ -143,6 +147,49 @@ test('structured referee validation binds request, stage and declared accounting
   assert.equal(meetingAgentDispositionError({ ...valid,
     candidateDispositions: [...valid.candidateDispositions, { candidateId: 'D3' }], returnedDispositionCount: 3
   }, candidates, contract)?.code, 'unexpected_candidate_dispositions');
+});
+
+test('referee repair requests only missing candidates and merges complete accounting', () => {
+  const transcript = '[T0001] Alex: The release is blocked.\n[T0002] Priya: I will review it.';
+  const candidates = [
+    { candidateId: 'D1', recordType: 'discussion_point', text: 'The release is blocked.', evidenceIds: ['T0001'] },
+    { candidateId: 'D2', recordType: 'action', text: 'Review the release.', evidenceIds: ['T0002'] }
+  ];
+  const prompt = meetingMinutesAgentRefereeRepairPrompt({
+    stage: 'actions', transcript, details: {}, candidates: [candidates[1]], requestId: 'request-1'
+  });
+  const payload = refereePayloadFromPrompt(prompt);
+  assert.equal(payload.repairAttempt, true);
+  assert.deepEqual(payload.expectedCandidateIds, ['D2']);
+  assert.match(payload.preparedTranscript, /T0001/);
+
+  const merged = mergeMeetingAgentRefereeResults({
+    requestId: 'request-1', stage: 'ACTION_REFEREE',
+    candidateDispositions: [{ candidateId: 'D1', disposition: 'reject', reason: 'Context.', evidenceIds: ['T0001'] }]
+  }, {
+    requestId: 'request-1', stage: 'ACTION_REFEREE',
+    candidateDispositions: [{ candidateId: 'D2', disposition: 'publish', reason: 'Commitment.', evidenceIds: ['T0002'] }]
+  }, { requestId: 'request-1', stage: 'ACTION_REFEREE', expectedCandidateIds: ['D1', 'D2'] });
+  assert.equal(merged.expectedCandidateCount, 2);
+  assert.equal(merged.returnedDispositionCount, 2);
+  assert.equal(merged.repairAttempted, true);
+  assert.equal(meetingAgentDispositionError(merged, candidates, {
+    requestId: 'request-1', stage: 'ACTION_REFEREE'
+  }), null);
+});
+
+test('successful pass cache is private, bounded and keyed by the exact prompt', () => {
+  const key = meetingAgentPassCacheKey('ACTION_DISCOVERY\nExample');
+  assert.equal(key.length, 64);
+  assert.notEqual(key, meetingAgentPassCacheKey('ACTION_DISCOVERY\nDifferent'));
+  const entries = Array.from({ length: 20 }, (_, index) => ({
+    stage: 'actions', pass: 'primary', promptSha256: meetingAgentPassCacheKey(`prompt-${index}`),
+    completedAt: `2026-09-11T00:00:${String(index).padStart(2, '0')}Z`,
+    result: { discussion: [], actions: [{ action: `Action ${index}` }] }
+  }));
+  const normalised = normaliseMeetingAgentPassCache(entries);
+  assert.equal(normalised.length, 16);
+  assert.equal(normalised[0].result.actions[0].action, 'Action 4');
 });
 
 test('referee validates the same bounded candidate set placed in its prompt', () => {

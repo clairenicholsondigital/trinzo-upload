@@ -1389,11 +1389,20 @@ function uncoveredCandidateInventory(candidates = [], records = []) {
 function discussionRecoveryNeeded(candidates = [], records = []) {
   const source = Array.isArray(candidates) ? candidates : [];
   const uncovered = uncoveredCandidateInventory(source, records);
-  const highPriority = uncovered.filter((candidate) => Number(candidate?.priority || 0) >= 5);
+  const substantive = source.filter((candidate) =>
+    ['decision', 'open_question', 'objective'].includes(candidate?.recordType)
+      || Number(candidate?.priority || 0) >= 5);
+  const substantiveUncovered = uncovered.filter((candidate) => substantive.includes(candidate));
+  const highPriority = substantiveUncovered.filter((candidate) =>
+    ['decision', 'open_question'].includes(candidate?.recordType)
+      || Number(candidate?.priority || 0) >= 7);
   return {
-    needed: highPriority.length > 0 || (source.length > 0 && uncovered.length / source.length > 0.1),
+    needed: highPriority.length > 0
+      || (substantive.length > 0 && substantiveUncovered.length / substantive.length > 0.1),
     uncovered,
-    highPriorityCount: highPriority.length
+    highPriorityCount: highPriority.length,
+    substantiveCount: substantive.length,
+    substantiveUncoveredCount: substantiveUncovered.length
   };
 }
 
