@@ -13,6 +13,7 @@ const {
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
   meetingAgentRefereeBatches,
+  meetingAgentExecutionTelemetry,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
@@ -36,6 +37,7 @@ const {
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   dedupeHybridActionRecords,
+  dedupeHybridActionProposals,
   mergePublishedActionEvidence,
   removePublishedActionProposalDuplicates,
   annotateActionProposalChains,
@@ -51,6 +53,7 @@ const {
   reconstructRefereeActions,
   refereeDiscussionContractDiagnostics,
   isVagueReconstructedAction,
+  isReviewableActionProposal,
   publishedActionCoversProposal,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
@@ -61,6 +64,80 @@ const {
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
+
+test('execution telemetry distinguishes quality calls, retries, repairs and failures', () => {
+  const telemetry = meetingAgentExecutionTelemetry([
+    { stage: 'discussion', pass: 'primary', timings: [
+      { pass: 'discussion:primary', attempt: 1, ok: false },
+      { pass: 'discussion:primary', attempt: 2, ok: true }
+    ] },
+    { stage: 'discussion', pass: 'referee-repair-1', timings: [
+      { pass: 'discussion:referee-repair-1', attempt: 1, ok: true }
+    ] }
+  ]);
+  assert.deepEqual(telemetry, {
+    qualityPassCount: 2,
+    externalCallCount: 3,
+    firstAttemptSuccessCount: 1,
+    retryCount: 1,
+    repairCallCount: 1,
+    failedCallCount: 1
+  });
+});
+
+test('action dedupe deterministically keeps the strongest wording and combines metadata', () => {
+  const records = [
+    {
+      id: 'short', action: 'Share the documents.', owners: ['Alex Green'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0011']
+    },
+    {
+      id: 'complete', action: 'Share the revised validation documents with the client for approval.',
+      owners: ['Alex Green', 'Priya Shah'], timing: { kind: 'deadline', wording: 'by Friday', exactDate: '' },
+      evidenceIds: ['T0010', 'T0012']
+    }
+  ];
+  const forward = dedupeHybridActionRecords(structuredClone(records));
+  const reverse = dedupeHybridActionRecords(structuredClone(records).reverse());
+  assert.deepEqual(forward, reverse);
+  assert.equal(forward.length, 1);
+  assert.equal(forward[0].id, 'complete');
+  assert.deepEqual(forward[0].owners, ['Alex Green', 'Priya Shah']);
+  assert.deepEqual(forward[0].evidenceIds, ['T0010', 'T0011', 'T0012']);
+  assert.equal(forward[0].timing.kind, 'deadline');
+});
+
+test('proposal dedupe is stable across input order and adjacent evidence windows', () => {
+  const records = [
+    {
+      id: 'one', action: 'Arrange secure access to the client document portal.', owners: ['Alex Green'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0077']
+    },
+    {
+      id: 'two', action: 'Arrange a secure method for Alex to access the client document portal.', owners: ['Alex Green'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0081']
+    }
+  ];
+  assert.deepEqual(dedupeHybridActionProposals(structuredClone(records)), dedupeHybridActionProposals(structuredClone(records).reverse()));
+  assert.equal(dedupeHybridActionProposals(structuredClone(records)).length, 1);
+});
+
+test('an unaccepted suggestion is not presented as an action proposal', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alex', text: 'Maybe we ask the council about taking this on?', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Priya', text: 'They probably will not.', classification: 'keep' },
+    { id: 'T0003', sequence: 3, speaker: 'Alex', text: 'Somebody could ask, I suppose.', classification: 'keep' }
+  ];
+  assert.equal(isReviewableActionProposal({
+    action: 'Ask the council about taking this on.', owners: [], evidenceIds: ['T0001', 'T0003']
+  }, units), false);
+  assert.equal(isReviewableActionProposal({
+    action: "Come back next month with each attendee's best proposal.", owners: ['Alex'], evidenceIds: ['T0005']
+  }, [{ id: 'T0005', sequence: 5, speaker: 'Alex', text: 'Shall we all have a think and come back next month with our best idea?', classification: 'keep' }]), false);
+  assert.equal(isReviewableActionProposal({
+    action: 'Send the report to Priya.', owners: ['Alex'], evidenceIds: ['T0004']
+  }, [{ id: 'T0004', sequence: 4, speaker: 'Alex', text: 'I will send the report to Priya.', classification: 'keep' }]), true);
+});
 
 function refereePayloadFromPrompt(prompt) {
   return JSON.parse(prompt.split('refereePayload:\n')[1]);
@@ -1025,6 +1102,66 @@ test('compact discussion chooses a decision once and preserves companion facts a
   assert.equal(compact[0].openQuestions.length, 0);
   assert.deepEqual(compact[0].decisions[0].evidenceIds, ['T0001', 'T0002']);
   assert.ok(compact[0].decisions[0].supportingDetails.length >= 1);
+});
+
+test('compact discussion clusters the same proposition across generated topic labels', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alex', text: 'The release is blocked until supplier approval.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Priya', text: 'Supplier approval remains the blocker for release.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions([
+    { topic: 'Release plan', points: [{ id: 'p1', text: 'The release is blocked until supplier approval.', evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] },
+    { topic: 'Supplier status', points: [], decisions: [], openQuestions: [{ id: 'q1', text: 'Supplier approval remains the blocker for release.', evidenceIds: ['T0002'] }] }
+  ], [], units);
+  const visible = compact.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  assert.equal(visible.length, 1);
+  assert.deepEqual(visible[0].evidenceIds, ['T0001', 'T0002']);
+});
+
+test('an ordinary recovered question becomes supporting context rather than another visible row', () => {
+  const units = [
+    { id: 'T0050', sequence: 50, speaker: 'Alex', text: 'The supplier access approach is being reviewed.', classification: 'keep' },
+    { id: 'T0051', sequence: 51, speaker: 'Priya', text: 'Which portal might be used?', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions(
+    [{ topic: 'Supplier access', points: [{ id: 'p1', text: 'The supplier access approach is being reviewed.', evidenceIds: ['T0050'] }], decisions: [], openQuestions: [] }],
+    [{ topic: 'Supplier access', points: [], decisions: [], openQuestions: [{ id: 'q1', text: 'Which portal might be used?', evidenceIds: ['T0051'] }] }],
+    units
+  );
+  assert.equal(compact[0].points.length, 1);
+  assert.equal(compact[0].openQuestions.length, 0);
+  assert.equal(compact[0].points[0].supportingDetails[0].text, 'Which portal might be used?');
+});
+
+test('a distinct material supporting detail is promoted into the visible minutes', () => {
+  const units = [
+    { id: 'T0060', sequence: 60, speaker: 'Alex', text: 'The release approach was reviewed.', classification: 'keep' },
+    { id: 'T0061', sequence: 61, speaker: 'Priya', text: 'Regulatory approval remains unresolved and blocks the release.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions(
+    [{ topic: 'Release', points: [{
+      id: 'p1', text: 'The release approach was reviewed.', evidenceIds: ['T0060'],
+      supportingDetails: [{ id: 's1', text: 'Regulatory approval remains unresolved and blocks the release.', evidenceIds: ['T0061'] }]
+    }], decisions: [], openQuestions: [] }],
+    [], units
+  );
+  const visible = compact.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  assert.equal(visible.length, 2);
+  assert.ok(visible.some((record) => record.text === 'Regulatory approval remains unresolved and blocks the release.'));
+  assert.equal(compact[0].points.find((record) => record.id === 'p1').supportingDetails.length, 0);
+});
+
+test('raw conversational fragments are not visible discussion propositions', () => {
+  const units = [
+    { id: 'T0062', sequence: 62, speaker: 'Alex', text: 'So we may get a chance to look at it.', classification: 'keep' },
+    { id: 'T0063', sequence: 63, speaker: 'Priya', text: 'The review depends on supplier access.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions([{ topic: 'Review', points: [
+    { id: 'raw', text: 'So we may get a chance to look at it.', evidenceIds: ['T0062'] },
+    { id: 'formal', text: 'The review depends on supplier access.', evidenceIds: ['T0063'] }
+  ], decisions: [], openQuestions: [] }], [], units);
+  const visible = compact.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  assert.deepEqual(visible.map((record) => record.id), ['formal']);
 });
 
 test('compact discussion does not merge conflicting quantities', () => {

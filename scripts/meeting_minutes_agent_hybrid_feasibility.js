@@ -71,7 +71,8 @@ async function runCase(testCase, index, total) {
     const provenance = (result.changes.passProvenance || []).filter((item) => item.stage === stage);
     stages[stage] = {
       ok: true, attempts: provenance.flatMap((item) => item.timings || []), latencyMs: Date.now() - stageStarted,
-      passes: provenance.map((item) => item.pass)
+      passes: provenance.map((item) => item.pass),
+      telemetry: api.meetingAgentExecutionTelemetry(provenance)
     };
   }
   const actionsIfAccepted = draft.pendingProposal?.changes?.length
@@ -106,6 +107,7 @@ async function runCase(testCase, index, total) {
       invalid: 0
     },
     attempts: Object.values(stages).flatMap((item) => item.attempts || []),
+    executionTelemetry: api.meetingAgentExecutionTelemetry(draft.passProvenance || []),
     timing: { totalLatencyMs: Date.now() - started },
     qualityState: draft.qualityState,
     diagnostics: {

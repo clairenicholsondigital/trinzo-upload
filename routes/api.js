@@ -287,8 +287,50 @@ function normaliseMeetingAgentGeneration(generation) {
     pass: meetingMinutesAgentText(generation.pass, 80),
     message: meetingMinutesAgentText(generation.message, 240),
     completedPasses: (Array.isArray(generation.completedPasses) ? generation.completedPasses : []).map((value) => meetingMinutesAgentText(value, 80)).filter(Boolean).slice(-12),
-    callTimings: (Array.isArray(generation.callTimings) ? generation.callTimings : []).slice(-12),
+    callTimings: (Array.isArray(generation.callTimings) ? generation.callTimings : []).slice(-60),
+    telemetry: normaliseMeetingAgentExecutionTelemetry(generation.telemetry),
     degradedSources: (Array.isArray(generation.degradedSources) ? generation.degradedSources : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(-8)
+  };
+}
+
+function normaliseMeetingAgentExecutionTelemetry(value = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const number = (key) => Math.max(0, Number(source[key] || 0));
+  return {
+    qualityPassCount: number('qualityPassCount'),
+    externalCallCount: number('externalCallCount'),
+    firstAttemptSuccessCount: number('firstAttemptSuccessCount'),
+    retryCount: number('retryCount'),
+    repairCallCount: number('repairCallCount'),
+    failedCallCount: number('failedCallCount')
+  };
+}
+
+function meetingAgentExecutionTelemetry(provenance = []) {
+  const passes = Array.isArray(provenance) ? provenance : [];
+  const timings = passes.flatMap((item) => Array.isArray(item?.timings) ? item.timings : []);
+  const byPass = new Map();
+  for (const timing of timings) {
+    const pass = meetingMinutesAgentText(timing?.pass, 120) || 'unknown';
+    if (!byPass.has(pass)) byPass.set(pass, []);
+    byPass.get(pass).push(timing);
+  }
+  let retryCount = 0;
+  let firstAttemptSuccessCount = 0;
+  for (const rows of byPass.values()) {
+    const ordered = [...rows].sort((left, right) => Number(left?.attempt || 1) - Number(right?.attempt || 1));
+    retryCount += ordered.filter((item) => Number(item?.attempt || 1) > 1).length;
+    if (ordered[0]?.ok === true) firstAttemptSuccessCount += 1;
+  }
+  return {
+    qualityPassCount: new Set(passes.map((item) => `${item?.stage || ''}:${item?.pass || ''}`)
+      .filter((key) => key !== ':')).size,
+    externalCallCount: timings.length,
+    firstAttemptSuccessCount,
+    retryCount,
+    repairCallCount: timings.filter((item) => item?.repair === true
+      || /(?:^|:)referee-repair-/.test(String(item?.pass || ''))).length,
+    failedCallCount: timings.filter((item) => item?.ok === false).length
   };
 }
 const upload = multer({ storage: multer.memoryStorage() });
@@ -8830,7 +8872,7 @@ let meetingAgentLastCallStartedAt = 0;
 let meetingAgentQueueTimer = null;
 
 const MEETING_AGENT_MAX_ACTIVE_CALLS = Math.max(1, Math.min(2,
-  Number(process.env.MEETING_MINUTES_AGENT_MAX_ACTIVE_CALLS || 1)));
+  Number(process.env.MEETING_MINUTES_AGENT_MAX_ACTIVE_CALLS || 2)));
 const MEETING_AGENT_CALL_START_GAP_MS = Math.max(6500,
   Number(process.env.MEETING_MINUTES_AGENT_CALL_START_GAP_MS || 6500));
 
@@ -9626,6 +9668,19 @@ function isVagueReconstructedAction(value = '') {
     || /^(?:ensure|make sure)\s+(?:that\s+)?(?:everything|things|items)\s+(?:is|are)\s+(?:ready|in place)$/.test(source);
 }
 
+function isReviewableActionProposal(record = {}, sourceUnits = []) {
+  if (!record?.action || !Array.isArray(record.evidenceIds) || !record.evidenceIds.length) return false;
+  const evidence = surroundingEvidence(sourceUnits, record.evidenceIds).filter((unit) => unit.cited)
+    .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
+  if (isIdeaOnlyContemplation(`${record.action} ${evidence}`)) return false;
+  const disposition = actionEvidenceDisposition(record.action, evidence);
+  // A proposal is still reviewer work. Suggestions, rejected or completed
+  // work, status narration and unanswered requests are not uncertain actions;
+  // they are non-actions and should not be presented for acceptance.
+  return !['suggestion', 'rejected', 'completed', 'status_only', 'meeting_admin', 'unaccepted_request']
+    .includes(disposition);
+}
+
 function publishedActionCoversProposal(published = {}, proposal = {}) {
   const publishedOwners = new Set((published.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean));
   const proposalOwners = new Set((proposal.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean));
@@ -9634,6 +9689,12 @@ function publishedActionCoversProposal(published = {}, proposal = {}) {
   const contentOverlap = hybridContentTokenOverlap(published.action, proposal.action);
   const evidence = new Set(published.evidenceIds || []);
   const sharedEvidence = (proposal.evidenceIds || []).some((id) => evidence.has(id));
+  const evidenceSequence = (id) => Number(String(id || '').match(/\d+/)?.[0] || NaN);
+  const nearbyEvidence = (proposal.evidenceIds || []).some((proposalId) =>
+    (published.evidenceIds || []).some((publishedId) => {
+      const left = evidenceSequence(proposalId); const right = evidenceSequence(publishedId);
+      return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= 4;
+    }));
   const publishedTypes = hybridActionTypes(published.action);
   const proposalTypes = hybridActionTypes(proposal.action);
   const compatibleType = !publishedTypes.size || !proposalTypes.size
@@ -9645,6 +9706,7 @@ function publishedActionCoversProposal(published = {}, proposal = {}) {
     || /\b(?:determine|decide|resolve)\b.{0,80}\b(?:implement|establish|arrange|provide|send|share|prepare)\b/i.test(proposal.action);
   if (!compatibleType && !decisionThroughExecution) return false;
   return contentOverlap >= 0.58 || (sharedEvidence && contentOverlap >= 0.35)
+    || (nearbyEvidence && contentOverlap >= 0.42)
     || (decisionThroughExecution && contentOverlap >= 0.48);
 }
 
@@ -9697,6 +9759,20 @@ function hybridCandidateDispositions(candidates = [], published = [], proposed =
 
 function dedupeHybridActionRecords(records = []) {
   const merged = [];
+  const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
+  const preference = (record = {}) => {
+    const wording = meetingMinutesAgentText(record.action, 1600);
+    const wordCount = wording.split(/\s+/).filter(Boolean).length;
+    return Number(isClientReadyActionWording(wording)) * 100
+      + Math.min(12, (record.evidenceIds || []).length) * 6
+      + Math.min(4, (record.owners || []).length) * 4
+      + Number(timingRank[record.timing?.kind] || 0) * 3
+      + Math.min(35, wordCount)
+      - Math.max(0, wordCount - 45) * 2;
+  };
+  const stableEvidence = (rows) => [...new Set(rows.flatMap((record) => record.evidenceIds || []))]
+    .sort((left, right) => Number(String(left).match(/\d+/)?.[0] || Infinity)
+      - Number(String(right).match(/\d+/)?.[0] || Infinity)).slice(0, 12);
   for (const record of Array.isArray(records) ? records : []) {
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     const duplicate = merged.find((existing) => hybridCandidateMatchesRecord(candidate, existing)
@@ -9705,11 +9781,30 @@ function dedupeHybridActionRecords(records = []) {
       merged.push(record);
       continue;
     }
-    duplicate.evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(record.evidenceIds || [])])].slice(0, 8);
-    if (!(duplicate.owners || []).length && (record.owners || []).length) duplicate.owners = record.owners;
-    if (duplicate.timing?.kind === 'not_stated' && record.timing?.kind !== 'not_stated') duplicate.timing = record.timing;
+    const preferred = preference(record) > preference(duplicate)
+      || (preference(record) === preference(duplicate)
+        && String(record.action || '').localeCompare(String(duplicate.action || '')) < 0)
+      ? record : duplicate;
+    const combinedEvidence = stableEvidence([duplicate, record]);
+    const duplicateOwners = duplicate.owners || []; const recordOwners = record.owners || [];
+    const ownersCompatible = !duplicateOwners.length || !recordOwners.length
+      || duplicateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()));
+    const combinedOwners = ownersCompatible
+      ? [...new Set([...duplicateOwners, ...recordOwners])].slice(0, 8)
+      : (preferred.owners || []);
+    const timing = Number(timingRank[record.timing?.kind] || 0) > Number(timingRank[duplicate.timing?.kind] || 0)
+      ? record.timing : duplicate.timing;
+    Object.assign(duplicate, preferred, {
+      evidenceIds: combinedEvidence,
+      owners: combinedOwners,
+      timing,
+      reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24)
+    });
   }
-  return merged;
+  return merged.sort((left, right) => {
+    const first = (record) => Math.min(...(record.evidenceIds || []).map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
+    return first(left) - first(right) || String(left.action || '').localeCompare(String(right.action || ''));
+  });
 }
 
 // AI passes frequently phrase the same proposed deliverable differently and
@@ -9719,6 +9814,7 @@ function dedupeHybridActionRecords(records = []) {
 // evidence window from collapsing distinct send/review/test/approve work.
 function dedupeHybridActionProposals(records = []) {
   const merged = [];
+  const evidenceSequence = (id) => Number(String(id || '').match(/\d+/)?.[0] || NaN);
   for (const record of Array.isArray(records) ? records : []) {
     const owners = (record.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
     const types = hybridActionTypes(record.action);
@@ -9728,12 +9824,18 @@ function dedupeHybridActionProposals(records = []) {
       const contentOverlap = hybridContentTokenOverlap(record.action, existing.action);
       const evidence = new Set(existing.evidenceIds || []);
       const sharedEvidence = (record.evidenceIds || []).some((id) => evidence.has(id));
+      const nearbyEvidence = (record.evidenceIds || []).some((id) =>
+        (existing.evidenceIds || []).some((other) => {
+          const left = evidenceSequence(id); const right = evidenceSequence(other);
+          return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= 4;
+        }));
       const existingTypes = hybridActionTypes(existing.action);
       const hasCommonType = [...types].some((type) => existingTypes.has(type));
       const planningDecisionPair = [...types, ...existingTypes].every((type) => ['planning', 'decision'].includes(type));
       if (types.size && existingTypes.size && !hasCommonType
         && !(planningDecisionPair && sharedEvidence && contentOverlap >= 0.42)) return false;
-      return contentOverlap >= 0.56 || (sharedEvidence && contentOverlap >= 0.42);
+      return contentOverlap >= 0.56 || (sharedEvidence && contentOverlap >= 0.42)
+        || (nearbyEvidence && contentOverlap >= 0.48);
     });
     if (!duplicate) {
       merged.push(record);
@@ -9743,9 +9845,34 @@ function dedupeHybridActionProposals(records = []) {
     duplicate.reviewFlagIds = [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24);
     if (!(duplicate.owners || []).length && (record.owners || []).length) duplicate.owners = record.owners;
     if (duplicate.timing?.kind === 'not_stated' && record.timing?.kind !== 'not_stated') duplicate.timing = record.timing;
-    if (record.action.length > duplicate.action.length) duplicate.action = record.action;
+    const currentWords = String(duplicate.action || '').split(/\s+/).filter(Boolean).length;
+    const candidateWords = String(record.action || '').split(/\s+/).filter(Boolean).length;
+    const currentScore = Number(isClientReadyActionWording(duplicate.action)) * 100
+      + Math.min(currentWords, 35) - Math.max(0, currentWords - 45) * 2;
+    const candidateScore = Number(isClientReadyActionWording(record.action)) * 100
+      + Math.min(candidateWords, 35) - Math.max(0, candidateWords - 45) * 2;
+    if (candidateScore > currentScore || (candidateScore === currentScore
+      && String(record.action || '').localeCompare(String(duplicate.action || '')) < 0)) {
+      const evidenceIds = duplicate.evidenceIds;
+      const reviewFlagIds = duplicate.reviewFlagIds;
+      const owners = duplicate.owners;
+      const timing = duplicate.timing;
+      Object.assign(duplicate, record, { evidenceIds, reviewFlagIds, owners, timing });
+    }
+    duplicate.evidenceIds = [...new Set(duplicate.evidenceIds || [])]
+      .sort((left, right) => Number(String(left).match(/\d+/)?.[0] || Infinity)
+        - Number(String(right).match(/\d+/)?.[0] || Infinity)).slice(0, 12);
   }
-  return merged;
+  return merged.sort((left, right) => {
+    const first = (record) => Math.min(...(record.evidenceIds || []).map((id) => evidenceSequence(id)).filter(Number.isFinite));
+    const leftFirst = first(left); const rightFirst = first(right);
+    if (Number.isFinite(leftFirst) || Number.isFinite(rightFirst)) {
+      if (!Number.isFinite(leftFirst)) return 1;
+      if (!Number.isFinite(rightFirst)) return -1;
+      if (leftFirst !== rightFirst) return leftFirst - rightFirst;
+    }
+    return String(left.action || '').localeCompare(String(right.action || ''));
+  });
 }
 
 function sameActionPresentation(left = {}, right = {}) {
@@ -10164,14 +10291,26 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   const kindRank = { discussion_point: 1, open_question: 2, decision: 3 };
   const numberTokens = (value) => new Set(String(value || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
   const compatible = (left, right) => {
-    if (String(left.topic || '').toLowerCase() !== String(right.topic || '').toLowerCase()
-      && hybridTokenOverlap(left.topic, right.topic) < 0.55) return false;
     const lexical = hybridContentTokenOverlap(left.record?.text, right.record?.text);
     const evidence = new Set(left.record?.evidenceIds || []);
     const sharedEvidence = (right.record?.evidenceIds || []).some((id) => evidence.has(id));
+    const sequence = (id) => Number(String(id || '').match(/\d+/)?.[0] || NaN);
+    const nearbyEvidence = (right.record?.evidenceIds || []).some((id) =>
+      (left.record?.evidenceIds || []).some((other) => {
+        const a = sequence(id); const b = sequence(other);
+        return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 2;
+      }));
+    const compatibleTopic = String(left.topic || '').toLowerCase() === String(right.topic || '').toLowerCase()
+      || hybridTokenOverlap(left.topic, right.topic) >= 0.55;
     const leftNumbers = numberTokens(left.record?.text); const rightNumbers = numberTokens(right.record?.text);
     if (leftNumbers.size && rightNumbers.size && ![...leftNumbers].some((value) => rightNumbers.has(value)) && lexical < 0.7) return false;
-    return lexical >= 0.58 || (sharedEvidence && lexical >= 0.24);
+    // Topic labels are generated independently and vary more than the
+    // propositions beneath them. Strong proposition equivalence or shared
+    // evidence therefore joins records across labels, while weaker matches
+    // still require compatible topics.
+    return lexical >= 0.72 || (sharedEvidence && lexical >= 0.42)
+      || (nearbyEvidence && lexical >= 0.5)
+      || (compatibleTopic && (lexical >= 0.58 || (sharedEvidence && lexical >= 0.24)));
   };
   const rows = flattenHybridDiscussion(discussion);
   const groups = [];
@@ -10187,7 +10326,10 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     return topic;
   };
   for (const group of groups) {
+    const clientReady = (item) => !/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you)\b/i
+      .test(String(item.record?.text || ''));
     const ordered = [...group].sort((left, right) => (kindRank[right.recordType] || 0) - (kindRank[left.recordType] || 0)
+      || Number(clientReady(right)) - Number(clientReady(left))
       || String(right.record?.text || '').length - String(left.record?.text || '').length);
     const selected = ordered[0];
     const record = {
@@ -10213,9 +10355,8 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // Explicit decisions remain core; other accurate recovery material is kept as
   // collapsed context on the closest proposition in the same topic.
   const recoveredRows = flattenHybridDiscussion(recovered);
-  const materialCore = /\b(?:block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|significant risk|material risk|unresolved|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation))\b/i;
+  const materialCore = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|significant risk|material risk|unresolved|required decision|requires? confirmation|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation))\b/i;
   const recoveredCore = recoveredRows.filter((item) => item.recordType === 'decision'
-    || item.recordType === 'open_question'
     || materialCore.test(String(item.record?.text || '')));
   if (recoveredCore.length) {
     const visibleCore = normaliseAgentResult({ discussion: recoveredCore.map((item) => ({
@@ -10276,15 +10417,54 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       evidenceIds: [...new Set(candidate.evidenceIds || candidate.record?.evidenceIds || [])].slice(0, 8)
     }].slice(0, 50);
   }
+  // A Referee may conservatively label a genuinely material proposition as
+  // supporting. Keep secondary context collapsed by default, but promote a
+  // detail when it adds a distinct decision, scope/requirement, risk,
+  // dependency, quantified change or consequential unresolved matter. This is
+  // evidence- and language-based; it contains no meeting/client vocabulary.
+  const materialDetail = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|scope|require(?:d|ment|s)?|must|standard|regulat(?:ion|ory)|compliance|risk|block(?:ed|er|ing)?|depend(?:s|ent|ency)?|subject to|unresolved|uncertain|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation)|primary (?:role|focus|objective|purpose)|increase|decrease|reduc(?:e|ed|tion)|total|target|deadline|\d+(?:[.,]\d+)?%)\b/i;
+  const visibleRecords = topics.flatMap((topic) => [...topic.decisions, ...topic.openQuestions, ...topic.points]);
+  for (const topic of topics) {
+    for (const record of [...topic.decisions, ...topic.openQuestions, ...topic.points]) {
+      const retained = [];
+      for (const detail of record.supportingDetails || []) {
+        const rawSpeech = /^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you)\b/i.test(String(detail?.text || ''));
+        const restatesVisible = visibleRecords.some((visible) => visible !== record
+          && hybridContentTokenOverlap(visible?.text, detail?.text) >= 0.42)
+          || hybridContentTokenOverlap(record?.text, detail?.text) >= 0.42;
+        if (!rawSpeech && materialDetail.test(String(detail?.text || ''))
+          && !restatesVisible
+          && supportingDetailAddsInformation(detail, visibleRecords, {})) {
+          const promoted = {
+            id: detail.id || `promoted-${record.id}-${topic.points.length}`,
+            text: detail.text,
+            evidenceIds: [...new Set(detail.evidenceIds || [])].slice(0, 8),
+            supportingDetails: []
+          };
+          topic.points.push(promoted);
+          visibleRecords.push(promoted);
+        } else retained.push(detail);
+      }
+      record.supportingDetails = retained;
+    }
+  }
+  const clientReadyDiscussion = (record) => {
+    const value = String(record?.text || '').trim();
+    if (!value) return false;
+    if (/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|you|your)\b/i.test(value)) return false;
+    if (/^\s*we\b/i.test(value)
+      && !/^\s*we\s+(?:agreed|decided|confirmed|approved|concluded|will|must|need)/i.test(value)) return false;
+    return true;
+  };
   return normaliseAgentResult({ discussion: topics }, sourceUnits, 'discussion').discussion.map((topic) => ({
     ...topic,
-    points: (topic.points || []).filter((record) => (record.evidenceIds || []).length)
+    points: (topic.points || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
         .filter((detail) => (detail.evidenceIds || []).length) })),
-    decisions: (topic.decisions || []).filter((record) => (record.evidenceIds || []).length)
+    decisions: (topic.decisions || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
         .filter((detail) => (detail.evidenceIds || []).length) })),
-    openQuestions: (topic.openQuestions || []).filter((record) => (record.evidenceIds || []).length)
+    openQuestions: (topic.openQuestions || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
         .filter((detail) => (detail.evidenceIds || []).length) }))
   })).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length);
@@ -10840,9 +11020,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const stageStartedAt = Date.now();
   const stageDeadlineAt = stageStartedAt + Math.max(180000, Number(process.env.MEETING_MINUTES_AGENT_STAGE_TIMEOUT_MS || 360000));
   const progress = async (pass, message, activeTimings = []) => {
+    const progressProvenance = [
+      ...passProvenance,
+      ...(activeTimings.length ? [{ stage, pass, timings: activeTimings }] : [])
+    ];
     if (options.onProgress) await options.onProgress({
       pass, message, completedPasses,
-      callTimings: [...passProvenance.flatMap((item) => item.timings || []), ...activeTimings], degradedSources
+      callTimings: [...passProvenance.flatMap((item) => item.timings || []), ...activeTimings],
+      telemetry: meetingAgentExecutionTelemetry(progressProvenance), degradedSources
     });
   };
   const call = async (pass, prompt, callOptions = {}) => {
@@ -10912,6 +11097,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       if (options.onCheckpoint) await options.onCheckpoint(passCache);
       return response.result;
     } catch (error) {
+      const failedTimings = Array.isArray(error.callTimings) ? error.callTimings : [];
+      passProvenance.push({
+        stage, pass, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
+        elapsedMs: failedTimings.reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0),
+        timings: failedTimings, failed: true,
+        errorCode: meetingMinutesAgentText(error.code, 120),
+        errorMessage: meetingMinutesAgentText(error.message, 300)
+      });
       console.warn(JSON.stringify({
         event: 'meeting_agent_pass', stage, pass, promptChars: String(prompt || '').length,
         attempts: error.callTimings?.length || 0,
@@ -10943,7 +11136,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         ], draft.sourceUnits),
         passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
         passCache,
-        qualityState: { ...(draft.qualityState || {}), summary: { completedPasses, degradedSources } }
+        qualityState: { ...(draft.qualityState || {}), summary: {
+          completedPasses, degradedSources,
+          telemetry: meetingAgentExecutionTelemetry(passProvenance)
+        } }
       },
       reviewFlags: [], replaceCoverageFlags: false
     };
@@ -11075,7 +11271,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeContract = meetingMinutesAgentRefereeContract(stage, ensemble);
   const suppliedRefereeCandidates = refereeContract.candidates;
   const refereeBatchSize = Math.max(1, Math.min(8,
-    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 3)));
+    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 6)));
   const refereeBatches = meetingAgentRefereeBatches(suppliedRefereeCandidates, refereeBatchSize);
   const refereeBatchResults = [];
   const unresolvedRefereeIds = [];
@@ -11294,6 +11490,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
+          telemetry: meetingAgentExecutionTelemetry(passProvenance),
           refereeRoute,
           refereeSufficiency: compactSufficiency,
           refereeContract: {
@@ -11437,7 +11634,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   automatic.push(...safeProposalPromotions.filter((record) => !automatic.some((existing) =>
     hybridCandidateMatchesRecord({ recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record }, existing))));
   const remainingProposalCandidates = proposalCandidates.filter((record) =>
-    !safeProposalPromotions.includes(record) && !isVagueReconstructedAction(record.action));
+    !safeProposalPromotions.includes(record) && !isVagueReconstructedAction(record.action)
+    && isReviewableActionProposal(record, draft.sourceUnits));
   const finalPublishedActions = dedupeHybridActionRecords(automatic)
     .filter((record) => !isVagueReconstructedAction(record.action));
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
@@ -11502,6 +11700,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         strongDiscoveryProposalCount: strongDiscoveryBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
         commitmentThreadProposalCount: threadBackstop.length,
+        telemetry: meetingAgentExecutionTelemetry(passProvenance),
         candidateDispositions
       } }
     },
@@ -12151,6 +12350,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
   meetingAgentRefereeBatches,
+  meetingAgentExecutionTelemetry,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
@@ -12192,6 +12392,7 @@ router.stagedEvaluation = {
   reconstructRefereeActions,
   refereeDiscussionContractDiagnostics,
   isVagueReconstructedAction,
+  isReviewableActionProposal,
   publishedActionCoversProposal,
   corroboratedOmittedActionProposals,
   unresolvedOperationalGapProposals,
