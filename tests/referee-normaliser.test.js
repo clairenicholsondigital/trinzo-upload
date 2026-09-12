@@ -45,3 +45,25 @@ test('adds a visible warning when every supplied evidence reference is invalid',
   assert.deepEqual(result.discussion[0].evidenceIds, []);
   assert.equal(result.reviewFlags[0].type, 'invalid_evidence_references');
 });
+
+test('converts flat discussion candidates and evidence links into the website contract', () => {
+  const result = normaliseReferenceArrays({
+    discussionCandidates: [
+      { candidateId: 'c1', topic: 'Audit scope', recordType: 'point', text: 'The audit scope is confirmed.', confidence: 'high' },
+      { candidateId: 'c2', topic: 'Audit scope', recordType: 'point', text: 'The standard requires evidence.', confidence: 'high' }
+    ],
+    evidenceLinks: [
+      { candidateId: 'c1', evidenceId: 'T0001' },
+      { candidateId: 'c1', evidenceId: 'T0001' },
+      { candidateId: 'c1', evidenceId: 'T9999' },
+      { candidateId: 'orphan', evidenceId: 'T0001' }
+    ],
+    reviewFlags: []
+  }, { validEvidenceIds: ['T0001'] });
+  assert.equal(result.discussion.length, 1);
+  assert.deepEqual(result.discussion[0].points.map((point) => point.id), ['c1', 'c2']);
+  assert.deepEqual(result.discussion[0].points[0].evidenceIds, ['T0001']);
+  assert.deepEqual(result.discussion[0].points[1].evidenceIds, []);
+  assert.equal(result.evidenceLinks, undefined);
+  assert.equal(result.discussionCandidates, undefined);
+});

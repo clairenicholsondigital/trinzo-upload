@@ -115,6 +115,31 @@ function normaliseReferenceArrays(source = {}, { validEvidenceIds = [], validOwn
     return output;
   }
   const normalised = visit(source);
+  if (normalised && Array.isArray(normalised.discussionCandidates)) {
+    const links = Array.isArray(normalised.evidenceLinks) ? normalised.evidenceLinks : [];
+    const linkedEvidence = new Map();
+    for (const link of links) {
+      const candidateId = text(link?.candidateId);
+      const evidenceId = text(link?.evidenceId);
+      if (!candidateId || !evidenceId || !evidenceAllowList.has(evidenceId)) continue;
+      const values = linkedEvidence.get(candidateId) || [];
+      if (!values.includes(evidenceId)) values.push(evidenceId);
+      linkedEvidence.set(candidateId, values);
+    }
+    const topics = new Map();
+    for (const candidate of normalised.discussionCandidates) {
+      const candidateId = text(candidate?.candidateId);
+      const textValue = text(candidate?.text);
+      if (!candidateId || !textValue) continue;
+      const topicName = text(candidate?.topic) || 'Discussion';
+      if (!topics.has(topicName)) topics.set(topicName, { id: `topic-${topics.size + 1}`, topic: topicName, points: [], decisions: [], openQuestions: [] });
+      const topic = topics.get(topicName);
+      topic.points.push({ id: candidateId, text: textValue, evidenceIds: linkedEvidence.get(candidateId) || [], supportingDetails: [], reviewFlagIds: [] });
+    }
+    normalised.discussion = [...topics.values()];
+    delete normalised.evidenceLinks;
+    delete normalised.discussionCandidates;
+  }
   if (normalised && typeof normalised === 'object' && invalidEvidencePaths.length) {
     const flags = Array.isArray(normalised.reviewFlags) ? normalised.reviewFlags.slice() : [];
     flags.push({ type: 'invalid_evidence_references', severity: 'warning', message: 'All supplied evidence references for at least one record were invalid and were removed.', fieldPaths: [...new Set(invalidEvidencePaths)] });
