@@ -84,3 +84,26 @@ test('reattaches server-supplied evidence when the typed Prompt can only return 
   assert.deepEqual(result.discussion[0].points[0].evidenceIds, ['T0001']);
   assert.deepEqual(result.discussion[1].points[0].evidenceIds, []);
 });
+
+test('consolidates repeated scalar-evidence rows and preserves discussion record types', () => {
+  const result = normaliseReferenceArrays({
+    discussionCandidates: [
+      { candidateId: 'c1', topic: 'Release', recordType: 'decision', text: 'The review moved to 23 June.', confidence: 1, evidenceId: 'T0001' },
+      { candidateId: 'c1', topic: 'Release', recordType: 'decision', text: 'The review moved to 23 June.', confidence: 1, evidenceId: 'T0002' },
+      { candidateId: 'c2', topic: 'Release', recordType: 'open_question', text: 'Whether validation can resume remains unresolved.', confidence: 0.8, evidenceId: 'T0003' }
+    ]
+  }, { validEvidenceIds: ['T0001', 'T0002', 'T0003'] });
+  assert.equal(result.discussion[0].points.length, 0);
+  assert.deepEqual(result.discussion[0].decisions[0].evidenceIds, ['T0001', 'T0002']);
+  assert.equal(result.discussion[0].openQuestions[0].id, 'c2');
+});
+
+test('removes an invalid scalar evidence ID and raises the existing warning', () => {
+  const result = normaliseReferenceArrays({
+    discussionCandidates: [
+      { candidateId: 'c1', topic: 'Release', recordType: 'point', text: 'A release point.', evidenceId: 'T9999' }
+    ]
+  }, { validEvidenceIds: ['T0001'] });
+  assert.deepEqual(result.discussion[0].points[0].evidenceIds, []);
+  assert.equal(result.reviewFlags[0].type, 'invalid_evidence_references');
+});

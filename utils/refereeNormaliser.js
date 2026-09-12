@@ -126,23 +126,50 @@ function normaliseReferenceArrays(source = {}, {
       ...(Array.isArray(trustedEvidenceLinks) ? trustedEvidenceLinks : [])
     ];
     const linkedEvidence = new Map();
+    const suppliedEvidence = new Map();
     for (const link of links) {
       const candidateId = text(link?.candidateId);
       const evidenceId = text(link?.evidenceId);
-      if (!candidateId || !evidenceId || !evidenceAllowList.has(evidenceId)) continue;
+      if (!candidateId || !evidenceId) continue;
+      const supplied = suppliedEvidence.get(candidateId) || [];
+      if (!supplied.includes(evidenceId)) supplied.push(evidenceId);
+      suppliedEvidence.set(candidateId, supplied);
+      if (evidenceAllowList.size && !evidenceAllowList.has(evidenceId)) continue;
+      const values = linkedEvidence.get(candidateId) || [];
+      if (!values.includes(evidenceId)) values.push(evidenceId);
+      linkedEvidence.set(candidateId, values);
+    }
+    for (const candidate of normalised.discussionCandidates) {
+      const candidateId = text(candidate?.candidateId);
+      const evidenceId = text(candidate?.evidenceId);
+      if (!candidateId || !evidenceId) continue;
+      const supplied = suppliedEvidence.get(candidateId) || [];
+      if (!supplied.includes(evidenceId)) supplied.push(evidenceId);
+      suppliedEvidence.set(candidateId, supplied);
+      if (evidenceAllowList.size && !evidenceAllowList.has(evidenceId)) continue;
       const values = linkedEvidence.get(candidateId) || [];
       if (!values.includes(evidenceId)) values.push(evidenceId);
       linkedEvidence.set(candidateId, values);
     }
     const topics = new Map();
+    const emittedCandidates = new Set();
     for (const candidate of normalised.discussionCandidates) {
       const candidateId = text(candidate?.candidateId);
       const textValue = text(candidate?.text);
-      if (!candidateId || !textValue) continue;
+      if (!candidateId || !textValue || emittedCandidates.has(candidateId)) continue;
+      emittedCandidates.add(candidateId);
       const topicName = text(candidate?.topic) || 'Discussion';
       if (!topics.has(topicName)) topics.set(topicName, { id: `topic-${topics.size + 1}`, topic: topicName, points: [], decisions: [], openQuestions: [] });
       const topic = topics.get(topicName);
-      topic.points.push({ id: candidateId, text: textValue, evidenceIds: linkedEvidence.get(candidateId) || [], supportingDetails: [], reviewFlagIds: [] });
+      const evidenceIds = linkedEvidence.get(candidateId) || [];
+      if ((suppliedEvidence.get(candidateId) || []).length && !evidenceIds.length) {
+        invalidEvidencePaths.push(`discussionCandidates.${candidateId}.evidenceId`);
+      }
+      const record = { id: candidateId, text: textValue, evidenceIds, supportingDetails: [], reviewFlagIds: [] };
+      const recordType = text(candidate?.recordType).toLowerCase();
+      if (recordType === 'decision') topic.decisions.push(record);
+      else if (recordType === 'open_question') topic.openQuestions.push(record);
+      else topic.points.push(record);
     }
     normalised.discussion = [...topics.values()];
     delete normalised.evidenceLinks;
