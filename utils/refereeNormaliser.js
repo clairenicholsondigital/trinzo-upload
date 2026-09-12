@@ -87,7 +87,9 @@ function normaliseReferenceList(strings, refs, property, allowed) {
 }
 
 /** Convert typed AI Builder reference objects to the established string arrays. */
-function normaliseReferenceArrays(source = {}, { validEvidenceIds = [], validOwners = [] } = {}) {
+function normaliseReferenceArrays(source = {}, {
+  validEvidenceIds = [], validOwners = [], trustedEvidenceLinks = []
+} = {}) {
   const evidenceAllowList = stringSet(validEvidenceIds);
   const ownerAllowList = stringSet(validOwners);
   const invalidEvidencePaths = [];
@@ -116,7 +118,13 @@ function normaliseReferenceArrays(source = {}, { validEvidenceIds = [], validOwn
   }
   const normalised = visit(source);
   if (normalised && Array.isArray(normalised.discussionCandidates)) {
-    const links = Array.isArray(normalised.evidenceLinks) ? normalised.evidenceLinks : [];
+    // A typed Prompt may be limited to the candidate table. Evidence supplied
+    // to that Prompt remains server-authoritative, so it can be joined back by
+    // exact candidate ID without asking the model to reproduce nested arrays.
+    const links = [
+      ...(Array.isArray(normalised.evidenceLinks) ? normalised.evidenceLinks : []),
+      ...(Array.isArray(trustedEvidenceLinks) ? trustedEvidenceLinks : [])
+    ];
     const linkedEvidence = new Map();
     for (const link of links) {
       const candidateId = text(link?.candidateId);

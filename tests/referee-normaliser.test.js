@@ -67,3 +67,20 @@ test('converts flat discussion candidates and evidence links into the website co
   assert.equal(result.evidenceLinks, undefined);
   assert.equal(result.discussionCandidates, undefined);
 });
+
+test('reattaches server-supplied evidence when the typed Prompt can only return candidates', () => {
+  const result = normaliseReferenceArrays({
+    discussionCandidates: [
+      { candidateId: 'c1', topic: 'Audit scope', recordType: 'point', text: 'The audit scope is confirmed.', confidence: 'high' },
+      { candidateId: 'unknown', topic: 'Other', recordType: 'point', text: 'An unexpected candidate.' }
+    ]
+  }, {
+    validEvidenceIds: ['T0001'],
+    trustedEvidenceLinks: [
+      { candidateId: 'c1', evidenceId: 'T0001' },
+      { candidateId: 'unknown', evidenceId: 'T9999' }
+    ]
+  });
+  assert.deepEqual(result.discussion[0].points[0].evidenceIds, ['T0001']);
+  assert.deepEqual(result.discussion[1].points[0].evidenceIds, []);
+});

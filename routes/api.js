@@ -8997,7 +8997,10 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isRefereeResult = options.responseKind === 'referee'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && (Array.isArray(candidate.candidateDispositions) || Boolean(candidate.error));
-    if (isMinutesResult || isRefereeResult) {
+    const isFlatDiscussionDiscoveryResult = options.responseKind === 'discussion_discovery'
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.discussionCandidates);
+    if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult) {
       structured = candidate;
       break;
     }
@@ -9017,8 +9020,11 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     throw error;
   }
   const parsedResult = structured;
+  const flatDiscussionDiscovery = options.responseKind === 'discussion_discovery'
+    && Array.isArray(parsedResult?.discussionCandidates);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
+      && !flatDiscussionDiscovery
       && (!Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)))) {
     const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
     error.statusCode = 502;
@@ -11075,7 +11081,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         attemptTimeoutMs: isRefereeCall
           ? Number(process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 90000)
           : undefined,
-        responseKind: isRefereeCall ? 'referee' : undefined,
+        responseKind: callOptions.responseKind,
         transformResult: callOptions.transformResult,
         validateResult: callOptions.validateResult,
         repairPrompt: callOptions.repairPrompt,
@@ -11254,6 +11260,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       candidates: recoveryDecision.uncovered
     }), {
       optional: true,
+      ...(stage === 'discussion' ? {
+        responseKind: 'discussion_discovery',
+        transformResult: (result) => normaliseReferenceArrays(result, {
+          validEvidenceIds: (draft.sourceUnits || []).map((unit) => unit?.id).filter(Boolean),
+          trustedEvidenceLinks: recoveryDecision.uncovered.flatMap((candidate) =>
+            (candidate?.evidenceIds || candidate?.record?.evidenceIds || []).map((evidenceId) => ({
+              candidateId: candidate?.candidateId,
+              evidenceId
+            })))
+        })
+      } : {}),
       validateResult: (result) => meetingAgentEmptyDiscoveryError(
         result, stage, recoveryDecision.uncovered, draft.sourceUnits, { meetingDate: details.meetingDate }
       )
