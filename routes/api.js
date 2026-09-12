@@ -8456,31 +8456,108 @@ function meetingMinutesAgentRefereeContract(stage, candidates = [], requestId = 
   };
 }
 
-function meetingMinutesAgentRefereePrompt({ stage, transcript, details, discussion = [], candidates, salientDetails, requestId }) {
+function compactMeetingAgentRefereeCandidate(candidate = {}) {
+  const compact = {
+    candidateId: meetingMinutesAgentText(candidate.candidateId, 160),
+    sourcePass: meetingMinutesAgentText(candidate.sourcePass, 80),
+    recordType: meetingMinutesAgentText(candidate.recordType, 80),
+    topic: meetingMinutesAgentText(candidate.topic, 240),
+    text: meetingMinutesAgentText(candidate.text, 1400),
+    owners: (Array.isArray(candidate.owners) ? candidate.owners : [])
+      .map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 8),
+    timing: candidate.timing && typeof candidate.timing === 'object' ? {
+      kind: meetingMinutesAgentText(candidate.timing.kind, 40),
+      wording: meetingMinutesAgentText(candidate.timing.wording, 180),
+      exactDate: meetingMinutesAgentText(candidate.timing.exactDate, 20)
+    } : undefined,
+    evidenceIds: [...new Set((Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [])
+      .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean))].slice(0, 20),
+    focusEvidenceId: meetingMinutesAgentText(candidate.focusEvidenceId, 30),
+    dispositionHint: meetingMinutesAgentText(candidate.dispositionHint, 80),
+    priority: Number(candidate.priority || 0),
+    sequence: Number(candidate.sequence || 0)
+  };
+  if (['action_chain', 'action_thread'].includes(compact.recordType)) {
+    Object.assign(compact, {
+      candidateIds: (Array.isArray(candidate.candidateIds) ? candidate.candidateIds : [])
+        .map((id) => meetingMinutesAgentText(id, 160)).filter(Boolean).slice(0, 20),
+      cueKinds: (Array.isArray(candidate.cueKinds) ? candidate.cueKinds : [])
+        .map((kind) => meetingMinutesAgentText(kind, 80)).filter(Boolean).slice(0, 20),
+      ownerHints: (Array.isArray(candidate.ownerHints) ? candidate.ownerHints : [])
+        .map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 8),
+      timingEvidenceIds: (Array.isArray(candidate.timingEvidenceIds) ? candidate.timingEvidenceIds : [])
+        .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
+      dependencyEvidenceIds: (Array.isArray(candidate.dependencyEvidenceIds) ? candidate.dependencyEvidenceIds : [])
+        .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
+      signals: candidate.signals && typeof candidate.signals === 'object' ? candidate.signals : undefined,
+      uncertainties: (Array.isArray(candidate.uncertainties) ? candidate.uncertainties : [])
+        .map((value) => meetingMinutesAgentText(value, 240)).filter(Boolean).slice(0, 8)
+    });
+  }
+  return Object.fromEntries(Object.entries(compact).filter(([, value]) => value !== undefined
+    && value !== '' && (!Array.isArray(value) || value.length)));
+}
+
+function meetingAgentRefereeEvidencePacket(sourceUnits = [], candidates = [], transcript = '', neighbourRadius = 1) {
+  const units = normaliseSourceUnits(sourceUnits)
+    .filter((unit) => unit.classification !== 'remove' || unit.restored === true);
+  if (!units.length) {
+    return {
+      preparedTranscript: String(transcript || '').trim(),
+      includedUnitIds: [], citedUnitIds: [], totalPreparedUnitCount: 0,
+      mode: 'complete_transcript_fallback'
+    };
+  }
+  const indexById = new Map(units.map((unit, index) => [unit.id, index]));
+  const cited = new Set();
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const serialised = JSON.stringify(candidate);
+    for (const id of serialised.match(/\bT\d{4,}\b/g) || []) {
+      if (indexById.has(id)) cited.add(id);
+    }
+  }
+  const includedIndexes = new Set();
+  for (const id of cited) {
+    const index = indexById.get(id);
+    for (let offset = -neighbourRadius; offset <= neighbourRadius; offset += 1) {
+      if (index + offset >= 0 && index + offset < units.length) includedIndexes.add(index + offset);
+    }
+  }
+  // A malformed candidate with no usable evidence should still receive a small
+  // local window so the Referee can reject it explicitly instead of receiving
+  // an empty transcript field. Sequence is navigation only, not evidence.
+  if (!includedIndexes.size) {
+    for (const candidate of Array.isArray(candidates) ? candidates : []) {
+      const index = Math.max(0, Math.min(units.length - 1, Number(candidate?.sequence || 1) - 1));
+      for (let offset = -neighbourRadius; offset <= neighbourRadius; offset += 1) {
+        if (index + offset >= 0 && index + offset < units.length) includedIndexes.add(index + offset);
+      }
+    }
+  }
+  const selected = [...includedIndexes].sort((left, right) => left - right).map((index) => units[index]);
+  return {
+    preparedTranscript: preparedTranscriptFromUnits(selected),
+    includedUnitIds: selected.map((unit) => unit.id),
+    citedUnitIds: [...cited],
+    totalPreparedUnitCount: units.length,
+    mode: 'candidate_evidence_windows'
+  };
+}
+
+function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [], candidates, requestId }) {
   const contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId);
+  const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, contract.candidates, transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     requestId: contract.requestId,
     stage: contract.stage,
-    taskDefinition: stage === 'discussion'
-      ? 'Classify the significance of discussion propositions for formal minutes. This is not an action-extraction task: a discussion candidate does not need a commitment or deliverable to be core or supporting.'
-      : 'Classify candidate work by whether the transcript supports a future commitment, accepted request, scheduled deliverable, conditional commitment, completed item, suggestion or rejection.',
-    allowedDispositions: stage === 'discussion'
-      ? ['core', 'supporting', 'merge', 'reject']
-      : ['publish', 'proposal', 'completed', 'suggestion', 'reject'],
-    dispositionRequirements: stage === 'discussion'
-      ? 'Use core for a distinct decision, material conclusion, quantified change, blocker, dependency, significant risk or unresolved matter. Use supporting for accurate explanatory context. Do not apply actionability criteria.'
-      : 'Use publish only for evidenced future work; proposal for plausible but ambiguous future work; completed or suggestion where applicable; otherwise reject. Preserve distinct deliverables and compatible ownership.',
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
-    candidateEnsemble: contract.candidates,
-    meetingDetails: details || {},
-    importantDetails: (salientDetails || []).slice(0, 80),
-    confirmedDiscussionContext: stage === 'actions' ? (discussion || []) : [],
-    preparedTranscript: String(transcript || '').trim()
+    candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
+    preparedTranscript: evidencePacket.preparedTranscript
   };
   return [
-    contract.stage,
+    `[${contract.stage}]`,
     'Invoke Structured Meeting Evidence Referee with the exact refereePayload below.',
     'Pass refereePayload intact as the tool input. Do not summarise, truncate, reinterpret or omit any property.',
     'Return the tool JSON unchanged. Do not compose a conversational answer.',
@@ -8488,27 +8565,20 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, details, discussi
   ].join('\n\n');
 }
 
-function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, details, discussion = [], candidates, salientDetails, requestId }) {
+function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits = [], candidates, requestId }) {
   const contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId);
+  const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, contract.candidates, transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     requestId: contract.requestId,
     stage: contract.stage,
-    repairAttempt: true,
-    taskDefinition: 'Return dispositions only for the supplied candidate IDs that were missing from the preceding referee response.',
-    allowedDispositions: stage === 'discussion'
-      ? ['core', 'supporting', 'merge', 'reject']
-      : ['publish', 'proposal', 'completed', 'suggestion', 'reject'],
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
-    candidateEnsemble: contract.candidates,
-    meetingDetails: details || {},
-    importantDetails: (salientDetails || []).slice(0, 80),
-    confirmedDiscussionContext: stage === 'actions' ? (discussion || []) : [],
-    preparedTranscript: String(transcript || '').trim()
+    candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
+    preparedTranscript: evidencePacket.preparedTranscript
   };
   return [
-    contract.stage,
+    `[${contract.stage}]`,
     'Invoke Structured Meeting Evidence Referee to repair an incomplete candidate-accounting response.',
     'Classify every supplied candidate exactly once. Return the tool JSON unchanged and do not repeat candidates that are not supplied.',
     `refereePayload:\n${JSON.stringify(refereePayload)}`
@@ -8557,8 +8627,13 @@ function meetingAgentRefereeBatches(candidates = [], batchSize = 5) {
 }
 
 function shouldStopMeetingAgentRefereeBatches(primaryError, repairError) {
-  return primaryError?.code === 'invalid_referee_output'
-    && repairError?.code === 'invalid_referee_output';
+  if (!primaryError?.code || primaryError.code !== repairError?.code) return false;
+  return new Set([
+    'invalid_referee_output',
+    'power_automate_empty_response',
+    'power_automate_timeout',
+    'power_automate_unreachable'
+  ]).has(primaryError.code);
 }
 
 function mergeBatchedMeetingAgentRefereeResults(results = [], contract = {}) {
@@ -8599,9 +8674,108 @@ function mergeBatchedMeetingAgentRefereeResults(results = [], contract = {}) {
   };
 }
 
-function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, actions, candidates, salientDetails }) {
+function compactMeetingAgentActionAuditCandidate(candidate = {}) {
+  return compactMeetingAgentRefereeCandidate({
+    ...candidate,
+    text: candidate.text || candidate.record?.action || candidate.focusText || '',
+    owners: candidate.owners || candidate.record?.owners || [],
+    timing: candidate.timing || candidate.record?.timing,
+    evidenceIds: candidate.evidenceIds || candidate.record?.evidenceIds || []
+  });
+}
+
+function meetingAgentActionAuditCandidates(candidates = [], maxChars = 12000, maxCandidates = 40) {
+  const dispositionRank = { committed: 4, accepted_request: 4, conditional_commitment: 3, unknown: 1 };
+  const recordRank = { action_chain: 3, action_thread: 2, action: 1 };
+  const ordered = [...(Array.isArray(candidates) ? candidates : [])]
+    .sort((left, right) => Number(dispositionRank[right?.dispositionHint] || 0) - Number(dispositionRank[left?.dispositionHint] || 0)
+      || Number(recordRank[right?.recordType] || 0) - Number(recordRank[left?.recordType] || 0)
+      || Number(right?.priority || 0) - Number(left?.priority || 0)
+      || Number(left?.sequence || 0) - Number(right?.sequence || 0));
+  const retained = [];
+  const seen = new Set();
+  let chars = 2;
+  for (const candidate of ordered) {
+    const compact = compactMeetingAgentActionAuditCandidate(candidate);
+    if (!compact.candidateId || seen.has(compact.candidateId)) continue;
+    const size = JSON.stringify(compact).length + 1;
+    if (retained.length >= maxCandidates || chars + size > maxChars) continue;
+    retained.push(compact);
+    seen.add(compact.candidateId);
+    chars += size;
+  }
+  return retained.sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+}
+
+function compactMeetingAgentActionRegister(actions = [], maxChars = 9000, maxActions = 32) {
+  const retained = [];
+  let chars = 2;
+  for (const record of Array.isArray(actions) ? actions : []) {
+    const compact = {
+      id: meetingMinutesAgentText(record?.id, 160),
+      action: meetingMinutesAgentText(record?.action, 900),
+      owners: (Array.isArray(record?.owners) ? record.owners : [])
+        .map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 8),
+      timing: record?.timing && typeof record.timing === 'object' ? {
+        kind: meetingMinutesAgentText(record.timing.kind, 40),
+        wording: meetingMinutesAgentText(record.timing.wording, 180),
+        exactDate: meetingMinutesAgentText(record.timing.exactDate, 20)
+      } : undefined,
+      evidenceIds: [...new Set((Array.isArray(record?.evidenceIds) ? record.evidenceIds : [])
+        .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean))].slice(0, 12)
+    };
+    const clean = Object.fromEntries(Object.entries(compact).filter(([, value]) => value !== undefined
+      && value !== '' && (!Array.isArray(value) || value.length)));
+    const size = JSON.stringify(clean).length + 1;
+    if (retained.length >= maxActions || chars + size > maxChars) break;
+    retained.push(clean);
+    chars += size;
+  }
+  return retained;
+}
+
+function compactMeetingAgentOpenQuestions(discussion = [], maxChars = 5000, maxQuestions = 20) {
+  const retained = [];
+  let chars = 2;
+  for (const topic of Array.isArray(discussion) ? discussion : []) {
+    for (const question of Array.isArray(topic?.openQuestions) ? topic.openQuestions : []) {
+      const compact = {
+        topic: meetingMinutesAgentText(topic?.topic, 240),
+        text: meetingMinutesAgentText(question?.text || question, 700),
+        evidenceIds: [...new Set((Array.isArray(question?.evidenceIds) ? question.evidenceIds : [])
+          .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean))].slice(0, 12)
+      };
+      const size = JSON.stringify(compact).length + 1;
+      if (retained.length >= maxQuestions || chars + size > maxChars) return retained;
+      retained.push(compact);
+      chars += size;
+    }
+  }
+  return retained;
+}
+
+function meetingAgentActionQualityCandidateBudget(transcript = '', fixedPayload = '', maximum = 12000) {
+  // Fifty thousand characters is a soft transport target, not a transcript
+  // limit. A transcript longer than that is still sent in full; only the
+  // duplicated candidate metadata is reduced.
+  return Math.max(1800, Math.min(maximum,
+    50000 - String(transcript || '').length - String(fixedPayload || '').length - 4000));
+}
+
+function isClientReadyActionWording(value = '') {
+  const source = meetingMinutesAgentText(value, 1600);
+  if (!source || /^(?:and|but|so|yeah|yes|no|okay|ok|well|i(?:'ll| will| am|'m)|we(?:'ll| will| are|'re)|you(?:'ll| will| are|'re))\b/i.test(source)) return false;
+  return /^(?:accept|add|address|agree|analyse|analyze|arrange|assess|attend|book|build|calculate|check|circulate|clarify|close|complete|conduct|confirm|coordinate|create|decide|define|deliver|determine|develop|document|draft|email|establish|evaluate|finalise|finalize|finish|follow up|forward|generate|get|hold|identify|implement|inspect|investigate|issue|list|meet|monitor|obtain|organise|organize|plan|prepare|provide|record|resolve|review|revise|run|schedule|send|share|sign|submit|support|test|track|update|validate|verify|write)\b/i.test(source);
+}
+
+function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, actions, candidates }) {
+  const currentActions = compactMeetingAgentActionRegister(actions);
+  const openQuestions = compactMeetingAgentOpenQuestions(discussion);
+  const fixedPayload = JSON.stringify({ meetingDetails: details || {}, currentActions, openQuestions });
+  const candidateBudget = meetingAgentActionQualityCandidateBudget(transcript, fixedPayload, 12000);
+  const unresolved = meetingAgentActionAuditCandidates(candidates, candidateBudget, 40);
   return [
-    'ACTION_REFEREE',
+    'ACTION_CRITIC',
     'Perform a final evidence and completeness audit of drafted meeting minutes.',
     `Return valid JSON only with schemaVersion ${MEETING_AGENT_SCHEMA_VERSION}, discussion, actions, actionProposals, candidateDispositions, meetingObjectives and reviewFlags.`,
     'Return in actions only genuine missing actions. Put uncertain but evidence-grounded missing deliverables in actionProposals and classify supplied chains in candidateDispositions. Do not repeat or rewrite an existing action. Return discussion and meetingObjectives as empty arrays.',
@@ -8610,18 +8784,22 @@ function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, acti
     'Specifically recheck compound intentions, named joint commitments, passive obligations, scheduled future work and conditional commitments. Treat each distinct deliverable independently when deciding whether it is already covered.',
     'Use reviewFlags for a material contradiction, unsupported fact, unclear reference, owner/timing conflict or unresolved decision in the existing draft. Do not emit generic coverage warnings.',
     'Every proposed action and every flag must cite valid transcript evidence IDs.',
+    'The complete prepared transcript appears once below. Candidate records contain references into it and deliberately omit duplicated transcript excerpts.',
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
-    `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
-    `CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion || [])}`,
-    `CURRENT ACTION REGISTER:\n${JSON.stringify(actions || [])}`,
-    `REMAINING CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, 36000, 180))}`,
+    `CONFIRMED OPEN QUESTIONS:\n${JSON.stringify(openQuestions)}`,
+    `CURRENT ACTION REGISTER:\n${JSON.stringify(currentActions)}`,
+    `REMAINING CANDIDATES:\n${JSON.stringify(unresolved)}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
 }
 
 function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candidates }) {
+  const currentActions = compactMeetingAgentActionRegister(actions);
+  const fixedPayload = JSON.stringify({ meetingDetails: details || {}, currentActions });
+  const candidateBudget = meetingAgentActionQualityCandidateBudget(transcript, fixedPayload, 8000);
+  const unresolved = meetingAgentActionAuditCandidates(candidates, candidateBudget, 8);
   return [
-    'ACTION_REFEREE',
+    'ACTION_SALVAGE',
     'Adjudicate a small set of strong action candidates that all earlier meeting-minutes passes left unresolved.',
     'The prepared transcript is the sole authority. Candidate text is navigation material, never authority.',
     `Return valid JSON only with schemaVersion ${MEETING_AGENT_SCHEMA_VERSION}, discussion, actions, actionProposals, candidateDispositions, meetingObjectives and reviewFlags. Return discussion and meetingObjectives as empty arrays.`,
@@ -8630,10 +8808,20 @@ function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candid
     'A concrete offer to perform a visit followed immediately by another speaker assigning what to inspect during that visit is an accepted commitment chain, not an unaccepted hypothetical. Combine the visit and its assigned checks into one action, using only the actual cited details.',
     'Every returned action must use the standard owners, timing and evidenceIds structure. Do not infer owners or dates. Reject suggestions, status, completed work and meeting administration.',
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
-    `CURRENT PUBLISHED ACTIONS:\n${JSON.stringify(actions || [])}`,
-    `STRONG UNRESOLVED CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, 18000, 36))}`,
+    'The complete prepared transcript appears once below. Candidate records contain references into it and deliberately omit duplicated transcript excerpts.',
+    `CURRENT PUBLISHED ACTIONS:\n${JSON.stringify(currentActions)}`,
+    `STRONG UNRESOLVED CANDIDATES:\n${JSON.stringify(unresolved)}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
+}
+
+function meetingAgentInfrastructureFailure(error) {
+  if (!error) return false;
+  if (new Set([
+    'power_automate_empty_response', 'power_automate_timeout', 'power_automate_unreachable',
+    'power_automate_http_500', 'power_automate_http_502', 'power_automate_http_503', 'power_automate_http_504'
+  ]).has(error.code)) return true;
+  return Number(error.upstreamStatus || error.statusCode || 0) >= 500;
 }
 
 const meetingAgentCallQueue = [];
@@ -8943,11 +9131,50 @@ function discussionRefereeSufficiency(discussion = [], baseline = []) {
   };
 }
 
+function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = [], contract = {}) {
+  if (!result || typeof result !== 'object' || !Array.isArray(result.candidateDispositions)) return result;
+  const expected = new Set((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean));
+  const aliases = contract.stage === 'DISCUSSION_REFEREE' ? {
+    publish: 'core', keep: 'core', proposal: 'supporting', context: 'supporting', discard: 'reject'
+  } : {
+    core: 'publish', keep: 'publish', committed: 'publish', accepted_request: 'publish',
+    conditional_commitment: 'proposal', supporting: 'proposal', unaccepted_request: 'reject',
+    rejected: 'reject', status_only: 'completed', historical: 'completed', idea: 'suggestion', discard: 'reject'
+  };
+  const candidateDispositions = result.candidateDispositions
+    .map((item) => {
+      const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
+      const rawDisposition = meetingMinutesAgentText(item?.disposition || item?.classification, 80)
+        .toLowerCase().replace(/[\s-]+/g, '_');
+      return {
+        ...item,
+        candidateId,
+        disposition: aliases[rawDisposition] || rawDisposition
+      };
+    })
+    // An unexpected ID cannot affect a supplied candidate and is safe to
+    // discard. Missing or duplicate expected IDs are still repaired below.
+    .filter((item) => expected.has(item.candidateId));
+  return {
+    ...result,
+    candidateDispositions,
+    returnedDispositionCount: candidateDispositions.length,
+    dispositionCount: candidateDispositions.length
+  };
+}
+
 function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   const expectedIds = [...new Set((Array.isArray(candidates) ? candidates : [])
     .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean))];
   if (!expectedIds.length) return null;
   const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
+  const allowed = contract.stage === 'DISCUSSION_REFEREE'
+    ? new Set(['core', 'supporting', 'merge', 'reject'])
+    : new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
+  const dispositionValid = (item) => allowed.has(item?.disposition || item?.classification)
+    && Boolean(meetingMinutesAgentText(item?.reason, 500))
+    && Array.isArray(item?.evidenceIds);
   const counts = new Map();
   for (const disposition of dispositions) {
     const candidateId = meetingMinutesAgentText(disposition?.candidateId, 160);
@@ -8970,14 +9197,7 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
     || Number(declaredReturned) !== dispositions.length)) {
     message = 'The structured evidence referee accounting fields do not match the supplied and returned candidates.';
     code = 'invalid_referee_accounting';
-  } else if (route === 'structured_prompt' && dispositions.some((item) => {
-    const allowed = contract.stage === 'DISCUSSION_REFEREE'
-      ? new Set(['core', 'supporting', 'merge', 'reject'])
-      : new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
-    return !allowed.has(item?.disposition || item?.classification)
-      || !meetingMinutesAgentText(item?.reason, 500)
-      || !Array.isArray(item?.evidenceIds);
-  })) {
+  } else if (route === 'structured_prompt' && dispositions.some((item) => !dispositionValid(item))) {
     message = 'The structured evidence referee returned an incomplete or stage-incompatible candidate disposition.';
     code = 'invalid_referee_disposition';
   } else if (route === 'unknown') {
@@ -8991,13 +9211,12 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   error.retryable = true;
   error.missingCandidateIds = missing;
   error.unexpectedCandidateIds = unexpected;
+  error.validCandidateDispositions = dispositions.filter((item) => {
+    const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
+    return expectedIds.includes(candidateId) && counts.get(candidateId) === 1 && dispositionValid(item);
+  });
   if (code === 'invalid_referee_disposition') {
-    const allowed = contract.stage === 'DISCUSSION_REFEREE'
-      ? new Set(['core', 'supporting', 'merge', 'reject'])
-      : new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
-    const invalid = dispositions.filter((item) => !allowed.has(item?.disposition || item?.classification)
-      || !meetingMinutesAgentText(item?.reason, 500)
-      || !Array.isArray(item?.evidenceIds));
+    const invalid = dispositions.filter((item) => !dispositionValid(item));
     error.invalidCandidateIds = [...new Set(invalid
       .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean))];
     error.invalidReasons = invalid.map((item) => {
@@ -9043,9 +9262,11 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
         paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind
       });
+      const transformedResult = typeof options.transformResult === 'function'
+        ? options.transformResult(freshResult) : freshResult;
       const result = accumulatedResult && typeof options.combineResults === 'function'
-        ? options.combineResults(accumulatedResult, freshResult)
-        : freshResult;
+        ? options.combineResults(accumulatedResult, transformedResult)
+        : transformedResult;
       const reportedError = meetingAgentResultError(result);
       if (reportedError) throw reportedError;
       const validationError = typeof options.validateResult === 'function' ? options.validateResult(result) : null;
@@ -10664,6 +10885,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           ? Number(process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 90000)
           : undefined,
         responseKind: isRefereeCall ? 'referee' : undefined,
+        transformResult: callOptions.transformResult,
         validateResult: callOptions.validateResult,
         repairPrompt: callOptions.repairPrompt,
         combineResults: callOptions.combineResults,
@@ -10698,6 +10920,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         upstreamStatus: Number(error.upstreamStatus || 0) || undefined,
         errorCode: meetingMinutesAgentText(error.code, 120) || undefined,
         errorMessage: meetingMinutesAgentText(error.message, 300) || undefined,
+        invalidCandidateIds: Array.isArray(error.invalidCandidateIds) ? error.invalidCandidateIds.slice(0, 20) : undefined,
+        invalidReasons: Array.isArray(error.invalidReasons) ? error.invalidReasons.slice(0, 20) : undefined,
         callTimings: error.callTimings || []
       }));
       if (typeof callOptions.captureError === 'function') callOptions.captureError(error);
@@ -10851,7 +11075,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeContract = meetingMinutesAgentRefereeContract(stage, ensemble);
   const suppliedRefereeCandidates = refereeContract.candidates;
   const refereeBatchSize = Math.max(1, Math.min(8,
-    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 8)));
+    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 3)));
   const refereeBatches = meetingAgentRefereeBatches(suppliedRefereeCandidates, refereeBatchSize);
   const refereeBatchResults = [];
   const unresolvedRefereeIds = [];
@@ -10862,10 +11086,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     );
     let batchError = null;
     let batchResult = await call(`referee-batch-${batchIndex + 1}`, meetingMinutesAgentRefereePrompt({
-      stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [],
-      candidates: batchCandidates, salientDetails, requestId: batchContract.requestId
+      stage, transcript, sourceUnits: draft.sourceUnits, details,
+      discussion: stage === 'actions' ? (draft.discussion || []) : [],
+      candidates: batchCandidates, allCandidates: suppliedRefereeCandidates,
+      salientDetails, requestId: batchContract.requestId
     }), {
       optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: batchContract,
+      transformResult: (result) => normaliseMeetingAgentRefereeContractResult(
+        result, batchCandidates, batchContract
+      ),
       validateResult: (result) => meetingAgentDispositionError(result, batchCandidates, batchContract),
       captureError: (error) => { batchError = error; }
     });
@@ -10887,10 +11116,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       );
       let repairError = null;
       const repaired = await call(`referee-repair-${batchIndex + 1}`, meetingMinutesAgentRefereeRepairPrompt({
-        stage, transcript, details, discussion: stage === 'actions' ? (draft.discussion || []) : [],
-        candidates: repairCandidates, salientDetails, requestId: repairContract.requestId
+        stage, transcript, sourceUnits: draft.sourceUnits, details,
+        discussion: stage === 'actions' ? (draft.discussion || []) : [],
+        candidates: repairCandidates, allCandidates: suppliedRefereeCandidates,
+        salientDetails, requestId: repairContract.requestId
       }), {
         optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: repairContract,
+        transformResult: (result) => normaliseMeetingAgentRefereeContractResult(
+          result, repairCandidates, repairContract
+        ),
         validateResult: (result) => meetingAgentDispositionError(result, repairCandidates, repairContract),
         captureError: (error) => { repairError = error; }
       });
@@ -11076,7 +11310,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     };
   }
 
-  let refereeActions = referee.actions.filter((record) => !isVagueReconstructedAction(record.action));
+  let refereeActions = referee.actions.filter((record) => !isVagueReconstructedAction(record.action)
+    && isClientReadyActionWording(record.action));
   const sparseFloor = Math.max(2, Math.ceil(primary.actions.length * 0.5));
   if (primary.actions.length && refereeActions.length < sparseFloor) {
     degradedSources.push('The final action referee returned an implausibly sparse result; the evidence-normalised primary draft was retained for safety.');
@@ -11102,9 +11337,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // auditing refereeActions would instruct it not to return the very records
   // that need a second judgement before automatic publication.
   const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, automatic);
-  const criticParsed = remaining.length ? await call('critic', meetingMinutesAgentCriticPrompt({
-    transcript, details, discussion: draft.discussion || [], actions: automatic, candidates: remaining, salientDetails
-  }), { optional: true }) : null;
+  const criticCandidates = meetingAgentActionAuditCandidates(remaining, 12000, 40);
+  let criticError = null;
+  const criticPrompt = criticCandidates.length ? meetingMinutesAgentCriticPrompt({
+    transcript, details, discussion: draft.discussion || [], actions: automatic, candidates: criticCandidates
+  }) : '';
+  const criticParsed = criticCandidates.length ? await call('critic', criticPrompt, {
+    optional: true,
+    captureError: (error) => { criticError = error; }
+  }) : null;
   const critic = normaliseAgentResult(criticParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
   agentDeclaredProposals.push(...normaliseAgentDeclaredProposals(criticParsed || {}, draft.sourceUnits, { meetingDate: details.meetingDate }));
   agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(criticParsed || {}, draft.sourceUnits));
@@ -11129,12 +11370,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // proposal backstops below without consuming another Microsoft call.
     && Number(candidate.priority || 0) >= 8
     && ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate.dispositionHint))
-    .slice(0, 18);
+    .slice(0, Math.max(1, Math.min(12,
+      Number(process.env.MEETING_MINUTES_AGENT_SALVAGE_CANDIDATE_LIMIT || 8))));
   let salvage = { actions: [], reviewFlags: [] };
-  if (salvageCandidates.length) {
-    const salvageParsed = await call('salvage', meetingMinutesAgentSalvagePrompt({
+  let salvagePrompt = '';
+  const salvageSkippedAfterInfrastructureFailure = salvageCandidates.length > 0
+    && meetingAgentInfrastructureFailure(criticError);
+  if (salvageSkippedAfterInfrastructureFailure) {
+    degradedSources.push('The action salvage pass was not started because the preceding critic failed at the Power Automate transport boundary; evidence-backed candidates remain available as review proposals.');
+  } else if (salvageCandidates.length) {
+    salvagePrompt = meetingMinutesAgentSalvagePrompt({
       transcript, details, actions: automatic, candidates: salvageCandidates
-    }), { optional: true });
+    });
+    const salvageParsed = await call('salvage', salvagePrompt, { optional: true });
     salvage = normaliseAgentResult(salvageParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
     agentDeclaredProposals.push(...normaliseAgentDeclaredProposals(salvageParsed || {}, draft.sourceUnits, { meetingDate: details.meetingDate }));
     agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(salvageParsed || {}, draft.sourceUnits));
@@ -11240,7 +11488,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         agentProposalPromotionCount: safeProposalPromotions.length,
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
+        criticCandidateCount: criticCandidates.length,
+        criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
+        salvagePromptChars: salvagePrompt.length,
+        salvageSkippedAfterInfrastructureFailure,
         salvageAutomaticCount: salvageAutomatic.length,
         salvageProposalCount: salvageProposal.length,
         agentDeclaredProposalCount: agentDeclaredProposals.length,
@@ -11903,13 +12155,18 @@ router.stagedEvaluation = {
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
+  meetingAgentActionAuditCandidates,
+  meetingAgentInfrastructureFailure,
+  isClientReadyActionWording,
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
   meetingAgentRefereeRoute,
+  normaliseMeetingAgentRefereeContractResult,
   effectiveDiscussionRefereeDispositions,
   discussionRefereeSufficiency,
   meetingMinutesAgentRefereeContract,
+  meetingAgentRefereeEvidencePacket,
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,

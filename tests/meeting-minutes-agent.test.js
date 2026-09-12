@@ -17,13 +17,18 @@ const {
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
   meetingMinutesAgentSalvagePrompt,
+  meetingAgentActionAuditCandidates,
+  meetingAgentInfrastructureFailure,
+  isClientReadyActionWording,
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
   meetingAgentRefereeRoute,
+  normaliseMeetingAgentRefereeContractResult,
   effectiveDiscussionRefereeDispositions,
   discussionRefereeSufficiency,
   meetingMinutesAgentRefereeContract,
+  meetingAgentRefereeEvidencePacket,
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
@@ -164,6 +169,60 @@ test('structured referee validation binds request, stage and declared accounting
   }, candidates, contract)?.code, 'unexpected_candidate_dispositions');
 });
 
+test('action referee lifecycle labels are deterministically adapted to publication dispositions', () => {
+  const candidates = [
+    { candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }
+  ];
+  const contract = { requestId: 'request-action', stage: 'ACTION_REFEREE' };
+  const adapted = normaliseMeetingAgentRefereeContractResult({
+    requestId: contract.requestId, stage: contract.stage,
+    candidateCount: 3, dispositionCount: 3,
+    candidateDispositions: [
+      { candidateId: 'A1', disposition: 'accepted_request', reason: 'Accepted work.', evidenceIds: ['T1'] },
+      { candidateId: 'A2', disposition: 'committed', reason: 'Explicit commitment.', evidenceIds: ['T2'] },
+      { candidateId: 'A3', disposition: 'conditional_commitment', reason: 'Depends on approval.', evidenceIds: ['T3'] }
+    ]
+  }, candidates, contract);
+  assert.deepEqual(adapted.candidateDispositions.map((item) => item.disposition), ['publish', 'publish', 'proposal']);
+  assert.equal(adapted.returnedDispositionCount, 3);
+  assert.equal(meetingAgentDispositionError(adapted, candidates, contract), null);
+});
+
+test('referee validation retains valid rows so repair targets only malformed candidates', () => {
+  const candidates = [{ candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }];
+  const contract = { requestId: 'request-partial', stage: 'ACTION_REFEREE' };
+  const result = {
+    requestId: contract.requestId, stage: contract.stage,
+    expectedCandidateCount: 3, returnedDispositionCount: 3,
+    candidateDispositions: [
+      { candidateId: 'A1', disposition: 'publish', reason: 'Supported.', evidenceIds: ['T1'] },
+      { candidateId: 'A2', disposition: 'publish', reason: '', evidenceIds: ['T2'] },
+      { candidateId: 'A3', disposition: 'reject', reason: 'Not future work.', evidenceIds: ['T3'] }
+    ]
+  };
+  const error = meetingAgentDispositionError(result, candidates, contract);
+  assert.equal(error.code, 'invalid_referee_disposition');
+  assert.deepEqual(error.invalidCandidateIds, ['A2']);
+  assert.deepEqual(error.validCandidateDispositions.map((item) => item.candidateId), ['A1', 'A3']);
+});
+
+test('referee validation retains complete rows when another candidate is missing', () => {
+  const candidates = [{ candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }];
+  const contract = { requestId: 'request-missing', stage: 'ACTION_REFEREE' };
+  const result = {
+    requestId: contract.requestId, stage: contract.stage,
+    expectedCandidateCount: 3, returnedDispositionCount: 2,
+    candidateDispositions: [
+      { candidateId: 'A1', disposition: 'publish', reason: 'Supported.', evidenceIds: ['T1'] },
+      { candidateId: 'A3', disposition: 'reject', reason: 'Not future work.', evidenceIds: ['T3'] }
+    ]
+  };
+  const error = meetingAgentDispositionError(result, candidates, contract);
+  assert.equal(error.code, 'incomplete_candidate_dispositions');
+  assert.deepEqual(error.missingCandidateIds, ['A2']);
+  assert.deepEqual(error.validCandidateDispositions.map((item) => item.candidateId), ['A1', 'A3']);
+});
+
 test('referee repair requests only missing candidates and merges complete accounting', () => {
   const transcript = '[T0001] Alex: The release is blocked.\n[T0002] Priya: I will review it.';
   const candidates = [
@@ -174,7 +233,8 @@ test('referee repair requests only missing candidates and merges complete accoun
     stage: 'actions', transcript, details: {}, candidates: [candidates[1]], requestId: 'request-1'
   });
   const payload = refereePayloadFromPrompt(prompt);
-  assert.equal(payload.repairAttempt, true);
+  assert.equal(payload.repairAttempt, undefined, 'repair routing stays outside the canonical typed payload');
+  assert.match(prompt, /repair an incomplete candidate-accounting response/i);
   assert.deepEqual(payload.expectedCandidateIds, ['D2']);
   assert.match(payload.preparedTranscript, /T0001/);
 
@@ -205,6 +265,12 @@ test('repeated strict referee contract failures stop further batch calls', () =>
   assert.equal(shouldStopMeetingAgentRefereeBatches(
     { code: 'invalid_referee_output' }, { code: 'invalid_referee_output' }
   ), true);
+  assert.equal(shouldStopMeetingAgentRefereeBatches(
+    { code: 'power_automate_empty_response' }, { code: 'power_automate_empty_response' }
+  ), true);
+  assert.equal(shouldStopMeetingAgentRefereeBatches(
+    { code: 'power_automate_empty_response' }, { code: 'power_automate_timeout' }
+  ), false);
   assert.equal(shouldStopMeetingAgentRefereeBatches(
     { code: 'invalid_referee_output' }, { code: 'SystemError' }
   ), false);
@@ -293,6 +359,65 @@ test('referee validates the same bounded candidate set placed in its prompt', ()
   assert.deepEqual(payload.expectedCandidateIds, supplied.map((candidate) => candidate.candidateId));
   const dispositions = supplied.map((candidate) => ({ candidateId: candidate.candidateId, disposition: 'reject' }));
   assert.equal(meetingAgentDispositionError({ discussion: [], actions: [], candidateDispositions: dispositions }, supplied), null);
+});
+
+test('production referee payload uses cited evidence neighbourhoods and the canonical minimal contract', () => {
+  const sourceUnits = Array.from({ length: 60 }, (_, index) => ({
+    id: `T${String(index + 1).padStart(4, '0')}`,
+    sequence: index + 1,
+    speaker: index % 2 ? 'Priya' : 'Alex',
+    timestamp: `00:${String(index).padStart(2, '0')}`,
+    text: `Transcript unit ${index + 1} with deliberately repeated contextual wording ${'detail '.repeat(8)}`,
+    classification: 'keep'
+  }));
+  const allCandidates = Array.from({ length: 24 }, (_, index) => ({
+    candidateId: `candidate-${index + 1}`,
+    sourcePass: index % 2 ? 'primary' : 'deterministic',
+    recordType: 'action',
+    text: `Complete deliverable ${index + 1}.`,
+    owners: ['Alex'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' },
+    evidenceIds: [`T${String((index * 2) + 1).padStart(4, '0')}`],
+    sequence: (index * 2) + 1,
+    context: `Duplicated lifecycle context that must not be sent ${'again '.repeat(600)}`
+  }));
+  const batch = allCandidates.slice(8, 16);
+  const completeTranscript = sourceUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n');
+  const prompt = meetingMinutesAgentRefereePrompt({
+    stage: 'actions', transcript: completeTranscript, sourceUnits, details: {}, discussion: [],
+    candidates: batch, allCandidates, salientDetails: [], requestId: 'compact-referee-request'
+  });
+  const payload = refereePayloadFromPrompt(prompt);
+  assert.equal(payload.expectedCandidateCount, 8);
+  assert.equal(payload.candidateEnsemble.length, 8);
+  assert.deepEqual(payload.expectedCandidateIds, batch.map((candidate) => candidate.candidateId));
+  assert.match(payload.preparedTranscript, /\[T0017\]/);
+  assert.match(payload.preparedTranscript, /\[T0016\]/, 'preceding evidence neighbour is retained');
+  assert.match(payload.preparedTranscript, /\[T0018\]/, 'following evidence neighbour is retained');
+  assert.doesNotMatch(payload.preparedTranscript, /\[T0001\]/, 'unrelated transcript material is omitted');
+  assert.ok(!JSON.stringify(payload.candidateEnsemble).includes('Duplicated lifecycle context'));
+  assert.deepEqual(Object.keys(payload), [
+    'schemaVersion', 'requestId', 'stage', 'expectedCandidateCount',
+    'expectedCandidateIds', 'candidateEnsemble', 'preparedTranscript'
+  ]);
+  assert.ok(prompt.length < completeTranscript.length + JSON.stringify(allCandidates).length,
+    'the Referee request removes duplicated full-transcript and lifecycle content');
+  assert.ok(prompt.length < 30000, 'the compact Referee request stays comfortably below the observed failure range');
+});
+
+test('referee evidence packet remains ordered, includes neighbours and excludes removed passages', () => {
+  const units = Array.from({ length: 7 }, (_, index) => ({
+    id: `T${String(index + 1).padStart(4, '0')}`,
+    sequence: index + 1,
+    speaker: 'Speaker',
+    text: `Unit ${index + 1}`,
+    classification: index === 3 ? 'remove' : 'keep'
+  }));
+  const packet = meetingAgentRefereeEvidencePacket(units, [{ evidenceIds: ['T0003', 'T0006'] }], '', 1);
+  assert.deepEqual(packet.citedUnitIds, ['T0003', 'T0006']);
+  assert.deepEqual(packet.includedUnitIds, ['T0002', 'T0003', 'T0005', 'T0006', 'T0007']);
+  assert.doesNotMatch(packet.preparedTranscript, /T0004/);
+  assert.ok(packet.preparedTranscript.indexOf('T0003') < packet.preparedTranscript.indexOf('T0005'));
 });
 
 test('discussion referee batches cover topics before taking repeated rows from one topic', () => {
@@ -402,11 +527,11 @@ test('every website Agent prompt begins with its published routing marker', () =
   assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: ACTIONS\n/);
   assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'discussion', transcript, details: {}, current: {}, candidates: [] }), /^DISCUSSION_GAP_DISCOVERY\n/);
   assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: {}, candidates: [candidate] }), /^ACTION_DISCOVERY\n/);
-  assert.match(meetingMinutesAgentRefereePrompt({ stage: 'discussion', transcript, details: {}, candidates: [] }), /^DISCUSSION_REFEREE\n/);
-  assert.match(meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [candidate] }), /^ACTION_REFEREE\n/);
+  assert.match(meetingMinutesAgentRefereePrompt({ stage: 'discussion', transcript, details: {}, candidates: [] }), /^\[DISCUSSION_REFEREE\]\n/);
+  assert.match(meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [candidate] }), /^\[ACTION_REFEREE\]\n/);
   assert.match(meetingMinutesAgentAuditPrompt({ transcript, details: {}, actions: [], actionCandidates: [candidate] }), /^ACTION_REFEREE\n/);
-  assert.match(meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [candidate] }), /^ACTION_REFEREE\n/);
-  assert.match(meetingMinutesAgentSalvagePrompt({ transcript, details: {}, actions: [], candidates: [candidate] }), /^ACTION_REFEREE\n/);
+  assert.match(meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [candidate] }), /^ACTION_CRITIC\n/);
+  assert.match(meetingMinutesAgentSalvagePrompt({ transcript, details: {}, actions: [], candidates: [candidate] }), /^ACTION_SALVAGE\n/);
 });
 
 test('flat grounded Copilot discussion records are adapted to schema-v4 topic records', () => {
@@ -429,23 +554,28 @@ test('flat grounded Copilot discussion records are adapted to schema-v4 topic re
   assert.deepEqual(result.discussion[0].openQuestions[0].evidenceIds, ['T0003']);
 });
 
-test('hybrid recovery, referee and critic prompts keep the complete transcript last', () => {
+test('hybrid recovery and critic keep the transcript while Referee receives compact typed context', () => {
   const transcript = '[T0001] Priya: I will send the report tomorrow.';
   const candidate = { candidateId: 'c1', sourcePass: 'staged', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001'], record: { action: 'Send the report.', owners: ['Priya'], evidenceIds: ['T0001'] } };
   const discussion = [{ topic: 'Delivery', openQuestions: [{ text: 'Who will resolve the release route?', evidenceIds: ['T0001'] }] }];
   const recovery = meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: { actions: [] }, discussion, candidates: [candidate], salientDetails: [] });
   const referee = meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, discussion, candidates: [candidate], salientDetails: [] });
   const critic = meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion, actions: [], candidates: [candidate], salientDetails: [] });
-  for (const prompt of [recovery, critic]) {
+  assert.ok(recovery.endsWith(transcript));
+  assert.match(recovery, /schemaVersion 4/);
+  assert.match(recovery, /evidence/i);
+  assert.match(recovery, /CONFIRMED DISCUSSION CONTEXT/);
+  assert.match(recovery, /explicitly accepted responsibility to resolve/i);
+  for (const prompt of [critic]) {
     assert.ok(prompt.endsWith(transcript));
     assert.match(prompt, /schemaVersion 4/);
     assert.match(prompt, /evidence/i);
-    assert.match(prompt, /CONFIRMED DISCUSSION CONTEXT/);
+    assert.match(prompt, /CONFIRMED OPEN QUESTIONS/);
     assert.match(prompt, /explicitly accepted responsibility to resolve/i);
   }
   const payload = refereePayloadFromPrompt(referee);
   assert.equal(payload.preparedTranscript, transcript);
-  assert.deepEqual(payload.confirmedDiscussionContext, discussion);
+  assert.equal(payload.confirmedDiscussionContext, undefined);
   assert.equal(payload.expectedCandidateCount, 1);
 });
 
@@ -613,8 +743,64 @@ test('salvage adjudication is bounded to strong unresolved evidence and cannot i
   assert.ok(prompt.endsWith(transcript));
 });
 
+test('critic and salvage prompts keep the full transcript once without duplicated candidate context', () => {
+  const transcript = '[T0001] Morgan: Please review the audit plan.\n[T0002] Alex: I will review it by Friday.';
+  const repeatedContext = `${transcript}\n${'duplicated candidate evidence '.repeat(3000)}`;
+  const candidates = Array.from({ length: 14 }, (_, index) => ({
+    candidateId: `chain-${index}`, sourcePass: 'deterministic', recordType: 'action_chain',
+    text: `Review deliverable ${index}.`, evidenceIds: ['T0001', 'T0002'],
+    ownerHints: ['Alex'], cueKinds: ['request', 'acceptance', 'commitment'],
+    dispositionHint: 'accepted_request', priority: 14 - (index % 3), sequence: index + 1,
+    context: repeatedContext,
+    eventUnits: [{ id: 'T0001', text: repeatedContext }]
+  }));
+  const critic = meetingMinutesAgentCriticPrompt({
+    transcript, details: {}, discussion: [], actions: [], candidates
+  });
+  const salvage = meetingMinutesAgentSalvagePrompt({ transcript, details: {}, actions: [], candidates });
+  for (const prompt of [critic, salvage]) {
+    assert.ok(prompt.endsWith(transcript));
+    assert.equal(prompt.split('[T0001] Morgan: Please review the audit plan.').length - 1, 1);
+    assert.doesNotMatch(prompt, /duplicated candidate evidence/);
+    assert.doesNotMatch(prompt, /eventUnits/);
+    assert.doesNotMatch(prompt, /context/);
+    assert.ok(prompt.length < 50000);
+  }
+  assert.match(critic, /^ACTION_CRITIC/);
+  assert.match(salvage, /^ACTION_SALVAGE/);
+  assert.ok((salvage.match(/"candidateId"/g) || []).length <= 8);
+});
+
+test('action audit candidate packing prioritises accepted commitment chains', () => {
+  const packed = meetingAgentActionAuditCandidates([
+    { candidateId: 'weak', recordType: 'action', dispositionHint: 'unknown', priority: 1, sequence: 1, focusText: 'Maybe consider it.', evidenceIds: ['T0001'] },
+    { candidateId: 'strong', recordType: 'action_chain', dispositionHint: 'accepted_request', priority: 12, sequence: 2, text: 'Review the plan.', evidenceIds: ['T0002'], context: 'duplicated evidence' }
+  ], 1000, 1);
+  assert.equal(packed.length, 1);
+  assert.equal(packed[0].candidateId, 'strong');
+  assert.equal(packed[0].context, undefined);
+});
+
+test('transport failures prevent a redundant salvage request', () => {
+  assert.equal(meetingAgentInfrastructureFailure({ code: 'power_automate_empty_response' }), true);
+  assert.equal(meetingAgentInfrastructureFailure({ code: 'power_automate_http_502' }), true);
+  assert.equal(meetingAgentInfrastructureFailure({ upstreamStatus: 503 }), true);
+  assert.equal(meetingAgentInfrastructureFailure({ code: 'invalid_agent_json', statusCode: 422 }), false);
+});
+
+test('raw transcript fragments cannot be auto-published as formal action wording', () => {
+  assert.equal(isClientReadyActionWording("I'll try and reduce the standards down."), false);
+  assert.equal(isClientReadyActionWording("But you'll have the ISO standards."), false);
+  assert.equal(isClientReadyActionWording('Provide the applicable standards list once the scope is agreed.'), true);
+  assert.equal(isClientReadyActionWording('Hold a pre-audit review meeting.'), true);
+});
+
 test('later hybrid passes retain complete context and role hints for commitment threads', () => {
   const transcript = '[T0100] Morgan: Could you review the timeline?\n[T0101] Alex: Yes, I will revise it.';
+  const sourceUnits = [
+    { id: 'T0100', sequence: 100, speaker: 'Morgan', text: 'Could you review the timeline?', classification: 'keep' },
+    { id: 'T0101', sequence: 101, speaker: 'Alex', text: 'Yes, I will revise it.', classification: 'keep' }
+  ];
   const thread = {
     candidateId: 'thread-1', sourcePass: 'deterministic', recordType: 'action_thread',
     text: 'Could you review the timeline? Yes, I will revise it.',
@@ -634,11 +820,13 @@ test('later hybrid passes retain complete context and role hints for commitment 
     assert.match(prompt, /no single turn contains the whole action|individual utterances are incomplete|multi-turn exchange/i);
   }
   const refereePayload = refereePayloadFromPrompt(meetingMinutesAgentRefereePrompt({
-    stage: 'actions', transcript, details: {}, candidates: [thread], salientDetails: []
+    stage: 'actions', transcript, sourceUnits, details: {}, candidates: [thread], salientDetails: []
   }));
   assert.equal(refereePayload.candidateEnsemble[0].recordType, 'action_thread');
   assert.deepEqual(refereePayload.candidateEnsemble[0].ownerHints, ['Alex']);
-  assert.match(refereePayload.candidateEnsemble[0].context, /\[T0100\] Morgan: Could you review the timeline/);
+  assert.equal(refereePayload.candidateEnsemble[0].context, undefined, 'duplicated lifecycle prose is omitted');
+  assert.match(refereePayload.preparedTranscript, /\[T0100\] Morgan: Could you review the timeline/);
+  assert.match(refereePayload.preparedTranscript, /\[T0101\] Alex: Yes, I will revise it/);
 });
 
 test('an unresolved accepted reference becomes a joint-owner review proposal, not an automatic action', () => {
