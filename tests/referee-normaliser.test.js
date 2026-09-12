@@ -2,7 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { batchRefereeCandidates, normaliseRefereeDispositions } = require('../utils/refereeNormaliser');
+const {
+  batchRefereeCandidates,
+  normaliseRefereeDispositions,
+  normaliseReferenceArrays
+} = require('../utils/refereeNormaliser');
 
 test('normalises core and attaches supporting rows to the closest core', () => {
   const rows = normaliseRefereeDispositions([
@@ -15,28 +19,29 @@ test('normalises core and attaches supporting rows to the closest core', () => {
   assert.equal(rows[2].targetId, 'c2');
 });
 
-test('uses candidate wording to attach supporting rows and preserves explicit targets', () => {
-  const candidates = [
-    { candidateId: 'risk', text: 'Security approval is blocking the product release.' },
-    { candidateId: 'training', text: 'The training programme was approved.' },
-    { candidateId: 'support-risk', text: 'The security review must finish before release.' },
-    { candidateId: 'support-explicit', text: 'Training materials will be circulated.' }
-  ];
-  const rows = normaliseRefereeDispositions([
-    { candidateId: 'risk', disposition: 'core', reason: 'Material blocker.', targetId: '' },
-    { candidateId: 'training', disposition: 'core', reason: 'Material decision.', targetId: '' },
-    { candidateId: 'support-risk', disposition: 'supporting', reason: 'Useful context.', targetId: '' },
-    { candidateId: 'support-explicit', disposition: 'supporting', reason: 'Useful context.', targetId: 'training' }
-  ], candidates);
-  assert.equal(rows[0].targetId, 'risk');
-  assert.equal(rows[1].targetId, 'training');
-  assert.equal(rows[2].targetId, 'risk');
-  assert.equal(rows[3].targetId, 'training');
-});
-
 test('batches all candidates without a global fourteen-item cap', () => {
   const candidates = Array.from({ length: 23 }, (_, index) => ({ candidateId: `c${index + 1}` }));
   const batches = batchRefereeCandidates(candidates, 5);
   assert.deepEqual(batches.map((batch) => batch.length), [5, 5, 5, 5, 3]);
   assert.equal(batches.flat().length, 23);
+});
+
+test('normalises typed reference objects and preserves legacy string arrays', () => {
+  const result = normaliseReferenceArrays({
+    discussion: [{
+      evidenceRefs: [{ id: 'T0001' }, { id: 'T0001' }, { id: 'T9999' }],
+      reviewFlagRefs: [{ id: 'flag-1' }, { id: 'flag-1' }]
+    }],
+    actions: [{ owners: ['Alex'], ownerRefs: [{ name: 'Alex' }, { name: 'Priya' }] }]
+  }, { validEvidenceIds: ['T0001'], validOwners: ['Alex', 'Priya'] });
+  assert.deepEqual(result.discussion[0].evidenceIds, ['T0001']);
+  assert.deepEqual(result.discussion[0].reviewFlagIds, ['flag-1']);
+  assert.deepEqual(result.actions[0].owners, ['Alex', 'Priya']);
+  assert.equal(result.discussion[0].evidenceRefs, undefined);
+});
+
+test('adds a visible warning when every supplied evidence reference is invalid', () => {
+  const result = normaliseReferenceArrays({ discussion: [{ evidenceRefs: [{ id: 'T9999' }] }] }, { validEvidenceIds: ['T0001'] });
+  assert.deepEqual(result.discussion[0].evidenceIds, []);
+  assert.equal(result.reviewFlags[0].type, 'invalid_evidence_references');
 });

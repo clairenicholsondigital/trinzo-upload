@@ -47,7 +47,7 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { batchRefereeCandidates, normaliseRefereeOutput } = require('../utils/refereeNormaliser');
+const { batchRefereeCandidates, normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults, ownerSupported, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
@@ -6064,7 +6064,13 @@ function asStringArray(value) {
 }
 
 function normalizeReviewData(candidate, transcriptText = '') {
-  const source = candidate && typeof candidate === 'object' ? candidate : {};
+  const transcriptEvidenceIds = [
+    ...[...String(transcriptText || '').matchAll(/\bT\d{4}\b/g)].map((match) => match[0]),
+    ...(transcriptText ? prepareEvidence(transcriptText).events.map((event) => event.id) : [])
+  ];
+  const source = normaliseReferenceArrays(candidate && typeof candidate === 'object' ? candidate : {}, {
+    validEvidenceIds: transcriptEvidenceIds
+  });
   const refereeOutput = normaliseRefereeOutput(source);
 
   const normalized = {
