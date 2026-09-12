@@ -47,6 +47,7 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
+const { normaliseRefereeOutput } = require('../utils/refereeNormaliser');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults, ownerSupported, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
@@ -6022,6 +6023,7 @@ function asStringArray(value) {
 
 function normalizeReviewData(candidate, transcriptText = '') {
   const source = candidate && typeof candidate === 'object' ? candidate : {};
+  const refereeOutput = normaliseRefereeOutput(source);
 
   const normalized = {
     meetingTitle: asString(source.meetingTitle),
@@ -6049,7 +6051,8 @@ function normalizeReviewData(candidate, transcriptText = '') {
             deadline: asString(item?.deadline)
           }))
           .filter((item) => item.action || item.owner || item.deadline)
-      : []
+      : [],
+    ...(refereeOutput ? { refereeOutput } : {})
   };
 
   if (!normalized.meetingMinutes.length && Array.isArray(source.discussionPoints)) {
