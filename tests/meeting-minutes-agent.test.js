@@ -273,6 +273,7 @@ test('referee validates the same bounded candidate set placed in its prompt', ()
     candidateId: `D${index + 1}`,
     sourcePass: index % 2 ? 'deterministic' : 'primary',
     recordType: index % 5 === 0 ? 'decision' : 'discussion_point',
+    topic: `Material topic ${index + 1}`,
     text: `Material candidate ${index + 1} with enough descriptive wording to consume a realistic prompt budget.`,
     evidenceIds: [`T${String(index + 1).padStart(4, '0')}`],
     priority: 10 - (index % 10), sequence: index + 1
@@ -283,8 +284,8 @@ test('referee validates the same bounded candidate set placed in its prompt', ()
     requestId: 'bounded-request'
   });
   assert.ok(supplied.length < candidates.length);
-  assert.ok(supplied.length <= 14);
-  assert.ok(JSON.stringify(supplied).length <= 32000);
+  assert.equal(supplied.length, 24);
+  assert.ok(JSON.stringify(supplied).length <= 46000);
   for (const candidate of supplied) assert.match(prompt, new RegExp(`"candidateId":"${candidate.candidateId}"`));
   const payload = refereePayloadFromPrompt(prompt);
   assert.equal(payload.requestId, 'bounded-request');
@@ -308,7 +309,7 @@ test('discussion referee batches cover topics before taking repeated rows from o
     }))
   ];
   const supplied = meetingAgentRefereeCandidates('discussion', candidates);
-  assert.ok(supplied.length <= 14);
+  assert.ok(supplied.length <= 24);
   for (const topic of ['Scope', 'Security', 'Training', 'Logistics', 'Reporting']) {
     assert.ok(supplied.some((candidate) => candidate.topic === topic), `${topic} was omitted`);
   }
@@ -384,7 +385,7 @@ test('action referee batch retains polished records as well as lifecycle evidenc
     }))
   ];
   const supplied = meetingAgentRefereeCandidates('actions', candidates);
-  assert.ok(supplied.length <= 14);
+  assert.ok(supplied.length <= 24);
   assert.ok(supplied.some((candidate) => candidate.recordType === 'action'));
   assert.ok(supplied.some((candidate) => candidate.recordType === 'action_chain'));
   assert.ok(supplied.filter((candidate) => candidate.recordType === 'action').length >= 10);

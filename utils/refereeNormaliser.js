@@ -21,16 +21,28 @@ function similarity(left, right) {
  * Preserve a disposition-only Referee result as a valid result. Core rows are
  * their own propositions; supporting rows point to the nearest evidenced core.
  */
-function normaliseRefereeDispositions(dispositions = []) {
+function normaliseRefereeDispositions(dispositions = [], candidates = []) {
   const rows = Array.isArray(dispositions) ? dispositions : [];
+  const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => [text(candidate?.candidateId), candidate]).filter(([candidateId]) => candidateId));
   const cores = rows.filter((row) => text(row?.disposition).toLowerCase() === 'core');
   return rows.map((row, index) => {
     const disposition = text(row?.disposition).toLowerCase();
     const candidateId = text(row?.candidateId);
-    if (disposition === 'core') return { ...row, candidateId, targetId: candidateId };
+    const explicitTargetId = text(row?.targetId);
+    if (disposition === 'core') return { ...row, candidateId, targetId: explicitTargetId || candidateId };
     if (disposition !== 'supporting' || !cores.length) return { ...row, candidateId };
+    if (explicitTargetId) return { ...row, candidateId, targetId: explicitTargetId };
+    const candidate = candidatesById.get(candidateId);
     const best = cores
-      .map((core, coreIndex) => ({ core, coreIndex, score: similarity(row?.text || row?.reason, core?.text || core?.reason) }))
+      .map((core, coreIndex) => {
+        const coreCandidate = candidatesById.get(text(core?.candidateId));
+        return {
+          core, coreIndex,
+          score: similarity(candidate?.text || row?.text || row?.reason,
+            coreCandidate?.text || core?.text || core?.reason)
+        };
+      })
       .sort((a, b) => b.score - a.score || Math.abs(index - a.coreIndex) - Math.abs(index - b.coreIndex))[0];
     return { ...row, candidateId, targetId: text(best?.core?.candidateId) };
   });
@@ -45,11 +57,11 @@ function batchRefereeCandidates(candidates = [], batchSize = 5) {
   return batches;
 }
 
-function normaliseRefereeOutput(source = {}) {
+function normaliseRefereeOutput(source = {}, candidates = []) {
   if (!source || typeof source !== 'object' || !Array.isArray(source.candidateDispositions)) return null;
   return {
     ...source,
-    candidateDispositions: normaliseRefereeDispositions(source.candidateDispositions)
+    candidateDispositions: normaliseRefereeDispositions(source.candidateDispositions, candidates)
   };
 }
 

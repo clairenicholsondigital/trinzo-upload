@@ -47,7 +47,7 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { normaliseRefereeOutput } = require('../utils/refereeNormaliser');
+const { batchRefereeCandidates, normaliseRefereeOutput } = require('../utils/refereeNormaliser');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults, ownerSupported, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
@@ -8391,21 +8391,24 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
     // ledger remains available to the deterministic recovery path below.
     return balancedDiscussion(distinct(hybridCandidatePack(
       rows.filter((candidate) => ['discussion_point', 'decision', 'open_question'].includes(candidate?.recordType)),
-      28000, 60
-    )), 14).sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+      42000, 100
+    )), Math.max(14, Math.min(32,
+      Number(process.env.MEETING_MINUTES_AGENT_DISCUSSION_REFEREE_CANDIDATE_LIMIT || 24))))
+      .sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
   }
   // Preserve both polished action candidates and the strongest multi-turn
   // lifecycle evidence. If chains are allowed to consume the whole character
   // budget, the disposition-only response has nothing suitable to reconstruct
   // into formal action wording.
   const actions = distinct(hybridCandidatePack(
-    rows.filter((candidate) => candidate?.recordType === 'action'), 18000, 40
-  )).slice(0, 10);
+    rows.filter((candidate) => candidate?.recordType === 'action'), 30000, 60
+  )).slice(0, 16);
   const lifecycles = distinct(hybridCandidatePack(
-    rows.filter((candidate) => ['action_chain', 'action_thread'].includes(candidate?.recordType)), 10000, 20
-  )).slice(0, 4);
+    rows.filter((candidate) => ['action_chain', 'action_thread'].includes(candidate?.recordType)), 18000, 30
+  )).slice(0, 8);
   return [...actions, ...lifecycles]
-    .slice(0, 14)
+    .slice(0, Math.max(14, Math.min(32,
+      Number(process.env.MEETING_MINUTES_AGENT_ACTION_REFEREE_CANDIDATE_LIMIT || 24))))
     .sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
 }
 
@@ -8550,11 +8553,7 @@ function mergeMeetingAgentRefereeResults(previous = {}, repair = {}, contract = 
 }
 
 function meetingAgentRefereeBatches(candidates = [], batchSize = 5) {
-  const rows = Array.isArray(candidates) ? candidates : [];
-  const size = Math.max(1, Math.min(8, Number(batchSize) || 5));
-  const batches = [];
-  for (let index = 0; index < rows.length; index += size) batches.push(rows.slice(index, index + size));
-  return batches;
+  return batchRefereeCandidates(candidates, Math.max(1, Math.min(8, Number(batchSize) || 5)));
 }
 
 function shouldStopMeetingAgentRefereeBatches(primaryError, repairError) {
@@ -10852,7 +10851,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeContract = meetingMinutesAgentRefereeContract(stage, ensemble);
   const suppliedRefereeCandidates = refereeContract.candidates;
   const refereeBatchSize = Math.max(1, Math.min(8,
-    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 5)));
+    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 8)));
   const refereeBatches = meetingAgentRefereeBatches(suppliedRefereeCandidates, refereeBatchSize);
   const refereeBatchResults = [];
   const unresolvedRefereeIds = [];
@@ -10923,13 +10922,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     }
     if (batchResult) refereeBatchResults.push(batchResult);
   }
-  const refereeParsed = refereeBatchResults.length
+  const mergedRefereeResult = refereeBatchResults.length
     ? mergeBatchedMeetingAgentRefereeResults(refereeBatchResults, refereeContract)
     : {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
     candidateDispositions: [], reviewFlags: []
   };
+  const refereeParsed = normaliseRefereeOutput(mergedRefereeResult, suppliedRefereeCandidates)
+    || mergedRefereeResult;
   if (refereeBatchResults.length && !completedPasses.includes('referee')) completedPasses.push('referee');
   if (unresolvedRefereeIds.length) {
     degradedSources.push(`${unresolvedRefereeIds.length} referee candidate${unresolvedRefereeIds.length === 1 ? '' : 's'} remained unresolved; only those candidates use evidence-grounded fallback handling.`);
@@ -10991,7 +10992,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const baselineDiscussion = mergeHybridDiscussionTopics(
       primary.discussion, recovery?.discussion || []
     );
-    if (reconstructed.reconstructedTargetIds.length) {
+    if (reconstructed.reconstructedTargetIds.length
+      && Array.isArray(refereeParsed?.discussion) && refereeParsed.discussion.length) {
       degradedSources.push(`The discussion referee omitted ${reconstructed.reconstructedTargetIds.length} referenced primary record${reconstructed.reconstructedTargetIds.length === 1 ? '' : 's'}; the website rebuilt them from their evidence-backed candidates.`);
     }
     if (rawContractDiagnostics.undisposedCandidateCount) {
