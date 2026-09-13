@@ -175,6 +175,7 @@ const {
   actionCommitmentThreadInventory,
   actionCommitmentChainInventory,
   discussionCandidateInventory,
+  discussionAnchorInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
   discussionRecoveryNeeded,
@@ -8230,6 +8231,96 @@ function meetingMinutesAgentPromoteMaterialSupportingEnabled() {
   ));
 }
 
+function meetingMinutesAgentAnchoredDiscussionEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(
+    process.env.MEETING_MINUTES_AGENT_ANCHORED_DISCUSSION_V1 || '0'
+  ));
+}
+
+function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
+  const payload = {
+    requestId: crypto.randomUUID(),
+    stage: 'DISCUSSION_ANCHORED_DISCOVERY',
+    details: details || {},
+    reviewerEmphasis: meetingAgentSteerText(steer),
+    preparedTranscript: String(transcript || '').trim(),
+    anchors: (Array.isArray(anchors) ? anchors : []).map((anchor) => ({
+      anchorId: meetingMinutesAgentText(anchor?.anchorId, 180),
+      evidenceIds: (Array.isArray(anchor?.evidenceIds) ? anchor.evidenceIds : []).slice(0, 12),
+      window: meetingMinutesAgentText(anchor?.window, 2400),
+      cues: meetingMinutesAgentText(anchor?.cues, 300),
+      priority: Number(anchor?.priority || 0)
+    }))
+  };
+  return `[DISCUSSION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
+}
+
+function normaliseAnchoredDiscussionDiscovery(result = {}, anchors = [], sourceUnits = []) {
+  const expected = (Array.isArray(anchors) ? anchors : []).filter((anchor) => anchor?.anchorId);
+  const expectedIds = expected.map((anchor) => String(anchor.anchorId));
+  const rows = Array.isArray(result?.anchorResults) ? result.anchorResults : [];
+  const returnedIds = rows.map((row) => meetingMinutesAgentText(row?.anchorId, 180));
+  const counts = new Map(returnedIds.map((id) => [id, Number(returnedIds.filter((value) => value === id).length)]));
+  const invalidIds = expectedIds.filter((id) => counts.get(id) !== 1)
+    .concat(returnedIds.filter((id) => !expectedIds.includes(id)));
+  // The candidate IDs are the authoritative accounting contract. AI Builder
+  // occasionally serialises a correct set in a different order or misstates a
+  // redundant count field. Reorder the complete set here; only a genuinely
+  // missing, duplicate or unexpected ID warrants another model request.
+  const accountingValid = rows.length === expectedIds.length && invalidIds.length === 0;
+  if (!accountingValid) {
+    const error = new Error('Anchored discussion discovery returned incomplete candidate accounting.');
+    error.statusCode = 502;
+    error.code = 'invalid_anchored_discussion_accounting';
+    error.retryable = true;
+    error.invalidCandidateIds = [...new Set(invalidIds)];
+    throw error;
+  }
+  const validEvidence = new Set((Array.isArray(sourceUnits) ? sourceUnits : []).map((unit) => unit?.id).filter(Boolean));
+  const anchorById = new Map(expected.map((anchor) => [String(anchor.anchorId), anchor]));
+  const resultById = new Map(rows.map((row) => [String(row.anchorId), row]));
+  const topics = new Map();
+  for (const expectedId of expectedIds) {
+    const row = resultById.get(expectedId);
+    const recordType = meetingMinutesAgentText(row?.recordType, 60).toLowerCase();
+    const rawDisposition = meetingMinutesAgentText(row?.disposition, 40).toLowerCase();
+    const disposition = ({
+      keep: 'core', context: 'supporting', merge: 'supporting', discard: 'reject',
+      // AI Builder occasionally copies its recordType enum into disposition.
+      // A decision or material unresolved question is intrinsically core;
+      // ordinary discussion remains collapsed. This is a typed-field repair,
+      // not a content-specific inference.
+      decision: recordType === 'decision' ? 'core' : 'supporting',
+      open_question: recordType === 'open_question' ? 'core' : 'supporting',
+      discussion_point: 'supporting'
+    })[rawDisposition]
+      || (['core', 'supporting', 'reject'].includes(rawDisposition) ? rawDisposition : 'supporting');
+    if (disposition === 'reject') continue;
+    const anchor = anchorById.get(String(row.anchorId));
+    const allowedEvidence = new Set((anchor?.evidenceIds || []).filter((id) => validEvidence.has(id)));
+    const returnedEvidence = meetingMinutesAgentText(row?.evidenceCsv, 800)
+      .split(',').map((id) => id.trim()).filter((id) => allowedEvidence.has(id));
+    const evidenceIds = [...new Set(returnedEvidence.length ? returnedEvidence : [...allowedEvidence])];
+    const recordText = meetingMinutesAgentText(row?.text, 1200);
+    if (!recordText || !evidenceIds.length) continue;
+    const topicName = meetingMinutesAgentText(row?.topic, 240) || 'Discussion';
+    if (!topics.has(topicName)) topics.set(topicName, {
+      id: `topic-${topics.size + 1}`, topic: topicName, points: [], decisions: [], openQuestions: []
+    });
+    const record = {
+      id: String(row.anchorId), text: recordText, evidenceIds,
+      supportingDetails: [], reviewFlagIds: [], discoveryDisposition: disposition
+    };
+    if (recordType === 'decision') topics.get(topicName).decisions.push(record);
+    else if (recordType === 'open_question') topics.get(topicName).openQuestions.push(record);
+    else topics.get(topicName).points.push(record);
+  }
+  return {
+    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+    meetingObjectives: [], discussion: [...topics.values()], actions: [], reviewFlags: []
+  };
+}
+
 function flattenHybridDiscussion(discussion = []) {
   return (Array.isArray(discussion) ? discussion : []).flatMap((topic) => [
     ...(topic?.points || []).map((record) => ({ recordType: 'discussion_point', topic: topic.topic, record })),
@@ -8241,10 +8332,18 @@ function flattenHybridDiscussion(discussion = []) {
 function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
   const rows = [];
   for (const item of flattenHybridDiscussion(result.discussion)) {
+    const discoveryDisposition = meetingMinutesAgentText(item.record?.discoveryDisposition, 40).toLowerCase();
+    // Anchored discovery has already assessed every fixed evidence window. Keep
+    // that signal when building the ensemble: otherwise a material `core` row
+    // and secondary `supporting` context are both flattened to priority 5 and
+    // compete equally for the finite Referee batch.
+    const discoveryPriority = discoveryDisposition === 'core' ? 14
+      : discoveryDisposition === 'supporting' ? 3 : 5;
     rows.push({
       candidateId: crypto.createHash('sha256').update(`${sourcePass}|${item.recordType}|${item.topic}|${item.record?.text || ''}`).digest('hex').slice(0, 20),
       sourcePass, recordType: item.recordType, topic: item.topic || 'Discussion',
-      text: item.record?.text || '', evidenceIds: item.record?.evidenceIds || [], priority: 5,
+      text: item.record?.text || '', evidenceIds: item.record?.evidenceIds || [], priority: discoveryPriority,
+      ...(discoveryDisposition ? { dispositionHint: discoveryDisposition } : {}),
       record: item.record
     });
   }
@@ -9151,7 +9250,10 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isFlatDiscussionDiscoveryResult = options.responseKind === 'discussion_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.discussionCandidates);
-    if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult) {
+    const isAnchoredDiscussionDiscoveryResult = options.responseKind === 'anchored_discussion_discovery'
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.anchorResults);
+    if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult || isAnchoredDiscussionDiscoveryResult) {
       structured = candidate;
       break;
     }
@@ -9173,9 +9275,12 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   const parsedResult = structured;
   const flatDiscussionDiscovery = options.responseKind === 'discussion_discovery'
     && Array.isArray(parsedResult?.discussionCandidates);
+  const anchoredDiscussionDiscovery = options.responseKind === 'anchored_discussion_discovery'
+    && Array.isArray(parsedResult?.anchorResults);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !flatDiscussionDiscovery
+      && !anchoredDiscussionDiscovery
       && (!Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)))) {
     const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
     error.statusCode = 502;
@@ -9338,10 +9443,15 @@ function discussionRefereeSufficiency(discussion = [], baseline = []) {
 
 function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = [], contract = {}) {
   if (!result || typeof result !== 'object' || !Array.isArray(result.candidateDispositions)) return result;
-  const expected = new Set((Array.isArray(candidates) ? candidates : [])
-    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean));
+  const candidateById = new Map((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => [meetingMinutesAgentText(candidate?.candidateId, 160), candidate])
+    .filter(([candidateId]) => candidateId));
+  const expected = new Set(candidateById.keys());
   const aliases = contract.stage === 'DISCUSSION_REFEREE' ? {
-    publish: 'core', keep: 'core', proposal: 'supporting', context: 'supporting', discard: 'reject'
+    publish: 'core', keep: 'core', visible: 'core', primary: 'core', material: 'core',
+    proposal: 'supporting', context: 'supporting', secondary: 'supporting', non_core: 'supporting',
+    uncertain: 'supporting', unclear: 'supporting', duplicate: 'merge', merged: 'merge',
+    discard: 'reject', discarded: 'reject'
   } : {
     core: 'publish', keep: 'publish', committed: 'publish', accepted_request: 'publish',
     conditional_commitment: 'proposal', supporting: 'proposal', unaccepted_request: 'reject',
@@ -9352,10 +9462,26 @@ function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = []
       const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
       const rawDisposition = meetingMinutesAgentText(item?.disposition || item?.classification, 80)
         .toLowerCase().replace(/[\s-]+/g, '_');
+      const candidate = candidateById.get(candidateId);
+      const allowedDiscussion = new Set(['core', 'supporting', 'merge', 'reject']);
+      let disposition = aliases[rawDisposition] || rawDisposition;
+      let websiteNormalisedDisposition = false;
+      if (contract.stage === 'DISCUSSION_REFEREE' && !allowedDiscussion.has(disposition)
+        && candidate && Array.isArray(candidate.evidenceIds) && candidate.evidenceIds.length) {
+        // AI Builder occasionally emits an empty/free-form enum while still
+        // returning the correct candidate ID, reason and evidence. Retrying the
+        // whole reasoning step is unnecessary. Preserve a prior anchored hint
+        // when available; otherwise keep the row as collapsed context. This
+        // fallback can never promote an unclassified row into visible minutes.
+        disposition = ['core', 'supporting'].includes(candidate.dispositionHint)
+          ? candidate.dispositionHint : 'supporting';
+        websiteNormalisedDisposition = true;
+      }
       return {
         ...item,
         candidateId,
-        disposition: aliases[rawDisposition] || rawDisposition
+        disposition,
+        ...(websiteNormalisedDisposition ? { websiteNormalisedDisposition: true } : {})
       };
     })
     // An unexpected ID cannot affect a supplied candidate and is safe to
@@ -10638,6 +10764,11 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     const value = String(record?.text || '').trim();
     if (!value) return false;
     if (/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|you|your)\b/i.test(value)) return false;
+    // Direct second-person questions are transcript fragments, not formal
+    // propositions. Genuine unresolved matters are retained when expressed as
+    // an evidenced declarative question (for example, "Whether access will be
+    // available remained unresolved").
+    if (/^\s*(?:can|could|would|will|do|does|did|are|is|have|has)\s+you\b/i.test(value)) return false;
     if (/^\s*we\b/i.test(value)
       && !/^\s*we\s+(?:agreed|decided|confirmed|approved|concluded|will|must|need)/i.test(value)) return false;
     return true;
@@ -11365,9 +11496,18 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       return [];
     }).finally(() => { stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt; });
   const primaryDiscussionCandidates = stage === 'discussion' ? discussionCandidateInventory(draft.sourceUnits) : [];
-  const primaryPrompt = meetingMinutesAgentPrimaryPrompt({
-    stage, transcript, details, steer: draft.steer, salientDetails
-  });
+  const anchoredDiscussion = stage === 'discussion' && meetingMinutesAgentAnchoredDiscussionEnabled();
+  const discussionAnchors = anchoredDiscussion ? discussionAnchorInventory(draft.sourceUnits, {
+    maxAnchors: Number(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ANCHOR_LIMIT || 24),
+    maxChars: Number(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ANCHOR_BUDGET || 48000)
+  }) : [];
+  const primaryPrompt = anchoredDiscussion
+    ? meetingMinutesAgentAnchoredDiscussionPrompt({
+      transcript, details, anchors: discussionAnchors, steer: draft.steer
+    })
+    : meetingMinutesAgentPrimaryPrompt({
+      stage, transcript, details, steer: draft.steer, salientDetails
+    });
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
   let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
@@ -11381,10 +11521,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       // The dedicated AI Builder Discussion Prompt intentionally uses the
       // flat scalar contract which its typed schema editor can enforce. Adapt
       // that response before applying the normal schema-v4/evidence checks.
-      responseKind: 'discussion_discovery',
-      transformResult: (result) => normaliseReferenceArrays(result, {
-        validEvidenceIds: (draft.sourceUnits || []).map((unit) => unit?.id).filter(Boolean)
-      })
+      responseKind: anchoredDiscussion ? 'anchored_discussion_discovery' : 'discussion_discovery',
+      transformResult: anchoredDiscussion
+        ? (result) => normaliseAnchoredDiscussionDiscovery(result, discussionAnchors, draft.sourceUnits)
+        : (result) => normaliseReferenceArrays(result, {
+          validEvidenceIds: (draft.sourceUnits || []).map((unit) => unit?.id).filter(Boolean)
+        })
     } : {
       validateResult: (result) => meetingAgentEmptyDiscoveryError(
         result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
@@ -12647,6 +12789,8 @@ router.stagedEvaluation = {
   inferStagedMeetingType,
   meetingMinutesAgentPrompt,
   meetingMinutesAgentPrimaryPrompt,
+  meetingMinutesAgentAnchoredDiscussionPrompt,
+  normaliseAnchoredDiscussionDiscovery,
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,

@@ -29,6 +29,7 @@ const {
   actionCommitmentThreadInventory,
   actionCommitmentChainInventory,
   discussionCandidateInventory,
+  discussionAnchorInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
   discussionRecoveryNeeded,
@@ -66,6 +67,28 @@ test('agent details omit organisation and prepared transcript has stable source 
   assert.match(prepared, /^\[T0001\] Alex 00:01:02:/);
   assert.doesNotMatch(prepared, /Recording stopped/);
   assert.match(prepared, /\[T0003\]/);
+});
+
+test('discussion anchors are stable, ordered and carry tagged evidence windows', () => {
+  const units = normaliseSourceUnits(Array.from({ length: 40 }, (_, index) => ({
+    id: `T${String(index + 1).padStart(4, '0')}`,
+    sequence: index + 1,
+    speaker: `Speaker ${index + 1}`,
+    timestamp: `00:${String(index).padStart(2, '0')}:00`,
+    text: index % 5 === 0
+      ? `The group decided option ${index + 1} remains blocked until validation is complete.`
+      : `The team reviewed material workstream detail ${index + 1} and its current implications.`,
+    classification: 'keep', confidence: 0.95
+  })));
+  const first = discussionAnchorInventory(units, { maxAnchors: 24, maxChars: 48000 });
+  const second = discussionAnchorInventory(units, { maxAnchors: 24, maxChars: 48000 });
+  assert.deepEqual(second, first);
+  assert.equal(first.length, 24);
+  assert.deepEqual(first.map((anchor) => anchor.sequence), [...first.map((anchor) => anchor.sequence)].sort((a, b) => a - b));
+  assert.ok(first.every((anchor) => anchor.anchorId && anchor.evidenceIds.length && /\[T\d{4}\]/.test(anchor.window)));
+  assert.ok(first.every((anchor) => anchor.anchorId.length <= 20));
+  assert.deepEqual(first.flatMap((anchor) => anchor.evidenceIds), units.map((unit) => unit.id));
+  assert.equal(new Set(first.flatMap((anchor) => anchor.evidenceIds)).size, units.length);
 });
 
 test('MDSAP spoken variants are corrected before generation and never become review flags', () => {

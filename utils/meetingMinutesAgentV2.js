@@ -1308,6 +1308,60 @@ function discussionCandidateInventory(units = []) {
   return candidates;
 }
 
+/**
+ * Build stable, contiguous evidence anchors for the structured Discussion
+ * Discovery Prompt. Every retained source unit belongs to exactly one anchor.
+ *
+ * Earlier versions selected only cue-bearing discussion candidates. That made
+ * the pass look comprehensive while silently excluding ordinary-but-material
+ * factual passages (for example product scope or an agreed role described
+ * without decision language). Partitioning the complete prepared transcript
+ * removes that blind spot without adding meeting-specific vocabulary.
+ */
+function discussionAnchorInventory(units = [], options = {}) {
+  const rows = normaliseSourceUnits(units).filter(includedUnit);
+  const maxAnchors = Math.max(1, Number(options.maxAnchors || 24));
+  const maxChars = Math.max(4000, Number(options.maxChars || 48000));
+  if (!rows.length) return [];
+  const anchorCount = Math.min(maxAnchors, rows.length);
+  const candidateByFocusId = new Map(discussionCandidateInventory(rows)
+    .map((candidate) => [candidate.focusEvidenceId, candidate]));
+  const perAnchorBudget = Math.max(240, Math.floor(maxChars / anchorCount));
+  const anchors = [];
+  for (let index = 0; index < anchorCount; index += 1) {
+    const start = Math.floor((index * rows.length) / anchorCount);
+    const end = Math.floor(((index + 1) * rows.length) / anchorCount);
+    const group = rows.slice(start, Math.max(start + 1, end));
+    const perUnitBudget = Math.max(70, Math.floor(perAnchorBudget / group.length));
+    const window = group.map((unit) => {
+      const prefix = `[${unit.id}] ${unit.speaker}${unit.timestamp ? ` ${unit.timestamp}` : ''}: `;
+      return `${prefix}${text(unit.text, Math.max(40, perUnitBudget - prefix.length))}`;
+    }).join('\n');
+    const cueCandidates = group.map((unit) => candidateByFocusId.get(unit.id)).filter(Boolean);
+    const first = group[0];
+    const last = group[group.length - 1];
+    anchors.push({
+      // Keep IDs comfortably below AI Builder's occasionally enforced scalar
+      // length so it cannot truncate the final character and break accounting.
+      anchorId: stableId('DA', `${first.id}:${last.id}`),
+      evidenceIds: group.map((unit) => unit.id),
+      window: text(window, perAnchorBudget),
+      cues: [...new Set(cueCandidates.flatMap((candidate) => candidate.kindHints || []))].join(','),
+      priority: Math.max(0, ...cueCandidates.map((candidate) => Number(candidate.priority || 0))),
+      sequence: Number(first.sequence || start + 1)
+    });
+  }
+  return anchors.map((anchor) => {
+    return {
+      ...anchor,
+      // Keep the request bounded even when one transcript unit is unusually
+      // long. Evidence IDs remain complete and authoritative; only display
+      // text in the duplicated anchor packet is compacted.
+      window: text(anchor.window, perAnchorBudget)
+    };
+  });
+}
+
 function candidatePromptPack(candidates = [], options = {}) {
   const source = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.context);
   const rows = options.compact === true ? source.map((candidate) => ({
@@ -1886,6 +1940,7 @@ module.exports = {
   actionCommitmentThreadInventory,
   actionCommitmentChainInventory,
   discussionCandidateInventory,
+  discussionAnchorInventory,
   candidatePromptPack,
   uncoveredCandidateInventory,
   discussionRecoveryNeeded,

@@ -7,6 +7,8 @@ const api = require('../routes/api');
 const {
   meetingMinutesAgentPrompt,
   meetingMinutesAgentPrimaryPrompt,
+  meetingMinutesAgentAnchoredDiscussionPrompt,
+  normaliseAnchoredDiscussionDiscovery,
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
@@ -266,6 +268,29 @@ test('action referee lifecycle labels are deterministically adapted to publicati
   }, candidates, contract);
   assert.deepEqual(adapted.candidateDispositions.map((item) => item.disposition), ['publish', 'publish', 'proposal']);
   assert.equal(adapted.returnedDispositionCount, 3);
+  assert.equal(meetingAgentDispositionError(adapted, candidates, contract), null);
+});
+
+test('discussion referee enum drift is normalised without promoting an unclassified row', () => {
+  const candidates = [
+    { candidateId: 'D1', dispositionHint: 'core', evidenceIds: ['T1'] },
+    { candidateId: 'D2', evidenceIds: ['T2'] },
+    { candidateId: 'D3', evidenceIds: ['T3'] }
+  ];
+  const contract = { requestId: 'request-discussion', stage: 'DISCUSSION_REFEREE' };
+  const adapted = normaliseMeetingAgentRefereeContractResult({
+    requestId: contract.requestId, stage: contract.stage,
+    expectedCandidateCount: 3, returnedDispositionCount: 3,
+    candidateDispositions: [
+      { candidateId: 'D1', disposition: '', reason: 'Material.', evidenceIds: ['T1'] },
+      { candidateId: 'D2', disposition: 'secondary', reason: 'Context.', evidenceIds: ['T2'] },
+      { candidateId: 'D3', disposition: 'unexpected-value', reason: 'Unclear.', evidenceIds: ['T3'] }
+    ]
+  }, candidates, contract);
+  assert.deepEqual(adapted.candidateDispositions.map((item) => item.disposition), ['core', 'supporting', 'supporting']);
+  assert.equal(adapted.candidateDispositions[0].websiteNormalisedDisposition, true);
+  assert.equal(adapted.candidateDispositions[1].websiteNormalisedDisposition, undefined);
+  assert.equal(adapted.candidateDispositions[2].websiteNormalisedDisposition, true);
   assert.equal(meetingAgentDispositionError(adapted, candidates, contract), null);
 });
 
@@ -677,6 +702,9 @@ test('every website Agent prompt begins with its published routing marker', () =
   const transcript = '[T0001] Priya: I will send the report tomorrow.';
   const candidate = { candidateId: 'c1', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001'] };
   assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {} }), /^\[DISCUSSION_DISCOVERY\]\n/);
+  assert.match(meetingMinutesAgentAnchoredDiscussionPrompt({
+    transcript, details: {}, anchors: [{ anchorId: 'a1', evidenceIds: ['T0001'], window: transcript }]
+  }), /^\[DISCUSSION_ANCHORED_DISCOVERY\]\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {} }), /^ACTION_DISCOVERY\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'summary', transcript, details: {}, current: {} }), /^SUMMARY\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: DISCUSSION\n/);
@@ -688,6 +716,63 @@ test('every website Agent prompt begins with its published routing marker', () =
   assert.match(meetingMinutesAgentAuditPrompt({ transcript, details: {}, actions: [], actionCandidates: [candidate] }), /^ACTION_REFEREE\n/);
   assert.match(meetingMinutesAgentCriticPrompt({ transcript, details: {}, discussion: [], actions: [], candidates: [candidate] }), /^ACTION_CRITIC\n/);
   assert.match(meetingMinutesAgentSalvagePrompt({ transcript, details: {}, actions: [], candidates: [candidate] }), /^ACTION_SALVAGE\n/);
+});
+
+test('anchored discussion discovery requires exact accounting and trusts only anchor evidence', () => {
+  const anchors = [
+    { anchorId: 'A1', evidenceIds: ['T0001'], window: '[T0001] Alice: A material decision.' },
+    { anchorId: 'A2', evidenceIds: ['T0002'], window: '[T0002] Bob: Incidental context.' }
+  ];
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alice', text: 'A material decision.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Bob', text: 'Incidental context.', classification: 'keep' }
+  ];
+  const result = normaliseAnchoredDiscussionDiscovery({
+    expectedAnchorCount: 2, returnedAnchorCount: 2,
+    anchorResults: [
+      { anchorId: 'A1', disposition: 'core', recordType: 'decision', topic: 'Decision', text: 'A material decision.', evidenceCsv: 'T9999' },
+      { anchorId: 'A2', disposition: 'reject', recordType: 'discussion_point', topic: 'Other', text: 'Incidental context.', evidenceCsv: 'T0002' }
+    ]
+  }, anchors, units);
+  assert.equal(result.discussion.length, 1);
+  assert.deepEqual(result.discussion[0].decisions[0].evidenceIds, ['T0001']);
+  const reordered = normaliseAnchoredDiscussionDiscovery({
+    expectedAnchorCount: 0, returnedAnchorCount: 99,
+    anchorResults: [
+      { anchorId: 'A2', disposition: 'reject', recordType: 'discussion_point', topic: 'Other', text: 'Incidental context.', evidenceCsv: 'T0002' },
+      { anchorId: 'A1', disposition: 'core', recordType: 'decision', topic: 'Decision', text: 'A material decision.', evidenceCsv: 'T0001' }
+    ]
+  }, anchors, units);
+  assert.equal(reordered.discussion[0].decisions[0].id, 'A1');
+  const safelyCollapsed = normaliseAnchoredDiscussionDiscovery({
+    expectedAnchorCount: 2, returnedAnchorCount: 2,
+    anchorResults: [
+      { anchorId: 'A1', disposition: 'uncertain', recordType: 'discussion_point', topic: 'Decision', text: 'A material decision.', evidenceCsv: 'T0001' },
+      { anchorId: 'A2', disposition: 'reject', recordType: 'discussion_point', topic: 'Other', text: 'Incidental context.', evidenceCsv: 'T0002' }
+    ]
+  }, anchors, units);
+  assert.equal(safelyCollapsed.discussion[0].points[0].discoveryDisposition, 'supporting');
+  const repairedQuestion = normaliseAnchoredDiscussionDiscovery({
+    expectedAnchorCount: 2, returnedAnchorCount: 2,
+    anchorResults: [
+      { anchorId: 'A1', disposition: 'open_question', recordType: 'open_question', topic: 'Decision', text: 'Whether the material decision is approved remains unresolved.', evidenceCsv: 'T0001' },
+      { anchorId: 'A2', disposition: 'reject', recordType: 'discussion_point', topic: 'Other', text: 'Incidental context.', evidenceCsv: 'T0002' }
+    ]
+  }, anchors, units);
+  assert.equal(repairedQuestion.discussion[0].openQuestions[0].discoveryDisposition, 'core');
+  const prioritised = hybridCandidateLedgerFromResult({
+    discussion: [{ topic: 'Decision', points: [
+      { id: 'core', text: 'Material decision.', evidenceIds: ['T0001'], discoveryDisposition: 'core' },
+      { id: 'context', text: 'Secondary context.', evidenceIds: ['T0002'], discoveryDisposition: 'supporting' }
+    ], decisions: [], openQuestions: [] }]
+  }, 'primary');
+  assert.equal(prioritised.find((row) => row.text === 'Material decision.').priority, 14);
+  assert.equal(prioritised.find((row) => row.text === 'Material decision.').dispositionHint, 'core');
+  assert.equal(prioritised.find((row) => row.text === 'Secondary context.').priority, 3);
+  assert.throws(() => normaliseAnchoredDiscussionDiscovery({
+    expectedAnchorCount: 2, returnedAnchorCount: 1,
+    anchorResults: [{ anchorId: 'A1', disposition: 'core', recordType: 'decision', topic: 'Decision', text: 'A material decision.', evidenceCsv: 'T0001' }]
+  }, anchors, units), /incomplete candidate accounting/);
 });
 
 test('flat grounded Copilot discussion records are adapted to schema-v4 topic records', () => {
@@ -1312,6 +1397,24 @@ test('raw conversational fragments are not visible discussion propositions', () 
   ], decisions: [], openQuestions: [] }], [], units);
   const visible = compact.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
   assert.deepEqual(visible.map((record) => record.id), ['formal']);
+});
+
+test('direct second-person questions are not emitted as formal discussion propositions', () => {
+  const source = [
+    { id: 'T0001', speaker: 'Alex', text: 'Can you put them back?', classification: 'keep' },
+    { id: 'T0002', speaker: 'Priya', text: 'Whether the charts should be restored remained unresolved.', classification: 'keep' }
+  ];
+  const result = compactDiscussionPropositions([{
+    topic: 'Presentation content',
+    points: [
+      { id: 'fragment', text: 'Can you put them back?', evidenceIds: ['T0001'] },
+      { id: 'formal', text: 'Whether the charts should be restored remained unresolved.', evidenceIds: ['T0002'] }
+    ],
+    decisions: [], openQuestions: []
+  }], [], source);
+  assert.deepEqual(result.flatMap((topic) => topic.points.map((point) => point.text)), [
+    'Whether the charts should be restored remained unresolved.'
+  ]);
 });
 
 test('compact discussion does not merge conflicting quantities', () => {
