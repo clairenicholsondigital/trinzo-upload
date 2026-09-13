@@ -13,6 +13,7 @@ const {
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
   meetingAgentRefereeBatches,
+  meetingAgentRefereeBatchPlan,
   meetingAgentExecutionTelemetry,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
@@ -52,6 +53,8 @@ const {
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,
   refereeDiscussionContractDiagnostics,
+  discussionRefereeHasCompleteCandidateAccounting,
+  refereeClusterSupportingCandidates,
   isVagueReconstructedAction,
   isReviewableActionProposal,
   publishedActionCoversProposal,
@@ -338,6 +341,22 @@ test('referee candidates are split into bounded batches without changing order',
     candidates.map((candidate) => candidate.candidateId));
 });
 
+test('global discussion referee sees the complete ensemble while actions remain bounded', () => {
+  const candidates = Array.from({ length: 24 }, (_, index) => ({ candidateId: `C${index + 1}` }));
+  const globalDiscussion = meetingAgentRefereeBatchPlan('discussion', candidates, 6, true);
+  assert.equal(globalDiscussion.mode, 'global');
+  assert.deepEqual(globalDiscussion.batches.map((batch) => batch.length), [24]);
+  assert.deepEqual(globalDiscussion.batches[0], candidates);
+
+  const ordinaryDiscussion = meetingAgentRefereeBatchPlan('discussion', candidates, 6, false);
+  assert.equal(ordinaryDiscussion.mode, 'batched');
+  assert.deepEqual(ordinaryDiscussion.batches.map((batch) => batch.length), [6, 6, 6, 6]);
+
+  const actions = meetingAgentRefereeBatchPlan('actions', candidates, 6, true);
+  assert.equal(actions.mode, 'batched');
+  assert.deepEqual(actions.batches.map((batch) => batch.length), [6, 6, 6, 6]);
+});
+
 test('repeated strict referee contract failures stop further batch calls', () => {
   assert.equal(shouldStopMeetingAgentRefereeBatches(
     { code: 'invalid_referee_output' }, { code: 'invalid_referee_output' }
@@ -516,6 +535,24 @@ test('discussion referee batches cover topics before taking repeated rows from o
     assert.ok(supplied.some((candidate) => candidate.topic === topic), `${topic} was omitted`);
   }
   assert.ok(supplied.filter((candidate) => candidate.topic === 'Schedule').length < 12);
+});
+
+test('discussion referee clustering preserves paraphrases and overflow as grounded context', () => {
+  const candidates = [
+    { candidateId: 'scope-primary', sourcePass: 'primary', recordType: 'discussion_point', topic: 'Scope', text: 'The audit scope includes software validation.', evidenceIds: ['T0001'], priority: 9, sequence: 1 },
+    { candidateId: 'scope-recovery', sourcePass: 'recovery', recordType: 'discussion_point', topic: 'Scope', text: 'Software validation is included within the audit scope.', evidenceIds: ['T0001', 'T0002'], priority: 9, sequence: 2 },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      candidateId: `schedule-${index}`, sourcePass: 'primary', recordType: 'discussion_point',
+      topic: 'Schedule', text: `Distinct schedule consideration number ${index}.`,
+      evidenceIds: [`T${String(index + 10).padStart(4, '0')}`], priority: 5, sequence: index + 10
+    }))
+  ];
+  const supplied = meetingAgentRefereeCandidates('discussion', candidates);
+  assert.ok(supplied.length <= 24);
+  const scope = supplied.find((candidate) => candidate.topic === 'Scope');
+  assert.ok(scope.clusterMembers.some((member) => member.candidateId === 'scope-primary'
+    || member.candidateId === 'scope-recovery'));
+  assert.ok(supplied.some((candidate) => candidate.clusterMembers.length > 0));
 });
 
 test('discussion referee takes distinct propositions before a same-topic paraphrase', () => {
@@ -764,6 +801,77 @@ test('referee contract diagnostics expose dangling targets and undisposed candid
   }], candidates);
   assert.equal(diagnostics.undisposedCandidateCount, 1);
   assert.deepEqual(diagnostics.danglingTargetIds, ['d1']);
+});
+
+test('complete structured referee accounting suppresses the legacy omission backstop', () => {
+  assert.equal(discussionRefereeHasCompleteCandidateAccounting({
+    suppliedCandidateCount: 24,
+    returnedDispositionCount: 24,
+    uniqueDispositionCandidateCount: 24,
+    undisposedCandidateCount: 0,
+    unknownCandidateCount: 0,
+    duplicateCandidateCount: 0,
+    incompleteDispositionCount: 0
+  }), true);
+  assert.equal(discussionRefereeHasCompleteCandidateAccounting({
+    suppliedCandidateCount: 24,
+    returnedDispositionCount: 23,
+    uniqueDispositionCandidateCount: 23,
+    undisposedCandidateCount: 1,
+    unknownCandidateCount: 0,
+    duplicateCandidateCount: 0,
+    incompleteDispositionCount: 0
+  }), false);
+});
+
+test('authoritative referee supporting detail stays collapsed even when materially worded', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alex', text: 'The release decision is pending.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Priya', text: 'The significant risk is supplier approval.', classification: 'keep' }
+  ];
+  const discussion = [{
+    topic: 'Release',
+    points: [{ id: 'core', text: 'The release decision is pending.', evidenceIds: ['T0001'], supportingDetails: [] }],
+    decisions: [], openQuestions: []
+  }];
+  const compact = compactDiscussionPropositions(discussion, [], units, {
+    promoteMaterialSupporting: false,
+    supportingCandidates: [{
+      mergeTarget: 'core',
+      candidate: { candidateId: 'risk', topic: 'Release', text: 'The significant risk is supplier approval.', evidenceIds: ['T0002'] }
+    }]
+  });
+  assert.equal(compact[0].points.length, 1);
+  assert.equal(compact[0].points[0].supportingDetails.length, 1);
+});
+
+test('cluster members inherit their representative disposition target as supporting context', () => {
+  const candidates = [{
+    candidateId: 'core-candidate', recordType: 'decision', text: 'The release remains blocked.', evidenceIds: ['T0001'],
+    clusterMembers: [{ candidateId: 'detail-candidate', sourcePass: 'recovery', recordType: 'discussion_point', text: 'Supplier approval is outstanding.', evidenceIds: ['T0002'] }]
+  }];
+  const supporting = refereeClusterSupportingCandidates([
+    { candidateId: 'core-candidate', disposition: 'core', targetId: 'core-candidate', reason: 'Material blocker.', evidenceIds: ['T0001'] }
+  ], candidates);
+  assert.equal(supporting.length, 1);
+  assert.equal(supporting[0].mergeTarget, 'core-candidate');
+  assert.equal(supporting[0].candidate.candidateId, 'detail-candidate');
+});
+
+test('rejected cluster releases editorial overflow but not paraphrases or raw windows', () => {
+  const candidates = [{
+    candidateId: 'rejected', recordType: 'discussion_point', text: 'Routine administration.', evidenceIds: ['T0001'],
+    clusterMembers: [
+      { candidateId: 'overflow', sourcePass: 'primary', clusterRelation: 'overflow', text: 'A distinct evidenced risk remained unresolved.', evidenceIds: ['T0002'] },
+      { candidateId: 'paraphrase', sourcePass: 'primary', clusterRelation: 'paraphrase', text: 'Routine administrative context.', evidenceIds: ['T0001'] },
+      { candidateId: 'raw', sourcePass: 'deterministic', clusterRelation: 'overflow', text: 'Yeah so anyway.', evidenceIds: ['T0003'] }
+    ]
+  }];
+  const supporting = refereeClusterSupportingCandidates([
+    { candidateId: 'rejected', disposition: 'reject', reason: 'Routine administration.', evidenceIds: ['T0001'] }
+  ], candidates);
+  assert.deepEqual(supporting.map((item) => item.candidate.candidateId), ['overflow']);
+  assert.equal(supporting[0].mergeTarget, '');
 });
 
 test('vague reconstructed actions are rejected and implemented deliverables cover equivalent proposals', () => {

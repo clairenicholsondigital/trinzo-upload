@@ -14,6 +14,8 @@ const selection = (process.env.HYBRID_FEASIBILITY_CASES || '01_abbott_audit_kick
 const selected = new Set(selection);
 const runAll = selected.has('all');
 const concurrency = Math.max(1, Math.min(2, Number(process.env.HYBRID_FEASIBILITY_CONCURRENCY || 1)));
+const requestedStages = (process.env.HYBRID_FEASIBILITY_STAGES || 'discussion,actions,summary')
+  .split(',').map((value) => value.trim()).filter((value) => ['discussion', 'actions', 'summary'].includes(value));
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 const outputRoot = process.env.HYBRID_FEASIBILITY_OUTPUT || path.join(repo, 'benchmark-results', 'meeting-minutes-agent-hybrid-v4-feasibility', `${commit.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}`);
 const api = require(path.join(repo, 'routes/api')).stagedEvaluation;
@@ -63,7 +65,7 @@ async function runCase(testCase, index, total) {
   };
   if (typeof api.prewarmPrivateStagedCandidateLedgers === 'function') api.prewarmPrivateStagedCandidateLedgers(draft);
   const stages = {};
-  for (const stage of ['discussion', 'actions', 'summary']) {
+  for (const stage of requestedStages) {
     console.log(`[${index}/${total}] ${stage.toUpperCase()} ${testCase.id}`);
     const stageStarted = Date.now();
     const result = await api.generateHybridMeetingAgentStage(draft, stage);
