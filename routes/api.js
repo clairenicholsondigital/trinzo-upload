@@ -11896,7 +11896,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       : mergeHybridDiscussionTopics(refereeDiscussion, recoveredDiscussion);
     if (structuredReferee && !completeStructuredReferee && !compactSufficiency.sufficient
       && flattenHybridDiscussion(baselineDiscussion).length) {
-      finalDiscussion = compactEnabled
+      // An incomplete Referee must never bypass the normal evidence/client-
+      // readiness gate. The raw discovery draft can contain a record whose
+      // cited IDs were removed during grounding; serving baselineDiscussion
+      // directly previously allowed that uncited row into the UI precisely on
+      // the degraded path where validation matters most.
+      finalDiscussion = (compactEnabled || structuredReferee)
         ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits)
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
