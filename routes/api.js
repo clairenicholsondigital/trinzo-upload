@@ -11635,8 +11635,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
   const refereeContract = meetingMinutesAgentRefereeContract(stage, ensemble);
   const suppliedRefereeCandidates = refereeContract.candidates;
+  const configuredRefereeBatchSize = stage === 'discussion'
+    ? process.env.MEETING_MINUTES_AGENT_DISCUSSION_REFEREE_BATCH_SIZE
+    : process.env.MEETING_MINUTES_AGENT_ACTION_REFEREE_BATCH_SIZE;
   const refereeBatchSize = Math.max(1, Math.min(8,
-    Number(process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 6)));
+    Number(configuredRefereeBatchSize || process.env.MEETING_MINUTES_AGENT_REFEREE_BATCH_SIZE || 6)));
   const globalDiscussionReferee = stage === 'discussion'
     && meetingMinutesAgentGlobalDiscussionRefereeEnabled();
   const initialRefereePlan = meetingAgentRefereeBatchPlan(
