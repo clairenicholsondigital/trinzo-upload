@@ -676,12 +676,12 @@ const { actionCandidateInventory, normaliseAgentResult } = require('../utils/mee
 test('every website Agent prompt begins with its published routing marker', () => {
   const transcript = '[T0001] Priya: I will send the report tomorrow.';
   const candidate = { candidateId: 'c1', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001'] };
-  assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {} }), /^DISCUSSION_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {} }), /^\[DISCUSSION_DISCOVERY\]\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {} }), /^ACTION_DISCOVERY\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'summary', transcript, details: {}, current: {} }), /^SUMMARY\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: DISCUSSION\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: ACTIONS\n/);
-  assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'discussion', transcript, details: {}, current: {}, candidates: [] }), /^DISCUSSION_GAP_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'discussion', transcript, details: {}, current: {}, candidates: [] }), /^\[DISCUSSION_GAP_DISCOVERY\]\n/);
   assert.match(meetingMinutesAgentRecoveryPrompt({ stage: 'actions', transcript, details: {}, current: {}, candidates: [candidate] }), /^ACTION_DISCOVERY\n/);
   assert.match(meetingMinutesAgentRefereePrompt({ stage: 'discussion', transcript, details: {}, candidates: [] }), /^\[DISCUSSION_REFEREE\]\n/);
   assert.match(meetingMinutesAgentRefereePrompt({ stage: 'actions', transcript, details: {}, candidates: [candidate] }), /^\[ACTION_REFEREE\]\n/);
