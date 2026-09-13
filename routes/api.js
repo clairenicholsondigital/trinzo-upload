@@ -11562,11 +11562,34 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             batchResult = null;
           }
         } else {
-          unresolvedIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
+          const repairValid = Array.isArray(repairError?.validCandidateDispositions)
+            ? repairError.validCandidateDispositions : [];
+          const partialById = new Map([...retainedValid, ...repairValid]
+            .map((item) => [meetingMinutesAgentText(item?.candidateId, 160), item])
+            .filter(([candidateId]) => candidateId));
+          const partialUnresolved = batchCandidates.filter((candidate) =>
+            !partialById.has(meetingMinutesAgentText(candidate?.candidateId, 160)));
+          unresolvedIds.push(...partialUnresolved.map((candidate) => candidate.candidateId));
           const reason = repairError?.message || batchError?.message || 'The referee batch did not complete.';
-          degradedSources.push(`Referee ${batchLabel} batch remained unavailable for ${repairCandidates.length} candidate${repairCandidates.length === 1 ? '' : 's'} after targeted repair: ${reason}`);
+          degradedSources.push(`Referee ${batchLabel} batch remained unavailable for ${partialUnresolved.length} candidate${partialUnresolved.length === 1 ? '' : 's'} after targeted repair: ${reason}`);
+          if (partialById.size) {
+            // Preserve all contract-valid rows from both attempts. Downstream
+            // incomplete-accounting handling recovers only the unresolved
+            // evidence-backed subset. Returning this partial result also stops
+            // a failed global repair from causing four redundant Referee calls.
+            batchResult = {
+              schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+              requestId: batchContract.requestId,
+              stage: batchContract.stage,
+              expectedCandidateCount: batchContract.expectedCandidateIds.length,
+              returnedDispositionCount: partialById.size,
+              repairAttempted: true,
+              candidateDispositions: [...partialById.values()],
+              discussion: [], actions: [], actionProposals: [], reviewFlags: []
+            };
+          }
           const deterministicContractFailure = shouldStopMeetingAgentRefereeBatches(batchError, repairError);
-          if (deterministicContractFailure && batchIndex + 1 < plan.batches.length) {
+          if (!batchResult && deterministicContractFailure && batchIndex + 1 < plan.batches.length) {
             const skippedCandidates = plan.batches.slice(batchIndex + 1).flat();
             unresolvedIds.push(...skippedCandidates.map((candidate) => candidate.candidateId));
             degradedSources.push(`The remaining ${skippedCandidates.length} referee candidate${skippedCandidates.length === 1 ? '' : 's'} skipped repeated calls after the same strict contract failure occurred twice.`);
