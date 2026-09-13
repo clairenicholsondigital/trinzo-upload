@@ -8224,6 +8224,12 @@ function meetingMinutesAgentGlobalDiscussionRefereeEnabled() {
   ));
 }
 
+function meetingMinutesAgentPromoteMaterialSupportingEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(
+    process.env.MEETING_MINUTES_AGENT_PROMOTE_MATERIAL_SUPPORTING_V1 || '0'
+  ));
+}
+
 function flattenHybridDiscussion(discussion = []) {
   return (Array.isArray(discussion) ? discussion : []).flatMap((topic) => [
     ...(topic?.points || []).map((record) => ({ recordType: 'discussion_point', topic: topic.topic, record })),
@@ -8381,7 +8387,26 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
   };
   const discussionTopicKey = (candidate) => {
     const topic = meetingMinutesAgentText(candidate?.topic, 240).toLowerCase();
-    if (topic) return topic;
+    const value = `${topic} ${candidate?.text || ''}`.toLowerCase();
+    // Discovery passes often give the same workstream slightly different
+    // headings. Group those headings by general editorial facet before the
+    // finite Referee selection, otherwise 24 one-row topic labels can displace
+    // later material completely. This only affects coverage/attachment; the
+    // Referee still decides whether every representative is core or context.
+    const facets = [
+      ['risk-dependency', /\b(?:risks?|block(?:ed|er|ers|ing)?|depend(?:s|ent|ents|ency|encies)?|subject to|constraints?|unresolved|pending|awaiting)\b/],
+      ['access-confidentiality', /\b(?:access|confidential|sharepoint|document sharing|secure transmission|permission)\b/],
+      ['software-security', /\b(?:software|cyber|security|sbom|component|version|validation|debug)\b/],
+      ['scope-standards', /\b(?:scope|standard|regulat(?:ion|ory)|compliance|product|requirement|audit focus)\b/],
+      ['timing-logistics', /\b(?:schedule|timing|date|day|week|month|travel|hotel|site|logistics|calendar)\b/],
+      ['roles-responsibilities', /\b(?:role|responsib(?:le|ility)|owner|lead|staff|team|attendee)\b/]
+    ];
+    const matched = facets.filter(([, pattern]) => pattern.test(value)).map(([name]) => name);
+    if (matched.length) return matched.slice(0, 2).join('|');
+    if (topic) {
+      const tokens = [...discussionInformationTokens(topic)].slice(0, 3);
+      return tokens.length ? `topic:${tokens.join('-')}` : topic;
+    }
     // Raw deterministic windows have no editorial topic. Treat them as one
     // source group so they cannot consume most of the finite Referee batch at
     // the expense of already structured topic candidates.
@@ -8402,7 +8427,17 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
       const cluster = clusters.find((group) => group.some((other) => {
         const lexical = hybridContentTokenOverlap(other.text, candidate.text);
         const sharedEvidence = (other.evidenceIds || []).some((id) => evidence.has(id));
-        return lexical >= 0.56 || (sharedEvidence && lexical >= 0.28);
+        const leftNumbers = new Set(String(other.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
+        const rightNumbers = new Set(String(candidate.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
+        const incompatibleNumbers = leftNumbers.size && rightNumbers.size
+          && (leftNumbers.size !== rightNumbers.size
+            || [...leftNumbers].some((value) => !rightNumbers.has(value)));
+        if (incompatibleNumbers) return false;
+        const leftTopic = discussionInformationTokens(other.topic || '');
+        const rightTopic = discussionInformationTokens(candidate.topic || '');
+        const topicCompatible = !leftTopic.size || !rightTopic.size
+          || [...leftTopic].some((token) => rightTopic.has(token));
+        return (topicCompatible && lexical >= 0.56) || (sharedEvidence && lexical >= 0.28);
       }));
       if (cluster) cluster.push(candidate);
       else clusters.push([candidate]);
@@ -8712,6 +8747,10 @@ function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     requestId: contract.requestId,
     stage: contract.stage,
+    // The published structured Referee has an explicit subset-repair mode.
+    // Without this marker it can interpret a one-candidate repair payload as
+    // another ordinary referee run and return an empty/default disposition.
+    repairAttempt: true,
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
     candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
@@ -8760,6 +8799,18 @@ function mergeMeetingAgentRefereeResults(previous = {}, repair = {}, contract = 
     ]),
     reviewFlags: mergeMeetingAgentFlags(previous?.reviewFlags || [], repair?.reviewFlags || [])
   };
+}
+
+function meetingAgentRefereeRepairCandidates(candidates = [], validDispositions = []) {
+  const retainedValidIds = new Set((Array.isArray(validDispositions) ? validDispositions : [])
+    .map((item) => meetingMinutesAgentText(item?.candidateId, 160))
+    .filter(Boolean));
+  const supplied = Array.isArray(candidates) ? candidates : [];
+  return retainedValidIds.size
+    ? supplied.filter((candidate) => !retainedValidIds.has(
+      meetingMinutesAgentText(candidate?.candidateId, 160)
+    ))
+    : supplied;
 }
 
 function meetingAgentRefereeBatches(candidates = [], batchSize = 5) {
@@ -9529,6 +9580,11 @@ const privateStagedQueue = [];
 
 function drainPrivateStagedQueue() {
   while (privateStagedActive < PRIVATE_STAGED_MAX_CONCURRENCY && privateStagedQueue.length) {
+    // Discussion is the foreground stage immediately after upload. Do not let
+    // speculative action prewarming for an earlier draft starve discussion
+    // coverage for another user. Equal-priority jobs retain FIFO ordering.
+    privateStagedQueue.sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0)
+      || Number(left.queuedAt || 0) - Number(right.queuedAt || 0));
     const job = privateStagedQueue.shift();
     privateStagedActive += 1;
     Promise.resolve().then(job.task).then(job.resolve, job.reject).finally(() => {
@@ -9538,9 +9594,9 @@ function drainPrivateStagedQueue() {
   }
 }
 
-function withPrivateStagedCandidateSlot(task) {
+function withPrivateStagedCandidateSlot(task, priority = 0) {
   return new Promise((resolve, reject) => {
-    privateStagedQueue.push({ task, resolve, reject });
+    privateStagedQueue.push({ task, resolve, reject, priority, queuedAt: Date.now() });
     drainPrivateStagedQueue();
   });
 }
@@ -9551,7 +9607,10 @@ function startPrivateStagedCandidateLedger(draft, stage) {
   const existing = privateStagedCandidateCache.get(key);
   if (existing) return existing.promise;
   const entry = { expiresAt: Date.now() + PRIVATE_STAGED_CACHE_TTL_MS, promise: null };
-  entry.promise = withPrivateStagedCandidateSlot(() => buildPrivateStagedCandidateLedger(draft, stage)).catch((error) => {
+  entry.promise = withPrivateStagedCandidateSlot(
+    () => buildPrivateStagedCandidateLedger(draft, stage),
+    stage === 'discussion' ? 2 : 1
+  ).catch((error) => {
     // Failed work is not cached: a later stage/rerun must be able to retry it.
     if (privateStagedCandidateCache.get(key) === entry) privateStagedCandidateCache.delete(key);
     throw error;
@@ -9575,11 +9634,13 @@ async function awaitPrivateStagedCandidateLedger(draft, stage, maxWaitMs = 12000
 }
 
 function prewarmPrivateStagedCandidateLedgers(draft) {
-  for (const stage of ['discussion', 'actions']) {
-    startPrivateStagedCandidateLedger(draft, stage).catch((error) => {
-      console.warn(JSON.stringify({ event: 'meeting_agent_staged_prewarm', stage, ok: false, message: error.message }));
-    });
-  }
+  // Start only the stage the user is about to request. Action prewarming starts
+  // after the discussion draft is ready, when review time can hide its cost.
+  // Starting both here allowed speculative action work to block another
+  // transcript's foreground discussion on the deliberately serial worker.
+  startPrivateStagedCandidateLedger(draft, 'discussion').catch((error) => {
+    console.warn(JSON.stringify({ event: 'meeting_agent_staged_prewarm', stage: 'discussion', ok: false, message: error.message }));
+  });
 }
 
 function meetingAgentDraftPayload(draft = {}) {
@@ -11310,9 +11371,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
   let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
-    validateResult: (result) => meetingAgentEmptyDiscoveryError(
-      result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
-    )
+    // A valid empty discussion response is a discovery miss, not a transport
+    // failure. Repeating the identical request has proved both slow and
+    // stochastic; the dedicated gap pass and deterministic ledger are the
+    // appropriate recovery path. Actions retain the stricter empty-result
+    // validation because their publication gate has different consequences.
+    ...(stage === 'discussion' ? { maxAttempts: 2 } : {
+      validateResult: (result) => meetingAgentEmptyDiscoveryError(
+        result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
+      )
+    })
   }), stagedPromise]);
   if (stage === 'discussion' && !cachedStaged.length && stagedJoinPending && !stagedAll.length) {
     // Discussion completeness benefits from the private staged comparison.
@@ -11340,6 +11408,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     candidateDispositions: [], reviewFlags: []
   };
   const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+  if (stage === 'discussion' && !flattenHybridDiscussion(primary.discussion).length) {
+    degradedSources.push('Primary discussion discovery returned no grounded propositions; deterministic evidence and gap recovery were used without repeating the same request.');
+  }
   const primaryDeclaredProposals = stage === 'actions'
     ? normaliseAgentDeclaredProposals(primaryParsed, draft.sourceUnits, { meetingDate: details.meetingDate })
     : [];
@@ -11384,9 +11455,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             })))
         })
       } : {}),
-      validateResult: (result) => meetingAgentEmptyDiscoveryError(
-        result, stage, recoveryDecision.uncovered, draft.sourceUnits, { meetingDate: details.meetingDate }
-      )
+      // A valid empty discussion recovery result means the dedicated gap pass
+      // found no additional grounded proposition. Accept it and continue to
+      // the Referee instead of paying for repeated identical calls. Action
+      // recovery remains strict because a missed commitment has a different
+      // publication risk.
+      ...(stage === 'discussion' ? {} : {
+        validateResult: (result) => meetingAgentEmptyDiscoveryError(
+          result, stage, recoveryDecision.uncovered, draft.sourceUnits, { meetingDate: details.meetingDate }
+        )
+      })
     });
     if (recoveryParsed) {
       recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
@@ -11441,18 +11519,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           captureError: (error) => { batchError = error; }
         });
       if (!batchResult) {
-        const invalidIds = new Set([
-          ...(Array.isArray(batchError?.missingCandidateIds) ? batchError.missingCandidateIds : []),
-          ...(Array.isArray(batchError?.invalidCandidateIds) ? batchError.invalidCandidateIds : [])
-        ]);
         const retainedValid = Array.isArray(batchError?.validCandidateDispositions)
           ? batchError.validCandidateDispositions : [];
         // A strict error normally carries no partial Referee output. In that
         // case retry the entire set: repairing only named rows would silently
         // lose valid rows which never reached Node.
-        const repairCandidates = invalidIds.size && retainedValid.length
-          ? batchCandidates.filter((candidate) => invalidIds.has(candidate.candidateId))
-          : batchCandidates;
+        // When partial output is available, derive the repair subset from the
+        // complement of rows which passed *all* contract checks. An output can
+        // contain a missing ID and malformed rows simultaneously; selecting
+        // only the first reported error class leaves the malformed rows absent
+        // after merge and needlessly triggers the old multi-batch fallback.
+        const repairCandidates = meetingAgentRefereeRepairCandidates(batchCandidates, retainedValid);
         const repairContract = meetingMinutesAgentRefereeContract(
           stage, repairCandidates, `${batchContract.requestId}:repair`
         );
@@ -11628,7 +11705,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const compactPreview = (compactEnabled || compactShadowEnabled || structuredReferee)
       ? compactDiscussionPropositions(refereeDiscussion, recoveredDiscussion, draft.sourceUnits, {
         supportingCandidates,
+        // The Referee remains authoritative by default. A separately gated
+        // deterministic marginal-information pass can recover a genuinely
+        // material proposition which it labelled as context, without exposing
+        // ordinary supporting detail or requiring another AI call.
         promoteMaterialSupporting: !completeStructuredReferee
+          || meetingMinutesAgentPromoteMaterialSupportingEnabled()
       })
       : null;
     const measuredSufficiency = discussionRefereeSufficiency(compactPreview || [], baselineDiscussion);
@@ -11656,6 +11738,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       flattenHybridDiscussion(finalDiscussion).map((item) => ({ ...item.record, _recordType: item.recordType })),
       [], supportingRecords
     );
+    // The user now has a discussion draft to review. Use that review interval
+    // to prepare the private action candidate source without delaying upload or
+    // competing with foreground discussion work.
+    startPrivateStagedCandidateLedger(draft, 'actions').catch((error) => {
+      console.warn(JSON.stringify({ event: 'meeting_agent_staged_prewarm', stage: 'actions', ok: false, message: error.message }));
+    });
     return {
       changes: {
         discussion: finalDiscussion, meetingObjectives: objectives, candidateLedger,
@@ -12532,6 +12620,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
+  meetingAgentRefereeRepairCandidates,
   meetingAgentRefereeBatches,
   meetingAgentRefereeBatchPlan,
   meetingAgentExecutionTelemetry,

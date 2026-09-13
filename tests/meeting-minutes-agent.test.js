@@ -12,6 +12,7 @@ const {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
+  meetingAgentRefereeRepairCandidates,
   meetingAgentRefereeBatches,
   meetingAgentRefereeBatchPlan,
   meetingAgentExecutionTelemetry,
@@ -303,6 +304,27 @@ test('referee validation retains complete rows when another candidate is missing
   assert.deepEqual(error.validCandidateDispositions.map((item) => item.candidateId), ['A1', 'A3']);
 });
 
+test('referee repair includes missing and malformed rows while retaining every valid row', () => {
+  const candidates = [{ candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }];
+  const contract = { requestId: 'request-mixed', stage: 'DISCUSSION_REFEREE' };
+  const result = {
+    requestId: contract.requestId, stage: contract.stage,
+    expectedCandidateCount: 3, returnedDispositionCount: 2,
+    candidateDispositions: [
+      { candidateId: 'A1', disposition: 'core', reason: 'Material.', evidenceIds: ['T1'] },
+      { candidateId: 'A2', disposition: 'other', reason: 'Invalid enum.', evidenceIds: ['T2'] }
+    ]
+  };
+  const error = meetingAgentDispositionError(result, candidates, contract);
+  assert.equal(error.code, 'incomplete_candidate_dispositions');
+  assert.deepEqual(error.validCandidateDispositions.map((item) => item.candidateId), ['A1']);
+  assert.deepEqual(
+    meetingAgentRefereeRepairCandidates(candidates, error.validCandidateDispositions)
+      .map((item) => item.candidateId),
+    ['A2', 'A3']
+  );
+});
+
 test('referee repair requests only missing candidates and merges complete accounting', () => {
   const transcript = '[T0001] Alex: The release is blocked.\n[T0002] Priya: I will review it.';
   const candidates = [
@@ -313,7 +335,7 @@ test('referee repair requests only missing candidates and merges complete accoun
     stage: 'actions', transcript, details: {}, candidates: [candidates[1]], requestId: 'request-1'
   });
   const payload = refereePayloadFromPrompt(prompt);
-  assert.equal(payload.repairAttempt, undefined, 'repair routing stays outside the canonical typed payload');
+  assert.equal(payload.repairAttempt, true, 'the Referee must enter its explicit subset-repair mode');
   assert.match(prompt, /repair an incomplete candidate-accounting response/i);
   assert.deepEqual(payload.expectedCandidateIds, ['D2']);
   assert.match(payload.preparedTranscript, /T0001/);
@@ -518,7 +540,7 @@ test('referee evidence packet remains ordered, includes neighbours and excludes 
 
 test('discussion referee batches cover topics before taking repeated rows from one topic', () => {
   const candidates = [
-    ...Array.from({ length: 12 }, (_, index) => ({
+    ...Array.from({ length: 30 }, (_, index) => ({
       candidateId: `schedule-${index}`, sourcePass: 'primary', recordType: 'discussion_point',
       topic: 'Schedule', text: `Schedule detail ${index} for week ${index + 1}.`,
       evidenceIds: [`T${String(index + 1).padStart(4, '0')}`], priority: 5, sequence: index + 1
@@ -534,7 +556,7 @@ test('discussion referee batches cover topics before taking repeated rows from o
   for (const topic of ['Scope', 'Security', 'Training', 'Logistics', 'Reporting']) {
     assert.ok(supplied.some((candidate) => candidate.topic === topic), `${topic} was omitted`);
   }
-  assert.ok(supplied.filter((candidate) => candidate.topic === 'Schedule').length < 12);
+  assert.ok(supplied.filter((candidate) => candidate.topic === 'Schedule').length < 30);
 });
 
 test('discussion referee clustering preserves paraphrases and overflow as grounded context', () => {
@@ -553,6 +575,26 @@ test('discussion referee clustering preserves paraphrases and overflow as ground
   assert.ok(scope.clusterMembers.some((member) => member.candidateId === 'scope-primary'
     || member.candidateId === 'scope-recovery'));
   assert.ok(supplied.some((candidate) => candidate.clusterMembers.length > 0));
+});
+
+test('discussion referee keeps overflow from differently named topics in the same material facet', () => {
+  const candidates = Array.from({ length: 30 }, (_, index) => ({
+    candidateId: `risk-${index}`,
+    sourcePass: 'primary',
+    recordType: 'discussion_point',
+    topic: `Generated heading ${index}`,
+    text: `Material risk ${index} concerns dependency ${index} and requires a distinct response.`,
+    evidenceIds: [`T${String(index + 1).padStart(4, '0')}`],
+    priority: 8,
+    sequence: index + 1
+  }));
+  const supplied = meetingAgentRefereeCandidates('discussion', candidates);
+  const represented = new Set(supplied.flatMap((candidate) => [
+    candidate.candidateId,
+    ...(candidate.clusterMembers || []).map((member) => member.candidateId)
+  ]));
+  assert.equal(supplied.length, 24);
+  assert.equal(represented.size, 30, 'the Referee limit must not make later material disappear');
 });
 
 test('discussion referee takes distinct propositions before a same-topic paraphrase', () => {
