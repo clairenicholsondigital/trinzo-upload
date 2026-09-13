@@ -8237,6 +8237,12 @@ function meetingMinutesAgentAnchoredDiscussionEnabled() {
   ));
 }
 
+function meetingMinutesAgentAnchoredActionEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(
+    process.env.MEETING_MINUTES_AGENT_ANCHORED_ACTION_V1 || '0'
+  ));
+}
+
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
   const payload = {
     requestId: crypto.randomUUID(),
@@ -8318,6 +8324,79 @@ function normaliseAnchoredDiscussionDiscovery(result = {}, anchors = [], sourceU
   return {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     meetingObjectives: [], discussion: [...topics.values()], actions: [], reviewFlags: []
+  };
+}
+
+function meetingMinutesAgentAnchoredActionPrompt({
+  transcript, details, candidates = [], currentActions = [], steer, mode = 'discovery'
+}) {
+  const payload = {
+    requestId: crypto.randomUUID(),
+    stage: 'ACTION_ANCHORED_DISCOVERY',
+    mode: mode === 'recovery' ? 'recovery' : 'discovery',
+    details: details || {},
+    reviewerEmphasis: meetingAgentSteerText(steer),
+    // The transcript remains the authority and is always sent in full. The
+    // compact candidate windows are navigation aids rather than an allowlist.
+    actionCandidateWindows: hybridCandidatePack(candidates, 36000, 180),
+    currentActions: mode === 'recovery' ? compactMeetingAgentActionRegister(currentActions, 9000, 32) : [],
+    preparedTranscript: String(transcript || '').trim()
+  };
+  return `[ACTION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
+}
+
+function normaliseAnchoredActionDiscovery(result = {}, sourceUnits = [], options = {}) {
+  const units = normaliseSourceUnits(sourceUnits);
+  const validEvidence = new Set(units.map((unit) => unit.id));
+  const splitScalarList = (value) => [...new Set(meetingMinutesAgentText(value, 1600)
+    .split(/\s*[|;]\s*/).map((item) => item.trim()).filter(Boolean))];
+  const rows = Array.isArray(result?.actionResults) ? result.actionResults : [];
+  const actions = [];
+  const actionProposals = [];
+  for (const row of rows) {
+    const action = meetingMinutesAgentText(row?.action, 1200);
+    // Refusals can contain the same future/intent tokens as commitments. They
+    // are never publishable work, so enforce that invariant independently of
+    // the model's disposition.
+    if (/^(?:i|we|you|he|she|they)(?:\s+(?:am|are|is))?\s+(?:not|never)\b|^(?:i|we|you|he|she|they)(?:'m|'re|'s)\s+(?:not|never)\b|^(?:i|we|you|he|she|they)\s+(?:won't|wouldn't|can't|cannot|don't|do not)\b/i.test(action)) continue;
+    const evidenceIds = splitScalarList(row?.evidenceCsv)
+      .flatMap((item) => item.split(/\s*,\s*/))
+      .map((item) => item.trim()).filter((item) => validEvidence.has(item));
+    if (!action || !evidenceIds.length) continue;
+    const disposition = ({
+      core: 'publish', keep: 'publish', uncertain: 'proposal', supporting: 'proposal',
+      complete: 'completed', done: 'completed', idea: 'suggestion', discard: 'reject'
+    })[meetingMinutesAgentText(row?.disposition, 60).toLowerCase()]
+      || meetingMinutesAgentText(row?.disposition, 60).toLowerCase();
+    if (!['publish', 'proposal'].includes(disposition)) continue;
+    const timingKind = meetingMinutesAgentText(row?.timingKind, 40).toLowerCase();
+    const record = {
+      id: meetingMinutesAgentText(row?.resultId, 160)
+        || `action-discovery-${crypto.createHash('sha256').update(`${action}|${evidenceIds.join('|')}`).digest('hex').slice(0, 12)}`,
+      action,
+      owners: splitScalarList(row?.ownersCsv),
+      timing: {
+        kind: ['deadline', 'target', 'dependency', 'not_stated'].includes(timingKind)
+          ? timingKind : 'not_stated',
+        wording: meetingMinutesAgentText(row?.timingWording, 180),
+        exactDate: meetingMinutesAgentText(row?.exactDate, 20)
+      },
+      evidenceIds: [...new Set(evidenceIds)].slice(0, 12),
+      reviewFlagIds: []
+    };
+    (disposition === 'publish' ? actions : actionProposals).push(record);
+  }
+  const normalisedActions = normaliseAgentResult(
+    { actions }, sourceUnits, 'actions', { meetingDate: options.meetingDate }
+  ).actions;
+  const normalisedProposals = normaliseAgentDeclaredProposals(
+    { actionProposals }, sourceUnits, { meetingDate: options.meetingDate }
+  );
+  return {
+    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+    discussion: [], actions: normalisedActions,
+    actionProposals: normalisedProposals,
+    candidateDispositions: [], reviewFlags: []
   };
 }
 
@@ -9253,7 +9332,11 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredDiscussionDiscoveryResult = options.responseKind === 'anchored_discussion_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.anchorResults);
-    if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult || isAnchoredDiscussionDiscoveryResult) {
+    const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.actionResults);
+    if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
+      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult) {
       structured = candidate;
       break;
     }
@@ -9277,10 +9360,13 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.discussionCandidates);
   const anchoredDiscussionDiscovery = options.responseKind === 'anchored_discussion_discovery'
     && Array.isArray(parsedResult?.anchorResults);
+  const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
+    && Array.isArray(parsedResult?.actionResults);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !flatDiscussionDiscovery
       && !anchoredDiscussionDiscovery
+      && !anchoredActionDiscovery
       && (!Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)))) {
     const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
     error.statusCode = 502;
@@ -11501,6 +11587,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     maxAnchors: Number(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ANCHOR_LIMIT || 24),
     maxChars: Number(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ANCHOR_BUDGET || 48000)
   }) : [];
+  const anchoredActionRecovery = stage === 'actions' && meetingMinutesAgentAnchoredActionEnabled();
   const primaryPrompt = anchoredDiscussion
     ? meetingMinutesAgentAnchoredDiscussionPrompt({
       transcript, details, anchors: discussionAnchors, steer: draft.steer
@@ -11588,12 +11675,18 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     ? discussionRecoveryNeeded(discussionCandidateInventory(draft.sourceUnits), represented)
     : actionRecoveryNeeded(actionDiscoveryInventory, represented);
   if (recoveryDecision.needed) {
-    const recoveryParsed = await call('recovery', meetingMinutesAgentRecoveryPrompt({
-      stage, transcript, details, salientDetails,
-      current: stage === 'discussion' ? { discussion: primary.discussion } : { actions: primary.actions },
-      discussion: stage === 'actions' ? (draft.discussion || []) : [],
-      candidates: recoveryDecision.uncovered
-    }), {
+    const recoveryPrompt = anchoredActionRecovery
+      ? meetingMinutesAgentAnchoredActionPrompt({
+        transcript, details, candidates: recoveryDecision.uncovered,
+        currentActions: primary.actions, steer: draft.steer, mode: 'recovery'
+      })
+      : meetingMinutesAgentRecoveryPrompt({
+        stage, transcript, details, salientDetails,
+        current: stage === 'discussion' ? { discussion: primary.discussion } : { actions: primary.actions },
+        discussion: stage === 'actions' ? (draft.discussion || []) : [],
+        candidates: recoveryDecision.uncovered
+      });
+    const recoveryParsed = await call('recovery', recoveryPrompt, {
       optional: true,
       ...(stage === 'discussion' ? {
         responseKind: 'discussion_discovery',
@@ -11605,6 +11698,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
               evidenceId
             })))
         })
+      } : anchoredActionRecovery ? {
+        responseKind: 'anchored_action_discovery',
+        transformResult: (result) => normaliseAnchoredActionDiscovery(
+          result, draft.sourceUnits, { meetingDate: details.meetingDate }
+        )
       } : {}),
       // A valid empty discussion recovery result means the dedicated gap pass
       // found no additional grounded proposition. Accept it and continue to
@@ -12799,6 +12897,8 @@ router.stagedEvaluation = {
   meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAnchoredDiscussionPrompt,
   normaliseAnchoredDiscussionDiscovery,
+  meetingMinutesAgentAnchoredActionPrompt,
+  normaliseAnchoredActionDiscovery,
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,

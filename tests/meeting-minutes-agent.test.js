@@ -9,6 +9,8 @@ const {
   meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAnchoredDiscussionPrompt,
   normaliseAnchoredDiscussionDiscovery,
+  meetingMinutesAgentAnchoredActionPrompt,
+  normaliseAnchoredActionDiscovery,
   meetingMinutesAgentAuditPrompt,
   meetingMinutesAgentRecoveryPrompt,
   meetingMinutesAgentRefereePrompt,
@@ -706,6 +708,9 @@ test('every website Agent prompt begins with its published routing marker', () =
     transcript, details: {}, anchors: [{ anchorId: 'a1', evidenceIds: ['T0001'], window: transcript }]
   }), /^\[DISCUSSION_ANCHORED_DISCOVERY\]\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {} }), /^ACTION_DISCOVERY\n/);
+  assert.match(meetingMinutesAgentAnchoredActionPrompt({
+    transcript, details: {}, candidates: [candidate]
+  }), /^\[ACTION_ANCHORED_DISCOVERY\]\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'summary', transcript, details: {}, current: {} }), /^SUMMARY\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'discussion', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: DISCUSSION\n/);
   assert.match(meetingMinutesAgentPrompt({ stage: 'actions', transcript, details: {}, instruction: 'Make it concise.' }), /^BULK_EDIT\nTARGET_STAGE: ACTIONS\n/);
@@ -773,6 +778,70 @@ test('anchored discussion discovery requires exact accounting and trusts only an
     expectedAnchorCount: 2, returnedAnchorCount: 1,
     anchorResults: [{ anchorId: 'A1', disposition: 'core', recordType: 'decision', topic: 'Decision', text: 'A material decision.', evidenceCsv: 'T0001' }]
   }, anchors, units), /incomplete candidate accounting/);
+});
+
+test('anchored action discovery adapts flat scalar rows and rejects unsupported evidence', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Alice Jones', text: 'Bob and I will send the report by Friday.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Bob Smith', text: 'Yes, we will send it.', classification: 'keep' },
+    { id: 'T0003', sequence: 3, speaker: 'Cara', text: 'We need to confirm the scope after approval.', classification: 'keep' }
+  ];
+  const prompt = meetingMinutesAgentAnchoredActionPrompt({
+    transcript: units.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
+    details: {},
+    candidates: [{ candidateId: 'C1', recordType: 'action', text: 'Send the report.', evidenceIds: ['T0001', 'T0002'] }]
+  });
+  assert.equal((prompt.match(/preparedTranscript/g) || []).length, 1);
+  assert.match(prompt, /actionCandidateWindows/);
+  assert.match(prompt, /"mode":"discovery"/);
+  const recoveryPrompt = meetingMinutesAgentAnchoredActionPrompt({
+    transcript: units.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
+    details: {}, candidates: [], mode: 'recovery',
+    currentActions: [{ id: 'A-current', action: 'Send the report by Friday.', owners: ['Alice Jones'], evidenceIds: ['T0001'] }]
+  });
+  assert.match(recoveryPrompt, /"mode":"recovery"/);
+  assert.match(recoveryPrompt, /"currentActions":\[\{"id":"A-current"/);
+  const result = normaliseAnchoredActionDiscovery({
+    requestId: 'request-1', stage: 'ACTION_ANCHORED_DISCOVERY',
+    actionResults: [
+      {
+        resultId: 'A1', disposition: 'publish', action: 'Send the report by Friday.',
+        ownersCsv: 'Alice Jones | Bob Smith', timingKind: 'deadline', timingWording: 'Friday',
+        exactDate: '', evidenceCsv: 'T0001 | T0002'
+      },
+      {
+        resultId: 'A2', disposition: 'proposal', action: 'Confirm the scope after approval.',
+        ownersCsv: 'Cara', timingKind: 'dependency', timingWording: 'After approval',
+        exactDate: '', evidenceCsv: 'T0003'
+      },
+      {
+        resultId: 'A3', disposition: 'publish', action: 'Invent an unsupported action.',
+        ownersCsv: 'Nobody', timingKind: 'not_stated', timingWording: '',
+        exactDate: '', evidenceCsv: 'T9999'
+      }
+    ]
+  }, units);
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].owners, ['Alice Jones', 'Bob Smith']);
+  assert.deepEqual(result.actions[0].evidenceIds, ['T0001', 'T0002']);
+  assert.equal(result.actionProposals.length, 1);
+  assert.equal(result.actionProposals[0].timing.kind, 'dependency');
+});
+
+test('anchored action discovery never publishes an explicit refusal', () => {
+  const result = normaliseAnchoredActionDiscovery({
+    actionResults: [{
+      resultId: 'R-refusal', disposition: 'publish',
+      action: "I'm not doing clipboards, I'll get lynched.",
+      ownersCsv: 'Sandra Wexford', timingKind: 'not_stated',
+      timingWording: '', exactDate: '', evidenceCsv: 'T0001', confidence: 1
+    }]
+  }, [{
+    id: 'T0001', sequence: 1, speaker: 'Sandra Wexford',
+    text: "I'm not doing clipboards, I'll get lynched.", classification: 'keep'
+  }]);
+  assert.deepEqual(result.actions, []);
+  assert.deepEqual(result.actionProposals, []);
 });
 
 test('flat grounded Copilot discussion records are adapted to schema-v4 topic records', () => {
