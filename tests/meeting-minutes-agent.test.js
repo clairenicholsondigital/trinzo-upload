@@ -2085,10 +2085,19 @@ test('an empty action recovery result is accepted when the agent disposed of eve
   assert.equal(meetingAgentEmptyDiscoveryError(unexplained, 'actions', candidates)?.code, 'empty_action_with_substantive_candidates');
   const contradictory = { ...accounted, candidateDispositions: [{ candidateId: 'commitment-chain-de0fcbece5', disposition: 'publish', reason: 'Genuine commitment.' }] };
   assert.equal(meetingAgentEmptyDiscoveryError(contradictory, 'actions', candidates)?.code, 'empty_action_with_substantive_candidates');
-  // Only some candidates accounted for is still a gap.
-  const partial = { ...accounted };
-  assert.equal(meetingAgentEmptyDiscoveryError(partial, 'actions', [
+  // Only some substantive candidates accounted for is still a gap, and the
+  // error names the ones left unexplained.
+  const partial = meetingAgentEmptyDiscoveryError(accounted, 'actions', [
     ...candidates,
     { candidateId: 'other', recordType: 'action', priority: 10, owners: ['Dan'] }
-  ])?.code, 'empty_action_with_substantive_candidates');
+  ]);
+  assert.equal(partial?.code, 'empty_action_with_substantive_candidates');
+  assert.match(partial.message, /1 of 2 without a reasoned disposition: other/);
+  // Low-priority windows the agent did not mention do not make a correct
+  // empty answer fail: the recovery prompt carries dozens of them.
+  assert.equal(meetingAgentEmptyDiscoveryError(accounted, 'actions', [
+    ...candidates,
+    { candidateId: 'window-1', recordType: 'action', priority: 3, owners: [] },
+    { candidateId: 'window-2', recordType: 'action_chain', priority: 4, dispositionHint: 'suggestion', signals: {}, ownerHints: [] }
+  ]), null);
 });

@@ -9581,10 +9581,9 @@ function meetingAgentResultError(result) {
   return error;
 }
 
-function agentAccountedForCandidates(result = {}, candidates = [], sourceUnits = []) {
+function agentUnaccountedCandidates(result = {}, candidates = [], sourceUnits = []) {
   const supplied = (Array.isArray(candidates) ? candidates : [])
     .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 120)).filter(Boolean);
-  if (!supplied.length) return false;
   const dispositions = Array.isArray(sourceUnits) && sourceUnits.length
     ? normaliseAgentCandidateDispositions(result, sourceUnits)
     : (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : []);
@@ -9592,7 +9591,7 @@ function agentAccountedForCandidates(result = {}, candidates = [], sourceUnits =
     .filter((item) => ['reject', 'completed', 'suggestion'].includes(item?.disposition)
       && meetingMinutesAgentText(item?.reason, 500))
     .map((item) => meetingMinutesAgentText(item?.candidateId, 120)));
-  return supplied.every((candidateId) => settled.has(candidateId));
+  return supplied.filter((candidateId) => !settled.has(candidateId));
 }
 
 function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceUnits = [], options = {}) {
@@ -9614,7 +9613,7 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
       : (Array.isArray(result?.actions) && result.actions.length > 0)
         || (Array.isArray(result?.actionProposals) && result.actionProposals.length > 0);
   if (hasOutput) return null;
-  const hasSubstantiveEvidence = (Array.isArray(candidates) ? candidates : []).some((candidate) => {
+  const isSubstantiveCandidate = (candidate) => {
     const recordType = String(candidate?.recordType || candidate?.kind || '');
     if (isDiscussion) {
       return ['decision', 'open_question', 'objective'].includes(recordType)
@@ -9627,15 +9626,19 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
         && Boolean(signals.commitment || signals.acceptance || signals.assignment || signals.scheduled)
       : recordType === 'action' && Number(candidate?.priority || 0) >= 8
         && (Array.isArray(owners) ? owners.length > 0 : Boolean(owners));
-  });
-  if (!hasSubstantiveEvidence) return null;
+  };
+  const substantive = (Array.isArray(candidates) ? candidates : []).filter(isSubstantiveCandidate);
+  if (!substantive.length) return null;
   // An empty actions draft is not a failed call when the agent has explicitly
   // disposed of every substantive candidate as already covered, completed or a
   // mere suggestion. Retrying that answer only re-sends the same prompt and
   // costs a minute of the reviewer's wait; the Power Automate run itself
-  // succeeded.
-  if (isActions && agentAccountedForCandidates(result, candidates, sourceUnits)) return null;
-  const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates.`);
+  // succeeded. Only the substantive candidates need accounting for: the
+  // error exists because of them, not the low-priority windows around them.
+  const unaccounted = isActions ? agentUnaccountedCandidates(result, substantive, sourceUnits) : substantive;
+  if (isActions && !unaccounted.length) return null;
+  const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates`
+    + (isActions ? ` (${unaccounted.length} of ${substantive.length} without a reasoned disposition: ${unaccounted.slice(0, 4).join(', ')}).` : '.'));
   error.code = `empty_${isDiscussion ? 'discussion' : 'action'}_with_substantive_candidates`;
   error.statusCode = 502;
   error.retryable = true;
