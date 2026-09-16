@@ -191,7 +191,7 @@ async function main() {
   require('dotenv').config({ path: options.envFile, quiet: true });
   const db = require('../utils/db');
   const session = await createBenchmarkSession(db);
-  const report = {
+  let report = {
     schemaVersion: 1,
     variant: 'production-control',
     generatedAt: new Date().toISOString(),
@@ -200,9 +200,23 @@ async function main() {
     requestedRunsPerCase: options.runs,
     journeys: []
   };
+  if (options.output) {
+    try {
+      const existing = JSON.parse(await fs.readFile(path.resolve(options.output), 'utf8'));
+      const sameCases = JSON.stringify(existing.cases || []) === JSON.stringify(options.cases);
+      if (existing.variant === report.variant && sameCases
+        && Number(existing.requestedRunsPerCase) === options.runs
+        && Array.isArray(existing.journeys)) {
+        report = { ...report, ...existing, resumedAt: new Date().toISOString() };
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
   try {
     for (let run = 1; run <= options.runs; run += 1) {
       for (const caseName of options.cases) {
+        if (report.journeys.some((journey) => journey.case === caseName && journey.run === run)) continue;
         process.stderr.write(`baseline: ${caseName} run ${run}/${options.runs}\n`);
         const journey = await runJourney(options, db, session, caseName, run);
         report.journeys.push(journey);
