@@ -11031,6 +11031,71 @@ function discussionRefereeHasCompleteCandidateAccounting(diagnostics = {}) {
     && Number(diagnostics?.incompleteDispositionCount || 0) === 0;
 }
 
+function meetingMinutesAgentSupportingSemanticThreshold() {
+  const value = Number(process.env.MEETING_MINUTES_AGENT_SUPPORTING_SEMANTIC_THRESHOLD);
+  return Number.isFinite(value) && value > 0 && value <= 1 ? value : 0.8;
+}
+
+// Word overlap cannot see that "Dan takes responsibility to order six sacks
+// today" and "Dan will order malt directly to get a better rate" are one
+// fact. The MiniLM worker can, and the legacy staged path already uses it.
+// One embedding call over every supporting detail (plus the primary rows, so
+// a detail restating a primary row goes too), keeping the first member of
+// each group. Primary rows are never dropped here; they are listed first so
+// they win any group they belong to. Falls back to lexical grouping when the
+// worker is unavailable, and to no change on any error.
+async function dedupeSupportingDetailsSemantically(discussion = [], options = {}) {
+  const topics = Array.isArray(discussion) ? discussion : [];
+  const primaries = flattenHybridDiscussion(topics).map((item) => meetingMinutesAgentText(item.record?.text, 1600));
+  const details = [];
+  for (const topic of topics) {
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      for (const record of Array.isArray(topic?.[kind]) ? topic[kind] : []) {
+        (record.supportingDetails || []).forEach((detail, index) => {
+          details.push({ record, index, text: meetingMinutesAgentText(detail?.text, 1600) });
+        });
+      }
+    }
+  }
+  if (details.length < 2) return topics;
+  let dedupe;
+  try {
+    dedupe = await duplicateGroups([...primaries, ...details.map((detail) => detail.text)], {
+      threshold: options.threshold || meetingMinutesAgentSupportingSemanticThreshold(),
+      ...(options.vectors !== undefined ? { vectors: options.vectors } : {})
+    });
+  } catch (error) {
+    safeLogError('[meeting-minutes-agent] supporting semantic dedupe skipped', error);
+    return topics;
+  }
+  const dropped = new Set();
+  for (const group of dedupe?.groups || []) {
+    const ordered = [...group].sort((left, right) => left - right);
+    for (const memberIndex of ordered.slice(1)) {
+      if (memberIndex >= primaries.length) dropped.add(memberIndex - primaries.length);
+    }
+  }
+  if (!dropped.size) return topics;
+  const droppedByRecord = new Map();
+  dropped.forEach((detailIndex) => {
+    const entry = details[detailIndex];
+    if (!droppedByRecord.has(entry.record)) droppedByRecord.set(entry.record, new Set());
+    droppedByRecord.get(entry.record).add(entry.index);
+  });
+  for (const [record, indexes] of droppedByRecord) {
+    record.supportingDetails = (record.supportingDetails || []).filter((detail, index) => !indexes.has(index));
+  }
+  console.log(JSON.stringify({
+    event: 'meeting_agent_supporting_semantic_dedupe',
+    journeyId: options.journeyId,
+    detailCount: details.length,
+    droppedCount: dropped.size,
+    via: dedupe.pairs?.[0]?.via || (dedupe.semantic === false ? 'lexical' : 'semantic'),
+    dropped: [...dropped].map((index) => details[index].text.slice(0, 160))
+  }));
+  return topics;
+}
+
 const OWNER_FOLLOW_UP_PATTERN = new RegExp(
   '^(?!(?:Action|Agreed|Agreement|Aim|Approval|Commitment|Confirmation|Decided|Decision|Goal|Intention|It|Need|Option|Plan|Proposal|Request|Requirement|Rule|Team|That|The|This)\\b)'
   + "[A-Z][\\p{L}'’.-]+(?:\\s+[A-Z][\\p{L}'’.-]+){0,2}\\s+(?:to|will|is to)\\s+"
@@ -12525,6 +12590,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }
+    finalDiscussion = await dedupeSupportingDetailsSemantically(finalDiscussion, { journeyId: draft.id });
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -12929,6 +12995,52 @@ router.get('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, re
   }
 });
 
+// What Actions and the Summary are derived from: the discussion's wording and
+// structure, the steer, and who was in the room (owners are chosen from the
+// attendee lists). Ids, flags and evidence are left out so a re-normalised but
+// unchanged draft does not read as an edit.
+function meetingAgentUpstreamFingerprint(draft = {}) {
+  const rows = (kind, topic) => (Array.isArray(topic?.[kind]) ? topic[kind] : [])
+    .map((record) => meetingMinutesAgentText(record?.text, 1600));
+  const details = draft.details || {};
+  return JSON.stringify({
+    discussion: (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
+      topic: meetingMinutesAgentText(topic?.topic, 240),
+      points: rows('points', topic), decisions: rows('decisions', topic), openQuestions: rows('openQuestions', topic)
+    })),
+    steer: meetingMinutesAgentText(draft.steer, 4000),
+    attendees: [
+      ...(Array.isArray(details.internalAttendees) ? details.internalAttendees : []),
+      '|',
+      ...(Array.isArray(details.clientAttendees) ? details.clientAttendees : [])
+    ].map((name) => meetingMinutesAgentText(name, 120))
+  });
+}
+
+// The server decides what an edit makes outdated, so the warning is the same
+// in every tab and after a refresh. Previously the browser was trusted to
+// send staleStages, and it only ever marked Actions while a run was in
+// flight, so the ordinary "edit the discussion, look at the actions" flow
+// produced no warning at all.
+function meetingAgentDerivedStaleStages(previous = {}, next = {}) {
+  if (meetingAgentUpstreamFingerprint(previous) === meetingAgentUpstreamFingerprint(next)) return [];
+  const stale = [];
+  if (Array.isArray(previous.actions) && previous.actions.length) stale.push('actions');
+  if (meetingMinutesAgentText(previous.executiveSummary, 20000)) stale.push('summary');
+  return stale;
+}
+
+// A completed run clears its own stage, unless the content that stage is
+// derived from changed while it was running: those edits are newer than the
+// output, so the output is already outdated.
+function meetingAgentStaleStagesAfterGeneration(fresh = {}, sourceDraft = {}, stage = '') {
+  const current = Array.isArray(fresh.staleStages) ? fresh.staleStages : [];
+  const upstreamChangedDuringRun = ['actions', 'summary'].includes(stage)
+    && meetingAgentUpstreamFingerprint(fresh) !== meetingAgentUpstreamFingerprint(sourceDraft);
+  if (upstreamChangedDuringRun) return [...new Set([...current, stage])];
+  return current.filter((value) => value !== stage);
+}
+
 router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
@@ -12966,9 +13078,12 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
       reviewFlags: mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      staleStages: (Array.isArray(req.body?.staleStages) ? req.body.staleStages : draft.staleStages || [])
-        .map((value) => meetingMinutesAgentText(value, 40))
-        .filter((value) => ['discussion', 'actions', 'summary'].includes(value)),
+      staleStages: [...new Set([
+        ...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, {
+          discussion: normalised.discussion, steer: req.body?.steer ?? draft.steer, details
+        })
+      ])],
       currentStep: furthestStep,
       selectedStep: requestedSelectedStep,
       status: req.body?.status
@@ -13212,7 +13327,7 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
             reviewFlags: mergeMeetingAgentGenerationFlags(
               fresh.reviewFlags, result.reviewFlags, result.replaceCoverageFlags
             ),
-            staleStages: (fresh.staleStages || []).filter((value) => value !== stage),
+            staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage),
             currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
             generation: null
           };
@@ -13728,6 +13843,7 @@ router.stagedEvaluation = {
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
+  dedupeSupportingDetailsSemantically,
   isVagueReconstructedAction,
   isReviewableActionProposal,
   publishedActionCoversProposal,
@@ -13744,6 +13860,9 @@ router.stagedEvaluation = {
   meetingAgentStageContentFields,
   meetingAgentStageContentConflicts,
   meetingAgentStagePersistenceChanges,
+  meetingAgentUpstreamFingerprint,
+  meetingAgentDerivedStaleStages,
+  meetingAgentStaleStagesAfterGeneration,
   persistMeetingAgentBackgroundStage,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,

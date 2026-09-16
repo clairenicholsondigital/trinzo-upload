@@ -46,19 +46,33 @@
     return ['details', 'focus', 'discussion', 'actions', 'summary', 'review'][state.currentStep] || '';
   }
 
+  // One rule for whether leaving is safe: anything unsaved, anything waiting
+  // behind a running generation, or any unfinished entry that only exists in
+  // this tab. Every "Keep this tab open" message and the Resume-later link
+  // read this, so they can never disagree.
+  function mustKeepTabOpen(kind) {
+    var unsaved = ['dirty','waiting','local-only','saving','error'].includes(kind);
+    return unsaved || Boolean(pendingGenerationEdits) || hasTransientEditorState();
+  }
+
+  function refreshLeaveSafety() {
+    var element = document.getElementById('saveStatus');
+    var keepOpen = mustKeepTabOpen(element ? element.dataset.state : '');
+    var resumeLink = document.getElementById('resumeLaterLink');
+    if (resumeLink) resumeLink.hidden = keepOpen;
+    // Refresh on every save transition, not only mid-run: once a run ended the
+    // panel froze on "Everything is saved" beside a live unfinished-entry warning.
+    var leaveMessage = document.getElementById('generationLeaveMessage');
+    if (leaveMessage) leaveMessage.textContent = generationSaveText(generationRunning());
+  }
+
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
-    var unsaved = ['dirty','waiting','local-only','saving','error'].includes(kind);
-    if (unsaved && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
+    if (mustKeepTabOpen(kind) && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
     document.getElementById('saveStrip').hidden = !state.draft;
     element.textContent = message || '';
     element.dataset.state = kind || '';
-    var resumeLink = document.getElementById('resumeLaterLink');
-    if (resumeLink) resumeLink.hidden = unsaved;
-    var leaveMessage = document.getElementById('generationLeaveMessage');
-    // Refresh on every save transition, not only mid-run: once a run ended the
-    // panel froze on "Everything is saved" beside a live unfinished-entry warning.
-    if (leaveMessage) leaveMessage.textContent = generationSaveText(generationRunning());
+    refreshLeaveSafety();
   }
 
   function savedStatusText(value) {
@@ -346,10 +360,18 @@
     view.textContent = generation ? 'View action preview' : 'View actions';
   }
 
-  function markRunningActionsStale() {
-    if (!generationRunning('actions') || !state.draft) return;
-    state.draft.staleStages = Array.from(new Set([...(state.draft.staleStages || []), 'actions']));
-    actionsInvalidatedDuringGeneration = true;
+  // An edit to earlier content marks what is derived from it as outdated,
+  // whether or not a generation is running. The server derives the same thing
+  // from the saved content, so the mark survives a refresh and other tabs;
+  // this is the immediate, local half.
+  function markDownstreamStale() {
+    if (!state.draft) return;
+    var stale = new Set(state.draft.staleStages || []);
+    if ((state.draft.actions || []).length) stale.add('actions');
+    if (state.draft.executiveSummary) stale.add('summary');
+    if (generationRunning('actions')) actionsInvalidatedDuringGeneration = true;
+    if (!stale.size) return;
+    state.draft.staleStages = Array.from(stale);
     var notice = document.getElementById('staleNotice');
     notice.hidden = false;
     document.getElementById('staleStages').textContent = state.draft.staleStages.join(' and ');
@@ -1239,7 +1261,6 @@
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true,'discussion'); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('addDiscussion').addEventListener('click', function () {
-    markRunningActionsStale();
     readDiscussion();
     var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]};
     state.draft.discussion.push(topic);
@@ -1257,7 +1278,7 @@
     var promote=event.target.closest('[data-promote-supporting]');
     var topicButton=event.target.closest('[data-delete-topic]');
     if(!add && !remove && !demote && !promote && !topicButton) return;
-    markRunningActionsStale();
+    markDownstreamStale();
     readDiscussion();
     var addedRecord = null;
     if(add){
@@ -1348,6 +1369,7 @@
     if (!input.value.trim()) {
       delete actionEditorState.customOwners[actionId];
       input.hidden = true;
+      refreshLeaveSafety();
       return;
     }
     var index = (state.draft.actions || []).findIndex(function (action) { return action.id === actionId; });
@@ -1355,6 +1377,7 @@
     var added = addOwner(index, input.value);
     input.value = '';
     delete actionEditorState.customOwners[actionId];
+    refreshLeaveSafety();
     if (!added) return;
     renderActions();
     // The field this was typed into is hidden again by the re-render, so focus
@@ -1423,9 +1446,8 @@
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
-    if (generationRunning('actions') && (event.target.closest('#discussionList')
-      || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer')) {
-      markRunningActionsStale();
+    if (event.target.closest('#discussionList') || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer') {
+      markDownstreamStale();
     }
     if (event.target.matches('[data-owner-other]')) {
       actionEditorState.customOwners[event.target.dataset.actionId] = { visible:true, value:event.target.value };

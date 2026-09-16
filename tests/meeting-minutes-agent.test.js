@@ -60,6 +60,9 @@ const {
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
+  meetingAgentDerivedStaleStages,
+  meetingAgentStaleStagesAfterGeneration,
+  dedupeSupportingDetailsSemantically,
   isVagueReconstructedAction,
   isReviewableActionProposal,
   publishedActionCoversProposal,
@@ -2100,4 +2103,68 @@ test('an empty action recovery result is accepted when the agent disposed of eve
     { candidateId: 'window-1', recordType: 'action', priority: 3, owners: [] },
     { candidateId: 'window-2', recordType: 'action_chain', priority: 4, dispositionHint: 'suggestion', signals: {}, ownerHints: [] }
   ]), null);
+});
+
+test('supporting details that restate a primary row or each other semantically are dropped, primaries never', async () => {
+  const discussion = [{ topic: 'Chiller', points: [
+    { id: 'p1', text: 'A chiller failure during the IPA ferment risks the whole batch.', evidenceIds: ['T0001'], supportingDetails: [
+      { id: 'c1', text: 'If the chiller fails mid-ferment the entire twelve hundred litres could be lost.', evidenceIds: ['T0001'] },
+      { id: 'c2', text: 'The IPA needs holding at nineteen degrees.', evidenceIds: ['T0002'] }
+    ] },
+    { id: 'p2', text: 'The last IPA batch was muted on aroma.', evidenceIds: ['T0003'], supportingDetails: [
+      { id: 'c3', text: 'Failure of the chiller mid-ferment poses a risk of losing the entire batch.', evidenceIds: ['T0001'] },
+      { id: 'c4', text: 'There was feedback that the previous IPA was flat on the nose.', evidenceIds: ['T0003'] }
+    ] }
+  ], decisions: [], openQuestions: [] }];
+  // Text order handed to the grouper is primaries first (p1, p2) then details
+  // (c1, c2, c3, c4). Unit vectors: c1 and c3 restate p1; c4 restates p2; c2 is distinct.
+  const vectors = [[1, 0, 0], [0, 1, 0], [1, 0, 0], [0, 0, 1], [1, 0, 0], [0, 1, 0]];
+  const result = await dedupeSupportingDetailsSemantically(discussion, { vectors, threshold: 0.8 });
+  const [p1, p2] = result[0].points;
+  assert.deepEqual(p1.supportingDetails.map((detail) => detail.id), ['c2']);
+  assert.deepEqual(p2.supportingDetails.map((detail) => detail.id), []);
+  assert.equal(result[0].points.length, 2, 'primary rows are never removed by the supporting dedupe');
+
+  // With no vectors and the worker unreachable the lexical fallback decides;
+  // a grouper failure leaves the discussion untouched.
+  const untouched = await dedupeSupportingDetailsSemantically([{ topic: 'X', points: [
+    { id: 'q1', text: 'Alpha.', evidenceIds: ['T0001'], supportingDetails: [{ id: 'd1', text: 'Beta gamma delta.', evidenceIds: ['T0001'] }, { id: 'd2', text: 'Epsilon zeta eta.', evidenceIds: ['T0001'] }] }
+  ], decisions: [], openQuestions: [] }], { vectors: null });
+  assert.equal(untouched[0].points[0].supportingDetails.length, 2);
+});
+
+test('a material edit to discussion, steer or attendees marks existing Actions and Summary outdated on the server', () => {
+  const stored = {
+    details: { internalAttendees: ['Dan Threlfall'], clientAttendees: [] },
+    steer: '',
+    discussion: [{ id: 't1', topic: 'Malt', points: [{ id: 'p1', text: 'Eighteen sacks will not cover both brews.', evidenceIds: ['T0001'], reviewFlagIds: ['f1'] }], decisions: [], openQuestions: [] }],
+    actions: [{ id: 'a1', action: 'Order six sacks of malt.', owners: ['Dan Threlfall'] }],
+    executiveSummary: 'Malt is short.',
+    staleStages: []
+  };
+  // Re-normalised but unchanged content (new ids, flags, evidence) is not an edit.
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, {
+    ...stored,
+    discussion: [{ id: 'other', topic: 'Malt', points: [{ id: 'x', text: 'Eighteen sacks will not cover both brews.', evidenceIds: [], reviewFlagIds: [] }], decisions: [], openQuestions: [] }]
+  }), []);
+  // A wording change, a structural change, a steer change and an attendee change each count.
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored,
+    discussion: [{ topic: 'Malt', points: [{ text: 'Eighteen sacks will cover both brews.' }], decisions: [], openQuestions: [] }] }), ['actions', 'summary']);
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored,
+    discussion: [{ topic: 'Malt', points: [{ text: 'Eighteen sacks will not cover both brews.' }], decisions: [{ text: 'Buy six more.' }], openQuestions: [] }] }), ['actions', 'summary']);
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored, steer: 'Focus on procurement.' }), ['actions', 'summary']);
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored, details: { internalAttendees: ['Dan Threlfall', 'Mick Dolan'], clientAttendees: [] } }), ['actions', 'summary']);
+  // Nothing downstream yet: nothing to mark.
+  assert.deepEqual(meetingAgentDerivedStaleStages({ ...stored, actions: [], executiveSummary: '' }, { ...stored, steer: 'x' }), []);
+});
+
+test('a completed run clears its own outdated mark unless its inputs changed while it ran', () => {
+  const source = { discussion: [{ topic: 'Malt', points: [{ text: 'Short by three sacks.' }], decisions: [], openQuestions: [] }], steer: '', details: {}, staleStages: ['actions', 'summary'] };
+  // Unchanged inputs: the actions run clears 'actions' and leaves 'summary'.
+  assert.deepEqual(meetingAgentStaleStagesAfterGeneration({ ...source }, source, 'actions'), ['summary']);
+  // The discussion was edited while the run was in flight: the new actions are already outdated.
+  const edited = { ...source, discussion: [{ topic: 'Malt', points: [{ text: 'Short by six sacks.' }], decisions: [], openQuestions: [] }] };
+  assert.deepEqual(meetingAgentStaleStagesAfterGeneration(edited, source, 'actions'), ['actions', 'summary']);
+  // A discussion run never depends on that fingerprint.
+  assert.deepEqual(meetingAgentStaleStagesAfterGeneration({ ...edited, staleStages: ['discussion', 'actions'] }, source, 'discussion'), ['actions']);
 });
