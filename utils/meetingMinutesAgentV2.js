@@ -812,7 +812,15 @@ function relativeExactDate(wording, meetingDate) {
     const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
     let offset = (named - current + 7) % 7;
     if (/\bnext\s+/.test(value)) offset = offset === 0 ? 7 : offset + 7;
-    else if (offset === 0 && !/\bthis\s+/.test(value)) offset = 7;
+    else if (offset === 0) {
+      // The meeting's own weekday. "Monday morning" said on a Monday means
+      // today far more often than a week hence; the old silent +7 invented a
+      // date that contradicted "before the fifteenth" in the same sentence.
+      // Keep a calendar date only when the wording carries a same-day cue; a
+      // bare weekday stays as wording for the reviewer to resolve.
+      const sameDayCue = /\b(?:this|morning|afternoon|evening|lunchtime|first thing|later|tonight|straight after)\b/.test(value);
+      if (!sameDayCue) return '';
+    }
     return isoDateOffset(meetingDate, offset);
   }
   if (/\bend of (?:this )?week\b/.test(value)) {
@@ -824,6 +832,54 @@ function relativeExactDate(wording, meetingDate) {
     return isoDateOffset(meetingDate, ((5 - current + 7) % 7) + 7);
   }
   return '';
+}
+
+const ORDINAL_DAY_WORDS = Object.freeze({
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17,
+  eighteenth: 18, nineteenth: 19, twentieth: 20, 'twenty-first': 21, 'twenty-second': 22, 'twenty-third': 23,
+  'twenty-fourth': 24, 'twenty-fifth': 25, 'twenty-sixth': 26, 'twenty-seventh': 27, 'twenty-eighth': 28,
+  'twenty-ninth': 29, thirtieth: 30, 'thirty-first': 31
+});
+const MONTH_WORDS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const STATED_DAY_BOUND_PATTERN = new RegExp(
+  '\\b(before|by|ahead of|no later than|prior to)\\s+(?:the\\s+)?'
+  + '(\\d{1,2}(?=(?:st|nd|rd|th)\\b)|' + Object.keys(ORDINAL_DAY_WORDS).join('|').replace(/-/g, '[- ]') + ')'
+  + '(?:st|nd|rd|th)?\\b(?:\\s+(?:of\\s+)?(' + MONTH_WORDS.join('|') + '))?'
+  // An ordinal followed by a noun is a thing, not a date: "before the first batch".
+  + '(?!\\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year)\\b)',
+  'i'
+);
+
+// "Monday morning, so it's here before the fifteenth" carries its own outer
+// bound. Returns that bound as an ISO date, whether the bound day itself is
+// allowed ("by", "no later than") or excluded ("before"), and the phrase.
+function statedDayBound(value, meetingDate) {
+  const source = text(value, 4000);
+  if (!source || !/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return null;
+  const match = source.match(STATED_DAY_BOUND_PATTERN);
+  if (!match) return null;
+  const dayToken = match[2].toLowerCase().replace(/\s+/g, '-');
+  const day = Number(dayToken) || ORDINAL_DAY_WORDS[dayToken];
+  if (!day || day > 31) return null;
+  const [meetingYear, meetingMonth, meetingDay] = meetingDate.split('-').map(Number);
+  let year = meetingYear;
+  let month = match[3] ? MONTH_WORDS.indexOf(match[3].toLowerCase()) + 1 : meetingMonth;
+  // A bound day earlier than the meeting day with no month named means next month.
+  if (!match[3] && day < meetingDay) month += 1;
+  if (match[3] && month < meetingMonth) year += 1;
+  if (month > 12) { month = 1; year += 1; }
+  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const inclusive = /^(?:by|no later than)$/i.test(match[1]);
+  return { date, inclusive, phrase: match[0].trim() };
+}
+
+function timingBoundBreach(timing = {}, source = '', meetingDate = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(timing.exactDate || ''))) return null;
+  const bound = statedDayBound(source, meetingDate);
+  if (!bound) return null;
+  const breached = bound.inclusive ? timing.exactDate > bound.date : timing.exactDate >= bound.date;
+  return breached ? bound : null;
 }
 
 function timingFrom(item = {}, options = {}) {
@@ -1499,6 +1555,27 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
   return knownSpeaker && ownerWords.some((word) => evidenceWords.includes(word));
 }
 
+// Timing is otherwise entirely model-supplied, so when the model returned
+// nothing for "let me order six sacks today" the same-day wording was lost for
+// good. Recover only plain relative-day phrases, only from the cited units
+// themselves (never a neighbouring turn), and only where that unit reads as a
+// commitment rather than narration ("we discussed today").
+const CITED_TIMING_PHRASE = /\b(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon))?|this\s+(?:morning|afternoon|evening|week)|next\s+week|end\s+of\s+(?:this\s+|next\s+)?week)\b(?!['’]s)/i;
+const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
+function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {}) {
+  if (timing.kind !== 'not_stated') return timing;
+  for (const unit of evidenceWindowUnits(units, evidenceIds, 0)) {
+    const source = String(unit.text || '');
+    const phrase = source.match(CITED_TIMING_PHRASE)?.[0];
+    if (!phrase) continue;
+    const committed = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source)
+      || NAMED_WILL_PATTERN.test(source) || CITED_TIMING_COMMITMENT_CUE.test(source);
+    if (!committed) continue;
+    return timingFrom({ timing: { wording: phrase.toLowerCase().replace(/\s+/g, ' ') } }, options);
+  }
+  return timing;
+}
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
@@ -1513,7 +1590,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       id: text(item?.id, 80) || stableId('action', action, index),
       action,
       owners: splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units)),
-      timing: timingFrom(item, options),
+      timing: backfillCitedTiming(timingFrom(item, options), units, resolved.evidenceIds, options),
       evidenceIds: resolved.evidenceIds,
       reviewFlagIds: [...new Set((Array.isArray(item?.reviewFlagIds) ? item.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
       _unsupportedEvidenceIds: resolved.invalidIds,
@@ -1596,6 +1673,34 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         tokenOverlap(action.timing.wording, evidenceText) >= 0.5
       );
       let exactDateSupported = false;
+      if (action.timing.exactDate && /^\d{4}-\d{2}-\d{2}$/.test(String(options.meetingDate || ''))
+        && action.timing.exactDate < options.meetingDate) {
+        const pastDate = action.timing.exactDate;
+        if (enforceEvidence) action.timing.exactDate = '';
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `The exact date ${pastDate} is earlier than the meeting date and has been removed; confirm the intended timing.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+      }
+      // A derived date is only as good as the whole commitment. "Monday
+      // morning" resolved a week out passed the support check while the same
+      // sentence said "before the fifteenth"; that contradiction must surface
+      // to the reviewer, not be published as a confident target.
+      const breach = timingBoundBreach(action.timing, `${action.timing.wording} ${evidenceText}`, options.meetingDate);
+      if (breach) {
+        const breachedDate = action.timing.exactDate;
+        if (enforceEvidence) action.timing.exactDate = '';
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `The exact date ${breachedDate} falls ${breach.inclusive ? 'after' : 'on or after'} the stated limit "${breach.phrase}" and has been removed; confirm the intended date.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+      }
       if (action.timing.exactDate) {
         const [year, month, day] = action.timing.exactDate.split('-');
         const monthNames = ['', 'jan(?:uary)?', 'feb(?:ruary)?', 'mar(?:ch)?', 'apr(?:il)?', 'may', 'jun(?:e)?', 'jul(?:y)?', 'aug(?:ust)?', 'sep(?:tember)?', 'oct(?:ober)?', 'nov(?:ember)?', 'dec(?:ember)?'];

@@ -2003,3 +2003,64 @@ test('the summary stage gets its own contract rather than the action instruction
   assert.doesNotMatch(actions, /executiveSummary/);
   assert.ok(summary.endsWith(transcript));
 });
+
+test('an owner follow-up the referee filed as a decision is shown as a discussion point, not a decision', () => {
+  const units = [
+    { id: 'T0080', sequence: 80, speaker: 'Mick', text: "I'll ring the refrigeration engineer today and get the chiller serviced before the fifteenth.", classification: 'keep' },
+    { id: 'T0081', sequence: 81, speaker: 'Dan', text: 'Agreed, we order six sacks of Maris Otter to cover the shortfall.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions([{ topic: 'Chiller',
+    points: [],
+    decisions: [
+      { id: 'd1', text: 'Mick to contact the refrigeration engineer today to service the chiller before the fifteenth.', evidenceIds: ['T0080'] },
+      { id: 'd2', text: 'Decision to order six additional sacks of Maris Otter malt to cover the shortfall.', evidenceIds: ['T0081'] }
+    ],
+    openQuestions: []
+  }], [], units);
+  const decisions = compact.flatMap((topic) => topic.decisions).map((record) => record.text);
+  const points = compact.flatMap((topic) => topic.points).map((record) => record.text);
+  assert.ok(points.some((text) => /^Mick to contact/.test(text)));
+  assert.ok(decisions.some((text) => /^Decision to order/.test(text)));
+  assert.ok(!decisions.some((text) => /^Mick to contact/.test(text)));
+});
+
+test('supporting context is deduplicated across the whole draft, not per parent row', () => {
+  const units = [
+    { id: 'T0090', sequence: 90, speaker: 'Ravi', text: 'I will order the full thirteen kilos of hops Monday morning so they arrive before the fifteenth.', classification: 'keep' },
+    { id: 'T0091', sequence: 91, speaker: 'Mick', text: 'If the chiller fails mid-ferment we could lose the whole twelve hundred litres.', classification: 'keep' }
+  ];
+  const discussion = [{ topic: 'Brew plan', points: [
+    { id: 'p1', text: 'Ravi will order the full hop bill of thirteen kilos on Monday morning.', evidenceIds: ['T0090'] },
+    { id: 'p2', text: 'A chiller failure during the IPA ferment risks the whole twelve hundred litre batch.', evidenceIds: ['T0091'] }
+  ], decisions: [], openQuestions: [] }];
+  const supportingCandidates = [
+    { candidate: { candidateId: 'c1', text: 'The full hop order of thirteen kilos is to be placed on Monday morning to ensure delivery before the fifteenth.', evidenceIds: ['T0090'], topic: 'Hops' }, mergeTarget: 'p1' },
+    { candidate: { candidateId: 'c2', text: 'Thirteen kilos of hops are to be ordered Monday morning to ensure delivery before the fifteenth.', evidenceIds: ['T0090'], topic: 'Hops' }, mergeTarget: 'p2' },
+    { candidate: { candidateId: 'c3', text: 'Failure of the chiller mid-ferment risks losing the entire twelve hundred litres.', evidenceIds: ['T0091'], topic: 'Chiller' }, mergeTarget: 'p2' },
+    { candidate: { candidateId: 'c4', text: 'If the chiller fails mid-ferment the entire twelve hundred litres could be lost.', evidenceIds: ['T0091'], topic: 'Chiller' }, mergeTarget: 'p1' }
+  ];
+  const compact = compactDiscussionPropositions(discussion, [], units, { supportingCandidates });
+  const details = compact.flatMap((topic) => topic.points).flatMap((record) => record.supportingDetails || []).map((detail) => detail.text);
+  assert.ok(details.length <= 2, `expected at most one hop detail and one chiller detail, got ${JSON.stringify(details)}`);
+  assert.ok(details.filter((text) => /thirteen kilos/i.test(text)).length <= 1);
+  assert.ok(details.filter((text) => /chiller/i.test(text)).length <= 1);
+});
+
+test('cluster members that restate an already released member are not released again', () => {
+  const dispositions = [
+    { candidateId: 'r1', disposition: 'core' },
+    { candidateId: 'r2', disposition: 'supporting', targetId: 'r1' }
+  ];
+  const candidates = [
+    { candidateId: 'r1', text: 'Order thirteen kilos of hops on Monday morning.', evidenceIds: ['T0001'], clusterMembers: [
+      { text: 'Thirteen kilos of hops are to be ordered on Monday morning.', evidenceIds: ['T0001'], sourcePass: 'primary', clusterRelation: 'paraphrase' }
+    ] },
+    { candidateId: 'r2', text: 'Order thirteen kilos of hops by Monday the fifteenth.', evidenceIds: ['T0001'], clusterMembers: [
+      { text: 'Thirteen kilos of hops to be ordered Monday morning.', evidenceIds: ['T0001'], sourcePass: 'recovery', clusterRelation: 'paraphrase' },
+      { text: 'Citra hops are around twenty-eight pounds a kilo.', evidenceIds: ['T0002'], sourcePass: 'primary', clusterRelation: 'paraphrase' }
+    ] }
+  ];
+  const released = refereeClusterSupportingCandidates(dispositions, candidates).map((item) => item.candidate.text);
+  assert.equal(released.filter((text) => /thirteen kilos/i.test(text)).length, 1);
+  assert.ok(released.some((text) => /twenty-eight pounds/i.test(text)));
+});

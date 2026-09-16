@@ -947,3 +947,64 @@ test('summary and objectives normalise alongside the rest of the draft', () => {
   // and must not leak its internal bookkeeping into the stored payload.
   assert.ok(!('_unsupportedEvidenceIds' in result.objectives[0]));
 });
+
+test('a weekday matching the meeting weekday is not silently pushed a week out', () => {
+  // Meeting on Monday 10 August: "Monday morning" is the same day, a bare
+  // "Monday" is ambiguous and keeps its wording, "next Monday" is a week on.
+  assert.equal(relativeExactDate('Monday morning', '2026-08-10'), '2026-08-10');
+  assert.equal(relativeExactDate('Monday', '2026-08-10'), '');
+  assert.equal(relativeExactDate('this Monday', '2026-08-10'), '2026-08-10');
+  assert.equal(relativeExactDate('next Monday', '2026-08-10'), '2026-08-17');
+  assert.equal(relativeExactDate('Tuesday', '2026-08-10'), '2026-08-11');
+});
+
+test('an exact date that breaches a stated limit in the same commitment is removed and flagged', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2001', speaker: 'Ravi', text: "I'll place the full order Monday morning so it's here before the fifteenth.", classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Place the full 13 kg hop order.',
+    owners: ['Ravi'],
+    timing: { kind: 'target', wording: 'Monday morning', exactDate: '2026-08-17' },
+    evidenceIds: ['T2001']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].timing, { kind: 'target', wording: 'Monday morning', exactDate: '' });
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /before the fifteenth/i.test(flag.message)));
+
+  // The same commitment with a compliant date is left alone.
+  const compliant = normaliseAgentResult({ actions: [{
+    action: 'Place the full 13 kg hop order.',
+    owners: ['Ravi'],
+    timing: { kind: 'target', wording: 'Monday morning', exactDate: '2026-08-10' },
+    evidenceIds: ['T2001']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.equal(compliant.actions[0].timing.exactDate, '2026-08-10');
+  assert.ok(!compliant.reviewFlags.some((flag) => flag.kind === 'timing'));
+});
+
+test('a date earlier than the meeting date is removed and flagged', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2010', speaker: 'Priya', text: 'I will send the report by Friday.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Send the report.', owners: ['Priya'],
+    timing: { kind: 'deadline', wording: 'by Friday', exactDate: '2026-08-07' }, evidenceIds: ['T2010']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.equal(result.actions[0].timing.exactDate, '');
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /earlier than the meeting date/i.test(flag.message)));
+});
+
+test('same-day wording in the cited commitment is recovered when the model returned no timing', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2020', speaker: 'Dan', text: 'Fine. Let me order six sacks today, I get a better rate.', classification: 'keep' },
+    { id: 'T2021', speaker: 'Josie', text: 'We discussed today whether the festival wants forty kegs.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Order six sacks of Maris Otter malt.', owners: ['Dan'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2020'] },
+    { action: 'Check what the festival wants.', owners: ['Josie'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2021'] }
+  ] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+  // Narration is not a commitment: "we discussed today" must not become a deadline.
+  assert.equal(result.actions[1].timing.kind, 'not_stated');
+});

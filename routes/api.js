@@ -8343,6 +8343,11 @@ function meetingMinutesAgentHybridEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_HYBRID_V4 || '0'));
 }
 
+function meetingMinutesAgentSupportingDedupeThreshold() {
+  const value = Number(process.env.MEETING_MINUTES_AGENT_SUPPORTING_DEDUPE_THRESHOLD);
+  return Number.isFinite(value) && value > 0 && value <= 1 ? value : 0.72;
+}
+
 function meetingMinutesAgentCompactDiscussionEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_AGENT_COMPACT_DISCUSSION_V1 || '0'));
 }
@@ -8739,9 +8744,13 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
         const sharedEvidence = (other.evidenceIds || []).some((id) => evidence.has(id));
         const leftNumbers = new Set(String(other.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
         const rightNumbers = new Set(String(candidate.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
+        // Only a genuine quantity conflict keeps two phrasings apart. Requiring
+        // the same *count* of numbers split "order 13 kilos Monday" from
+        // "order 13 kilos by the 15th" into separate clusters, and each then
+        // released its own paraphrases as context. Same rule as
+        // supportingDetailAddsInformation.
         const incompatibleNumbers = leftNumbers.size && rightNumbers.size
-          && (leftNumbers.size !== rightNumbers.size
-            || [...leftNumbers].some((value) => !rightNumbers.has(value)));
+          && ![...leftNumbers].some((value) => rightNumbers.has(value));
         if (incompatibleNumbers) return false;
         const leftTopic = discussionInformationTokens(other.topic || '');
         const rightTopic = discussionInformationTokens(candidate.topic || '');
@@ -8955,6 +8964,7 @@ function compactMeetingAgentRefereeCandidate(candidate = {}) {
 }
 
 function refereeClusterSupportingCandidates(dispositions = [], candidates = []) {
+  const dedupeThreshold = meetingMinutesAgentSupportingDedupeThreshold();
   const dispositionById = new Map((Array.isArray(dispositions) ? dispositions : [])
     .filter((item) => item?.candidateId).map((item) => [String(item.candidateId), item]));
   const result = [];
@@ -8977,6 +8987,9 @@ function refereeClusterSupportingCandidates(dispositions = [], candidates = []) 
         && !/^\s*(?:yeah|yes|no|okay|ok|right|thanks|thank you|bye|cheers)\b/i.test(String(member.text || ''));
       if (!editorialMember && !deterministicContext) continue;
       if (kind === 'reject' && member.clusterRelation !== 'overflow') continue;
+      // Members of different clusters can still say the same thing; release
+      // each fact once rather than once per cluster.
+      if (result.some((item) => hybridContentTokenOverlap(item.candidate.text, member.text) >= dedupeThreshold)) continue;
       result.push({ candidate: member, mergeTarget: targetId, clusterRepresentativeId: candidate.candidateId });
     }
   }
@@ -10995,6 +11008,13 @@ function discussionRefereeHasCompleteCandidateAccounting(diagnostics = {}) {
     && Number(diagnostics?.incompleteDispositionCount || 0) === 0;
 }
 
+const OWNER_FOLLOW_UP_PATTERN = new RegExp(
+  '^(?!(?:Action|Agreed|Agreement|Aim|Approval|Commitment|Confirmation|Decided|Decision|Goal|Intention|It|Need|Option|Plan|Proposal|Request|Requirement|Rule|Team|That|The|This)\\b)'
+  + "[A-Z][\\p{L}'’.-]+(?:\\s+[A-Z][\\p{L}'’.-]+){0,2}\\s+(?:to|will|is to)\\s+"
+  + '(?:arrange|book|call|chase|check|circulate|complete|confirm|contact|draft|email|finalise|finalize|follow up|forward|get|investigate|issue|liaise|order|organise|organize|place|prepare|produce|provide|raise|review|ring|schedule|send|service|share|sign|source|speak|submit|test|update|write)\\b',
+  'u'
+);
+
 function compactDiscussionPropositions(discussion = [], recovered = [], sourceUnits = [], options = {}) {
   const kindRank = { discussion_point: 1, open_question: 2, decision: 3 };
   const numberTokens = (value) => new Set(String(value || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
@@ -11054,7 +11074,11 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     record.supportingDetails = details.filter((detail, index) => details.findIndex((other) =>
       hybridContentTokenOverlap(other.text, detail.text) >= 0.9) === index).slice(0, 50);
     const topic = topicFor(selected.topic);
-    const key = selected.recordType === 'decision' ? 'decisions'
+    // "Mick to contact the engineer today" is a follow-up, not a decision; the
+    // Referee's bucket is otherwise taken verbatim, so keep it visible as a
+    // discussion point rather than mislabel it. The Actions stage owns it.
+    const ownerFollowUp = selected.recordType === 'decision' && OWNER_FOLLOW_UP_PATTERN.test(String(record.text || ''));
+    const key = selected.recordType === 'decision' && !ownerFollowUp ? 'decisions'
       : selected.recordType === 'open_question' ? 'openQuestions' : 'points';
     topic[key].push(record);
   }
@@ -11101,6 +11125,13 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // ledger remains private; only the evidence-grounded detail is exposed.
   const allPrimary = topics.flatMap((topic) => [...topic.decisions, ...topic.openQuestions, ...topic.points]
     .map((record) => ({ topic, record })));
+  // Dedupe across the whole draft, not per parent: the same chiller-risk fact
+  // attached under four different propositions was four reviewer rows.
+  const supportingDedupeThreshold = meetingMinutesAgentSupportingDedupeThreshold();
+  const attachedTexts = allPrimary.flatMap(({ record }) => [
+    record.text,
+    ...(record.supportingDetails || []).map((detail) => detail.text)
+  ]).filter(Boolean);
   for (const item of Array.isArray(options.supportingCandidates) ? options.supportingCandidates : []) {
     const candidate = item?.candidate || item;
     const detailText = meetingMinutesAgentText(candidate?.text || candidate?.record?.text, 1600);
@@ -11116,14 +11147,14 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     }).sort((left, right) => right.score - left.score);
     if (!ranked[0] || ranked[0].score < 0.24) continue;
     const target = ranked[0].target.record;
-    if (hybridContentTokenOverlap(target.text, detailText) >= 0.88) continue;
+    if (attachedTexts.some((existingText) => hybridContentTokenOverlap(existingText, detailText) >= supportingDedupeThreshold)) continue;
     const existing = target.supportingDetails || [];
-    if (existing.some((detail) => hybridContentTokenOverlap(detail.text, detailText) >= 0.88)) continue;
     target.supportingDetails = [...existing, {
       id: candidate.candidateId || candidate.record?.id || `supporting-${target.id}-${existing.length}`,
       text: detailText,
       evidenceIds: [...new Set(candidate.evidenceIds || candidate.record?.evidenceIds || [])].slice(0, 8)
     }].slice(0, 50);
+    attachedTexts.push(detailText);
   }
   // A Referee may conservatively label a genuinely material proposition as
   // supporting. Keep secondary context collapsed by default, but promote a

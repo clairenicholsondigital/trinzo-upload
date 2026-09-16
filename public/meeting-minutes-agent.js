@@ -56,7 +56,9 @@
     var resumeLink = document.getElementById('resumeLaterLink');
     if (resumeLink) resumeLink.hidden = unsaved;
     var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage && generationRunning()) leaveMessage.textContent = generationSaveText();
+    // Refresh on every save transition, not only mid-run: once a run ended the
+    // panel froze on "Everything is saved" beside a live unfinished-entry warning.
+    if (leaveMessage) leaveMessage.textContent = generationSaveText(generationRunning());
   }
 
   function savedStatusText(value) {
@@ -82,11 +84,10 @@
     return hasTransientActionState() || hasTransientDiscussionState();
   }
 
-  function generationSaveText() {
-    if (pendingGenerationEdits || hasTransientEditorState()) {
-      return 'Unsaved edits are waiting to save. Keep this tab open.';
-    }
-    return 'Everything is saved. You can leave and resume later while generation continues.';
+  function generationSaveText(running) {
+    if (pendingGenerationEdits) return 'Unsaved edits are waiting to save. Keep this tab open.';
+    if (hasTransientEditorState()) return 'New unfinished entries are kept in this tab until their text is entered. Keep this tab open.';
+    return 'Everything is saved. You can leave and resume later' + (running === false ? '.' : ' while generation continues.');
   }
 
   function setBusy(busy, message, stage) {
@@ -325,7 +326,7 @@
       ? (generation.message || 'Preparing independent quality checks…')
       : (notice.message || 'The completed draft is ready to review.');
     var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage) leaveMessage.textContent = generation ? generationSaveText() : 'Everything is saved. You can leave and resume later.';
+    if (leaveMessage) leaveMessage.textContent = generationSaveText(Boolean(generation));
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
