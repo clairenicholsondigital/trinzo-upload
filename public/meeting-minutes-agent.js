@@ -14,6 +14,7 @@
   var pendingGenerationEdits = false;
   var generationPollKey = '';
   var actionEditorState = { pendingRows: {}, customOwners: {} };
+  var discussionEditorState = { pendingTopics: {}, pendingRecords: {} };
   var editVersion = 0;
   var rendering = false;
   var fileInput = document.getElementById('transcriptFile');
@@ -63,8 +64,17 @@
       });
   }
 
+  function hasTransientDiscussionState() {
+    return Object.keys(discussionEditorState.pendingTopics).length > 0
+      || Object.keys(discussionEditorState.pendingRecords).length > 0;
+  }
+
+  function hasTransientEditorState() {
+    return hasTransientActionState() || hasTransientDiscussionState();
+  }
+
   function generationSaveText() {
-    if (pendingGenerationEdits || hasTransientActionState()) {
+    if (pendingGenerationEdits || hasTransientEditorState()) {
       return 'Local edits are waiting to save. Keep this tab open until generation finishes.';
     }
     return 'Draft saved. Generation continues in the background and can be resumed from Library.';
@@ -389,6 +399,67 @@
     return state.draft.discussion;
   }
 
+  function cloneEditorValue(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function discussionRecordHasText(record) {
+    return Boolean(record && String(record.text || '').trim());
+  }
+
+  function topicHasDiscussionText(topic) {
+    return ['points', 'decisions', 'openQuestions'].some(function (field) {
+      return (topic[field] || []).some(discussionRecordHasText);
+    });
+  }
+
+  function rememberPendingDiscussion() {
+    if (!state.draft) return;
+    (state.draft.discussion || []).forEach(function (topic) {
+      var topicId = String(topic.id || '');
+      if (/^manual-topic-/.test(topicId) && !topicHasDiscussionText(topic)) {
+        discussionEditorState.pendingTopics[topicId] = cloneEditorValue(topic);
+      } else if (topicId) delete discussionEditorState.pendingTopics[topicId];
+      ['points', 'decisions', 'openQuestions'].forEach(function (field) {
+        (topic[field] || []).forEach(function (record) {
+          var recordId = String(record.id || '');
+          if (/^manual-/.test(recordId) && !discussionRecordHasText(record)) {
+            discussionEditorState.pendingRecords[recordId] = {
+              topicId: topicId, field: field, record: cloneEditorValue(record)
+            };
+          } else if (recordId) delete discussionEditorState.pendingRecords[recordId];
+        });
+      });
+    });
+  }
+
+  function restorePendingDiscussion(draft) {
+    var discussion = Array.isArray(draft.discussion) ? draft.discussion : [];
+    Object.keys(discussionEditorState.pendingTopics).forEach(function (id) {
+      if (!discussion.some(function (topic) { return topic.id === id; })) {
+        discussion.push(cloneEditorValue(discussionEditorState.pendingTopics[id]));
+      }
+    });
+    Object.keys(discussionEditorState.pendingRecords).forEach(function (id) {
+      var pending = discussionEditorState.pendingRecords[id];
+      var topic = discussion.find(function (candidate) { return candidate.id === pending.topicId; });
+      if (!topic) return;
+      var list = topic[pending.field] || (topic[pending.field] = []);
+      if (!list.some(function (record) { return record.id === id; })) list.push(cloneEditorValue(pending.record));
+    });
+    draft.discussion = discussion;
+    return draft;
+  }
+
+  function forgetPendingDiscussion(value) {
+    if (!value || typeof value !== 'object') return;
+    if (value.id) {
+      delete discussionEditorState.pendingTopics[value.id];
+      delete discussionEditorState.pendingRecords[value.id];
+    }
+    Object.keys(value).forEach(function (key) { forgetPendingDiscussion(value[key]); });
+  }
+
   function ownerEditor(action, index) {
     var owners = action.owners || [];
     var taken = owners.map(function (owner) { return owner.toLowerCase(); });
@@ -659,8 +730,9 @@
     if (!draft) return;
     var replacingExistingDraft = Boolean(state.draft);
     rememberPendingActions();
+    rememberPendingDiscussion();
     document.getElementById('reloadDraft').hidden = true;
-    state.draft = restorePendingActions(draft);
+    state.draft = restorePendingActions(restorePendingDiscussion(draft));
     // Responses to saves and background work must not navigate the reviewer.
     // On the initial load, restore the separately persisted selected screen;
     // older drafts fall back to their furthest unlocked step.
@@ -673,8 +745,8 @@
     if (generationRunning()) pollGeneration();
     if (generationRunning()) {
       setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
-    } else if (hasTransientActionState()) {
-      setSaveStatus('New action details are kept in this tab until the action text is entered.', 'local-only');
+    } else if (hasTransientEditorState()) {
+      setSaveStatus('New unfinished entries are kept in this tab until their text is entered.', 'local-only');
     } else {
       setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
     }
@@ -714,6 +786,7 @@
 
   function scheduleSave() {
     if (rendering || !state.draft) return;
+    rememberPendingDiscussion();
     editVersion += 1;
     clearTimeout(saveTimer);
     // While a background run is in flight, hold the save. Its completion writes
@@ -982,7 +1055,16 @@
   document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true,'discussion'); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
-  document.getElementById('addDiscussion').addEventListener('click', function () { readDiscussion(); state.draft.discussion.push({id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]}); renderDiscussion(); scheduleSave(); });
+  document.getElementById('addDiscussion').addEventListener('click', function () {
+    readDiscussion();
+    var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]};
+    state.draft.discussion.push(topic);
+    discussionEditorState.pendingTopics[topic.id] = cloneEditorValue(topic);
+    renderDiscussion();
+    setSaveStatus('New topic is kept in this tab until you add meeting content.', 'local-only');
+    var field = document.querySelector('[data-topic-index="' + (state.draft.discussion.length - 1) + '"][data-topic]');
+    if (field) field.focus({ preventScroll:true });
+  });
 
   document.getElementById('discussionList').addEventListener('click', function (event) {
     var add=event.target.closest('[data-add-record]');
@@ -992,9 +1074,16 @@
     var topicButton=event.target.closest('[data-delete-topic]');
     if(!add && !remove && !demote && !promote && !topicButton) return;
     readDiscussion();
-    if(add){state.draft.discussion[Number(add.dataset.topicIndex)][add.dataset.addRecord].push({id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[]});}
+    var addedRecord = null;
+    if(add){
+      var addTopic=state.draft.discussion[Number(add.dataset.topicIndex)];
+      addedRecord={id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[]};
+      addTopic[add.dataset.addRecord].push(addedRecord);
+      discussionEditorState.pendingRecords[addedRecord.id]={topicId:addTopic.id,field:add.dataset.addRecord,record:cloneEditorValue(addedRecord)};
+    }
     if(remove){
       var removedRecord=state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1)[0];
+      forgetPendingDiscussion(removedRecord);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
     }
     if(demote){
@@ -1017,9 +1106,17 @@
     }
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
+      forgetPendingDiscussion(removedTopic);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
     }
     renderDiscussion();
+    if(addedRecord){
+      rememberPendingDiscussion();
+      setSaveStatus('New discussion row is kept in this tab until you enter its text.', 'local-only');
+      var addedField=document.getElementById(recordDomId('discussion',addedRecord.id));
+      if(addedField){var editor=addedField.querySelector('textarea');if(editor)editor.focus({preventScroll:true});}
+      return;
+    }
     scheduleSave();
   });
 
@@ -1149,6 +1246,7 @@
     if (event.target.matches('textarea,input,select') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,[data-add-owner],[data-owner-other]')) {
       readEditors();
       rememberPendingActions();
+      rememberPendingDiscussion();
       autoGrow(event.target.parentElement);
       scheduleSave();
     }

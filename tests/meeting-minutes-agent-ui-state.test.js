@@ -60,6 +60,18 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  const topicCleanup = baseDraft('topic-cleanup', false);
+  topicCleanup.discussion.push({
+    id: 'topic-2', topic: 'Second topic', points: [{
+      id: 'discussion-2', text: 'A second generated sentence needs review.', evidenceIds: ['T0001'],
+      reviewFlagIds: ['flag-topic'], supportingDetails: []
+    }], decisions: [], openQuestions: []
+  });
+  topicCleanup.reviewFlags.push({
+    id: 'flag-topic', kind: 'missing_evidence', message: 'Check the second topic.',
+    evidenceIds: ['T0001'], status: 'open', correctionNote: ''
+  });
+  drafts.set('topic-cleanup', topicCleanup);
   const summaryRunning = baseDraft('summary-running', false);
   summaryRunning.currentStep = 4;
   summaryRunning.selectedStep = 3;
@@ -93,8 +105,14 @@ function startStubServer() {
       updatedAt: new Date().toISOString(),
       currentStep: Math.max(Number(prior.currentStep || 0), Number(req.body.currentStep || 0)),
       selectedStep: Number(req.body.selectedStep == null ? req.body.currentStep : req.body.selectedStep),
-      // Match production normalisation: an empty action is not persisted.
-      actions: (req.body.actions || prior.actions).filter((action) => String(action.action || '').trim())
+      // Match production normalisation: incomplete structured rows are not persisted.
+      actions: (req.body.actions || prior.actions).filter((action) => String(action.action || '').trim()),
+      discussion: (req.body.discussion || prior.discussion).map((topic) => ({
+        ...topic,
+        points: (topic.points || []).filter((record) => String(record.text || '').trim()),
+        decisions: (topic.decisions || []).filter((record) => String(record.text || '').trim()),
+        openQuestions: (topic.openQuestions || []).filter((record) => String(record.text || '').trim())
+      })).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length)
     };
     drafts.set(req.params.id, next);
     patchCounts.set(req.params.id, (patchCounts.get(req.params.id) || 0) + 1);
@@ -208,6 +226,103 @@ test('action generation has an honest waiting state and stage-scoped status', { 
   }
 });
 
+test('unfinished topics and discussion rows survive autosave responses while explicit deletion clears linked warnings', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+
+    await page.click('#addDiscussion');
+    let cards = page.locator('#discussionList .discussion-card');
+    assert.equal(await cards.count(), 2);
+    const newTopic = cards.last();
+    assert.equal(await newTopic.locator('[data-topic]').inputValue(), '');
+    assert.match(await page.textContent('#saveStatus'), /kept in this tab/i);
+
+    // An unrelated edit saves and the server omits the empty topic. The local
+    // editor must be restored so the reviewer can carry on typing.
+    const topicSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await cards.first().locator('[data-topic]').fill('Report review updated');
+    await topicSave;
+    cards = page.locator('#discussionList .discussion-card');
+    assert.equal(await cards.count(), 2);
+    assert.equal(await cards.last().locator('[data-topic]').inputValue(), '');
+
+    const namedTopicSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await cards.last().locator('[data-topic]').fill('New topic in progress');
+    await namedTopicSave;
+    cards = page.locator('#discussionList .discussion-card');
+    assert.equal(await cards.last().locator('[data-topic]').inputValue(), 'New topic in progress');
+
+    await cards.last().locator('[data-add-record="points"]').click();
+    cards = page.locator('#discussionList .discussion-card');
+    assert.equal(await cards.last().locator('[data-record-field="points"]').count(), 1);
+    assert.equal(await cards.last().locator('[data-record-field="points"]').inputValue(), '');
+
+    const rowSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await cards.first().locator('[data-record-field="points"]').fill('The revised report is ready for circulation now.');
+    await rowSave;
+    cards = page.locator('#discussionList .discussion-card');
+    assert.equal(await cards.last().locator('[data-record-field="points"]').count(), 1);
+    assert.equal(await cards.last().locator('[data-record-field="points"]').inputValue(), '');
+
+    const completedRowSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await cards.last().locator('[data-record-field="points"]').fill('The team reviewed the new topic.');
+    await completedRowSave;
+    const saved = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
+    assert.equal(saved.discussion.some((topic) => topic.topic === 'New topic in progress'
+      && topic.points.some((record) => record.text === 'The team reviewed the new topic.')), true);
+
+    // The original sentence carries flag-1. Removing the sentence should close
+    // that warning now that the target no longer exists.
+    const deleteSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await cards.first().locator('[data-remove-record="points"]').click();
+    await deleteSave;
+    const afterDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
+    assert.equal(afterDelete.reviewFlags.find((flag) => flag.id === 'flag-1').status, 'dismissed');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('deleting a topic dismisses warnings belonging to its nested records', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'topic-cleanup');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    const deleteSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/topic-cleanup')
+        && response.request().method() === 'PATCH');
+    await page.click('[data-delete-topic="1"]');
+    await deleteSave;
+    const saved = await page.evaluate(async () => (await (await fetch('/test-state/topic-cleanup')).json()).draft);
+    assert.equal(saved.discussion.some((topic) => topic.id === 'topic-2'), false);
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'flag-topic').status, 'dismissed');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('selected stage and deletions survive save responses, navigation and reopening', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -242,7 +357,8 @@ test('selected stage and deletions survive save responses, navigation and reopen
     await page.click('[data-remove-record]');
     await discussionDeleteSave;
     const savedAfterDiscussionDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
-    assert.equal(savedAfterDiscussionDelete.discussion[0].points.length, 0);
+    assert.equal(savedAfterDiscussionDelete.discussion.some((topic) =>
+      (topic.points || []).some((point) => point.id === 'discussion-1')), false);
     assert.equal(savedAfterDiscussionDelete.reviewFlags.find((flag) => flag.id === 'flag-1').status, 'dismissed');
     assert.deepEqual(errors, []);
   } finally {
