@@ -11340,25 +11340,43 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
   return proposals;
 }
 
+// Concurrent Referee batches can finish together and all checkpoint the same
+// optimistic draft revision. Queue only the writes; model calls stay parallel.
+const meetingAgentDraftWriteQueues = new Map();
+
+function meetingAgentSerialDraftWrite(draftId, task) {
+  const key = String(draftId || '');
+  const prior = meetingAgentDraftWriteQueues.get(key) || Promise.resolve();
+  const run = prior.catch(() => {}).then(task);
+  let tracked;
+  tracked = run.finally(() => {
+    if (meetingAgentDraftWriteQueues.get(key) === tracked) meetingAgentDraftWriteQueues.delete(key);
+  });
+  meetingAgentDraftWriteQueues.set(key, tracked);
+  return tracked;
+}
+
 async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = {}) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
-    if (!fresh) return;
-    const { passCache, ...generationPatch } = patch;
-    const generation = normaliseMeetingAgentGeneration({
-      ...(fresh.generation || {}), stage, status: 'running', bootId: MEETING_AGENT_BOOT_ID,
-      startedAt: fresh.generation?.startedAt || new Date().toISOString(), ...generationPatch
-    });
-    try {
-      await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
-        generation,
-        ...(passCache ? { passCache: normaliseMeetingAgentPassCache(passCache) } : {})
+  return meetingAgentSerialDraftWrite(draftId, async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
+      if (!fresh) return;
+      const { passCache, ...generationPatch } = patch;
+      const generation = normaliseMeetingAgentGeneration({
+        ...(fresh.generation || {}), stage, status: 'running', bootId: MEETING_AGENT_BOOT_ID,
+        startedAt: fresh.generation?.startedAt || new Date().toISOString(), ...generationPatch
       });
-      return;
-    } catch (error) {
-      if (error.statusCode !== 409 || attempt === 2) throw error;
+      try {
+        await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
+          generation,
+          ...(passCache ? { passCache: normaliseMeetingAgentPassCache(passCache) } : {})
+        });
+        return;
+      } catch (error) {
+        if (error.statusCode !== 409 || attempt === 2) throw error;
+      }
     }
-  }
+  });
 }
 
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
@@ -12501,18 +12519,153 @@ function publicMeetingAgentGeneration(generation) {
   return rest;
 }
 
+function meetingAgentStageContentFields(stage) {
+  if (stage === 'discussion') return ['discussion', 'meetingObjectives'];
+  if (stage === 'actions') return ['actions', 'pendingProposal'];
+  if (stage === 'summary') return ['executiveSummary', 'meetingObjectives'];
+  return [];
+}
+
+function meetingAgentStageFieldWasGeneratedElsewhere(sourceDraft = {}, freshDraft = {}, stage = '', field = '') {
+  if (stage !== 'summary' || field !== 'meetingObjectives') return false;
+  return JSON.stringify(sourceDraft?.qualityState?.discussion ?? null)
+    !== JSON.stringify(freshDraft?.qualityState?.discussion ?? null);
+}
+
+function meetingAgentStageContentConflicts(sourceDraft = {}, freshDraft = {}, stage = '') {
+  const protectedFields = stage === 'discussion' ? ['discussion']
+    : stage === 'actions' ? ['actions', 'pendingProposal']
+      : stage === 'summary' ? ['executiveSummary', 'meetingObjectives'] : [];
+  return protectedFields.filter((field) =>
+    JSON.stringify(sourceDraft?.[field] ?? null) !== JSON.stringify(freshDraft?.[field] ?? null)
+      && !meetingAgentStageFieldWasGeneratedElsewhere(sourceDraft, freshDraft, stage, field));
+}
+
+function meetingAgentStageOwnsCandidate(stage, candidate = {}) {
+  const recordType = meetingMinutesAgentText(candidate?.recordType, 80);
+  return stage === 'actions'
+    ? recordType === 'action'
+    : stage === 'discussion' && ['discussion_point', 'decision', 'open_question', 'objective'].includes(recordType);
+}
+
+function meetingAgentStageScopedArray(fresh = [], incoming = [], stage, owns) {
+  return [
+    ...(Array.isArray(fresh) ? fresh : []).filter((item) => !owns(stage, item)),
+    ...(Array.isArray(incoming) ? incoming : []).filter((item) => owns(stage, item))
+  ];
+}
+
+function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, stage = '', resultChanges = {}) {
+  const conflictFields = meetingAgentStageContentConflicts(sourceDraft, freshDraft, stage);
+  if (conflictFields.length) return { conflictFields, changes: {} };
+  const changes = {};
+  for (const field of meetingAgentStageContentFields(stage)) {
+    const changedSinceStart = JSON.stringify(sourceDraft?.[field] ?? null)
+      !== JSON.stringify(freshDraft?.[field] ?? null);
+    const generatedElsewhere = meetingAgentStageFieldWasGeneratedElsewhere(
+      sourceDraft, freshDraft, stage, field
+    );
+    if ((!changedSinceStart || generatedElsewhere) && Object.prototype.hasOwnProperty.call(resultChanges, field)) {
+      changes[field] = resultChanges[field];
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(resultChanges, 'candidateLedger')) {
+    changes.candidateLedger = meetingAgentStageScopedArray(
+      freshDraft.candidateLedger, resultChanges.candidateLedger, stage, meetingAgentStageOwnsCandidate
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(resultChanges, 'passProvenance')) {
+    changes.passProvenance = meetingAgentStageScopedArray(
+      freshDraft.passProvenance, resultChanges.passProvenance, stage,
+      (ownedStage, item) => item?.stage === ownedStage
+    ).slice(-40);
+  }
+  if (Object.prototype.hasOwnProperty.call(resultChanges, 'passCache')) {
+    changes.passCache = normaliseMeetingAgentPassCache(meetingAgentStageScopedArray(
+      freshDraft.passCache, resultChanges.passCache, stage,
+      (ownedStage, item) => item?.stage === ownedStage
+    ));
+  }
+  if (resultChanges.qualityState && Object.prototype.hasOwnProperty.call(resultChanges.qualityState, stage)) {
+    changes.qualityState = {
+      ...(freshDraft.qualityState && typeof freshDraft.qualityState === 'object' ? freshDraft.qualityState : {}),
+      [stage]: resultChanges.qualityState[stage]
+    };
+  }
+  return { conflictFields: [], changes };
+}
+
+async function persistMeetingAgentBackgroundStage(options = {}) {
+  const {
+    draftId, userId, stage, sourceDraft = {}, result = null, failure = null,
+    getDraft = getMeetingMinutesAgentDraft,
+    saveDraft = (draft, changes) => saveMeetingAgentDraft(draft, { authUser: { userId } }, changes),
+    wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    maxAttempts = 3
+  } = options;
+  return meetingAgentSerialDraftWrite(draftId, async () => {
+    let lastConflict = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const fresh = await getDraft(draftId, userId, { includeTranscript: true });
+      if (!fresh) return { saved: null, conflictFields: [] };
+      let conflictFields = [];
+      let changes;
+      if (result) {
+        const scoped = meetingAgentStagePersistenceChanges(sourceDraft, fresh, stage, result.changes || {});
+        conflictFields = scoped.conflictFields;
+        changes = conflictFields.length
+          ? {
+            generation: {
+              stage, status: 'failed', bootId: MEETING_AGENT_BOOT_ID,
+              startedAt: sourceDraft.generation?.startedAt || new Date().toISOString(),
+              error: `This ${stage} section changed while generation was running. Your newer edits were kept; generate it again to replace them.`
+            }
+          }
+          : {
+            ...scoped.changes,
+            reviewFlags: mergeMeetingAgentGenerationFlags(
+              fresh.reviewFlags, result.reviewFlags, result.replaceCoverageFlags
+            ),
+            staleStages: (fresh.staleStages || []).filter((value) => value !== stage),
+            currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
+            generation: null
+          };
+      } else {
+        changes = {
+          generation: {
+            stage, status: 'failed', bootId: MEETING_AGENT_BOOT_ID,
+            startedAt: sourceDraft.generation?.startedAt || new Date().toISOString(),
+            error: (failure && failure.message) || 'The agent could not complete this request.'
+          }
+        };
+      }
+      try {
+        const saved = await saveDraft(fresh, changes);
+        return { saved, conflictFields };
+      } catch (error) {
+        if (error.statusCode !== 409 || attempt === maxAttempts - 1) throw error;
+        lastConflict = error;
+        await wait(300 * (attempt + 1));
+      }
+    }
+    throw lastConflict;
+  });
+}
+
 // Runs after the response has already gone back to the reviewer. Same in-process
 // pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
 // process, so there is no other executor to hand it to.
 async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
   let result = null;
   let failure = null;
+  let sourceDraft = null;
   const hybrid = meetingMinutesAgentHybridEnabled();
   const stageRetryDelays = hybrid ? [] : MEETING_AGENT_RETRY_MS;
   for (let attempt = 0; attempt <= stageRetryDelays.length; attempt += 1) {
     try {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
+      sourceDraft = fresh;
       result = hybrid
         ? await generateHybridMeetingAgentStage(fresh, stage, {
           onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
@@ -12531,39 +12684,9 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
     }
   }
 
-  // Always write against a FRESH read. A revision captured at kick-off is
-  // guaranteed stale - the reviewer has been autosaving on a 900ms debounce for
-  // the whole run - and merging into the stale copy would clobber their edits.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
-    if (!fresh) return;
-    const changes = result
-      ? {
-        ...result.changes,
-        reviewFlags: mergeMeetingAgentGenerationFlags(fresh.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
-        staleStages: (fresh.staleStages || []).filter((value) => value !== stage),
-        currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
-        generation: null
-      }
-      : {
-        generation: {
-          stage,
-          status: 'failed',
-          bootId: MEETING_AGENT_BOOT_ID,
-          startedAt: new Date().toISOString(),
-          error: (failure && failure.message) || 'The agent could not complete this request.'
-        }
-      };
-    try {
-      // saveMeetingAgentDraft reads only req.authUser.userId; this shim is
-      // deliberate, not an oversight - there is no request here.
-      await saveMeetingAgentDraft(fresh, { authUser: { userId } }, changes);
-      return;
-    } catch (error) {
-      if (error.statusCode !== 409 || attempt === 2) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
-    }
-  }
+  await persistMeetingAgentBackgroundStage({
+    draftId, userId, stage, sourceDraft: sourceDraft || {}, result, failure
+  });
 }
 
 router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth, async (req, res) => {
@@ -12955,6 +13078,11 @@ router.stagedEvaluation = {
   strongUnresolvedActionCandidateFlags,
   buildPrivateStagedCandidateLedger,
   prewarmPrivateStagedCandidateLedgers,
+  meetingAgentSerialDraftWrite,
+  meetingAgentStageContentFields,
+  meetingAgentStageContentConflicts,
+  meetingAgentStagePersistenceChanges,
+  persistMeetingAgentBackgroundStage,
   normaliseMeetingAgentPassCache,
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,
