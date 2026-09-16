@@ -364,6 +364,18 @@
   // whether or not a generation is running. The server derives the same thing
   // from the saved content, so the mark survives a refresh and other tabs;
   // this is the immediate, local half.
+  function discussionRecordHasContent(record) {
+    return Boolean(record && String(record.text || '').trim());
+  }
+
+  function discussionTopicHasContent(topic) {
+    if (!topic) return false;
+    if (String(topic.topic || '').trim()) return true;
+    return ['points', 'decisions', 'openQuestions'].some(function (field) {
+      return (topic[field] || []).some(discussionRecordHasContent);
+    });
+  }
+
   function markDownstreamStale() {
     if (!state.draft) return;
     var stale = new Set(state.draft.staleStages || []);
@@ -1278,8 +1290,11 @@
     var promote=event.target.closest('[data-promote-supporting]');
     var topicButton=event.target.closest('[data-delete-topic]');
     if(!add && !remove && !demote && !promote && !topicButton) return;
-    markDownstreamStale();
     readDiscussion();
+    // Only a change to real content makes the Actions outdated. Adding a blank
+    // row, or deleting a row or topic that never had any text, changes nothing
+    // the Actions were built from and must not ask for a regeneration.
+    var material = Boolean(demote || promote);
     var addedRecord = null;
     if(add){
       var addTopic=state.draft.discussion[Number(add.dataset.topicIndex)];
@@ -1289,6 +1304,7 @@
     }
     if(remove){
       var removedRecord=state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1)[0];
+      material = material || discussionRecordHasContent(removedRecord);
       forgetPendingDiscussion(removedRecord);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
     }
@@ -1312,9 +1328,11 @@
     }
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
+      material = material || discussionTopicHasContent(removedTopic);
       forgetPendingDiscussion(removedTopic);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
     }
+    if(material) markDownstreamStale();
     renderDiscussion();
     if(addedRecord){
       rememberPendingDiscussion();

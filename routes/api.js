@@ -12590,7 +12590,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }
-    finalDiscussion = await dedupeSupportingDetailsSemantically(finalDiscussion, { journeyId: draft.id });
+    finalDiscussion = await dedupeSupportingDetailsSemantically(finalDiscussion, { journeyId: draft.draftId });
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],

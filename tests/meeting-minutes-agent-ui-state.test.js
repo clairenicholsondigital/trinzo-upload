@@ -557,3 +557,27 @@ test('editing the discussion with nothing running marks the existing Actions out
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('adding and deleting a blank discussion topic does not mark the Actions outdated', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    await page.click('#addDiscussion');
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'a blank topic is not a material edit');
+    await page.click('[data-delete-topic="1"]');
+    assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
+    // Deleting a topic that carries real content still is.
+    await page.click('[data-delete-topic="0"]');
+    assert.equal(await page.locator('#staleNotice').isVisible(), true);
+    assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
