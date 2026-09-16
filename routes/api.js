@@ -8924,6 +8924,41 @@ function meetingAgentRefereeBatchPlan(stage, candidates = [], batchSize = 6, glo
   return { mode: 'batched', batches: meetingAgentRefereeBatches(rows, batchSize) };
 }
 
+async function meetingAgentRunOrderedConcurrent(items = [], worker, concurrencyLimit = items.length || 1) {
+  const rows = Array.isArray(items) ? [...items] : [];
+  const limit = Math.max(1, Math.min(rows.length || 1, Number(concurrencyLimit) || 1));
+  const values = new Array(rows.length);
+  const errors = new Array(rows.length);
+  let nextIndex = 0;
+  let active = 0;
+  let maximumConcurrent = 0;
+  const runNext = async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= rows.length) return;
+      active += 1;
+      maximumConcurrent = Math.max(maximumConcurrent, active);
+      try {
+        values[index] = await worker(rows[index], index);
+      } catch (error) {
+        errors[index] = error;
+      } finally {
+        active -= 1;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, rows.length) }, () => runNext()));
+  const firstErrorIndex = errors.findIndex(Boolean);
+  if (firstErrorIndex >= 0) {
+    const error = errors[firstErrorIndex];
+    error.orderedConcurrentTaskIndex = firstErrorIndex;
+    error.maximumConcurrent = maximumConcurrent;
+    throw error;
+  }
+  return { values, maximumConcurrent, concurrencyLimit: limit };
+}
+
 function shouldStopMeetingAgentRefereeBatches(primaryError, repairError) {
   if (!primaryError?.code || primaryError.code !== repairError?.code) return false;
   return new Set([
@@ -11646,10 +11681,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     stage, suppliedRefereeCandidates, refereeBatchSize, globalDiscussionReferee
   );
   const runRefereeBatchSet = async (plan) => {
-    const results = [];
-    const unresolvedIds = [];
-    for (let batchIndex = 0; batchIndex < plan.batches.length; batchIndex += 1) {
-      const batchCandidates = plan.batches[batchIndex];
+    const batches = (plan.batches || []).map((batch) => Object.freeze([...(batch || [])]));
+    const passProvenanceStart = passProvenance.length;
+    const completedPassesStart = completedPasses.length;
+    const executeBatch = async (batchCandidates, batchIndex) => {
       const globalBatch = plan.mode === 'global';
       const batchLabel = globalBatch ? 'global' : String(batchIndex + 1);
       const batchContract = globalBatch
@@ -11657,8 +11692,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         : meetingMinutesAgentRefereeContract(
           stage, batchCandidates, `${refereeContract.requestId}:batch:${batchIndex + 1}`
         );
+      const initialPass = `referee-${globalBatch ? 'global' : `batch-${batchIndex + 1}`}`;
+      const repairPass = `referee-${globalBatch ? 'global-repair' : `repair-${batchIndex + 1}`}`;
+      const batchUnresolvedIds = [];
+      const batchDegradedSources = [];
       let batchError = null;
-      let batchResult = await call(`referee-${globalBatch ? 'global' : `batch-${batchIndex + 1}`}`,
+      let batchResult = await call(initialPass,
         meetingMinutesAgentRefereePrompt({
           stage, transcript, sourceUnits: draft.sourceUnits, details,
           discussion: stage === 'actions' ? (draft.discussion || []) : [],
@@ -11688,7 +11727,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           stage, repairCandidates, `${batchContract.requestId}:repair`
         );
         let repairError = null;
-        const repaired = await call(`referee-${globalBatch ? 'global-repair' : `repair-${batchIndex + 1}`}`,
+        const repaired = await call(repairPass,
           meetingMinutesAgentRefereeRepairPrompt({
             stage, transcript, sourceUnits: draft.sourceUnits, details,
             discussion: stage === 'actions' ? (draft.discussion || []) : [],
@@ -11711,8 +11750,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             : repaired;
           const mergedError = meetingAgentDispositionError(batchResult, batchCandidates, batchContract);
           if (mergedError) {
-            unresolvedIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
-            degradedSources.push(`Referee ${batchLabel} batch could not be reconciled after targeted repair: ${mergedError.message}`);
+            batchUnresolvedIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
+            batchDegradedSources.push(`Referee ${batchLabel} batch could not be reconciled after targeted repair: ${mergedError.message}`);
             batchResult = null;
           }
         } else {
@@ -11723,9 +11762,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             .filter(([candidateId]) => candidateId));
           const partialUnresolved = batchCandidates.filter((candidate) =>
             !partialById.has(meetingMinutesAgentText(candidate?.candidateId, 160)));
-          unresolvedIds.push(...partialUnresolved.map((candidate) => candidate.candidateId));
+          batchUnresolvedIds.push(...partialUnresolved.map((candidate) => candidate.candidateId));
           const reason = repairError?.message || batchError?.message || 'The referee batch did not complete.';
-          degradedSources.push(`Referee ${batchLabel} batch remained unavailable for ${partialUnresolved.length} candidate${partialUnresolved.length === 1 ? '' : 's'} after targeted repair: ${reason}`);
+          batchDegradedSources.push(`Referee ${batchLabel} batch remained unavailable for ${partialUnresolved.length} candidate${partialUnresolved.length === 1 ? '' : 's'} after targeted repair: ${reason}`);
           if (partialById.size) {
             // Preserve all contract-valid rows from both attempts. Downstream
             // incomplete-accounting handling recovers only the unresolved
@@ -11743,17 +11782,73 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             };
           }
           const deterministicContractFailure = shouldStopMeetingAgentRefereeBatches(batchError, repairError);
-          if (!batchResult && deterministicContractFailure && batchIndex + 1 < plan.batches.length) {
-            const skippedCandidates = plan.batches.slice(batchIndex + 1).flat();
-            unresolvedIds.push(...skippedCandidates.map((candidate) => candidate.candidateId));
-            degradedSources.push(`The remaining ${skippedCandidates.length} referee candidate${skippedCandidates.length === 1 ? '' : 's'} skipped repeated calls after the same strict contract failure occurred twice.`);
-            break;
-          }
+          if (!batchResult && deterministicContractFailure) batchDegradedSources.push('stop_remaining_referee_batches');
         }
       }
-      if (batchResult) results.push(batchResult);
+      return {
+        batchResult,
+        unresolvedIds: batchUnresolvedIds,
+        degradedSources: batchDegradedSources,
+        stopRemaining: batchDegradedSources.includes('stop_remaining_referee_batches')
+      };
+    };
+
+    let ordered;
+    const concurrentBatchStage = ['actions', 'discussion'].includes(stage)
+      && batches.length > 1 && plan.mode !== 'global';
+    if (concurrentBatchStage) {
+      const configuredConcurrency = Number(stage === 'discussion'
+        ? process.env.MEETING_MINUTES_AGENT_DISCUSSION_REFEREE_CONCURRENCY
+        : process.env.MEETING_MINUTES_AGENT_ACTION_REFEREE_CONCURRENCY);
+      const defaultConcurrency = stage === 'discussion' ? 4 : 3;
+      const concurrencyLimit = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
+        ? configuredConcurrency : defaultConcurrency;
+      ordered = (await meetingAgentRunOrderedConcurrent(
+        batches, executeBatch, Math.min(batches.length, concurrencyLimit)
+      )).values;
+    } else {
+      ordered = [];
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const outcome = await executeBatch(batches[batchIndex], batchIndex);
+        ordered.push(outcome);
+        if (outcome.stopRemaining && batchIndex + 1 < batches.length) {
+          const skippedCandidates = batches.slice(batchIndex + 1).flat();
+          outcome.unresolvedIds.push(...skippedCandidates.map((candidate) => candidate.candidateId));
+          outcome.degradedSources.push(`The remaining ${skippedCandidates.length} referee candidate${skippedCandidates.length === 1 ? '' : 's'} skipped repeated calls after the same strict contract failure occurred twice.`);
+          break;
+        }
+      }
     }
-    return { results, unresolvedIds };
+
+    const refereeOrder = (value = '') => {
+      const text = String(value);
+      if (/referee-global(?:-repair)?$/.test(text)) return /repair/.test(text) ? 1 : 0;
+      const match = text.match(/referee-(?:batch|repair)-(\d+)/);
+      if (!match) return Number.MAX_SAFE_INTEGER;
+      return (Number(match[1]) - 1) * 2 + (/repair/.test(text) ? 1 : 0);
+    };
+    const orderedProvenance = passProvenance.splice(passProvenanceStart)
+      .sort((left, right) => refereeOrder(left.pass) - refereeOrder(right.pass));
+    passProvenance.push(...orderedProvenance);
+    const orderedCompleted = completedPasses.splice(completedPassesStart)
+      .sort((left, right) => refereeOrder(left) - refereeOrder(right));
+    completedPasses.push(...orderedCompleted);
+    const refereeCacheEntries = passCache.filter((entry) => entry.stage === stage
+      && /^referee-(?:global|global-repair|batch-\d+|repair-\d+)$/.test(entry.pass || ''))
+      .sort((left, right) => refereeOrder(left.pass) - refereeOrder(right.pass));
+    if (refereeCacheEntries.length) {
+      const refereeCacheSet = new Set(refereeCacheEntries);
+      passCache = normaliseMeetingAgentPassCache([
+        ...passCache.filter((entry) => !refereeCacheSet.has(entry)),
+        ...refereeCacheEntries
+      ]);
+    }
+    degradedSources.push(...ordered.flatMap((outcome) => outcome.degradedSources)
+      .filter((message) => message !== 'stop_remaining_referee_batches'));
+    return {
+      results: ordered.map((outcome) => outcome.batchResult).filter(Boolean),
+      unresolvedIds: [...new Set(ordered.flatMap((outcome) => outcome.unresolvedIds))]
+    };
   };
   let refereeRun = await runRefereeBatchSet(initialRefereePlan);
   if (initialRefereePlan.mode === 'global' && !refereeRun.results.length) {
@@ -12807,6 +12902,7 @@ router.stagedEvaluation = {
   meetingAgentRefereeRepairCandidates,
   meetingAgentRefereeBatches,
   meetingAgentRefereeBatchPlan,
+  meetingAgentRunOrderedConcurrent,
   meetingAgentExecutionTelemetry,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
