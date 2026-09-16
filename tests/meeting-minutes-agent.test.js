@@ -2064,3 +2064,31 @@ test('cluster members that restate an already released member are not released a
   assert.equal(released.filter((text) => /thirteen kilos/i.test(text)).length, 1);
   assert.ok(released.some((text) => /twenty-eight pounds/i.test(text)));
 });
+
+test('an empty action recovery result is accepted when the agent disposed of every candidate with a reason', () => {
+  const candidates = [{
+    candidateId: 'commitment-chain-de0fcbece5', recordType: 'action_chain', priority: 10,
+    dispositionHint: 'committed', signals: { commitment: true }, ownerHints: ['Ravi Menon']
+  }];
+  const accounted = {
+    schemaVersion: 4, discussion: [], actions: [], actionProposals: [],
+    candidateDispositions: [{
+      candidateId: 'commitment-chain-de0fcbece5', disposition: 'reject',
+      reason: 'Hop ordering commitment is already represented in CURRENT DRAFT as the full 13 kilo hop order by Ravi Menon.',
+      owners: ['Ravi Menon'], evidenceIds: ['T0001']
+    }]
+  };
+  assert.equal(meetingAgentEmptyDiscoveryError(accounted, 'actions', candidates), null);
+
+  // A disposition without a reason, or one that claims publish while returning nothing, still fails.
+  const unexplained = { ...accounted, candidateDispositions: [{ candidateId: 'commitment-chain-de0fcbece5', disposition: 'reject', reason: '' }] };
+  assert.equal(meetingAgentEmptyDiscoveryError(unexplained, 'actions', candidates)?.code, 'empty_action_with_substantive_candidates');
+  const contradictory = { ...accounted, candidateDispositions: [{ candidateId: 'commitment-chain-de0fcbece5', disposition: 'publish', reason: 'Genuine commitment.' }] };
+  assert.equal(meetingAgentEmptyDiscoveryError(contradictory, 'actions', candidates)?.code, 'empty_action_with_substantive_candidates');
+  // Only some candidates accounted for is still a gap.
+  const partial = { ...accounted };
+  assert.equal(meetingAgentEmptyDiscoveryError(partial, 'actions', [
+    ...candidates,
+    { candidateId: 'other', recordType: 'action', priority: 10, owners: ['Dan'] }
+  ])?.code, 'empty_action_with_substantive_candidates');
+});

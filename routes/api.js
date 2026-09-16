@@ -9581,6 +9581,20 @@ function meetingAgentResultError(result) {
   return error;
 }
 
+function agentAccountedForCandidates(result = {}, candidates = [], sourceUnits = []) {
+  const supplied = (Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 120)).filter(Boolean);
+  if (!supplied.length) return false;
+  const dispositions = Array.isArray(sourceUnits) && sourceUnits.length
+    ? normaliseAgentCandidateDispositions(result, sourceUnits)
+    : (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : []);
+  const settled = new Set(dispositions
+    .filter((item) => ['reject', 'completed', 'suggestion'].includes(item?.disposition)
+      && meetingMinutesAgentText(item?.reason, 500))
+    .map((item) => meetingMinutesAgentText(item?.candidateId, 120)));
+  return supplied.every((candidateId) => settled.has(candidateId));
+}
+
 function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceUnits = [], options = {}) {
   const isDiscussion = stage === 'discussion';
   const isActions = stage === 'actions';
@@ -9615,6 +9629,12 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
         && (Array.isArray(owners) ? owners.length > 0 : Boolean(owners));
   });
   if (!hasSubstantiveEvidence) return null;
+  // An empty actions draft is not a failed call when the agent has explicitly
+  // disposed of every substantive candidate as already covered, completed or a
+  // mere suggestion. Retrying that answer only re-sends the same prompt and
+  // costs a minute of the reviewer's wait; the Power Automate run itself
+  // succeeded.
+  if (isActions && agentAccountedForCandidates(result, candidates, sourceUnits)) return null;
   const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates.`);
   error.code = `empty_${isDiscussion ? 'discussion' : 'action'}_with_substantive_candidates`;
   error.statusCode = 502;
