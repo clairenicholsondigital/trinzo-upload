@@ -1065,3 +1065,17 @@ test("the commitment anchor reaches across sentence-level units, as the live pre
   assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
   assert.equal(result.reviewFlags.length, 0);
 });
+
+test('a leaving remark is not a commitment, even with a "need to" cue', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0075', speaker: 'Dan Threlfall', text: "So, to recap the plan, and then I'll let you go.", classification: 'keep' },
+    { id: 'T0080', speaker: 'Dan Threlfall', text: "Right, I've got a delivery arriving, I need to shoot.", classification: 'keep' },
+    { id: 'T0081', speaker: 'Ravi Menon', text: "I'll shoot the revised hop order over to you tonight.", classification: 'keep' }
+  ]);
+  assert.equal(actionEvidenceDisposition('Manage the delivery arriving and shoot accordingly.', "Dan Threlfall: Right, I've got a delivery arriving, I need to shoot."), 'meeting_admin');
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Manage the delivery arriving and shoot accordingly.', owners: ['Dan Threlfall'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0080', 'T0075'] },
+    { action: 'Send the revised hop order to Dan.', owners: ['Ravi Menon'], timing: { kind: 'deadline', wording: 'tonight', exactDate: '' }, evidenceIds: ['T0081'] }
+  ] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions.map((action) => action.action), ['Send the revised hop order to Dan.'], 'the leaving remark is dropped; "shoot X over" is a real commitment');
+});

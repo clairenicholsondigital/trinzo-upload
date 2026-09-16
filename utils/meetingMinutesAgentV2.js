@@ -523,6 +523,10 @@ function evidenceIdsFor(value, units = [], supplied = []) {
 // How the meeting was run, not what it decided. These lines are real speech and
 // often survive denoising, but they are not minutes content, so they must never
 // be inventoried as an important detail and surfaced as something to check.
+// "I've got a delivery arriving, I need to shoot" is someone leaving the call,
+// not a commitment, even though "need to" is a commitment cue. Leaving verbs
+// are only treated as leaving when nothing is being shot/sent *to* anyone.
+const LEAVING_REMARK_PATTERN = /\b(?:(?:need|needs|have|got|going|about|time) to (?:shoot|dash|go|run|head (?:off|out)|get off|leave|be off)\b(?!\s+(?:you|it|that|this|the|a|an|over|across|through|them))|i(?:'ll| will) (?:shoot|dash|head off|be off)\b(?!\s+(?:you|it|that|this|the|a|an|over|across|through|them))|let you go|gotta go|got to go|delivery(?:'s| is)? (?:here|arriving|at the door)|someone(?:'s| is)? at the door|catch you later|see you (?:later|then|soon|all)|speak (?:later|soon))\b/i;
 const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute))\b/i;
 const DELIVERABLE_CONTEXT_PATTERN = /\b(?:action|approval|audit|assessment|CAPA|change|compliance|decision|document|file|finding|plan|procedure|report|review|risk|scope|software|standard|submission|test|tracker|training|translation|validation|version)\b/i;
 
@@ -555,7 +559,7 @@ function salientDetailInventory(units = []) {
   ];
   const result = [];
   for (const unit of normaliseSourceUnits(units).filter(includedUnit)) {
-    if (MEETING_ADMIN_PATTERN.test(unit.text)) continue;
+    if (MEETING_ADMIN_PATTERN.test(unit.text) || LEAVING_REMARK_PATTERN.test(unit.text)) continue;
     for (const [kind, pattern] of patterns) {
       if (!pattern.test(unit.text)) continue;
       if (kind === 'alarm_behaviour' && /\bno alarm bells?\b/i.test(unit.text)) continue;
@@ -938,6 +942,10 @@ function isDecisionResolutionCommitment(value) {
 
 function actionEvidenceDisposition(action, evidence) {
   const source = text(evidence, 15000);
+  // A leaving remark grounds no work. Guard on the action too so a genuine
+  // "shoot the report over" survives.
+  if (LEAVING_REMARK_PATTERN.test(source) && !DELIVERABLE_CONTEXT_PATTERN.test(action)
+    && !/\b(?:send|email|order|book|confirm|ring|call|contact|arrange|prepare|review|update|write|share|forward|submit)\b/i.test(action)) return 'meeting_admin';
   if (!source) return 'unclear';
   const actionTokens = contentTokens(action).slice(0, 12);
   const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
@@ -1336,7 +1344,7 @@ function discussionCandidateInventory(units = []) {
     const unit = rows[index];
     const words = contentTokens(unit.text);
     if (LOW_INFORMATION_UTTERANCE.test(unit.text) || words.length < 4) continue;
-    if (MEETING_ADMIN_PATTERN.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+    if ((MEETING_ADMIN_PATTERN.test(unit.text) || LEAVING_REMARK_PATTERN.test(unit.text)) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
     const kindHints = [
       DISCUSSION_DECISION_PATTERN.test(unit.text) ? 'decision' : '',
       DISCUSSION_QUESTION_PATTERN.test(unit.text) ? 'open_question' : '',
