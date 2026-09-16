@@ -1582,7 +1582,7 @@ function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {})
 // today"). The reviewer needs the second one: it carries the ownership, the
 // timing and the commitment itself. When such a turn sits within a few turns
 // of the cited passage, add it to the citation. Additive only.
-const COMMITMENT_ANCHOR_RADIUS = 3;
+const COMMITMENT_ANCHOR_RADIUS = 8;
 function speakerIsOwner(speaker, owners = []) {
   const words = (value) => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s'’-]/gu, ' ').split(/\s+/).filter(Boolean);
   const speakerWords = words(speaker);

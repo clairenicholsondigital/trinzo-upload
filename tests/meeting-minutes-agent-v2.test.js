@@ -1038,3 +1038,30 @@ test("the owner's nearby commitment turn is added to an action's citation", () =
   }] }, units, 'actions', { meetingDate: '2026-08-10', enforceEvidence: false });
   assert.ok(!other.actions[0].evidenceIds.includes('T0024'));
 });
+
+test("the commitment anchor reaches across sentence-level units, as the live preparer produces them", () => {
+  // These are the units the MiniLM preparer actually emits for this exchange:
+  // one sentence each, so the owner's commitment sits seven units after the
+  // question the model likes to cite.
+  const units = normaliseSourceUnits([
+    { id: "T0034", speaker: "Josie Kaur", text: "What about malt, are we okay on malt?", classification: "retain" },
+    { id: "T0035", speaker: "Dan Threlfall", text: "We've got, Mick, how many sacks of the Maris Otter left?", classification: "uncertain" },
+    { id: "T0036", speaker: "Mick Dolan", text: "Each brew's about, the pale's ten sacks, the IPA's eleven, so eighteen won't cover both.", classification: "retain" },
+    { id: "T0037", speaker: "Dan Threlfall", text: "No, we're short.", classification: "uncertain" },
+    { id: "T0038", speaker: "Dan Threlfall", text: "We need another, if it's twenty-one total and we've got eighteen, get another, say, six sacks to have a buffer.", classification: "retain" },
+    { id: "T0039", speaker: "Mick Dolan", text: "Six sacks of Maris Otter.", classification: "uncertain" },
+    { id: "T0040", speaker: "Mick Dolan", text: "They're about thirty-two pounds a sack at the minute.", classification: "uncertain" },
+    { id: "T0041", speaker: "Dan Threlfall", text: "Actually, hang on, let me do that one, I get a better rate from the maltster than we do on the account.", classification: "retain" },
+    { id: "T0042", speaker: "Dan Threlfall", text: "Leave the malt with me, I'll order six sacks today.", classification: "retain" },
+    { id: "T0043", speaker: "Mick Dolan", text: "Righto, malt's yours.", classification: "uncertain" },
+    { id: "T0044", speaker: "Dan Threlfall", text: "Now the festival.", classification: "uncertain" },
+    { id: "T0045", speaker: "Dan Threlfall", text: "Josie, you took the call.", classification: "uncertain" }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Order six sacks of Maris Otter malt.', owners: ['Dan Threlfall'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0035']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions[0].evidenceIds, ['T0035', 'T0042']);
+  assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+  assert.equal(result.reviewFlags.length, 0);
+});
