@@ -65,11 +65,56 @@ const {
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
+  meetingAgentProposalReviewFlagId,
+  meetingAgentProposalFlagMatchesChange,
+  resolveMeetingAgentProposalFlags,
   normaliseMeetingAgentPassCache,
   meetingAgentPassCacheKey,
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
+
+test('proposal decisions resolve only their linked review flags', () => {
+  const acceptedChange = {
+    id: 'change-accepted', type: 'add',
+    after: { action: 'Send the revised report.', evidenceIds: ['T0010'] }
+  };
+  const rejectedChange = {
+    id: 'change-rejected', type: 'add',
+    after: { action: 'Confirm the test date.', evidenceIds: ['T0020'] }
+  };
+  const unrelated = { id: 'unrelated', kind: 'missing_evidence', status: 'open', evidenceIds: ['T0099'] };
+  const flags = [
+    { id: meetingAgentProposalReviewFlagId(acceptedChange), kind: 'possible_missed_follow_up', status: 'open', evidenceIds: ['T0010'] },
+    { id: meetingAgentProposalReviewFlagId(rejectedChange), kind: 'possible_missed_follow_up', status: 'open', evidenceIds: ['T0020'] },
+    unrelated
+  ];
+  const resolved = resolveMeetingAgentProposalFlags(flags, {
+    stage: 'actions', changes: [acceptedChange, rejectedChange]
+  }, [acceptedChange.id]);
+
+  assert.equal(resolved[0].status, 'confirmed');
+  assert.equal(resolved[1].status, 'dismissed');
+  assert.equal(resolved[2], unrelated);
+  assert.match(resolved[0].correctionNote, /accepted/i);
+  assert.match(resolved[1].correctionNote, /rejected/i);
+  assert.equal(meetingAgentProposalFlagMatchesChange(flags[0], acceptedChange), true);
+  assert.equal(meetingAgentProposalFlagMatchesChange(flags[0], rejectedChange), false);
+});
+
+test('legacy proposal flags can be resolved by their action text and evidence', () => {
+  const change = {
+    id: 'new-id', type: 'add',
+    after: { action: 'Email the updated documents for review.', evidenceIds: ['T0053', 'T0054'] }
+  };
+  const legacy = {
+    id: 'old-stable-id', kind: 'possible_missed_follow_up', status: 'open',
+    message: 'The completeness check found a possible missed action: Email the updated documents for review.',
+    evidenceIds: ['T0053']
+  };
+  const [resolved] = resolveMeetingAgentProposalFlags([legacy], { changes: [change] }, []);
+  assert.equal(resolved.status, 'dismissed');
+});
 
 test('execution telemetry distinguishes quality calls, retries, repairs and failures', () => {
   const telemetry = meetingAgentExecutionTelemetry([

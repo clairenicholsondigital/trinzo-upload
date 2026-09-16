@@ -9915,6 +9915,37 @@ function mergeMeetingAgentFlags(existing = [], added = []) {
   return [...byId.values()].slice(0, 250);
 }
 
+function meetingAgentProposalReviewFlagId(change = {}) {
+  return meetingMinutesAgentText(`proposal-review-${change.id || ''}`, 80);
+}
+
+function meetingAgentProposalFlagMatchesChange(flag = {}, change = {}) {
+  if (String(flag.id || '') === meetingAgentProposalReviewFlagId(change)) return true;
+  if (flag.kind !== 'possible_missed_follow_up') return false;
+  const record = change.after || change.before || {};
+  const recordEvidence = new Set(record.evidenceIds || []);
+  const sharedEvidence = (flag.evidenceIds || []).some((id) => recordEvidence.has(id));
+  const recordText = meetingMinutesAgentText(record.action || record.text || record.topic, 240).toLowerCase();
+  const message = meetingMinutesAgentText(flag.message, 500).toLowerCase();
+  return sharedEvidence && (!recordText || message.includes(recordText.slice(0, 80)));
+}
+
+function resolveMeetingAgentProposalFlags(flags = [], proposal = {}, acceptedIds = []) {
+  const accepted = new Set(acceptedIds || []);
+  const changes = Array.isArray(proposal?.changes) ? proposal.changes : [];
+  return (Array.isArray(flags) ? flags : []).map((flag) => {
+    const change = changes.find((candidate) => meetingAgentProposalFlagMatchesChange(flag, candidate));
+    if (!change || flag.status !== 'open') return flag;
+    return {
+      ...flag,
+      status: accepted.has(change.id) ? 'confirmed' : 'dismissed',
+      correctionNote: flag.correctionNote || (accepted.has(change.id)
+        ? 'Resolved when the proposed change was accepted.'
+        : 'Resolved when the proposed change was rejected.')
+    };
+  });
+}
+
 function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false) {
   const prior = replaceCoverage ? existing.filter((flag) => !isMeetingAgentCoverageFlag(flag)) : existing;
   return mergeMeetingAgentFlags(prior, added);
@@ -12216,6 +12247,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
   const threadBackstopProposalIds = new Set(threadBackstop.map((action) => action.id));
   const proposalFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
+    id: meetingAgentProposalReviewFlagId(change),
     kind: 'possible_missed_follow_up',
     message: corroboratedProposalIds.has(change.after?.id)
       ? `Two independent extraction passes found an evidence-backed action omitted by the final referee. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
@@ -12718,7 +12750,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requir
       degradedSources: [],
       error: ''
     };
-    const saved = await saveMeetingAgentDraft(draft, req, { generation });
+    const saved = await saveMeetingAgentDraft(draft, req, {
+      generation,
+      currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
+    });
     const userId = req.authUser?.userId;
     setImmediate(() => {
       runMeetingAgentBackgroundStage(saved.draftId, userId, stage)
@@ -12843,6 +12878,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       buildProposal('actions', reconciledActions, combined), reconciledActions
     ), actionChains);
     const missedFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
+      id: meetingAgentProposalReviewFlagId(change),
       kind: 'possible_missed_follow_up',
       message: `The completeness check found a possible missed action: ${change.after?.action || 'Review this proposed action.'}`,
       evidenceIds: change.after?.evidenceIds || []
@@ -12872,12 +12908,18 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     if (!proposal) return res.status(409).json({ ok: false, error: 'There is no pending AI proposal.' });
     const decision = String(req.body?.decision || '').toLowerCase();
     if (!['accept', 'reject'].includes(decision)) return res.status(400).json({ ok: false, error: 'Choose accept or reject.' });
+    const allIds = (proposal.changes || []).map((change) => change.id);
+    const acceptedIds = decision === 'reject' ? []
+      : req.body?.acceptAll === true ? allIds
+        : (Array.isArray(req.body?.changeIds) ? req.body.changeIds : []);
+    const resolvedFlags = resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, acceptedIds);
     if (decision === 'reject') {
-      const saved = await saveMeetingAgentDraft(draft, req, { pendingProposal: null });
+      const saved = await saveMeetingAgentDraft(draft, req, {
+        pendingProposal: null,
+        reviewFlags: resolvedFlags
+      });
       return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
     }
-    const allIds = (proposal.changes || []).map((change) => change.id);
-    const acceptedIds = req.body?.acceptAll === true ? allIds : (Array.isArray(req.body?.changeIds) ? req.body.changeIds : []);
     const before = proposal.stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
     const after = applyProposal(before, proposal, acceptedIds);
     const history = [...(draft.changeHistory || []), {
@@ -12887,7 +12929,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...(proposal.stage === 'discussion' ? { discussion: after } : { actions: after }),
       pendingProposal: null,
-      changeHistory: history
+      changeHistory: history,
+      reviewFlags: resolvedFlags
     });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
@@ -13083,6 +13126,9 @@ router.stagedEvaluation = {
   meetingAgentStageContentConflicts,
   meetingAgentStagePersistenceChanges,
   persistMeetingAgentBackgroundStage,
+  meetingAgentProposalReviewFlagId,
+  meetingAgentProposalFlagMatchesChange,
+  resolveMeetingAgentProposalFlags,
   normaliseMeetingAgentPassCache,
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,

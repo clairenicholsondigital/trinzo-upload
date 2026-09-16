@@ -11,6 +11,10 @@
   var saveTimer = null;
   var saveInFlight = null;
   var saveQueued = false;
+  var pendingGenerationEdits = false;
+  var generationPollKey = '';
+  var actionEditorState = { pendingRows: {}, customOwners: {} };
+  var editVersion = 0;
   var rendering = false;
   var fileInput = document.getElementById('transcriptFile');
   var uploadZone = document.getElementById('uploadZone');
@@ -27,9 +31,10 @@
     return '<svg class="ic" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
   }
 
-  function setStatus(message, error) {
+  function setStatus(message, error, stage) {
     status.textContent = message || '';
-    status.hidden = !message;
+    status.dataset.stage = stage || '';
+    status.hidden = !message || Boolean(stage && STAGE_STEP[stage] !== state.currentStep);
     status.classList.toggle('error', Boolean(error));
   }
 
@@ -46,10 +51,25 @@
     return 'Saved at ' + savedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
   }
 
-  function setBusy(busy, message) {
+  function hasTransientActionState() {
+    return Object.keys(actionEditorState.pendingRows).length > 0
+      || Object.keys(actionEditorState.customOwners).some(function (key) {
+        var owner = actionEditorState.customOwners[key];
+        return owner && (owner.visible || owner.value);
+      });
+  }
+
+  function generationSaveText() {
+    if (pendingGenerationEdits || hasTransientActionState()) {
+      return 'Local edits are waiting to save. Keep this tab open until generation finishes.';
+    }
+    return 'Draft saved. Generation continues in the background and can be resumed from Library.';
+  }
+
+  function setBusy(busy, message, stage) {
     document.body.classList.toggle('busy', busy);
     status.setAttribute('aria-busy', busy ? 'true' : 'false');
-    if (message) setStatus(message, false);
+    if (message) setStatus(message, false, stage);
   }
 
   /* ------------------------------------------------------------------ *
@@ -110,12 +130,12 @@
     return payload;
   }
 
-  function waitForAgentRetry(seconds, nextAttempt, totalAttempts) {
+  function waitForAgentRetry(seconds, nextAttempt, totalAttempts, stage) {
     return new Promise(function (resolve) {
       var remaining = seconds;
       function tick() {
-        if (remaining <= 0) { setStatus('Retrying the agent now...', false); resolve(); return; }
-        setStatus('Microsoft is temporarily busy. Retrying in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + ' (attempt ' + nextAttempt + ' of ' + totalAttempts + ')...', false);
+        if (remaining <= 0) { setStatus('Retrying the agent now...', false, stage); resolve(); return; }
+        setStatus('Microsoft is temporarily busy. Retrying in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + ' (attempt ' + nextAttempt + ' of ' + totalAttempts + ')...', false, stage);
         remaining -= 1;
         window.setTimeout(tick, 1000);
       }
@@ -195,7 +215,11 @@
     });
     if (state.draft) state.draft.currentStep = state.currentStep;
     autoGrow();
-    if (!rendering && stepChanged) scheduleSave();
+    var statusStage = status.dataset.stage;
+    status.hidden = !status.textContent || Boolean(statusStage && STAGE_STEP[statusStage] !== state.currentStep);
+    // The generation start and final-stage persistence both store the stage step.
+    // Navigation to that in-flight stage is not an unsaved content edit.
+    if (!rendering && stepChanged && !generationRunning()) scheduleSave();
     // Only a deliberate navigation scrolls. A re-render triggered by autosave
     // must leave the reader exactly where they were.
     if (options && options.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -298,12 +322,24 @@
     finally { setBusy(false); }
   }
 
-  function supportingDetails(item, topicIndex, field, itemIndex) {
-    var details = item.supportingDetails || [];
-    if (!details.length) return '';
-    return '<details class="supporting-details"><summary>Supporting details (' + details.length + ')</summary><div class="supporting-detail-list">' + details.map(function (detail, detailIndex) {
-      return '<div class="supporting-detail"><p>' + escapeHtml(detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + detailIndex + '" data-parent-field="' + field + '" data-topic-index="' + topicIndex + '" data-item-index="' + itemIndex + '" type="button">Promote to minutes</button></div></div>';
-    }).join('') + '</div></details>';
+  function recordDomId(kind, id, fallback) {
+    var key = String(id || fallback || '').replace(/[^a-zA-Z0-9_-]+/g, '-');
+    return 'minutes-' + kind + '-' + key;
+  }
+
+  function topicSupportingDetails(topic, topicIndex) {
+    var labels = { points: 'Discussion', decisions: 'Decision', openQuestions: 'Open question' };
+    var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
+      return (topic[field] || []).flatMap(function (item, itemIndex) {
+        return (item.supportingDetails || []).map(function (detail, detailIndex) {
+          return { field:field, item:item, itemIndex:itemIndex, detail:detail, detailIndex:detailIndex };
+        });
+      });
+    });
+    if (!rows.length) return '';
+    return '<section class="supporting-context"><div class="supporting-context-head"><h3>Supporting context</h3><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></div><p class="muted">Related facts are grouped here so you can review context without opening each sentence.</p><div class="supporting-detail-list">' + rows.map(function (row) {
+      return '<div class="supporting-detail"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Promote to minutes</button></div></div>';
+    }).join('') + '</div></section>';
   }
 
   function discussionPropositions(topic, topicIndex) {
@@ -313,13 +349,14 @@
     });
     return '<div class="record-section proposition-section"><div class="record-section-head"><h3>Key meeting content</h3><div class="proposition-add"><button class="secondary compact" data-add-record="points" data-topic-index="' + topicIndex + '" type="button">Add discussion</button><button class="secondary compact" data-add-record="decisions" data-topic-index="' + topicIndex + '" type="button">Add decision</button><button class="secondary compact" data-add-record="openQuestions" data-topic-index="' + topicIndex + '" type="button">Add open question</button></div></div><div class="record-list proposition-list">' + (rows.map(function (row) {
       var label = labels[row.field];
-      return '<div class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + supportingDetails(row.item, topicIndex, row.field, row.itemIndex) + '<div class="record-tools">' + evidenceBlock(row.item.evidenceIds) + (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button></div></div>';
-    }).join('') || '<p class="muted record-empty">No meeting content recorded.</p>') + '</div></div>';
+      var targetId = recordDomId('discussion', row.item.id, topicIndex + '-' + row.field + '-' + row.itemIndex);
+      return '<div id="' + escapeHtml(targetId) + '" class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea><div class="record-tools">' + evidenceBlock(row.item.evidenceIds) + (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button></div></div>';
+    }).join('') || '<p class="muted record-empty">No meeting content recorded.</p>') + '</div>' + topicSupportingDetails(topic, topicIndex) + '</div>';
   }
 
   function renderDiscussion() {
     if (generationRunning('discussion')) {
-      document.getElementById('discussionList').innerHTML = '<p class="generating">The agent is drafting the discussion from your transcript. This keeps running if you close the tab &mdash; the draft will be waiting in your Library.</p>';
+      document.getElementById('discussionList').innerHTML = '<p class="generating">The agent is drafting the discussion from your transcript. ' + escapeHtml(generationSaveText()) + '</p>';
       return;
     }
     var discussion = (state.draft && state.draft.discussion) || [];
@@ -353,7 +390,9 @@
     var options = available.map(function (name) {
       return '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
     }).join('');
-    return '<div class="owner-chips">' + chips + '</div><div class="owner-add"><select data-add-owner data-action-index="' + index + '" aria-label="Add an attendee as owner"><option value="">Add owner...</option>' + options + '<option value="__other">Someone else...</option></select><input data-owner-other data-action-index="' + index + '" placeholder="Name" aria-label="Add another owner by name" hidden></div>';
+    var actionId = String(action.id || ('action-' + index));
+    var ownerDraft = actionEditorState.customOwners[actionId] || {};
+    return '<div class="owner-chips">' + chips + '</div><div class="owner-add"><select data-add-owner data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Add an attendee as owner"><option value="">Add owner...</option>' + options + '<option value="__other">Someone else...</option></select><input data-owner-other data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" value="' + escapeHtml(ownerDraft.value || '') + '" placeholder="Name" aria-label="Add another owner by name"' + (ownerDraft.visible ? '' : ' hidden') + '></div>';
   }
 
   function timingEditor(timing, index) {
@@ -366,10 +405,15 @@
   }
 
   function renderActions() {
+    if (generationRunning('actions')) {
+      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">The agent is drafting and independently checking actions. ' + escapeHtml(generationSaveText()) + '</p></td></tr>';
+      return;
+    }
     var actions = (state.draft && state.draft.actions) || [];
     document.getElementById('actionsBody').innerHTML = actions.map(function (item, index) {
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
-      return '<tr data-action-row="' + index + '"><td data-label="Action"><textarea data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove</button></div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
+      var targetId = recordDomId('action', item.id, index);
+      return '<tr id="' + escapeHtml(targetId) + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><textarea data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove</button></div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions have been generated.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
   }
@@ -398,6 +442,24 @@
     return state.draft.actions;
   }
 
+  function rememberPendingActions() {
+    if (!state.draft) return;
+    (state.draft.actions || []).forEach(function (action) {
+      if (/^manual-action-/.test(String(action.id || '')) && !String(action.action || '').trim()) {
+        actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
+      } else if (action.id) delete actionEditorState.pendingRows[action.id];
+    });
+  }
+
+  function restorePendingActions(draft) {
+    var actions = Array.isArray(draft.actions) ? draft.actions : [];
+    Object.keys(actionEditorState.pendingRows).forEach(function (id) {
+      if (!actions.some(function (action) { return action.id === id; })) actions.push(actionEditorState.pendingRows[id]);
+    });
+    draft.actions = actions;
+    return draft;
+  }
+
   function addOwner(index, name) {
     var owner = String(name || '').trim();
     if (!owner) return false;
@@ -408,6 +470,36 @@
     if (existing) return false;
     action.owners = (action.owners || []).concat(owner);
     return true;
+  }
+
+  function flagTarget(flag) {
+    var flagId = String(flag && flag.id || '');
+    if (!flagId || !state.draft) return null;
+    for (var topicIndex = 0; topicIndex < (state.draft.discussion || []).length; topicIndex += 1) {
+      var topic = state.draft.discussion[topicIndex];
+      for (var fieldIndex = 0; fieldIndex < 3; fieldIndex += 1) {
+        var field = ['points', 'decisions', 'openQuestions'][fieldIndex];
+        for (var itemIndex = 0; itemIndex < (topic[field] || []).length; itemIndex += 1) {
+          var item = topic[field][itemIndex];
+          if ((item.reviewFlagIds || []).indexOf(flagId) >= 0) return {
+            stage: 2,
+            elementId: recordDomId('discussion', item.id, topicIndex + '-' + field + '-' + itemIndex),
+            label: field === 'decisions' ? 'Decision' : field === 'openQuestions' ? 'Open question' : 'Discussion sentence',
+            text: item.text || ''
+          };
+        }
+      }
+    }
+    for (var actionIndex = 0; actionIndex < (state.draft.actions || []).length; actionIndex += 1) {
+      var action = state.draft.actions[actionIndex];
+      if ((action.reviewFlagIds || []).indexOf(flagId) >= 0) return {
+        stage: 3,
+        elementId: recordDomId('action', action.id, actionIndex),
+        label: 'Action',
+        text: action.action || ''
+      };
+    }
+    return null;
   }
 
   function renderFlags() {
@@ -422,6 +514,8 @@
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
       var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
       var body = '<span class="flag-kind">' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
+      var target = flagTarget(flag);
+      if (target) body += '<div class="flag-target"><span>Affected ' + escapeHtml(target.label.toLowerCase()) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-step="' + target.stage + '" type="button">View and edit</button></div>';
       if (flag.status === 'open') {
         body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
       } else if (flag.correctionNote) {
@@ -515,10 +609,15 @@
     if (state.draft) {
       renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags(); renderProposal();
       var busyStage = generationRunning();
-      ['generateActions', 'addDiscussion', 'applyDiscussionEdit', 'generateSummary'].forEach(function (id) {
+      ['generateActions', 'addDiscussion', 'applyDiscussionEdit', 'generateSummary',
+        'addAction', 'applyActionsEdit', 'auditActions', 'toSummary'].forEach(function (id) {
         var button = document.getElementById(id);
-        if (button) button.disabled = busyStage;
+        if (button) button.disabled = Boolean(busyStage);
       });
+      var discussionInstruction = document.getElementById('discussionInstruction');
+      var actionsInstruction = document.getElementById('actionsInstruction');
+      if (discussionInstruction) discussionInstruction.disabled = generationRunning('discussion');
+      if (actionsInstruction) actionsInstruction.disabled = generationRunning('actions');
       var stale = state.draft.staleStages || [];
       document.getElementById('staleNotice').hidden = !stale.length;
       document.getElementById('staleStages').textContent = stale.join(' and ');
@@ -530,8 +629,9 @@
 
   function adoptDraft(draft) {
     if (!draft) return;
+    rememberPendingActions();
     document.getElementById('reloadDraft').hidden = true;
-    state.draft = draft;
+    state.draft = restorePendingActions(draft);
     // Never navigate the reviewer backwards. A background run finishing while they
     // have moved on would otherwise yank them back to the screen the server last
     // recorded - which is the screen they were on when the run started.
@@ -539,7 +639,13 @@
     renderAll();
     // A reload in the middle of a run must not look dead.
     if (generationRunning()) pollGeneration();
-    setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
+    if (generationRunning()) {
+      setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
+    } else if (hasTransientActionState()) {
+      setSaveStatus('New action details are kept in this tab until the action text is entered.', 'local-only');
+    } else {
+      setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
+    }
   }
 
   function readEditors() { if (!state.draft) return; readDetails(); readSteer(); readDiscussion(); readActions(); readSummary(); state.draft.currentStep = state.currentStep; }
@@ -570,12 +676,19 @@
 
   function scheduleSave() {
     if (rendering || !state.draft) return;
-    setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
+    editVersion += 1;
     clearTimeout(saveTimer);
     // While a background run is in flight, hold the save. Its completion writes
     // against a fresh read, so letting an autosave race it would surface the
     // conflict banner over the reviewer's own generation. Flushed on completion.
-    if (generationRunning()) return;
+    if (generationRunning()) {
+      pendingGenerationEdits = true;
+      setSaveStatus(generationSaveText(), 'waiting');
+      renderDiscussion();
+      renderActions();
+      return;
+    }
+    setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
     saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
   }
 
@@ -584,8 +697,18 @@
     clearTimeout(saveTimer);
     if (saveInFlight) { saveQueued = true; await saveInFlight; if (!saveQueued) return state.draft; saveQueued = false; }
     readEditors();
+    var requestEditVersion = editVersion;
     setSaveStatus('Saving...', 'saving');
     saveInFlight = jsonRequest(draftUrl(), {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftPatchBody(statusValue))}).then(function (payload) {
+      if (editVersion !== requestEditVersion) {
+        // A newer keystroke landed while this request was in flight. Advance the
+        // revision but do not replace the newer editor values with the response.
+        state.draft.revision = payload.draft.revision;
+        state.draft.updatedAt = payload.draft.updatedAt;
+        setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
+        return state.draft;
+      }
+      pendingGenerationEdits = false;
       adoptDraft(payload.draft); return state.draft;
     }).catch(function (error) {
       // A conflict used to adopt the server copy, silently destroying the edits
@@ -610,11 +733,14 @@
       var payload = await jsonRequest(draftUrl('/generate-background'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,revision:state.draft.revision})});
       adoptDraft(payload.draft);
       state.draft.generation = payload.generation;
+      pendingGenerationEdits = false;
+      generationPollKey = [state.draft.draftId, stage, payload.generation && payload.generation.startedAt].join('|');
       showStep(STAGE_STEP[stage], { scroll: true });
       renderAll();
-      setStatus((payload.generation && payload.generation.message) || 'Preparing independent quality checks…', false);
+      setSaveStatus(generationSaveText(), 'generating');
+      setStatus((payload.generation && payload.generation.message) || 'Preparing independent quality checks…', false, stage);
       pollGeneration();
-    } catch (error) { setStatus(error.message, true); }
+    } catch (error) { setStatus(error.message, true, stage); }
   }
 
   function pollGeneration() {
@@ -622,46 +748,59 @@
     if (!state.draft || !generationRunning()) return;
     generationTimer = window.setTimeout(async function () {
       if (!state.draft) return;
+      var expectedDraftId = state.draft.draftId;
+      var expectedGeneration = state.draft.generation || {};
+      var expectedKey = [expectedDraftId, expectedGeneration.stage, expectedGeneration.startedAt].join('|');
       try {
         var payload = await jsonRequest(draftUrl('/generation'));
+        var currentGeneration = state.draft && state.draft.generation;
+        var currentKey = [state.draft && state.draft.draftId, currentGeneration && currentGeneration.stage, currentGeneration && currentGeneration.startedAt].join('|');
+        if (!state.draft || state.draft.draftId !== expectedDraftId || (generationPollKey && currentKey !== expectedKey)) return;
         var activeStage = (state.draft.generation && state.draft.generation.stage) || 'discussion';
         state.draft.generation = payload.generation;
         if (payload.generation && payload.generation.status === 'running') {
-          setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false);
+          setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
+          setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false, activeStage);
           pollGeneration(); return;
         }
         if (payload.draft) {
-          // The run wrote one content field the reviewer could not have edited,
-          // because it did not exist while it ran. Everything they CAN have
-          // touched meanwhile is carried across explicitly rather than adopted.
-          var localDetails = state.draft.details;
-          var localSteer = state.draft.steer;
+          // Preserve every field outside the stage-owned result. Reviewers can
+          // navigate while generation runs, and a completion response must not
+          // replace edits they made on another screen.
+          var localDraft = state.draft;
+          var completedDraft = payload.draft;
+          completedDraft.details = localDraft.details;
+          completedDraft.steer = localDraft.steer;
+          if (activeStage !== 'discussion') completedDraft.discussion = localDraft.discussion;
+          if (activeStage !== 'actions') completedDraft.actions = localDraft.actions;
+          if (activeStage !== 'summary') {
+            completedDraft.executiveSummary = localDraft.executiveSummary;
+            completedDraft.meetingObjectives = localDraft.meetingObjectives;
+          }
           adoptDraft(payload.draft);
-          state.draft.details = localDetails;
-          state.draft.steer = localSteer;
           state.draft.generation = payload.generation;
-          renderDetails();
-          renderSteer();
           renderAll();
         }
         if (payload.generation && payload.generation.status === 'failed') {
-          setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true);
+          setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true, activeStage);
         } else {
-          setStatus(state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), Boolean(state.draft.qualityNotice));
+          setStatus(state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), Boolean(state.draft.qualityNotice), activeStage);
         }
-        scheduleSave();
-      } catch (error) { setStatus(error.message, true); }
+        generationPollKey = '';
+        if (pendingGenerationEdits) scheduleSave();
+        else setSaveStatus(savedStatusText(state.draft.updatedAt), hasTransientActionState() ? 'local-only' : 'saved');
+      } catch (error) { setStatus(error.message, true, expectedGeneration.stage); }
     }, GENERATION_POLL_MS);
   }
 
   async function runAgent(stage, instruction) {
     if (!state.draft) return false;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return false; }
-    setBusy(true, instruction ? 'The agent is preparing a change preview...' : 'The agent is reviewing the prepared transcript...');
+    setBusy(true, instruction ? 'The agent is preparing a change preview...' : 'The agent is reviewing the prepared transcript...', stage);
     try {
       var payload; var totalAttempts = agentRetryDelaysSeconds.length + 1;
       for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
-        if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts);
+        if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts, stage);
         try {
           payload = await jsonRequest('/api/meeting-minutes-agent/generate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,draftId:state.draft.draftId,revision:state.draft.revision,instruction:instruction || ''})});
           break;
@@ -670,25 +809,25 @@
         }
       }
       adoptDraft(payload.draft);
-      if (instruction) { renderProposal(); setStatus('Review the proposed changes. Nothing has been applied yet.', false); }
+      if (instruction) { renderProposal(); setStatus('Review the proposed changes. Nothing has been applied yet.', false, stage); }
       else {
         showStep(STAGE_STEP[stage] || 2, { scroll: true });
-        setStatus(stage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : 'Action draft generated. Running the separate missed-action check next.', false);
+        setStatus(stage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : 'Action draft generated. Running the separate missed-action check next.', false, stage);
         if (stage === 'actions') await auditActions(true);
       }
       return true;
-    } catch (error) { setStatus(error.message, true); return false; }
+    } catch (error) { setStatus(error.message, true, stage); return false; }
     finally { setBusy(false); }
   }
 
   async function auditActions(automatic) {
     if (!state.draft) return;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, 'Checking the transcript for missed follow-up actions...');
+    setBusy(true, 'Checking the transcript for missed follow-up actions...', 'actions');
     try {
       var payload; var totalAttempts = agentRetryDelaysSeconds.length + 1;
       for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
-        if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts);
+        if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts, 'actions');
         try {
           payload = await jsonRequest(draftUrl('/audit-actions'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
           break;
@@ -697,20 +836,21 @@
         }
       }
       adoptDraft(payload.draft);
-      setStatus(payload.proposal ? 'The completeness check found proposed actions. Review them before applying.' : 'The completeness check found no additional supported actions.', false);
-    } catch (error) { setStatus((automatic ? 'The action draft is available, but the completeness check failed: ' : '') + error.message, true); }
+      setStatus(payload.proposal ? 'The completeness check found proposed actions. Review them before applying.' : 'The completeness check found no additional supported actions.', false, 'actions');
+    } catch (error) { setStatus((automatic ? 'The action draft is available, but the completeness check failed: ' : '') + error.message, true, 'actions'); }
     finally { setBusy(false); }
   }
 
   async function reviewProposal(decision, acceptAll) {
     var proposal = state.draft && state.draft.pendingProposal; if (!proposal) return;
+    var proposalStage = proposal.stage || '';
     var ids = Array.from(document.querySelectorAll('[data-proposal-change]:checked')).map(function (input) { return input.dataset.proposalChange; });
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...');
+    setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...', proposalStage);
     try {
       var payload = await jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
-      adoptDraft(payload.draft); setStatus(decision === 'reject' ? 'Proposed changes rejected.' : 'Selected agent changes applied.', false);
-    } catch (error) { setStatus(error.message, true); }
+      adoptDraft(payload.draft); setStatus(decision === 'reject' ? 'Proposed changes rejected.' : 'Selected agent changes applied.', false, proposalStage);
+    } catch (error) { setStatus(error.message, true, proposalStage); }
     finally { setBusy(false); }
   }
 
@@ -802,8 +942,8 @@
   });
   document.getElementById('generateActions').addEventListener('click', function () { startBackgroundStage('actions'); });
   document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });
-  document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
-  document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
+  document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true,'discussion'); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
+  document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('addDiscussion').addEventListener('click', function () { readDiscussion(); state.draft.discussion.push({id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]}); renderDiscussion(); scheduleSave(); });
 
   document.getElementById('discussionList').addEventListener('click', function (event) {
@@ -851,7 +991,11 @@
     var button = event.target.closest('[data-delete-action]');
     if (!button) return;
     readActions();
-    state.draft.actions.splice(Number(button.dataset.deleteAction),1);
+    var removedAction = state.draft.actions.splice(Number(button.dataset.deleteAction),1)[0];
+    if (removedAction && removedAction.id) {
+      delete actionEditorState.pendingRows[removedAction.id];
+      delete actionEditorState.customOwners[removedAction.id];
+    }
     renderActions(); scheduleSave();
   });
 
@@ -861,8 +1005,10 @@
     var index = Number(select.dataset.actionIndex);
     if (select.value === '__other') {
       var other = select.parentElement.querySelector('[data-owner-other]');
+      actionEditorState.customOwners[select.dataset.actionId] = { visible:true, value:'' };
       select.value = '';
       if (other) { other.hidden = false; other.focus(); }
+      setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
       return;
     }
     if (addOwner(index, select.value)) { rerenderActions(); scheduleSave(); }
@@ -871,10 +1017,17 @@
 
   function commitOtherOwner(input) {
     if (!input) return;
-    if (!input.value.trim()) { input.hidden = true; return; }
-    var index = Number(input.dataset.actionIndex);
+    var actionId = input.dataset.actionId;
+    if (!input.value.trim()) {
+      delete actionEditorState.customOwners[actionId];
+      input.hidden = true;
+      return;
+    }
+    var index = (state.draft.actions || []).findIndex(function (action) { return action.id === actionId; });
+    if (index < 0) index = Number(input.dataset.actionIndex);
     var added = addOwner(index, input.value);
     input.value = '';
+    delete actionEditorState.customOwners[actionId];
     if (!added) return;
     renderActions();
     // The field this was typed into is hidden again by the re-render, so focus
@@ -896,8 +1049,33 @@
     if (input) commitOtherOwner(input);
   });
 
-  document.getElementById('addAction').addEventListener('click', function () { readActions(); state.draft.actions.push({id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[]}); renderActions(); scheduleSave(); });
-  document.getElementById('flagList').addEventListener('click', function (event) { var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); scheduleSave(); });
+  document.getElementById('addAction').addEventListener('click', function () {
+    readActions();
+    var action = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[]};
+    state.draft.actions.push(action);
+    actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
+    renderActions();
+    setSaveStatus('New action row is kept in this tab until you enter the action.', 'local-only');
+    var field = document.querySelector('#' + recordDomId('action', action.id) + ' [data-action]');
+    if (field) field.focus({ preventScroll:true });
+  });
+  document.getElementById('flagList').addEventListener('click', function (event) {
+    var targetButton = event.target.closest('[data-view-flag-target]');
+    if (targetButton) {
+      showStep(Number(targetButton.dataset.targetStep), { scroll:true });
+      window.setTimeout(function () {
+        var target = document.getElementById(targetButton.dataset.viewFlagTarget);
+        if (!target) return;
+        target.scrollIntoView({behavior:'smooth',block:'center'});
+        target.classList.add('flag-target-highlight');
+        var editor = target.querySelector('textarea,input');
+        if (editor) editor.focus({preventScroll:true});
+        window.setTimeout(function () { target.classList.remove('flag-target-highlight'); }, 2400);
+      }, 0);
+      return;
+    }
+    var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); scheduleSave();
+  });
   document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
   document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });
   document.getElementById('rejectProposal').addEventListener('click', function () { reviewProposal('reject',false); });
@@ -915,15 +1093,31 @@
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
+    if (event.target.matches('[data-owner-other]')) {
+      actionEditorState.customOwners[event.target.dataset.actionId] = { visible:true, value:event.target.value };
+      setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
+      return;
+    }
     if (event.target.matches('textarea,input,select') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,[data-add-owner],[data-owner-other]')) {
       readEditors();
+      rememberPendingActions();
       autoGrow(event.target.parentElement);
       scheduleSave();
     }
   });
 
   window.addEventListener('beforeunload', function (event) {
-    if (!state.draft || document.getElementById('saveStatus').dataset.state !== 'dirty') return;
+    if (!state.draft) return;
+    var saveState = document.getElementById('saveStatus').dataset.state;
+    if (!['dirty','waiting','local-only'].includes(saveState)) return;
+    // Waiting edits cannot safely race progress writes, and an empty manual row
+    // is intentionally client-only. Be honest and let the browser warn instead
+    // of claiming a keepalive request made either state resumable.
+    if (saveState === 'waiting' || saveState === 'local-only') {
+      event.preventDefault();
+      event.returnValue = '';
+      return;
+    }
     readEditors();
     var body = JSON.stringify(draftPatchBody());
     var delivered = false;
