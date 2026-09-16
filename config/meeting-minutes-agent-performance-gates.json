@@ -1,0 +1,15 @@
+{
+  "minimumActionP50ImprovementRatio": 0.3,
+  "absoluteP50CeilingsMs": {
+    "actions": 120000,
+    "summary": 5000,
+    "preparation": 10000
+  },
+  "qualityMetricsNoRegression": [
+    "actionRecall",
+    "actionPrecision",
+    "evidenceReferenceCoverage",
+    "supportedActionRate",
+    "reviewerAcceptanceRate"
+  ]
+}

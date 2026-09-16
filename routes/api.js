@@ -303,8 +303,115 @@ function normaliseMeetingAgentExecutionTelemetry(value = {}) {
     firstAttemptSuccessCount: number('firstAttemptSuccessCount'),
     retryCount: number('retryCount'),
     repairCallCount: number('repairCallCount'),
-    failedCallCount: number('failedCallCount')
+    failedCallCount: number('failedCallCount'),
+    validationFailureCount: number('validationFailureCount'),
+    transportFailureCount: number('transportFailureCount'),
+    totalPromptChars: number('totalPromptChars'),
+    retryPromptChars: number('retryPromptChars'),
+    externalCallElapsedMs: number('externalCallElapsedMs'),
+    candidateCount: number('candidateCount'),
+    outputRecordCount: number('outputRecordCount'),
+    materialContributionCount: number('materialContributionCount')
   };
+}
+
+function meetingAgentFailureClass(value = {}) {
+  const code = meetingMinutesAgentText(value?.errorCode || value?.code, 120).toLowerCase();
+  const status = Number(value?.upstreamStatus || value?.statusCode || 0);
+  if (/(?:invalid|incomplete|unexpected|missing).*(?:structure|contract|disposition|candidate|response)|empty_(?:discussion|action)/.test(code)) {
+    return 'response_contract';
+  }
+  if (status === 429 || /(?:rate|usage|thrott)/.test(code)) return 'rate_limit';
+  if (status >= 500 || /(?:timeout|system|transport|network|no_?response|child|handoff)/.test(code)) return 'transport';
+  return code ? 'other' : '';
+}
+
+function meetingAgentResultCounts(result = {}) {
+  const discussion = Array.isArray(result?.discussion) ? result.discussion : [];
+  const discussionRecords = discussion.reduce((sum, topic) => sum
+    + (Array.isArray(topic?.points) ? topic.points.length : 0)
+    + (Array.isArray(topic?.decisions) ? topic.decisions.length : 0)
+    + (Array.isArray(topic?.openQuestions) ? topic.openQuestions.length : 0), 0);
+  const actions = Array.isArray(result?.actions) ? result.actions.length : 0;
+  const proposals = Array.isArray(result?.actionProposals) ? result.actionProposals.length : 0;
+  const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions.length : 0;
+  return {
+    discussionRecordCount: discussionRecords,
+    actionCount: actions,
+    proposalCount: proposals,
+    dispositionCount: dispositions,
+    reviewFlagCount: Array.isArray(result?.reviewFlags) ? result.reviewFlags.length : 0,
+    outputRecordCount: discussionRecords + actions + proposals
+  };
+}
+
+function meetingAgentMaterialPassImpact(candidateDispositions = [], overrides = {}) {
+  const impact = {};
+  for (const item of Array.isArray(candidateDispositions) ? candidateDispositions : []) {
+    const pass = meetingMinutesAgentText(item?.sourcePass, 80) || 'unknown';
+    if (!impact[pass]) impact[pass] = {
+      candidateCount: 0, publishedCount: 0, proposalCount: 0,
+      supportingCount: 0, materiallyChangedFinalMinutes: false
+    };
+    impact[pass].candidateCount += 1;
+    if (item?.disposition === 'publish') impact[pass].publishedCount += 1;
+    if (item?.disposition === 'proposal') impact[pass].proposalCount += 1;
+    if (item?.disposition === 'supporting') impact[pass].supportingCount += 1;
+    if (['publish', 'proposal', 'supporting'].includes(item?.disposition) && item?.candidateId) {
+      if (!Array.isArray(impact[pass].materialCandidateIds)) impact[pass].materialCandidateIds = [];
+      impact[pass].materialCandidateIds.push(meetingMinutesAgentText(item.candidateId, 160));
+    }
+  }
+  for (const [pass, supplied] of Object.entries(overrides || {})) {
+    impact[pass] = { ...(impact[pass] || {}), ...(supplied || {}) };
+  }
+  for (const value of Object.values(impact)) {
+    value.materialContributionCount = Math.max(0, Number(value.materialContributionCount
+      ?? ((value.publishedCount || 0) + (value.proposalCount || 0) + (value.supportingCount || 0))));
+    value.materiallyChangedFinalMinutes = value.materialContributionCount > 0;
+  }
+  return impact;
+}
+
+function annotateMeetingAgentPassImpact(provenance = [], impact = {}) {
+  const counted = new Set();
+  return (Array.isArray(provenance) ? provenance : []).map((item) => {
+    const logicalPass = /^referee-/.test(item?.pass || '') ? 'referee' : item?.pass;
+    const passImpact = impact[logicalPass] || {};
+    const materialCandidateIds = new Set(Array.isArray(passImpact.materialCandidateIds)
+      ? passImpact.materialCandidateIds : []);
+    const callCandidateIds = Array.isArray(item?.candidateIds) ? item.candidateIds : [];
+    const candidateContributionCount = callCandidateIds.filter((candidateId) =>
+      materialCandidateIds.has(candidateId)).length;
+    const firstLogicalCall = !counted.has(logicalPass);
+    counted.add(logicalPass);
+    const contributionCount = item?.failed === true ? 0
+      : logicalPass === 'referee' && callCandidateIds.length
+        ? candidateContributionCount
+        : firstLogicalCall
+          ? Math.max(0, Number(passImpact.materialContributionCount || 0)) : 0;
+    return {
+      ...item,
+      materialContributionCount: contributionCount,
+      materiallyChangedFinalMinutes: contributionCount > 0
+    };
+  });
+}
+
+function meetingAgentCallPerformance(provenance = []) {
+  return (Array.isArray(provenance) ? provenance : []).map((item) => ({
+    stage: item?.stage || '',
+    pass: item?.pass || '',
+    requestId: meetingMinutesAgentText(item?.requestId, 160),
+    cached: item?.cached === true,
+    failed: item?.failed === true,
+    candidateCount: Math.max(0, Number(item?.candidateCount || 0)),
+    outputRecordCount: Math.max(0, Number(item?.outputRecordCount || 0)),
+    attemptCount: Array.isArray(item?.timings) ? item.timings.length : 0,
+    elapsedMs: Math.max(0, Number(item?.elapsedMs || 0)),
+    materialContributionCount: Math.max(0, Number(item?.materialContributionCount || 0)),
+    materiallyChangedFinalMinutes: item?.materiallyChangedFinalMinutes === true
+  }));
 }
 
 function meetingAgentExecutionTelemetry(provenance = []) {
@@ -331,7 +438,16 @@ function meetingAgentExecutionTelemetry(provenance = []) {
     retryCount,
     repairCallCount: timings.filter((item) => item?.repair === true
       || /(?:^|:)referee-repair-/.test(String(item?.pass || ''))).length,
-    failedCallCount: timings.filter((item) => item?.ok === false).length
+    failedCallCount: timings.filter((item) => item?.ok === false).length,
+    validationFailureCount: timings.filter((item) => meetingAgentFailureClass(item) === 'response_contract').length,
+    transportFailureCount: timings.filter((item) => meetingAgentFailureClass(item) === 'transport').length,
+    totalPromptChars: timings.reduce((sum, item) => sum + Math.max(0, Number(item?.promptChars || 0)), 0),
+    retryPromptChars: timings.filter((item) => Number(item?.attempt || 1) > 1)
+      .reduce((sum, item) => sum + Math.max(0, Number(item?.promptChars || 0)), 0),
+    externalCallElapsedMs: timings.reduce((sum, item) => sum + Math.max(0, Number(item?.elapsedMs || 0)), 0),
+    candidateCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.candidateCount || 0)), 0),
+    outputRecordCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.outputRecordCount || 0)), 0),
+    materialContributionCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.materialContributionCount || 0)), 0)
   };
 }
 const upload = multer({ storage: multer.memoryStorage() });
@@ -9616,7 +9732,8 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
     const attemptInfo = {
       pass: options.pass || '', attempt: attempt + 1, maxAttempts,
       promptChars: String(attemptPrompt || '').length, repair: attemptPrompt !== prompt,
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
+      requestId: meetingMinutesAgentText(options.requestId, 160)
     };
     if (options.onAttempt) await options.onAttempt(attemptInfo).catch(() => {});
     try {
@@ -9649,7 +9766,8 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
         statusCode: Number(error.statusCode || 0) || undefined,
         upstreamStatus: Number(error.upstreamStatus || 0) || undefined,
         errorCode: meetingMinutesAgentText(error.code, 120) || undefined,
-        errorMessage: meetingMinutesAgentText(error.message, 300) || undefined
+        errorMessage: meetingMinutesAgentText(error.message, 300) || undefined,
+        failureClass: meetingAgentFailureClass(error) || undefined
       });
       if (!error.retryable || attempt === maxAttempts - 1) break;
     }
@@ -11374,6 +11492,14 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
 // Concurrent Referee batches can finish together and all checkpoint the same
 // optimistic draft revision. Queue only the writes; model calls stay parallel.
 const meetingAgentDraftWriteQueues = new Map();
+const meetingAgentObservedGenerationCompletions = new Set();
+
+function meetingAgentCompletedStagePerformance(draft = {}) {
+  const stages = ['discussion', 'actions', 'summary'].map((stage) => ({
+    stage, ...(draft.qualityState?.[stage] || {})
+  })).filter((item) => item.completedAt);
+  return stages.sort((left, right) => new Date(right.completedAt) - new Date(left.completedAt))[0] || null;
+}
 
 function meetingAgentSerialDraftWrite(draftId, task) {
   const key = String(draftId || '');
@@ -11435,6 +11561,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const isRefereeCall = callOptions.responseKind === 'referee' || pass === 'referee' || pass.startsWith('referee-');
     const baseMessage = pass === 'primary' ? 'Building a coverage map…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
     const promptSha256 = meetingAgentPassCacheKey(prompt);
+    const requestId = meetingMinutesAgentText(callOptions.requestId, 160)
+      || `${stage}:${pass}:${promptSha256.slice(0, 16)}`;
+    const candidateCount = Math.max(0, Number(callOptions.candidateCount || 0));
+    const candidateIds = Array.isArray(callOptions.candidateIds)
+      ? callOptions.candidateIds.map((candidateId) => meetingMinutesAgentText(candidateId, 160)).filter(Boolean)
+      : [];
     const cached = passCache.find((entry) => entry.stage === stage && entry.pass === pass
       && entry.promptSha256 === promptSha256);
     if (cached) {
@@ -11442,10 +11574,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       const validationError = typeof callOptions.validateResult === 'function'
         ? callOptions.validateResult(cached.result) : null;
       if (!reportedError && !validationError) {
+        const resultCounts = meetingAgentResultCounts(cached.result);
         completedPasses.push(pass);
         passProvenance.push({
           stage, pass, completedAt: cached.completedAt || new Date().toISOString(),
-          promptChars: String(prompt || '').length, elapsedMs: 0, timings: [], cached: true,
+          requestId, promptChars: String(prompt || '').length, elapsedMs: 0, timings: [], cached: true,
+          candidateCount, candidateIds, ...resultCounts,
           ...(isRefereeCall ? {
             refereeRoute: meetingAgentRefereeRoute(cached.result, callOptions.refereeContract || {})
           } : {})
@@ -11464,6 +11598,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
         pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
+        requestId,
         // Referee calls have repeatedly completed just beyond the former
         // 65-second boundary. Give the structured tool enough time to return
         // instead of turning valid in-flight work into a duplicate request.
@@ -11479,16 +11614,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — retry ${attempt.attempt} of ${attempt.maxAttempts}…` : baseMessage,
           [{ ...attempt, ok: null }])
       });
+      const resultCounts = meetingAgentResultCounts(response.result);
       completedPasses.push(pass);
       passProvenance.push({
-        stage, pass, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
+        stage, pass, requestId, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
         elapsedMs: response.timings.reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0), timings: response.timings,
+        candidateCount, candidateIds, ...resultCounts,
         ...(isRefereeCall ? {
           refereeRoute: meetingAgentRefereeRoute(response.result, callOptions.refereeContract || {})
         } : {})
       });
       console.info(JSON.stringify({
-        event: 'meeting_agent_pass', stage, pass, promptChars: String(prompt || '').length,
+        event: 'meeting_agent_pass', journeyId: draft.draftId || '', stage, pass, requestId,
+        promptChars: String(prompt || '').length, candidateCount, ...resultCounts,
         attempts: response.timings.length, elapsedMs: passProvenance.at(-1).elapsedMs, ok: true
       }));
       passCache = normaliseMeetingAgentPassCache([
@@ -11500,20 +11638,23 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     } catch (error) {
       const failedTimings = Array.isArray(error.callTimings) ? error.callTimings : [];
       passProvenance.push({
-        stage, pass, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
+        stage, pass, requestId, completedAt: new Date().toISOString(), promptChars: String(prompt || '').length,
         elapsedMs: failedTimings.reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0),
-        timings: failedTimings, failed: true,
+        timings: failedTimings, failed: true, candidateCount, candidateIds,
+        failureClass: meetingAgentFailureClass(error),
         errorCode: meetingMinutesAgentText(error.code, 120),
         errorMessage: meetingMinutesAgentText(error.message, 300)
       });
       console.warn(JSON.stringify({
-        event: 'meeting_agent_pass', stage, pass, promptChars: String(prompt || '').length,
+        event: 'meeting_agent_pass', journeyId: draft.draftId || '', stage, pass, requestId,
+        promptChars: String(prompt || '').length, candidateCount,
         attempts: error.callTimings?.length || 0,
         elapsedMs: (error.callTimings || []).reduce((sum, item) => sum + Number(item.elapsedMs || 0), 0), ok: false,
         statusCode: Number(error.statusCode || 0) || undefined,
         upstreamStatus: Number(error.upstreamStatus || 0) || undefined,
         errorCode: meetingMinutesAgentText(error.code, 120) || undefined,
         errorMessage: meetingMinutesAgentText(error.message, 300) || undefined,
+        failureClass: meetingAgentFailureClass(error) || undefined,
         invalidCandidateIds: Array.isArray(error.invalidCandidateIds) ? error.invalidCandidateIds.slice(0, 20) : undefined,
         invalidReasons: Array.isArray(error.invalidReasons) ? error.invalidReasons.slice(0, 20) : undefined,
         callTimings: error.callTimings || []
@@ -11528,18 +11669,30 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   if (stage === 'summary') {
     const parsed = await call('summary', meetingMinutesAgentPrompt({
       stage, transcript, details, current: { discussion: draft.discussion || [], actions: draft.actions || [] }, steer: draft.steer
-    }));
+    }), {
+      candidateCount: flattenHybridDiscussion(draft.discussion || []).length + (draft.actions || []).length
+    });
+    const executiveSummary = groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []);
+    const meetingObjectives = mergeGroundedObjectiveRecords([
+      draft.meetingObjectives || [], parsed.meetingObjectives || parsed.objectives || []
+    ], draft.sourceUnits);
+    const passImpact = meetingAgentMaterialPassImpact([], { summary: {
+      materialContributionCount: Number(Boolean(executiveSummary)) + meetingObjectives.length
+    } });
+    const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
     return {
       changes: {
-        executiveSummary: groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []),
-        meetingObjectives: mergeGroundedObjectiveRecords([
-          draft.meetingObjectives || [], parsed.meetingObjectives || parsed.objectives || []
-        ], draft.sourceUnits),
-        passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
+        executiveSummary,
+        meetingObjectives,
+        passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
         passCache,
         qualityState: { ...(draft.qualityState || {}), summary: {
           completedPasses, degradedSources,
-          telemetry: meetingAgentExecutionTelemetry(passProvenance)
+          stageElapsedMs: Date.now() - stageStartedAt,
+          completedAt: new Date().toISOString(),
+          passImpact,
+          callPerformance: meetingAgentCallPerformance(measuredProvenance),
+          telemetry: meetingAgentExecutionTelemetry(measuredProvenance)
         } }
       },
       reviewFlags: [], replaceCoverageFlags: false
@@ -11595,6 +11748,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
   let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
+    candidateCount: primaryValidationCandidates.length,
     // A valid empty discussion response is a discovery miss, not a transport
     // failure. Repeating the identical request has proved both slow and
     // stochastic; the dedicated gap pass and deterministic ledger are the
@@ -11679,6 +11833,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       candidates: recoveryDecision.uncovered
     }), {
       optional: true,
+      candidateCount: recoveryDecision.uncovered.length,
       ...(stage === 'discussion' ? {
         responseKind: 'discussion_discovery',
         transformResult: (result) => normaliseReferenceArrays(result, {
@@ -11754,6 +11909,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           salientDetails, requestId: batchContract.requestId
         }), {
           optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: batchContract,
+          requestId: batchContract.requestId, candidateCount: batchCandidates.length,
+          candidateIds: batchCandidates.map((candidate) => candidate.candidateId),
           transformResult: (result) => normaliseMeetingAgentRefereeContractResult(
             result, batchCandidates, batchContract
           ),
@@ -11784,6 +11941,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             salientDetails, requestId: repairContract.requestId
           }), {
             optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: repairContract,
+            requestId: repairContract.requestId, candidateCount: repairCandidates.length,
+            candidateIds: repairCandidates.map((candidate) => candidate.candidateId),
             transformResult: (result) => normaliseMeetingAgentRefereeContractResult(
               result, repairCandidates, repairContract
             ),
@@ -12064,6 +12223,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       flattenHybridDiscussion(finalDiscussion).map((item) => ({ ...item.record, _recordType: item.recordType })),
       [], supportingRecords
     );
+    const passImpact = meetingAgentMaterialPassImpact(candidateDispositions, {
+      referee: { materialContributionCount: completedPasses.includes('referee')
+        ? flattenHybridDiscussion(finalDiscussion).length + supportingRecords.length : 0,
+        materialCandidateIds: candidateDispositions.filter((item) =>
+          ['publish', 'proposal', 'supporting'].includes(item?.disposition))
+          .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean) }
+    });
+    const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
     // The user now has a discussion draft to review. Use that review interval
     // to prepare the private action candidate source without delaying upload or
     // competing with foreground discussion work.
@@ -12073,10 +12240,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     return {
       changes: {
         discussion: finalDiscussion, meetingObjectives: objectives, candidateLedger,
-        passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
+        passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
         passCache,
         qualityState: { ...(draft.qualityState || {}), discussion: {
           completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
+          completedAt: new Date().toISOString(), passImpact,
+          callPerformance: meetingAgentCallPerformance(measuredProvenance),
           stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
           stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
           corroboratedRecoveryCount: flattenHybridDiscussion(recoveredDiscussion).length,
@@ -12087,7 +12256,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
-          telemetry: meetingAgentExecutionTelemetry(passProvenance),
+          telemetry: meetingAgentExecutionTelemetry(measuredProvenance),
           refereeRoute,
           refereeSufficiency: compactSufficiency,
           refereeContract: {
@@ -12137,7 +12306,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     transcript, details, discussion: draft.discussion || [], actions: automatic, candidates: criticCandidates
   }) : '';
   const criticParsed = criticCandidates.length ? await call('critic', criticPrompt, {
-    optional: true,
+    optional: true, candidateCount: criticCandidates.length,
     captureError: (error) => { criticError = error; }
   }) : null;
   const critic = normaliseAgentResult(criticParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
@@ -12176,7 +12345,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     salvagePrompt = meetingMinutesAgentSalvagePrompt({
       transcript, details, actions: automatic, candidates: salvageCandidates
     });
-    const salvageParsed = await call('salvage', salvagePrompt, { optional: true });
+    const salvageParsed = await call('salvage', salvagePrompt, {
+      optional: true, candidateCount: salvageCandidates.length
+    });
     salvage = normaliseAgentResult(salvageParsed || {}, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
     agentDeclaredProposals.push(...normaliseAgentDeclaredProposals(salvageParsed || {}, draft.sourceUnits, { meetingDate: details.meetingDate }));
     agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(salvageParsed || {}, draft.sourceUnits));
@@ -12270,13 +12441,33 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     return !proposedEvidenceSets.some((ids) => flagIds.length && flagIds.some((id) => ids.has(id)));
   });
   const candidateDispositions = hybridCandidateDispositions(ensemble, reconciledPublishedActions, proposedRecords);
+  const passImpact = meetingAgentMaterialPassImpact(candidateDispositions, {
+    referee: { materialContributionCount: completedPasses.includes('referee')
+      ? reconciledPublishedActions.length + proposedRecords.length : 0,
+      materialCandidateIds: candidateDispositions.filter((item) =>
+        ['publish', 'proposal', 'supporting'].includes(item?.disposition))
+        .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean) },
+    critic: { materialContributionCount: criticPromotions.length
+      + unpromotedCriticActions.filter((record) => proposedRecords.some((proposalRecord) =>
+        hybridCandidateMatchesRecord({
+          recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
+        }, proposalRecord))).length },
+    salvage: { materialContributionCount: salvageAutomatic.length
+      + salvageProposal.filter((record) => proposedRecords.some((proposalRecord) =>
+        hybridCandidateMatchesRecord({
+          recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
+        }, proposalRecord))).length }
+  });
+  const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
   return {
     changes: {
       actions: reconciledPublishedActions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
-      passProvenance: [...(draft.passProvenance || []), ...passProvenance].slice(-40),
+      passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
       qualityState: { ...(draft.qualityState || {}), actions: {
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
+        completedAt: new Date().toISOString(), passImpact,
+        callPerformance: meetingAgentCallPerformance(measuredProvenance),
         stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
         stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
         automaticCount: reconciledPublishedActions.length, proposalCount: proposal.changes.length,
@@ -12298,7 +12489,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         strongDiscoveryProposalCount: strongDiscoveryBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
         commitmentThreadProposalCount: threadBackstop.length,
-        telemetry: meetingAgentExecutionTelemetry(passProvenance),
+        telemetry: meetingAgentExecutionTelemetry(measuredProvenance),
         candidateDispositions
       } }
     },
@@ -12325,14 +12516,29 @@ function sendMeetingAgentFailure(res, error) {
 }
 
 router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async (req, res) => {
+  const routeStartedAt = Date.now();
   try {
+    const readStartedAt = Date.now();
     const transcript = await readTestTranscript(req);
+    const transcriptReadMs = Date.now() - readStartedAt;
     validateTranscriptText(transcript.text);
+    const preparationStartedAt = Date.now();
     const prepared = await prepareMiniLmTranscript(transcript.text);
+    const preparationMs = Date.now() - preparationStartedAt;
+    const metadataStartedAt = Date.now();
     const details = sanitiseMeetingAgentDetails(extractStagedDetailsFromTranscript(transcript.text, transcript.fileName).screens.details);
     const sourceUnits = normaliseSourceUnits(prepared.sourceUnits);
     const preparedTranscript = preparedTranscriptFromUnits(sourceUnits);
     const salientDetails = salientDetailInventory(sourceUnits);
+    const metadataMs = Date.now() - metadataStartedAt;
+    const preparationPerformance = {
+      transcriptReadMs, preparationMs, metadataMs,
+      rawChars: transcript.text.length,
+      preparedChars: preparedTranscript.length,
+      sourceUnitCount: sourceUnits.length,
+      completedAt: new Date().toISOString()
+    };
+    const persistenceStartedAt = Date.now();
     const created = await createMeetingMinutesAgentDraft({
       userId: req.authUser?.userId,
       title: details.meetingTitle || transcript.fileName || 'Meeting minutes',
@@ -12346,6 +12552,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
         details,
         discussion: [], actions: [], reviewFlags: [], pendingProposal: null,
         changeHistory: [], staleStages: [], currentStep: 0,
+        qualityState: { preparation: preparationPerformance },
         denoise: {
           rawLength: prepared.rawLength, preparedLength: preparedTranscript.length,
           removedUnitCount: prepared.removedUnitCount, keptUnitCount: prepared.keptUnitCount,
@@ -12353,6 +12560,12 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
         }
       })
     });
+    const persistenceMs = Date.now() - persistenceStartedAt;
+    const totalElapsedMs = Date.now() - routeStartedAt;
+    console.info(JSON.stringify({
+      event: 'meeting_agent_preparation', journeyId: created.draftId || '', ok: true,
+      ...preparationPerformance, persistenceMs, totalElapsedMs
+    }));
     if (meetingMinutesAgentHybridEnabled()) {
       // The cache owns no user-visible state and the draft remains authoritative.
       // Starting here hides most of the staged candidate latency behind the
@@ -12362,9 +12575,16 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     return res.json({
       ok: true,
       draft: publicMeetingAgentDraft(created),
-      resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(created.draftId)}`
+      resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(created.draftId)}`,
+      performance: { ...preparationPerformance, persistenceMs, totalElapsedMs }
     });
   } catch (error) {
+    console.warn(JSON.stringify({
+      event: 'meeting_agent_preparation', ok: false,
+      totalElapsedMs: Date.now() - routeStartedAt,
+      errorCode: meetingMinutesAgentText(error.code, 120) || undefined,
+      errorMessage: meetingMinutesAgentText(error.message, 300) || undefined
+    }));
     return sendTestError(res, error);
   }
 }));
@@ -12639,7 +12859,7 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
     let lastConflict = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const fresh = await getDraft(draftId, userId, { includeTranscript: true });
-      if (!fresh) return { saved: null, conflictFields: [] };
+      if (!fresh) return { saved: null, conflictFields: [], attemptCount: attempt + 1 };
       let conflictFields = [];
       let changes;
       if (result) {
@@ -12673,7 +12893,7 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
       }
       try {
         const saved = await saveDraft(fresh, changes);
-        return { saved, conflictFields };
+        return { saved, conflictFields, attemptCount: attempt + 1 };
       } catch (error) {
         if (error.statusCode !== 409 || attempt === maxAttempts - 1) throw error;
         lastConflict = error;
@@ -12688,6 +12908,7 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
 // pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
 // process, so there is no other executor to hand it to.
 async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
+  const backgroundStartedAt = Date.now();
   let result = null;
   let failure = null;
   let sourceDraft = null;
@@ -12716,9 +12937,31 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
     }
   }
 
-  await persistMeetingAgentBackgroundStage({
+  const processingElapsedMs = Date.now() - backgroundStartedAt;
+  if (result?.changes?.qualityState?.[stage]) {
+    result.changes.qualityState[stage] = {
+      ...result.changes.qualityState[stage],
+      backgroundStartedAt: sourceDraft?.generation?.startedAt || new Date(backgroundStartedAt).toISOString(),
+      processingElapsedMs
+    };
+  }
+  const persistenceStartedAt = Date.now();
+  const persistence = await persistMeetingAgentBackgroundStage({
     draftId, userId, stage, sourceDraft: sourceDraft || {}, result, failure
   });
+  const persistenceElapsedMs = Date.now() - persistenceStartedAt;
+  console.info(JSON.stringify({
+    event: 'meeting_agent_stage_performance', journeyId: draftId, stage,
+    ok: Boolean(result && !failure), processingElapsedMs, persistenceElapsedMs,
+    totalElapsedMs: Date.now() - backgroundStartedAt,
+    telemetry: result?.changes?.qualityState?.[stage]?.telemetry,
+    passImpact: result?.changes?.qualityState?.[stage]?.passImpact,
+    calls: result?.changes?.qualityState?.[stage]?.callPerformance,
+    revision: persistence?.saved?.revision,
+    persistenceAttemptCount: Number(persistence?.attemptCount || 0),
+    conflictFieldCount: Array.isArray(persistence?.conflictFields) ? persistence.conflictFields.length : 0,
+    errorCode: failure ? meetingMinutesAgentText(failure.code, 120) || undefined : undefined
+  }));
 }
 
 router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth, async (req, res) => {
@@ -12771,11 +13014,37 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
     const draft = await loadOwnedMeetingAgentDraft(req);
     const generation = meetingAgentGenerationState(draft.generation);
     const running = Boolean(generation && generation.status === 'running');
+    const completedPerformance = running ? null : meetingAgentCompletedStagePerformance(draft);
+    let observedPerformance;
+    if (completedPerformance) {
+      const observedAt = new Date().toISOString();
+      const pollingOverheadMs = Math.max(0, Date.now() - new Date(draft.updatedAt || observedAt).getTime());
+      observedPerformance = {
+        stage: completedPerformance.stage,
+        processingElapsedMs: Number(completedPerformance.processingElapsedMs
+          || completedPerformance.stageElapsedMs || 0),
+        persistedAt: draft.updatedAt,
+        observedAt,
+        pollingOverheadMs
+      };
+      const observationKey = `${draft.draftId}:${draft.revision}:${completedPerformance.stage}`;
+      if (!meetingAgentObservedGenerationCompletions.has(observationKey)) {
+        meetingAgentObservedGenerationCompletions.add(observationKey);
+        if (meetingAgentObservedGenerationCompletions.size > 500) {
+          meetingAgentObservedGenerationCompletions.delete(meetingAgentObservedGenerationCompletions.values().next().value);
+        }
+        console.info(JSON.stringify({
+          event: 'meeting_agent_poll_observed', journeyId: draft.draftId,
+          revision: draft.revision, ...observedPerformance
+        }));
+      }
+    }
     return res.json({
       ok: true,
       generation: publicMeetingAgentGeneration(generation),
       // Carry the draft only once the run is over, so completion is one round trip.
-      draft: running ? undefined : publicMeetingAgentDraft(draft)
+      draft: running ? undefined : publicMeetingAgentDraft(draft),
+      performance: observedPerformance
     });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
@@ -13070,6 +13339,11 @@ router.stagedEvaluation = {
   meetingAgentRefereeBatchPlan,
   meetingAgentRunOrderedConcurrent,
   meetingAgentExecutionTelemetry,
+  meetingAgentFailureClass,
+  meetingAgentResultCounts,
+  meetingAgentMaterialPassImpact,
+  annotateMeetingAgentPassImpact,
+  meetingAgentCallPerformance,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
