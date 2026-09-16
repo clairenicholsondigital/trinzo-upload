@@ -17,6 +17,7 @@ function baseDraft(id, running = false) {
     revision: 3,
     updatedAt: '2026-09-16T12:00:00.000Z',
     currentStep: 3,
+    selectedStep: 3,
     title: 'UI state test',
     details: {
       meetingTitle: 'UI state test', meetingDate: '2026-09-16', meetingLocation: 'Teams',
@@ -35,11 +36,14 @@ function baseDraft(id, running = false) {
     }],
     actions: [{
       id: 'action-1', action: 'Send the revised report.', owners: ['Alex Reed'],
-      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: ['flag-action']
     }],
     executiveSummary: '', meetingObjectives: [], pendingProposal: null,
     reviewFlags: [{
       id: 'flag-1', kind: 'missing_evidence', message: 'Check the source support for this generated sentence.',
+      evidenceIds: ['T0001'], status: 'open', correctionNote: ''
+    }, {
+      id: 'flag-action', kind: 'ownership', message: 'Check the owner of this action.',
       evidenceIds: ['T0001'], status: 'open', correctionNote: ''
     }],
     generation: running ? {
@@ -56,20 +60,39 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  const summaryRunning = baseDraft('summary-running', false);
+  summaryRunning.currentStep = 4;
+  summaryRunning.selectedStep = 3;
+  summaryRunning.generation = {
+    stage: 'summary', status: 'running', startedAt: '2026-09-16T12:00:01.000Z',
+    message: 'Preparing the summary…', completedPasses: [], callTimings: [], degradedSources: [], error: ''
+  };
+  drafts.set('summary-running', summaryRunning);
   const patchCounts = new Map();
+  const patchBodies = new Map();
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
   app.get('/static/trinzo.js', (req, res) => res.type('application/javascript').send(''));
   app.get('/static/trinzo-fonts.css', (req, res) => res.type('text/css').send(''));
+  app.post('/api/meeting-minutes-agent/prepare', (req, res) => {
+    const prepared = baseDraft('prepared', false);
+    prepared.currentStep = 0;
+    prepared.selectedStep = 0;
+    drafts.set('prepared', prepared);
+    res.json({ ok: true, draft: prepared, resumeUrl: '/meeting-minutes-agent?draftId=prepared' });
+  });
   app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: drafts.get(req.params.id) }));
   app.patch('/api/meeting-minutes-agent/drafts/:id', (req, res) => {
+    patchBodies.set(req.params.id, req.body);
     const prior = drafts.get(req.params.id);
     const next = {
       ...prior,
       ...req.body,
       revision: prior.revision + 1,
       updatedAt: new Date().toISOString(),
+      currentStep: Math.max(Number(prior.currentStep || 0), Number(req.body.currentStep || 0)),
+      selectedStep: Number(req.body.selectedStep == null ? req.body.currentStep : req.body.selectedStep),
       // Match production normalisation: an empty action is not persisted.
       actions: (req.body.actions || prior.actions).filter((action) => String(action.action || '').trim())
     };
@@ -78,10 +101,22 @@ function startStubServer() {
     res.json({ ok: true, draft: next });
   });
   app.get('/api/meeting-minutes-agent/drafts/:id/generation', (req, res) => {
-    const draft = drafts.get(req.params.id);
+    let draft = drafts.get(req.params.id);
+    if (req.params.id === 'summary-running' && draft.generation) {
+      draft = {
+        ...draft, revision: draft.revision + 1, updatedAt: new Date().toISOString(),
+        generation: null, executiveSummary: 'The report was confirmed for circulation.'
+      };
+      drafts.set(req.params.id, draft);
+      return res.json({ ok: true, generation: null, draft });
+    }
     res.json({ ok: true, generation: draft.generation });
   });
-  app.get('/test-state/:id', (req, res) => res.json({ patches: patchCounts.get(req.params.id) || 0 }));
+  app.get('/test-state/:id', (req, res) => res.json({
+    patches: patchCounts.get(req.params.id) || 0,
+    draft: drafts.get(req.params.id),
+    lastPatch: patchBodies.get(req.params.id) || null
+  }));
 
   return new Promise((resolve) => {
     const server = app.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
@@ -166,6 +201,97 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     await page.click('[data-step="0"]');
     await page.fill('#meetingTitle', 'Edited while actions run');
     assert.match(await page.textContent('#saveStatus'), /Local edits are waiting to save/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('selected stage and deletions survive save responses, navigation and reopening', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    const actionDeleteSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await page.click('#actionsBody [data-delete-action]');
+    assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
+    await page.click('[data-step="2"]');
+    await actionDeleteSave;
+
+    const stateAfterActionDelete = await page.evaluate(async () => await (await fetch('/test-state/editor')).json());
+    const savedAfterActionDelete = stateAfterActionDelete.draft;
+    assert.equal(stateAfterActionDelete.lastPatch.actions.length, 0);
+    assert.equal(savedAfterActionDelete.actions.length, 0);
+    assert.equal(savedAfterActionDelete.currentStep, 3, 'furthest unlocked stage remains Actions');
+    assert.equal(savedAfterActionDelete.selectedStep, 2, 'selected Discussion stage is stored separately');
+    assert.equal(savedAfterActionDelete.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'dismissed');
+
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
+    assert.equal(await page.locator('[data-step="3"]').isDisabled(), false, 'Actions remains unlocked after reopening');
+
+    const discussionDeleteSave = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await page.click('[data-remove-record]');
+    await discussionDeleteSave;
+    const savedAfterDiscussionDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
+    assert.equal(savedAfterDiscussionDelete.discussion[0].points.length, 0);
+    assert.equal(savedAfterDiscussionDelete.reviewFlags.find((flag) => flag.id === 'flag-1').status, 'dismissed');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('details status clears on Focus and unfinished owner text survives a background completion', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(30000);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent`);
+    await page.locator('#transcriptFile').setInputFiles({
+      name: 'transcript.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: Buffer.from('stub')
+    });
+    await page.waitForFunction(() => /Check the meeting details/i.test(document.getElementById('workflowStatus').textContent));
+    await page.click('#toSteer');
+    assert.equal(await page.locator('#workflowStatus').isHidden(), true);
+
+    const completionResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/summary-running/generation'));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=summary-running`);
+    await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
+    assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true);
+    await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
+    const owner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
+    await owner.fill('Jordan Lee');
+
+    const completed = await completionResponse;
+    assert.match(JSON.stringify(await completed.json()), /confirmed for circulation/);
+    assert.deepEqual(errors, []);
+    await page.waitForTimeout(500);
+    const completionState = await page.evaluate(() => ({
+      status: document.getElementById('workflowStatus').textContent,
+      summary: document.getElementById('executiveSummary').value,
+      save: document.getElementById('saveStatus').textContent
+    }));
+    assert.match(completionState.summary, /confirmed for circulation/, JSON.stringify(completionState));
+    assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true);
+    assert.equal(await owner.isVisible(), true);
+    assert.equal(await owner.inputValue(), 'Jordan Lee');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

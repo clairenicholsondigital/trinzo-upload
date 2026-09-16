@@ -9946,7 +9946,9 @@ function meetingAgentDraftPayload(draft = {}) {
     passCache: normaliseMeetingAgentPassCache(draft.passCache),
     qualityState: normaliseMeetingAgentKnownTermsDeep(draft.qualityState && typeof draft.qualityState === 'object' ? draft.qualityState : {}),
     generation: normaliseMeetingAgentGeneration(draft.generation),
-    currentStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(draft.currentStep || 0)))
+    currentStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(draft.currentStep || 0))),
+    selectedStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP,
+      Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0))
   };
 }
 
@@ -12628,6 +12630,14 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     // different screen than it does now. Ignore it rather than storing the wrong
     // one; the client stamps payloadVersion to say it speaks the new numbering.
     const clientSpeaksCurrentSteps = Number(req.body?.payloadVersion || 0) >= MEETING_AGENT_PAYLOAD_VERSION;
+    const requestedStep = clientSpeaksCurrentSteps
+      ? Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(req.body?.currentStep ?? draft.currentStep) || 0))
+      : Number(draft.currentStep || 0);
+    const furthestStep = Math.max(Number(draft.currentStep || 0), requestedStep);
+    const requestedSelectedStep = clientSpeaksCurrentSteps
+      ? Math.max(0, Math.min(furthestStep,
+        Number(req.body?.selectedStep ?? req.body?.currentStep ?? draft.selectedStep ?? draft.currentStep) || 0))
+      : Math.max(0, Math.min(furthestStep, Number(draft.selectedStep ?? draft.currentStep) || 0));
     const saved = await saveMeetingAgentDraft(draft, req, {
       details,
       steer: req.body?.steer ?? draft.steer,
@@ -12636,7 +12646,8 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
       reviewFlags: mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      currentStep: clientSpeaksCurrentSteps ? (req.body?.currentStep ?? draft.currentStep) : draft.currentStep,
+      currentStep: furthestStep,
+      selectedStep: requestedSelectedStep,
       status: req.body?.status
     });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
@@ -12995,7 +13006,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requir
     };
     const saved = await saveMeetingAgentDraft(draft, req, {
       generation,
-      currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
+      currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0),
+      selectedStep: MEETING_AGENT_STAGE_STEP[stage]
     });
     const userId = req.authUser?.userId;
     setImmediate(() => {

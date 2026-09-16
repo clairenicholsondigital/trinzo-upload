@@ -5,7 +5,7 @@
   var agentRetryDelaysSeconds = [5, 15, 30];
   // 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review
   var MAX_STEP = 5;
-  var STAGE_STEP = { discussion: 2, actions: 3, summary: 4 };
+  var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
   var GENERATION_POLL_MS = 2000;
   var generationTimer = null;
   var saveTimer = null;
@@ -36,6 +36,10 @@
     status.dataset.stage = stage || '';
     status.hidden = !message || Boolean(stage && STAGE_STEP[stage] !== state.currentStep);
     status.classList.toggle('error', Boolean(error));
+  }
+
+  function currentStageName() {
+    return ['details', 'focus', 'discussion', 'actions', 'summary', 'review'][state.currentStep] || '';
   }
 
   function setSaveStatus(message, kind) {
@@ -202,7 +206,8 @@
 
   function showStep(index, options) {
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
-    var stepChanged = Boolean(state.draft) && Number(state.draft.currentStep || 0) !== state.currentStep;
+    var stepChanged = Boolean(state.draft)
+      && Number(state.draft.selectedStep == null ? state.draft.currentStep : state.draft.selectedStep) !== state.currentStep;
     document.querySelectorAll('[data-screen]').forEach(function (screen) { screen.classList.toggle('active', Number(screen.dataset.screen) === state.currentStep); });
     document.querySelectorAll('[data-step]').forEach(function (button) {
       var step = Number(button.dataset.step);
@@ -213,13 +218,17 @@
       button.classList.toggle('active', step === state.currentStep);
       button.classList.toggle('complete', step < state.currentStep);
     });
-    if (state.draft) state.draft.currentStep = state.currentStep;
+    if (state.draft) {
+      state.draft.currentStep = Math.max(Number(state.draft.currentStep || 0), state.currentStep);
+      state.draft.selectedStep = state.currentStep;
+    }
     autoGrow();
     var statusStage = status.dataset.stage;
     status.hidden = !status.textContent || Boolean(statusStage && STAGE_STEP[statusStage] !== state.currentStep);
-    // The generation start and final-stage persistence both store the stage step.
-    // Navigation to that in-flight stage is not an unsaved content edit.
-    if (!rendering && stepChanged && !generationRunning()) scheduleSave();
+    // Deliberate navigation is persisted independently from the furthest unlocked
+    // step. During generation scheduleSave holds it until the background write is
+    // complete, so reopening the draft returns to the screen the reviewer chose.
+    if (!rendering && stepChanged && !(options && options.persist === false)) scheduleSave();
     // Only a deliberate navigation scrolls. A re-render triggered by autosave
     // must leave the reader exactly where they were.
     if (options && options.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -317,7 +326,7 @@
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
-      setStatus('Transcript prepared. Check the meeting details before continuing.', false);
+      setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');
     } catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }
@@ -448,6 +457,25 @@
       if (/^manual-action-/.test(String(action.id || '')) && !String(action.action || '').trim()) {
         actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
       } else if (action.id) delete actionEditorState.pendingRows[action.id];
+    });
+  }
+
+  function linkedReviewFlagIds(value) {
+    if (!value || typeof value !== 'object') return [];
+    var own = Array.isArray(value.reviewFlagIds) ? value.reviewFlagIds : [];
+    var nested = Array.isArray(value) ? value : Object.keys(value).map(function (key) { return value[key]; });
+    return own.concat(nested.flatMap(linkedReviewFlagIds));
+  }
+
+  function resolveDeletedTargetFlags(flagIds) {
+    if (!state.draft || !flagIds || !flagIds.length) return;
+    var stillLinked = new Set(linkedReviewFlagIds([
+      state.draft.discussion || [], state.draft.actions || []
+    ]));
+    var removed = new Set(flagIds);
+    state.draft.reviewFlags = (state.draft.reviewFlags || []).map(function (flag) {
+      if (!removed.has(flag.id) || stillLinked.has(flag.id)) return flag;
+      return Object.assign({}, flag, { status: 'dismissed' });
     });
   }
 
@@ -622,20 +650,24 @@
       document.getElementById('staleNotice').hidden = !stale.length;
       document.getElementById('staleStages').textContent = stale.join(' and ');
     } else document.getElementById('staleNotice').hidden = true;
-    showStep(state.draft ? Math.max(Number(state.draft.currentStep) || 0, state.currentStep || 0) : 0);
+    showStep(state.draft ? state.currentStep : 0, { persist: false });
     rendering = false;
     restoreFocus(snapshot);
   }
 
   function adoptDraft(draft) {
     if (!draft) return;
+    var replacingExistingDraft = Boolean(state.draft);
     rememberPendingActions();
     document.getElementById('reloadDraft').hidden = true;
     state.draft = restorePendingActions(draft);
-    // Never navigate the reviewer backwards. A background run finishing while they
-    // have moved on would otherwise yank them back to the screen the server last
-    // recorded - which is the screen they were on when the run started.
-    state.currentStep = Math.max(Number(draft.currentStep) || 0, state.currentStep || 0);
+    // Responses to saves and background work must not navigate the reviewer.
+    // On the initial load, restore the separately persisted selected screen;
+    // older drafts fall back to their furthest unlocked step.
+    if (!replacingExistingDraft) {
+      state.currentStep = Math.max(0, Math.min(MAX_STEP,
+        Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0));
+    }
     renderAll();
     // A reload in the middle of a run must not look dead.
     if (generationRunning()) pollGeneration();
@@ -648,7 +680,12 @@
     }
   }
 
-  function readEditors() { if (!state.draft) return; readDetails(); readSteer(); readDiscussion(); readActions(); readSummary(); state.draft.currentStep = state.currentStep; }
+  function readEditors() {
+    if (!state.draft) return;
+    readDetails(); readSteer(); readDiscussion(); readActions(); readSummary();
+    state.draft.currentStep = Math.max(Number(state.draft.currentStep || 0), state.currentStep);
+    state.draft.selectedStep = state.currentStep;
+  }
 
   function draftPatchBody(statusValue) {
     var body = {
@@ -656,7 +693,7 @@
       // Tells the server this client speaks the six-step numbering. A tab loaded
       // before the deploy will not send it, and its currentStep is then ignored
       // rather than being read as a screen it did not mean.
-      payloadVersion: 4,
+      payloadVersion: 5,
       details: state.draft.details,
       steer: state.draft.steer || '',
       discussion: state.draft.discussion,
@@ -664,7 +701,8 @@
       executiveSummary: state.draft.executiveSummary || '',
       meetingObjectives: state.draft.meetingObjectives || [],
       reviewFlags: state.draft.reviewFlags,
-      currentStep: state.currentStep
+      currentStep: Math.max(Number(state.draft.currentStep || 0), state.currentStep),
+      selectedStep: state.currentStep
     };
     if (statusValue) body.status = statusValue;
     return body;
@@ -873,14 +911,14 @@
       link.download = match ? match[1] : (isPdf ? 'Meeting minutes.pdf' : 'Meeting minutes.docx');
       document.body.appendChild(link); link.click(); link.remove();
       window.setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-      setStatus(isPdf ? 'PDF downloaded.' : 'Word document downloaded.', false);
-    } catch (error) { setStatus(error.message, true); }
+      setStatus(isPdf ? 'PDF downloaded.' : 'Word document downloaded.', false, 'review');
+    } catch (error) { setStatus(error.message, true, currentStageName()); }
     finally { setBusy(false); }
   }
 
   async function loadDraft(draftId) {
     setBusy(true, 'Loading your saved draft...');
-    try { var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId)); adoptDraft(payload.draft); setStatus('Saved draft restored.', false); }
+    try { var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId)); adoptDraft(payload.draft); setStatus('Saved draft restored.', false, currentStageName()); }
     catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }
@@ -955,7 +993,10 @@
     if(!add && !remove && !demote && !promote && !topicButton) return;
     readDiscussion();
     if(add){state.draft.discussion[Number(add.dataset.topicIndex)][add.dataset.addRecord].push({id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[]});}
-    if(remove){state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1);}
+    if(remove){
+      var removedRecord=state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1)[0];
+      resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
+    }
     if(demote){
       var demoteTopic=state.draft.discussion[Number(demote.dataset.topicIndex)];
       var demoteList=demoteTopic && demoteTopic[demote.dataset.demoteRecord];
@@ -974,7 +1015,10 @@
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
       if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:[],supportingDetails:[]});
     }
-    if(topicButton){state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1);}
+    if(topicButton){
+      var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
+      resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
+    }
     renderDiscussion();
     scheduleSave();
   });
@@ -992,6 +1036,7 @@
     if (!button) return;
     readActions();
     var removedAction = state.draft.actions.splice(Number(button.dataset.deleteAction),1)[0];
+    resolveDeletedTargetFlags(linkedReviewFlagIds(removedAction));
     if (removedAction && removedAction.id) {
       delete actionEditorState.pendingRows[removedAction.id];
       delete actionEditorState.customOwners[removedAction.id];
@@ -1046,7 +1091,10 @@
   });
   document.getElementById('actionsBody').addEventListener('focusout', function (event) {
     var input = event.target.closest('[data-owner-other]');
-    if (input) commitOtherOwner(input);
+    // A controlled render replaces the action table and naturally blurs its
+    // focused field. Committing from that synthetic blur would recursively
+    // replace the same DOM subtree and can both throw and lose unfinished text.
+    if (input && !rendering) commitOtherOwner(input);
   });
 
   document.getElementById('addAction').addEventListener('click', function () {
@@ -1079,8 +1127,8 @@
   document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
   document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });
   document.getElementById('rejectProposal').addEventListener('click', function () { reviewProposal('reject',false); });
-  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false); });
-  document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false);}).catch(function(error){setStatus(error.message,true);}); });
+  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false,'review'); });
+  document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });
   document.getElementById('reloadDraft').addEventListener('click', function () {
     if (state.draft) loadDraft(state.draft.draftId);
   });
