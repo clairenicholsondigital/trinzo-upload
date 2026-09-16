@@ -1568,13 +1568,18 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
 // good. Recover only plain relative-day phrases, only from the cited units
 // themselves (never a neighbouring turn), and only where that unit reads as a
 // commitment rather than narration ("we discussed today").
-const CITED_TIMING_PHRASE = /\b(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon))?|this\s+(?:morning|afternoon|evening|week)|next\s+week|end\s+of\s+(?:this\s+|next\s+)?week)\b(?!['’]s)/i;
+const CITED_TIMING_PHRASE = /\b(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon))?|this\s+(?:morning|afternoon|evening|week)|next\s+week|end\s+of\s+(?:this\s+|next\s+)?week|(?:this\s+|next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?)\b(?!['’]s)/i;
 const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
 function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
   for (const unit of evidenceWindowUnits(units, evidenceIds, 0)) {
     const source = String(unit.text || '');
-    const phrase = source.match(CITED_TIMING_PHRASE)?.[0];
+    // "Monday, yep, I'll place it Monday morning": take the most specific
+    // phrase in the unit, not the first.
+    const phrases = [...source.matchAll(new RegExp(CITED_TIMING_PHRASE.source, 'gi'))].map((match) => match[0]);
+    const phrase = phrases.sort((left, right) =>
+      Number(/\b(?:morning|afternoon|evening|this|next|end of)\b/i.test(right)) - Number(/\b(?:morning|afternoon|evening|this|next|end of)\b/i.test(left))
+      || right.length - left.length)[0];
     if (!phrase) continue;
     const committed = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source)
       || NAMED_WILL_PATTERN.test(source) || CITED_TIMING_COMMITMENT_CUE.test(source);

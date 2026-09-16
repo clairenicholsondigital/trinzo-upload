@@ -1079,3 +1079,15 @@ test('a leaving remark is not a commitment, even with a "need to" cue', () => {
   ] }, units, 'actions', { meetingDate: '2026-08-10' });
   assert.deepEqual(result.actions.map((action) => action.action), ['Send the revised hop order to Dan.'], 'the leaving remark is dropped; "shoot X over" is a real commitment');
 });
+
+test('a weekday phrase in the cited commitment is recovered when the model returned no usable timing', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0033', speaker: 'Ravi Menon', text: "Monday, yep, I'll place the hop order Monday morning, all thirteen kilos.", classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Place the full hop order on Monday morning.', owners: ['Ravi Menon'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0033']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'monday morning', exactDate: '2026-08-10' });
+  assert.ok(!result.reviewFlags.some((flag) => flag.kind === 'timing'));
+});
