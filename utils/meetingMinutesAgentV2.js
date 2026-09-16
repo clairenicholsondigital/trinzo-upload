@@ -1576,22 +1576,64 @@ function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {})
   return timing;
 }
 
+// Lexical evidence resolution favours the turn that names the deliverable
+// ("Six sacks of Maris Otter, thirty-two pounds a sack") over the turn where
+// the owner takes the job on ("leave that with me, I'll order six sacks
+// today"). The reviewer needs the second one: it carries the ownership, the
+// timing and the commitment itself. When such a turn sits within a few turns
+// of the cited passage, add it to the citation. Additive only.
+const COMMITMENT_ANCHOR_RADIUS = 3;
+function speakerIsOwner(speaker, owners = []) {
+  const words = (value) => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s'’-]/gu, ' ').split(/\s+/).filter(Boolean);
+  const speakerWords = words(speaker);
+  if (!speakerWords.length) return false;
+  return owners.some((owner) => {
+    const ownerWords = words(owner);
+    if (!ownerWords.length) return false;
+    if (ownerWords.join(' ') === speakerWords.join(' ')) return true;
+    // "Dan" for "Dan Threlfall", either way round, but never a surname alone.
+    return (ownerWords.length === 1 && ownerWords[0] === speakerWords[0])
+      || (speakerWords.length === 1 && speakerWords[0] === ownerWords[0]);
+  });
+}
+function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []) {
+  if (!owners.length || !evidenceIds.length) return evidenceIds;
+  const cited = new Set(evidenceIds);
+  const actionTokens = materialTokens(action);
+  if (actionTokens.length < 2) return evidenceIds;
+  const nearby = evidenceWindowUnits(units, evidenceIds, COMMITMENT_ANCHOR_RADIUS)
+    .filter((unit) => !cited.has(unit.id) && speakerIsOwner(unit.speaker, owners));
+  let best = null;
+  for (const unit of nearby) {
+    const unitTokens = new Set(contentTokens(unit.text));
+    const shared = actionTokens.filter((token) => unitTokens.has(token)).length;
+    if (shared < 2) continue;
+    const disposition = actionEvidenceDisposition(action, `${unit.speaker}: ${unit.text}`);
+    if (!['committed', 'accepted_request', 'conditional_commitment'].includes(disposition)) continue;
+    if (!best || shared > best.shared) best = { id: unit.id, shared };
+  }
+  if (!best) return evidenceIds;
+  return [...evidenceIds, best.id].slice(0, 8);
+}
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
     if (!action || isIdeaOnlyContemplation(action)) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
-    const evidenceText = evidenceWindowText(units, resolved.evidenceIds, 1);
+    const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
+    const evidenceIds = anchorOwnerCommitment(action, owners, units, resolved.evidenceIds);
+    const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
-    if (options.enforceEvidence !== false && !resolved.evidenceIds.length) return null;
+    if (options.enforceEvidence !== false && !evidenceIds.length) return null;
     if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) return null;
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
       action,
-      owners: splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units)),
-      timing: backfillCitedTiming(timingFrom(item, options), units, resolved.evidenceIds, options),
-      evidenceIds: resolved.evidenceIds,
+      owners,
+      timing: backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options),
+      evidenceIds,
       reviewFlagIds: [...new Set((Array.isArray(item?.reviewFlagIds) ? item.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
       _unsupportedEvidenceIds: resolved.invalidIds,
       _weakEvidenceIds: resolved.weakIds,

@@ -1008,3 +1008,33 @@ test('same-day wording in the cited commitment is recovered when the model retur
   // Narration is not a commitment: "we discussed today" must not become a deadline.
   assert.equal(result.actions[1].timing.kind, 'not_stated');
 });
+
+test("the owner's nearby commitment turn is added to an action's citation", () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0019', speaker: 'Josie Kaur', text: 'What about malt, are we okay on malt?', classification: 'keep' },
+    { id: 'T0020', speaker: 'Dan Threlfall', text: "We've got, Mick, how many sacks of the Maris Otter left?", classification: 'keep' },
+    { id: 'T0021', speaker: 'Mick Dolan', text: "Eighteen sacks. Each brew's about, the pale's ten sacks, the IPA's eleven, so eighteen won't cover both.", classification: 'keep' },
+    { id: 'T0022', speaker: 'Dan Threlfall', text: "No, we're short. We need another, if it's twenty-one total and we've got eighteen, get another, say, six sacks to have a buffer.", classification: 'keep' },
+    { id: 'T0023', speaker: 'Mick Dolan', text: "Six sacks of Maris Otter. They're about thirty-two pounds a sack at the minute.", classification: 'keep' },
+    { id: 'T0024', speaker: 'Dan Threlfall', text: "Fine. Actually, hang on, let me do that one, I get a better rate from the maltster than we do on the account. Leave the malt with me, I'll order six sacks today.", classification: 'keep' },
+    { id: 'T0025', speaker: 'Mick Dolan', text: "Righto, malt's yours.", classification: 'keep' },
+    { id: 'T0026', speaker: 'Dan Threlfall', text: 'Now the festival. Josie, you took the call.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Order six sacks of Maris Otter malt.', owners: ['Dan Threlfall'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  const action = result.actions[0];
+  assert.ok(action.evidenceIds.includes('T0024'), `expected the commitment turn to be cited, got ${JSON.stringify(action.evidenceIds)}`);
+  // With the commitment cited, its same-day wording is recovered and the owner is supported.
+  assert.deepEqual(action.timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+  assert.ok(!result.reviewFlags.some((flag) => flag.kind === 'ownership'));
+
+  // A nearby turn by someone other than the owner, or by the owner without a
+  // commitment, is not pulled in.
+  const other = normaliseAgentResult({ actions: [{
+    action: 'Order six sacks of Maris Otter malt.', owners: ['Mick Dolan'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0023']
+  }] }, units, 'actions', { meetingDate: '2026-08-10', enforceEvidence: false });
+  assert.ok(!other.actions[0].evidenceIds.includes('T0024'));
+});
