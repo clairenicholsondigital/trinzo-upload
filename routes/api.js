@@ -10209,8 +10209,12 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.details = sanitiseMeetingAgentDetails(safe.details);
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);
-  const degraded = Object.values(_qualityState || {}).flatMap((stage) => Array.isArray(stage?.degradedSources) ? stage.degradedSources : []);
-  safe.qualityNotice = degraded.length ? 'One independent quality check could not complete. You can regenerate this section to retry it.' : '';
+  // Degraded-source details remain in private qualityState and telemetry. If a
+  // recovery path produced a grounded result and the stage persisted it as a
+  // success, reviewers should see that success—not an implementation warning.
+  // A stage which cannot produce a validated result is represented separately
+  // by generation.status === 'failed' and already receives an actionable error.
+  safe.qualityNotice = '';
   safe.stageLabel = MEETING_AGENT_STEP_LABELS[Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(safe.currentStep) || 0))];
   // The client only needs to know whether an undo exists. Shipping up to 30
   // full before/after snapshots on every save was pure weight.
@@ -13680,6 +13684,7 @@ router.stagedEvaluation = {
   buildPrivateStagedCandidateLedger,
   prewarmPrivateStagedCandidateLedgers,
   meetingAgentActionPrimaryPromptForDraft,
+  publicMeetingAgentDraft,
   normaliseMeetingAgentGeneration,
   meetingAgentSerialDraftWrite,
   meetingAgentStageContentFields,

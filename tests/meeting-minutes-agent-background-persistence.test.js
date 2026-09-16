@@ -8,6 +8,7 @@ const {
   meetingAgentStagePersistenceChanges,
   persistMeetingAgentBackgroundStage,
   meetingAgentActionPrimaryPromptForDraft,
+  publicMeetingAgentDraft,
   normaliseMeetingAgentGeneration
 } = require('../routes/api').stagedEvaluation;
 
@@ -55,6 +56,22 @@ test('running generation safely exposes bounded read-only action previews', () =
   assert.equal(generation.previewActions[0].action, 'Send the revised report.');
   assert.deepEqual(generation.previewActions[0].reviewFlagIds, []);
   assert.equal(generation.previewUpdatedAt, '2026-09-16T10:01:00.000Z');
+});
+
+test('successful recovered stages do not expose internal degradation warnings', () => {
+  const draft = baseDraft();
+  draft.currentStep = 3;
+  draft.generation = null;
+  draft.qualityState = {
+    discussion: {
+      completedAt: '2026-09-16T15:26:43.806Z',
+      completedPasses: ['recovery', 'referee'],
+      degradedSources: ['The optional primary quality pass did not complete: invalid structure.']
+    }
+  };
+  const publicDraft = publicMeetingAgentDraft(draft);
+  assert.equal(publicDraft.qualityNotice, '');
+  assert.equal(Object.prototype.hasOwnProperty.call(publicDraft, 'qualityState'), false);
 });
 
 const results = {
