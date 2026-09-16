@@ -8,6 +8,7 @@ __pycache__/
 
 reports/live-baseline/
 artifacts/live-action-path-eval/
+benchmark-results/performance-baseline-*/
 
 .minilm-cache/
 
