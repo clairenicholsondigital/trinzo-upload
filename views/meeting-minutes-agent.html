@@ -136,6 +136,12 @@
 .meeting-agent-page .step.complete{color:var(--heading)}
 .meeting-agent-page .step.complete::before{
   content:"\2713";background:var(--ok-bg);color:var(--ok-text)}
+.meeting-agent-page .step.generating::after,
+.meeting-agent-page .step.ready::after{
+  margin-left:auto;padding:.12rem .38rem;border-radius:var(--radius-pill);
+  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .step.generating::after{content:"Working";background:var(--info-bg);color:var(--info-text)}
+.meeting-agent-page .step.ready::after{content:"Ready";background:var(--ok-bg);color:var(--ok-text)}
 .meeting-agent-page .step:disabled{opacity:.55}
 
 /* ---------------------------------------------------------- save strip -- */
@@ -176,6 +182,28 @@
 @keyframes agent-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){
   .meeting-agent-page.busy #workflowStatus::before{animation:none}}
+.meeting-agent-page .generation-progress{margin:.75rem 0;padding:.9rem 1rem}
+.meeting-agent-page .generation-progress-head{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.meeting-agent-page .generation-progress-head h2{margin:0;font-size:var(--fs-lg)}
+.meeting-agent-page .generation-progress-head p{margin:.2rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .generation-elapsed{white-space:nowrap;color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .generation-phases{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;
+  margin:.8rem 0 0;padding:0;list-style:none}
+.meeting-agent-page .generation-phase{
+  display:flex;align-items:center;gap:.45rem;padding:.5rem .6rem;
+  border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .generation-phase::before{
+  content:"";width:.65rem;height:.65rem;flex:none;border-radius:50%;background:var(--border-strong)}
+.meeting-agent-page .generation-phase.active{border-color:var(--accent);color:var(--heading)}
+.meeting-agent-page .generation-phase.active::before{
+  background:transparent;border:2px solid var(--brand-200);border-top-color:var(--accent);animation:agent-spin .75s linear infinite}
+.meeting-agent-page .generation-phase.done{color:var(--ok-text)}
+.meeting-agent-page .generation-phase.done::before{content:"\2713";display:grid;place-items:center;background:var(--ok-bg);font-size:.55rem}
+.meeting-agent-page .generation-progress-actions{display:flex;align-items:center;gap:.65rem;margin-top:.75rem}
+.meeting-agent-page .generation-preview-note{margin:.65rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
+@media(prefers-reduced-motion:reduce){.meeting-agent-page .generation-phase.active::before{animation:none}}
 .meeting-agent-page.busy button,
 .meeting-agent-page.busy input,
 .meeting-agent-page.busy textarea,
@@ -358,6 +386,12 @@
 .meeting-agent-page .actions-table th:nth-child(3){width:24%}
 .meeting-agent-page .actions-table textarea{min-height:56px}
 .meeting-agent-page .action-tools{margin-top:.4rem}
+.meeting-agent-page .preview-action-row{background:var(--soft)}
+.meeting-agent-page .preview-action-row td{color:var(--heading)}
+.meeting-agent-page .preview-action-label{
+  display:inline-flex;margin-bottom:.35rem;padding:.12rem .4rem;border-radius:var(--radius-pill);
+  background:var(--info-bg);color:var(--info-text);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .preview-action-meta{color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
 
 .meeting-agent-page .owner-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem}
 .meeting-agent-page .owner-chip{
@@ -513,6 +547,7 @@
   .meeting-agent-page .final-actions .divider,
   .meeting-agent-page .final-actions .spacer{display:none}
   .meeting-agent-page .export-group{width:100%}
+  .meeting-agent-page .generation-phases{grid-template-columns:1fr}
   .meeting-agent-page .export-group>*{flex:1}
 }
 
@@ -557,7 +592,13 @@
   <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a href="/jobs">Resume later from Library</a></span></div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
-  <p id="staleNotice" class="notice" hidden>The prepared transcript changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
+  <section id="generationProgress" class="panel generation-progress" role="region" aria-labelledby="generationProgressTitle" hidden>
+    <div class="generation-progress-head"><div><h2 id="generationProgressTitle">Preparing actions</h2><p id="generationProgressMessage" aria-live="polite"></p></div><span id="generationElapsed" class="generation-elapsed"></span></div>
+    <ol id="generationPhases" class="generation-phases"></ol>
+    <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
+    <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span class="muted">You can leave this page and resume later from Library.</span></div>
+  </section>
+  <p id="staleNotice" class="notice" hidden>Earlier meeting content changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
 
   <details id="reviewFlags" class="panel review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading">Details to review</span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
 
@@ -616,7 +657,7 @@
       <p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p>
       <div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
     </div>
-    <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button">Check for missed actions</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+    <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="The initial generation already includes a missed-action check.">Run an additional action check</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ==================================================== ai proposals -->

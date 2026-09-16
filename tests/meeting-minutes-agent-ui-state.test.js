@@ -48,7 +48,13 @@ function baseDraft(id, running = false) {
     }],
     generation: running ? {
       stage: 'actions', status: 'running', startedAt: '2026-09-16T12:00:01.000Z',
-      message: 'Checking action evidence…', completedPasses: [], callTimings: [], degradedSources: [], error: ''
+      pass: 'critic', message: 'Verifying the draft…',
+      completedPasses: ['primary', 'recovery', 'referee-batch-1', 'referee'],
+      previewActions: [{
+        id: 'preview-action-1', action: 'Send the evidence-checked report.', owners: ['Alex Reed'],
+        timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+      }],
+      previewUpdatedAt: '2026-09-16T12:01:01.000Z', callTimings: [], degradedSources: [], error: ''
     } : null
   };
 }
@@ -117,6 +123,21 @@ function startStubServer() {
     drafts.set(req.params.id, next);
     patchCounts.set(req.params.id, (patchCounts.get(req.params.id) || 0) + 1);
     res.json({ ok: true, draft: next });
+  });
+  app.post('/api/meeting-minutes-agent/drafts/:id/generate-background', (req, res) => {
+    const prior = drafts.get(req.params.id);
+    const generation = {
+      stage: req.body.stage, status: 'running', startedAt: new Date().toISOString(),
+      pass: 'starting', message: 'Preparing independent quality checks…',
+      completedPasses: [], previewActions: [], callTimings: [], degradedSources: [], error: ''
+    };
+    const next = {
+      ...prior, revision: prior.revision + 1, updatedAt: new Date().toISOString(), generation,
+      currentStep: Math.max(Number(prior.currentStep || 0), req.body.stage === 'actions' ? 3 : 2),
+      selectedStep: Number(req.body.selectedStep)
+    };
+    drafts.set(req.params.id, next);
+    res.status(202).json({ ok: true, generation, draft: next });
   });
   app.get('/api/meeting-minutes-agent/drafts/:id/generation', (req, res) => {
     let draft = drafts.get(req.params.id);
@@ -204,10 +225,17 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     browser = launched.browser;
     const { page, errors } = launched;
 
-    assert.match(await page.textContent('#actionsBody'), /drafting and independently checking actions/i);
+    assert.match(await page.textContent('#actionsBody'), /evidence-checked report/i);
+    assert.match(await page.textContent('#actionsBody'), /final missed-action checks continue/i);
+    assert.equal(await page.locator('#actionsBody textarea').count(), 0, 'preview remains read-only');
+    assert.equal(await page.locator('#generationProgress').isVisible(), true);
+    assert.match(await page.textContent('#generationPhases'), /Find possible actions.*Final missed-action check/s);
+    assert.equal(await page.locator('.generation-phase.done').count(), 3);
+    assert.equal(await page.locator('.generation-phase.active').count(), 1);
     for (const selector of ['#addAction', '#applyActionsEdit', '#auditActions', '#toSummary']) {
       assert.equal(await page.locator(selector).isDisabled(), true, `${selector} is disabled while actions run`);
     }
+    assert.equal(await page.locator('#addDiscussion').isDisabled(), false, 'safe Discussion additions remain available');
     assert.match(await page.textContent('#saveStatus'), /Draft saved.*continues in the background/i);
     assert.doesNotMatch(await page.textContent('#saveStatus'), /Unsaved changes/i);
 
@@ -215,10 +243,37 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     assert.equal(await page.locator('#workflowStatus').isVisible(), true);
     await page.click('[data-step="2"]');
     assert.equal(await page.locator('#workflowStatus').isHidden(), true);
+    assert.equal(await page.locator('#generationProgress').isVisible(), true, 'generation progress remains visible across stages');
+    assert.equal(await page.locator('#viewGeneratedStage').isVisible(), true);
 
     await page.click('[data-step="0"]');
     await page.fill('#meetingTitle', 'Edited while actions run');
     assert.match(await page.textContent('#saveStatus'), /Local edits are waiting to save/i);
+    assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('starting Actions keeps the reviewer on Discussion and exposes background progress', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    const started = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor/generate-background'));
+    await page.click('#generateActions');
+    const response = await started;
+    assert.equal(response.request().postDataJSON().selectedStep, 2);
+    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
+    assert.equal(await page.locator('[data-step="3"]').isDisabled(), false);
+    assert.equal(await page.locator('#generationProgress').isVisible(), true);
+    assert.match(await page.textContent('#generationProgressTitle'), /Preparing actions/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

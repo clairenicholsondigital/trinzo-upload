@@ -6,7 +6,9 @@ const assert = require('node:assert/strict');
 const {
   meetingAgentSerialDraftWrite,
   meetingAgentStagePersistenceChanges,
-  persistMeetingAgentBackgroundStage
+  persistMeetingAgentBackgroundStage,
+  meetingAgentActionPrimaryPromptForDraft,
+  normaliseMeetingAgentGeneration
 } = require('../routes/api').stagedEvaluation;
 
 function baseDraft() {
@@ -22,6 +24,38 @@ function baseDraft() {
     generation: { stage: 'discussion', status: 'running', startedAt: '2026-09-16T10:00:00.000Z' }
   };
 }
+
+test('action Primary prewarm is independent of editable Discussion content', () => {
+  const draft = {
+    preparedTranscript: 'Alex: I will send the report tomorrow.',
+    details: { meetingTitle: 'Report review', meetingDate: '2026-09-16' },
+    steer: 'Focus on commitments.', salientDetails: [], discussion: []
+  };
+  const before = meetingAgentActionPrimaryPromptForDraft(draft);
+  const after = meetingAgentActionPrimaryPromptForDraft({
+    ...draft,
+    discussion: [{ topic: 'Changed during review', points: [{ text: 'New wording' }] }]
+  });
+  assert.equal(after, before);
+  assert.notEqual(meetingAgentActionPrimaryPromptForDraft({ ...draft, steer: 'Focus on deadlines.' }), before);
+});
+
+test('running generation safely exposes bounded read-only action previews', () => {
+  const generation = normaliseMeetingAgentGeneration({
+    stage: 'actions', status: 'running', startedAt: '2026-09-16T10:00:00.000Z',
+    pass: 'critic', completedPasses: ['primary', 'recovery', 'referee'],
+    previewUpdatedAt: '2026-09-16T10:01:00.000Z',
+    previewActions: [{
+      id: 'preview-1', action: 'Send the revised report.', owners: ['Alex Reed'],
+      timing: { kind: 'deadline', wording: 'tomorrow', exactDate: '2026-09-17' },
+      evidenceIds: ['T0001'], reviewFlagIds: ['private-flag']
+    }]
+  });
+  assert.equal(generation.previewActions.length, 1);
+  assert.equal(generation.previewActions[0].action, 'Send the revised report.');
+  assert.deepEqual(generation.previewActions[0].reviewFlagIds, []);
+  assert.equal(generation.previewUpdatedAt, '2026-09-16T10:01:00.000Z');
+});
 
 const results = {
   discussion: { changes: {

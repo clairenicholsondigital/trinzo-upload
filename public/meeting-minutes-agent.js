@@ -8,6 +8,7 @@
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
   var GENERATION_POLL_MS = 2000;
   var generationTimer = null;
+  var completedGenerationNotice = null;
   var saveTimer = null;
   var saveInFlight = null;
   var saveQueued = false;
@@ -216,6 +217,9 @@
 
   function showStep(index, options) {
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
+    if (completedGenerationNotice && STAGE_STEP[completedGenerationNotice.stage] === state.currentStep) {
+      completedGenerationNotice = null;
+    }
     var stepChanged = Boolean(state.draft)
       && Number(state.draft.selectedStep == null ? state.draft.currentStep : state.draft.selectedStep) !== state.currentStep;
     document.querySelectorAll('[data-screen]').forEach(function (screen) { screen.classList.toggle('active', Number(screen.dataset.screen) === state.currentStep); });
@@ -242,6 +246,7 @@
     // Only a deliberate navigation scrolls. A re-render triggered by autosave
     // must leave the reader exactly where they were.
     if (options && options.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+    renderGenerationProgress();
   }
 
   function setFieldValue(id, value) {
@@ -253,6 +258,89 @@
   function generationRunning(stage) {
     var generation = state.draft && state.draft.generation;
     return Boolean(generation && generation.status === 'running' && (!stage || generation.stage === stage));
+  }
+
+  function generationPhaseStatus(generation, phase) {
+    var pass = String(generation.pass || '');
+    var completed = generation.completedPasses || [];
+    var hasCompleted = function (prefix) { return completed.some(function (item) { return String(item).indexOf(prefix) === 0; }); };
+    var rank = function (value) {
+      if (/^(critic|salvage)/.test(value)) return 4;
+      if (/^referee/.test(value)) return 3;
+      if (value === 'recovery') return 2;
+      if (value === 'primary') return 1;
+      return 0;
+    };
+    var currentRank = rank(pass);
+    if (phase.key === 'primary') return hasCompleted('primary') || currentRank > 1 ? 'done' : currentRank === 1 ? 'active' : '';
+    if (phase.key === 'recovery') return hasCompleted('recovery') || currentRank > 2 ? 'done' : currentRank === 2 ? 'active' : '';
+    if (phase.key === 'referee') return hasCompleted('referee') || currentRank > 3 ? 'done' : currentRank === 3 ? 'active' : '';
+    if (phase.key === 'final') return hasCompleted('critic') && (!/^salvage/.test(pass) || hasCompleted('salvage')) ? 'done' : currentRank === 4 ? 'active' : '';
+    if (phase.key === 'summary') return hasCompleted('summary') ? 'done' : 'active';
+    return '';
+  }
+
+  function generationPhases(generation) {
+    if (generation.stage === 'actions') return [
+      {key:'primary',label:'Find possible actions'},
+      {key:'recovery',label:'Recover missed items'},
+      {key:'referee',label:'Check the evidence'},
+      {key:'final',label:'Final missed-action check'}
+    ];
+    if (generation.stage === 'discussion') return [
+      {key:'primary',label:'Find meeting content'},
+      {key:'recovery',label:'Recover missed topics'},
+      {key:'referee',label:'Check the evidence'},
+      {key:'final',label:'Finalise the draft'}
+    ];
+    return [{key:'summary',label:'Draft and ground the summary'}];
+  }
+
+  function renderGenerationProgress() {
+    var panel = document.getElementById('generationProgress');
+    if (!panel) return;
+    var generation = state.draft && state.draft.generation;
+    var notice = completedGenerationNotice;
+    panel.hidden = !generation && !notice;
+    document.querySelectorAll('[data-step]').forEach(function (button) {
+      var step = Number(button.dataset.step);
+      button.classList.toggle('generating', Boolean(generation && STAGE_STEP[generation.stage] === step));
+      button.classList.toggle('ready', Boolean(notice && STAGE_STEP[notice.stage] === step));
+    });
+    if (panel.hidden) return;
+    var stage = generation ? generation.stage : notice.stage;
+    var preview = generation && Array.isArray(generation.previewActions) ? generation.previewActions : [];
+    document.getElementById('generationProgressTitle').textContent = generation
+      ? (stage === 'actions' ? 'Preparing actions' : stage === 'discussion' ? 'Preparing discussion' : 'Preparing summary')
+      : (stage === 'actions' ? 'Actions are ready' : 'Generation complete');
+    document.getElementById('generationProgressMessage').textContent = generation
+      ? (generation.message || 'Preparing independent quality checks…')
+      : (notice.message || 'The completed draft is ready to review.');
+    var started = generation && new Date(generation.startedAt).getTime();
+    var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
+    document.getElementById('generationElapsed').textContent = generation
+      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + ' · usually around 2–4 minutes'
+      : 'Complete';
+    document.getElementById('generationPhases').innerHTML = generationPhases(generation || {stage:stage}).map(function (phase) {
+      var phaseState = generation ? generationPhaseStatus(generation, phase) : 'done';
+      return '<li class="generation-phase ' + phaseState + '">' + escapeHtml(phase.label) + '</li>';
+    }).join('');
+    var previewNote = document.getElementById('generationPreviewNote');
+    previewNote.hidden = !generation || !preview.length;
+    previewNote.textContent = preview.length
+      ? preview.length + ' evidence-checked action' + (preview.length === 1 ? '' : 's') + ' available to read while the final check continues. Editing unlocks when checks finish.'
+      : '';
+    var view = document.getElementById('viewGeneratedStage');
+    view.hidden = stage !== 'actions' || state.currentStep === STAGE_STEP.actions || (!preview.length && !notice);
+    view.textContent = generation ? 'View action preview' : 'View actions';
+  }
+
+  function markRunningActionsStale() {
+    if (!generationRunning('actions') || !state.draft) return;
+    state.draft.staleStages = Array.from(new Set([...(state.draft.staleStages || []), 'actions']));
+    var notice = document.getElementById('staleNotice');
+    notice.hidden = false;
+    document.getElementById('staleStages').textContent = state.draft.staleStages.join(' and ');
   }
 
   function readSteer() {
@@ -486,7 +574,19 @@
 
   function renderActions() {
     if (generationRunning('actions')) {
-      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">The agent is drafting and independently checking actions. ' + escapeHtml(generationSaveText()) + '</p></td></tr>';
+      var generation = state.draft.generation || {};
+      var preview = Array.isArray(generation.previewActions) ? generation.previewActions : [];
+      var prior = Array.isArray(state.draft.actions) ? state.draft.actions : [];
+      var rows = preview.length ? preview : prior;
+      var label = preview.length ? 'Evidence-checked preview' : prior.length ? 'Current saved actions' : '';
+      var intro = preview.length
+        ? 'You can start reading these while the final missed-action checks continue. Editing unlocks when the final version is ready.'
+        : prior.length
+          ? 'These saved actions remain visible while a refreshed version is prepared.'
+          : 'Possible actions will appear here as soon as the evidence check finishes.';
+      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + rows.map(function (item) {
+        return '<tr class="preview-action-row"><td data-label="Action">' + (label ? '<span class="preview-action-label">' + escapeHtml(label) + '</span>' : '') + '<div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingText(item.timing)) + '</div></td></tr>';
+      }).join('');
       return;
     }
     var actions = (state.draft && state.draft.actions) || [];
@@ -707,11 +807,21 @@
     document.getElementById('saveStrip').hidden = !state.draft;
     if (state.draft) {
       renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags(); renderProposal();
-      var busyStage = generationRunning();
-      ['generateActions', 'addDiscussion', 'applyDiscussionEdit', 'generateSummary',
-        'addAction', 'applyActionsEdit', 'auditActions', 'toSummary'].forEach(function (id) {
+      var activeGenerationStage = state.draft.generation && state.draft.generation.status === 'running'
+        ? state.draft.generation.stage : '';
+      var disabledControls = {
+        generateActions: Boolean(activeGenerationStage),
+        addDiscussion: activeGenerationStage === 'discussion',
+        applyDiscussionEdit: Boolean(activeGenerationStage),
+        generateSummary: Boolean(activeGenerationStage),
+        addAction: activeGenerationStage === 'actions',
+        applyActionsEdit: Boolean(activeGenerationStage),
+        auditActions: Boolean(activeGenerationStage),
+        toSummary: activeGenerationStage === 'actions'
+      };
+      Object.keys(disabledControls).forEach(function (id) {
         var button = document.getElementById(id);
-        if (button) button.disabled = Boolean(busyStage);
+        if (button) button.disabled = disabledControls[id];
       });
       var discussionInstruction = document.getElementById('discussionInstruction');
       var actionsInstruction = document.getElementById('actionsInstruction');
@@ -722,6 +832,7 @@
       document.getElementById('staleStages').textContent = stale.join(' and ');
     } else document.getElementById('staleNotice').hidden = true;
     showStep(state.draft ? state.currentStep : 0, { persist: false });
+    renderGenerationProgress();
     rendering = false;
     restoreFocus(snapshot);
   }
@@ -773,6 +884,7 @@
       executiveSummary: state.draft.executiveSummary || '',
       meetingObjectives: state.draft.meetingObjectives || [],
       reviewFlags: state.draft.reviewFlags,
+      staleStages: state.draft.staleStages || [],
       currentStep: Math.max(Number(state.draft.currentStep || 0), state.currentStep),
       selectedStep: state.currentStep
     };
@@ -841,12 +953,14 @@
     if (!state.draft) return;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
     try {
-      var payload = await jsonRequest(draftUrl('/generate-background'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,revision:state.draft.revision})});
+      var selectedStep = stage === 'actions' ? state.currentStep : STAGE_STEP[stage];
+      var payload = await jsonRequest(draftUrl('/generate-background'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,revision:state.draft.revision,selectedStep:selectedStep})});
       adoptDraft(payload.draft);
       state.draft.generation = payload.generation;
+      completedGenerationNotice = null;
       pendingGenerationEdits = false;
       generationPollKey = [state.draft.draftId, stage, payload.generation && payload.generation.startedAt].join('|');
-      showStep(STAGE_STEP[stage], { scroll: true });
+      if (stage !== 'actions') showStep(STAGE_STEP[stage], { scroll: true });
       renderAll();
       setSaveStatus(generationSaveText(), 'generating');
       setStatus((payload.generation && payload.generation.message) || 'Preparing independent quality checks…', false, stage);
@@ -872,6 +986,8 @@
         if (payload.generation && payload.generation.status === 'running') {
           setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
           setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false, activeStage);
+          renderGenerationProgress();
+          if (activeStage === 'actions') renderActions();
           pollGeneration(); return;
         }
         if (payload.draft) {
@@ -888,6 +1004,16 @@
             completedDraft.executiveSummary = localDraft.executiveSummary;
             completedDraft.meetingObjectives = localDraft.meetingObjectives;
           }
+          completedDraft.staleStages = Array.from(new Set([
+            ...(completedDraft.staleStages || []), ...(localDraft.staleStages || [])
+          ]));
+          if (activeStage === 'actions' && state.currentStep !== STAGE_STEP.actions
+            && !(payload.generation && payload.generation.status === 'failed')) {
+            completedGenerationNotice = {
+              stage:'actions',
+              message:'The final actions are ready. Open Actions when you are ready to review them.'
+            };
+          }
           adoptDraft(payload.draft);
           state.draft.generation = payload.generation;
           renderAll();
@@ -899,7 +1025,7 @@
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
-        else setSaveStatus(savedStatusText(state.draft.updatedAt), hasTransientActionState() ? 'local-only' : 'saved');
+        else setSaveStatus(savedStatusText(state.draft.updatedAt), hasTransientEditorState() ? 'local-only' : 'saved');
       } catch (error) { setStatus(error.message, true, expectedGeneration.stage); }
     }, GENERATION_POLL_MS);
   }
@@ -1052,10 +1178,16 @@
     scheduleSave();
   });
   document.getElementById('generateActions').addEventListener('click', function () { startBackgroundStage('actions'); });
+  document.getElementById('viewGeneratedStage').addEventListener('click', function () {
+    var generation = state.draft && state.draft.generation;
+    var stage = generation ? generation.stage : completedGenerationNotice && completedGenerationNotice.stage;
+    if (stage && STAGE_STEP[stage] != null) showStep(STAGE_STEP[stage], { scroll:true });
+  });
   document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true,'discussion'); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('addDiscussion').addEventListener('click', function () {
+    markRunningActionsStale();
     readDiscussion();
     var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]};
     state.draft.discussion.push(topic);
@@ -1073,6 +1205,7 @@
     var promote=event.target.closest('[data-promote-supporting]');
     var topicButton=event.target.closest('[data-delete-topic]');
     if(!add && !remove && !demote && !promote && !topicButton) return;
+    markRunningActionsStale();
     readDiscussion();
     var addedRecord = null;
     if(add){
@@ -1238,6 +1371,10 @@
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
+    if (generationRunning('actions') && (event.target.closest('#discussionList')
+      || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer')) {
+      markRunningActionsStale();
+    }
     if (event.target.matches('[data-owner-other]')) {
       actionEditorState.customOwners[event.target.dataset.actionId] = { visible:true, value:event.target.value };
       setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');

@@ -208,6 +208,9 @@ const MEETING_AGENT_BOOT_ID = crypto.randomUUID();
 const privateStagedCandidateCache = new Map();
 const PRIVATE_STAGED_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const PRIVATE_STAGED_CACHE_MAX_ENTRIES = 60;
+const privateActionPrimaryCache = new Map();
+const PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const PRIVATE_ACTION_PRIMARY_CACHE_MAX_ENTRIES = 60;
 const MEETING_AGENT_PASS_CACHE_MAX_ENTRIES = 16;
 
 function normaliseMeetingAgentPassCache(value) {
@@ -290,7 +293,20 @@ function normaliseMeetingAgentGeneration(generation) {
     completedPasses: (Array.isArray(generation.completedPasses) ? generation.completedPasses : []).map((value) => meetingMinutesAgentText(value, 80)).filter(Boolean).slice(-12),
     callTimings: (Array.isArray(generation.callTimings) ? generation.callTimings : []).slice(-60),
     telemetry: normaliseMeetingAgentExecutionTelemetry(generation.telemetry),
-    degradedSources: (Array.isArray(generation.degradedSources) ? generation.degradedSources : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(-8)
+    degradedSources: (Array.isArray(generation.degradedSources) ? generation.degradedSources : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(-8),
+    previewActions: (Array.isArray(generation.previewActions) ? generation.previewActions : []).map((item, index) => ({
+      id: meetingMinutesAgentText(item?.id, 80) || `preview-action-${index + 1}`,
+      action: meetingMinutesAgentText(item?.action, 1600),
+      owners: (Array.isArray(item?.owners) ? item.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 12),
+      timing: {
+        kind: ['deadline', 'target', 'dependency', 'not_stated'].includes(item?.timing?.kind) ? item.timing.kind : 'not_stated',
+        wording: meetingMinutesAgentText(item?.timing?.wording, 220),
+        exactDate: meetingMinutesAgentText(item?.timing?.exactDate, 20)
+      },
+      evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
+      reviewFlagIds: []
+    })).filter((item) => item.action).slice(0, 60),
+    previewUpdatedAt: meetingMinutesAgentText(generation.previewUpdatedAt, 40)
   };
 }
 
@@ -9998,6 +10014,70 @@ async function awaitPrivateStagedCandidateLedger(draft, stage, maxWaitMs = 12000
   }
 }
 
+function meetingAgentActionPrimaryPromptForDraft(draft = {}) {
+  return meetingMinutesAgentPrimaryPrompt({
+    stage: 'actions',
+    transcript: String(draft.preparedTranscript || '').trim(),
+    details: sanitiseMeetingAgentDetails(draft.details),
+    steer: draft.steer,
+    salientDetails: draft.salientDetails || []
+  });
+}
+
+function prunePrivateActionPrimaryCache(now = Date.now()) {
+  for (const [key, entry] of privateActionPrimaryCache) {
+    if (Number(entry.expiresAt || 0) <= now) privateActionPrimaryCache.delete(key);
+  }
+  while (privateActionPrimaryCache.size > PRIVATE_ACTION_PRIMARY_CACHE_MAX_ENTRIES) {
+    privateActionPrimaryCache.delete(privateActionPrimaryCache.keys().next().value);
+  }
+}
+
+function startPrivateActionPrimaryPrewarm(draft) {
+  prunePrivateActionPrimaryCache();
+  const prompt = meetingAgentActionPrimaryPromptForDraft(draft);
+  const promptSha256 = meetingAgentPassCacheKey(prompt);
+  const existing = privateActionPrimaryCache.get(promptSha256);
+  if (existing) return existing.promise;
+  const requestId = `actions:primary:${promptSha256.slice(0, 16)}`;
+  const deterministicCandidates = actionCandidateInventory(draft.sourceUnits);
+  const candidates = [
+    ...actionCommitmentChainInventory(draft.sourceUnits, deterministicCandidates),
+    ...actionCommitmentThreadInventory(draft.sourceUnits, deterministicCandidates),
+    ...deterministicCandidates
+  ];
+  const entry = { expiresAt: Date.now() + PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS, promise: null };
+  entry.promise = askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
+    pass: 'actions:primary', maxAttempts: 3, requestId,
+    validateResult: (result) => meetingAgentEmptyDiscoveryError(
+      result, 'actions', candidates, draft.sourceUnits,
+      { meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate }
+    )
+  }).then((response) => ({
+    result: response.result,
+    timings: response.timings || [],
+    promptSha256,
+    requestId,
+    completedAt: new Date().toISOString()
+  })).catch((error) => {
+    if (privateActionPrimaryCache.get(promptSha256) === entry) privateActionPrimaryCache.delete(promptSha256);
+    throw error;
+  });
+  privateActionPrimaryCache.set(promptSha256, entry);
+  prunePrivateActionPrimaryCache();
+  return entry.promise;
+}
+
+async function usePrivateActionPrimaryPrewarm(draft, prompt) {
+  const promptSha256 = meetingAgentPassCacheKey(prompt);
+  const existing = privateActionPrimaryCache.get(promptSha256);
+  try {
+    return await (existing ? existing.promise : startPrivateActionPrimaryPrewarm(draft));
+  } catch (error) {
+    return null;
+  }
+}
+
 function prewarmPrivateStagedCandidateLedgers(draft) {
   // Start only the stage the user is about to request. Action prewarming starts
   // after the discussion draft is ready, when review time can hide its cost.
@@ -11677,6 +11757,37 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }
       passCache = passCache.filter((entry) => entry !== cached);
     }
+    if (stage === 'actions' && pass === 'primary') {
+      await progress(pass, 'Using the action search prepared during Discussion review…');
+      const joinedAt = Date.now();
+      const prewarmed = await usePrivateActionPrimaryPrewarm(draft, prompt);
+      const prewarmValidationError = prewarmed && typeof callOptions.validateResult === 'function'
+        ? callOptions.validateResult(prewarmed.result) : null;
+      if (prewarmed && !meetingAgentResultError(prewarmed.result) && !prewarmValidationError) {
+        const resultCounts = meetingAgentResultCounts(prewarmed.result);
+        completedPasses.push(pass);
+        passProvenance.push({
+          stage, pass, requestId: prewarmed.requestId || requestId,
+          completedAt: prewarmed.completedAt || new Date().toISOString(),
+          promptChars: String(prompt || '').length,
+          elapsedMs: Date.now() - joinedAt,
+          timings: prewarmed.timings || [], cached: true, prewarmed: true,
+          candidateCount, candidateIds, ...resultCounts
+        });
+        passCache = normaliseMeetingAgentPassCache([
+          ...passCache.filter((entry) => !(entry.stage === stage && entry.pass === pass)),
+          { stage, pass, promptSha256, completedAt: prewarmed.completedAt || new Date().toISOString(), result: prewarmed.result }
+        ]);
+        if (options.onCheckpoint) await options.onCheckpoint(passCache);
+        console.info(JSON.stringify({
+          event: 'meeting_agent_pass', journeyId: draft.draftId || '', stage, pass,
+          requestId: prewarmed.requestId || requestId, promptChars: String(prompt || '').length,
+          candidateCount, ...resultCounts, attempts: (prewarmed.timings || []).length,
+          elapsedMs: Date.now() - joinedAt, prewarmed: true, ok: true
+        }));
+        return prewarmed.result;
+      }
+    }
     await progress(pass, baseMessage);
     // A connected-agent referee can transiently return the parent's contract error
     // while Copilot Studio is still completing the child hand-off. Use the complete
@@ -11827,7 +11938,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     maxChars: Number(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ANCHOR_BUDGET || 48000)
   }) : [];
   const anchoredActionRecovery = stage === 'actions' && meetingMinutesAgentAnchoredActionEnabled();
-  const primaryPrompt = anchoredDiscussion
+  const primaryPrompt = stage === 'actions'
+    ? meetingAgentActionPrimaryPromptForDraft(draft)
+    : anchoredDiscussion
     ? meetingMinutesAgentAnchoredDiscussionPrompt({
       transcript, details, anchors: discussionAnchors, steer: draft.steer
     })
@@ -12337,6 +12450,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     startPrivateStagedCandidateLedger(draft, 'actions').catch((error) => {
       console.warn(JSON.stringify({ event: 'meeting_agent_staged_prewarm', stage: 'actions', ok: false, message: error.message }));
     });
+    startPrivateActionPrimaryPrewarm(draft).catch((error) => {
+      console.warn(JSON.stringify({ event: 'meeting_agent_primary_prewarm', stage: 'actions', ok: false, message: error.message }));
+    });
     return {
       changes: {
         discussion: finalDiscussion, meetingObjectives: objectives, candidateLedger,
@@ -12395,6 +12511,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     draft.sourceUnits, refereeActions, { meetingDate: details.meetingDate }
   );
   automatic.push(...acceptedVisitAssignments);
+  if (options.onPreview) {
+    await options.onPreview({
+      previewActions: dedupeHybridActionRecords([...refereeActions, ...acceptedVisitAssignments]),
+      previewUpdatedAt: new Date().toISOString()
+    });
+  }
   // Audit the publication set, not the referee's entire working set. This lets
   // the critic independently confirm a strong single-source referee action;
   // auditing refereeActions would instruct it not to return the very records
@@ -12744,6 +12866,9 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
       reviewFlags: mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
+      staleStages: (Array.isArray(req.body?.staleStages) ? req.body.staleStages : draft.staleStages || [])
+        .map((value) => meetingMinutesAgentText(value, 40))
+        .filter((value) => ['discussion', 'actions', 'summary'].includes(value)),
       currentStep: furthestStep,
       selectedStep: requestedSelectedStep,
       status: req.body?.status
@@ -13031,7 +13156,8 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
       result = hybrid
         ? await generateHybridMeetingAgentStage(fresh, stage, {
           onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
-          onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache })
+          onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
+          onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
         })
         : await generateMeetingAgentStage(fresh, stage, '');
       failure = null;
@@ -13105,7 +13231,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requir
     const saved = await saveMeetingAgentDraft(draft, req, {
       generation,
       currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0),
-      selectedStep: MEETING_AGENT_STAGE_STEP[stage]
+      selectedStep: Math.max(0, Math.min(
+        Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0),
+        Number(req.body?.selectedStep ?? MEETING_AGENT_STAGE_STEP[stage]) || 0
+      ))
     });
     const userId = req.authUser?.userId;
     setImmediate(() => {
@@ -13507,6 +13636,8 @@ router.stagedEvaluation = {
   strongUnresolvedActionCandidateFlags,
   buildPrivateStagedCandidateLedger,
   prewarmPrivateStagedCandidateLedgers,
+  meetingAgentActionPrimaryPromptForDraft,
+  normaliseMeetingAgentGeneration,
   meetingAgentSerialDraftWrite,
   meetingAgentStageContentFields,
   meetingAgentStageContentConflicts,
