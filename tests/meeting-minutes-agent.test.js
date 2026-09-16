@@ -60,6 +60,10 @@ const {
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
+  meetingAgentRefereeAccountedForAllCandidates,
+  dedupeActionDiscoveryInventory,
+  compactMeetingAgentDiscussionContext,
+  meetingAgentEmptyDiscoveryRepairPrompt,
   meetingAgentDerivedStaleStages,
   meetingAgentStaleStagesAfterGeneration,
   dedupeSupportingDetailsSemantically,
@@ -2167,4 +2171,48 @@ test('a completed run clears its own outdated mark unless its inputs changed whi
   assert.deepEqual(meetingAgentStaleStagesAfterGeneration(edited, source, 'actions'), ['actions', 'summary']);
   // A discussion run never depends on that fingerprint.
   assert.deepEqual(meetingAgentStaleStagesAfterGeneration({ ...edited, staleStages: ['discussion', 'actions'] }, source, 'discussion'), ['actions']);
+});
+
+test('the fast action path only trusts a structured referee that disposed of every candidate', () => {
+  const contract = { expectedCandidateIds: ['a', 'b', 'c'] };
+  const full = { candidateDispositions: [{ candidateId: 'a', disposition: 'publish' }, { candidateId: 'b', disposition: 'reject' }, { candidateId: 'c', disposition: 'completed' }] };
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates(full, contract, 'structured_prompt'), true);
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates(full, contract, 'legacy'), false, 'only the structured route counts');
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates({ candidateDispositions: full.candidateDispositions.slice(0, 2) }, contract, 'structured_prompt'), false, 'one missing disposition keeps the critic');
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates({ candidateDispositions: [...full.candidateDispositions, { candidateId: 'zzz', disposition: 'publish' }] }, contract, 'structured_prompt'), false, 'an unexpected id is not a complete accounting');
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates(full, { expectedCandidateIds: [] }, 'structured_prompt'), false);
+});
+
+test('the deduplicated discovery inventory keeps a chain and drops the thread and raw candidates it already contains', () => {
+  const chains = [{ candidateId: 'chain-1', recordType: 'action_chain', candidateIds: ['c1', 'c2'] }];
+  const threads = [
+    { candidateId: 'thread-1', recordType: 'action_thread', candidateIds: ['c1', 'c2'] },
+    { candidateId: 'thread-2', recordType: 'action_thread', candidateIds: ['c3', 'c4'] }
+  ];
+  const candidates = [{ candidateId: 'c1' }, { candidateId: 'c2' }, { candidateId: 'c3' }, { candidateId: 'c4' }, { candidateId: 'c5' }];
+  const result = dedupeActionDiscoveryInventory(chains, threads, candidates).map((item) => item.candidateId);
+  assert.deepEqual(result, ['chain-1', 'thread-2', 'c5']);
+  // Nothing to fold: everything survives, order preserved.
+  assert.deepEqual(dedupeActionDiscoveryInventory([], [], candidates).map((item) => item.candidateId), ['c1', 'c2', 'c3', 'c4', 'c5']);
+});
+
+test('the recovery prompt receives a compact discussion context, not the whole draft object', () => {
+  const discussion = [{
+    id: 't1', topic: 'Malt', points: [{ id: 'p1', text: 'Eighteen sacks will not cover both brews.', evidenceIds: ['T0001'], reviewFlagIds: ['f'], supportingDetails: [{ text: 'x'.repeat(2000) }] }],
+    decisions: [{ id: 'd1', text: 'Buy six more sacks.', evidenceIds: ['T0002'] }], openQuestions: []
+  }];
+  const compact = compactMeetingAgentDiscussionContext(discussion);
+  assert.deepEqual(compact, [{ topic: 'Malt', points: ['Eighteen sacks will not cover both brews.'], decisions: ['Buy six more sacks.'], openQuestions: [] }]);
+  assert.ok(JSON.stringify(compact).length < 200);
+  // The cap stops adding whole topics once the budget is spent.
+  const many = Array.from({ length: 200 }, (_, index) => ({ topic: `Topic ${index}`, points: [{ text: 'y'.repeat(300) }], decisions: [], openQuestions: [] }));
+  assert.ok(JSON.stringify(compactMeetingAgentDiscussionContext(many, 6000)).length <= 6000);
+});
+
+test('an empty-discovery retry carries a repair instruction naming what was missing', () => {
+  const error = new Error('The action agent returned an empty draft despite substantive evidence candidates (2 of 3 without a reasoned disposition: chain-1, c5).');
+  const prompt = meetingAgentEmptyDiscoveryRepairPrompt({ error, originalPrompt: 'ORIGINAL' });
+  assert.ok(prompt.startsWith('ORIGINAL'));
+  assert.match(prompt, /REPAIR INSTRUCTION: .*chain-1, c5/);
+  assert.match(prompt, /candidateDisposition with a reason/);
 });

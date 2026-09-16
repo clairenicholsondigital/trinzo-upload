@@ -8374,6 +8374,80 @@ function meetingMinutesAgentAnchoredDiscussionEnabled() {
   ));
 }
 
+function meetingMinutesAgentFastActionPathEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_FAST_ACTION_PATH_V1 || '0'));
+}
+
+function meetingMinutesAgentDedupedCoverageEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DEDUPED_COVERAGE_V1 || '0'));
+}
+
+function meetingMinutesAgentEarlyActionPrewarmEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_EARLY_ACTION_PREWARM_V1 || '0'));
+}
+
+function meetingAgentCandidateContextChars() {
+  const value = Number(process.env.MEETING_MINUTES_AGENT_CANDIDATE_CONTEXT_CHARS);
+  return Number.isFinite(value) && value >= 400 ? Math.min(5000, Math.floor(value)) : 5000;
+}
+
+// A structured referee that returned exactly one disposition for every
+// candidate it was given has already judged the whole inventory. The critic
+// and salvage passes exist to catch what an incomplete referee missed; on a
+// complete one they have returned nothing material in every measured run.
+function meetingAgentRefereeAccountedForAllCandidates(refereeParsed = {}, refereeContract = {}, refereeRoute = '') {
+  const expected = Array.isArray(refereeContract?.expectedCandidateIds) ? refereeContract.expectedCandidateIds : [];
+  if (refereeRoute !== 'structured_prompt' || !expected.length) return false;
+  const returned = new Set((Array.isArray(refereeParsed?.candidateDispositions) ? refereeParsed.candidateDispositions : [])
+    .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean));
+  return returned.size === expected.length && expected.every((candidateId) => returned.has(candidateId));
+}
+
+// The discovery inventory lists one commitment up to three times: as a chain,
+// as the thread inside it, and as each raw candidate the chain was built
+// from. Every coverage test (recovery, critic, salvage) then counts the same
+// gap three times. Keep the chain, drop the members it already contains.
+function dedupeActionDiscoveryInventory(chains = [], threads = [], candidates = []) {
+  const covered = new Set();
+  for (const chain of chains) for (const id of chain?.candidateIds || []) covered.add(String(id));
+  const keptThreads = threads.filter((thread) => {
+    const members = (thread?.candidateIds || []).map(String);
+    return !(members.length && members.every((id) => covered.has(id)));
+  });
+  for (const thread of keptThreads) for (const id of thread?.candidateIds || []) covered.add(String(id));
+  const keptCandidates = candidates.filter((candidate) => !covered.has(String(candidate?.candidateId || '')));
+  return [...chains, ...keptThreads, ...keptCandidates];
+}
+
+// Only the rows the Actions passes reason about: topic and primary texts.
+// Recovery used to receive the whole discussion object (ids, evidence,
+// flags, supporting details) uncapped, which made it the largest prompt of
+// the stage.
+function compactMeetingAgentDiscussionContext(discussion = [], maxChars = 6000) {
+  const rows = [];
+  let chars = 2;
+  for (const topic of Array.isArray(discussion) ? discussion : []) {
+    const compact = {
+      topic: meetingMinutesAgentText(topic?.topic, 160),
+      points: (topic?.points || []).map((item) => meetingMinutesAgentText(item?.text, 400)).filter(Boolean),
+      decisions: (topic?.decisions || []).map((item) => meetingMinutesAgentText(item?.text, 400)).filter(Boolean),
+      openQuestions: (topic?.openQuestions || []).map((item) => meetingMinutesAgentText(item?.text, 400)).filter(Boolean)
+    };
+    const size = JSON.stringify(compact).length + 1;
+    if (chars + size > maxChars) break;
+    chars += size;
+    rows.push(compact);
+  }
+  return rows;
+}
+
+// A retry after an empty-discovery validation failure used to re-send the
+// byte-identical prompt. Tell the model what was missing instead.
+function meetingAgentEmptyDiscoveryRepairPrompt({ error, originalPrompt }) {
+  const detail = meetingMinutesAgentText(error?.message, 400);
+  return `${originalPrompt}\n\nREPAIR INSTRUCTION: ${detail} Return the complete JSON object again. Give every UNCOVERED CANDIDATE a candidateDisposition with a reason (reject, completed or suggestion when it is not a genuine outstanding commitment), and return each genuine commitment as an action with owners, timing and evidenceIds.`;
+}
+
 function meetingMinutesAgentAnchoredActionEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(
     process.env.MEETING_MINUTES_AGENT_ANCHORED_ACTION_V1 || '0'
@@ -8673,7 +8747,7 @@ function hybridCandidatePack(candidates = [], maxChars = 70000, maxCandidates = 
           signals: item.signals, scores: item.scores, uncertainties: item.uncertainties,
           eventUnits: item.eventUnits, topicAnchors: item.topicAnchors
         } : {}),
-        context: meetingMinutesAgentText(item.context, 5000)
+        context: meetingMinutesAgentText(item.context, meetingAgentCandidateContextChars())
       } : item.sourcePass === 'deterministic' && Number(item.priority || 0) >= 8 ? {
         context: meetingMinutesAgentText(item.context, 1200)
       } : {})
@@ -8898,7 +8972,7 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
     `CURRENT DRAFT:\n${JSON.stringify(current || {})}`,
-    ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion)}`] : []),
+    ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(compactMeetingAgentDiscussionContext(discussion))}`] : []),
     `UNCOVERED CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, isDiscussion ? 55000 : 36000, isDiscussion ? 260 : 180))}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
@@ -9386,9 +9460,13 @@ let meetingAgentActiveCalls = 0;
 let meetingAgentLastCallStartedAt = 0;
 let meetingAgentQueueTimer = null;
 
-const MEETING_AGENT_MAX_ACTIVE_CALLS = Math.max(1, Math.min(2,
+// Defaults are unchanged (2 in flight, 6.5 s between starts). The clamps used
+// to pin both values regardless of the environment, so three "parallel"
+// referee batches always paid a 13 s stagger; they can now be tuned per
+// deployment and measured with the performance baseline harness.
+const MEETING_AGENT_MAX_ACTIVE_CALLS = Math.max(1, Math.min(4,
   Number(process.env.MEETING_MINUTES_AGENT_MAX_ACTIVE_CALLS || 2)));
-const MEETING_AGENT_CALL_START_GAP_MS = Math.max(6500,
+const MEETING_AGENT_CALL_START_GAP_MS = Math.max(1000,
   Number(process.env.MEETING_MINUTES_AGENT_CALL_START_GAP_MS || 6500));
 
 function drainMeetingAgentCallQueue() {
@@ -12072,7 +12150,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     ? actionCommitmentChainInventory(draft.sourceUnits, deterministicActionCandidates)
     : [];
   const actionDiscoveryInventory = stage === 'actions'
-    ? [...actionChains, ...actionThreads, ...deterministicActionCandidates]
+    ? (meetingMinutesAgentDedupedCoverageEnabled()
+      ? dedupeActionDiscoveryInventory(actionChains, actionThreads, deterministicActionCandidates)
+      : [...actionChains, ...actionThreads, ...deterministicActionCandidates])
     : [];
   const stagedRecordTypes = stage === 'discussion'
     ? new Set(['discussion_point', 'decision', 'open_question', 'objective'])
@@ -12116,6 +12196,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
     candidateCount: primaryValidationCandidates.length,
+    ...(stage === 'actions' ? { repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt } : {}),
     // A valid empty discussion response is a discovery miss, not a transport
     // failure. Repeating the identical request has proved both slow and
     // stochastic; the dedicated gap pass and deterministic ledger are the
@@ -12207,6 +12288,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const recoveryParsed = await call('recovery', recoveryPrompt, {
       optional: true,
       candidateCount: recoveryDecision.uncovered.length,
+      ...(stage === 'actions' ? { repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt } : {}),
       ...(stage === 'discussion' ? {
         responseKind: 'discussion_discovery',
         transformResult: (result) => normaliseReferenceArrays(result, {
@@ -12461,6 +12543,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeRoute = completedPasses.includes('referee')
     ? meetingAgentRefereeRoute(refereeParsed, refereeContract)
     : 'not_completed';
+  const fastRefereeAuthoritative = stage === 'actions' && meetingMinutesAgentFastActionPathEnabled()
+    && meetingAgentRefereeAccountedForAllCandidates(refereeParsed, refereeContract, refereeRoute);
+  if (fastRefereeAuthoritative) {
+    console.log(JSON.stringify({
+      event: 'meeting_agent_fast_action_path', journeyId: draft.draftId, stage,
+      expectedCandidateCount: refereeContract.expectedCandidateIds.length, skipped: ['critic', 'salvage']
+    }));
+  }
   const reconstructedRefereeActions = stage === 'actions'
     ? reconstructRefereeActions(
       refereeParsed?.candidateDispositions,
@@ -12688,7 +12778,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // auditing refereeActions would instruct it not to return the very records
   // that need a second judgement before automatic publication.
   const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, automatic);
-  const criticCandidates = meetingAgentActionAuditCandidates(remaining, 12000, 40);
+  const criticCandidates = fastRefereeAuthoritative ? [] : meetingAgentActionAuditCandidates(remaining, 12000, 40);
   let criticError = null;
   const criticPrompt = criticCandidates.length ? meetingMinutesAgentCriticPrompt({
     transcript, details, discussion: draft.discussion || [], actions: automatic, candidates: criticCandidates
@@ -12712,10 +12802,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const unpromotedCriticActions = critic.actions.filter((record) => !criticPromotions.some((promoted) =>
     hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
   ));
-  const salvageCandidates = uncoveredCandidateInventory(
+  const salvageCandidates = (fastRefereeAuthoritative ? [] : uncoveredCandidateInventory(
     actionDiscoveryInventory,
     [...automatic, ...critic.actions]
-  ).filter((candidate) => candidate?.context
+  )).filter((candidate) => candidate?.context
     // Salvage is an expensive last adjudication, not another general sweep.
     // Lower-priority unresolved rows remain available to the deterministic
     // proposal backstops below without consuming another Microsoft call.
@@ -12959,6 +13049,15 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       // Starting here hides most of the staged candidate latency behind the
       // reviewer's details/discussion work.
       setImmediate(() => prewarmPrivateStagedCandidateLedgers({ ...created, rawTranscript: transcript.text }));
+      if (meetingMinutesAgentEarlyActionPrewarmEnabled()) {
+        // The actions primary prompt depends on nothing the Discussion stage
+        // produces, so its ~30 s can overlap the whole Discussion stage rather
+        // than start when it ends. The cache is private; the draft stays
+        // authoritative.
+        setImmediate(() => startPrivateActionPrimaryPrewarm({ ...created }).catch((error) => {
+          console.warn(JSON.stringify({ event: 'meeting_agent_action_prewarm', when: 'prepare', ok: false, message: error.message }));
+        }));
+      }
     }
     return res.json({
       ok: true,
@@ -13863,6 +13962,10 @@ router.stagedEvaluation = {
   meetingAgentUpstreamFingerprint,
   meetingAgentDerivedStaleStages,
   meetingAgentStaleStagesAfterGeneration,
+  meetingAgentRefereeAccountedForAllCandidates,
+  dedupeActionDiscoveryInventory,
+  compactMeetingAgentDiscussionContext,
+  meetingAgentEmptyDiscoveryRepairPrompt,
   persistMeetingAgentBackgroundStage,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
