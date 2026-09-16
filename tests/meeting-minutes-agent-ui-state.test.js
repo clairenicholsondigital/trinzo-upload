@@ -86,6 +86,15 @@ function startStubServer() {
     message: 'Preparing the summary…', completedPasses: [], callTimings: [], degradedSources: [], error: ''
   };
   drafts.set('summary-running', summaryRunning);
+  const prewarming = baseDraft('prewarming', false);
+  prewarming.currentStep = 2;
+  prewarming.selectedStep = 2;
+  prewarming.actionsPrewarm = { status: 'preparing', startedAt: '2026-09-16T12:00:02.000Z', completedAt: '' };
+  drafts.set('prewarming', prewarming);
+  const actionsCompleting = baseDraft('actions-completing', true);
+  actionsCompleting.selectedStep = 2;
+  actionsCompleting.staleStages = ['actions'];
+  drafts.set('actions-completing', actionsCompleting);
   const patchCounts = new Map();
   const patchBodies = new Map();
 
@@ -141,6 +150,18 @@ function startStubServer() {
   });
   app.get('/api/meeting-minutes-agent/drafts/:id/generation', (req, res) => {
     let draft = drafts.get(req.params.id);
+    if (req.params.id === 'actions-completing' && draft.generation) {
+      draft = {
+        ...draft, revision: draft.revision + 1, updatedAt: new Date().toISOString(),
+        generation: null, staleStages: [],
+        actions: [{
+          id: 'action-final', action: 'Send the final checked report.', owners: ['Alex Reed'],
+          timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+        }]
+      };
+      drafts.set(req.params.id, draft);
+      return res.json({ ok: true, generation: null, actionsPrewarm: null, draft });
+    }
     if (req.params.id === 'summary-running' && draft.generation) {
       draft = {
         ...draft, revision: draft.revision + 1, updatedAt: new Date().toISOString(),
@@ -149,7 +170,7 @@ function startStubServer() {
       drafts.set(req.params.id, draft);
       return res.json({ ok: true, generation: null, draft });
     }
-    res.json({ ok: true, generation: draft.generation });
+    res.json({ ok: true, generation: draft.generation, actionsPrewarm: draft.actionsPrewarm || null });
   });
   app.get('/test-state/:id', (req, res) => res.json({
     patches: patchCounts.get(req.params.id) || 0,
@@ -236,8 +257,10 @@ test('action generation has an honest waiting state and stage-scoped status', { 
       assert.equal(await page.locator(selector).isDisabled(), true, `${selector} is disabled while actions run`);
     }
     assert.equal(await page.locator('#addDiscussion').isDisabled(), false, 'safe Discussion additions remain available');
-    assert.match(await page.textContent('#saveStatus'), /Draft saved.*continues in the background/i);
+    assert.match(await page.textContent('#saveStatus'), /Everything is saved.*leave and resume later/i);
     assert.doesNotMatch(await page.textContent('#saveStatus'), /Unsaved changes/i);
+    assert.match(await page.textContent('#actionsBody'), /Previously saved actions/i);
+    assert.match(await page.textContent('#actionsBody'), /Send the revised report/i);
 
     await page.waitForFunction(() => document.getElementById('workflowStatus').dataset.stage === 'actions');
     assert.equal(await page.locator('#workflowStatus').isVisible(), true);
@@ -248,8 +271,49 @@ test('action generation has an honest waiting state and stage-scoped status', { 
 
     await page.click('[data-step="0"]');
     await page.fill('#meetingTitle', 'Edited while actions run');
-    assert.match(await page.textContent('#saveStatus'), /Local edits are waiting to save/i);
+    assert.match(await page.textContent('#saveStatus'), /Unsaved edits are waiting to save.*Keep this tab open/i);
+    assert.match(await page.textContent('#generationLeaveMessage'), /Keep this tab open/i);
+    assert.equal(await page.locator('#resumeLaterLink').isHidden(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('Discussion shows Actions prewarming while the reviewer works', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'prewarming');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
+    assert.equal(await page.locator('#actionsPrewarmNotice').isVisible(), true);
+    assert.match(await page.textContent('#actionsPrewarmNotice'), /Preparing Actions in the background/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('successful Actions regeneration clears its outdated warning and stays clear after refresh', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'actions-completing');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.match(await page.textContent('#actionsBody'), /Evidence-checked preview/i);
+    assert.match(await page.textContent('#actionsBody'), /Previously saved actions/i);
+    assert.match(await page.textContent('#actionsBody'), /Send the revised report/i);
+    await page.waitForFunction(() => /Send the final checked report/i.test(document.getElementById('actionsBody').textContent));
+    assert.equal(await page.locator('#staleNotice').isHidden(), true);
+    await page.reload();
+    await page.waitForFunction(() => /Send the final checked report/i.test(document.getElementById('actionsBody').textContent));
+    assert.equal(await page.locator('#staleNotice').isHidden(), true);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

@@ -8,11 +8,13 @@
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
   var GENERATION_POLL_MS = 2000;
   var generationTimer = null;
+  var prewarmTimer = null;
   var completedGenerationNotice = null;
   var saveTimer = null;
   var saveInFlight = null;
   var saveQueued = false;
   var pendingGenerationEdits = false;
+  var actionsInvalidatedDuringGeneration = false;
   var generationPollKey = '';
   var actionEditorState = { pendingRows: {}, customOwners: {} };
   var discussionEditorState = { pendingTopics: {}, pendingRecords: {} };
@@ -46,9 +48,15 @@
 
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
+    var unsaved = ['dirty','waiting','local-only','saving','error'].includes(kind);
+    if (unsaved && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
     document.getElementById('saveStrip').hidden = !state.draft;
     element.textContent = message || '';
     element.dataset.state = kind || '';
+    var resumeLink = document.getElementById('resumeLaterLink');
+    if (resumeLink) resumeLink.hidden = unsaved;
+    var leaveMessage = document.getElementById('generationLeaveMessage');
+    if (leaveMessage && generationRunning()) leaveMessage.textContent = generationSaveText();
   }
 
   function savedStatusText(value) {
@@ -76,9 +84,9 @@
 
   function generationSaveText() {
     if (pendingGenerationEdits || hasTransientEditorState()) {
-      return 'Local edits are waiting to save. Keep this tab open until generation finishes.';
+      return 'Unsaved edits are waiting to save. Keep this tab open.';
     }
-    return 'Draft saved. Generation continues in the background and can be resumed from Library.';
+    return 'Everything is saved. You can leave and resume later while generation continues.';
   }
 
   function setBusy(busy, message, stage) {
@@ -316,6 +324,8 @@
     document.getElementById('generationProgressMessage').textContent = generation
       ? (generation.message || 'Preparing independent quality checks…')
       : (notice.message || 'The completed draft is ready to review.');
+    var leaveMessage = document.getElementById('generationLeaveMessage');
+    if (leaveMessage) leaveMessage.textContent = generation ? generationSaveText() : 'Everything is saved. You can leave and resume later.';
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
@@ -338,9 +348,38 @@
   function markRunningActionsStale() {
     if (!generationRunning('actions') || !state.draft) return;
     state.draft.staleStages = Array.from(new Set([...(state.draft.staleStages || []), 'actions']));
+    actionsInvalidatedDuringGeneration = true;
     var notice = document.getElementById('staleNotice');
     notice.hidden = false;
     document.getElementById('staleStages').textContent = state.draft.staleStages.join(' and ');
+  }
+
+  function renderActionsPrewarm() {
+    var notice = document.getElementById('actionsPrewarmNotice');
+    if (!notice) return;
+    var prewarm = state.draft && state.draft.actionsPrewarm;
+    notice.hidden = !prewarm || generationRunning('actions');
+    if (notice.hidden) return;
+    notice.textContent = prewarm.status === 'ready'
+      ? 'Actions preparation is ready. Starting Actions will reuse this work.'
+      : 'Preparing Actions in the background while you review Discussion…';
+  }
+
+  function pollActionPrewarm() {
+    clearTimeout(prewarmTimer);
+    var prewarm = state.draft && state.draft.actionsPrewarm;
+    if (!prewarm || prewarm.status !== 'preparing' || generationRunning()) return;
+    prewarmTimer = window.setTimeout(async function () {
+      if (!state.draft || generationRunning()) return;
+      try {
+        var payload = await jsonRequest(draftUrl('/generation'));
+        state.draft.actionsPrewarm = payload.actionsPrewarm || null;
+        renderActionsPrewarm();
+        pollActionPrewarm();
+      } catch (error) {
+        prewarmTimer = window.setTimeout(pollActionPrewarm, 5000);
+      }
+    }, GENERATION_POLL_MS);
   }
 
   function readSteer() {
@@ -577,16 +616,18 @@
       var generation = state.draft.generation || {};
       var preview = Array.isArray(generation.previewActions) ? generation.previewActions : [];
       var prior = Array.isArray(state.draft.actions) ? state.draft.actions : [];
-      var rows = preview.length ? preview : prior;
-      var label = preview.length ? 'Evidence-checked preview' : prior.length ? 'Current saved actions' : '';
       var intro = preview.length
         ? 'You can start reading these while the final missed-action checks continue. Editing unlocks when the final version is ready.'
         : prior.length
           ? 'These saved actions remain visible while a refreshed version is prepared.'
           : 'Possible actions will appear here as soon as the evidence check finishes.';
-      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + rows.map(function (item) {
-        return '<tr class="preview-action-row"><td data-label="Action">' + (label ? '<span class="preview-action-label">' + escapeHtml(label) + '</span>' : '') + '<div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingText(item.timing)) + '</div></td></tr>';
-      }).join('');
+      var readOnlyRows = function (items, className) { return items.map(function (item) {
+        return '<tr class="preview-action-row ' + className + '"><td data-label="Action"><div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingText(item.timing)) + '</div></td></tr>';
+      }).join(''); };
+      var sections = '';
+      if (preview.length) sections += '<tr class="generation-section-row"><th colspan="3">Evidence-checked preview</th></tr>' + readOnlyRows(preview, 'preview-current');
+      if (prior.length) sections += '<tr class="generation-section-row saved-actions-heading"><th colspan="3">Previously saved actions</th></tr>' + readOnlyRows(prior, 'preview-saved');
+      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + sections;
       return;
     }
     var actions = (state.draft && state.draft.actions) || [];
@@ -807,6 +848,7 @@
     document.getElementById('saveStrip').hidden = !state.draft;
     if (state.draft) {
       renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags(); renderProposal();
+      renderActionsPrewarm();
       var activeGenerationStage = state.draft.generation && state.draft.generation.status === 'running'
         ? state.draft.generation.stage : '';
       var disabledControls = {
@@ -854,6 +896,7 @@
     renderAll();
     // A reload in the middle of a run must not look dead.
     if (generationRunning()) pollGeneration();
+    else pollActionPrewarm();
     if (generationRunning()) {
       setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
     } else if (hasTransientEditorState()) {
@@ -959,6 +1002,7 @@
       state.draft.generation = payload.generation;
       completedGenerationNotice = null;
       pendingGenerationEdits = false;
+      if (stage === 'actions') actionsInvalidatedDuringGeneration = false;
       generationPollKey = [state.draft.draftId, stage, payload.generation && payload.generation.startedAt].join('|');
       if (stage !== 'actions') showStep(STAGE_STEP[stage], { scroll: true });
       renderAll();
@@ -1004,8 +1048,13 @@
             completedDraft.executiveSummary = localDraft.executiveSummary;
             completedDraft.meetingObjectives = localDraft.meetingObjectives;
           }
+          var generationFailed = Boolean(payload.generation && payload.generation.status === 'failed');
+          var localStale = localDraft.staleStages || [];
+          if (!generationFailed && !actionsInvalidatedDuringGeneration) {
+            localStale = localStale.filter(function (value) { return value !== activeStage; });
+          }
           completedDraft.staleStages = Array.from(new Set([
-            ...(completedDraft.staleStages || []), ...(localDraft.staleStages || [])
+            ...(completedDraft.staleStages || []), ...localStale
           ]));
           if (activeStage === 'actions' && state.currentStep !== STAGE_STEP.actions
             && !(payload.generation && payload.generation.status === 'failed')) {
@@ -1014,8 +1063,9 @@
               message:'The final actions are ready. Open Actions when you are ready to review them.'
             };
           }
-          adoptDraft(payload.draft);
+          adoptDraft(completedDraft);
           state.draft.generation = payload.generation;
+          if (activeStage === 'actions' && !generationFailed) actionsInvalidatedDuringGeneration = false;
           renderAll();
         }
         if (payload.generation && payload.generation.status === 'failed') {
@@ -1025,7 +1075,8 @@
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
-        else setSaveStatus(savedStatusText(state.draft.updatedAt), hasTransientEditorState() ? 'local-only' : 'saved');
+        else if (hasTransientEditorState()) setSaveStatus('Unfinished entries are not saved yet. Keep this tab open.', 'local-only');
+        else setSaveStatus(savedStatusText(state.draft.updatedAt), 'saved');
       } catch (error) { setStatus(error.message, true, expectedGeneration.stage); }
     }, GENERATION_POLL_MS);
   }

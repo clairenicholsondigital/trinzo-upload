@@ -203,6 +203,7 @@
 .meeting-agent-page .generation-phase.done::before{content:"\2713";display:grid;place-items:center;background:var(--ok-bg);font-size:.55rem}
 .meeting-agent-page .generation-progress-actions{display:flex;align-items:center;gap:.65rem;margin-top:.75rem}
 .meeting-agent-page .generation-preview-note{margin:.65rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .prewarm-notice{margin:.75rem 0;padding:.65rem .75rem;border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);font-size:var(--fs-sm)}
 @media(prefers-reduced-motion:reduce){.meeting-agent-page .generation-phase.active::before{animation:none}}
 .meeting-agent-page.busy button,
 .meeting-agent-page.busy input,
@@ -392,6 +393,8 @@
   display:inline-flex;margin-bottom:.35rem;padding:.12rem .4rem;border-radius:var(--radius-pill);
   background:var(--info-bg);color:var(--info-text);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
 .meeting-agent-page .preview-action-meta{color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .generation-section-row th{padding:.75rem .6rem .35rem;background:#fff;color:var(--heading);font-size:var(--fs-sm)}
+.meeting-agent-page .preview-saved{background:#fff}
 
 .meeting-agent-page .owner-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem}
 .meeting-agent-page .owner-chip{
@@ -589,14 +592,14 @@
 
   <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="1" data-num="2" type="button" disabled aria-label="Step 2, what matters most from this meeting">Focus</button><button class="step" data-step="2" data-num="3" type="button" disabled aria-label="Step 3, discussion">Discussion</button><button class="step" data-step="3" data-num="4" type="button" disabled aria-label="Step 4, actions">Actions</button><button class="step" data-step="4" data-num="5" type="button" disabled aria-label="Step 5, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="6" type="button" disabled aria-label="Step 6, final review">Review</button></div>
 
-  <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a href="/jobs">Resume later from Library</a></span></div>
+  <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Resume later from Library</a></span></div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
   <section id="generationProgress" class="panel generation-progress" role="region" aria-labelledby="generationProgressTitle" hidden>
     <div class="generation-progress-head"><div><h2 id="generationProgressTitle">Preparing actions</h2><p id="generationProgressMessage" aria-live="polite"></p></div><span id="generationElapsed" class="generation-elapsed"></span></div>
     <ol id="generationPhases" class="generation-phases"></ol>
     <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
-    <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span class="muted">You can leave this page and resume later from Library.</span></div>
+    <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span id="generationLeaveMessage" class="muted"></span></div>
   </section>
   <p id="staleNotice" class="notice" hidden>Earlier meeting content changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
 
@@ -646,6 +649,7 @@
       <p class="muted">Edit directly and open Evidence beneath any record to inspect its source.</p>
       <div id="discussionList"></div>
     </div>
+    <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>
     <div class="screen-actions"><button class="secondary" data-back="1" type="button">Back to focus</button><button id="generateActions" class="button" type="button">Generate actions<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 

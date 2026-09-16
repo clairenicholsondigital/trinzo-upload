@@ -9987,11 +9987,21 @@ function startPrivateStagedCandidateLedger(draft, stage) {
   const key = privateStagedCandidateCacheKey(draft, stage);
   const existing = privateStagedCandidateCache.get(key);
   if (existing) return existing.promise;
-  const entry = { expiresAt: Date.now() + PRIVATE_STAGED_CACHE_TTL_MS, promise: null };
+  const entry = {
+    expiresAt: Date.now() + PRIVATE_STAGED_CACHE_TTL_MS,
+    status: 'preparing',
+    startedAt: new Date().toISOString(),
+    completedAt: '',
+    promise: null
+  };
   entry.promise = withPrivateStagedCandidateSlot(
     () => buildPrivateStagedCandidateLedger(draft, stage),
     stage === 'discussion' ? 2 : 1
-  ).catch((error) => {
+  ).then((value) => {
+    entry.status = 'ready';
+    entry.completedAt = new Date().toISOString();
+    return value;
+  }).catch((error) => {
     // Failed work is not cached: a later stage/rerun must be able to retry it.
     if (privateStagedCandidateCache.get(key) === entry) privateStagedCandidateCache.delete(key);
     throw error;
@@ -10046,26 +10056,57 @@ function startPrivateActionPrimaryPrewarm(draft) {
     ...actionCommitmentThreadInventory(draft.sourceUnits, deterministicCandidates),
     ...deterministicCandidates
   ];
-  const entry = { expiresAt: Date.now() + PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS, promise: null };
+  const entry = {
+    expiresAt: Date.now() + PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS,
+    status: 'preparing',
+    startedAt: new Date().toISOString(),
+    completedAt: '',
+    promise: null
+  };
   entry.promise = askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
     pass: 'actions:primary', maxAttempts: 3, requestId,
     validateResult: (result) => meetingAgentEmptyDiscoveryError(
       result, 'actions', candidates, draft.sourceUnits,
       { meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate }
     )
-  }).then((response) => ({
-    result: response.result,
-    timings: response.timings || [],
-    promptSha256,
-    requestId,
-    completedAt: new Date().toISOString()
-  })).catch((error) => {
+  }).then((response) => {
+    entry.status = 'ready';
+    entry.completedAt = new Date().toISOString();
+    return {
+      result: response.result,
+      timings: response.timings || [],
+      promptSha256,
+      requestId,
+      completedAt: entry.completedAt
+    };
+  }).catch((error) => {
     if (privateActionPrimaryCache.get(promptSha256) === entry) privateActionPrimaryCache.delete(promptSha256);
     throw error;
   });
   privateActionPrimaryCache.set(promptSha256, entry);
   prunePrivateActionPrimaryCache();
   return entry.promise;
+}
+
+function meetingAgentActionsPrewarmState(draft = {}) {
+  // Prewarming is useful UI state only while Discussion is the furthest
+  // unlocked stage. Once Actions starts, its normal generation progress takes
+  // over and this private implementation detail should disappear.
+  if (Number(draft.currentStep || 0) !== MEETING_AGENT_STAGE_STEP.discussion) return null;
+  prunePrivateStagedCandidateCache();
+  prunePrivateActionPrimaryCache();
+  const staged = privateStagedCandidateCache.get(privateStagedCandidateCacheKey(draft, 'actions'));
+  const primary = privateActionPrimaryCache.get(meetingAgentPassCacheKey(
+    meetingAgentActionPrimaryPromptForDraft(draft)
+  ));
+  const entries = [staged, primary].filter(Boolean);
+  if (!entries.length) return null;
+  const preparing = entries.some((entry) => entry.status !== 'ready');
+  return {
+    status: preparing ? 'preparing' : 'ready',
+    startedAt: entries.map((entry) => entry.startedAt).filter(Boolean).sort()[0] || '',
+    completedAt: preparing ? '' : entries.map((entry) => entry.completedAt).filter(Boolean).sort().slice(-1)[0] || ''
+  };
 }
 
 async function usePrivateActionPrimaryPrewarm(draft, prompt) {
@@ -10167,6 +10208,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   });
   safe.details = sanitiseMeetingAgentDetails(safe.details);
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
+  safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);
   const degraded = Object.values(_qualityState || {}).flatMap((stage) => Array.isArray(stage?.degradedSources) ? stage.degradedSources : []);
   safe.qualityNotice = degraded.length ? 'One independent quality check could not complete. You can regenerate this section to retry it.' : '';
   safe.stageLabel = MEETING_AGENT_STEP_LABELS[Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(safe.currentStep) || 0))];
@@ -13281,6 +13323,7 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
     return res.json({
       ok: true,
       generation: publicMeetingAgentGeneration(generation),
+      actionsPrewarm: meetingAgentActionsPrewarmState(draft),
       // Carry the draft only once the run is over, so completion is one round trip.
       draft: running ? undefined : publicMeetingAgentDraft(draft),
       performance: observedPerformance
