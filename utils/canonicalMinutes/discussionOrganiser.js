@@ -228,7 +228,7 @@ const GENERIC_LABEL_TOKEN = new Set(['status', 'update', 'updates', 'plan', 'pla
 
 function distinctiveLabelTokens(label) {
   return new Set((text(label).match(/[A-Za-z][A-Za-z0-9'’-]+/g) || [])
-    .filter((token) => (token.length >= 4 || /^[A-Z]{2,}$/.test(token)))
+    .filter((token) => (token.length >= 3 || /^[A-Z]{2,}$/.test(token)))
     .map((token) => stem(token.toLowerCase()))
     .filter((token) => !STOP.has(token) && !GENERIC_LABEL_TOKEN.has(token)));
 }
@@ -260,7 +260,7 @@ async function topicSimilarities(topics, options = {}) {
   // Two labels about the same thing usually share the thing's name; a
   // moderate embedding match plus a shared distinctive word is treated as
   // the same subject ("Festival commitment" / "Festival order").
-  const kin = (a, b) => shareDistinctiveToken(labels[a], labels[b]) && label(a, b) >= Number(options.labelSimilarity || 0.45);
+  const kin = (a, b) => shareDistinctiveToken(labels[a], labels[b]) && label(a, b) >= Number(options.labelSimilarity || 0.4);
   return Object.assign(signature, { label, kin });
 }
 
@@ -312,8 +312,10 @@ async function consolidateTopics(topics, index, options = {}) {
     if (best >= 0) groups[best].push(i); else groups.push([i]);
   }
   // Second pass: a reviewer wants agenda items, not one topic per sentence.
-  // Fold the smallest groups into their most similar neighbour until the
-  // count is proportionate to the amount of content.
+  // Fold the smallest groups into the group nearest to them in the meeting
+  // (similarity breaks ties) until the count is proportionate to the amount
+  // of content. Chronological neighbours keep the minutes in meeting order
+  // even when the label match is weak.
   const rowsOf = (group) => group.reduce((sum, i) => sum + topicRows(ordered[i]).length, 0);
   const total = ordered.reduce((sum, topic) => sum + topicRows(topic).length, 0);
   const target = Math.min(Number(options.maxTopics || 8), Math.max(Number(options.minTopics || 4), Math.ceil(total / 2)));
@@ -323,7 +325,8 @@ async function consolidateTopics(topics, index, options = {}) {
     let best = -1; let bestScore = -1;
     groups.forEach((group, g) => {
       if (g === smallest) return;
-      const score = groupSimilarity(group, groups[smallest]) + (groupGap(group, groups[smallest]) <= adjacency ? 0.1 : 0);
+      const gap = groupGap(group, groups[smallest]);
+      const score = (Number.isFinite(gap) ? 1000 - Math.min(gap, 999) : 0) + groupSimilarity(group, groups[smallest]);
       if (score > bestScore) { bestScore = score; best = g; }
     });
     if (best < 0) break;
