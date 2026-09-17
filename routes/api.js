@@ -54,6 +54,7 @@ const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semantic
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
+const { organiseDiscussionForReview } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -8374,6 +8375,10 @@ function meetingMinutesAgentAnchoredDiscussionEnabled() {
   ));
 }
 
+function meetingMinutesAgentDiscussionOrganiseEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ORGANISE_V1 || '0'));
+}
+
 function meetingMinutesAgentFastActionPathEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_FAST_ACTION_PATH_V1 || '0'));
 }
@@ -12681,6 +12686,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }
     finalDiscussion = await dedupeSupportingDetailsSemantically(finalDiscussion, { journeyId: draft.draftId });
+    if (meetingMinutesAgentDiscussionOrganiseEnabled()) {
+      try {
+        const organised = await organiseDiscussionForReview(finalDiscussion, draft.sourceUnits);
+        console.log(JSON.stringify({ event: 'meeting_agent_discussion_organised', journeyId: draft.draftId, ...organised.before, afterTopics: organised.after.topics, afterRows: organised.after.rows }));
+        finalDiscussion = organised.discussion;
+      } catch (error) {
+        safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
+      }
+    }
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
