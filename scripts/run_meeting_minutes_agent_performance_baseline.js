@@ -35,6 +35,7 @@ function parseArgs(argv) {
     else if (arg === '--poll-ms') options.pollMs = Number(value());
     else if (arg === '--timeout-ms') options.timeoutMs = Number(value());
     else if (arg === '--env-file') options.envFile = value();
+    else if (arg === '--review-pause-ms') options.reviewPauseMs = Number(value());
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (!options.cases.length || options.cases.some((name) => !CASES[name])) {
@@ -156,7 +157,11 @@ async function runJourney(options, db, session, caseName, runNumber) {
     const prepared = await prepareDraft(options, session.cookie, caseName);
     draft = prepared.draft;
     const stages = {};
+    // A reviewer reads before asking for the next stage. Simulating that
+    // reading time is what lets work run ahead of them be measured.
+    const reviewPauseMs = Math.max(0, Number(options.reviewPauseMs || 0));
     for (const stage of ['discussion', 'actions', 'summary']) {
+      if (reviewPauseMs) await new Promise((resolve) => setTimeout(resolve, reviewPauseMs));
       const result = await runStage(options, session.cookie, draft, stage);
       draft = result.draft;
       stages[stage] = {
@@ -172,6 +177,8 @@ async function runJourney(options, db, session, caseName, runNumber) {
       startedAt: new Date(journeyStartedAt).toISOString(),
       completedAt: new Date().toISOString(),
       totalElapsedMs: Date.now() - journeyStartedAt,
+      reviewPauseMs,
+      waitingMs: Object.values(stages).reduce((sum, item) => sum + Number(item.observedElapsedMs || 0), 0),
       preparation: prepared.performance || {},
       stages,
       performance: privatePerformance(privateDraft),

@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerProjectKnowledge } = require('../utils/knowledge');
 
 const {
@@ -8391,6 +8392,14 @@ function meetingMinutesAgentEarlyActionPrewarmEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_EARLY_ACTION_PREWARM_V1 || '0'));
 }
 
+// Run the next stage ahead of the reviewer with exactly the inputs the real
+// run would use, keep the result privately, and let the real run adopt it if
+// those inputs are unchanged. Nothing about the prompts, passes or flags
+// differs; only when the work happens.
+function meetingMinutesAgentSpeculativePipelineEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1 || '0'));
+}
+
 function meetingAgentCandidateContextChars() {
   const value = Number(process.env.MEETING_MINUTES_AGENT_CANDIDATE_CONTEXT_CHARS);
   return Number.isFinite(value) && value >= 400 ? Math.min(5000, Math.floor(value)) : 5000;
@@ -9484,7 +9493,10 @@ function drainMeetingAgentCallQueue() {
     }, waitMs);
     return;
   }
-  const resolve = meetingAgentCallQueue.shift();
+  // Speculative work never delays a reviewer who is waiting on screen: a
+  // foreground request queues ahead of every background one.
+  const foregroundIndex = meetingAgentCallQueue.findIndex((entry) => !entry.background);
+  const { resolve } = meetingAgentCallQueue.splice(foregroundIndex >= 0 ? foregroundIndex : 0, 1)[0];
   meetingAgentActiveCalls += 1;
   meetingAgentLastCallStartedAt = Date.now();
   resolve(() => {
@@ -9494,9 +9506,15 @@ function drainMeetingAgentCallQueue() {
   if (meetingAgentCallQueue.length) setTimeout(drainMeetingAgentCallQueue, MEETING_AGENT_CALL_START_GAP_MS);
 }
 
+const meetingAgentCallContext = new AsyncLocalStorage();
+
+function meetingAgentCallIsBackground() {
+  return Boolean(meetingAgentCallContext.getStore()?.background);
+}
+
 function acquireMeetingAgentCallSlot() {
   return new Promise((resolve) => {
-    meetingAgentCallQueue.push(resolve);
+    meetingAgentCallQueue.push({ resolve, background: meetingAgentCallIsBackground() });
     drainMeetingAgentCallQueue();
   });
 }
@@ -10248,6 +10266,204 @@ function prewarmPrivateStagedCandidateLedgers(draft) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Speculative pipeline
+// ---------------------------------------------------------------------------
+
+// One private entry per draft and stage, keyed "draftId:stage". An entry holds
+// the outcome of running that stage with a specific input fingerprint; the
+// real run adopts it only while the draft still has that fingerprint.
+const privateStageSpeculations = new Map();
+const speculationTimers = new Map();
+const SPECULATION_TTL_MS = 2 * 60 * 60 * 1000;
+const SPECULATION_IDLE_LIMIT_MS = 45 * 60 * 1000;
+const SPECULATION_EDIT_DEBOUNCE_MS = Math.max(5000, Number(process.env.MEETING_MINUTES_AGENT_SPECULATION_DEBOUNCE_MS || 30000));
+const SPECULATION_MAX_RUNNING = Math.max(1, Math.min(4, Number(process.env.MEETING_MINUTES_AGENT_SPECULATION_MAX_RUNNING || 2)));
+
+function speculationKey(draftId, stage) {
+  return `${String(draftId || '')}:${String(stage || '')}`;
+}
+
+function pruneStageSpeculations(now = Date.now()) {
+  for (const [key, entry] of privateStageSpeculations) {
+    if (entry.status !== 'running' && Number(entry.expiresAt || 0) <= now) privateStageSpeculations.delete(key);
+  }
+}
+
+// Everything a stage reads from the draft, hashed. If this changes between
+// the speculative run and the real one the result is not adopted.
+function meetingAgentStageInputFingerprint(draft = {}, stage = '') {
+  const preparedTranscript = String(draft.preparedTranscript || '');
+  const input = {
+    stage,
+    transcript: draft.transcriptSha256 || '',
+    prepared: crypto.createHash('sha256').update(preparedTranscript).digest('hex'),
+    details: sanitiseMeetingAgentDetails(draft.details),
+    steer: meetingMinutesAgentText(draft.steer, 4000),
+    salientDetails: Array.isArray(draft.salientDetails) ? draft.salientDetails : []
+  };
+  if (stage === 'actions' || stage === 'summary') input.upstream = meetingAgentUpstreamFingerprint(draft);
+  if (stage === 'summary') {
+    input.actions = (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
+      action: meetingMinutesAgentText(action?.action, 1600),
+      owners: Array.isArray(action?.owners) ? action.owners.map((owner) => meetingMinutesAgentText(owner, 120)) : [],
+      timing: action?.timing || null
+    }));
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
+
+// The first stage the reviewer will ask for next: an empty stage, or one the
+// server has marked outdated after an upstream edit.
+function meetingAgentNextSpeculativeStage(draft = {}) {
+  const generation = meetingAgentGenerationState(draft.generation);
+  if (generation && generation.status === 'running') return '';
+  const stale = new Set(Array.isArray(draft.staleStages) ? draft.staleStages : []);
+  if (!(Array.isArray(draft.discussion) && draft.discussion.length)) return 'discussion';
+  if (!(Array.isArray(draft.actions) && draft.actions.length) || stale.has('actions')) return 'actions';
+  if (!meetingMinutesAgentText(draft.executiveSummary, 20) || stale.has('summary')) return 'summary';
+  return '';
+}
+
+function meetingAgentSpeculationFor(draft = {}, stage = '') {
+  pruneStageSpeculations();
+  const entry = privateStageSpeculations.get(speculationKey(draft.draftId, stage));
+  if (!entry || entry.status === 'failed') return null;
+  if (entry.fingerprint !== meetingAgentStageInputFingerprint(draft, stage)) return null;
+  return entry;
+}
+
+// Pass results from any speculation of this stage, whatever its fingerprint.
+// Entries are keyed by prompt hash, so a real run reuses only identical calls.
+function meetingAgentSpeculationPassCacheSeed(draftId, stage) {
+  const entry = privateStageSpeculations.get(speculationKey(draftId, stage));
+  const caches = [];
+  for (let current = entry; current; current = current.previous) {
+    if (Array.isArray(current.passCache) && current.passCache.length) caches.push(current.passCache);
+  }
+  return caches.flat();
+}
+
+// What the reviewer's screen may say about work happening ahead of them.
+function meetingAgentSpeculationState(draft = {}) {
+  if (!meetingMinutesAgentSpeculativePipelineEnabled()) return null;
+  const stage = meetingAgentNextSpeculativeStage(draft);
+  if (!stage) return null;
+  const entry = meetingAgentSpeculationFor(draft, stage);
+  if (!entry) return null;
+  return {
+    stage,
+    status: entry.status === 'ready' ? 'ready' : 'preparing',
+    startedAt: entry.startedAt || '',
+    completedAt: entry.status === 'ready' ? entry.completedAt || '' : ''
+  };
+}
+
+function applyStageResultVirtually(draft = {}, stage = '', result = {}) {
+  const changes = result?.changes || {};
+  return {
+    ...draft,
+    ...changes,
+    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
+    staleStages: (Array.isArray(draft.staleStages) ? draft.staleStages : []).filter((value) => value !== stage),
+    currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage] || 0, Number(draft.currentStep || 0)),
+    generation: null
+  };
+}
+
+function runningStageSpeculationCount() {
+  let count = 0;
+  for (const entry of privateStageSpeculations.values()) if (entry.status === 'running') count += 1;
+  return count;
+}
+
+function startStageSpeculation(draft = {}, userId = '', options = {}) {
+  if (!meetingMinutesAgentSpeculativePipelineEnabled() || !meetingMinutesAgentHybridEnabled()) return null;
+  const draftId = String(draft.draftId || '');
+  if (!draftId || !String(draft.preparedTranscript || '').trim()) return null;
+  const stage = options.stage || meetingAgentNextSpeculativeStage(draft);
+  if (!stage) return null;
+  const idleMs = Date.now() - new Date(draft.updatedAt || draft.createdAt || Date.now()).getTime();
+  if (Number.isFinite(idleMs) && idleMs > SPECULATION_IDLE_LIMIT_MS) return null;
+  pruneStageSpeculations();
+  const key = speculationKey(draftId, stage);
+  const fingerprint = meetingAgentStageInputFingerprint(draft, stage);
+  const existing = privateStageSpeculations.get(key);
+  if (existing && existing.fingerprint === fingerprint && existing.status !== 'failed') return existing;
+  if (runningStageSpeculationCount() >= SPECULATION_MAX_RUNNING) {
+    scheduleStageSpeculation(draftId, userId, { delayMs: 15000 });
+    return null;
+  }
+  if (existing && existing.status === 'running') existing.superseded = true;
+  const entry = {
+    draftId, userId, stage, fingerprint,
+    status: 'running', superseded: false, previous: existing || null,
+    startedAt: new Date().toISOString(), completedAt: '',
+    expiresAt: Date.now() + SPECULATION_TTL_MS,
+    progress: { pass: 'starting', message: 'Preparing independent quality checks…', completedPasses: [], callTimings: [], degradedSources: [] },
+    preview: null, passCache: null, result: null, error: null, promise: null
+  };
+  const speculativeDraft = { ...draft, generation: null };
+  entry.promise = meetingAgentCallContext.run({ background: true, draftId, stage }, () =>
+    generateHybridMeetingAgentStage(speculativeDraft, stage, {
+      onProgress: async (progress) => { entry.progress = { ...entry.progress, ...progress }; },
+      onCheckpoint: async (passCache) => { entry.passCache = normaliseMeetingAgentPassCache(passCache); },
+      onPreview: async (preview) => { entry.preview = preview; }
+    })
+  ).then((result) => {
+    entry.status = 'ready';
+    entry.result = result;
+    entry.completedAt = new Date().toISOString();
+    entry.previous = null;
+    if (Array.isArray(result?.changes?.passCache)) entry.passCache = normaliseMeetingAgentPassCache(result.changes.passCache);
+    console.info(JSON.stringify({
+      event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: true,
+      elapsedMs: Date.now() - new Date(entry.startedAt).getTime(), superseded: entry.superseded
+    }));
+    // Carry on down the pipeline from the result the reviewer has not yet
+    // asked for; every later adoption is protected by its own fingerprint.
+    if (!entry.superseded) {
+      setImmediate(() => {
+        try { startStageSpeculation(applyStageResultVirtually(speculativeDraft, stage, result), userId); } catch (error) {
+          safeLogError('[meeting-minutes-agent] speculation chain failed', error);
+        }
+      });
+    }
+    return result;
+  }).catch((error) => {
+    entry.status = 'failed';
+    entry.error = error;
+    console.warn(JSON.stringify({
+      event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: false,
+      message: meetingMinutesAgentText(error.message, 300)
+    }));
+    return null;
+  });
+  privateStageSpeculations.set(key, entry);
+  console.info(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: draftId, stage, started: true }));
+  return entry;
+}
+
+function scheduleStageSpeculation(draftId, userId, options = {}) {
+  if (!meetingMinutesAgentSpeculativePipelineEnabled()) return;
+  const key = String(draftId || '');
+  if (!key) return;
+  clearTimeout(speculationTimers.get(key));
+  const delayMs = Math.max(0, Number(options.delayMs ?? SPECULATION_EDIT_DEBOUNCE_MS));
+  const timer = setTimeout(async () => {
+    speculationTimers.delete(key);
+    try {
+      const fresh = await getMeetingMinutesAgentDraft(key, userId, { includeTranscript: true });
+      if (!fresh) return;
+      startStageSpeculation(fresh, userId);
+    } catch (error) {
+      console.warn(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: key, ok: false, message: meetingMinutesAgentText(error.message, 300) }));
+    }
+  }, delayMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  speculationTimers.set(key, timer);
+}
+
 function meetingAgentDraftPayload(draft = {}) {
   return {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
@@ -10328,6 +10544,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.details = sanitiseMeetingAgentDetails(safe.details);
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);
+  safe.speculation = meetingAgentSpeculationState(draft);
   // Degraded-source details remain in private qualityState and telemetry. If a
   // recovery path produced a grounded result and the stage persisted it as a
   // success, reviewers should see that success—not an implementation warning.
@@ -13073,6 +13290,9 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
         }));
       }
     }
+    if (meetingMinutesAgentHybridEnabled() && meetingMinutesAgentSpeculativePipelineEnabled()) {
+      scheduleStageSpeculation(created.draftId, req.authUser?.userId, { delayMs: 0 });
+    }
     return res.json({
       ok: true,
       draft: publicMeetingAgentDraft(created),
@@ -13201,6 +13421,9 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       selectedStep: requestedSelectedStep,
       status: req.body?.status
     });
+    // Edits settle for a while before the next stage is run ahead of the
+    // reviewer, so a burst of typing costs one speculative run, not many.
+    scheduleStageSpeculation(saved.draftId, req.authUser?.userId);
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
@@ -13466,6 +13689,33 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
   });
 }
 
+// A real run adopts a speculative result only while the draft's inputs for
+// that stage are byte-for-byte what the speculation used. If it is still in
+// flight, the reviewer sees its progress and gets its result; if the inputs
+// moved on, the real run happens as before, seeded with any identical passes.
+async function adoptStageSpeculation(fresh, stage, draftId, userId) {
+  const entry = meetingAgentSpeculationFor(fresh, stage);
+  if (!entry) return null;
+  const waitedFrom = Date.now();
+  if (entry.status === 'running') {
+    const forward = async () => {
+      try {
+        await updateMeetingAgentHybridProgress(draftId, userId, stage, { ...(entry.progress || {}), ...(entry.preview || {}) });
+      } catch (error) { /* progress is best effort */ }
+    };
+    await forward();
+    const timer = setInterval(forward, 1500);
+    try { await entry.promise; } finally { clearInterval(timer); }
+  }
+  if (entry.status !== 'ready' || !entry.result) return null;
+  privateStageSpeculations.delete(speculationKey(draftId, stage));
+  console.info(JSON.stringify({
+    event: 'meeting_agent_speculation', journeyId: draftId, stage, adopted: true,
+    waitedMs: Date.now() - waitedFrom, speculationStartedAt: entry.startedAt, speculationCompletedAt: entry.completedAt
+  }));
+  return entry;
+}
+
 // Runs after the response has already gone back to the reviewer. Same in-process
 // pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
 // process, so there is no other executor to hand it to.
@@ -13474,6 +13724,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
   let result = null;
   let failure = null;
   let sourceDraft = null;
+  let speculationAdopted = false;
   const hybrid = meetingMinutesAgentHybridEnabled();
   const stageRetryDelays = hybrid ? [] : MEETING_AGENT_RETRY_MS;
   for (let attempt = 0; attempt <= stageRetryDelays.length; attempt += 1) {
@@ -13481,13 +13732,26 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
       sourceDraft = fresh;
-      result = hybrid
-        ? await generateHybridMeetingAgentStage(fresh, stage, {
-          onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
-          onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
-          onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
-        })
-        : await generateMeetingAgentStage(fresh, stage, '');
+      let adopted = null;
+      if (hybrid && meetingMinutesAgentSpeculativePipelineEnabled()) {
+        adopted = await adoptStageSpeculation(fresh, stage, draftId, userId);
+        if (!adopted) {
+          const seed = meetingAgentSpeculationPassCacheSeed(draftId, stage);
+          if (seed.length) {
+            fresh.passCache = normaliseMeetingAgentPassCache([...normaliseMeetingAgentPassCache(fresh.passCache), ...seed]);
+          }
+        }
+      }
+      speculationAdopted = Boolean(adopted);
+      result = adopted
+        ? adopted.result
+        : hybrid
+          ? await generateHybridMeetingAgentStage(fresh, stage, {
+            onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
+            onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
+            onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
+          })
+          : await generateMeetingAgentStage(fresh, stage, '');
       failure = null;
       break;
     } catch (error) {
@@ -13513,9 +13777,12 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
     draftId, userId, stage, sourceDraft: sourceDraft || {}, result, failure
   });
   const persistenceElapsedMs = Date.now() - persistenceStartedAt;
+  if (persistence?.saved && meetingMinutesAgentSpeculativePipelineEnabled()) {
+    scheduleStageSpeculation(draftId, userId, { delayMs: 0 });
+  }
   console.info(JSON.stringify({
     event: 'meeting_agent_stage_performance', journeyId: draftId, stage,
-    ok: Boolean(result && !failure), processingElapsedMs, persistenceElapsedMs,
+    ok: Boolean(result && !failure), processingElapsedMs, persistenceElapsedMs, speculationAdopted,
     totalElapsedMs: Date.now() - backgroundStartedAt,
     telemetry: result?.changes?.qualityState?.[stage]?.telemetry,
     passImpact: result?.changes?.qualityState?.[stage]?.passImpact,
@@ -13610,6 +13877,7 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
       ok: true,
       generation: publicMeetingAgentGeneration(generation),
       actionsPrewarm: meetingAgentActionsPrewarmState(draft),
+      speculation: meetingAgentSpeculationState(draft),
       // Carry the draft only once the run is over, so completion is one round trip.
       draft: running ? undefined : publicMeetingAgentDraft(draft),
       performance: observedPerformance
@@ -13988,7 +14256,16 @@ router.stagedEvaluation = {
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,
   normaliseAgentDiscussion,
-  normaliseAgentActions
+  normaliseAgentActions,
+  meetingAgentStageInputFingerprint,
+  meetingAgentNextSpeculativeStage,
+  meetingAgentSpeculationState,
+  startStageSpeculation,
+  adoptStageSpeculation,
+  applyStageResultVirtually,
+  privateStageSpeculations,
+  meetingAgentCallContext,
+  MEETING_AGENT_BOOT_ID
 };
 
 module.exports = router;

@@ -6,7 +6,7 @@
   // 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review
   var MAX_STEP = 5;
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
-  var GENERATION_POLL_MS = 2000;
+  var GENERATION_POLL_MS = 1000;
   var generationTimer = null;
   var prewarmTimer = null;
   var completedGenerationNotice = null;
@@ -270,6 +270,7 @@
     // must leave the reader exactly where they were.
     if (options && options.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
     renderGenerationProgress();
+    if (options && options.scroll) maybeOpenPreparedSummary();
   }
 
   function setFieldValue(id, value) {
@@ -389,33 +390,83 @@
     document.getElementById('staleStages').textContent = state.draft.staleStages.join(' and ');
   }
 
+  function speculationFor(stage) {
+    var speculation = state.draft && state.draft.speculation;
+    return speculation && speculation.stage === stage ? speculation : null;
+  }
+
+  var SPECULATION_NOTICE_TEXT = {
+    discussion: {
+      preparing: 'Preparing the Discussion in the background while you check the details…',
+      ready: 'The Discussion is ready. Continue to open it.'
+    },
+    actions: {
+      preparing: 'Preparing Actions in the background while you review Discussion…',
+      ready: 'Actions preparation is ready. Starting Actions will reuse this work.'
+    },
+    summary: {
+      preparing: 'Preparing the Summary in the background while you review Actions…',
+      ready: 'The Summary is ready. It opens with the next step.'
+    }
+  };
+
+  function renderSpeculationNotice(element, stage, info) {
+    if (!element) return;
+    element.hidden = !info || generationRunning(stage);
+    if (element.hidden) return;
+    element.textContent = SPECULATION_NOTICE_TEXT[stage][info.status === 'ready' ? 'ready' : 'preparing'];
+  }
+
   function renderActionsPrewarm() {
-    var notice = document.getElementById('actionsPrewarmNotice');
-    if (!notice) return;
-    var prewarm = state.draft && state.draft.actionsPrewarm;
-    notice.hidden = !prewarm || generationRunning('actions');
-    if (notice.hidden) return;
-    notice.textContent = prewarm.status === 'ready'
-      ? 'Actions preparation is ready. Starting Actions will reuse this work.'
-      : 'Preparing Actions in the background while you review Discussion…';
+    if (!state.draft) return;
+    // The Actions notice keeps its older prewarm source so a deployment
+    // without the speculative pipeline still says what it used to.
+    renderSpeculationNotice(document.getElementById('actionsPrewarmNotice'), 'actions',
+      speculationFor('actions') || state.draft.actionsPrewarm);
+    document.querySelectorAll('[data-speculation-notice]').forEach(function (element) {
+      var stage = element.dataset.speculationNotice;
+      renderSpeculationNotice(element, stage, speculationFor(stage));
+    });
+  }
+
+  function backgroundWorkPreparing() {
+    if (!state.draft) return false;
+    var speculation = state.draft.speculation;
+    var prewarm = state.draft.actionsPrewarm;
+    return Boolean((speculation && speculation.status === 'preparing') || (prewarm && prewarm.status === 'preparing'));
   }
 
   function pollActionPrewarm() {
     clearTimeout(prewarmTimer);
-    var prewarm = state.draft && state.draft.actionsPrewarm;
-    if (!prewarm || prewarm.status !== 'preparing' || generationRunning()) return;
+    if (!backgroundWorkPreparing() || generationRunning()) return;
     prewarmTimer = window.setTimeout(async function () {
       if (!state.draft || generationRunning()) return;
       try {
         var payload = await jsonRequest(draftUrl('/generation'));
         state.draft.actionsPrewarm = payload.actionsPrewarm || null;
+        state.draft.speculation = payload.speculation || null;
         renderActionsPrewarm();
+        maybeOpenPreparedSummary();
         pollActionPrewarm();
       } catch (error) {
         prewarmTimer = window.setTimeout(pollActionPrewarm, 5000);
       }
     }, GENERATION_POLL_MS);
   }
+
+  // On the Summary screen with nothing written yet, the Summary the server
+  // has been preparing (or is preparing) is what the Generate button would
+  // produce, so start it without the click. Without the speculative pipeline
+  // there is no such notice and the button behaves as before.
+  function maybeOpenPreparedSummary() {
+    if (!state.draft || state.currentStep !== STAGE_STEP.summary || rendering) return;
+    if (generationRunning() || autoSummaryStarted) return;
+    if (String(state.draft.executiveSummary || '').trim()) return;
+    if (!speculationFor('summary')) return;
+    autoSummaryStarted = true;
+    startBackgroundStage('summary');
+  }
+  var autoSummaryStarted = false;
 
   function readSteer() {
     var field = document.getElementById('meetingSteer');
@@ -1062,6 +1113,7 @@
         if (!state.draft || state.draft.draftId !== expectedDraftId || (generationPollKey && currentKey !== expectedKey)) return;
         var activeStage = (state.draft.generation && state.draft.generation.stage) || 'discussion';
         state.draft.generation = payload.generation;
+        if (payload.speculation !== undefined) state.draft.speculation = payload.speculation;
         if (payload.generation && payload.generation.status === 'running') {
           setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
           setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false, activeStage);
