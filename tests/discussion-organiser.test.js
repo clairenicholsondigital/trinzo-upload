@@ -90,6 +90,23 @@ test('topics are consolidated by evidence adjacency and label similarity, generi
   assert.equal(merged[0].points.some((r) => r.id === 'p3') || merged[0].points.some((r) => r.id === 'p5'), true, 'earliest evidence first');
 });
 
+test('topics whose labels share a distinctive word and read alike merge; different subjects do not', async () => {
+  const labelVectors = (values) => values.map((value) => {
+    const s = value.toLowerCase();
+    return [/festival/.test(s) ? 1 : 0.1, /malt/.test(s) ? 1 : 0, /hop\b|hops/.test(s) ? 1 : 0, /order/.test(s) ? 0.6 : 0];
+  });
+  const merged = await consolidateTopics([
+    { id: 'a', topic: 'Festival Commitment (Beer Festival)', points: [{ id: 'p1', text: 'The festival on the twenty-second needs product.', evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] },
+    { id: 'b', topic: 'Malt stock levels', points: [{ id: 'p2', text: 'Eighteen sacks is not enough for both brews.', evidenceIds: ['T0004'] }], decisions: [], openQuestions: [] },
+    { id: 'c', topic: 'Hop order urgency', points: [{ id: 'p3', text: 'Seven point two kilos must be ordered this week.', evidenceIds: ['T0007'] }], decisions: [], openQuestions: [] },
+    { id: 'd', topic: 'Festival order finalisation', points: [{ id: 'p4', text: 'Fifteen firkins agreed for the festival.', evidenceIds: ['T0009'] }], decisions: [], openQuestions: [] }
+  ], index, { encode: labelVectors, minTopics: 3, maxTopics: 8 });
+  const labels = merged.map((topic) => topic.topic);
+  const festival = merged.find((topic) => topic.points.some((r) => r.id === 'p1'));
+  assert.ok(festival.points.some((r) => r.id === 'p4'), 'the two festival topics merge despite being far apart: ' + labels.join(' | '));
+  assert.equal(merged.length, 3, 'malt and hops stay separate: ' + labels.join(' | '));
+});
+
 test('supporting context is re-homed to the topic whose evidence window contains it', () => {
   const topics = [
     { topic: 'Risk comments', points: [{ id: 'p1', text: "Rebecca addressed David's comments.", evidenceIds: ['T0002', 'T0004'], supportingDetails: [

@@ -18,7 +18,7 @@ const CLOSURE_CLAUSE = /[;,]?\s*(?:meeting\s+)?(?:thanks|closure|farewells?|good
 const CONVERSATIONAL_OPENER = /^\s*(?:so|yeah|yes|no|okay|ok|um|uh|erm|well|right|and|but|i suppose|i think|i mean)\b[\s,.]/i;
 const CONVERSATIONAL_FILLER = /\b(?:i suppose|you know|i mean|kind of|sort of|wee bit|what happens in terms of)\b/i;
 const DECISION_LANGUAGE = /\b(?:agree(?:d|s|ment)?|decid(?:e|ed|es|ion)|approv(?:e|ed|al)|resolved|signed off|go ahead|committed to|rule (?:established|is)|confirmed (?:that|the plan)|will (?:be|go|proceed|supply|order|brew|deliver)|is to be|are to be)\b/i;
-const STATUS_LANGUAGE = /\b(?:expected|anticipated|progressing|ongoing|in progress|identified|confirmed for|remains|still|currently|planned|scheduled|proposed|noted|underway|awaiting)\b/i;
+const STATUS_LANGUAGE = /\b(?:reviewed|inquir(?:es|ed|y)|asks?|asked|queries|expected|anticipated|progressing|ongoing|in progress|identified|confirmed for|remains|still|currently|planned|scheduled|proposed|noted|underway|awaiting)\b/i;
 const QUESTION_MARKER = /\?|\b(?:whether|unclear|unresolved|undecided|to be (?:confirmed|decided|agreed|clarified)|awaiting (?:a )?(?:decision|confirmation|response|answer)|not yet (?:agreed|decided|confirmed|known|resolved)|open (?:point|question|item)|outstanding (?:point|question|query|item)|quer(?:y|ies)|questions? (?:raised|remains?|about|on|of|was|were)|pending|needs? (?:to be )?(?:confirm|clarif)|tbc)\b/i;
 const ANSWER_OPENER = /^\s*(?:yes|yeah|yep|no|nope|okay|ok)\b/i;
 const ANSWER_CLAIM = /\b(?:i(?:'ve| have)|we(?:'ve| have)|she(?:'s| has)|he(?:'s| has)|they(?:'ve| have)) (?:done|sent|put|added|updated|completed|addressed|closed|finished|amended|reviewed)\b/i;
@@ -123,8 +123,13 @@ function isVerbatimUnit(value, index, evidenceIds = []) {
   return candidates.some((unit) => overlap(value, unit.text) >= 0.9 && contentTokens(unit.text).size >= tokens.size * 0.8);
 }
 
+const INQUIRY_ONLY = /^[A-Z][\w'’-]+(?: [A-Z][\w'’-]+)? (?:inquires|enquires|asks|queries|questions|checks) (?:about|on|if|whether|for|regarding)\b/;
+
 function isConversational(value) {
-  return CONVERSATIONAL_OPENER.test(value) || CONVERSATIONAL_FILLER.test(value) || /\.\.\.|\w\.[A-Z]/.test(value);
+  if (CONVERSATIONAL_OPENER.test(value) || CONVERSATIONAL_FILLER.test(value) || /\.\.\.|\w\.[A-Z]/.test(value)) return true;
+  // "Jacqui inquires about PMS progress from Ciaran." records that a question
+  // was asked, not what was said; it reads as context, not a minute.
+  return INQUIRY_ONLY.test(value) && contentTokens(value).size <= 8;
 }
 
 function notClientReady(record, index) {
@@ -219,16 +224,44 @@ function topicSignature(topic) {
   return [text(topic.topic, 120), ...rows].filter(Boolean).join('. ');
 }
 
+const GENERIC_LABEL_TOKEN = new Set(['status', 'update', 'updates', 'plan', 'plans', 'planning', 'review', 'reviews', 'discussion', 'order', 'orders', 'meeting', 'item', 'items', 'point', 'points', 'next', 'steps', 'general', 'overview', 'progress', 'summary', 'recap', 'topic', 'topics', 'issue', 'issues', 'query', 'queries', 'inquiry', 'confirmation', 'commitment', 'requirements', 'timeline', 'timelines', 'management', 'process', 'document', 'documents', 'documentation']);
+
+function distinctiveLabelTokens(label) {
+  return new Set((text(label).match(/[A-Za-z][A-Za-z0-9'’-]+/g) || [])
+    .filter((token) => (token.length >= 4 || /^[A-Z]{2,}$/.test(token)))
+    .map((token) => stem(token.toLowerCase()))
+    .filter((token) => !STOP.has(token) && !GENERIC_LABEL_TOKEN.has(token)));
+}
+
+function shareDistinctiveToken(left, right) {
+  const a = distinctiveLabelTokens(left);
+  for (const token of distinctiveLabelTokens(right)) if (a.has(token)) return true;
+  return false;
+}
+
 async function topicSimilarities(topics, options = {}) {
   const signatures = topics.map(topicSignature);
+  const labels = topics.map((topic) => text(topic.topic, 120));
   let vectors = null;
+  let labelVectors = null;
   try {
-    vectors = typeof options.encode === 'function' ? await options.encode(signatures) : await encodeViaWorker(signatures, {});
-  } catch { vectors = null; }
-  return (a, b) => {
+    const encode = typeof options.encode === 'function' ? options.encode : (values) => encodeViaWorker(values, {});
+    vectors = await encode(signatures);
+    labelVectors = await encode(labels);
+  } catch { vectors = null; labelVectors = null; }
+  const signature = (a, b) => {
     if (vectors && vectors[a] && vectors[b]) return cosine(vectors[a], vectors[b]);
     return overlap(signatures[a], signatures[b]);
   };
+  const label = (a, b) => {
+    if (labelVectors && labelVectors[a] && labelVectors[b]) return cosine(labelVectors[a], labelVectors[b]);
+    return overlap(labels[a], labels[b]);
+  };
+  // Two labels about the same thing usually share the thing's name; a
+  // moderate embedding match plus a shared distinctive word is treated as
+  // the same subject ("Festival commitment" / "Festival order").
+  const kin = (a, b) => shareDistinctiveToken(labels[a], labels[b]) && label(a, b) >= Number(options.labelSimilarity || 0.45);
+  return Object.assign(signature, { label, kin });
 }
 
 function mergeInto(target, source) {
@@ -251,14 +284,16 @@ async function consolidateTopics(topics, index, options = {}) {
   const adjacency = Number(options.adjacencyUnits || 2);
   const strong = Number(options.mergeSimilarity || 0.75);
   const weak = Number(options.adjacentSimilarity || 0.55);
-  const windows = ordered.map((topic) => topicWindow(topic, index));
+  // A row is anchored where it starts in the transcript. Adjacency is the
+  // distance between the closest anchors of two groups, so a row that cites
+  // context from across the meeting does not make its topic "next to"
+  // everything.
+  const anchors = ordered.map((topic) => topicRows(topic).map(({ record }) => earliest(record, index)).filter(Number.isFinite));
   const groupSimilarity = (left, right) => Math.max(...left.flatMap((a) => right.map((b) => similarity(a, b))));
   const groupGap = (left, right) => {
-    const l = left.map((i) => windows[i]).filter(Boolean); const r = right.map((i) => windows[i]).filter(Boolean);
+    const l = left.flatMap((i) => anchors[i]); const r = right.flatMap((i) => anchors[i]);
     if (!l.length || !r.length) return Number.POSITIVE_INFINITY;
-    const lEnd = Math.max(...l.map((w) => w.end)); const lStart = Math.min(...l.map((w) => w.start));
-    const rEnd = Math.max(...r.map((w) => w.end)); const rStart = Math.min(...r.map((w) => w.start));
-    return Math.max(0, Math.max(rStart - lEnd, lStart - rEnd));
+    return Math.min(...l.flatMap((a) => r.map((b) => Math.abs(a - b))));
   };
   // First pass, in transcript order: join a topic to an earlier group when the
   // labels clearly say the same thing, or when they are adjacent in the
@@ -270,7 +305,8 @@ async function consolidateTopics(topics, index, options = {}) {
     groups.forEach((group, g) => {
       const sim = groupSimilarity(group, [i]);
       const gap = groupGap(group, [i]);
-      const ok = sim >= strong || (gap <= adjacency && sim >= weak) || (generic && gap <= adjacency);
+      const kin = group.some((member) => similarity.kin(member, i));
+      const ok = sim >= strong || kin || (gap <= adjacency && sim >= weak) || (generic && gap <= adjacency);
       if (ok && sim > bestScore) { bestScore = sim; best = g; }
     });
     if (best >= 0) groups[best].push(i); else groups.push([i]);
@@ -280,7 +316,7 @@ async function consolidateTopics(topics, index, options = {}) {
   // count is proportionate to the amount of content.
   const rowsOf = (group) => group.reduce((sum, i) => sum + topicRows(ordered[i]).length, 0);
   const total = ordered.reduce((sum, topic) => sum + topicRows(topic).length, 0);
-  const target = Math.min(Number(options.maxTopics || 8), Math.max(Number(options.minTopics || 4), Math.ceil(total / 2.5)));
+  const target = Math.min(Number(options.maxTopics || 8), Math.max(Number(options.minTopics || 4), Math.ceil(total / 2)));
   while (groups.length > target) {
     let smallest = 0;
     groups.forEach((group, g) => { if (rowsOf(group) < rowsOf(groups[smallest])) smallest = g; });
