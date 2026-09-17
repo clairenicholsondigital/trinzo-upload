@@ -36,7 +36,21 @@ function parseArgs(argv) {
     else if (arg === '--timeout-ms') options.timeoutMs = Number(value());
     else if (arg === '--env-file') options.envFile = value();
     else if (arg === '--review-pause-ms') options.reviewPauseMs = Number(value());
+    else if (arg === '--case-dir') options.caseDir = value();
     else throw new Error(`Unknown argument: ${arg}`);
+  }
+  // A case directory adds every sub-folder holding a transcript.txt as a case
+  // named after the folder, so a golden pack runs without listing its cases.
+  if (options.caseDir) {
+    const dir = path.resolve(options.caseDir);
+    for (const entry of require('node:fs').readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const transcript = path.join(dir, entry.name, 'transcript.txt');
+      if (require('node:fs').existsSync(transcript)) CASES[entry.name.toLowerCase()] = transcript;
+    }
+    if (options.cases.length === 1 && options.cases[0] === 'all') {
+      options.cases = Object.keys(CASES).filter((name) => path.isAbsolute(CASES[name])).sort();
+    }
   }
   if (!options.cases.length || options.cases.some((name) => !CASES[name])) {
     throw new Error(`--cases must contain: ${Object.keys(CASES).join(', ')}`);
@@ -90,7 +104,7 @@ async function createBenchmarkSession(db) {
 }
 
 async function prepareDraft(options, cookie, caseName) {
-  const transcriptPath = path.join(REPO_DIR, CASES[caseName]);
+  const transcriptPath = path.isAbsolute(CASES[caseName]) ? CASES[caseName] : path.join(REPO_DIR, CASES[caseName]);
   const transcript = await fs.readFile(transcriptPath);
   const form = new FormData();
   form.append('file', new Blob([transcript], { type: 'text/plain' }), `${caseName}-performance-baseline.txt`);
@@ -225,7 +239,15 @@ async function main() {
       for (const caseName of options.cases) {
         if (report.journeys.some((journey) => journey.case === caseName && journey.run === run)) continue;
         process.stderr.write(`baseline: ${caseName} run ${run}/${options.runs}\n`);
-        const journey = await runJourney(options, db, session, caseName, run);
+        let journey;
+        try {
+          journey = await runJourney(options, db, session, caseName, run);
+        } catch (error) {
+          // A case the tool cannot prepare (for example a transcript with no
+          // speaker turns) is a finding, not a reason to abandon the batch.
+          journey = { case: caseName, run, error: String(error.message || error), completedAt: new Date().toISOString() };
+          process.stderr.write(`baseline: ${caseName} run ${run} failed: ${journey.error}\n`);
+        }
         report.journeys.push(journey);
         if (options.output) {
           await fs.mkdir(path.dirname(path.resolve(options.output)), { recursive: true });
