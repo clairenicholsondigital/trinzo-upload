@@ -10284,9 +10284,16 @@ function speculationKey(draftId, stage) {
   return `${String(draftId || '')}:${String(stage || '')}`;
 }
 
+const SPECULATION_MAX_ENTRIES = 40;
+
 function pruneStageSpeculations(now = Date.now()) {
   for (const [key, entry] of privateStageSpeculations) {
     if (entry.status !== 'running' && Number(entry.expiresAt || 0) <= now) privateStageSpeculations.delete(key);
+  }
+  // Results carry their pass caches, so bound what one process holds.
+  for (const [key, entry] of privateStageSpeculations) {
+    if (privateStageSpeculations.size <= SPECULATION_MAX_ENTRIES) break;
+    if (entry.status !== 'running') privateStageSpeculations.delete(key);
   }
 }
 
