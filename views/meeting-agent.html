@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Meeting Agent | Trinzo</title>
+  <link rel="stylesheet" href="/static/trinzo-fonts.css">
+  <link rel="stylesheet" href="/static/trinzo.css">
+  <link rel="stylesheet" href="/static/meeting-agent.css">
+</head>
+<body class="meeting-agent-simple">
+  <main class="meeting-agent-shell">
+    <header class="meeting-agent-header">
+      <img src="/static/trinzo-logo-dark.svg" alt="Trinzo" class="meeting-agent-logo">
+      <span class="meeting-agent-product">Meeting Agent</span>
+    </header>
+
+    <section id="loadingState" class="meeting-agent-card state-card" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <h1>Checking your Microsoft session</h1>
+      <p>This should only take a moment.</p>
+    </section>
+
+    <section id="signedOutState" class="meeting-agent-card sign-in-card" hidden>
+      <span class="eyebrow">Microsoft 365</span>
+      <h1>Bring a meeting document into Trinzo</h1>
+      <p class="lead">Sign in with your work Microsoft account, then upload a Word document to get started.</p>
+      <button id="signInButton" class="button microsoft-button" type="button">
+        <span class="microsoft-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        Sign in with Microsoft
+      </button>
+      <p class="privacy-note">Your Microsoft sign-in is separate from the current Trinzo website login.</p>
+    </section>
+
+    <section id="signedInState" class="meeting-agent-card upload-card" hidden>
+      <div class="account-bar">
+        <div>
+          <span class="account-label">Signed in with Microsoft</span>
+          <strong id="accountName"></strong>
+          <span id="accountEmail"></span>
+        </div>
+        <button id="signOutButton" class="button secondary compact" type="button">Sign out</button>
+      </div>
+
+      <div class="transcript-monitoring" aria-live="polite">
+        <span class="eyebrow">Microsoft Teams</span>
+        <strong>Automatic transcript monitoring</strong>
+        <p id="transcriptStatus" class="monitoring-status">Waiting to start…</p>
+        <ul id="transcriptEvents" class="transcript-events" hidden></ul>
+      </div>
+
+      <div class="upload-intro">
+        <span class="eyebrow">Upload</span>
+        <h1>Add your meeting document</h1>
+        <p>Choose a Microsoft Word document. For this first version, Trinzo checks that the file can be read and then discards it.</p>
+      </div>
+
+      <div id="dropZone" class="document-drop-zone" role="button" tabindex="0" aria-controls="documentFile">
+        <div class="document-icon" aria-hidden="true">W</div>
+        <strong>Drop a Word document here</strong>
+        <span>or</span>
+        <button id="chooseFileButton" class="button secondary" type="button">Choose document</button>
+        <small>.docx only · Maximum 5 MB</small>
+        <input id="documentFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+      </div>
+
+      <div id="selectedFile" class="selected-file" hidden>
+        <div class="selected-file-copy">
+          <strong id="selectedFileName"></strong>
+          <span id="selectedFileSize"></span>
+        </div>
+        <button id="clearFileButton" class="button secondary compact" type="button">Remove</button>
+      </div>
+
+      <button id="uploadButton" class="button upload-button" type="button" disabled>Upload document</button>
+    </section>
+
+    <div id="pageStatus" class="status" role="status" aria-live="polite" hidden></div>
+  </main>
+  <script src="/static/meeting-agent.js" defer></script>
+</body>
+</html>
