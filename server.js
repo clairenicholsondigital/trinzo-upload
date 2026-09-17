@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 const express = require('express');
 const apiRoutes = require('./routes/api');
 const authRoutes = require('./routes/auth');
+const meetingAgentRoutes = require('./routes/meetingAgent');
 const reviewFeedbackRoutes = require('./routes/reviewFeedback');
 const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 
@@ -25,12 +26,37 @@ async function sendView(res, fileName) {
   res.type('html').send(addReviewSnippet(html));
 }
 
+async function sendPlainView(res, fileName) {
+  const html = await fs.readFile(path.join(__dirname, 'views', fileName), 'utf8');
+  res.type('html').send(html);
+}
+
+function setMeetingAgentSecurityHeaders(res) {
+  res.set({
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com; frame-src https://login.microsoftonline.com; font-src 'self'; base-uri 'none'; form-action 'self' https://login.microsoftonline.com; frame-ancestors 'none'",
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Content-Type-Options': 'nosniff'
+  });
+}
+
 app.get('/', (req, res) => {
   sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
 });
 
 app.get('/dashboard', (req, res) => {
   sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/meeting-agent', (req, res) => {
+  setMeetingAgentSecurityHeaders(res);
+  sendPlainView(res, 'meeting-agent.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/meeting-agent/auth-redirect', (req, res) => {
+  setMeetingAgentSecurityHeaders(res);
+  sendPlainView(res, 'meeting-agent-auth-redirect.html').catch((error) => res.status(404).send(error.message));
 });
 
 app.get('/meeting-minutes-final', authRoutes.requireAuth, (req, res) => {
@@ -175,6 +201,7 @@ app.get('/auth/forgot-password', (req, res) => {
 });
 
 app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes);
+app.use('/api/meeting-agent', meetingAgentRoutes);
 app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
 
