@@ -14,7 +14,11 @@ const { encodeViaWorker, cosine } = require('./semanticDedupe');
 const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should', 'are', 'was', 'were', 'has', 'have', 'been']);
 const ROW_KINDS = ['points', 'decisions', 'openQuestions'];
 const GENERIC_TOPIC = /^(?:discussion|general|other|misc(?:ellaneous)?|meeting|notes?|closure|closing|summary|recap(?: of .*)?|main focus areas and meeting closure)$/i;
-const CLOSURE_CLAUSE = /[;,]?\s*(?:meeting\s+)?(?:thanks|closure|farewells?|goodbyes?)(?:\s+and\s+(?:thanks|closure|farewells?|goodbyes?))?\.?\s*$/i;
+const CLOSURE_WORDS = '(?:thanks|closure|closing\\s+remarks|farewells?|goodbyes?)';
+const CLOSURE_VERB = '(?:(?:the\\s+)?meeting\\s+(?:was\\s+)?(?:concluded|closed|ended|wrapped\\s+up))';
+const CLOSURE_CLAUSE = new RegExp(
+  '[;,]?\\s*(?:' + CLOSURE_VERB + '(?:\\s+with)?\\s+|(?:the\\s+)?meeting\\s+)?' + CLOSURE_WORDS + '(?:\\s+(?:and|with)\\s+' + CLOSURE_WORDS + ')?\\.?\\s*$'
+  + '|[;,]\\s*' + CLOSURE_VERB + '\\.?\\s*$', 'i');
 const CONVERSATIONAL_OPENER = /^\s*(?:so|yeah|yes|no|okay|ok|um|uh|erm|well|right|and|but|i suppose|i think|i mean)\b[\s,.]/i;
 const CONVERSATIONAL_FILLER = /\b(?:i suppose|you know|i mean|kind of|sort of|wee bit|what happens in terms of)\b/i;
 const DECISION_LANGUAGE = /\b(?:agree(?:d|s|ment)?|decid(?:e|ed|es|ion)|approv(?:e|ed|al)|resolved|signed off|go ahead|committed to|rule (?:established|is)|confirmed (?:that|the plan)|will (?:be|go|proceed|supply|order|brew|deliver)|is to be|are to be)\b/i;

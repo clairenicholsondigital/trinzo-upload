@@ -30,6 +30,10 @@ const cloneVectors = (signatures) => signatures.map((signature) => {
 test('closure clauses are stripped from row wording', () => {
   assert.equal(stripClosure('Main focus remains on risk and electrical compliance; meeting thanks and closure.'), 'Main focus remains on risk and electrical compliance');
   assert.equal(stripClosure('Sign-off hoped for early next week.'), 'Sign-off hoped for early next week.');
+  assert.equal(stripClosure('Main focus remains on risk and electrical compliance; meeting concluded with thanks.'), 'Main focus remains on risk and electrical compliance');
+  assert.equal(stripClosure('Main focus remains on risk and electrical compliance working with David and Andrew; meeting thanks and closing remarks.'), 'Main focus remains on risk and electrical compliance working with David and Andrew');
+  assert.equal(stripClosure('Priorities confirmed; the meeting was concluded.'), 'Priorities confirmed');
+  assert.equal(stripClosure('The meeting concluded that the chiller must be serviced first.'), 'The meeting concluded that the chiller must be serviced first.');
 });
 
 test('status statements labelled Decision become points; answered open questions become points', () => {
