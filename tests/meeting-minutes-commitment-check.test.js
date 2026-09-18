@@ -1,0 +1,50 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const V = require('../utils/meetingMinutesAgentV2');
+const { isClientReadyActionWording } = require('../routes/api').stagedEvaluation;
+
+const units = [
+  { id: 'T0001', speaker: 'Jacqui Fox', text: 'When you press the mute button, maybe now takes the same approach as the alarms.' },
+  { id: 'T0002', speaker: 'Jacqui Fox', text: "So Janine, and I think Adil, you're involved in that as well next week, just to look at that from a clinician side." },
+  { id: 'T0003', speaker: 'Jacqui Fox', text: "Okay, I'll update that table for the new set of minutes." }
+];
+
+test('keyword vetoes are collected for a second look, minutes housekeeping is not', () => {
+  const vetoed = [];
+  const out = V.normaliseAgentResult({ actions: [
+    { action: 'Review the mute-button change with clinicians.', owners: ['Janine', 'Adil Kauim'], timing: { wording: 'next week' }, evidenceIds: ['T0001', 'T0002'] },
+    { action: 'Update the table for the new set of minutes.', owners: ['Jacqui Fox'], evidenceIds: ['T0003'] }
+  ] }, units, 'actions', { vetoed });
+  assert.equal(out.actions.length, 0);
+  assert.deepEqual(vetoed.map((row) => row.action), ['Review the mute-button change with clinicians.']);
+});
+
+test('only a verified commitment quote brings an action back; unsupported owners are cleared', () => {
+  const actions = [
+    { action: 'Review the mute-button change with clinicians.', owners: ['Janine', 'Adil Kauim'], evidenceIds: ['T0002'] },
+    { action: 'Review the alarm sounds.', owners: ['Andrew'], evidenceIds: ['T0001'] }
+  ];
+  const items = V.commitmentCheckItems(actions, units);
+  assert.match(V.commitmentCheckPrompt(items), /^ACTION_CRITIC_COMMITMENT/);
+  const rescued = V.applyCommitmentCheckResults(actions, items, [
+    { id: 'c1', verdict: 'commitment', commitmentQuote: "Janine, and I think Adil, you're involved in that as well next week", ownerSupported: true },
+    { id: 'c2', verdict: 'commitment', commitmentQuote: 'Andrew will review the alarm sounds', ownerSupported: false }
+  ]);
+  assert.equal(rescued.length, 1);
+  assert.deepEqual(rescued[0].owners, ['Janine', 'Adil Kauim']);
+  const unsupportedOwner = V.applyCommitmentCheckResults(actions, items, [
+    { id: 'c1', verdict: 'commitment', commitmentQuote: "you're involved in that as well next week", ownerSupported: false }
+  ]);
+  assert.deepEqual(unsupportedOwner[0].owners, []);
+});
+
+test('ordinary instruction verbs pass the wording filter; speech does not', () => {
+  for (const wording of ['Trace the software changes.', 'Discuss the gaps with Louise.', 'Focus on TF03 this week.', 'Chase the lab results.']) {
+    assert.equal(isClientReadyActionWording(wording), true, wording);
+  }
+  for (const wording of ["It's to trace through the actual software code.", "I'll try and reduce the standards down.", 'The team will review.']) {
+    assert.equal(isClientReadyActionWording(wording), false, wording);
+  }
+});

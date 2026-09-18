@@ -992,7 +992,7 @@ const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will 
 const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|consider|considering|possible|potentially|it would be good|worth thinking)\b/i;
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
-const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite)\b/i;
+const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes)\b/i;
 const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
 const ACTION_IMPERATIVE_PATTERN = /^\s*(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s*,\s*)?(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
@@ -1995,6 +1995,49 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
   return { actions: checked, flags };
 }
 
+// ---- Commitment check -----------------------------------------------------
+// Model-extracted actions that the keyword reading vetoed get one second look.
+// An action comes back only when the model quotes the words where someone
+// commits to it, is assigned it or agrees to it, and the quote is in the
+// passage. Owners the model cannot tie to those words are removed.
+function commitmentCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_COMMITMENT_CHECK_V1 || '0'));
+}
+
+function commitmentCheckItems(actions = [], units = []) {
+  return (Array.isArray(actions) ? actions : []).slice(0, 24).map((action, index) => {
+    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 2).slice(0, 24).map((unit) => `${unit.speaker}: ${unit.text}`);
+    if (!passage.length || !text(action?.action)) return null;
+    return { id: `c${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], passage: passage.join('\n') };
+  }).filter(Boolean);
+}
+
+function commitmentCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_COMMITMENT',
+    'Each item is a possible action from a meeting, with the transcript passage it came from. The passage is the only authority.',
+    'Decide whether, in the passage, someone committed to this work, was assigned it, or agreed to do it, as work still to be done after the meeting.',
+    `- "commitment": yes. Examples: "I'm gonna focus on TFO3 this week", "Janine and Adil, you're involved in that next week", "leave that with me", "can you send it over? Yes, will do".`,
+    '- "not_commitment": a suggestion or idea nobody took on, a status update, work already done, a description of how something works, a question, meeting housekeeping such as taking these minutes, or something an outside organisation will do.',
+    'For "commitment" give commitmentQuote: the exact words where the person commits, is assigned or agrees, copied verbatim as one contiguous span of at most 25 words (it may run across adjacent lines; leave out speaker names). Also give ownerSupported: true if the passage ties the listed owners to the work, false otherwise.',
+    'Never paraphrase a quote. If you are unsure, choose "not_commitment".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","commitmentQuote":"","ownerSupported":true,"reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+function applyCommitmentCheckResults(actions = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const rescued = [];
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || row.verdict !== 'commitment' || !decisionQuoteFound(row.commitmentQuote, item.passage)) continue;
+    const action = actions[item.index];
+    rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []), reviewFlagIds: [] });
+  }
+  return rescued;
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -2067,6 +2110,8 @@ function applyDecisionCheckResults(discussion = [], items = [], results = []) {
   return { discussion: checked, demoted, checked: items.length };
 }
 
+const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'meeting_admin', 'unaccepted_request']);
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
@@ -2083,7 +2128,15 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
     if (options.enforceEvidence !== false && !evidenceIds.length) return null;
-    if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) return null;
+    if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) {
+      // The keyword reading can be wrong ("Janine and Adil, you're involved in
+      // that next week" reads as no commitment). A caller may collect these
+      // for a quote-verified second look; they are never published from here.
+      if (Array.isArray(options.vetoed) && COMMITMENT_RECHECK_DISPOSITIONS.has(disposition) && !ACTION_ADMIN_PATTERN.test(action)) {
+        options.vetoed.push({ id: text(item?.id, 80) || stableId('action', action, index), action, owners, timing: timingFrom(item, options), evidenceIds, reviewFlagIds: [], disposition });
+      }
+      return null;
+    }
     // Recovery fills gaps in fresh agent output only. A save (enforceEvidence
     // false) carries timings a reviewer or a timing check has already settled,
     // so an empty timing there is deliberate and must stay empty.
@@ -2615,6 +2668,10 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  commitmentCheckEnabled,
+  commitmentCheckItems,
+  commitmentCheckPrompt,
+  applyCommitmentCheckResults,
   decisionCheckEnabled,
   decisionCheckItems,
   decisionCheckPrompt,

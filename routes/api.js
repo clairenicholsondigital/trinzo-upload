@@ -198,7 +198,11 @@ const {
   decisionCheckItems,
   decisionCheckPrompt,
   applyDecisionCheckResults,
-  reconcileRecordFlags
+  reconcileRecordFlags,
+  commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
+  commitmentCheckItems,
+  commitmentCheckPrompt,
+  applyCommitmentCheckResults
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -9432,10 +9436,25 @@ function meetingAgentActionQualityCandidateBudget(transcript = '', fixedPayload 
     50000 - String(transcript || '').length - String(fixedPayload || '').length - 4000));
 }
 
+// A published action reads as an instruction: it starts with a verb and is not
+// a fragment of speech. The verb list is deliberately wide; the evidence gates
+// decide whether the work is real, this only rejects wording.
+const CLIENT_READY_ACTION_VERBS = new Set(('accept add address agree align analyse analyze apply approve arrange ask assess assign attach attend '
+  + 'book brief build buy calculate call capture carry chase check circulate clarify close collate collect communicate compare compile complete '
+  + 'conduct confirm consider consolidate contact continue coordinate correct create cross-check decide define deliver design determine develop '
+  + 'discuss distribute document download draft email engage ensure escalate establish evaluate explore feed fill finalise finalize finish fix '
+  + 'flag focus follow forward gather generate get give hold host identify implement include incorporate inform input inspect introduce investigate '
+  + 'invite issue keep launch liaise link list load log look make map measure meet merge monitor move notify obtain order organise organize outline '
+  + 'pass pay perform plan populate prepare present prioritise prioritize procure produce progress provide publish purchase put raise reach '
+  + 're-run rerun reconcile record redo refine register reissue remove replace reply report request resend resolve respond restart retest return '
+  + 'review revise rework run save schedule scope seek select send set settle share sign source speak specify split standardise standardize start '
+  + 'store submit summarise summarize supply support switch take talk tell test tidy trace track train transfer translate trial update upload '
+  + 'validate verify visit walk work write').split(' '));
 function isClientReadyActionWording(value = '') {
   const source = meetingMinutesAgentText(value, 1600);
   if (!source || /^(?:and|but|so|yeah|yes|no|okay|ok|well|i(?:'ll| will| am|'m)|we(?:'ll| will| are|'re)|you(?:'ll| will| are|'re))\b/i.test(source)) return false;
-  return /^(?:accept|add|address|agree|analyse|analyze|arrange|assess|attend|book|build|calculate|check|circulate|clarify|close|complete|conduct|confirm|coordinate|create|decide|define|deliver|determine|develop|document|draft|email|establish|evaluate|finalise|finalize|finish|follow up|forward|generate|get|hold|identify|implement|inspect|investigate|issue|list|meet|monitor|obtain|organise|organize|plan|prepare|provide|record|resolve|review|revise|run|schedule|send|share|sign|submit|support|test|track|update|validate|verify|write)\b/i.test(source);
+  const first = (source.toLowerCase().match(/^[a-z][a-z-]*/) || [''])[0];
+  return CLIENT_READY_ACTION_VERBS.has(first);
 }
 
 function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, actions, candidates }) {
@@ -9636,7 +9655,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
-    const isTimingCheckResult = ['timing_check', 'decision_check'].includes(options.responseKind)
+    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
@@ -9667,7 +9686,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
-  const timingCheck = ['timing_check', 'decision_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
+  const timingCheck = ['timing_check', 'decision_check', 'commitment_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !timingCheck
@@ -12518,7 +12537,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
     candidateDispositions: [], reviewFlags: []
   };
-  const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+  // Model actions vetoed by the keyword reading, for the commitment check.
+  const vetoedModelActions = [];
+  const vetoSink = stage === 'actions' ? { vetoed: vetoedModelActions } : {};
+  const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
   if (stage === 'discussion' && !flattenHybridDiscussion(primary.discussion).length) {
     degradedSources.push('Primary discussion discovery returned no grounded propositions; deterministic evidence and gap recovery were used without repeating the same request.');
   }
@@ -12591,7 +12613,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       })
     });
     if (recoveryParsed) {
-      recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+      recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
       if (stage === 'actions') {
         const recoveryDeclaredProposals = normaliseAgentDeclaredProposals(
           recoveryParsed, draft.sourceUnits, { meetingDate: details.meetingDate }
@@ -12852,7 +12874,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       ...reconstructedRefereeActions.actionProposals
     ])
   };
-  const referee = normaliseAgentResult(refereeInput, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+  const referee = normaliseAgentResult(refereeInput, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
   if (stage === 'actions') {
     agentDeclaredProposals.push(...normaliseAgentDeclaredProposals(refereeParsed, draft.sourceUnits, { meetingDate: details.meetingDate }));
     agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(refereeParsed, draft.sourceUnits));
@@ -13049,6 +13071,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
 
   let refereeActions = referee.actions.filter((record) => !isVagueReconstructedAction(record.action)
     && isClientReadyActionWording(record.action));
+
   const sparseFloor = Math.max(2, Math.ceil(primary.actions.length * 0.5));
   if (primary.actions.length && refereeActions.length < sparseFloor) {
     degradedSources.push('The final action referee returned an implausibly sparse result; the evidence-normalised primary draft was retained for safety.');
@@ -13163,6 +13186,26 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     [...actionChains, ...actionThreads], [...refereeActions, ...critic.actions, ...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop], draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
+  let commitmentRescueCount = 0;
+  if (meetingMinutesCommitmentCheckEnabled() && vetoedModelActions.length) {
+    // A model pass extracted these and the keyword reading vetoed them. Each
+    // gets one quote-verified look; anything already published or proposed
+    // is left alone.
+    const covered = [...automatic, ...singleSource, ...critic.actions, ...salvage.actions, ...candidateBackstop,
+      ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop, ...agentDeclaredProposals];
+    const recheck = dedupeHybridActionRecords(vetoedModelActions.filter((record) => isClientReadyActionWording(record.action)
+      && !covered.some((existing) => hybridActionsEquivalent(record.action, existing.action))));
+    const commitmentItems = commitmentCheckItems(recheck, draft.sourceUnits);
+    const commitmentBatches = [];
+    for (let index = 0; index < commitmentItems.length; index += 8) commitmentBatches.push(commitmentItems.slice(index, index + 8));
+    const commitmentResults = (await Promise.all(commitmentBatches.map((batch, index) => call(
+      `critic-commitment-${index + 1}`, commitmentCheckPrompt(batch),
+      { optional: true, responseKind: 'commitment_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const rescued = applyCommitmentCheckResults(recheck, commitmentItems, commitmentResults);
+    commitmentRescueCount = rescued.length;
+    automatic.push(...rescued);
+  }
   const publishedActions = dedupeHybridActionRecords(automatic)
     .filter((record) => !isVagueReconstructedAction(record.action));
   agentDeclaredProposals = dedupeHybridActionRecords(agentDeclaredProposals)
@@ -13190,9 +13233,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actions: [...finalPublishedActions, ...remainingProposalCandidates]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
   const reconciledPublishedActions = mergePublishedActionEvidence(finalPublishedActions, complete);
-  const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
+  const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
-  ), actionChains);
+  );
+  // A "change" that alters nothing a reviewer can see is noise.
+  const visibleAction = (record = {}) => JSON.stringify([record.action, record.owners || [], record.timing || {}, record.evidenceIds || []]);
+  builtProposal.changes = (builtProposal.changes || []).filter((change) => change.type !== 'modify'
+    || visibleAction(change.before) !== visibleAction(change.after));
+  const proposal = annotateActionProposalChains(builtProposal, actionChains);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
   const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
@@ -13280,6 +13328,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         agentProposalPromotionCount: safeProposalPromotions.length,
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
+        commitmentRescueCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
