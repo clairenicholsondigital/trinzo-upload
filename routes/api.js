@@ -189,7 +189,11 @@ const {
   actionEvidenceDisposition,
   groundedExecutiveSummary,
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
-  applyTimingClauseChecks
+  applyTimingClauseChecks,
+  timingCheckEnabled: meetingMinutesTimingCheckEnabled,
+  timingCheckItems,
+  timingCheckPrompt,
+  applyTimingCheckResults
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -9627,8 +9631,11 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
+    const isTimingCheckResult = options.responseKind === 'timing_check'
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
-      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult) {
+      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult || isTimingCheckResult) {
       structured = candidate;
       break;
     }
@@ -9655,8 +9662,10 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
+  const timingCheck = options.responseKind === 'timing_check' && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
+      && !timingCheck
       && !flatDiscussionDiscovery
       && !anchoredDiscussionDiscovery
       && !anchoredActionDiscovery
@@ -13189,9 +13198,23 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
   // Timing ownership is corrected once, on what the reviewer will see, so
   // every change carries its flag.
-  const timingChecked = meetingMinutesTimingClauseChecksEnabled()
+  let timingChecked = meetingMinutesTimingClauseChecksEnabled()
     ? applyTimingClauseChecks(reconciledPublishedActions, draft.sourceUnits, { meetingDate: details.meetingDate })
     : { actions: reconciledPublishedActions, flags: [] };
+  if (meetingMinutesTimingCheckEnabled()) {
+    // The model says which step each timing was spoken for, quoting the
+    // passage; applyTimingCheckResults verifies every quote before changing
+    // anything. A failed call leaves the timings exactly as they were.
+    const timingItems = timingCheckItems(timingChecked.actions, draft.sourceUnits);
+    const timingBatches = [];
+    for (let index = 0; index < timingItems.length; index += 8) timingBatches.push(timingItems.slice(index, index + 8));
+    const timingResults = (await Promise.all(timingBatches.map((batch, index) => call(
+      `critic-timing-${index + 1}`, timingCheckPrompt(batch, details.meetingDate),
+      { optional: true, responseKind: 'timing_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: details.meetingDate });
+    timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
+  }
   return {
     changes: {
       actions: timingChecked.actions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
