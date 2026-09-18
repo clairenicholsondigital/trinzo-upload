@@ -10497,7 +10497,23 @@ function scheduleStageSpeculation(draftId, userId, options = {}) {
   speculationTimers.set(key, timer);
 }
 
+// A row must never point at a flag the draft does not hold (the reviewer would
+// see a flag count or link that leads nowhere). Applied on every save.
+function meetingAgentWithoutDanglingFlagRefs(records = [], flagIds = new Set()) {
+  const clean = (value) => {
+    if (Array.isArray(value)) return value.map(clean);
+    if (!value || typeof value !== 'object') return value;
+    const next = { ...value };
+    if (Array.isArray(next.reviewFlagIds)) next.reviewFlagIds = [...new Set(next.reviewFlagIds)].filter((id) => flagIds.has(String(id)));
+    for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails']) if (Array.isArray(next[key])) next[key] = next[key].map(clean);
+    return next;
+  };
+  return (Array.isArray(records) ? records : []).map(clean);
+}
+
 function meetingAgentDraftPayload(draft = {}) {
+  const payloadFlags = (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag);
+  const payloadFlagIds = new Set(payloadFlags.map((flag) => String(flag.id)));
   return {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     payloadVersion: MEETING_AGENT_PAYLOAD_VERSION,
@@ -10507,9 +10523,9 @@ function meetingAgentDraftPayload(draft = {}) {
     preparedTranscript: normaliseMeetingAgentKnownTerms(draft.preparedTranscript || ''),
     salientDetails: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.salientDetails) ? draft.salientDetails : []),
     details: sanitiseMeetingAgentDetails(draft.details),
-    discussion: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.discussion) ? draft.discussion : []),
-    actions: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.actions) ? draft.actions : []),
-    reviewFlags: normaliseMeetingAgentKnownTermsDeep((Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)),
+    discussion: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.discussion, payloadFlagIds)),
+    actions: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.actions, payloadFlagIds)),
+    reviewFlags: normaliseMeetingAgentKnownTermsDeep(payloadFlags),
     pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
     changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
     staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
