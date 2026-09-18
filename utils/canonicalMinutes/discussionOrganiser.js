@@ -163,7 +163,7 @@ function questionIsAnswered(record, index) {
 // passage records the agreement, is a decision. Deliberately narrow: plans,
 // intentions and "will be" statements stay points; only explicit agreement
 // language is promoted.
-const EXPLICIT_DECISION = /\b(?:agreed|agreement (?:to|that|was|on)|decided|decision (?:to|was|is|made)|will go (?:with|ahead)|approved|signed off|opted to|chose to)\b/i;
+const EXPLICIT_DECISION = /\b(?:(?:we|they|the team|it was|was|were|has been|have been|had)\s+(?:formally\s+)?(?:agreed|decided|approved)|agreed (?:to|that|on)|decided (?:to|that|on)|decision (?:to|was|is|made)|(?:was|were|has been|have been|is) approved|approved (?:the|to|that)|signed off|opted to|chose to)\b/i;
 const AGREEMENT_CUE = /\b(?:agreed|agree|decided|let'?s (?:go|do)|go (?:with|ahead)|sounds good|that'?s fine|happy with that|signed off|approved?|confirmed|yes,? (?:let'?s|we'?ll|do it|go))\b/i;
 
 function correctnessChecksEnabled() {

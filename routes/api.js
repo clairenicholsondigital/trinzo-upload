@@ -188,7 +188,7 @@ const {
   evidenceSupportScore,
   actionEvidenceDisposition,
   groundedExecutiveSummary,
-  correctnessChecksEnabled: meetingMinutesCorrectnessChecksEnabled,
+  timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
   applyTimingClauseChecks
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
@@ -13189,7 +13189,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
   // Timing ownership is corrected once, on what the reviewer will see, so
   // every change carries its flag.
-  const timingChecked = meetingMinutesCorrectnessChecksEnabled()
+  const timingChecked = meetingMinutesTimingClauseChecksEnabled()
     ? applyTimingClauseChecks(reconciledPublishedActions, draft.sourceUnits, { meetingDate: details.meetingDate })
     : { actions: reconciledPublishedActions, flags: [] };
   return {

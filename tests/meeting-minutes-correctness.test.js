@@ -41,10 +41,11 @@ test('a timing lifted from a neighbouring step is reassigned to the step that ow
   assert.deepEqual(issue, { type: 'reassign', from: 'end of the week', to: 'end of next week' });
 });
 
-test('a timing spoken for a different step is removed when the action has none of its own', () => {
-  const issue = V.timingClauseIssue('Upload the response documents for Grace to review and approve, then direct the auditor to them.',
-    timing('today', 'deadline'), units, ['T0181', 'T0182']);
-  assert.deepEqual(issue, { type: 'remove', from: 'today' });
+test('a timing is not removed when the better-matching clause states no timing of its own', () => {
+  // On live meetings removal guessed wrong more often than right, so only a
+  // clear reassignment is acted on.
+  assert.equal(V.timingClauseIssue('Upload the response documents for Grace to review and approve, then direct the auditor to them.',
+    timing('today', 'deadline'), units, ['T0181', 'T0182']), null);
 });
 
 test('a timing spoken with its own step, a correct timing, and a condition are all left alone', () => {
@@ -68,9 +69,9 @@ test('published agent actions are corrected once, each change flagged, and a sec
   }];
   const first = V.applyTimingClauseChecks(actions, units, { meetingDate: '2026-06-17' });
   assert.equal(first.actions[0].timing.wording, 'end of next week');
-  assert.equal(first.actions[1].timing.kind, 'not_stated');
-  assert.equal(first.flags.length, 2);
-  assert.ok(first.actions.every((action) => action.reviewFlagIds.some((id) => first.flags.some((flag) => flag.id === id))));
+  assert.equal(first.actions[1].timing.wording, 'today', 'no reassignment available, so left alone');
+  assert.equal(first.flags.length, 1);
+  assert.ok(first.actions[0].reviewFlagIds.some((id) => first.flags.some((flag) => flag.id === id)));
   const second = V.applyTimingClauseChecks(first.actions, units, { meetingDate: '2026-06-17' });
   assert.equal(second.flags.length, 0, 'stable once corrected');
 }));
@@ -94,12 +95,14 @@ test('a timing whose clause names the work only by pronoun keeps its timing', ()
 });
 
 test('a reviewer\'s own timing is never rewritten, only flagged', () => withChecks(() => {
+  process.env.MEETING_MINUTES_AGENT_TIMING_CLAUSE_V1 = '1';
   const saved = V.normaliseAgentResult({ actions: [{
-    id: 'a1', action: 'Upload the response documents for Grace to review and approve, then direct the auditor to them.',
-    owners: [], timing: { kind: 'deadline', wording: 'today' }, evidenceIds: ['T0181', 'T0182']
+    id: 'a1', action: 'Finalize the two code changes to produce a new software version.',
+    owners: [], timing: { kind: 'target', wording: 'end of the week' }, evidenceIds: ['T0067', 'T0068']
   }] }, units, 'actions', { meetingDate: '2026-06-17', enforceEvidence: false });
-  assert.equal(saved.actions[0].timing.wording, 'today');
-  assert.ok(saved.reviewFlags.some((flag) => flag.kind === 'timing' && /belongs to a different step/.test(flag.message)));
+  assert.equal(saved.actions[0].timing.wording, 'end of the week');
+  assert.ok(saved.reviewFlags.some((flag) => flag.kind === 'timing' && /"end of next week" for this one/.test(flag.message)));
+  process.env.MEETING_MINUTES_AGENT_TIMING_CLAUSE_V1 = '0';
 }));
 
 test('an uncited sentence the meeting never supports gets no citations and a missing-evidence flag', () => withChecks(() => {
@@ -113,11 +116,6 @@ test('an uncited sentence the meeting never supports gets no citations and a mis
   assert.ok(real.evidenceIds.includes('T0068'), 'a genuine uncited sentence still finds its passage');
 }));
 
-test('a name the cited passage never mentions is flagged; speakers and topic words are not', () => withChecks(() => {
-  assert.deepEqual(V.unverifiedProperNouns('Jacqui to send the software files to Hartley for sign-off.', units, ['T0068']), ['Hartley']);
-  assert.deepEqual(V.unverifiedProperNouns('Rebecca will walk Grace through the response to the cars.', units, ['T0181', 'T0182']), []);
-}));
-
 test('a statement its speaker revises shortly afterwards is flagged and cited with the revision', () => withChecks(() => {
   const saved = V.normaliseAgentResult({ discussion: [{ topic: 'Usability', points: [
     { id: 'p1', text: 'The formative study will be ready before the submission.', evidenceIds: ['T0102'] }
@@ -129,6 +127,22 @@ test('a statement its speaker revises shortly afterwards is flagged and cited wi
 
 test('a conversational "actually" that only changes who does something is not a revision of the fact', () => {
   assert.equal(V.laterRevisionUnit(units, ['T0200']), null);
+});
+
+test('the timing-ownership rule is off unless its own flag is set', () => withChecks(() => {
+  const saved = V.normaliseAgentResult({ actions: [{
+    id: 'a1', action: 'Finalize the two code changes to produce a new software version.',
+    owners: [], timing: { kind: 'target', wording: 'end of the week' }, evidenceIds: ['T0067', 'T0068']
+  }] }, units, 'actions', { meetingDate: '2026-06-17', enforceEvidence: false });
+  assert.ok(!saved.reviewFlags.some((flag) => flag.kind === 'timing'));
+}));
+
+test('"No," opening a reply is an answer, not a revision', () => {
+  const answerUnits = [
+    { id: 'T0400', speaker: 'Jenny Gough', text: 'Some large companies have submitted English-only declarations without pushback.' },
+    { id: 'T0401', speaker: 'Jenny Gough', text: 'No, but the notified body has not picked up that there were no other language declarations.' }
+  ];
+  assert.equal(V.laterRevisionUnit(answerUnits, ['T0400']), null);
 });
 
 test('with the flag off nothing changes', () => {
@@ -146,10 +160,11 @@ test('with the flag off nothing changes', () => {
 test('an explicitly agreed point with a recorded agreement becomes a decision; plans stay points', () => withChecks(() => {
   const index = O.unitIndex(units);
   const topic = O.retypeRows({ topic: 'Rollout', points: [
-    { id: 'p1', text: 'Agreed to keep the weekend cover internal for the rollout.', evidenceIds: ['T0210', 'T0211'] },
+    { id: 'p1', text: 'The team agreed to keep the weekend cover internal for the rollout.', evidenceIds: ['T0210', 'T0211'] },
+    { id: 'p4', text: 'Plan to load the approved documents into the tech file.', evidenceIds: ['T0211'] },
     { id: 'p2', text: 'The rollout team will be briefed next week by the service desk.', evidenceIds: ['T0212'] },
     { id: 'p3', text: 'Agreed to keep the weekend cover internal.', evidenceIds: ['T0210'], reviewFlagIds: ['f1'] }
   ], decisions: [], openQuestions: [] }, index);
   assert.deepEqual(topic.decisions.map((row) => row.id), ['p1']);
-  assert.deepEqual(topic.points.map((row) => row.id), ['p2', 'p3'], 'a flagged row is never promoted');
+  assert.deepEqual(topic.points.map((row) => row.id), ['p4', 'p2', 'p3'], 'flagged rows and adjectival "approved" are never promoted');
 }));
