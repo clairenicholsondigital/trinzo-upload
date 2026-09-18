@@ -69,3 +69,15 @@ test('"I\'ve made the decision" in the transcript counts as a recorded agreement
     if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
   }
 });
+
+test('a row stating a decision is not mistaken for a status update', () => {
+  const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
+  process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
+  try {
+    const { isExplicitDecision } = require('../utils/canonicalMinutes/discussionOrganiser');
+    const index = { byId: new Map([['T1', { id: 'T1', text: "I've made the decision we are absolutely covering it." }]]) };
+    assert.ok(isExplicitDecision({ text: 'Decision made to include PPE in procedures; follow-up with Orla planned to confirm approach.', evidenceIds: ['T1'] }, index));
+  } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
+  }
+});

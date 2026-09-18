@@ -21,7 +21,7 @@ const CLOSURE_CLAUSE = new RegExp(
   + '|[;,]\\s*' + CLOSURE_VERB + '\\.?\\s*$', 'i');
 const CONVERSATIONAL_OPENER = /^\s*(?:so|yeah|yes|no|okay|ok|um|uh|erm|well|right|and|but|i suppose|i think|i mean)\b[\s,.]/i;
 const CONVERSATIONAL_FILLER = /\b(?:i suppose|you know|i mean|kind of|sort of|wee bit|what happens in terms of)\b/i;
-const DECISION_LANGUAGE = /\b(?:agree(?:d|s|ment)?|decid(?:e|ed|es|ion)|approv(?:e|ed|al)|resolved|signed off|go ahead|committed to|rule (?:established|is)|confirmed (?:that|the plan)|will (?:be|go|proceed|supply|order|brew|deliver)|is to be|are to be)\b/i;
+const DECISION_LANGUAGE = /\b(?:agree(?:d|s|ment)?|decid(?:e|ed|es)|decisions?|approv(?:e|ed|al)|resolved|signed off|go ahead|committed to|rule (?:established|is)|confirmed (?:that|the plan)|will (?:be|go|proceed|supply|order|brew|deliver)|is to be|are to be)\b/i;
 const STATUS_LANGUAGE = /\b(?:reviewed|inquir(?:es|ed|y)|asks?|asked|queries|expected|anticipated|progressing|ongoing|in progress|identified|confirmed for|remains|still|currently|planned|scheduled|proposed|noted|underway|awaiting)\b/i;
 const QUESTION_MARKER = /\?|\b(?:whether|unclear|unresolved|undecided|to be (?:confirmed|decided|agreed|clarified)|awaiting (?:a )?(?:decision|confirmation|response|answer)|not yet (?:agreed|decided|confirmed|known|resolved)|open (?:point|question|item)|outstanding (?:point|question|query|item)|quer(?:y|ies)|questions? (?:raised|remains?|about|on|of|was|were)|pending|needs? (?:to be )?(?:confirm|clarif)|tbc)\b/i;
 const ANSWER_OPENER = /^\s*(?:yes|yeah|yep|no|nope|okay|ok)\b/i;
