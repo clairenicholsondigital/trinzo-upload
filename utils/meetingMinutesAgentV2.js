@@ -1937,6 +1937,78 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
   return { actions: checked, flags };
 }
 
+// ---- Decision check -------------------------------------------------------
+// A Discussion row keeps the "decision" label only when the model quotes the
+// words in its passage that make or accept the choice, and the quote is found
+// there. Everything else becomes an ordinary point with its wording unchanged.
+// The check only ever demotes: tested on real meetings, promoting points was
+// too noisy to trust.
+function decisionCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DECISION_CHECK_V1 || '0'));
+}
+
+function decisionCheckItems(discussion = [], units = []) {
+  const items = [];
+  (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    (Array.isArray(topic?.decisions) ? topic.decisions : []).forEach((record, rowIndex) => {
+      const passage = evidenceWindowUnits(units, record?.evidenceIds || [], 1).slice(0, 18)
+        .map((unit) => `${unit.speaker}: ${unit.text}`);
+      if (!passage.length || !text(record?.text)) return;
+      items.push({ id: `d${items.length + 1}`, topicIndex, rowIndex, row: text(record.text, 800), passage: passage.join('\n') });
+    });
+  });
+  return items;
+}
+
+function decisionCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_DECISION',
+    'You check which meeting-minutes rows record a decision. Each item gives a row and the transcript passage it was drawn from. The passage is the only authority.',
+    `A decision is a choice the meeting settled: someone in the meeting chose a course of action, approved or rejected something, ruled something in or out, or the participants agreed what will be done. Examples: "I've made the decision we are covering it", "let's set up sessions on Wednesday, Thursday and Friday", "we'll go with option B", "that is approved".`,
+    'These are NOT decisions: status or progress updates, lists of next steps in an update, work already done, descriptions of how a process, tool or regulation works, facts, explanations, opinions, goals described as probable, an idea people liked without settling what will happen, a suggestion or proposal nobody accepted, a question, a routine task someone will do, and anything decided, scheduled or to be approved outside this meeting that is only being reported.',
+    `The decisionQuote must be the words that make or accept the choice (for example "let's", "we'll", "I've decided", "agreed", "go ahead"), not words that merely mention the topic.`,
+    'For each item give verdict "decision" or "not_decision". For "decision" give decisionQuote: the exact words in the passage where the choice is made or agreed, copied verbatim as one contiguous span of at most 25 words. Never paraphrase a quote. If you are unsure, choose "not_decision".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","decisionQuote":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+// A quote may run across adjacent lines; speaker labels are not spoken words.
+function decisionQuoteFound(quote, passage) {
+  const flat = (value) => quoteText(value).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const needle = flat(String(quote || '').replace(/^[^:]{2,40}:\s*/, ''));
+  const words = needle ? needle.split(' ').length : 0;
+  if (words < 3 || words > 30) return false;
+  const spoken = String(passage || '').split('\n').map((line) => line.replace(/^[^:]{2,40}:\s*/, '')).join(' ');
+  return flat(spoken).includes(needle);
+}
+
+// Items with no verdict (a failed call) keep their label.
+function applyDecisionCheckResults(discussion = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const demote = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || !['decision', 'not_decision'].includes(row.verdict)) continue;
+    if (row.verdict === 'decision' && decisionQuoteFound(row.decisionQuote, item.passage)) continue;
+    if (!demote.has(item.topicIndex)) demote.set(item.topicIndex, new Set());
+    demote.get(item.topicIndex).add(item.rowIndex);
+  }
+  let demoted = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
+    const rows = demote.get(topicIndex);
+    if (!rows || !Array.isArray(topic?.decisions)) return topic;
+    const moved = topic.decisions.filter((_, rowIndex) => rows.has(rowIndex));
+    demoted += moved.length;
+    return {
+      ...topic,
+      decisions: topic.decisions.filter((_, rowIndex) => !rows.has(rowIndex)),
+      points: [...(Array.isArray(topic.points) ? topic.points : []), ...moved]
+    };
+  });
+  return { discussion: checked, demoted, checked: items.length };
+}
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
@@ -2479,6 +2551,11 @@ module.exports = {
   applyTimingClauseChecks,
   timingCheckEnabled,
   statedCalendarDate,
+  decisionCheckEnabled,
+  decisionCheckItems,
+  decisionCheckPrompt,
+  decisionQuoteFound,
+  applyDecisionCheckResults,
   timingCheckItems,
   timingCheckPrompt,
   applyTimingCheckResults,

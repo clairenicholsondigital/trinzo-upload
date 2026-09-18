@@ -193,7 +193,11 @@ const {
   timingCheckEnabled: meetingMinutesTimingCheckEnabled,
   timingCheckItems,
   timingCheckPrompt,
-  applyTimingCheckResults
+  applyTimingCheckResults,
+  decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
+  decisionCheckItems,
+  decisionCheckPrompt,
+  applyDecisionCheckResults
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -9631,7 +9635,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
-    const isTimingCheckResult = options.responseKind === 'timing_check'
+    const isTimingCheckResult = ['timing_check', 'decision_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
@@ -9662,7 +9666,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
-  const timingCheck = options.responseKind === 'timing_check' && Array.isArray(parsedResult?.results);
+  const timingCheck = ['timing_check', 'decision_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !timingCheck
@@ -12939,6 +12943,21 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       } catch (error) {
         safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
       }
+    }
+    if (meetingMinutesDecisionCheckEnabled()) {
+      // Each "decision" must be backed by a verified quote of the words that
+      // make the choice; the rest become points, wording unchanged. A failed
+      // call leaves every label as it was.
+      const decisionItems = decisionCheckItems(finalDiscussion, draft.sourceUnits);
+      const decisionBatches = [];
+      for (let index = 0; index < decisionItems.length; index += 8) decisionBatches.push(decisionItems.slice(index, index + 8));
+      const decisionResults = (await Promise.all(decisionBatches.map((batch, index) => call(
+        `critic-decision-${index + 1}`, decisionCheckPrompt(batch),
+        { optional: true, responseKind: 'decision_check', maxAttempts: 2, candidateCount: batch.length }
+      )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+      const decisionChecked = applyDecisionCheckResults(finalDiscussion, decisionItems, decisionResults);
+      console.log(JSON.stringify({ event: 'meeting_agent_decision_check', journeyId: draft.draftId, checked: decisionChecked.checked, demoted: decisionChecked.demoted }));
+      finalDiscussion = decisionChecked.discussion;
     }
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
