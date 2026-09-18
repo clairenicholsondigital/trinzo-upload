@@ -1951,7 +1951,7 @@ function decisionCheckItems(discussion = [], units = []) {
   const items = [];
   (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
     (Array.isArray(topic?.decisions) ? topic.decisions : []).forEach((record, rowIndex) => {
-      const passage = evidenceWindowUnits(units, record?.evidenceIds || [], 1).slice(0, 18)
+      const passage = evidenceWindowUnits(units, record?.evidenceIds || [], 2).slice(0, 24)
         .map((unit) => `${unit.speaker}: ${unit.text}`);
       if (!passage.length || !text(record?.text)) return;
       items.push({ id: `d${items.length + 1}`, topicIndex, rowIndex, row: text(record.text, 800), passage: passage.join('\n') });
