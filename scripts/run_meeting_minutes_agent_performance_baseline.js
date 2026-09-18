@@ -37,6 +37,7 @@ function parseArgs(argv) {
     else if (arg === '--env-file') options.envFile = value();
     else if (arg === '--review-pause-ms') options.reviewPauseMs = Number(value());
     else if (arg === '--case-dir') options.caseDir = value();
+    else if (arg === '--keep-drafts') options.keepDrafts = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   // A case directory adds every sub-folder holding a transcript.txt as a case
@@ -199,7 +200,7 @@ async function runJourney(options, db, session, caseName, runNumber) {
       reviewerOutput: reviewerOutput(draft)
     };
   } finally {
-    if (draft?.draftId) {
+    if (draft?.draftId && !options.keepDrafts) {
       await apiRequest(`${options.baseUrl}/api/meeting-minutes-agent/drafts/${encodeURIComponent(draft.draftId)}`, session.cookie, {
         method: 'DELETE'
       }).catch(() => {});

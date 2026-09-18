@@ -9444,16 +9444,16 @@ function meetingAgentActionQualityCandidateBudget(transcript = '', fixedPayload 
 // a fragment of speech. The verb list is deliberately wide; the evidence gates
 // decide whether the work is real, this only rejects wording.
 const CLIENT_READY_ACTION_VERBS = new Set(('accept add address agree align analyse analyze apply approve arrange ask assess assign attach attend '
-  + 'book brief build buy calculate call capture carry chase check circulate clarify close collate collect communicate compare compile complete '
+  + 'book brief build buy calculate call capture chase check circulate clarify close collate collect communicate compare compile complete '
   + 'conduct confirm consider consolidate contact continue coordinate correct create cross-check decide define deliver design determine develop '
-  + 'discuss distribute document download draft email engage ensure escalate establish evaluate explore feed fill finalise finalize finish fix '
-  + 'flag focus follow forward gather generate get give hold host identify implement include incorporate inform input inspect introduce investigate '
-  + 'invite issue keep launch liaise link list load log look make map measure meet merge monitor move notify obtain order organise organize outline '
-  + 'pass pay perform plan populate prepare present prioritise prioritize procure produce progress provide publish purchase put raise reach '
+  + 'discuss distribute document download draft email engage ensure escalate establish evaluate explore fill finalise finalize finish fix '
+  + 'flag focus follow forward gather generate get hold host identify implement include incorporate inform input inspect introduce investigate '
+  + 'invite issue launch liaise link list load log map measure meet merge monitor notify obtain order organise organize outline '
+  + 'pay perform plan populate prepare present prioritise prioritize procure produce progress provide publish purchase raise '
   + 're-run rerun reconcile record redo refine register reissue remove replace reply report request resend resolve respond restart retest return '
-  + 'review revise rework run save schedule scope seek select send set settle share sign source speak specify split standardise standardize start '
-  + 'store submit summarise summarize supply support switch take talk tell test tidy trace track train transfer translate trial update upload '
-  + 'validate verify visit walk work write').split(' '));
+  + 'review revise rework run save schedule scope seek select send set share sign source speak specify split standardise standardize start '
+  + 'store submit summarise summarize supply support switch talk test tidy trace track train transfer translate trial update upload '
+  + 'validate verify visit walk write').split(' '));
 function isClientReadyActionWording(value = '') {
   const source = meetingMinutesAgentText(value, 1600);
   if (!source || /^(?:and|but|so|yeah|yes|no|okay|ok|well|i(?:'ll| will| am|'m)|we(?:'ll| will| are|'re)|you(?:'ll| will| are|'re))\b/i.test(source)) return false;
