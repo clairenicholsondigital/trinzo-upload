@@ -48,3 +48,26 @@ test('ordinary instruction verbs pass the wording filter; speech does not', () =
     assert.equal(isClientReadyActionWording(wording), false, wording);
   }
 });
+
+test('an answered question leaves the published list only with both quotes verified', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Jacqui Fox', text: 'I want to get the formative dates bottomed out.' },
+    { id: 'T0002', speaker: 'Rebecca Gill', text: 'The formative would be ready shortly after, but still prior to the tech file being lifted.' },
+    { id: 'T0003', speaker: 'Jacqui Fox', text: "Okay, so that's fine." },
+    { id: 'T0004', speaker: 'Jacqui Fox', text: 'Can you confirm the LED behaviour with Andrew?' }
+  ];
+  const actions = [
+    { action: 'Clarify the formative study dates.', owners: ['Rebecca Gill'], evidenceIds: ['T0001'] },
+    { action: 'Confirm the LED behaviour with Andrew.', owners: ['Rebecca Gill'], evidenceIds: ['T0004'] },
+    { action: 'Send the report.', owners: ['Rebecca Gill'], evidenceIds: ['T0004'] }
+  ];
+  const items = V.answeredCheckItems(actions, units);
+  assert.deepEqual(items.map((item) => item.index), [0, 1]);
+  const out = V.applyAnsweredCheckResults(actions, items, [
+    { id: items[0].id, verdict: 'answered', answerQuote: 'ready shortly after, but still prior to the tech file being lifted', acceptanceQuote: "Okay, so that's fine" },
+    { id: items[1].id, verdict: 'answered', answerQuote: 'the LED stays solid', acceptanceQuote: 'great' }
+  ]);
+  assert.deepEqual(out.actions.map((a) => a.action), ['Confirm the LED behaviour with Andrew.', 'Send the report.']);
+  assert.equal(out.answered.length, 1);
+  assert.equal(out.answered[0].action.action, 'Clarify the formative study dates.');
+});

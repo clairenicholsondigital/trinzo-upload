@@ -2038,6 +2038,61 @@ function applyCommitmentCheckResults(actions = [], items = [], results = []) {
   return rescued;
 }
 
+// ---- Answered check -------------------------------------------------------
+// "Clarify the formative dates" published as outstanding work, when the date
+// was clarified and accepted two lines later. Only clarify/confirm/decide-type
+// actions are checked. An action is taken off the published list only when the
+// model quotes both the answer and its acceptance and both are in the passage;
+// the caller offers it back as a proposal, so nothing is lost.
+const ANSWERABLE_ACTION = /^(?:clarify|confirm|determine|decide|finali[sz]e|check|verify|establish|find out|agree)\b/i;
+function answeredCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_ANSWERED_CHECK_V1 || '0'));
+}
+
+function answeredCheckItems(actions = [], units = []) {
+  const context = evidenceContextFor(units);
+  return (Array.isArray(actions) ? actions : []).map((action, index) => {
+    if (!ANSWERABLE_ACTION.test(text(action?.action))) return null;
+    const cited = (action.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger);
+    if (!cited.length) return null;
+    const from = Math.max(0, Math.min(...cited) - 1);
+    const to = Math.min(context.rows.length - 1, Math.max(...cited) + 8);
+    const passage = context.rows.slice(from, to + 1).map((unit) => `${unit.speaker}: ${unit.text}`).join('\n');
+    return { id: `q${index + 1}`, index, action: text(action.action, 600), passage };
+  }).filter(Boolean).slice(0, 24);
+}
+
+function answeredCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_ANSWERED',
+    'Each item is an action from meeting minutes asking someone to clarify, confirm, determine or decide something, with the transcript passage around it. The passage is the only authority.',
+    'Decide whether the question was already answered and accepted DURING the meeting, later in the passage, so nothing is left to do.',
+    `- "answered": someone gave the answer in the passage AND the person who raised it accepted it (for example "Okay, so that's fine", "that answers it"). Give answerQuote (the exact words giving the answer) and acceptanceQuote (the exact words accepting it).`,
+    '- "open": the answer was not given, was only partly given, depends on someone outside the meeting, or needs checking or documenting afterwards.',
+    'Quotes must be verbatim, one contiguous span of at most 25 words each (may run across adjacent lines; leave out speaker names). If you are unsure, choose "open".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","answerQuote":"","acceptanceQuote":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+// Returns the actions to keep and those answered in the meeting, each with
+// the verified quotes.
+function applyAnsweredCheckResults(actions = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const answered = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || row.verdict !== 'answered') continue;
+    if (!decisionQuoteFound(row.answerQuote, item.passage, 45) || !decisionQuoteFound(row.acceptanceQuote, item.passage, 45)) continue;
+    answered.set(item.index, { answerQuote: text(row.answerQuote, 300), acceptanceQuote: text(row.acceptanceQuote, 200) });
+  }
+  const list = Array.isArray(actions) ? actions : [];
+  return {
+    actions: list.filter((_, index) => !answered.has(index)),
+    answered: list.map((action, index) => (answered.has(index) ? { action, ...answered.get(index) } : null)).filter(Boolean)
+  };
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -2075,11 +2130,11 @@ function decisionCheckPrompt(items = []) {
 }
 
 // A quote may run across adjacent lines; speaker labels are not spoken words.
-function decisionQuoteFound(quote, passage) {
+function decisionQuoteFound(quote, passage, maxWords = 30) {
   const flat = (value) => quoteText(value).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const needle = flat(String(quote || '').replace(/^[^:]{2,40}:\s*/, ''));
   const words = needle ? needle.split(' ').length : 0;
-  if (words < 3 || words > 30) return false;
+  if (words < 3 || words > maxWords) return false;
   const spoken = String(passage || '').split('\n').map((line) => line.replace(/^[^:]{2,40}:\s*/, '')).join(' ');
   return flat(spoken).includes(needle);
 }
@@ -2668,6 +2723,10 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  answeredCheckEnabled,
+  answeredCheckItems,
+  answeredCheckPrompt,
+  applyAnsweredCheckResults,
   commitmentCheckEnabled,
   commitmentCheckItems,
   commitmentCheckPrompt,

@@ -202,7 +202,11 @@ const {
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   commitmentCheckItems,
   commitmentCheckPrompt,
-  applyCommitmentCheckResults
+  applyCommitmentCheckResults,
+  answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
+  answeredCheckItems,
+  answeredCheckPrompt,
+  applyAnsweredCheckResults
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -9655,7 +9659,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
-    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check'].includes(options.responseKind)
+    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
@@ -9686,7 +9690,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
-  const timingCheck = ['timing_check', 'decision_check', 'commitment_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
+  const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !timingCheck
@@ -13306,6 +13310,37 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: details.meetingDate });
     timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
   }
+  let answeredInMeetingCount = 0;
+  if (meetingMinutesAnsweredCheckEnabled()) {
+    // A clarify/confirm action whose question was answered and accepted in the
+    // meeting is not outstanding work. It leaves the published list only with
+    // both quotes verified, and comes back as a one-click proposal.
+    const answeredItems = answeredCheckItems(timingChecked.actions, draft.sourceUnits);
+    const answeredBatches = [];
+    for (let index = 0; index < answeredItems.length; index += 8) answeredBatches.push(answeredItems.slice(index, index + 8));
+    const answeredResults = (await Promise.all(answeredBatches.map((batch, index) => call(
+      `critic-answered-${index + 1}`, answeredCheckPrompt(batch),
+      { optional: true, responseKind: 'answered_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const answered = applyAnsweredCheckResults(timingChecked.actions, answeredItems, answeredResults);
+    answeredInMeetingCount = answered.answered.length;
+    if (answeredInMeetingCount) {
+      timingChecked = { ...timingChecked, actions: answered.actions };
+      const at = answered.actions.length;
+      for (const item of answered.answered) {
+        proposal.changes.push({
+          id: `change-answered-${crypto.createHash('sha1').update(item.action.action || '').digest('hex').slice(0, 10)}`,
+          type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'answered, then accepted',
+            reason: `This looks answered during the meeting ("${item.answerQuote}" … "${item.acceptanceQuote}"). Add it only if something is still open.`,
+            evidenceIds: item.action.evidenceIds || []
+          }
+        });
+      }
+    }
+  }
   const actionFlagState = reconcileRecordFlags({ actions: timingChecked.actions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
@@ -13329,6 +13364,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
         commitmentRescueCount,
+        answeredInMeetingCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
