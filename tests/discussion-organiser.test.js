@@ -34,6 +34,10 @@ test('closure clauses are stripped from row wording', () => {
   assert.equal(stripClosure('Main focus remains on risk and electrical compliance working with David and Andrew; meeting thanks and closing remarks.'), 'Main focus remains on risk and electrical compliance working with David and Andrew');
   assert.equal(stripClosure('Priorities confirmed; the meeting was concluded.'), 'Priorities confirmed');
   assert.equal(stripClosure('The meeting concluded that the chiller must be serviced first.'), 'The meeting concluded that the chiller must be serviced first.');
+  // A real use of "closure" is content, and a strip must never leave "…and".
+  assert.equal(stripClosure('Outstanding mute button issue reviewed with clinical input to confirm acceptability and closure.'),
+    'Outstanding mute button issue reviewed with clinical input to confirm acceptability and closure.');
+  assert.equal(stripClosure('Next steps agreed; thanks and farewells.'), 'Next steps agreed');
 });
 
 test('status statements labelled Decision become points; answered open questions become points', () => {

@@ -90,3 +90,13 @@ test('the literal "not stated" is cleared to no timing without asking the model'
   assert.equal(out[0].timing.kind, 'not_stated');
   assert.equal(flags.length, 0, 'removing a placeholder is not a reviewer decision');
 });
+
+test('a save never re-adds a timing that was cleared', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [{ id: 'T0001', speaker: 'Rebecca Gill', text: "We have a call today and then we'll download it and pop them in the tech file." }];
+  const action = { id: 'a1', action: 'Download the approved documents into the tech file.', owners: ['Rebecca Gill'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'] };
+  const saved = V.normaliseAgentResult({ actions: [action] }, units, '', { enforceEvidence: false });
+  assert.equal(saved.actions[0].timing.kind, 'not_stated');
+  const fresh = V.normaliseAgentResult({ actions: [action] }, units, 'actions', {});
+  assert.equal(fresh.actions[0].timing.wording, 'today');
+});

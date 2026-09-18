@@ -17,7 +17,7 @@ const GENERIC_TOPIC = /^(?:discussion|general|other|misc(?:ellaneous)?|meeting|n
 const CLOSURE_WORDS = '(?:thanks|closure|closing\\s+remarks|farewells?|goodbyes?)';
 const CLOSURE_VERB = '(?:(?:the\\s+)?meeting\\s+(?:was\\s+)?(?:concluded|closed|ended|wrapped\\s+up))';
 const CLOSURE_CLAUSE = new RegExp(
-  '[;,]?\\s*(?:' + CLOSURE_VERB + '(?:\\s+with)?\\s+|(?:the\\s+)?meeting\\s+)?' + CLOSURE_WORDS + '(?:\\s+(?:and|with)\\s+' + CLOSURE_WORDS + ')?\\.?\\s*$'
+  '(?:[;,]?\\s*(?:' + CLOSURE_VERB + '(?:\\s+with)?\\s+|(?:the\\s+)?meeting\\s+)|[;,]\\s*)' + CLOSURE_WORDS + '(?:\\s+(?:and|with)\\s+' + CLOSURE_WORDS + ')?\\.?\\s*$'
   + '|[;,]\\s*' + CLOSURE_VERB + '\\.?\\s*$', 'i');
 const CONVERSATIONAL_OPENER = /^\s*(?:so|yeah|yes|no|okay|ok|um|uh|erm|well|right|and|but|i suppose|i think|i mean)\b[\s,.]/i;
 const CONVERSATIONAL_FILLER = /\b(?:i suppose|you know|i mean|kind of|sort of|wee bit|what happens in terms of)\b/i;
@@ -109,11 +109,13 @@ function topicWindow(topic, index) {
 // 1. Wording hygiene and client readiness
 // ---------------------------------------------------------------------------
 
+// Never leave a sentence hanging on a connective ("…acceptability and").
+const DANGLING_END = /\b(?:and|or|but|with|to|of|for|the|a|an|on|in|at|by|from)\s*$/i;
 function stripClosure(value) {
   let result = text(value);
   for (let i = 0; i < 3; i += 1) {
     const next = result.replace(CLOSURE_CLAUSE, '').trim();
-    if (next === result) break;
+    if (next === result || !next || DANGLING_END.test(next)) break;
     result = next;
   }
   return result;

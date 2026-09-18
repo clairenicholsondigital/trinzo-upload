@@ -2026,7 +2026,12 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     const disposition = actionEvidenceDisposition(action, evidenceText);
     if (options.enforceEvidence !== false && !evidenceIds.length) return null;
     if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) return null;
-    const timing = backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
+    // Recovery fills gaps in fresh agent output only. A save (enforceEvidence
+    // false) carries timings a reviewer or a timing check has already settled,
+    // so an empty timing there is deliberate and must stay empty.
+    const timing = options.enforceEvidence === false
+      ? timingFrom(item, options)
+      : backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
     // Agent output is corrected once, on the published actions, so every
     // change reaches the reviewer with its flag (see applyTimingClauseChecks).
     // Here only a reviewer's own entry is checked, and only flagged.
