@@ -58,17 +58,40 @@ test('a timing spoken with its own step, a correct timing, and a condition are a
     timing('once the call is done', 'dependency'), units, ['T0181', 'T0182']), null);
 });
 
-test('agent actions are corrected and flagged; the correction is stable when normalised again', () => withChecks(() => {
-  const first = V.normaliseAgentResult({ actions: [{
+test('published agent actions are corrected once, each change flagged, and a second pass changes nothing', () => withChecks(() => {
+  const actions = [{
+    id: 'a1', action: 'Finalize the two code changes to produce a new software version.', owners: [],
+    timing: { kind: 'target', wording: 'end of the week', exactDate: '' }, evidenceIds: ['T0067', 'T0068'], reviewFlagIds: []
+  }, {
+    id: 'a2', action: 'Upload the response documents for Grace to review and approve, then direct the auditor to them.', owners: [],
+    timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: ['T0181', 'T0182'], reviewFlagIds: []
+  }];
+  const first = V.applyTimingClauseChecks(actions, units, { meetingDate: '2026-06-17' });
+  assert.equal(first.actions[0].timing.wording, 'end of next week');
+  assert.equal(first.actions[1].timing.kind, 'not_stated');
+  assert.equal(first.flags.length, 2);
+  assert.ok(first.actions.every((action) => action.reviewFlagIds.some((id) => first.flags.some((flag) => flag.id === id))));
+  const second = V.applyTimingClauseChecks(first.actions, units, { meetingDate: '2026-06-17' });
+  assert.equal(second.flags.length, 0, 'stable once corrected');
+}));
+
+test('intermediate normalisation of agent output never touches a timing silently', () => withChecks(() => {
+  const result = V.normaliseAgentResult({ actions: [{
     id: 'a1', action: 'Finalize the two code changes to produce a new software version.', owners: [],
     timing: { kind: 'target', wording: 'end of the week' }, evidenceIds: ['T0067', 'T0068']
   }] }, units, 'actions', { meetingDate: '2026-06-17' });
-  assert.equal(first.actions[0].timing.wording, 'end of next week');
-  assert.ok(first.reviewFlags.some((flag) => flag.kind === 'timing' && /changed from "end of the week" to "end of next week"/.test(flag.message)));
-  const second = V.normaliseAgentResult({ actions: first.actions }, units, 'actions', { meetingDate: '2026-06-17' });
-  assert.equal(second.actions[0].timing.wording, 'end of next week');
-  assert.ok(!second.reviewFlags.some((flag) => /changed from/.test(flag.message)), 'no repeat flag once corrected');
+  assert.equal(result.actions[0].timing.wording, 'end of the week');
 }));
+
+test('a timing whose clause names the work only by pronoun keeps its timing', () => {
+  const pronounUnits = [
+    { id: 'T0300', speaker: 'Jacqui Fox', text: 'So the next steps are to load the fully translated language files.' },
+    { id: 'T0301', speaker: 'Jacqui Fox', text: 'Okay, so again, should be able to get that done next week, presumably.' },
+    { id: 'T0302', speaker: 'Andrew Kane', text: 'Arabic, Vietnamese and Greek might be a problem for the language symbols.' }
+  ];
+  assert.equal(V.timingClauseIssue('Load the translated language files and check the language symbols for Arabic, Vietnamese and Greek.',
+    timing('next week'), pronounUnits, ['T0300', 'T0301', 'T0302']), null);
+});
 
 test('a reviewer\'s own timing is never rewritten, only flagged', () => withChecks(() => {
   const saved = V.normaliseAgentResult({ actions: [{

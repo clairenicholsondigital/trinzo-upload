@@ -1649,7 +1649,7 @@ function correctnessChecksEnabled() {
 function evidenceClauses(value) {
   return String(value || '')
     .replace(/([.!?;])(?=[A-Za-z])/g, '$1 ')
-    .split(/(?<=[.!?;])\s+|\s+(?=\b(?:and then|then)\b)/i)
+    .split(/(?<=[.!?;])\s+/)
     .map((clause) => clause.trim())
     .filter((clause) => clause.length > 3);
 }
@@ -1676,7 +1676,16 @@ function timingClauseIssue(action, timing = {}, units = [], evidenceIds = []) {
   });
   const own = scored.filter((item) => item.lower.includes(wording));
   if (!own.length) return null;
-  const ownScore = Math.max(...own.map((item) => item.score));
+  // "Should be able to get that done next week": the clause names the work
+  // only by pronoun, so the sentences just before it are part of its subject.
+  const ANAPHORA = /\b(?:that|this|it|those|them|these)\b/i;
+  const ownScore = Math.max(...own.map((item) => {
+    if (item.score > 0 || !ANAPHORA.test(item.clause)) return item.score;
+    const at = scored.indexOf(item);
+    const context = scored.slice(Math.max(0, at - 2), at + 1).map((entry) => entry.clause).join(' ');
+    const words = new Set(contentTokens(comparisonText(context)));
+    return actionTokens.filter((token) => words.has(token)).length;
+  }));
   if (ownScore > 1) return null;
   const best = scored.filter((item) => !item.lower.includes(wording)).sort((left, right) => right.score - left.score)[0];
   if (!best || best.score < 2 || best.score <= ownScore) return null;
@@ -1804,6 +1813,29 @@ function laterRevisionUnit(units = [], evidenceIds = []) {
   return null;
 }
 
+// Correct the published actions' timing in one pass and return a flag for each
+// change, so nothing is altered without the reviewer seeing why.
+function applyTimingClauseChecks(actions = [], units = [], options = {}) {
+  const flags = [];
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    const issue = timingClauseIssue(action.action, action.timing || {}, units, action.evidenceIds || []);
+    if (!issue) return action;
+    const timing = issue.type === 'reassign'
+      ? timingFrom({ timing: { kind: action.timing.kind, wording: issue.to } }, options)
+      : { kind: 'not_stated', wording: '', exactDate: '' };
+    const flag = normaliseFlag({
+      kind: 'timing',
+      message: issue.type === 'reassign'
+        ? `Timing changed from "${issue.from}" to "${issue.to}": the cited passage gives "${issue.from}" for a different step. Confirm the timing.`
+        : `Timing "${issue.from}" removed: in the cited passage it belongs to a different step. Confirm whether this action has its own timing.`,
+      evidenceIds: action.evidenceIds
+    }, flags.length);
+    flags.push(flag);
+    return { ...action, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+  });
+  return { actions: checked, flags };
+}
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
@@ -1821,19 +1853,12 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     const disposition = actionEvidenceDisposition(action, evidenceText);
     if (options.enforceEvidence !== false && !evidenceIds.length) return null;
     if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) return null;
-    let timing = backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
-    let timingClauseNote = null;
-    if (checks) {
-      const issue = timingClauseIssue(action, timing, units, evidenceIds);
-      if (issue) {
-        timingClauseNote = issue;
-        if (options.enforceEvidence !== false) {
-          timing = issue.type === 'reassign'
-            ? timingFrom({ timing: { kind: timing.kind, wording: issue.to } }, options)
-            : { kind: 'not_stated', wording: '', exactDate: '' };
-        }
-      }
-    }
+    const timing = backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
+    // Agent output is corrected once, on the published actions, so every
+    // change reaches the reviewer with its flag (see applyTimingClauseChecks).
+    // Here only a reviewer's own entry is checked, and only flagged.
+    const timingClauseNote = checks && options.enforceEvidence === false
+      ? timingClauseIssue(action, timing, units, evidenceIds) : null;
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
       action,
@@ -1986,12 +2011,8 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
       const flag = normaliseFlag({
         kind: 'timing',
         message: note.type === 'reassign'
-          ? (enforceEvidence
-            ? `Timing changed from "${note.from}" to "${note.to}": the cited passage gives "${note.from}" for a different step. Confirm the timing.`
-            : `The cited passage gives "${note.from}" for a different step and "${note.to}" for this one. Confirm the timing.`)
-          : (enforceEvidence
-            ? `Timing "${note.from}" removed: in the cited passage it belongs to a different step. Confirm whether this action has its own timing.`
-            : `In the cited passage "${note.from}" belongs to a different step. Confirm whether this action has its own timing.`),
+          ? `The cited passage gives "${note.from}" for a different step and "${note.to}" for this one. Confirm the timing.`
+          : `In the cited passage "${note.from}" belongs to a different step. Confirm whether this action has its own timing.`,
         evidenceIds: action.evidenceIds
       }, flags.length);
       flags.push(flag);
@@ -2351,6 +2372,7 @@ module.exports = {
   relativeExactDate,
   correctnessChecksEnabled,
   timingClauseIssue,
+  applyTimingClauseChecks,
   claimNovelty,
   uncitedClaimSupported,
   unverifiedProperNouns,

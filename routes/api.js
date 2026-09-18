@@ -187,7 +187,9 @@ const {
   mergeGroundedObjectiveRecords,
   evidenceSupportScore,
   actionEvidenceDisposition,
-  groundedExecutiveSummary
+  groundedExecutiveSummary,
+  correctnessChecksEnabled: meetingMinutesCorrectnessChecksEnabled,
+  applyTimingClauseChecks
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -13185,9 +13187,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         }, proposalRecord))).length }
   });
   const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
+  // Timing ownership is corrected once, on what the reviewer will see, so
+  // every change carries its flag.
+  const timingChecked = meetingMinutesCorrectnessChecksEnabled()
+    ? applyTimingClauseChecks(reconciledPublishedActions, draft.sourceUnits, { meetingDate: details.meetingDate })
+    : { actions: reconciledPublishedActions, flags: [] };
   return {
     changes: {
-      actions: reconciledPublishedActions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
+      actions: timingChecked.actions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
       qualityState: { ...(draft.qualityState || {}), actions: {
@@ -13220,6 +13227,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       } }
     },
     reviewFlags: mergeMeetingAgentFlags(refereeFlags, [
+      ...timingChecked.flags,
       ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
       ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
       ...unresolvedStrongCandidateFlags
