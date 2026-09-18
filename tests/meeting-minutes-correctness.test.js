@@ -168,3 +168,31 @@ test('an explicitly agreed point with a recorded agreement becomes a decision; p
   assert.deepEqual(topic.decisions.map((row) => row.id), ['p1']);
   assert.deepEqual(topic.points.map((row) => row.id), ['p4', 'p2', 'p3'], 'flagged rows and adjectival "approved" are never promoted');
 }));
+
+test('statedCalendarDate reads day and month wording relative to the meeting', () => {
+  const { statedCalendarDate } = require('../utils/meetingMinutesAgentV2');
+  assert.equal(statedCalendarDate('by 17th June', '2026-06-22'), '2026-06-17');
+  assert.equal(statedCalendarDate('ideally before July 17th', '2026-06-22'), '2026-07-17');
+  assert.equal(statedCalendarDate('by 10 January', '2026-12-05'), '2027-01-10');
+  assert.equal(statedCalendarDate('by the 17th', '2026-06-22'), '');
+  assert.equal(statedCalendarDate('may be done soon', '2026-06-22'), '');
+});
+
+test('a stated date before the meeting is removed from agent output and flagged', () => {
+  const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
+  process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
+  try {
+    const V = require('../utils/meetingMinutesAgentV2');
+    const units = [
+      { id: 'T0001', speaker: 'Stuart Smith', text: 'I will need the training attestation before the audit formally starts.' },
+      { id: 'T0002', speaker: 'Jacqui Fox', text: 'The 20th, so by the 17th then.' }
+    ];
+    const result = V.normaliseAgentResult({ actions: [{ id: 'a', action: 'Provide the training attestation to Stuart Smith before the audit formally starts.', owners: ['Stuart Smith'], timing: { kind: 'deadline', wording: 'by 17th June' }, evidenceIds: ['T0001', 'T0002'] }] }, units, 'actions', { meetingDate: '2026-06-22' });
+    assert.equal(result.actions[0].timing.kind, 'not_stated');
+    assert.ok(result.reviewFlags.some((flag) => /before the meeting/.test(flag.message)));
+    const later = V.normaliseAgentResult({ actions: [{ id: 'a', action: 'Provide the training attestation to Stuart Smith before the audit formally starts.', owners: ['Stuart Smith'], timing: { kind: 'deadline', wording: 'by 17th July' }, evidenceIds: ['T0001', 'T0002'] }] }, units, 'actions', { meetingDate: '2026-06-22' });
+    assert.ok(!later.reviewFlags.some((flag) => /before the meeting/.test(flag.message)));
+  } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
+  }
+});

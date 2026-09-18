@@ -882,6 +882,31 @@ function statedDayBound(value, meetingDate) {
   return { date, inclusive, phrase: match[0].trim() };
 }
 
+// A day and month written in the timing itself ("by 17th June"). Without a
+// year, a date more than six months before the meeting is taken to mean next
+// year ("by 10 January" in a December meeting).
+const SHORT_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function statedCalendarDate(wording = '', meetingDate = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return '';
+  const value = String(wording || '').toLowerCase();
+  const month = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+  const dayFirst = value.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${month}\\b(?:,?\\s+(\\d{4}))?`));
+  const monthFirst = value.match(new RegExp(`\\b${month}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?:,?\\s+(\\d{4}))?`));
+  const found = dayFirst ? { day: dayFirst[1], month: dayFirst[2], year: dayFirst[3] } : monthFirst ? { day: monthFirst[2], month: monthFirst[1], year: monthFirst[3] } : null;
+  if (!found) return '';
+  const monthIndex = SHORT_MONTHS.indexOf(found.month.slice(0, 3)) + 1;
+  const day = Number(found.day);
+  if (!monthIndex || !day || day > 31) return '';
+  const [meetingYear] = meetingDate.split('-').map(Number);
+  let year = found.year ? Number(found.year) : meetingYear;
+  const iso = (y) => `${y}-${String(monthIndex).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (!found.year && iso(year) < meetingDate) {
+    const daysBefore = (Date.parse(`${meetingDate}T00:00:00Z`) - Date.parse(`${iso(year)}T00:00:00Z`)) / 86400000;
+    if (daysBefore > 183) year += 1;
+  }
+  return iso(year);
+}
+
 function timingBoundBreach(timing = {}, source = '', meetingDate = '') {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(timing.exactDate || ''))) return null;
   const bound = statedDayBound(source, meetingDate);
@@ -2023,7 +2048,21 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         tokenOverlap(action.timing.wording, evidenceText) >= 0.5
       );
       let exactDateSupported = false;
-      if (action.timing.exactDate && /^\d{4}-\d{2}-\d{2}$/.test(String(options.meetingDate || ''))
+      // "by 17th June" in a meeting held on 22 June cannot be a future
+      // deadline: the date was misheard or the month misread.
+      const statedDate = correctnessChecksEnabled() ? statedCalendarDate(action.timing.wording, options.meetingDate) : '';
+      if (statedDate && statedDate < options.meetingDate) {
+        const pastWording = action.timing.wording;
+        if (enforceEvidence) action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `The date in "${pastWording}" is before the meeting (${options.meetingDate})${enforceEvidence ? ' and has been removed' : ''}; confirm the intended date.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+      }
+      if (action.timing.kind !== 'not_stated' && action.timing.exactDate && /^\d{4}-\d{2}-\d{2}$/.test(String(options.meetingDate || ''))
         && action.timing.exactDate < options.meetingDate) {
         const pastDate = action.timing.exactDate;
         if (enforceEvidence) action.timing.exactDate = '';
@@ -2439,6 +2478,7 @@ module.exports = {
   timingClauseIssue,
   applyTimingClauseChecks,
   timingCheckEnabled,
+  statedCalendarDate,
   timingCheckItems,
   timingCheckPrompt,
   applyTimingCheckResults,
