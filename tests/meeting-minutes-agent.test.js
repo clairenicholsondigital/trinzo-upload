@@ -1772,8 +1772,8 @@ test('review proposals expose a concise commitment-chain rationale', () => {
     signals: { offer: true }, scores: { action: 0.48 },
     uncertainties: [{ kind: 'ownership', evidenceIds: ['T1100'] }]
   }]);
-  assert.equal(proposal.changes[0].reviewContext.label, 'offer');
-  assert.match(proposal.changes[0].reviewContext.reason, /ownership/i);
+  assert.equal(proposal.changes[0].reviewContext.label, 'offered');
+  assert.match(proposal.changes[0].reviewContext.reason, /who owns it/i);
   assert.deepEqual(proposal.changes[0].reviewContext.evidenceIds, ['T1100']);
 });
 

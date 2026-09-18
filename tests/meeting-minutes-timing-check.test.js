@@ -100,3 +100,13 @@ test('a save never re-adds a timing that was cleared', () => {
   const fresh = V.normaliseAgentResult({ actions: [action] }, units, 'actions', {});
   assert.equal(fresh.actions[0].timing.wording, 'today');
 });
+
+test('a misread verdict is ignored when the timing is said word for word', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [{ id: 'T0001', speaker: 'Rebecca Gill', text: 'We have a call today to walk through the responses.' }];
+  const actions = [{ id: 'a1', action: 'Hold a call to walk through the responses.', owners: ['Rebecca Gill'], timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: ['T0001'] }];
+  const items = V.timingCheckItems(actions, units);
+  const out = V.applyTimingCheckResults(actions, items, [{ id: items[0].id, verdict: 'misread', timingQuote: 'today' }], {});
+  assert.equal(out.actions[0].timing.wording, 'today');
+  assert.equal(out.flags.length, 0);
+});

@@ -196,3 +196,25 @@ test('a stated date before the meeting is removed from agent output and flagged'
     if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
   }
 });
+
+test('a row citing both an assumption and its correction is flagged', () => {
+  const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
+  process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
+  try {
+    const V = require('../utils/meetingMinutesAgentV2');
+    const units = [
+      { id: 'T0001', speaker: 'Rebecca Gill', text: 'I presumed that the formative would be ready for submission and then to follow up with the summative.' },
+      { id: 'T0002', speaker: 'Rebecca Gill', text: 'But I think maybe that slightly changed and the formative would be ready shortly after, but still prior to the tech file being lifted.' },
+      { id: 'T0003', speaker: 'Adil Kauim', text: 'I finished the task analysis with Alan last week.' }
+    ];
+    const out = V.normaliseAgentResult({ discussion: [{ topic: 'Formative', points: [
+      { text: 'The formative will be ready before the summative submission.', evidenceIds: ['T0001', 'T0002'] },
+      { text: 'Adil finished the task analysis with Alan.', evidenceIds: ['T0003'] }
+    ] }] }, units, 'discussion', {});
+    assert.equal(out.discussion[0].points[0].reviewFlagIds.length, 1);
+    assert.equal(out.discussion[0].points[1].reviewFlagIds.length, 0);
+    assert.ok(out.reviewFlags.some((flag) => /Conflicting passage/.test(flag.message)));
+  } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
+  }
+});

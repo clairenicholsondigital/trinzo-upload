@@ -197,7 +197,8 @@ const {
   decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
   decisionCheckItems,
   decisionCheckPrompt,
-  applyDecisionCheckResults
+  applyDecisionCheckResults,
+  reconcileRecordFlags
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -11928,6 +11929,9 @@ function removePublishedActionProposalDuplicates(proposal = {}, published = []) 
   };
 }
 
+const MEETING_AGENT_UNCERTAINTY_WORDS = { unclear_reference: 'what it refers to', acceptance: 'whether it was accepted', ownership: 'who owns it' };
+const MEETING_AGENT_SIGNAL_WORDS = { request: 'asked', offer: 'offered', acceptance: 'agreed', commitment: 'committed', completed: 'done', rejected: 'declined' };
+
 function annotateActionProposalChains(proposal = {}, chains = []) {
   const chainRows = (Array.isArray(chains) ? chains : []).filter((candidate) => candidate?.recordType === 'action_chain');
   return {
@@ -11947,10 +11951,10 @@ function annotateActionProposalChains(proposal = {}, chains = []) {
       const signals = signalOrder.filter((name) => match.signals?.[name]);
       const uncertainties = [...new Set((match.uncertainties || []).map((item) => item.kind).filter(Boolean))];
       const reason = uncertainties.length
-        ? `The transcript supports a possible deliverable, but ${uncertainties.map((value) => value.replace(/_/g, ' ')).join(' and ')} still needs confirmation.`
-        : 'The transcript contains a linked commitment sequence, but it did not meet the threshold for automatic publication.';
+        ? `The transcript suggests this task, but ${uncertainties.map((value) => MEETING_AGENT_UNCERTAINTY_WORDS[value] || value.replace(/_/g, ' ')).join(' and ')} still needs confirming.`
+        : 'The transcript suggests someone took this on, but not clearly enough to add it automatically. Check the linked lines and add it if it is a real action.';
       return { ...change, reviewContext: {
-        label: signals.length ? signals.join(' → ') : 'linked transcript evidence',
+        label: signals.length ? signals.map((name) => MEETING_AGENT_SIGNAL_WORDS[name] || name).join(', then ') : 'related transcript lines',
         reason, evidenceIds: [...new Set(match.evidenceIds || [])].slice(0, 12),
         actionConfidence: match.scores?.action
       } };
@@ -12959,6 +12963,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       console.log(JSON.stringify({ event: 'meeting_agent_decision_check', journeyId: draft.draftId, checked: decisionChecked.checked, demoted: decisionChecked.demoted }));
       finalDiscussion = decisionChecked.discussion;
     }
+    // Rows are rebuilt by several steps that keep the rows but not the flags
+    // those steps raised; recover what the rows point at, drop dead references.
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, refereeFlags, isUsefulMeetingAgentReviewFlag);
+    finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -13019,7 +13027,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           candidateDispositions
         } }
       },
-      reviewFlags: refereeFlags, replaceCoverageFlags: false
+      reviewFlags: discussionFlagState.flags, replaceCoverageFlags: false
     };
   }
 
@@ -13177,14 +13185,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     id: meetingAgentProposalReviewFlagId(change),
     kind: 'possible_missed_follow_up',
     message: corroboratedProposalIds.has(change.after?.id)
-      ? `Two independent extraction passes found an evidence-backed action omitted by the final referee. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
+      ? `Possible action to check. It was found twice in the transcript but not added automatically: ${change.after?.action || 'Review this proposed action.'}`
       : strongDiscoveryProposalIds.has(change.after?.id)
-        ? `A strong transcript commitment found by an Agent pass was omitted during consolidation. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
+        ? `Possible action to check. Someone clearly committed to this, but it was not added automatically: ${change.after?.action || 'Review this proposed action.'}`
       : processGapProposalIds.has(change.after?.id)
-        ? `An unresolved operational question is supported by evidence of a current process gap. Decide whether to add this ownerless follow-up: ${change.after?.action || 'Review this proposed follow-up.'}`
+        ? `Possible follow-up to check. A question about a current process gap was left open, and no one took it on: ${change.after?.action || 'Review this proposed follow-up.'}`
         : threadBackstopProposalIds.has(change.after?.id)
-          ? `A multi-turn request and acceptance describe a supported follow-up that the Agent omitted. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
-        : `An evidence-backed action found by one extraction source needs review: ${change.after?.action || 'Review this proposed action.'}`,
+          ? `Possible action to check. Someone asked for this and it was accepted, but it was not added automatically: ${change.after?.action || 'Review this proposed action.'}`
+        : `Possible action to check. The transcript suggests it, but it was not added automatically: ${change.after?.action || 'Review this proposed action.'}`,
     evidenceIds: change.after?.evidenceIds || []
   }, index));
   const proposedRecords = proposal.changes.filter((change) => change.type === 'add').map((change) => change.after).filter(Boolean);
@@ -13234,9 +13242,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: details.meetingDate });
     timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
   }
+  const actionFlagState = reconcileRecordFlags({ actions: timingChecked.actions }, mergeMeetingAgentFlags(refereeFlags, [
+    ...timingChecked.flags,
+    ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
+    ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
+    ...unresolvedStrongCandidateFlags
+  ]), isUsefulMeetingAgentReviewFlag);
   return {
     changes: {
-      actions: timingChecked.actions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
+      actions: actionFlagState.content.actions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
       qualityState: { ...(draft.qualityState || {}), actions: {
@@ -13268,12 +13282,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         candidateDispositions
       } }
     },
-    reviewFlags: mergeMeetingAgentFlags(refereeFlags, [
-      ...timingChecked.flags,
-      ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
-      ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
-      ...unresolvedStrongCandidateFlags
-    ]),
+    reviewFlags: actionFlagState.flags,
     replaceCoverageFlags: false
   };
 }
@@ -13699,6 +13708,98 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
   return { conflictFields: [], changes };
 }
 
+// What the reviewer sees of an Actions list: wording, owners and timing, in order.
+function meetingAgentActionsFingerprint(actions = []) {
+  const rows = (Array.isArray(actions) ? actions : []).map((action) => [
+    meetingMinutesAgentText(action?.action, 1600),
+    (Array.isArray(action?.owners) ? action.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)).join('|'),
+    meetingMinutesAgentText(action?.timing?.kind, 40),
+    meetingMinutesAgentText(action?.timing?.wording, 220)
+  ]);
+  return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
+}
+
+function meetingAgentReferencedFlagIds(records = []) {
+  const ids = new Set();
+  const walk = (value) => {
+    if (Array.isArray(value)) { value.forEach(walk); return; }
+    if (!value || typeof value !== 'object') return;
+    for (const id of Array.isArray(value.reviewFlagIds) ? value.reviewFlagIds : []) ids.add(String(id));
+    for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails']) if (Array.isArray(value[key])) walk(value[key]);
+  };
+  walk(records);
+  return ids;
+}
+
+function meetingAgentFlagUntouched(flag = {}) {
+  return (flag.status || 'open') === 'open' && !meetingMinutesAgentText(flag.correctionNote, 500);
+}
+
+// Decides what a finished Discussion or Actions run writes.
+// - Actions a reviewer has edited since they were generated are never
+//   replaced: the new run arrives as proposed changes to accept or reject.
+// - Open flags that belonged to replaced rows or a replaced proposal go with
+//   them, and identical open flags are shown once.
+function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges = {}, result = {}) {
+  const changes = { ...scopedChanges };
+  let incomingFlags = Array.isArray(result.reviewFlags) ? result.reviewFlags : [];
+  let keptReviewerActions = false;
+  if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'actions')) {
+    const generated = Array.isArray(changes.actions) ? changes.actions : [];
+    const current = Array.isArray(fresh.actions) ? fresh.actions : [];
+    // Both lists go through the same normalisation a save applies, so a
+    // save's own tidying never reads as a reviewer edit.
+    const asSaved = (actions) => meetingAgentActionsFingerprint(
+      normaliseAgentResult({ actions }, fresh.sourceUnits || [], '', { enforceEvidence: false }).actions
+    );
+    const previousFingerprint = fresh.qualityState?.actions?.generatedFingerprint || '';
+    const reviewerEdited = current.length > 0 && Boolean(previousFingerprint)
+      && asSaved(current) !== previousFingerprint;
+    const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
+    changes.qualityState = {
+      ...qualityState,
+      actions: { ...(qualityState.actions || {}), generatedFingerprint: asSaved(generated) }
+    };
+    if (reviewerEdited) {
+      keptReviewerActions = true;
+      const diff = buildProposal('actions', current, generated);
+      const generatedProposal = changes.pendingProposal && Array.isArray(changes.pendingProposal.changes) ? changes.pendingProposal : null;
+      const extraAdds = (generatedProposal?.changes || []).filter((change) => change?.type === 'add' && change.after)
+        .map((change) => ({ ...change, beforeIndex: current.length, index: current.length, afterIndex: null }));
+      const combined = [...diff.changes, ...extraAdds];
+      changes.pendingProposal = combined.length
+        ? { ...diff, changes: combined, source: 'regeneration' }
+        : null;
+      delete changes.actions;
+      // Flags raised on rows that were not applied would point at nothing.
+      const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
+      incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
+    }
+  }
+  const field = stage === 'actions' ? 'actions' : stage === 'discussion' ? 'discussion' : '';
+  let priorFlags = Array.isArray(fresh.reviewFlags) ? fresh.reviewFlags : [];
+  if (field && Object.prototype.hasOwnProperty.call(changes, field)) {
+    const oldIds = meetingAgentReferencedFlagIds(fresh[field] || []);
+    const newIds = meetingAgentReferencedFlagIds(changes[field] || []);
+    priorFlags = priorFlags.filter((flag) => !(oldIds.has(String(flag.id)) && !newIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
+  }
+  if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'pendingProposal')) {
+    const liveProposalFlagIds = new Set(((changes.pendingProposal && changes.pendingProposal.changes) || []).map(meetingAgentProposalReviewFlagId));
+    priorFlags = priorFlags.filter((flag) => !(String(flag.id || '').startsWith('proposal-review-')
+      && !liveProposalFlagIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
+  }
+  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags);
+  const seen = new Set();
+  const reviewFlags = merged.filter((flag) => {
+    if (!meetingAgentFlagUntouched(flag)) return true;
+    const key = `${flag.kind}|${meetingMinutesAgentText(flag.message, 500).toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { changes, reviewFlags, keptReviewerActions };
+}
+
 async function persistMeetingAgentBackgroundStage(options = {}) {
   const {
     draftId, userId, stage, sourceDraft = {}, result = null, failure = null,
@@ -13725,15 +13826,16 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
               error: `This ${stage} section changed while generation was running. Your newer edits were kept; generate it again to replace them.`
             }
           }
-          : {
-            ...scoped.changes,
-            reviewFlags: mergeMeetingAgentGenerationFlags(
-              fresh.reviewFlags, result.reviewFlags, result.replaceCoverageFlags
-            ),
-            staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage),
-            currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
-            generation: null
-          };
+          : (() => {
+            const regeneration = meetingAgentRegenerationChanges(fresh, stage, scoped.changes, result);
+            return {
+              ...regeneration.changes,
+              reviewFlags: regeneration.reviewFlags,
+              staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage),
+              currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
+              generation: null
+            };
+          })();
       } else {
         changes = {
           generation: {
@@ -14316,6 +14418,8 @@ router.stagedEvaluation = {
   compactMeetingAgentDiscussionContext,
   meetingAgentEmptyDiscoveryRepairPrompt,
   persistMeetingAgentBackgroundStage,
+  meetingAgentRegenerationChanges,
+  meetingAgentActionsFingerprint,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,

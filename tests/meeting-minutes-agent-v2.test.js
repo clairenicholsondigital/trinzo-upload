@@ -190,7 +190,7 @@ test('unsupported evidence IDs are removed and visibly flagged', () => {
     action: 'Send the report to Alex.', owner: 'Priya', deadline: 'Friday', evidenceIds: ['T9999']
   }] }, sourceUnits, 'actions');
   assert.ok(!result.actions[0].evidenceIds.includes('T9999'));
-  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'missing_evidence' && /unsupported source T9999/.test(flag.message)));
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'missing_evidence' && /do not exist \(T9999\)/.test(flag.message)));
   assert.ok(result.actions[0].reviewFlagIds.length);
 });
 

@@ -588,14 +588,56 @@ function normaliseFlag(flag = {}, index = 0) {
   const aliasedKind = FLAG_KIND_ALIASES[suppliedKind] || suppliedKind;
   const kind = FLAG_KINDS.has(aliasedKind) ? aliasedKind : 'uncertain_fact';
   const message = text(flag.message || flag.text || 'Review this item against the transcript.', 500);
-  return {
+  return rememberFlag({
     id: text(flag.id, 80) || stableId('flag', `${kind}|${message}`, index),
     kind,
     message,
     evidenceIds: [...new Set((Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean))].slice(0, 8),
     status: ['open', 'confirmed', 'corrected', 'dismissed'].includes(flag.status) ? flag.status : 'open',
     correctionNote: text(flag.correctionNote, 500)
-  };
+  });
+}
+
+// Many pipeline steps re-normalise records and keep only the records, so a
+// flag created on the way (and referenced by the record's reviewFlagIds) was
+// dropped while the reference survived. Every flag is remembered here by id so
+// a stage can recover what its records point at. Bounded; oldest go first.
+const FLAG_REGISTRY = new Map();
+const FLAG_REGISTRY_LIMIT = 20000;
+function rememberFlag(flag) {
+  FLAG_REGISTRY.delete(flag.id);
+  FLAG_REGISTRY.set(flag.id, flag);
+  if (FLAG_REGISTRY.size > FLAG_REGISTRY_LIMIT) FLAG_REGISTRY.delete(FLAG_REGISTRY.keys().next().value);
+  return flag;
+}
+
+function flagRecordsIn(value, out = []) {
+  if (Array.isArray(value)) { for (const item of value) flagRecordsIn(item, out); return out; }
+  if (!value || typeof value !== 'object') return out;
+  if (Array.isArray(value.reviewFlagIds)) out.push(value);
+  for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails', 'actions', 'discussion']) {
+    if (Array.isArray(value[key])) flagRecordsIn(value[key], out);
+  }
+  return out;
+}
+
+// Returns the flags the records point at (recovered where they were dropped)
+// and strips references that cannot be resolved. Mutates only copies.
+function reconcileRecordFlags(content = {}, flags = [], isUseful = () => true) {
+  const copy = JSON.parse(JSON.stringify(content || {}));
+  const byId = new Map((Array.isArray(flags) ? flags : []).map((flag) => [flag.id, flag]));
+  const recovered = [];
+  for (const record of flagRecordsIn(copy)) {
+    record.reviewFlagIds = [...new Set(record.reviewFlagIds)].filter((id) => {
+      if (byId.has(id)) return true;
+      const remembered = FLAG_REGISTRY.get(id);
+      if (!remembered || !isUseful(remembered)) return false;
+      byId.set(id, remembered);
+      recovered.push(remembered);
+      return true;
+    });
+  }
+  return { content: copy, flags: [...(Array.isArray(flags) ? flags : []), ...recovered], recovered: recovered.length };
 }
 
 function isSalientCoverageFlag(flag = {}) {
@@ -1791,6 +1833,19 @@ const PRESUMPTION_CUE = /\b(?:i\s+presumed|i\s+assumed|i\s+thought|we\s+thought|
 // maybe that slightly changed": a record citing the first sentence states
 // something its own speaker went on to revise. Surface the revision and cite
 // it alongside; the reviewer decides which statement is current.
+// The row cites both the assumption and its correction ("I presumed ... But I
+// think maybe that slightly changed"): the model often fuses the two, so the
+// reviewer is pointed at the correction. Strong correction wording only.
+function citedRevisionUnit(units = [], evidenceIds = []) {
+  const context = evidenceContextFor(units);
+  const cited = [...new Set(evidenceIds)].map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+  const rows = context.rows;
+  const presumption = cited.find((index) => PRESUMPTION_CUE.test(String(rows[index]?.text || '')));
+  if (presumption === undefined) return null;
+  const correction = cited.find((index) => index > presumption && STRONG_REVISION_CUE.test(String(rows[index]?.text || '')));
+  return correction === undefined ? null : rows[correction];
+}
+
 function laterRevisionUnit(units = [], evidenceIds = []) {
   const context = evidenceContextFor(units);
   const cited = new Set(evidenceIds);
@@ -1909,6 +1964,9 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     const row = item ? verdicts.get(item.id) : null;
     if (!row || !['belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
     if (!quotedVerbatim(row.timingQuote, item.passage)) return action;
+    // "Misread" means the passage does not say it. If the timing's own words
+    // are right there, the verdict contradicts the transcript.
+    if (row.verdict === 'misread' && quotedVerbatim(wording, item.passage)) return action;
     if (row.verdict === 'belongs_to_other_step') {
       if (!quotedVerbatim(row.stepQuote, item.passage)) return action;
       const actionWords = timingCheckWords(action.action);
@@ -2224,7 +2282,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     const discussionRecords = new Set(discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]));
     for (const record of records) {
       if (!discussionRecords.has(record) || !record.evidenceIds.length) continue;
-      const revision = laterRevisionUnit(units, record.evidenceIds);
+      const revision = laterRevisionUnit(units, record.evidenceIds) || citedRevisionUnit(units, record.evidenceIds);
       if (revision) {
         record.evidenceIds = [...new Set([...record.evidenceIds, revision.id])].slice(0, 8);
         const flag = normaliseFlag({
@@ -2241,7 +2299,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     if (record._unsupportedEvidenceIds?.length) {
       const flag = normaliseFlag({
         kind: 'missing_evidence',
-        message: `The agent cited unsupported source ${record._unsupportedEvidenceIds.join(', ')}; verify this record against the linked transcript evidence.`,
+        message: `This item pointed to transcript lines that do not exist (${record._unsupportedEvidenceIds.join(', ')}). Check it against the transcript.`,
         evidenceIds: record.evidenceIds
       }, flags.length + index);
       flags.push(flag);
@@ -2251,7 +2309,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     if (hadWeakEvidence) {
       const flag = normaliseFlag({
         kind: 'missing_evidence',
-        message: `The cited source does not sufficiently support this generated item; verify or correct it.`,
+        message: `The linked transcript lines only partly support this item. Check the wording against the transcript.`,
         evidenceIds: record.evidenceIds
       }, flags.length + index);
       flags.push(flag);
@@ -2264,7 +2322,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     delete record._timingClauseNote;
     if (hadWeakEvidence && !record.evidenceIds.length) continue;
     if (record.evidenceIds.length) continue;
-    const flag = normaliseFlag({ kind: 'missing_evidence', message: 'No sufficiently close source passage was found for this generated item.' }, flags.length + index);
+    const flag = normaliseFlag({ kind: 'missing_evidence', message: 'No transcript passage clearly supports this item. Check it, or delete it if it was not said.' }, flags.length + index);
     flags.push(flag);
     record.reviewFlagIds.push(flag.id);
   }
@@ -2556,6 +2614,7 @@ module.exports = {
   applyTimingClauseChecks,
   timingCheckEnabled,
   statedCalendarDate,
+  reconcileRecordFlags,
   decisionCheckEnabled,
   decisionCheckItems,
   decisionCheckPrompt,

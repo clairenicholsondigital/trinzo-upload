@@ -891,7 +891,7 @@
       }
       if (change.reviewContext) {
         content += '<div class="proposal-rationale"><div><strong>Why this needs review:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
-          + (change.reviewContext.label ? '<div class="commitment-chain"><span>Evidence path</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
+          + (change.reviewContext.label ? '<div class="commitment-chain"><span>In the transcript</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
           + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds) : '') + '</div>';
       }
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
@@ -1158,7 +1158,10 @@
         if (payload.generation && payload.generation.status === 'failed') {
           setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true, activeStage);
         } else {
-          setStatus(state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), Boolean(state.draft.qualityNotice), activeStage);
+          var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
+          setStatus(keptEdits
+            ? 'Your edited Actions were kept. The regenerated Actions are shown as proposed changes: accept the ones you want.'
+            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
