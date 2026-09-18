@@ -6165,6 +6165,20 @@ function withTestUpload(handler) {
   };
 }
 
+// Models on some AI Builder prompts wrap an otherwise valid JSON reply in a
+// Markdown fence. Accept that shape quietly; anything that is still not JSON
+// returns null and is rejected by the caller exactly as before.
+function parseJsonLenient(text) {
+  if (typeof text !== 'string') return null;
+  try { return JSON.parse(text); } catch { /* try the fenced form */ }
+  const cleaned = text.trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+  if (cleaned === text.trim() || !cleaned.startsWith('{')) return null;
+  try { return JSON.parse(cleaned); } catch { return null; }
+}
+
 function extractJsonFromText(text) {
   if (!text) return null;
 
@@ -9588,12 +9602,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     throw error;
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(rawBody);
-  } catch {
-    parsed = null;
-  }
+  const parsed = parseJsonLenient(rawBody);
   const queue = [parsed];
   const seen = new Set();
   let structured = null;
@@ -9622,7 +9631,8 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
       break;
     }
     if (typeof candidate === 'string') {
-      try { queue.push(JSON.parse(candidate)); } catch { /* prose is rejected below */ }
+      const nested = parseJsonLenient(candidate);
+      if (nested !== null) queue.push(nested); /* prose is rejected below */
     } else if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
       for (const key of ['result', 'output', 'response', 'lastResponse', 'body', 'value']) {
         if (Object.prototype.hasOwnProperty.call(candidate, key)) queue.push(candidate[key]);
@@ -14272,7 +14282,8 @@ router.stagedEvaluation = {
   applyStageResultVirtually,
   privateStageSpeculations,
   meetingAgentCallContext,
-  MEETING_AGENT_BOOT_ID
+  MEETING_AGENT_BOOT_ID,
+  parseJsonLenient
 };
 
 module.exports = router;

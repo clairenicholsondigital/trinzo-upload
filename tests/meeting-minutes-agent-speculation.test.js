@@ -86,3 +86,13 @@ test('with the flag off nothing runs ahead and nothing is reported', () => {
     process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1 = '1';
   }
 });
+
+test('flow replies wrapped in a Markdown JSON fence are parsed; prose is still rejected', () => {
+  const { parseJsonLenient } = api;
+  assert.deepEqual(parseJsonLenient('{"a":1}'), { a: 1 });
+  assert.deepEqual(parseJsonLenient('```json\n{"a":1,"b":[2]}\n```'), { a: 1, b: [2] });
+  assert.deepEqual(parseJsonLenient('```\n{"a":1}\n```'), { a: 1 });
+  assert.equal(parseJsonLenient('An error has occurred. Error code: ContentValidationError'), null);
+  assert.equal(parseJsonLenient('```json\nnot json\n```'), null);
+  assert.equal(parseJsonLenient('Here you go: {"a":1}'), null, 'no brace-hunting inside prose');
+});
