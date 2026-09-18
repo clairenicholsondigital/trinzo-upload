@@ -159,9 +159,37 @@ function questionIsAnswered(record, index) {
     && (ANSWER_OPENER.test(unit.text) || ANSWER_CLAIM.test(unit.text)));
 }
 
+// A point that states an agreement in so many words, and whose cited
+// passage records the agreement, is a decision. Deliberately narrow: plans,
+// intentions and "will be" statements stay points; only explicit agreement
+// language is promoted.
+const EXPLICIT_DECISION = /\b(?:agreed|agreement (?:to|that|was|on)|decided|decision (?:to|was|is|made)|will go (?:with|ahead)|approved|signed off|opted to|chose to)\b/i;
+const AGREEMENT_CUE = /\b(?:agreed|agree|decided|let'?s (?:go|do)|go (?:with|ahead)|sounds good|that'?s fine|happy with that|signed off|approved?|confirmed|yes,? (?:let'?s|we'?ll|do it|go))\b/i;
+
+function correctnessChecksEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 || '0'));
+}
+
+function evidenceRecordsAgreement(record, index) {
+  return (Array.isArray(record?.evidenceIds) ? record.evidenceIds : [])
+    .map((id) => index.byId.get(text(id, 30)))
+    .some((unit) => unit && AGREEMENT_CUE.test(text(unit.text)));
+}
+
+function isExplicitDecision(record, index) {
+  const value = text(record?.text);
+  return EXPLICIT_DECISION.test(value) && !QUESTION_MARKER.test(value)
+    && !looksLikeStatusNotDecision(value) && evidenceRecordsAgreement(record, index);
+}
+
 function retypeRows(topic, index) {
-  const points = [...(topic.points || [])];
+  const promote = correctnessChecksEnabled();
+  const points = [];
   const decisions = [];
+  for (const record of topic.points || []) {
+    if (promote && !(record.reviewFlagIds || []).length && isExplicitDecision(record, index)) decisions.push(record);
+    else points.push(record);
+  }
   const openQuestions = [];
   for (const record of topic.decisions || []) {
     if (looksLikeStatusNotDecision(text(record.text))) points.push(record);
@@ -429,6 +457,7 @@ module.exports = {
   looksLikeStatusNotDecision,
   questionIsAnswered,
   retypeRows,
+  isExplicitDecision,
   demoteUnreadyRows,
   consolidateTopics,
   rehomeSupportingDetails,

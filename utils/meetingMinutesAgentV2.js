@@ -632,6 +632,10 @@ function normalisePoint(value, units, prefix, index) {
   if (!pointText) return null;
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
   const resolved = resolveEvidence(pointText, units, candidate.evidenceIds);
+  if (correctnessChecksEnabled() && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
+    && resolved.evidenceIds.length && !uncitedClaimSupported(pointText, resolved, units)) {
+    resolved.evidenceIds = [];
+  }
   const supportingDetails = (Array.isArray(candidate.supportingDetails) ? candidate.supportingDetails : [])
     .map((detail, detailIndex) => {
       const source = typeof detail === 'string' ? { text: detail } : (detail || {});
@@ -1629,23 +1633,213 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
   return [...evidenceIds, best.id].slice(0, 8);
 }
 
+// ---------------------------------------------------------------------------
+// Correctness checks (MEETING_MINUTES_AGENT_CORRECTNESS_V1)
+//
+// Each check is deterministic and transcript-agnostic. They either correct a
+// value the evidence contradicts (agent output only) or surface it to the
+// reviewer as a flag; none invents content.
+// ---------------------------------------------------------------------------
+function correctnessChecksEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 || '0'));
+}
+
+// Sentences and "and then"/"then" steps of the cited passage. Transcripts
+// often lose the space after a full stop ("successfully.Across").
+function evidenceClauses(value) {
+  return String(value || '')
+    .replace(/([.!?;])(?=[A-Za-z])/g, '$1 ')
+    .split(/(?<=[.!?;])\s+|\s+(?=\b(?:and then|then)\b)/i)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 3);
+}
+
+const TIMING_TOKEN = /^(?:today|tonight|tomorrow|week|weeks|end|next|morning|afternoon|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|day|days|hopefully|before|this)$/;
+
+// A timing phrase belongs to the step it was spoken with. "Bottomed out by
+// the end of the week ... the two code changes completed by the end of next
+// week": the code-change action takes the second phrase, not the first. When
+// the clause holding the action's timing barely mentions the action while
+// another cited clause clearly describes it, the timing is reassigned to that
+// clause's own phrase, or removed when that clause states none.
+function timingClauseIssue(action, timing = {}, units = [], evidenceIds = []) {
+  const wording = text(timing.wording, 220).toLowerCase().replace(/\s+/g, ' ');
+  // Conditions ("once I get finished", "when Christina is back") are spoken in
+  // their own clause by nature; only dates and deadlines are checked.
+  if (!wording || !['deadline', 'target'].includes(timing.kind) || !evidenceIds.length) return null;
+  const actionTokens = [...new Set(materialTokens(comparisonText(action)))]
+    .filter((token) => !TIMING_TOKEN.test(token) && !NOVELTY_STOP_WORDS.has(token));
+  if (actionTokens.length < 3) return null;
+  const scored = evidenceClauses(evidenceWindowText(units, evidenceIds, 1)).map((clause) => {
+    const words = new Set(contentTokens(comparisonText(clause)));
+    return { clause, lower: clause.toLowerCase().replace(/\s+/g, ' '), score: actionTokens.filter((token) => words.has(token)).length };
+  });
+  const own = scored.filter((item) => item.lower.includes(wording));
+  if (!own.length) return null;
+  const ownScore = Math.max(...own.map((item) => item.score));
+  if (ownScore > 1) return null;
+  const best = scored.filter((item) => !item.lower.includes(wording)).sort((left, right) => right.score - left.score)[0];
+  if (!best || best.score < 2 || best.score <= ownScore) return null;
+  const phrases = [...best.clause.matchAll(new RegExp(CITED_TIMING_PHRASE.source, 'gi'))]
+    .map((match) => match[0].toLowerCase().replace(/\s+/g, ' '))
+    .sort((left, right) => right.length - left.length);
+  const replacement = phrases[0];
+  if (replacement && replacement !== wording) return { type: 'reassign', from: timing.wording, to: replacement };
+  return { type: 'remove', from: timing.wording };
+}
+
+const NOVELTY_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'was', 'were', 'will', 'can', 'its', 'our', 'not', 'but', 'all', 'any', 'each', 'which',
+  'what', 'when', 'where', 'who', 'whom', 'whose', 'than', 'then', 'them', 'these', 'those', 'some', 'such', 'very',
+  'well', 'should', 'must', 'may', 'might', 'shall', 'has', 'had', 'did', 'does', 'done', 'upon', 'per', 'via',
+  'within', 'without', 'across', 'between', 'through', 'during', 'before', 'under', 'above', 'below', 'further',
+  'once', 'here', 'both', 'few', 'most', 'other', 'same', 'own', 'too', 'how', 'why', 'because', 'while', 'until',
+  'against', 'among', 'onto', 'off', 'out', 'his', 'her', 'him', 'she', 'you', 'your', 'about', 'after', 'again',
+  'also', 'been', 'being', 'could', 'from', 'have', 'into', 'just', 'more', 'only', 'over', 'said', 'that',
+  'their', 'there', 'they', 'this', 'with', 'would',
+  'next', 'last', 'week', 'month', 'update', 'plan', 'ensure', 'provide', 'confirm', 'confirmed', 'check',
+  'discuss', 'discussed', 'decision', 'decided', 'status', 'ongoing', 'progres', 'point', 'item', 'noted', 'note',
+  'issue', 'required', 'require', 'including', 'include', 'regarding', 'related', 'relation', 'current',
+  'currently', 'additional', 'new', 'first', 'second', 'potential', 'possible', 'expected', 'appropriate',
+  'relevant', 'specific', 'overall', 'key', 'main', 'agreed', 'agreement'
+]);
+
+function transcriptVocabulary(units = []) {
+  const context = evidenceContextFor(units);
+  if (!context.vocabulary) {
+    context.vocabulary = new Set(context.rows.flatMap((unit) => contentTokens(comparisonText(`${unit.speaker} ${unit.text}`))));
+  }
+  return context.vocabulary;
+}
+
+// Share of a claim's distinctive words the meeting never used. A reviewer's
+// sentence about relocating the factory to Mars borrows "team" and "agreed"
+// from every meeting, so lexical scoring alone found it three citations; its
+// distinctive words ("relocate", "Mars", "quarter") appear nowhere at all.
+function claimNovelty(value, units = []) {
+  const vocabulary = transcriptVocabulary(units);
+  const tokens = [...new Set(materialTokens(comparisonText(value)))].filter((token) => !NOVELTY_STOP_WORDS.has(token));
+  if (!tokens.length) return 0;
+  return tokens.filter((token) => !vocabulary.has(token)).length / tokens.length;
+}
+
+// Applies only to text that arrived without citations of its own, which in
+// practice is what a reviewer typed. Unsupported text gets no decorative
+// citations; the missing-evidence flag then asks for it to be checked.
+function uncitedClaimSupported(value, resolved = {}, units = []) {
+  return claimNovelty(value, units) < 0.6 && Number(resolved.supportScore || 0) >= 0.3;
+}
+
+const PROPER_NOUN_COMMON = new Set([
+  'the', 'a', 'an', 'i', 'we', 'he', 'she', 'they', 'it', 'this', 'that', 'these', 'those', 'if', 'when', 'once',
+  'after', 'before', 'following', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november',
+  'december', 'decision', 'agreement', 'plan', 'confirmed', 'discussion', 'query', 'question', 'need', 'order',
+  'update', 'review', 'team', 'meeting', 'action', 'note', 'rule', 'recap', 'risk', 'key', 'main', 'current',
+  'potential', 'work', 'testing', 'completion', 'change', 'changes', 'document', 'documents', 'submission', 'status',
+  'teams', 'microsoft', 'ok', 'okay', 'tbc', 'n/a', 'na', 'am', 'pm', 'uk', 'eu', 'us'
+]);
+
+// Names and acronyms in a record that its own cited passage never mentions.
+// Words the meeting keeps returning to (three or more turns) are topic words,
+// not details, and are not checked.
+function unverifiedProperNouns(value, units = [], evidenceIds = []) {
+  if (!evidenceIds.length) return [];
+  const context = evidenceContextFor(units);
+  if (!context.unitWordFrequency) {
+    const frequency = new Map();
+    for (const unit of context.rows) {
+      for (const word of new Set(String(unit.text || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]*/g) || [])) {
+        frequency.set(word, (frequency.get(word) || 0) + 1);
+      }
+    }
+    context.unitWordFrequency = frequency;
+  }
+  const speakerWords = new Set(context.speakers.flatMap((speaker) => speaker.toLowerCase().split(/[\s,]+/)).filter(Boolean));
+  const window = evidenceWindowUnits(units, evidenceIds, 2).map((unit) => `${unit.speaker} ${unit.text}`).join(' ').toLowerCase();
+  const nouns = [...String(value || '').matchAll(/(?<=[a-z0-9,;:)]\s+)([A-Z][a-z]+[A-Za-z0-9-]*|[A-Z]{2,}[0-9]*)\b/g)]
+    .map((match) => match[1]);
+  return [...new Set(nouns)].filter((noun) => {
+    const lower = noun.toLowerCase();
+    if (PROPER_NOUN_COMMON.has(lower) || speakerWords.has(lower)) return false;
+    if ((context.unitWordFrequency.get(lower) || 0) >= 3) return false;
+    return !window.includes(lower);
+  });
+}
+
+const COMMON_SPEECH_WORDS = new Set([
+  'get', 'got', 'let', 'say', 'one', 'make', 'made', 'take', 'put', 'going', 'think', 'know', 'want', 'like',
+  'yeah', 'yes', 'sure', 'okay', 'well', 'right', 'thing', 'things', 'bit', 'kind', 'sort', 'really',
+  'actually', 'maybe', 'now', 'see', 'look', 'come', 'back', 'way', 'lot', 'time', 'good', 'fine', 'sorry',
+  'hang', 'yep', 'probably', 'still', 'even', 'much', 'many', 'thank', 'thanks'
+]);
+
+const STRONG_REVISION_CUE = /(?:^|[.!?]\s*)(?:sorry\b|actually\b|correction\b|scratch that\b|no[,.])|\b(?:(?:has|have|had)\s+(?:since\s+)?(?:slightly\s+)?changed|slightly\s+changed|since\s+changed|no\s+longer|i\s+was\s+wrong|i\s+got\s+that\s+wrong|not\s+any\s*more)\b/i;
+const WEAK_REVISION_CUE = /^\s*but\b/i;
+const PRESUMPTION_CUE = /\b(?:i\s+presumed|i\s+assumed|i\s+thought|we\s+thought|originally|initially|in\s+an\s+earlier\s+call|i\s+had\s+it\s+(?:as|that))\b/i;
+
+// "I presumed the formative would be ready for submission ... But I think
+// maybe that slightly changed": a record citing the first sentence states
+// something its own speaker went on to revise. Surface the revision and cite
+// it alongside; the reviewer decides which statement is current.
+function laterRevisionUnit(units = [], evidenceIds = []) {
+  const context = evidenceContextFor(units);
+  const cited = new Set(evidenceIds);
+  const indexes = evidenceIds.map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+  for (const index of indexes) {
+    const unit = context.rows[index];
+    const unitTokens = [...new Set(materialTokens(comparisonText(unit.text)))]
+      .filter((token) => !NOVELTY_STOP_WORDS.has(token) && !COMMON_SPEECH_WORDS.has(token));
+    if (!unitTokens.length) continue;
+    for (let next = index + 1; next <= index + 3 && next < context.rows.length; next += 1) {
+      const later = context.rows[next];
+      if (cited.has(later.id) || later.speaker !== unit.speaker) continue;
+      const strong = STRONG_REVISION_CUE.test(later.text);
+      const weak = WEAK_REVISION_CUE.test(later.text) && PRESUMPTION_CUE.test(unit.text);
+      if (!strong && !weak) continue;
+      const laterWords = new Set(contentTokens(comparisonText(later.text)));
+      if (unitTokens.some((token) => laterWords.has(token))) return later;
+    }
+  }
+  return null;
+}
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
     if (!action || isIdeaOnlyContemplation(action)) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
+    const checks = correctnessChecksEnabled();
+    if (checks && options.enforceEvidence === false && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
+      && resolved.evidenceIds.length && !uncitedClaimSupported(action, resolved, units)) {
+      resolved.evidenceIds = [];
+    }
     const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
     const evidenceIds = anchorOwnerCommitment(action, owners, units, resolved.evidenceIds);
     const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
     if (options.enforceEvidence !== false && !evidenceIds.length) return null;
     if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) return null;
+    let timing = backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
+    let timingClauseNote = null;
+    if (checks) {
+      const issue = timingClauseIssue(action, timing, units, evidenceIds);
+      if (issue) {
+        timingClauseNote = issue;
+        if (options.enforceEvidence !== false) {
+          timing = issue.type === 'reassign'
+            ? timingFrom({ timing: { kind: timing.kind, wording: issue.to } }, options)
+            : { kind: 'not_stated', wording: '', exactDate: '' };
+        }
+      }
+    }
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
       action,
       owners,
-      timing: backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options),
+      timing,
+      _timingClauseNote: timingClauseNote,
       evidenceIds,
       reviewFlagIds: [...new Set((Array.isArray(item?.reviewFlagIds) ? item.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
       _unsupportedEvidenceIds: resolved.invalidIds,
@@ -1787,6 +1981,22 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         action.reviewFlagIds.push(flag.id);
       }
     }
+    if (action._timingClauseNote) {
+      const note = action._timingClauseNote;
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: note.type === 'reassign'
+          ? (enforceEvidence
+            ? `Timing changed from "${note.from}" to "${note.to}": the cited passage gives "${note.from}" for a different step. Confirm the timing.`
+            : `The cited passage gives "${note.from}" for a different step and "${note.to}" for this one. Confirm the timing.`)
+          : (enforceEvidence
+            ? `Timing "${note.from}" removed: in the cited passage it belongs to a different step. Confirm whether this action has its own timing.`
+            : `In the cited passage "${note.from}" belongs to a different step. Confirm whether this action has its own timing.`),
+        evidenceIds: action.evidenceIds
+      }, flags.length);
+      flags.push(flag);
+      action.reviewFlagIds.push(flag.id);
+    }
     if (action._timingConflicts?.length) {
       const flag = normaliseFlag({
         kind: 'timing',
@@ -1795,6 +2005,34 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
       }, flags.length);
       flags.push(flag);
       action.reviewFlagIds.push(flag.id);
+    }
+  }
+  if (correctnessChecksEnabled()) {
+    const discussionRecords = new Set(discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]));
+    for (const record of records) {
+      const recordText = record.text || record.action || '';
+      const nouns = unverifiedProperNouns(recordText, units, record.evidenceIds);
+      if (nouns.length) {
+        const flag = normaliseFlag({
+          kind: 'uncertain_fact',
+          message: `${nouns.map((noun) => `"${noun}"`).join(', ')} ${nouns.length === 1 ? 'does' : 'do'} not appear in the cited passage; cannot verify this detail against the transcript.`,
+          evidenceIds: record.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        record.reviewFlagIds.push(flag.id);
+      }
+      if (!discussionRecords.has(record) || !record.evidenceIds.length) continue;
+      const revision = laterRevisionUnit(units, record.evidenceIds);
+      if (revision) {
+        record.evidenceIds = [...new Set([...record.evidenceIds, revision.id])].slice(0, 8);
+        const flag = normaliseFlag({
+          kind: 'uncertain_fact',
+          message: `Conflicting passage: the speaker appears to revise this shortly afterwards ("${salientExcerpt(revision.text, /./).slice(0, 200)}"). Confirm which statement is current.`,
+          evidenceIds: record.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        record.reviewFlagIds.push(flag.id);
+      }
     }
   }
   for (const [index, record] of records.entries()) {
@@ -1821,6 +2059,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     delete record._weakEvidenceIds;
     delete record._evidenceDisposition;
     delete record._timingConflicts;
+    delete record._timingClauseNote;
     if (hadWeakEvidence && !record.evidenceIds.length) continue;
     if (record.evidenceIds.length) continue;
     const flag = normaliseFlag({ kind: 'missing_evidence', message: 'No sufficiently close source passage was found for this generated item.' }, flags.length + index);
@@ -2109,5 +2348,16 @@ module.exports = {
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
-  relativeExactDate
+  relativeExactDate,
+  correctnessChecksEnabled,
+  timingClauseIssue,
+  claimNovelty,
+  uncitedClaimSupported,
+  unverifiedProperNouns,
+  laterRevisionUnit,
+  evidenceClauses,
+  materialTokens,
+  contentTokens,
+  comparisonText,
+  evidenceWindowText
 };
