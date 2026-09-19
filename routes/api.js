@@ -212,6 +212,7 @@ const {
   mergeDuplicateCommitments,
   applyRequesterOwnerRule,
   demoteSupersededRows,
+  describesUsualPractice,
   supersededCheckItems,
   supersededVerdicts,
   correctnessChecksEnabled
@@ -13397,6 +13398,26 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             label: 'answered, then accepted',
             reason: `This looks answered during the meeting ("${item.answerQuote}" … "${item.acceptanceQuote}"). Add it only if something is still open.`,
             evidenceIds: item.action.evidenceIds || []
+          }
+        });
+      }
+    }
+  }
+  if (correctnessChecksEnabled()) {
+    // A description of how someone usually works is offered, not published.
+    const practice = timingChecked.actions.filter((action) => describesUsualPractice(action, draft.sourceUnits));
+    if (practice.length) {
+      timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !practice.includes(action)) };
+      const at = timingChecked.actions.length;
+      for (const action of practice) {
+        proposal.changes.push({
+          id: `change-practice-${crypto.createHash('sha1').update(action.action || '').digest('hex').slice(0, 10)}`,
+          type: 'add', before: null, after: { ...action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'described as usual practice',
+            reason: 'This describes how things are usually done rather than a task someone took on. Add it only if someone committed to it.',
+            evidenceIds: action.evidenceIds || []
           }
         });
       }

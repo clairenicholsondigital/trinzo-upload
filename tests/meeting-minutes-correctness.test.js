@@ -308,3 +308,15 @@ test('a row whose citations were enriched with an unrelated correction is neithe
     if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
   }
 });
+
+test('an action drawn only from a description of usual practice is recognised', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0001', speaker: 'Steve Martin', text: 'First thing I go in when I look around, are there posters on the wall about the products?' },
+    { id: 'T0002', speaker: 'Steve Martin', text: 'In most cases, the education comes from, you know, you really need a better connection with the product.' },
+    { id: 'T0003', speaker: 'Hannah Quinn', text: "I'll draft the material and send it to you over the next couple of weeks." }
+  ];
+  assert.ok(V.describesUsualPractice({ action: 'Create more posters and video training.', evidenceIds: ['T0001', 'T0002'] }, units));
+  assert.ok(!V.describesUsualPractice({ action: 'Draft the material and send it to Steve.', evidenceIds: ['T0003'] }, units));
+  assert.ok(!V.describesUsualPractice({ action: 'Draft material on posters.', evidenceIds: ['T0001', 'T0003'] }, units));
+});

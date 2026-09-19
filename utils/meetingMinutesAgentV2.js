@@ -2394,6 +2394,21 @@ function demoteSupersededRows(discussion = [], units = [], outdated = null) {
   return { discussion: kept, demoted };
 }
 
+// ---- Usual practice is not an action ------------------------------------------
+// In a case-study conversation ("First thing I go in, are there posters on the
+// wall...", "In most cases the education comes from...") the model turns a
+// description of how someone usually works into an action. When every cited
+// line is habitual description and none takes on future work, the action is
+// offered as a proposal instead of being published.
+const HABITUAL_DESCRIPTION = /\b(?:usually|typically|normally|in most cases|generally|every time|whenever|what (?:we|i) (?:do|typically do|normally do) is|first thing (?:i|we)|when (?:i|we|you) (?:go|come) in|we (?:go|come) in|we ask them|we look at|we give them|we frame it|you know, you)\b/i;
+const FUTURE_COMMITMENT = /\b(?:i|we)(?:'ll| will| am going to|'m going to|'m gonna)\b|\bnext (?:week|month|call)\b|\btomorrow\b|\bby (?:monday|tuesday|wednesday|thursday|friday|the end)\b|\bleave (?:it|that) with me\b/i;
+function describesUsualPractice(action = {}, units = []) {
+  const context = evidenceContextFor(units);
+  const lines = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger)
+    .map((index) => String(context.rows[index]?.text || ''));
+  return lines.length > 0 && lines.every((line) => HABITUAL_DESCRIPTION.test(line)) && !lines.some((line) => FUTURE_COMMITMENT.test(line));
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -3049,6 +3064,7 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  describesUsualPractice,
   demoteSupersededRows,
   supersededCheckItems,
   supersededVerdicts,
