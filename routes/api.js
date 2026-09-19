@@ -14382,6 +14382,12 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
       buildProposal('actions', reconciledActions, combined), reconciledActions
     ), actionChains);
+    // Never re-propose an action the reviewer deleted since it was generated.
+    const generatedTexts = Array.isArray(draft.qualityState?.actions?.generatedTexts) ? draft.qualityState.actions.generatedTexts : [];
+    const deletedByReviewer = generatedTexts.filter((textValue) => !(draft.actions || [])
+      .some((row) => meetingMinutesAgentText(row?.action, 1600) === textValue));
+    proposal.changes = (proposal.changes || []).filter((change) => change.type !== 'add'
+      || !deletedByReviewer.some((textValue) => hybridActionsEquivalent(textValue, change.after?.action || '')));
     const missedFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
       id: meetingAgentProposalReviewFlagId(change),
       kind: 'possible_missed_follow_up',
