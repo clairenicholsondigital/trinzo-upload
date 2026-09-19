@@ -13240,10 +13240,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
   );
-  // A "change" that alters nothing a reviewer can see is noise.
-  const visibleAction = (record = {}) => JSON.stringify([record.action, record.owners || [], record.timing || {}, record.evidenceIds || []]);
-  builtProposal.changes = (builtProposal.changes || []).filter((change) => change.type !== 'modify'
-    || visibleAction(change.before) !== visibleAction(change.after));
+  builtProposal.changes = (builtProposal.changes || []).filter(meetingAgentProposalChangeIsVisible);
   const proposal = annotateActionProposalChains(builtProposal, actionChains);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
@@ -13809,6 +13806,18 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
   return { conflictFields: [], changes };
 }
 
+// A suggested edit must change what the action says: its wording, owners or
+// timing. One that only re-cites lines (or nothing at all) is noise.
+function meetingAgentProposalChangeIsVisible(change = {}) {
+  if (change?.type !== 'modify') return true;
+  const visible = (record = {}) => JSON.stringify([
+    meetingMinutesAgentText(record.action || record.text, 1600),
+    (Array.isArray(record.owners) ? record.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)),
+    meetingMinutesAgentText(record.timing?.kind, 40), meetingMinutesAgentText(record.timing?.wording, 220)
+  ]);
+  return visible(change.before) !== visible(change.after);
+}
+
 // What the reviewer sees of an Actions list: wording, owners and timing, in order.
 function meetingAgentActionsFingerprint(actions = []) {
   const rows = (Array.isArray(actions) ? actions : []).map((action) => [
@@ -13867,7 +13876,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       const generatedProposal = changes.pendingProposal && Array.isArray(changes.pendingProposal.changes) ? changes.pendingProposal : null;
       const extraAdds = (generatedProposal?.changes || []).filter((change) => change?.type === 'add' && change.after)
         .map((change) => ({ ...change, beforeIndex: current.length, index: current.length, afterIndex: null }));
-      const combined = [...diff.changes, ...extraAdds];
+      const combined = [...diff.changes.filter(meetingAgentProposalChangeIsVisible), ...extraAdds];
       changes.pendingProposal = combined.length
         ? { ...diff, changes: combined, source: 'regeneration' }
         : null;

@@ -1025,6 +1025,13 @@
     return '/api/meeting-minutes-agent/drafts/' + encodeURIComponent(state.draft.draftId) + (suffix || '');
   }
 
+  function editingInside(containerId) {
+    var container = document.getElementById(containerId);
+    var active = document.activeElement;
+    return Boolean(container && active && active !== document.body && container.contains(active)
+      && active.matches('textarea,input,select,[contenteditable]'));
+  }
+
   function scheduleSave() {
     if (rendering || !state.draft) return;
     rememberPendingDiscussion();
@@ -1036,8 +1043,10 @@
     if (generationRunning()) {
       pendingGenerationEdits = true;
       setSaveStatus(generationSaveText(), 'waiting');
-      renderDiscussion();
-      renderActions();
+      // Never rebuild the section the reviewer is typing in: rebuilding it
+      // destroys the focused field, so every later keystroke was lost.
+      if (!editingInside('discussionList')) renderDiscussion();
+      if (!editingInside('actionsBody')) renderActions();
       return;
     }
     setSaveStatus('Unsaved changes - saving shortly...', 'dirty');

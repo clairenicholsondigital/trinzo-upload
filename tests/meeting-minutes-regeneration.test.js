@@ -80,3 +80,15 @@ test('flags created mid-pipeline are recovered and dead references dropped', () 
   assert.deepEqual(out.content.discussion[0].points[0].reviewFlagIds, row.reviewFlagIds);
   assert.deepEqual(out.flags.map((f) => f.id), row.reviewFlagIds);
 });
+
+test('regeneration never proposes an edit that changes nothing a reviewer sees', () => {
+  const edited = [{ ...generatedFirst[0], owners: ['Kevin'] }, generatedFirst[1]];
+  const fresh = draftWith(edited, []);
+  const sameWording = [
+    { ...generatedFirst[0], id: 'z1', owners: ['Kevin'], evidenceIds: ['T0001', 'T0003'], reviewFlagIds: [] },
+    { ...generatedFirst[1], id: 'z2', reviewFlagIds: [] }
+  ];
+  const out = meetingAgentRegenerationChanges(fresh, 'actions', { actions: sameWording, pendingProposal: null, qualityState: { actions: {} } }, { reviewFlags: [] });
+  assert.equal(out.keptReviewerActions, true);
+  assert.equal(out.changes.pendingProposal, null);
+});
