@@ -153,3 +153,12 @@ test('one commitment written twice is merged; separate work on a shared line is 
   assert.equal(out.actions[2].timing.wording, 'today (first step only)');
   assert.ok(out.actions[2].evidenceIds.includes('T0117'));
 });
+
+test('a purely conditional timing is a dependency, whatever kind was supplied', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const kind = (timing) => V.normaliseAgentResult({ actions: [{ action: 'Send the report.', owners: ['A'], timing, evidenceIds: [] }] }, [], '', { enforceEvidence: false }).actions[0].timing.kind;
+  assert.equal(kind({ kind: 'deadline', wording: "as soon as Christina's back" }), 'dependency');
+  assert.equal(kind({ kind: 'target', wording: 'once testing completes' }), 'dependency');
+  assert.equal(kind({ kind: 'deadline', wording: 'after the audit on Friday' }), 'deadline');
+  assert.equal(kind({ kind: 'deadline', wording: 'as soon as possible' }), 'deadline');
+});

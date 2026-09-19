@@ -166,6 +166,9 @@
   border:1px solid var(--info-border);border-left:var(--rail) solid var(--accent);
   border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);
   font-size:var(--fs-sm);line-height:1.45}
+/* The stale notice is running text with an inline stage name; as a flex row
+   its text nodes became three separate columns. */
+.meeting-agent-page #staleNotice{display:block}
 .meeting-agent-page #workflowStatus::before{
   content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--accent)}
 .meeting-agent-page.busy #workflowStatus::before{

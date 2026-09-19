@@ -961,8 +961,15 @@ function timingFrom(item = {}, options = {}) {
   const supplied = item.timing && typeof item.timing === 'object' ? item.timing : {};
   let wording = text(supplied.wording || item.deadline || item.target, 220);
   let kind = ['deadline', 'target', 'dependency', 'not_stated'].includes(supplied.kind) ? supplied.kind : 'not_stated';
+  // "As soon as Christina is back" is a condition, not a date: whatever kind
+  // was supplied, a purely conditional wording with no day or date in it is a
+  // dependency.
+  const conditional = /^(?:as soon as|once|after|when|following|upon|subject to|dependent on|depends on|pending)\b/i.test(wording.trim())
+    && !/\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|january|february|march|april|may|june|july|august|september|october|november|december|\d)\b/i.test(wording);
+  const urgent = /\b(?:as soon as possible|asap|as soon as you can|as soon as we can)\b/i.test(wording);
+  if (conditional && !urgent && (kind === 'deadline' || kind === 'target')) kind = 'dependency';
   if (kind === 'not_stated' && wording) {
-    kind = /\b(?:once|after|when|following|subject to|dependent on|depends on)\b/i.test(wording)
+    kind = !urgent && /\b(?:as soon as|once|after|when|following|subject to|dependent on|depends on)\b/i.test(wording)
       ? 'dependency'
       : (/\b(?:target|aim|ideally|provisional|expected|this week|next week)\b/i.test(wording) ? 'target' : 'deadline');
   }

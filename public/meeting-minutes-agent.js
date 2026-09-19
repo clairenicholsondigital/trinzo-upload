@@ -127,8 +127,34 @@
     return parts.length ? element.tagName.toLowerCase() + parts.join('') : '';
   }
 
+  // The reader's place: the focused field, else the first field visible on
+  // screen. Kept at the same screen position after a re-render, so a panel
+  // appearing or disappearing above it no longer moves what they are reading.
+  function captureAnchor() {
+    var active = document.activeElement;
+    var candidates = controlSelector(active) ? [active] : Array.prototype.filter.call(
+      document.querySelectorAll('textarea, input[type="text"], input:not([type])'),
+      function (field) { var box = field.getBoundingClientRect(); return box.height > 0 && box.bottom > 0 && box.top < window.innerHeight; });
+    var field = candidates[0];
+    var selector = controlSelector(field);
+    if (!selector) return null;
+    var matches;
+    try { matches = document.querySelectorAll(selector); } catch (error) { return null; }
+    return { selector: selector, index: Array.prototype.indexOf.call(matches, field), top: field.getBoundingClientRect().top };
+  }
+
+  function restoreAnchor(anchor) {
+    if (!anchor) return;
+    var matches;
+    try { matches = document.querySelectorAll(anchor.selector); } catch (error) { return; }
+    var field = matches[anchor.index >= 0 ? anchor.index : 0];
+    if (!field) return;
+    var drift = field.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(drift) >= 1) window.scrollBy(0, drift);
+  }
+
   function captureFocus() {
-    var snapshot = { scrollY: window.pageYOffset };
+    var snapshot = { scrollY: window.pageYOffset, anchor: captureAnchor() };
     var element = document.activeElement;
     var selector = controlSelector(element);
     if (!selector) return snapshot;
@@ -144,6 +170,7 @@
   function restoreFocus(snapshot) {
     if (!snapshot) return;
     if (typeof snapshot.scrollY === 'number') window.scrollTo(0, snapshot.scrollY);
+    restoreAnchor(snapshot.anchor);
     if (!snapshot.selector) return;
     var matches;
     try { matches = document.querySelectorAll(snapshot.selector); } catch (error) { return; }
@@ -279,6 +306,15 @@
     if (element.value !== value) element.value = value;
   }
 
+  // Measured on real meetings: Discussion about a minute, Actions 15–45 s when
+  // nothing could be prepared ahead, the summary a few seconds.
+  var TYPICAL_SECONDS = { discussion: 120, actions: 60, summary: 30 };
+  function typicalDurationText(stage, elapsed) {
+    var typical = TYPICAL_SECONDS[stage] || 90;
+    if (elapsed > typical * 2) return 'taking longer than usual, still working';
+    return stage === 'discussion' ? 'usually 1–2 minutes' : stage === 'actions' ? 'usually under a minute' : 'usually a few seconds';
+  }
+
   function generationRunning(stage) {
     var generation = state.draft && state.draft.generation;
     return Boolean(generation && generation.status === 'running' && (!stage || generation.stage === stage));
@@ -321,6 +357,14 @@
   }
 
   function renderGenerationProgress() {
+    // The progress panel sits above the content; keep the reader's place when it
+    // appears, changes size or goes away.
+    var anchor = captureAnchor();
+    renderGenerationProgressPanel();
+    restoreAnchor(anchor);
+  }
+
+  function renderGenerationProgressPanel() {
     var panel = document.getElementById('generationProgress');
     if (!panel) return;
     var generation = state.draft && state.draft.generation;
@@ -345,7 +389,7 @@
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
-      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + ' · usually around 2–4 minutes'
+      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + ' · ' + typicalDurationText(stage, elapsed)
       : 'Complete';
     document.getElementById('generationPhases').innerHTML = generationPhases(generation || {stage:stage}).map(function (phase) {
       var phaseState = generation ? generationPhaseStatus(generation, phase) : 'done';
@@ -410,9 +454,22 @@
     }
   };
 
+  var RUNNING_NOTICE_TEXT = {
+    discussion: 'The Discussion is being prepared.',
+    actions: 'Actions are being prepared. You can keep editing the Discussion.',
+    summary: 'The summary is being prepared.'
+  };
+
   function renderSpeculationNotice(element, stage, info) {
     if (!element) return;
-    element.hidden = !info || generationRunning(stage);
+    // A notice that is showing when its run starts keeps its place and says
+    // the run is under way. Hiding it moved everything above it when the
+    // reader was scrolled to the bottom, so the next click missed.
+    if (generationRunning(stage)) {
+      if (!element.hidden) element.textContent = RUNNING_NOTICE_TEXT[stage] || element.textContent;
+      return;
+    }
+    element.hidden = !info;
     if (element.hidden) return;
     element.textContent = SPECULATION_NOTICE_TEXT[stage][info.status === 'ready' ? 'ready' : 'preparing'];
   }
