@@ -13501,6 +13501,10 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     validateTranscriptText(transcript.text);
     const preparationStartedAt = Date.now();
     const prepared = await prepareMiniLmTranscript(transcript.text, {
+      // Measured twice on the six real meetings (3 runs each): keeping short
+      // replies lifts T733 reference commitments (18/42 -> 29/42) but costs
+      // more on the golden set than it gains (actions 0.443 -> 0.348, overall
+      // 0.699 -> 0.668). Left off; the code stays for a future re-test.
       keepShortReplies: /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_KEEP_SHORT_REPLIES_V1 || '0'))
     });
     const preparationMs = Date.now() - preparationStartedAt;
