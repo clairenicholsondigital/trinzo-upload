@@ -2729,6 +2729,23 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     record.reviewFlagIds.push(flag.id);
   }
   if (stage === 'discussion') flags.push(...unresolvedReferenceFlags(units));
+  // Identical flags (same kind, message and evidence) are shown once; every
+  // record that pointed at a dropped copy is repointed at the kept one, so a
+  // hand-typed unsupported action keeps its flag.
+  const alias = new Map();
+  const kept = new Map();
+  for (const flag of flags) {
+    const key = `${flag.kind}|${flag.message}|${flag.evidenceIds.join(',')}`.toLowerCase();
+    if (kept.has(key)) alias.set(flag.id, kept.get(key));
+    else kept.set(key, flag.id);
+  }
+  if (alias.size) {
+    const repoint = (record) => {
+      if (Array.isArray(record?.reviewFlagIds)) record.reviewFlagIds = [...new Set(record.reviewFlagIds.map((id) => alias.get(id) || id))];
+    };
+    for (const topic of discussion) for (const record of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) repoint(record);
+    for (const action of actions) repoint(action);
+  }
   return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags: uniqueFlags(flags) };
 }
 

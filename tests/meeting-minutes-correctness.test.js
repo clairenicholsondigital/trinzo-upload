@@ -263,3 +263,17 @@ test('a row restating a corrected assumption leaves the primary rows; one statin
     if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
   }
 });
+
+test('records sharing an identical flag all keep a reference to the flag that is kept', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [{ id: 'T0001', speaker: 'Jacqui Fox', text: 'We reviewed the risk management plan comments.' }];
+  const out = V.normaliseAgentResult({
+    discussion: [{ topic: 'X', points: [{ text: 'The team agreed to relocate the factory to Mars next quarter.', evidenceIds: [] }] }],
+    actions: [{ action: 'Relocate the factory to Mars next quarter.', owners: [], timing: { kind: 'not_stated', wording: '' }, evidenceIds: [] }],
+    reviewFlags: []
+  }, units, '', { enforceEvidence: false });
+  const ids = new Set(out.reviewFlags.map((flag) => flag.id));
+  assert.ok(out.actions[0].reviewFlagIds.length);
+  assert.ok(out.actions[0].reviewFlagIds.every((id) => ids.has(id)));
+  assert.ok(out.discussion[0].points[0].reviewFlagIds.every((id) => ids.has(id)));
+});

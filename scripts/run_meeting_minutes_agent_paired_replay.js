@@ -9,7 +9,7 @@
 //      --base-url http://127.0.0.1:3980 --case-dir <golden> --cases all --runs 2 --keep-drafts --output kept.json
 // 2. Compare:              node scripts/run_meeting_minutes_agent_paired_replay.js kept.json \
 //      --a "MEETING_MINUTES_AGENT_PROPOSAL_RECHECK_V1=0" --b "MEETING_MINUTES_AGENT_PROPOSAL_RECHECK_V1=1" \
-//      [--out-dir dir] [--env-file path] [--delete-drafts]
+//      [--stage actions|discussion] [--out-dir dir] [--env-file path] [--delete-drafts]
 // Later model passes that are not cached (recovery, critic, salvage) still run
 // live and vary; compare totals, not individual rows.
 const { spawn, spawnSync } = require('child_process');
@@ -29,11 +29,12 @@ const envFile = value('--env-file', path.join(ROOT, '.env'));
 const parseEnv = (text) => Object.fromEntries(String(text || '').split(',').map((pair) => pair.trim()).filter(Boolean)
   .map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)]));
 const arms = { a: parseEnv(value('--a')), b: parseEnv(value('--b')) };
+const stage = value('--stage', 'actions');
 
 function replay(name) {
   const out = path.join(outDir, `paired-${name}.json`);
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(__dirname, 'replay_meeting_minutes_agent_actions.js'), ROOT, keptFile, out, '--env-file', envFile],
+    const child = spawn(process.execPath, [path.join(__dirname, 'replay_meeting_minutes_agent_actions.js'), ROOT, keptFile, out, '--env-file', envFile, '--stage', stage],
       { env: { ...process.env, ...arms[name] }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (chunk) => String(chunk).split('\n').filter((line) => line && !line.startsWith('{'))
       .forEach((line) => console.log(`[${name}] ${line}`)));
