@@ -13673,7 +13673,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       actions: normalised.actions,
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
-      reviewFlags: mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
+      reviewFlags: reopenFlagsOfReAddedItems(
+        mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
+        [...normalised.discussion, ...normalised.actions]
+      ),
       staleStages: [...new Set([
         ...(draft.staleStages || []),
         ...meetingAgentDerivedStaleStages(draft, {
@@ -13932,6 +13935,16 @@ function meetingAgentReferencedFlagIds(records = []) {
   };
   walk(records);
   return ids;
+}
+
+// A flag dismissed only because its item was deleted reopens when an item
+// pointing at it comes back (the reviewer re-adds the same unsupported text).
+const MEETING_AGENT_ITEM_REMOVED_NOTE = 'The item was removed.';
+function reopenFlagsOfReAddedItems(flags = [], records = []) {
+  const referenced = meetingAgentReferencedFlagIds(records);
+  return (Array.isArray(flags) ? flags : []).map((flag) => (referenced.has(String(flag.id))
+    && flag.status === 'dismissed' && meetingMinutesAgentText(flag.correctionNote, 500) === MEETING_AGENT_ITEM_REMOVED_NOTE
+    ? { ...flag, status: 'open', correctionNote: '' } : flag));
 }
 
 function meetingAgentFlagUntouched(flag = {}) {
@@ -14638,6 +14651,7 @@ router.stagedEvaluation = {
   persistMeetingAgentBackgroundStage,
   meetingAgentRegenerationChanges,
   meetingAgentActionsFingerprint,
+  reopenFlagsOfReAddedItems,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,

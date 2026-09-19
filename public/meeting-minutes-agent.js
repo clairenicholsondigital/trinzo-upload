@@ -822,6 +822,8 @@
     return own.concat(nested.flatMap(linkedReviewFlagIds));
   }
 
+  var ITEM_REMOVED_NOTE = 'The item was removed.';
+
   function resolveDeletedTargetFlags(flagIds) {
     if (!state.draft || !flagIds || !flagIds.length) return;
     var stillLinked = new Set(linkedReviewFlagIds([
@@ -830,7 +832,9 @@
     var removed = new Set(flagIds);
     state.draft.reviewFlags = (state.draft.reviewFlags || []).map(function (flag) {
       if (!removed.has(flag.id) || stillLinked.has(flag.id)) return flag;
-      return Object.assign({}, flag, { status: 'dismissed' });
+      // Marked so the server can tell it from a reviewer's own dismissal and
+      // reopen it if the same item is added again.
+      return Object.assign({}, flag, { status: 'dismissed', correctionNote: ITEM_REMOVED_NOTE });
     });
   }
 
@@ -1016,6 +1020,9 @@
       document.getElementById('staleNotice').hidden = !stale.length;
       document.getElementById('staleStages').textContent = stale.join(' and ');
     } else document.getElementById('staleNotice').hidden = true;
+    // The Review page's document is built on entry; a draft resumed on Review
+    // (or re-rendered while it is open) must build it too.
+    if (state.draft && state.currentStep === MAX_STEP) renderFinal();
     showStep(state.draft ? state.currentStep : 0, { persist: false });
     renderGenerationProgress();
     rendering = false;
@@ -1446,6 +1453,12 @@
       var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
       if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:[],supportingDetails:[]});
+    }
+    // Removing a topic with content deletes all its rows at once: ask first.
+    var topicToRemove=topicButton && state.draft.discussion[Number(topicButton.dataset.deleteTopic)];
+    if(topicButton && discussionTopicHasContent(topicToRemove)){
+      var rowCount=['points','decisions','openQuestions'].reduce(function(total,key){return total+((topicToRemove[key]||[]).length);},0);
+      if(!window.confirm('Remove the topic "'+(topicToRemove.topic||'Untitled')+'" and its '+rowCount+' row'+(rowCount===1?'':'s')+'?')) topicButton=null;
     }
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];

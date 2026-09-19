@@ -435,6 +435,7 @@ test('deleting a topic dismisses warnings belonging to its nested records', { ti
     const deleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/topic-cleanup')
         && response.request().method() === 'PATCH');
+    page.once('dialog', (dialog) => dialog.accept());
     await page.click('[data-delete-topic="1"]');
     await deleteSave;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/topic-cleanup')).json()).draft);
@@ -572,6 +573,7 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
     assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
     assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
     // Deleting a topic that carries real content still is.
+    page.once('dialog', (dialog) => dialog.accept());
     await page.click('[data-delete-topic="0"]');
     assert.equal(await page.locator('#staleNotice').isVisible(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);

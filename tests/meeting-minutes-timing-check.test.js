@@ -162,3 +162,11 @@ test('a purely conditional timing is a dependency, whatever kind was supplied', 
   assert.equal(kind({ kind: 'deadline', wording: 'after the audit on Friday' }), 'deadline');
   assert.equal(kind({ kind: 'deadline', wording: 'as soon as possible' }), 'deadline');
 });
+
+test('a hedged timing is a target, not a deadline', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const kind = (wording) => V.normaliseAgentResult({ actions: [{ action: 'Send the report.', owners: ['A'], timing: { kind: 'deadline', wording }, evidenceIds: [] }] }, [], '', { enforceEvidence: false }).actions[0].timing.kind;
+  assert.equal(kind('by the end of the week, hopefully'), 'target');
+  assert.equal(kind('ideally before July 17th'), 'target');
+  assert.equal(kind('by Friday'), 'deadline');
+});

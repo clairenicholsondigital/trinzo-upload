@@ -968,6 +968,8 @@ function timingFrom(item = {}, options = {}) {
     && !/\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|january|february|march|april|may|june|july|august|september|october|november|december|\d)\b/i.test(wording);
   const urgent = /\b(?:as soon as possible|asap|as soon as you can|as soon as we can)\b/i.test(wording);
   if (conditional && !urgent && (kind === 'deadline' || kind === 'target')) kind = 'dependency';
+  // "By the end of the week, hopefully" is a hope, not a deadline.
+  if (kind === 'deadline' && /\b(?:hopefully|ideally|aim(?:ing)? (?:for|to)|try(?:ing)? to|should be|expected|expect(?:ing)?|possibly|maybe|all being well|fingers crossed|if (?:we|all) can)\b/i.test(wording)) kind = 'target';
   if (kind === 'not_stated' && wording) {
     kind = !urgent && /\b(?:as soon as|once|after|when|following|subject to|dependent on|depends on)\b/i.test(wording)
       ? 'dependency'
