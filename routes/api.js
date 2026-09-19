@@ -8504,12 +8504,21 @@ function meetingMinutesAgentAnchoredActionEnabled() {
   ));
 }
 
+// When a speaker corrects themselves ("I presumed X ... but that has changed,
+// it will now be Y"), minutes must state Y. Sent as data with the Discussion
+// requests; off unless MEETING_MINUTES_AGENT_CORRECTION_RULE_V1 is on.
+const MEETING_AGENT_CORRECTION_RULE = 'When a speaker corrects, updates or revises something they said earlier (for example "I presumed X ... but I think that has changed ... it will be Y"), write only the final position Y. Do not state the earlier position as current, and do not combine the two. If the final position is unclear, say only what is clear.';
+function meetingAgentCorrectionRuleEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_CORRECTION_RULE_V1 || '0'));
+}
+
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
   const payload = {
     requestId: crypto.randomUUID(),
     stage: 'DISCUSSION_ANCHORED_DISCOVERY',
     details: details || {},
     reviewerEmphasis: meetingAgentSteerText(steer),
+    ...(meetingAgentCorrectionRuleEnabled() ? { writingRules: [MEETING_AGENT_CORRECTION_RULE] } : {}),
     preparedTranscript: String(transcript || '').trim(),
     anchors: (Array.isArray(anchors) ? anchors : []).map((anchor) => ({
       anchorId: meetingMinutesAgentText(anchor?.anchorId, 180),
@@ -9176,7 +9185,8 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
     candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
-    preparedTranscript: evidencePacket.preparedTranscript
+    preparedTranscript: evidencePacket.preparedTranscript,
+    ...(contract.stage.startsWith('DISCUSSION') && meetingAgentCorrectionRuleEnabled() ? { writingRules: [MEETING_AGENT_CORRECTION_RULE] } : {})
   };
   return [
     `[${contract.stage}]`,
