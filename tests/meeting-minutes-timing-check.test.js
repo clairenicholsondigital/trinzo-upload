@@ -125,7 +125,7 @@ test('a deadline said about the first step of a chained action leaves the deadli
   assert.equal(out.flags.length, 1);
 });
 
-test('a timing spoken only in the first cited line of a chain becomes a first-step target', () => {
+test('a timing spoken only in the first cited line of a chain leaves the deadline column with a quoted flag', () => {
   const V = require('../utils/meetingMinutesAgentV2');
   const units = [
     { id: 'T0001', speaker: 'Rebecca Gill', text: 'We have a call today to walk through the CAR responses.' },
@@ -135,9 +135,9 @@ test('a timing spoken only in the first cited line of a chain becomes a first-st
   const out = V.applyChainedTimingRule([
     { action: 'Conduct a call to walk through the CAR responses, load the documents for Grace to approve, then download them.', timing: { kind: 'deadline', wording: 'today' }, evidenceIds: ['T0001', 'T0002', 'T0003'] }
   ], units);
-  assert.equal(out.actions[0].timing.kind, 'target');
-  assert.equal(out.actions[0].timing.wording, 'today (first step only)');
+  assert.equal(out.actions[0].timing.kind, 'not_stated');
   assert.equal(out.flags.length, 1);
+  assert.match(out.flags[0].message, /We have a call today/);
 });
 
 test('one commitment written twice is merged; separate work on a shared line is not', () => {

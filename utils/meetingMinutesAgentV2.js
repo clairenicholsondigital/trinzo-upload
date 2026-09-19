@@ -2104,13 +2104,14 @@ const CHAIN_STEP_MARKER = /,?\s*\b(?:and then|then|after that|afterwards|once (?
 // and the later cited lines (the later steps) carry none.
 function timingOnlyInFirstCitedLine(action, units = []) {
   const wording = text(action?.timing?.wording, 220).toLowerCase();
-  if (!wording || !Array.isArray(units) || !units.length) return false;
+  if (!wording || !Array.isArray(units) || !units.length) return '';
   const context = evidenceContextFor(units);
   const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id))
-    .filter(Number.isInteger).sort((a, b) => a - b).map((index) => String(context.rows[index]?.text || '').toLowerCase());
-  if (cited.length < 2) return false;
-  const said = (line) => line.includes(wording);
-  return said(cited[0]) && !cited.slice(1).some(said);
+    .filter(Number.isInteger).sort((a, b) => a - b).map((index) => String(context.rows[index]?.text || ''));
+  if (cited.length < 2) return '';
+  const said = (line) => line.toLowerCase().includes(wording);
+  // Returns the line where the timing was said, for the reviewer's flag.
+  return said(cited[0]) && !cited.slice(1).some(said) ? cited[0] : '';
 }
 
 function applyChainedTimingRule(actions = [], units = []) {
@@ -2123,14 +2124,15 @@ function applyChainedTimingRule(actions = [], units = []) {
     if (!marker || marker.index < 8) return action;
     const firstStep = statement.slice(0, marker.index).toLowerCase();
     if (!firstStep.includes(wording)) {
-      if (action.timing.kind !== 'deadline' || !timingOnlyInFirstCitedLine(action, units)) return action;
+      const firstLine = action.timing.kind === 'deadline' ? timingOnlyInFirstCitedLine(action, units) : '';
+      if (!firstLine) return action;
       const flag = normaliseFlag({
         kind: 'timing',
-        message: `"${text(action.timing.wording, 120)}" was said about the first step only ("${text(statement.slice(0, marker.index), 160)}"), so it is shown as a target for that step, not a deadline for the whole action.`,
+        message: `"${text(action.timing.wording, 120)}" was said about an earlier step ("${text(firstLine, 200)}"), not the whole action, so it is not shown as this action's deadline. Add one if the later steps have a date.`,
         evidenceIds: action.evidenceIds || []
       }, flags.length);
       flags.push(flag);
-      return { ...action, timing: { kind: 'target', wording: `${text(action.timing.wording, 180)} (first step only)`, exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
     }
     const flag = normaliseFlag({
       kind: 'timing',
