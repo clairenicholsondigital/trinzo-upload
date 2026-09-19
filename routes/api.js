@@ -13235,8 +13235,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       `critic-commitment-${index + 1}`, commitmentCheckPrompt(batch),
       { optional: true, responseKind: 'commitment_check', maxAttempts: 2, candidateCount: batch.length }
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
-    const rescued = applyCommitmentCheckResults(recheck, commitmentItems, commitmentResults);
     const fromPool = new Set(poolRecheck.map((record) => record.action));
+    const poolItems = commitmentItems.filter((item) => fromPool.has(recheck[item.index].action));
+    const vetoItems = commitmentItems.filter((item) => !fromPool.has(recheck[item.index].action));
+    const rescued = [
+      ...applyCommitmentCheckResults(recheck, vetoItems, commitmentResults),
+      // A proposal becomes published only when the verified words tie the work to its owner.
+      ...applyCommitmentCheckResults(recheck, poolItems, commitmentResults, { requireOwnerTie: true })
+    ];
     const accepted = rescued.filter((record) => !fromPool.has(record.action) || (record.owners || []).length);
     proposalRescueCount = accepted.filter((record) => fromPool.has(record.action)).length;
     commitmentRescueCount = accepted.length - proposalRescueCount;

@@ -71,3 +71,17 @@ test('an answered question leaves the published list only with both quotes verif
   assert.equal(out.answered.length, 1);
   assert.equal(out.answered[0].action.action, 'Clarify the formative study dates.');
 });
+
+test('a rescued proposal needs its quote tied to the owner', () => {
+  const passage = [
+    "Jacqui Fox: And then from the software perspective, there's Andrew who has been doing work on the changes.",
+    "Jacqui Fox: So he's just looking into that with a view as well to connecting with the clinical.",
+    'Jacqui Fox: It is kind of focused really now on that cybersecurity update.',
+    "Ciaran Ryan: But I'm gonna focus on TFO3 this week.",
+    'David Didsbury: Okay.'
+  ].join('\n');
+  assert.ok(V.commitmentQuoteTiesOwner("he's just looking into that with a view as well", ['Andrew'], passage));
+  assert.ok(V.commitmentQuoteTiesOwner("I'm gonna focus on TFO3 this week", ['Ciaran Ryan'], passage));
+  assert.ok(!V.commitmentQuoteTiesOwner('focused really now on that cybersecurity update', ['Jacqui Fox'], passage));
+  assert.ok(!V.commitmentQuoteTiesOwner("I'm gonna focus on TFO3 this week", ['Jacqui Fox'], passage));
+});

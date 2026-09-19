@@ -2026,13 +2026,43 @@ function commitmentCheckPrompt(items = []) {
   ].join('\n\n');
 }
 
-function applyCommitmentCheckResults(actions = [], items = [], results = []) {
+// The verified words tie the work to an owner when they name the owner
+// ("Janine, and I think Adil, you're involved") or are the owner committing in
+// the first person ("I'm gonna focus on TFO3").
+const FIRST_PERSON_COMMITMENT = /\b(?:i|we)(?:'ll| will| shall| can| am going to|'m going to|'m gonna| am gonna|'re going to| are going to)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\bi'll\b|\bokay\b|\byes\b|\bsure\b/i;
+function commitmentQuoteTiesOwner(quote = '', owners = [], passage = '') {
+  const said = quoteText(quote);
+  const names = (Array.isArray(owners) ? owners : []).map((owner) => String(owner || '').trim()).filter(Boolean);
+  if (!names.length) return false;
+  const firstNames = names.map((owner) => owner.split(/\s+/)[0].toLowerCase());
+  const lines = String(passage || '').split('\n');
+  // The line(s) carrying the quote: a quote may run across adjacent lines.
+  const inLine = (index) => index >= 0 && index < lines.length
+    && (decisionQuoteFound(quote, lines[index]) || quoteText(lines[index]).includes(said.slice(0, 40)));
+  // A line carries the quote when the quote is in it, or starts in it and runs
+  // into the next line (but not when it sits wholly in the next line).
+  const carryingIndexes = lines.map((line, index) => (inLine(index)
+    || (!inLine(index + 1) && decisionQuoteFound(quote, `${line}\n${lines[index + 1] || ''}`)) ? index : -1))
+    .filter((index) => index >= 0);
+  const carrying = carryingIndexes.map((index) => lines[index]);
+  const spoken = (line) => quoteText(String(line || '').slice(String(line || '').indexOf(':') + 1));
+  // "he's just looking into that" refers back to "there's Andrew who ..." on
+  // the line before, so the owner may be named there too.
+  const nearby = [...new Set(carryingIndexes.flatMap((index) => [index - 1, index]).filter((index) => index >= 0))].map((index) => lines[index]);
+  if (firstNames.some((name) => said.includes(name) || nearby.some((line) => new RegExp(`\\b${name}\\b`).test(spoken(line))))) return true;
+  const speakers = carrying.map((line) => line.split(':')[0].trim().toLowerCase());
+  const ownerSpoke = speakers.some((speaker) => names.some((owner) => speaker === owner.toLowerCase() || speaker.split(/\s+/)[0] === owner.toLowerCase().split(/\s+/)[0]));
+  return ownerSpoke && FIRST_PERSON_COMMITMENT.test(quote);
+}
+
+function applyCommitmentCheckResults(actions = [], items = [], results = [], options = {}) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const rescued = [];
   for (const item of items) {
     const row = verdicts.get(item.id);
     if (!row || row.verdict !== 'commitment' || !decisionQuoteFound(row.commitmentQuote, item.passage)) continue;
     const action = actions[item.index];
+    if (options.requireOwnerTie && !commitmentQuoteTiesOwner(row.commitmentQuote, action.owners, item.passage)) continue;
     rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []), reviewFlagIds: [] });
   }
   return rescued;
@@ -2826,6 +2856,7 @@ module.exports = {
   commitmentCheckItems,
   commitmentCheckPrompt,
   applyCommitmentCheckResults,
+  commitmentQuoteTiesOwner,
   decisionCheckEnabled,
   decisionCheckItems,
   decisionCheckPrompt,
