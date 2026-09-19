@@ -218,3 +218,20 @@ test('a row citing both an assumption and its correction is flagged', () => {
     if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
   }
 });
+
+test('a person who only asks someone else to do the work is not its owner', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0001', speaker: 'Jacqui Fox', text: 'The devices need to be registered and that lies with MedEnvoy.' },
+    { id: 'T0002', speaker: 'Jacqui Fox', text: "So if you're talking to Cody, could you just maybe mention it to him?" },
+    { id: 'T0003', speaker: 'Orla Skally', text: 'Yes, I can do that.' },
+    { id: 'T0010', speaker: 'Ciaran Ryan', text: "I'm going to focus on TF03 this week." }
+  ];
+  const out = V.applyRequesterOwnerRule([
+    { action: 'Mention the registration alignment to Cody.', owners: ['Jacqui Fox'], evidenceIds: ['T0001', 'T0002'] },
+    { action: 'Complete TF03.', owners: ['Ciaran Ryan'], evidenceIds: ['T0010'] }
+  ], units);
+  assert.deepEqual(out.actions[0].owners, []);
+  assert.match(out.flags[0].message, /Owner unclear: Jacqui Fox asked someone else/);
+  assert.deepEqual(out.actions[1].owners, ['Ciaran Ryan']);
+});

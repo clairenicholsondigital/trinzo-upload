@@ -2252,6 +2252,53 @@ function mergeDuplicateCommitments(actions = []) {
   return { actions: kept, merged };
 }
 
+// ---- Requester is not the owner ---------------------------------------------
+// "So if you're talking to Cody, could you just maybe mention it to him?" makes
+// the listener the owner, not the chair who asked. When every line the named
+// owner speaks in the passage is addressed to someone else ("could you...",
+// "you'd need to...") and they never commit themselves, and nobody else names
+// them, the owner is removed and flagged. The right owner is not guessed.
+const OWNER_FIRST_PERSON = /\b(?:i|we)(?:'ll| will| can| shall| am going to|'m going to|'m gonna|'d be happy to| could| would need to| need to| have to)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\bi'll\b|\blet me\b/i;
+const OWNER_ADDRESSES_OTHERS = /\b(?:could|can|would|will) you\b|\byou(?:'d| would| will|'ll)? need to\b|\bif you(?:'re| are)?\b|\byou (?:have|want) to\b|\byou should\b|\byou might\b/i;
+function applyRequesterOwnerRule(actions = [], units = []) {
+  const context = evidenceContextFor(units);
+  const rows = context.rows;
+  const flags = [];
+  const firstName = (value) => String(value || '').trim().split(/\s+/)[0].toLowerCase();
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    const owners = Array.isArray(action?.owners) ? action.owners : [];
+    if (!owners.length) return action;
+    const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+    const window = [...new Set(cited.flatMap((index) => [index - 1, index, index + 1]))]
+      .filter((index) => index >= 0 && index < rows.length).sort((a, b) => a - b).map((index) => rows[index]);
+    const doubtful = owners.filter((owner) => {
+      const name = firstName(owner);
+      if (!name) return false;
+      const own = window.filter((unit) => firstName(unit.speaker) === name).map((unit) => String(unit.text || ''));
+      if (!own.length || own.some((line) => OWNER_FIRST_PERSON.test(line))) return false;
+      if (!own.some((line) => OWNER_ADDRESSES_OTHERS.test(line))) return false;
+      const namedByOthers = window.some((unit) => firstName(unit.speaker) !== name
+        && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(String(unit.text || '')));
+      return !namedByOthers;
+    });
+    if (!doubtful.length) return action;
+    const request = window.find((unit) => doubtful.some((owner) => firstName(unit.speaker) === firstName(owner))
+      && OWNER_ADDRESSES_OTHERS.test(String(unit.text || '')));
+    const flag = normaliseFlag({
+      kind: 'ownership',
+      message: `Owner unclear: ${doubtful.join(' and ')} asked someone else to do this${request ? ` ("${salientExcerpt(request.text, /./).slice(0, 160)}")` : ''}, so ${doubtful.length > 1 ? 'they were' : 'they were'} removed as owner. Add the person who is doing it.`,
+      evidenceIds: action.evidenceIds || []
+    }, flags.length);
+    flags.push(flag);
+    return {
+      ...action,
+      owners: owners.filter((owner) => !doubtful.includes(owner)),
+      reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])]
+    };
+  });
+  return { actions: checked, flags };
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -2882,6 +2929,7 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  applyRequesterOwnerRule,
   mergeDuplicateCommitments,
   applyChainedTimingRule,
   answeredCheckEnabled,
