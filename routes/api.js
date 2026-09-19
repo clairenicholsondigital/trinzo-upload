@@ -13194,14 +13194,30 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     { meetingDate: details.meetingDate }
   );
   let commitmentRescueCount = 0;
-  if (meetingMinutesCommitmentCheckEnabled() && vetoedModelActions.length) {
-    // A model pass extracted these and the keyword reading vetoed them. Each
-    // gets one quote-verified look; anything already published or proposed
-    // is left alone.
-    const covered = [...automatic, ...singleSource, ...critic.actions, ...salvage.actions, ...candidateBackstop,
-      ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop, ...agentDeclaredProposals];
-    const recheck = dedupeHybridActionRecords(vetoedModelActions.filter((record) => isClientReadyActionWording(record.action)
-      && !covered.some((existing) => hybridActionsEquivalent(record.action, existing.action))));
+  let proposalRescueCount = 0;
+  const proposalRecheck = meetingMinutesProposalRecheckEnabled();
+  if (meetingMinutesCommitmentCheckEnabled() && (vetoedModelActions.length || proposalRecheck)) {
+    // Model-extracted work that did not reach the published list gets one
+    // quote-verified look: actions the keyword reading vetoed and, when
+    // enabled, the model's own proposals. A proposal is published only with a
+    // verified commitment quote and a named owner the passage supports.
+    const sameOwner = (left, right) => (left.owners || []).some((owner) => (right.owners || [])
+      .some((other) => String(other).toLowerCase() === String(owner).toLowerCase()));
+    const sharesLine = (left, right) => (left.evidenceIds || []).some((id) => (right.evidenceIds || []).includes(id));
+    // Part of a published action (same owner, same transcript lines) is not new work.
+    const notPublished = (record) => isClientReadyActionWording(record.action)
+      && !automatic.some((existing) => hybridActionsEquivalent(record.action, existing.action)
+        || (sameOwner(record, existing) && sharesLine(record, existing)));
+    const deterministic = [...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop];
+    const covered = [...automatic, ...singleSource, ...critic.actions, ...salvage.actions, ...deterministic, ...agentDeclaredProposals];
+    const vetoRecheck = dedupeHybridActionRecords(vetoedModelActions.filter((record) => notPublished(record)
+      && (proposalRecheck || !covered.some((existing) => hybridActionsEquivalent(record.action, existing.action)))));
+    const poolRecheck = proposalRecheck
+      ? dedupeHybridActionRecords([...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...agentDeclaredProposals]
+        .filter((record) => (record.owners || []).length && notPublished(record)
+          && !vetoRecheck.some((existing) => hybridActionsEquivalent(record.action, existing.action))))
+      : [];
+    const recheck = [...vetoRecheck, ...poolRecheck].slice(0, 24);
     const commitmentItems = commitmentCheckItems(recheck, draft.sourceUnits);
     const commitmentBatches = [];
     for (let index = 0; index < commitmentItems.length; index += 8) commitmentBatches.push(commitmentItems.slice(index, index + 8));
@@ -13210,8 +13226,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       { optional: true, responseKind: 'commitment_check', maxAttempts: 2, candidateCount: batch.length }
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
     const rescued = applyCommitmentCheckResults(recheck, commitmentItems, commitmentResults);
-    commitmentRescueCount = rescued.length;
-    automatic.push(...rescued);
+    const fromPool = new Set(poolRecheck.map((record) => record.action));
+    const accepted = rescued.filter((record) => !fromPool.has(record.action) || (record.owners || []).length);
+    proposalRescueCount = accepted.filter((record) => fromPool.has(record.action)).length;
+    commitmentRescueCount = accepted.length - proposalRescueCount;
+    automatic.push(...accepted);
   }
   const publishedActions = dedupeHybridActionRecords(automatic)
     .filter((record) => !isVagueReconstructedAction(record.action));
@@ -13369,6 +13388,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
         commitmentRescueCount,
+        proposalRescueCount,
         answeredInMeetingCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
@@ -13414,7 +13434,9 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     const transcriptReadMs = Date.now() - readStartedAt;
     validateTranscriptText(transcript.text);
     const preparationStartedAt = Date.now();
-    const prepared = await prepareMiniLmTranscript(transcript.text);
+    const prepared = await prepareMiniLmTranscript(transcript.text, {
+      keepShortReplies: /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_KEEP_SHORT_REPLIES_V1 || '0'))
+    });
     const preparationMs = Date.now() - preparationStartedAt;
     const metadataStartedAt = Date.now();
     const details = sanitiseMeetingAgentDetails(extractStagedDetailsFromTranscript(transcript.text, transcript.fileName).screens.details);
@@ -13816,6 +13838,10 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
 
 // A suggested edit must change what the action says: its wording, owners or
 // timing. One that only re-cites lines (or nothing at all) is noise.
+function meetingMinutesProposalRecheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PROPOSAL_RECHECK_V1 || '0'));
+}
+
 function meetingAgentProposalChangeIsVisible(change = {}) {
   if (change?.type !== 'modify') return true;
   const visible = (record = {}) => JSON.stringify([

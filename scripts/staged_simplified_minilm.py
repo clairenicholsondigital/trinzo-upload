@@ -28,11 +28,51 @@ def render_full_name_clean_transcript(rows: list[dict]) -> str:
     )
 
 
+# A whole turn such as "Okay." or "Will do." is how a person accepts a
+# request, and "No." how they refuse one. The shared parser drops any sentence
+# under three words, which silently removed those replies; with
+# --keep-short-replies they are kept as ordinary lines.
+REPLY_WORDS = {
+    "okay", "ok", "yes", "yeah", "yep", "yup", "sure", "will", "do", "no", "problem", "absolutely",
+    "of", "course", "perfect", "great", "fine", "that's", "thats", "sounds", "good", "agreed",
+    "done", "grand", "lovely", "cool", "alright", "definitely", "certainly", "nope", "not", "right",
+}
+
+
+def short_reply_rows(raw_text: str, source: str) -> list[dict]:
+    rows = []
+    current = None
+
+    def close(turn):
+        if not turn:
+            return
+        body = usefulness.compact(turn["body"])
+        words = [word.lower() for word in re.findall(r"[A-Za-z']+", body)]
+        if 1 <= len(words) <= 4 and all(word in REPLY_WORDS for word in words):
+            rows.append({"source": source, "line": turn["line"], "unit": 0, "speaker": turn["speaker"],
+                         "timestamp": turn["timestamp"], "text": body, "shortReply": True})
+
+    for line_no, raw in enumerate(raw_text.splitlines(), 1):
+        line = usefulness.compact(raw)
+        if not line or usefulness.TRANSCRIPTION_MARKER.search(line):
+            continue
+        match = usefulness.SPEAKER_LINE.match(line)
+        if match:
+            close(current)
+            current = {"line": line_no, "speaker": usefulness.compact(match.group("speaker")),
+                       "timestamp": match.group("timestamp"), "body": usefulness.compact(match.group("text"))}
+        elif current:
+            current["body"] = f"{current['body']} {line}"
+    close(current)
+    return rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript")
     parser.add_argument("--model", required=True)
     parser.add_argument("--remove-threshold", type=float, default=0.85)
+    parser.add_argument("--keep-short-replies", action="store_true")
     args = parser.parse_args()
 
     joblib, _np, SentenceTransformer, *_unused = usefulness.load_dependencies()
@@ -40,6 +80,8 @@ def main() -> int:
     path = Path(args.transcript)
     raw_text = usefulness.read_transcript_file(path)
     rows = usefulness.parse_transcript(raw_text, path.name)
+    if rows and args.keep_short_replies:
+        rows = sorted(rows + short_reply_rows(raw_text, path.name), key=lambda row: (row["line"], row.get("unit", 0)))
     if not rows:
         print(json.dumps({"ok": False, "reason": "no_speaker_units"}))
         return 0
@@ -61,6 +103,8 @@ def main() -> int:
             effective = "remove"
         if effective == "remove" and usefulness.RATIONALE_OR_IMPACT.search(row["text"]):
             effective = "uncertain"
+        if row.get("shortReply"):
+            effective = "keep"
         classified.append({
             **row,
             "id": f"T{sequence:04d}",

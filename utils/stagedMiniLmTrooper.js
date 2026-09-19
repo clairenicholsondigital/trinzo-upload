@@ -89,9 +89,10 @@ function splitActionTiers(actions) {
   };
 }
 
-async function denoiseMiniLmFile(rawPath) {
+async function denoiseMiniLmFile(rawPath, options = {}) {
   const prepared = await runJson('staged_simplified_minilm.py', [rawPath, '--model', process.env.STAGED_SIMPLIFIED_MINILM_MODEL || MODEL,
-    '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85')],
+    '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85'),
+    ...(options.keepShortReplies ? ['--keep-short-replies'] : [])],
   Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000));
   const removedRatio = Number(prepared.totalUnitCount || 0)
     ? Number(prepared.removedUnitCount || 0) / Number(prepared.totalUnitCount) : 1;
@@ -103,12 +104,12 @@ async function denoiseMiniLmFile(rawPath) {
   return { ...prepared, removedRatio };
 }
 
-async function prepareMiniLmTranscript(transcriptText) {
+async function prepareMiniLmTranscript(transcriptText, options = {}) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'staged-minilm-prepare-'));
   const rawPath = path.join(tempDir, 'transcript.txt');
   try {
     await fs.writeFile(rawPath, String(transcriptText || ''), 'utf8');
-    return await denoiseMiniLmFile(rawPath);
+    return await denoiseMiniLmFile(rawPath, options);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
