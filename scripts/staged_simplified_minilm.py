@@ -39,18 +39,35 @@ REPLY_WORDS = {
 }
 
 
+# Only a reply to something asked of the listener counts: "David, if you want
+# to have a look at that?" / "Okay." A "Yes." murmured during someone else's
+# update is listening noise and would read as a false acceptance.
+REQUEST_CUE = re.compile(
+    r"\?|\b(?:can|could|would|will) you\b|\bif you (?:want|could|can|don't mind|wouldn't mind)\b|\bplease\b"
+    r"|\bdo you (?:want|mind|think)\b|\bare you (?:able|happy|ok|okay|alright)\b|\bcan we\b|\bwould it be possible\b"
+    r"|\bneed you to\b|\bwant you to\b|\bleave (?:it|that) with you\b",
+    re.I,
+)
+
+
 def short_reply_rows(raw_text: str, source: str) -> list[dict]:
     rows = []
     current = None
+    previous = None
 
-    def close(turn):
+    def close(turn, before):
         if not turn:
             return
         body = usefulness.compact(turn["body"])
         words = [word.lower() for word in re.findall(r"[A-Za-z']+", body)]
-        if 1 <= len(words) <= 4 and all(word in REPLY_WORDS for word in words):
-            rows.append({"source": source, "line": turn["line"], "unit": 0, "speaker": turn["speaker"],
-                         "timestamp": turn["timestamp"], "text": body, "shortReply": True})
+        if not (1 <= len(words) <= 4 and all(word in REPLY_WORDS for word in words)):
+            return
+        if not before or before["speaker"] == turn["speaker"]:
+            return
+        if not REQUEST_CUE.search(usefulness.compact(before["body"])[-300:]):
+            return
+        rows.append({"source": source, "line": turn["line"], "unit": 0, "speaker": turn["speaker"],
+                     "timestamp": turn["timestamp"], "text": body, "shortReply": True})
 
     for line_no, raw in enumerate(raw_text.splitlines(), 1):
         line = usefulness.compact(raw)
@@ -58,12 +75,14 @@ def short_reply_rows(raw_text: str, source: str) -> list[dict]:
             continue
         match = usefulness.SPEAKER_LINE.match(line)
         if match:
-            close(current)
+            close(current, previous)
+            if current:
+                previous = current
             current = {"line": line_no, "speaker": usefulness.compact(match.group("speaker")),
                        "timestamp": match.group("timestamp"), "body": usefulness.compact(match.group("text"))}
         elif current:
             current["body"] = f"{current['body']} {line}"
-    close(current)
+    close(current, previous)
     return rows
 
 
