@@ -13911,6 +13911,10 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
 
 // A suggested edit must change what the action says: its wording, owners or
 // timing. One that only re-cites lines (or nothing at all) is noise.
+// Paired replay on 12 journeys: offering Discussion rows as Actions candidates
+// costs more than it gains (actions 0.406 -> 0.392, missing 8 -> 9) because the
+// extra published rows are mostly practice descriptions and duplicates. Off;
+// the code stays for a future re-test with tighter candidate filtering.
 function meetingMinutesDiscussionActionCandidatesEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_CANDIDATES_V1 || '0'));
 }
