@@ -2060,6 +2060,13 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
       if (shared >= 2) return action;
     }
     const replacement = text(row.correctTiming, 120);
+    // "by the end of the week" -> "by the end of the week, hopefully" is the
+    // same timing with a hedge: no change, and no flag quoting another step.
+    const sameTiming = (left, right) => quoteText(left).replace(/\b(?:hopefully|ideally|roughly|about|approximately|around|maybe|possibly)\b/g, '')
+      .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+      === quoteText(right).replace(/\b(?:hopefully|ideally|roughly|about|approximately|around|maybe|possibly)\b/g, '')
+        .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (replacement && sameTiming(replacement, wording)) return action;
     const usable = replacement && quotedVerbatim(replacement, item.passage) && quoteText(replacement) !== quoteText(wording);
     const timing = usable ? timingFrom({ timing: { wording: replacement } }, options) : { kind: 'not_stated', wording: '', exactDate: '' };
     const said = row.verdict === 'belongs_to_other_step'

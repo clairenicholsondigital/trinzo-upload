@@ -170,3 +170,16 @@ test('a hedged timing is a target, not a deadline', () => {
   assert.equal(kind('ideally before July 17th'), 'target');
   assert.equal(kind('by Friday'), 'deadline');
 });
+
+test('a timing change that only adds a hedge is not made and not explained', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0001', speaker: 'Jacqui Fox', text: 'Andrew is off, so we will get the symbol issue bottomed out by the end of the week, hopefully.' },
+    { id: 'T0002', speaker: 'Jacqui Fox', text: 'The change request is processing through the review team, the end of this week.' }
+  ];
+  const actions = [{ id: 'a1', action: 'Resolve the language symbol incompatibility issue.', owners: ['Andrew'], timing: { kind: 'target', wording: 'by the end of the week' }, evidenceIds: ['T0001', 'T0002'] }];
+  const items = V.timingCheckItems(actions, units);
+  const out = V.applyTimingCheckResults(actions, items, [{ id: items[0].id, verdict: 'belongs_to_other_step', timingQuote: 'the end of this week', stepQuote: 'processing through the review team', correctTiming: 'by the end of the week, hopefully' }], {});
+  assert.equal(out.actions[0].timing.wording, 'by the end of the week');
+  assert.equal(out.flags.length, 0);
+});
