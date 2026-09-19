@@ -211,6 +211,9 @@ const {
   applyChainedTimingRule,
   mergeDuplicateCommitments,
   applyRequesterOwnerRule,
+  demoteSupersededRows,
+  supersededCheckItems,
+  supersededVerdicts,
   correctnessChecksEnabled
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
@@ -9674,7 +9677,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
-    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check'].includes(options.responseKind)
+    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
@@ -9705,7 +9708,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
-  const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
+  const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !timingCheck
@@ -13003,6 +13006,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         finalDiscussion = organised.discussion;
       } catch (error) {
         safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
+      }
+    }
+    if (correctnessChecksEnabled()) {
+      // Rows citing an assumption and its correction are rare; those that do
+      // not carry the correction's content leave the primary rows.
+      const supersededItems = supersededCheckItems(finalDiscussion, draft.sourceUnits);
+      const outdatedRows = supersededVerdicts(supersededItems);
+      const superseded = outdatedRows.size
+        ? demoteSupersededRows(finalDiscussion, draft.sourceUnits, outdatedRows)
+        : { demoted: 0 };
+      if (superseded.demoted) {
+        console.log(JSON.stringify({ event: 'meeting_agent_superseded_rows', journeyId: draft.draftId, demoted: superseded.demoted }));
+        finalDiscussion = superseded.discussion;
       }
     }
     if (meetingMinutesDecisionCheckEnabled()) {

@@ -235,3 +235,31 @@ test('a person who only asks someone else to do the work is not its owner', () =
   assert.match(out.flags[0].message, /Owner unclear: Jacqui Fox asked someone else/);
   assert.deepEqual(out.actions[1].owners, ['Ciaran Ryan']);
 });
+
+test('a row restating a corrected assumption leaves the primary rows; one stating the correction stays', () => {
+  const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
+  process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
+  try {
+    const V = require('../utils/meetingMinutesAgentV2');
+    const units = [
+      { id: 'T0001', speaker: 'Rebecca Gill', text: 'I presumed that the formative would be ready for submission and then to follow up with the summative.' },
+      { id: 'T0002', speaker: 'Rebecca Gill', text: 'But I think maybe that slightly changed and the formula would be ready to be just shortly after, but still prior to.' },
+      { id: 'T0003', speaker: 'Rebecca Gill', text: 'Um, the protect file being lifted.' },
+      { id: 'T0004', speaker: 'Adil Kauim', text: 'I finished the task analysis with Alan last week.' }
+    ];
+    const discussion = (row) => [{ topic: 'Formative', points: [
+      { id: 'r1', text: row, evidenceIds: ['T0001', 'T0002'], reviewFlagIds: ['flag-x'] },
+      { id: 'r2', text: 'Adil finished the task analysis with Alan.', evidenceIds: ['T0004'] }
+    ] }];
+    const wrong = discussion('Formative document readiness is anticipated shortly, prior to the summative submission.');
+    const moved = V.demoteSupersededRows(wrong, units, V.supersededVerdicts(V.supersededCheckItems(wrong, units)));
+    assert.equal(moved.demoted, 1);
+    assert.deepEqual(moved.discussion[0].points.map((row) => row.id), ['r2']);
+    assert.equal(moved.discussion[0].points[0].supportingDetails[0].text, 'Formative document readiness is anticipated shortly, prior to the summative submission.');
+    const right = discussion('Formative expected shortly after submission but prior to the protect file being lifted.');
+    const kept = V.demoteSupersededRows(right, units, V.supersededVerdicts(V.supersededCheckItems(right, units)));
+    assert.equal(kept.demoted, 0);
+  } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
+  }
+});

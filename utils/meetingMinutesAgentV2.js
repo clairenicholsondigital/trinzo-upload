@@ -2299,6 +2299,94 @@ function applyRequesterOwnerRule(actions = [], units = []) {
   return { actions: checked, flags };
 }
 
+// ---- Superseded statements ---------------------------------------------------
+// A primary row whose own citations hold an assumption and then the speaker's
+// correction ("I presumed X ... but I think that slightly changed") is most
+// often the superseded X restated (T733's formative line, identical in every
+// run because a deterministic extractor writes it). It is not published as a
+// primary statement: it moves, flag and all, into the supporting context of
+// the nearest primary row, where the reviewer still sees it.
+// Candidate rows (rare) with their passage, for the model's judgement.
+function supersededCheckItems(discussion = [], units = []) {
+  const context = evidenceContextFor(units);
+  const items = [];
+  (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    for (const kind of ['points', 'decisions']) {
+      (topic?.[kind] || []).forEach((record, rowIndex) => {
+        const correction = citedRevisionUnit(units, record?.evidenceIds || []);
+        if (!correction) return;
+        const at = context.indexById.get(correction.id);
+        const cited = (record.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+        const earlier = cited.filter((index) => index < at && PRESUMPTION_CUE.test(String(context.rows[index]?.text || '')));
+        const line = (index) => `${context.rows[index].speaker}: ${context.rows[index].text}`;
+        const correctionLines = [at, at + 1, at + 2].filter((index) => index < context.rows.length).map(line);
+        items.push({ id: `s${items.length + 1}`, topicIndex, kind, rowIndex, row: text(record.text, 800),
+          earlier: earlier.map(line).join('\n'), correction: correctionLines.join('\n'),
+          passage: [...earlier.map(line), ...correctionLines].join('\n') });
+      });
+    }
+  });
+  return items.slice(0, 12);
+}
+
+// A row citing a self-correction must carry what the correction says. Rows
+// using fewer than three words found in the correction (and not in the
+// earlier statement) restate the earlier position; the model could not be
+// used to judge this, as it read a misheard "protect file being lifted" as the
+// earlier "summative submission".
+function rowReflectsCorrection(item) {
+  const earlier = aboutWords(item.earlier);
+  const correctionOnly = [...aboutWords(item.correction)].filter((word) => !earlier.has(word));
+  const row = aboutWords(item.row);
+  return correctionOnly.filter((word) => row.has(word)).length >= 3;
+}
+
+function supersededVerdicts(items = []) {
+  return new Set(items.filter((item) => !rowReflectsCorrection(item))
+    .map((item) => `${item.topicIndex}|${item.kind}|${item.rowIndex}`));
+}
+
+function demoteSupersededRows(discussion = [], units = [], outdated = null) {
+  const context = evidenceContextFor(units);
+  const position = (record) => Math.min(...(record?.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger), Infinity);
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: [...(topic.points || [])],
+    decisions: [...(topic.decisions || [])]
+  }));
+  const moved = [];
+  topics.forEach((topic, topicIndex) => {
+    for (const kind of ['points', 'decisions']) {
+      topic[kind] = topic[kind].filter((record, rowIndex) => {
+        if (!citedRevisionUnit(units, record?.evidenceIds || [])) return true;
+        // Only rows judged outdated move; a row stating the corrected position stays.
+        if (outdated && !outdated.has(`${topicIndex}|${kind}|${rowIndex}`)) return true;
+        moved.push({ record, topicIndex });
+        return false;
+      });
+    }
+  });
+  let demoted = 0;
+  for (const { record, topicIndex } of moved) {
+    const own = topics[topicIndex];
+    const sameTopic = [...own.points, ...own.decisions];
+    const everywhere = topics.flatMap((topic) => [...topic.points, ...topic.decisions]);
+    const pool = sameTopic.length ? sameTopic : everywhere;
+    const target = position(record);
+    const parent = pool.slice().sort((a, b) => Math.abs(position(a) - target) - Math.abs(position(b) - target))[0];
+    if (!parent) {
+      // Nowhere to attach it: keep it where it was rather than lose it.
+      own.points.push(record);
+      continue;
+    }
+    const { supportingDetails, ...detail } = record;
+    parent.supportingDetails = [...(parent.supportingDetails || []), detail];
+    demoted += 1;
+  }
+  const kept = topics.filter((topic) => topic.points.length || topic.decisions.length || (topic.openQuestions || []).length);
+  return { discussion: kept, demoted };
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -2929,6 +3017,9 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  demoteSupersededRows,
+  supersededCheckItems,
+  supersededVerdicts,
   applyRequesterOwnerRule,
   mergeDuplicateCommitments,
   applyChainedTimingRule,
