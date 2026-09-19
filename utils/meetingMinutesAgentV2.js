@@ -2099,16 +2099,39 @@ function applyAnsweredCheckResults(actions = [], items = [], results = []) {
 // the timing's words sit in the first step of a chained action, the words stay
 // in the action text and the deadline column is cleared, with a flag.
 const CHAIN_STEP_MARKER = /,?\s*\b(?:and then|then|after that|afterwards|once (?:that|this|it|they|approved|done|complete)|followed by)\b/i;
-function applyChainedTimingRule(actions = []) {
+// The transcript form of the same pattern, for when the action's wording does
+// not repeat the timing: the timing is spoken only in the earliest cited line,
+// and the later cited lines (the later steps) carry none.
+function timingOnlyInFirstCitedLine(action, units = []) {
+  const wording = text(action?.timing?.wording, 220).toLowerCase();
+  if (!wording || !Array.isArray(units) || !units.length) return false;
+  const context = evidenceContextFor(units);
+  const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id))
+    .filter(Number.isInteger).sort((a, b) => a - b).map((index) => String(context.rows[index]?.text || '').toLowerCase());
+  if (cited.length < 2) return false;
+  const said = (line) => line.includes(wording);
+  return said(cited[0]) && !cited.slice(1).some(said);
+}
+
+function applyChainedTimingRule(actions = [], units = []) {
   const flags = [];
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
     const wording = text(action?.timing?.wording, 220).toLowerCase();
     if (!action?.timing || action.timing.kind === 'not_stated' || !wording) return action;
     const statement = text(action.action, 1600);
-    const marker = statement.match(CHAIN_STEP_MARKER);
+    const marker = statement.match(CHAIN_STEP_MARKER) || statement.match(/,\s+(?:load|download|upload|send|share|submit|return|insert|point|forward)\b/i);
     if (!marker || marker.index < 8) return action;
     const firstStep = statement.slice(0, marker.index).toLowerCase();
-    if (!firstStep.includes(wording)) return action;
+    if (!firstStep.includes(wording)) {
+      if (action.timing.kind !== 'deadline' || !timingOnlyInFirstCitedLine(action, units)) return action;
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: `"${text(action.timing.wording, 120)}" was said about the first step only ("${text(statement.slice(0, marker.index), 160)}"), so it is shown as a target for that step, not a deadline for the whole action.`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      return { ...action, timing: { kind: 'target', wording: `${text(action.timing.wording, 180)} (first step only)`, exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    }
     const flag = normaliseFlag({
       kind: 'timing',
       message: `"${text(action.timing.wording, 120)}" applies to the first step only ("${text(statement.slice(0, marker.index), 160)}"), so it is not shown as the deadline for the whole action. Add a deadline if the later steps have one.`,

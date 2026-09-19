@@ -124,3 +124,18 @@ test('a deadline said about the first step of a chained action leaves the deadli
   assert.equal(out.actions[2].timing.wording, 'today');
   assert.equal(out.flags.length, 1);
 });
+
+test('a timing spoken only in the first cited line of a chain becomes a first-step target', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0001', speaker: 'Rebecca Gill', text: 'We have a call today to walk through the CAR responses.' },
+    { id: 'T0002', speaker: 'Rebecca Gill', text: 'And then get everything loaded for Grace to review and approve.' },
+    { id: 'T0003', speaker: 'Rebecca Gill', text: 'Then we will download it and point the auditor to them.' }
+  ];
+  const out = V.applyChainedTimingRule([
+    { action: 'Conduct a call to walk through the CAR responses, load the documents for Grace to approve, then download them.', timing: { kind: 'deadline', wording: 'today' }, evidenceIds: ['T0001', 'T0002', 'T0003'] }
+  ], units);
+  assert.equal(out.actions[0].timing.kind, 'target');
+  assert.equal(out.actions[0].timing.wording, 'today (first step only)');
+  assert.equal(out.flags.length, 1);
+});

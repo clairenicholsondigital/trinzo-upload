@@ -13310,7 +13310,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
   }
   if (correctnessChecksEnabled()) {
-    const chained = applyChainedTimingRule(timingChecked.actions);
+    const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits);
     timingChecked = { actions: chained.actions, flags: [...timingChecked.flags, ...chained.flags] };
   }
   let answeredInMeetingCount = 0;
