@@ -110,3 +110,17 @@ test('a misread verdict is ignored when the timing is said word for word', () =>
   assert.equal(out.actions[0].timing.wording, 'today');
   assert.equal(out.flags.length, 0);
 });
+
+test('a deadline said about the first step of a chained action leaves the deadline column', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const out = V.applyChainedTimingRule([
+    { action: 'Conduct a call today to walk through the CAR responses, load the documents for Grace to approve, then download them into the tech file.', timing: { kind: 'deadline', wording: 'today', exactDate: '2026-06-17' }, evidenceIds: ['T0001'] },
+    { action: 'Resolve the symbol issue and then upload the translations.', timing: { kind: 'target', wording: 'by the end of next week' }, evidenceIds: [] },
+    { action: 'Send the report to Colm today.', timing: { kind: 'deadline', wording: 'today' }, evidenceIds: [] }
+  ]);
+  assert.equal(out.actions[0].timing.kind, 'not_stated');
+  assert.match(out.actions[0].action, /call today/);
+  assert.equal(out.actions[1].timing.wording, 'by the end of next week');
+  assert.equal(out.actions[2].timing.wording, 'today');
+  assert.equal(out.flags.length, 1);
+});

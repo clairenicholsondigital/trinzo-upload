@@ -2093,6 +2093,33 @@ function applyAnsweredCheckResults(actions = [], items = [], results = []) {
   };
 }
 
+// ---- Chained first-step timing --------------------------------------------
+// "Conduct a call today ..., load the documents for Grace ..., then download
+// them and point the auditor": "today" is the call's, not the chain's. When
+// the timing's words sit in the first step of a chained action, the words stay
+// in the action text and the deadline column is cleared, with a flag.
+const CHAIN_STEP_MARKER = /,?\s*\b(?:and then|then|after that|afterwards|once (?:that|this|it|they|approved|done|complete)|followed by)\b/i;
+function applyChainedTimingRule(actions = []) {
+  const flags = [];
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    const wording = text(action?.timing?.wording, 220).toLowerCase();
+    if (!action?.timing || action.timing.kind === 'not_stated' || !wording) return action;
+    const statement = text(action.action, 1600);
+    const marker = statement.match(CHAIN_STEP_MARKER);
+    if (!marker || marker.index < 8) return action;
+    const firstStep = statement.slice(0, marker.index).toLowerCase();
+    if (!firstStep.includes(wording)) return action;
+    const flag = normaliseFlag({
+      kind: 'timing',
+      message: `"${text(action.timing.wording, 120)}" applies to the first step only ("${text(statement.slice(0, marker.index), 160)}"), so it is not shown as the deadline for the whole action. Add a deadline if the later steps have one.`,
+      evidenceIds: action.evidenceIds || []
+    }, flags.length);
+    flags.push(flag);
+    return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+  });
+  return { actions: checked, flags };
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -2723,6 +2750,7 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  applyChainedTimingRule,
   answeredCheckEnabled,
   answeredCheckItems,
   answeredCheckPrompt,

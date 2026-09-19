@@ -206,7 +206,9 @@ const {
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   answeredCheckItems,
   answeredCheckPrompt,
-  applyAnsweredCheckResults
+  applyAnsweredCheckResults,
+  applyChainedTimingRule,
+  correctnessChecksEnabled
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -13306,6 +13308,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
     const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: details.meetingDate });
     timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
+  }
+  if (correctnessChecksEnabled()) {
+    const chained = applyChainedTimingRule(timingChecked.actions);
+    timingChecked = { actions: chained.actions, flags: [...timingChecked.flags, ...chained.flags] };
   }
   let answeredInMeetingCount = 0;
   if (meetingMinutesAnsweredCheckEnabled()) {
