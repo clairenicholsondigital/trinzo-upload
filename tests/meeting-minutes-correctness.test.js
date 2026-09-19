@@ -255,7 +255,8 @@ test('a row restating a corrected assumption leaves the primary rows; one statin
     const moved = V.demoteSupersededRows(wrong, units, V.supersededVerdicts(V.supersededCheckItems(wrong, units)));
     assert.equal(moved.demoted, 1);
     assert.deepEqual(moved.discussion[0].points.map((row) => row.id), ['r2']);
-    assert.equal(moved.discussion[0].points[0].supportingDetails[0].text, 'Formative document readiness is anticipated shortly, prior to the summative submission.');
+    assert.equal(moved.discussion[0].points[0].supportingDetails[0].text, 'Earlier position, revised later in the meeting: Formative document readiness is anticipated shortly, prior to the summative submission.');
+    assert.deepEqual(moved.discussion[0].points[0].supportingDetails[0].reviewFlagIds, ['flag-x']);
     const right = discussion('Formative expected shortly after submission but prior to the protect file being lifted.');
     const kept = V.demoteSupersededRows(right, units, V.supersededVerdicts(V.supersededCheckItems(right, units)));
     assert.equal(kept.demoted, 0);

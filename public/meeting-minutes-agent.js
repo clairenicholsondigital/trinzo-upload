@@ -627,7 +627,7 @@
     });
     if (!rows.length) return '';
     return '<section class="supporting-context"><div class="supporting-context-head"><h3>Supporting context</h3><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></div><p class="muted">Related facts are grouped here so you can review context without opening each sentence.</p><div class="supporting-detail-list">' + rows.map(function (row) {
-      return '<div class="supporting-detail"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Promote to minutes</button></div></div>';
+      return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Promote to minutes</button></div></div>';
     }).join('') + '</div></section>';
   }
 
@@ -874,6 +874,25 @@
             label: field === 'decisions' ? 'Decision' : field === 'openQuestions' ? 'Open question' : 'Discussion sentence',
             text: item.text || ''
           };
+        }
+      }
+    }
+    // A flag can belong to a line in supporting context.
+    for (var ti = 0; ti < (state.draft.discussion || []).length; ti += 1) {
+      var ctxTopic = state.draft.discussion[ti];
+      for (var fi = 0; fi < 3; fi += 1) {
+        var ctxField = ['points', 'decisions', 'openQuestions'][fi];
+        for (var ii = 0; ii < (ctxTopic[ctxField] || []).length; ii += 1) {
+          var parentItem = ctxTopic[ctxField][ii];
+          for (var di = 0; di < (parentItem.supportingDetails || []).length; di += 1) {
+            var detail = parentItem.supportingDetails[di];
+            if ((detail.reviewFlagIds || []).indexOf(flagId) >= 0) return {
+              stage: 2,
+              elementId: recordDomId('supporting', detail.id, ti + '-' + ctxField + '-' + ii + '-' + di),
+              label: 'Supporting context',
+              text: detail.text || ''
+            };
+          }
         }
       }
     }

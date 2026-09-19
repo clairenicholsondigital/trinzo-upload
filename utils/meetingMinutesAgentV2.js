@@ -684,10 +684,13 @@ function normalisePoint(value, units, prefix, index) {
       const detailText = text(source.text || source.point || source.value, 1600);
       if (!detailText) return null;
       const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds);
+      const detailFlags = [...new Set((Array.isArray(source.reviewFlagIds) ? source.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))];
       return {
         id: text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex),
         text: detailText,
-        evidenceIds: detailEvidence.evidenceIds
+        evidenceIds: detailEvidence.evidenceIds,
+        // A context line keeps its flag, so the flag can point at it.
+        ...(detailFlags.length ? { reviewFlagIds: detailFlags } : {})
       };
     }).filter(Boolean).slice(0, 50);
   return {
@@ -2389,7 +2392,9 @@ function demoteSupersededRows(discussion = [], units = [], outdated = null) {
       continue;
     }
     const { supportingDetails, ...detail } = record;
-    parent.supportingDetails = [...(parent.supportingDetails || []), detail];
+    // Labelled so that, in context, it cannot read as the current position.
+    parent.supportingDetails = [...(parent.supportingDetails || []),
+      { ...detail, text: `Earlier position, revised later in the meeting: ${detail.text}` }];
     demoted += 1;
   }
   const kept = topics.filter((topic) => topic.points.length || topic.decisions.length || (topic.openQuestions || []).length);
