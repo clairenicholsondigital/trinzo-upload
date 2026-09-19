@@ -289,3 +289,22 @@ test('evidence flags name their item, so a new unsupported item never merges int
   assert.equal(missing.length, 2);
   assert.ok(missing.some((flag) => /"Relocate the factory to Mars next quarter\."/.test(flag.message)));
 });
+
+test('a row whose citations were enriched with an unrelated correction is neither flagged nor demoted', () => {
+  const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
+  process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
+  try {
+    const V = require('../utils/meetingMinutesAgentV2');
+    const units = [
+      { id: 'T0001', speaker: 'Rebecca Gill', text: 'I presumed that the formative would be ready for submission and then to follow up with the summative.' },
+      { id: 'T0002', speaker: 'Rebecca Gill', text: 'But I think maybe that slightly changed and it would be ready just shortly after.' },
+      { id: 'T0003', speaker: 'Rebecca Gill', text: 'We have a call today to walk through the CAR responses and load the documents for Grace.' }
+    ];
+    const row = { text: 'Call planned to review responses to CARs and load documents for Grace to review and approve.', evidenceIds: ['T0003', 'T0001', 'T0002'] };
+    const out = V.normaliseAgentResult({ discussion: [{ topic: 'CARs', points: [row] }] }, units, 'discussion', {});
+    assert.ok(!out.reviewFlags.some((flag) => /Conflicting passage/.test(flag.message)));
+    assert.equal(V.supersededCheckItems([{ topic: 'CARs', points: [row] }], units).length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
+  }
+});

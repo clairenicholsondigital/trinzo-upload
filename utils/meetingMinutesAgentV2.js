@@ -1843,12 +1843,19 @@ const PRESUMPTION_CUE = /\b(?:i\s+presumed|i\s+assumed|i\s+thought|we\s+thought|
 // The row cites both the assumption and its correction ("I presumed ... But I
 // think maybe that slightly changed"): the model often fuses the two, so the
 // reviewer is pointed at the correction. Strong correction wording only.
-function citedRevisionUnit(units = [], evidenceIds = []) {
+function citedRevisionUnit(units = [], evidenceIds = [], rowText = null) {
   const context = evidenceContextFor(units);
   const cited = [...new Set(evidenceIds)].map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
   const rows = context.rows;
   const presumption = cited.find((index) => PRESUMPTION_CUE.test(String(rows[index]?.text || '')));
   if (presumption === undefined) return null;
+  // Citations are sometimes enriched with lines from elsewhere in the meeting.
+  // The row must be about what was presumed, or the correction is not its own.
+  if (rowText !== null) {
+    const presumed = aboutWords(rows[presumption]?.text || '');
+    const shared = [...aboutWords(rowText)].filter((word) => presumed.has(word)).length;
+    if (shared < 2) return null;
+  }
   const correction = cited.find((index) => index > presumption && STRONG_REVISION_CUE.test(String(rows[index]?.text || '')));
   return correction === undefined ? null : rows[correction];
 }
@@ -2313,7 +2320,7 @@ function supersededCheckItems(discussion = [], units = []) {
   (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
     for (const kind of ['points', 'decisions']) {
       (topic?.[kind] || []).forEach((record, rowIndex) => {
-        const correction = citedRevisionUnit(units, record?.evidenceIds || []);
+        const correction = citedRevisionUnit(units, record?.evidenceIds || [], record?.text || '');
         if (!correction) return;
         const at = context.indexById.get(correction.id);
         const cited = (record.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
@@ -2358,7 +2365,7 @@ function demoteSupersededRows(discussion = [], units = [], outdated = null) {
   topics.forEach((topic, topicIndex) => {
     for (const kind of ['points', 'decisions']) {
       topic[kind] = topic[kind].filter((record, rowIndex) => {
-        if (!citedRevisionUnit(units, record?.evidenceIds || [])) return true;
+        if (!citedRevisionUnit(units, record?.evidenceIds || [], record?.text || '')) return true;
         // Only rows judged outdated move; a row stating the corrected position stays.
         if (outdated && !outdated.has(`${topicIndex}|${kind}|${rowIndex}`)) return true;
         moved.push({ record, topicIndex });
@@ -2684,7 +2691,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     const discussionRecords = new Set(discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]));
     for (const record of records) {
       if (!discussionRecords.has(record) || !record.evidenceIds.length) continue;
-      const revision = laterRevisionUnit(units, record.evidenceIds) || citedRevisionUnit(units, record.evidenceIds);
+      const revision = laterRevisionUnit(units, record.evidenceIds) || citedRevisionUnit(units, record.evidenceIds, record.text || record.action || '');
       if (revision) {
         record.evidenceIds = [...new Set([...record.evidenceIds, revision.id])].slice(0, 8);
         const flag = normaliseFlag({
