@@ -26,9 +26,11 @@ const db = require(`${codeRoot}/utils/db`);
     catch (error) { console.error('replay failed', j.draftId, error.message); continue; }
     journeys.push({
       case: j.case, run: j.run, draftId: j.draftId, waitingMs: Date.now() - started,
-      reviewerOutput: { ...j.reviewerOutput, actions: result.changes.actions, proposals: result.changes.pendingProposal?.changes || [] }
+      reviewerOutput: { ...j.reviewerOutput, actions: result.changes.actions, proposals: result.changes.pendingProposal?.changes || [] },
+      rescued: result.changes.qualityState?.actions?.rescuedActionTexts || []
     });
-    console.log(j.case.slice(0, 3), j.run, 'actions', result.changes.actions.length, 'ms', Date.now() - started);
+    console.log(j.case.slice(0, 3), j.run, 'actions', result.changes.actions.length, 'ms', Date.now() - started,
+      ...(result.changes.qualityState?.actions?.rescuedActionTexts || []).map((text) => `\n      rescued: ${text}`));
   }
   fs.writeFileSync(outFile, JSON.stringify({ ...kept, journeys }));
   process.exit(0);

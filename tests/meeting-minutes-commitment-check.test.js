@@ -104,3 +104,9 @@ test('an owner-less copy of an owned commitment merges into it', () => {
   assert.equal(out.merged, 1);
   assert.deepEqual(out.actions[0].owners, ['Rebecca Gill']);
 });
+
+test('sharing a screen during the meeting is meeting admin, not an action', () => {
+  assert.ok(V.isMeetingAdminAction('Share your screen and play the alarm software load with sound for review.'));
+  assert.ok(!V.isMeetingAdminAction('Share the risk analysis with Niamh before her arrival.'));
+  assert.match(V.commitmentCheckPrompt([]), /during this meeting itself/);
+});

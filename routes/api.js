@@ -203,6 +203,7 @@ const {
   commitmentCheckItems,
   commitmentCheckPrompt,
   applyCommitmentCheckResults,
+  isMeetingAdminAction,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   answeredCheckItems,
   answeredCheckPrompt,
@@ -13205,6 +13206,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   );
   let commitmentRescueCount = 0;
   let proposalRescueCount = 0;
+  let rescuedActionTexts = [];
   const proposalRecheck = meetingMinutesProposalRecheckEnabled();
   if (meetingMinutesCommitmentCheckEnabled() && (vetoedModelActions.length || proposalRecheck)) {
     // Model-extracted work that did not reach the published list gets one
@@ -13215,7 +13217,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       .some((other) => String(other).toLowerCase() === String(owner).toLowerCase()));
     const sharesLine = (left, right) => (left.evidenceIds || []).some((id) => (right.evidenceIds || []).includes(id));
     // Part of a published action (same owner, same transcript lines) is not new work.
-    const notPublished = (record) => isClientReadyActionWording(record.action)
+    const notPublished = (record) => isClientReadyActionWording(record.action) && !isMeetingAdminAction(record.action)
       && !automatic.some((existing) => hybridActionsEquivalent(record.action, existing.action)
         || (sameOwner(record, existing) && sharesLine(record, existing)));
     const deterministic = [...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop];
@@ -13245,6 +13247,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     ];
     const accepted = rescued.filter((record) => !fromPool.has(record.action) || (record.owners || []).length);
     proposalRescueCount = accepted.filter((record) => fromPool.has(record.action)).length;
+    rescuedActionTexts = accepted.map((record) => meetingMinutesAgentText(record.action, 200));
     commitmentRescueCount = accepted.length - proposalRescueCount;
     automatic.push(...accepted);
   }
@@ -13405,6 +13408,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         criticPromotionCount: criticPromotions.length,
         commitmentRescueCount,
         proposalRescueCount,
+        rescuedActionTexts,
         answeredInMeetingCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
