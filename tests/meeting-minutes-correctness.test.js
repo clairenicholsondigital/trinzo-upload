@@ -277,3 +277,15 @@ test('records sharing an identical flag all keep a reference to the flag that is
   assert.ok(out.actions[0].reviewFlagIds.every((id) => ids.has(id)));
   assert.ok(out.discussion[0].points[0].reviewFlagIds.every((id) => ids.has(id)));
 });
+
+test('evidence flags name their item, so a new unsupported item never merges into an old flag', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [{ id: 'T0001', speaker: 'Jacqui Fox', text: 'We reviewed the risk management plan comments.' }];
+  const out = V.normaliseAgentResult({
+    discussion: [{ topic: 'X', points: [{ text: 'The team agreed to relocate the factory to Mars next quarter.', evidenceIds: [] }] }],
+    actions: [{ action: 'Relocate the factory to Mars next quarter.', owners: [], timing: { kind: 'not_stated', wording: '' }, evidenceIds: [] }]
+  }, units, '', { enforceEvidence: false });
+  const missing = out.reviewFlags.filter((flag) => flag.kind === 'missing_evidence');
+  assert.equal(missing.length, 2);
+  assert.ok(missing.some((flag) => /"Relocate the factory to Mars next quarter\."/.test(flag.message)));
+});

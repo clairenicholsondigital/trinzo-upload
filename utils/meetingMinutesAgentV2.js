@@ -2701,7 +2701,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     if (record._unsupportedEvidenceIds?.length) {
       const flag = normaliseFlag({
         kind: 'missing_evidence',
-        message: `This item pointed to transcript lines that do not exist (${record._unsupportedEvidenceIds.join(', ')}). Check it against the transcript.`,
+        message: `"${recordLabel(record)}" pointed to transcript lines that do not exist (${record._unsupportedEvidenceIds.join(', ')}). Check it against the transcript.`,
         evidenceIds: record.evidenceIds
       }, flags.length + index);
       flags.push(flag);
@@ -2711,7 +2711,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     if (hadWeakEvidence) {
       const flag = normaliseFlag({
         kind: 'missing_evidence',
-        message: `The linked transcript lines only partly support this item. Check the wording against the transcript.`,
+        message: `The linked transcript lines only partly support "${recordLabel(record)}". Check the wording against the transcript.`,
         evidenceIds: record.evidenceIds
       }, flags.length + index);
       flags.push(flag);
@@ -2724,7 +2724,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     delete record._timingClauseNote;
     if (hadWeakEvidence && !record.evidenceIds.length) continue;
     if (record.evidenceIds.length) continue;
-    const flag = normaliseFlag({ kind: 'missing_evidence', message: 'No transcript passage clearly supports this item. Check it, or delete it if it was not said.' }, flags.length + index);
+    const flag = normaliseFlag({ kind: 'missing_evidence', message: `No transcript passage clearly supports "${recordLabel(record)}". Check it, or delete it if it was not said.` }, flags.length + index);
     flags.push(flag);
     record.reviewFlagIds.push(flag.id);
   }
@@ -2747,6 +2747,14 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     for (const action of actions) repoint(action);
   }
   return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags: uniqueFlags(flags) };
+}
+
+// Evidence flags name their item, so flags for different items never merge (a
+// new unsupported item always gets its own open flag, even when an earlier
+// item with the same problem was resolved).
+function recordLabel(record = {}) {
+  const value = text(record.action || record.text, 400);
+  return value.length > 90 ? `${value.slice(0, 87).replace(/\s+\S*$/, '')}…` : value;
 }
 
 function uniqueFlags(flags = []) {
