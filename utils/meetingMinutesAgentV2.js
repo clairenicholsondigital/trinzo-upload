@@ -1058,6 +1058,72 @@ function actionEvidenceDisposition(action, evidence) {
   return 'unclear';
 }
 
+// A published Discussion row often states work nobody turned into an action
+// ("Ciaran Ryan will focus on TFO3 this week"). Those rows are offered to the
+// Actions stage as candidates so the usual evidence checks can judge them;
+// they are never published from here.
+const DISCUSSION_FUTURE_TASK = /\b(?:will|to be|is to|are to|plans? to|planning to|planning|scheduled to|due to|expected to|going to|needs? to|must)\b/i;
+// People named in the meeting who never spoke and are not listed as attendees
+// (work is often assigned to them). Capitalised names in person-like positions,
+// mentioned more than once.
+const NOT_A_PERSON = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+  'teams', 'excel', 'word', 'sharepoint', 'trinzo', 'udimed', 'udamed', 'eudamed', 'mdr', 'qms', 'sop', 'ppe', 'usb', 'gui',
+  'the', 'this', 'that', 'yeah', 'okay', 'sorry', 'thanks', 'hello', 'right', 'well', 'and', 'but', 'once', 'because']);
+function mentionedPeople(units = []) {
+  const counts = new Map();
+  for (const unit of evidenceContextFor(units).rows) {
+    const value = String(unit.text || '');
+    const patterns = [/\b(?:with|to|for|from|ask|asked|tell|told|and|by)\s+([A-Z][a-z]{2,15})\b/g, /\b([A-Z][a-z]{2,15})\s+(?:will|is|has|can|should|to)\b/g];
+    for (const pattern of patterns) {
+      for (const match of value.matchAll(pattern)) {
+        const name = match[1];
+        if (NOT_A_PERSON.has(name.toLowerCase())) continue;
+        counts.set(name, (counts.get(name) || 0) + 1);
+      }
+    }
+  }
+  return [...counts.entries()].filter(([, count]) => count >= 2).map(([name]) => name);
+}
+
+function discussionActionCandidates(discussion = [], units = [], people = []) {
+  const context = evidenceContextFor(units);
+  // Named people include those who never spoke (work is often assigned to them).
+  const speakers = [...new Set([
+    ...context.rows.map((unit) => text(unit.speaker, 180)),
+    ...(Array.isArray(people) ? people : []).map((person) => text(person, 180)),
+    ...mentionedPeople(units)
+  ].filter(Boolean))];
+  const candidates = [];
+  for (const topic of Array.isArray(discussion) ? discussion : []) {
+    for (const kind of ['points', 'decisions']) {
+      for (const record of topic?.[kind] || []) {
+        const value = text(record?.text, 800);
+        if (!value || !DISCUSSION_FUTURE_TASK.test(value)) continue;
+        const owner = speakers.find((speaker) => new RegExp(`\\b${speaker.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
+        if (!owner) continue;
+        const ids = [...new Set(record.evidenceIds || [])].slice(0, 8);
+        if (!ids.length) continue;
+        const sequence = Math.min(...ids.map((id) => context.indexById.get(id)).filter(Number.isInteger), Infinity);
+        candidates.push({
+          candidateId: stableId('candidate-discussion', `${owner}|${value}`),
+          focusEvidenceId: ids[0],
+          evidenceIds: ids,
+          dispositionHint: 'committed',
+          cueKinds: ['commitment'],
+          priority: 4,
+          sequence: Number.isFinite(sequence) ? sequence : 0,
+          focusText: value,
+          context: text(evidenceWindowText(units, ids, 1), 900),
+          sourcePass: 'discussion_row',
+          ownerHints: [owner]
+        });
+      }
+    }
+  }
+  return candidates.slice(0, 24);
+}
+
 function actionCandidateInventory(units = []) {
   const rows = normaliseSourceUnits(units).filter(includedUnit);
   const candidates = [];
@@ -3071,6 +3137,8 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  discussionActionCandidates,
+  mentionedPeople,
   describesUsualPractice,
   demoteSupersededRows,
   supersededCheckItems,

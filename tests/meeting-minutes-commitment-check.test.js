@@ -110,3 +110,19 @@ test('sharing a screen during the meeting is meeting admin, not an action', () =
   assert.ok(!V.isMeetingAdminAction('Share the risk analysis with Niamh before her arrival.'));
   assert.match(V.commitmentCheckPrompt([]), /during this meeting itself/);
 });
+
+test('Discussion rows stating future work by a named person become action candidates', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Jacqui Fox', text: 'And then Andrew has been doing work on the changes with Rebecca.' },
+    { id: 'T0002', speaker: 'Jacqui Fox', text: 'Andrew will start the electrical compliance testing next month.' },
+    { id: 'T0003', speaker: 'Adil Kauim', text: 'Now it is just thinking about how to execute the study.' }
+  ];
+  assert.ok(V.mentionedPeople(units).includes('Andrew'));
+  const candidates = V.discussionActionCandidates([{ topic: 'T', points: [
+    { id: 'r1', text: 'Andrew will complete the electrical compliance testing in-house.', evidenceIds: ['T0002'] },
+    { id: 'r2', text: 'Tracker movement is positive, with the percentage moving from 13 to 10.', evidenceIds: ['T0001'] },
+    { id: 'r3', text: 'Adil completed the task analysis; now planning study execution.', evidenceIds: ['T0003'] }
+  ] }], units, ['Adil Kauim']);
+  assert.deepEqual(candidates.map((candidate) => candidate.ownerHints[0]), ['Andrew', 'Adil Kauim']);
+  assert.ok(candidates.every((candidate) => candidate.evidenceIds.length && candidate.sourcePass === 'discussion_row'));
+});

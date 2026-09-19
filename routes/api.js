@@ -213,6 +213,7 @@ const {
   applyRequesterOwnerRule,
   demoteSupersededRows,
   describesUsualPractice,
+  discussionActionCandidates,
   supersededCheckItems,
   supersededVerdicts,
   correctnessChecksEnabled
@@ -12458,7 +12459,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
 
   const deterministic = deterministicHybridLedger(draft, stage);
-  const deterministicActionCandidates = stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : [];
+  const deterministicActionCandidates = stage === 'actions'
+    ? [...actionCandidateInventory(draft.sourceUnits),
+      ...(meetingMinutesDiscussionActionCandidatesEnabled()
+        ? discussionActionCandidates(draft.discussion || [], draft.sourceUnits,
+          [...(sanitiseMeetingAgentDetails(draft.details).internalAttendees || []), ...(sanitiseMeetingAgentDetails(draft.details).clientAttendees || [])])
+        : [])]
+    : [];
   const actionThreads = stage === 'actions'
     ? actionCommitmentThreadInventory(draft.sourceUnits, deterministicActionCandidates)
     : [];
@@ -13900,6 +13907,10 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
 
 // A suggested edit must change what the action says: its wording, owners or
 // timing. One that only re-cites lines (or nothing at all) is noise.
+function meetingMinutesDiscussionActionCandidatesEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_CANDIDATES_V1 || '0'));
+}
+
 function meetingMinutesProposalRecheckEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PROPOSAL_RECHECK_V1 || '0'));
 }
