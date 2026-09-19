@@ -2062,6 +2062,24 @@ function commitmentQuoteTiesOwner(quote = '', owners = [], passage = '') {
   return ownerSpoke && FIRST_PERSON_COMMITMENT.test(quote);
 }
 
+const ABOUT_STOP = new Set(['with', 'that', 'this', 'then', 'from', 'into', 'their', 'about', 'will', 'have', 'been', 'just', 'kind', 'look', 'make', 'sure', 'what', 'when', 'where', 'which', 'also', 'there', 'they', 'your', 'need', 'needs', 'able', 'going', 'gonna', 'okay', 'yeah', 'week', 'next']);
+function aboutWords(value) {
+  return new Set((String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'-]{3,}/g) || [])
+    .filter((word) => !ABOUT_STOP.has(word))
+    .map((word) => word.replace(/'s$/, '').replace(/(?:ing|ed|es|s)$/, '').replace(/e$/, ''))
+    .filter((word) => word.length >= 4));
+}
+function commitmentQuoteAboutAction(quote = '', action = '', passage = '') {
+  const lines = String(passage || '').split('\n');
+  const said = quoteText(quote);
+  const carrying = lines.filter((line) => decisionQuoteFound(quote, line) || quoteText(line).includes(said.slice(0, 40)));
+  const source = aboutWords([quote, ...carrying].join(' '));
+  const target = aboutWords(action);
+  let shared = 0;
+  for (const word of target) if (source.has(word)) shared += 1;
+  return shared >= 2;
+}
+
 function applyCommitmentCheckResults(actions = [], items = [], results = [], options = {}) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const rescued = [];
@@ -2070,6 +2088,10 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
     if (!row || row.verdict !== 'commitment' || !decisionQuoteFound(row.commitmentQuote, item.passage)) continue;
     const action = actions[item.index];
     if (options.requireOwnerTie && !commitmentQuoteTiesOwner(row.commitmentQuote, action.owners, item.passage)) continue;
+    // The quoted commitment must be about this work: "I'll update that table
+    // for the new set of minutes" does not commit anyone to a cybersecurity
+    // update. Checked on the quote's line(s), which carry the subject.
+    if (options.requireOwnerTie && !commitmentQuoteAboutAction(row.commitmentQuote, action.action, item.passage)) continue;
     rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []), reviewFlagIds: [] });
   }
   return rescued;
@@ -2193,7 +2215,9 @@ function duplicateWords(value) {
 }
 function sameCommitment(left = {}, right = {}) {
   const owners = (record) => (record.owners || []).map((owner) => String(owner).toLowerCase().trim()).sort().join('|');
-  if (!owners(left) || owners(left) !== owners(right)) return false;
+  // An owner-less copy of an owned commitment is still the same commitment.
+  if ((owners(left) || owners(right)) && owners(left) && owners(right) && owners(left) !== owners(right)) return false;
+  if (!owners(left) && !owners(right)) return false;
   const leftIds = new Set(left.evidenceIds || []);
   const rightIds = [...new Set(right.evidenceIds || [])];
   const shared = rightIds.filter((id) => leftIds.has(id)).length;
@@ -2210,7 +2234,8 @@ function mergeDuplicateCommitments(actions = []) {
     if (index < 0) { kept.push(action); continue; }
     merged += 1;
     const existing = kept[index];
-    const timed = (record) => Number(Boolean(record.timing && record.timing.kind !== 'not_stated'));
+    const timed = (record) => Number(Boolean(record.timing && record.timing.kind !== 'not_stated'))
+      + 2 * Number(Boolean((record.owners || []).length));
     const [winner, loser] = timed(action) > timed(existing)
       || (timed(action) === timed(existing) && text(action.action).length > text(existing.action).length)
       ? [action, existing] : [existing, action];
@@ -2864,6 +2889,7 @@ module.exports = {
   commitmentCheckPrompt,
   applyCommitmentCheckResults,
   commitmentQuoteTiesOwner,
+  commitmentQuoteAboutAction,
   decisionCheckEnabled,
   decisionCheckItems,
   decisionCheckPrompt,

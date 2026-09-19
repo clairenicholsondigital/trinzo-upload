@@ -74,6 +74,37 @@ def adapt(reviewer_output: dict) -> dict:
     }
 
 
+ALTERNATIVES_PATH = Path(__file__).resolve().parent / "meeting-minutes-agent-golden-alternatives.json"
+
+
+def tolerant_expected(case: str, output: dict, expected: dict, alternatives: dict) -> dict:
+    """The expected criteria with each missed mustContain item swapped for a
+    reviewed equivalent phrasing that is present, when one is. Counts, weights
+    and every other rule are unchanged, so only genuinely equivalent content
+    is credited."""
+    import copy
+    tolerant = copy.deepcopy(expected)
+    case_alts = alternatives.get(case) or {}
+    decisions = ev.decision_texts(output)
+    actions = ev.action_objects(output)
+    for category in ("decisions", "actions"):
+        items = tolerant["criteria"].get(category, {}).get("mustContain") or []
+        for index, item in enumerate(items):
+            if not isinstance(item, str):
+                continue
+            present = (ev.contains_match(decisions, item) if category == "decisions"
+                       else any(ev.action_matches(action, item) for action in actions))
+            if present:
+                continue
+            for alt in (case_alts.get(category) or {}).get(item) or []:
+                found = (ev.contains_match(decisions, alt) if category == "decisions"
+                         else any(ev.action_matches(action, alt) for action in actions))
+                if found:
+                    items[index] = alt
+                    break
+    return tolerant
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(__doc__)
@@ -83,6 +114,7 @@ def main(argv: list[str]) -> int:
     json_out = argv[argv.index("--json") + 1] if "--json" in argv else ""
     results = []
     unprepared: dict[str, str] = {}
+    alternatives = json.loads(ALTERNATIVES_PATH.read_text()) if ALTERNATIVES_PATH.exists() else {}
     for journey in harness.get("journeys") or []:
         case = str(journey.get("case") or "")
         if journey.get("error"):
@@ -94,6 +126,10 @@ def main(argv: list[str]) -> int:
         expected = json.loads(expected_path.read_text())
         output = adapt(journey.get("reviewerOutput") or {})
         result = ev.evaluate_case(case, output, expected)
+        tolerant = ev.evaluate_case(case, output, tolerant_expected(case, output, expected, alternatives))
+        result["tolerantScore"] = tolerant["score"]
+        result["tolerantCategoryScores"] = tolerant["categoryScores"]
+        result["tolerantFailures"] = tolerant["failures"]
         result["run"] = journey.get("run")
         result["draftId"] = journey.get("draftId")
         result["waitingMs"] = journey.get("waitingMs")
@@ -117,6 +153,8 @@ def main(argv: list[str]) -> int:
     print(f"\njourneys {len(results)} | mean score {statistics.mean(scores):.3f} | pass rate {sum(1 for r in results if r['passed'])}/{len(results)}"
           f" | hallucination-free journeys {sum(1 for h in hallucination if h == 1.0)}/{len(results)}"
           f" | mean waiting {statistics.mean([r['waitingMs'] or 0 for r in results]) / 1000:.1f}s")
+    print(f"tolerant mean score {statistics.mean([r['tolerantScore'] for r in results]):.3f}"
+          f" (reviewed equivalent phrasings; strict score above is the baseline-comparable one)")
     if unprepared:
         print(f"not prepared by the tool ({len(unprepared)}): " + ", ".join(f"{case} [{reason}]" for case, reason in sorted(unprepared.items())))
     if json_out:

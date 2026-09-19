@@ -85,3 +85,22 @@ test('a rescued proposal needs its quote tied to the owner', () => {
   assert.ok(!V.commitmentQuoteTiesOwner('focused really now on that cybersecurity update', ['Jacqui Fox'], passage));
   assert.ok(!V.commitmentQuoteTiesOwner("I'm gonna focus on TFO3 this week", ['Jacqui Fox'], passage));
 });
+
+test('a rescued commitment quote must be about the action it rescues', () => {
+  const passage = [
+    "Jacqui Fox: Okay, so if I step down through the core areas, I'll update that table for the new set of minutes.",
+    'Jacqui Fox: Some cybersecurity work because of the USB ports on the back of the CPAP machine.',
+    "Jacqui Fox: So Janine, and I think Adil, you're involved in that next week, to look from a clinician side at those changes to the mute button."
+  ].join('\n');
+  assert.ok(!V.commitmentQuoteAboutAction("I'll update that table for the new set of minutes", 'Update the risk management documentation for USB port cybersecurity on the CPAP machine.', passage));
+  assert.ok(V.commitmentQuoteAboutAction("Janine, and I think Adil, you're involved in that next week", 'Review the proposed mute button change with clinicians.', passage));
+});
+
+test('an owner-less copy of an owned commitment merges into it', () => {
+  const out = V.mergeDuplicateCommitments([
+    { action: 'Conduct a follow-up call to review the CAR responses, then load the documents for Grace.', owners: [], timing: { kind: 'not_stated' }, evidenceIds: ['T1', 'T2', 'T3'] },
+    { action: 'Conduct the review call, ensure the CAR responses are complete, and load the documents for Grace.', owners: ['Rebecca Gill'], timing: { kind: 'not_stated' }, evidenceIds: ['T1', 'T2', 'T3'] }
+  ]);
+  assert.equal(out.merged, 1);
+  assert.deepEqual(out.actions[0].owners, ['Rebecca Gill']);
+});
