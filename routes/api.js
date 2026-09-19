@@ -13938,17 +13938,32 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
     const reviewerEdited = current.length > 0 && Boolean(previousFingerprint)
       && asSaved(current) !== previousFingerprint;
     const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
+    // What was generated last time, so a later regeneration can tell the
+    // reviewer's own edits, additions and deletions apart.
+    const generatedTexts = generated.map((action) => meetingMinutesAgentText(action?.action, 1600)).filter(Boolean);
     changes.qualityState = {
       ...qualityState,
-      actions: { ...(qualityState.actions || {}), generatedFingerprint: asSaved(generated) }
+      actions: { ...(qualityState.actions || {}), generatedFingerprint: asSaved(generated), generatedTexts }
     };
     if (reviewerEdited) {
       keptReviewerActions = true;
+      const previousTexts = Array.isArray(fresh.qualityState?.actions?.generatedTexts) ? fresh.qualityState.actions.generatedTexts : null;
+      const reviewerTouched = (row) => previousTexts && !previousTexts.includes(meetingMinutesAgentText(row?.action, 1600));
+      const deletedByReviewer = previousTexts
+        ? previousTexts.filter((textValue) => !current.some((row) => meetingMinutesAgentText(row?.action, 1600) === textValue))
+        : [];
+      // Never propose undoing the reviewer's work: re-adding what they deleted,
+      // changing a row they wrote or edited, or removing a row they added.
+      const respectsReviewer = (change) => {
+        if (change.type === 'add') return !deletedByReviewer.some((textValue) => hybridActionsEquivalent(textValue, change.after?.action || ''));
+        if (change.type === 'modify' || change.type === 'remove') return !reviewerTouched(change.before);
+        return true;
+      };
       const diff = buildProposal('actions', current, generated);
       const generatedProposal = changes.pendingProposal && Array.isArray(changes.pendingProposal.changes) ? changes.pendingProposal : null;
       const extraAdds = (generatedProposal?.changes || []).filter((change) => change?.type === 'add' && change.after)
         .map((change) => ({ ...change, beforeIndex: current.length, index: current.length, afterIndex: null }));
-      const combined = [...diff.changes.filter(meetingAgentProposalChangeIsVisible), ...extraAdds];
+      const combined = [...diff.changes.filter(meetingAgentProposalChangeIsVisible), ...extraAdds].filter(respectsReviewer);
       changes.pendingProposal = combined.length
         ? { ...diff, changes: combined, source: 'regeneration' }
         : null;

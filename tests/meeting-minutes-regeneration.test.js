@@ -92,3 +92,15 @@ test('regeneration never proposes an edit that changes nothing a reviewer sees',
   assert.equal(out.keptReviewerActions, true);
   assert.equal(out.changes.pendingProposal, null);
 });
+
+test('regeneration never proposes undoing the reviewer: no re-adds, no edits of their rows', () => {
+  const generatedTexts = generatedFirst.map((a) => a.action);
+  const current = [{ ...generatedFirst[0], action: 'Send the revised report to the client by Friday (reviewer wording).' }];
+  const fresh = { ...draftWith(current), qualityState: { actions: { generatedFingerprint: fingerprintAsSaved(generatedFirst), generatedTexts } } };
+  const out = meetingAgentRegenerationChanges(fresh, 'actions', { actions: [...generatedFirst], pendingProposal: null, qualityState: { actions: {} } }, { reviewFlags: [] });
+  assert.equal(out.keptReviewerActions, true);
+  const changes = (out.changes.pendingProposal && out.changes.pendingProposal.changes) || [];
+  assert.ok(!changes.some((c) => c.type === 'add' && /Book the site visit/.test(c.after.action)), 'deleted row re-added');
+  assert.ok(!changes.some((c) => c.type === 'modify'), 'edited row changed back');
+  assert.deepEqual(out.changes.qualityState.actions.generatedTexts, generatedFirst.map((a) => a.action));
+});
