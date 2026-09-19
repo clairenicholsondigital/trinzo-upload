@@ -2046,9 +2046,9 @@ function commitmentQuoteTiesOwner(quote = '', owners = [], passage = '') {
     .filter((index) => index >= 0);
   const carrying = carryingIndexes.map((index) => lines[index]);
   const spoken = (line) => quoteText(String(line || '').slice(String(line || '').indexOf(':') + 1));
-  // "he's just looking into that" refers back to "there's Andrew who ..." on
-  // the line before, so the owner may be named there too.
-  const nearby = [...new Set(carryingIndexes.flatMap((index) => [index - 1, index]).filter((index) => index >= 0))].map((index) => lines[index]);
+  // "he's just looking into that" refers back to "there's Andrew who ..." a
+  // few lines earlier, so the owner may be named up to three lines before.
+  const nearby = [...new Set(carryingIndexes.flatMap((index) => [index - 3, index - 2, index - 1, index]).filter((index) => index >= 0))].map((index) => lines[index]);
   if (firstNames.some((name) => said.includes(name) || nearby.some((line) => new RegExp(`\\b${name}\\b`).test(spoken(line))))) return true;
   const speakers = carrying.map((line) => line.split(':')[0].trim().toLowerCase());
   const ownerSpoke = speakers.some((speaker) => names.some((owner) => speaker === owner.toLowerCase() || speaker.split(/\s+/)[0] === owner.toLowerCase().split(/\s+/)[0]));
