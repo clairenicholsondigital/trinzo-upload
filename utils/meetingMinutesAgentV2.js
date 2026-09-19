@@ -2143,6 +2143,47 @@ function applyChainedTimingRule(actions = [], units = []) {
   return { actions: checked, flags };
 }
 
+// ---- Same-commitment duplicates -------------------------------------------
+// Two published actions with the same owners, drawn from mostly the same
+// transcript lines (at least two shared) and describing overlapping work, are
+// one commitment written twice. The one with a timing (else the fuller
+// wording) is kept and takes the other's citations and flags.
+const DUPLICATE_STOP = new Set(['with', 'that', 'this', 'then', 'from', 'into', 'their', 'about', 'review', 'ensure', 'complete']);
+function duplicateWords(value) {
+  return new Set((String(value || '').toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []).filter((word) => !DUPLICATE_STOP.has(word)));
+}
+function sameCommitment(left = {}, right = {}) {
+  const owners = (record) => (record.owners || []).map((owner) => String(owner).toLowerCase().trim()).sort().join('|');
+  if (!owners(left) || owners(left) !== owners(right)) return false;
+  const leftIds = new Set(left.evidenceIds || []);
+  const rightIds = [...new Set(right.evidenceIds || [])];
+  const shared = rightIds.filter((id) => leftIds.has(id)).length;
+  if (shared < 2 || shared / Math.min(leftIds.size, rightIds.length) < 0.66) return false;
+  const a = duplicateWords(left.action); const b = duplicateWords(right.action);
+  let common = 0; for (const word of a) if (b.has(word)) common += 1;
+  return common / Math.max(1, Math.min(a.size, b.size)) >= 0.3;
+}
+function mergeDuplicateCommitments(actions = []) {
+  const kept = [];
+  let merged = 0;
+  for (const action of Array.isArray(actions) ? actions : []) {
+    const index = kept.findIndex((existing) => sameCommitment(existing, action));
+    if (index < 0) { kept.push(action); continue; }
+    merged += 1;
+    const existing = kept[index];
+    const timed = (record) => Number(Boolean(record.timing && record.timing.kind !== 'not_stated'));
+    const [winner, loser] = timed(action) > timed(existing)
+      || (timed(action) === timed(existing) && text(action.action).length > text(existing.action).length)
+      ? [action, existing] : [existing, action];
+    kept[index] = {
+      ...winner,
+      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])].slice(0, 8),
+      reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
+    };
+  }
+  return { actions: kept, merged };
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -2773,6 +2814,7 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  mergeDuplicateCommitments,
   applyChainedTimingRule,
   answeredCheckEnabled,
   answeredCheckItems,

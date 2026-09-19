@@ -139,3 +139,17 @@ test('a timing spoken only in the first cited line of a chain becomes a first-st
   assert.equal(out.actions[0].timing.wording, 'today (first step only)');
   assert.equal(out.flags.length, 1);
 });
+
+test('one commitment written twice is merged; separate work on a shared line is not', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const out = V.mergeDuplicateCommitments([
+    { action: 'Complete the three code changes covering alarms and languages.', owners: ['Andrew'], timing: { kind: 'target', wording: 'end of next week' }, evidenceIds: ['T0043'] },
+    { action: 'Resolve the language symbol issue so the translations can be uploaded.', owners: ['Andrew'], timing: { kind: 'not_stated', wording: '' }, evidenceIds: ['T0043'] },
+    { action: 'Load the CAR responses for Grace to approve, then download them into the tech file.', owners: ['Rebecca Gill'], timing: { kind: 'not_stated', wording: '' }, evidenceIds: ['T0117', 'T0119', 'T0120', 'T0121'] },
+    { action: 'Conduct a call about the CAR responses, then load the documents for Grace and download them into the tech file.', owners: ['Rebecca Gill'], timing: { kind: 'target', wording: 'today (first step only)' }, evidenceIds: ['T0119', 'T0120', 'T0121'] }
+  ]);
+  assert.equal(out.merged, 1);
+  assert.equal(out.actions.length, 3);
+  assert.equal(out.actions[2].timing.wording, 'today (first step only)');
+  assert.ok(out.actions[2].evidenceIds.includes('T0117'));
+});

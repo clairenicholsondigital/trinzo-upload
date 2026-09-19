@@ -208,6 +208,7 @@ const {
   answeredCheckPrompt,
   applyAnsweredCheckResults,
   applyChainedTimingRule,
+  mergeDuplicateCommitments,
   correctnessChecksEnabled
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
@@ -13311,7 +13312,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
   if (correctnessChecksEnabled()) {
     const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits);
-    timingChecked = { actions: chained.actions, flags: [...timingChecked.flags, ...chained.flags] };
+    const deduped = mergeDuplicateCommitments(chained.actions);
+    timingChecked = { actions: deduped.actions, flags: [...timingChecked.flags, ...chained.flags] };
   }
   let answeredInMeetingCount = 0;
   if (meetingMinutesAnsweredCheckEnabled()) {
