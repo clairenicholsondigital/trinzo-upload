@@ -354,14 +354,15 @@ test('named or dated facts are promoted out of context; raw speech and repeats a
   const units = [
     { id: 'T0001', speaker: 'Jacqui Fox', text: 'Rebecca is managing the cybersecurity hazard update with Andrew.' },
     { id: 'T0002', speaker: 'Jacqui Fox', text: 'So we will get the.Bottomed out by the end of the week, hopefully.' },
-    { id: 'T0003', speaker: 'Adil Kauim', text: 'I finished the task analysis with Alan last week.' }
+    { id: 'T0003', speaker: 'Adil Kauim', text: 'I finished the task analysis with Alan last week.' },
+    { id: 'T0004', speaker: 'Jacqui Fox', text: 'Rebecca will send the updated file to Andrew.' }
   ];
   const out = V.promoteNamedFactDetails([{ topic: 'T', points: [{ id: 'r1', text: 'Adil finished the task analysis.', evidenceIds: ['T0003'], supportingDetails: [
-    { id: 's1', text: 'Rebecca is managing the cybersecurity hazard update with Andrew.', evidenceIds: ['T0001'] },
+    { id: 's1', text: 'Hazard analysis needs updates for USB cybersecurity; Rebecca is managing it.', evidenceIds: ['T0001'] },
     { id: 's2', text: 'So we will get the.Bottomed out by the end of the week, hopefully.', evidenceIds: ['T0002'] },
     { id: 's3', text: 'Adil finished the task analysis with Alan.', evidenceIds: ['T0003'] }
   ] }] }], units, ['Adil Kauim']);
   assert.equal(out.promoted, 1);
-  assert.equal(out.discussion[0].points[1].text, 'Rebecca is managing the cybersecurity hazard update with Andrew.');
+  assert.equal(out.discussion[0].points[1].text, 'Hazard analysis needs updates for USB cybersecurity; Rebecca is managing it.');
   assert.deepEqual(out.discussion[0].points[0].supportingDetails.map((detail) => detail.id), ['s2', 's3']);
 });
