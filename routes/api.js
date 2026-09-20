@@ -212,6 +212,7 @@ const {
   mergeDuplicateCommitments,
   applyRequesterOwnerRule,
   demoteSupersededRows,
+  labelSupersededContext,
   describesUsualPractice,
   discussionActionCandidates,
   supersededCheckItems,
@@ -13016,6 +13017,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
       }
     }
+    let supersededContextFlags = [];
     if (correctnessChecksEnabled()) {
       // Rows citing an assumption and its correction are rare; those that do
       // not carry the correction's content leave the primary rows.
@@ -13024,9 +13026,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       const superseded = outdatedRows.size
         ? demoteSupersededRows(finalDiscussion, draft.sourceUnits, outdatedRows)
         : { demoted: 0 };
-      if (superseded.demoted) {
-        console.log(JSON.stringify({ event: 'meeting_agent_superseded_rows', journeyId: draft.draftId, demoted: superseded.demoted }));
-        finalDiscussion = superseded.discussion;
+      if (superseded.demoted) finalDiscussion = superseded.discussion;
+      // The same statement can arrive already in supporting context.
+      const labelled = labelSupersededContext(finalDiscussion, draft.sourceUnits);
+      if (labelled.labelled) {
+        finalDiscussion = labelled.discussion;
+        supersededContextFlags = labelled.flags;
+      }
+      if (superseded.demoted || labelled.labelled) {
+        console.log(JSON.stringify({ event: 'meeting_agent_superseded_rows', journeyId: draft.draftId, demoted: superseded.demoted, labelledInContext: labelled.labelled }));
       }
     }
     if (meetingMinutesDecisionCheckEnabled()) {
@@ -13046,7 +13054,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     }
     // Rows are rebuilt by several steps that keep the rows but not the flags
     // those steps raised; recover what the rows point at, drop dead references.
-    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, refereeFlags, isUsefulMeetingAgentReviewFlag);
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],

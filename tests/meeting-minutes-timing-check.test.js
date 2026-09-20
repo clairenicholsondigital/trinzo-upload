@@ -183,3 +183,18 @@ test('a timing change that only adds a hedge is not made and not explained', () 
   assert.equal(out.actions[0].timing.wording, 'by the end of the week');
   assert.equal(out.flags.length, 0);
 });
+
+test('a timing asked and answered before the later steps still leaves the deadline column', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0001', speaker: 'Rebecca Gill', text: 'Do you have a follow-up call with Colm today, or was it yesterday?' },
+    { id: 'T0002', speaker: 'Rebecca Gill', text: 'We have a call today to walk through the CAR responses.' },
+    { id: 'T0003', speaker: 'Rebecca Gill', text: 'And then get everything loaded for Grace to review and approve.' },
+    { id: 'T0004', speaker: 'Rebecca Gill', text: 'Then we will download it and point the auditor to them.' }
+  ];
+  const out = V.applyChainedTimingRule([
+    { action: 'Conduct a follow-up call with Colm, then load the documents for Grace to approve.', timing: { kind: 'deadline', wording: 'today' }, evidenceIds: ['T0001', 'T0002', 'T0003', 'T0004'] }
+  ], units);
+  assert.equal(out.actions[0].timing.kind, 'not_stated');
+  assert.match(out.flags[0].message, /earlier step/);
+});

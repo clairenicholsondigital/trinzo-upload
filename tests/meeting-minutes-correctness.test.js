@@ -321,3 +321,30 @@ test('an action drawn only from a description of usual practice is recognised', 
   assert.ok(!V.describesUsualPractice({ action: 'Draft the material and send it to Steve.', evidenceIds: ['T0003'] }, units));
   assert.ok(!V.describesUsualPractice({ action: 'Draft material on posters.', evidenceIds: ['T0001', 'T0003'] }, units));
 });
+
+test('a superseded statement already in supporting context is labelled and flagged there', () => {
+  const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
+  process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
+  try {
+    const V = require('../utils/meetingMinutesAgentV2');
+    const units = [
+      { id: 'T0001', speaker: 'Rebecca Gill', text: 'I presumed that the formative would be ready for submission and then to follow up with the summative.' },
+      { id: 'T0002', speaker: 'Rebecca Gill', text: 'But I think maybe that slightly changed and it would be ready just shortly after, still prior to the protect file being lifted.' },
+      { id: 'T0003', speaker: 'Adil Kauim', text: 'I finished the task analysis with Alan last week.' }
+    ];
+    const discussion = [{ topic: 'Formative', points: [{ id: 'r1', text: 'Adil finished the task analysis.', evidenceIds: ['T0003'], supportingDetails: [
+      { id: 's1', text: 'Formative document readiness is anticipated shortly, prior to the summative submission.', evidenceIds: ['T0001', 'T0002'] },
+      { id: 's2', text: 'Formative expected shortly after, but prior to the protect file being lifted.', evidenceIds: ['T0001', 'T0002'] }
+    ] }] }];
+    const out = V.labelSupersededContext(discussion, units);
+    assert.equal(out.labelled, 1);
+    const details = out.discussion[0].points[0].supportingDetails;
+    assert.match(details[0].text, /^Earlier position, revised later in the meeting: /);
+    assert.equal(details[0].reviewFlagIds.length, 1);
+    assert.equal(details[1].text, 'Formative expected shortly after, but prior to the protect file being lifted.');
+    // Running it twice does not label the same line again.
+    assert.equal(V.labelSupersededContext(out.discussion, units).labelled, 0);
+  } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
+  }
+});

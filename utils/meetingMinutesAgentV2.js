@@ -2248,8 +2248,9 @@ function applyAnsweredCheckResults(actions = [], items = [], results = []) {
 // in the action text and the deadline column is cleared, with a flag.
 const CHAIN_STEP_MARKER = /,?\s*\b(?:and then|then|after that|afterwards|once (?:that|this|it|they|approved|done|complete)|followed by)\b/i;
 // The transcript form of the same pattern, for when the action's wording does
-// not repeat the timing: the timing is spoken only in the earliest cited line,
-// and the later cited lines (the later steps) carry none.
+// not repeat the timing: the timing is spoken in the earlier cited lines (it
+// may be asked and answered across two), and the later cited lines - the later
+// steps of the chain - carry none.
 function timingOnlyInFirstCitedLine(action, units = []) {
   const wording = text(action?.timing?.wording, 220).toLowerCase();
   if (!wording || !Array.isArray(units) || !units.length) return '';
@@ -2258,8 +2259,10 @@ function timingOnlyInFirstCitedLine(action, units = []) {
     .filter(Number.isInteger).sort((a, b) => a - b).map((index) => String(context.rows[index]?.text || ''));
   if (cited.length < 2) return '';
   const said = (line) => line.toLowerCase().includes(wording);
-  // Returns the line where the timing was said, for the reviewer's flag.
-  return said(cited[0]) && !cited.slice(1).some(said) ? cited[0] : '';
+  const lastSaid = cited.reduce((last, line, index) => (said(line) ? index : last), -1);
+  // Said in an early step, with at least one later step that does not mention
+  // it. Returns the line where it was said, for the reviewer's flag.
+  return lastSaid >= 0 && lastSaid < cited.length - 1 && !cited.slice(lastSaid + 1).some(said) ? cited[lastSaid] : '';
 }
 
 function applyChainedTimingRule(actions = [], units = []) {
@@ -2392,26 +2395,77 @@ function applyRequesterOwnerRule(actions = [], units = []) {
 // primary statement: it moves, flag and all, into the supporting context of
 // the nearest primary row, where the reviewer still sees it.
 // Candidate rows (rare) with their passage, for the model's judgement.
+function supersededItemFor(record, units, context) {
+  const correction = citedRevisionUnit(units, record?.evidenceIds || [], record?.text || '');
+  if (!correction) return null;
+  const at = context.indexById.get(correction.id);
+  const cited = (record.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+  const earlier = cited.filter((index) => index < at && PRESUMPTION_CUE.test(String(context.rows[index]?.text || '')));
+  const line = (index) => `${context.rows[index].speaker}: ${context.rows[index].text}`;
+  const correctionLines = [at, at + 1, at + 2].filter((index) => index < context.rows.length).map(line);
+  return {
+    row: text(record.text, 800),
+    earlier: earlier.map(line).join('\n'),
+    correction: correctionLines.join('\n'),
+    passage: [...earlier.map(line), ...correctionLines].join('\n'),
+    correctionUnit: correction
+  };
+}
+
 function supersededCheckItems(discussion = [], units = []) {
   const context = evidenceContextFor(units);
   const items = [];
   (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
     for (const kind of ['points', 'decisions']) {
       (topic?.[kind] || []).forEach((record, rowIndex) => {
-        const correction = citedRevisionUnit(units, record?.evidenceIds || [], record?.text || '');
-        if (!correction) return;
-        const at = context.indexById.get(correction.id);
-        const cited = (record.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
-        const earlier = cited.filter((index) => index < at && PRESUMPTION_CUE.test(String(context.rows[index]?.text || '')));
-        const line = (index) => `${context.rows[index].speaker}: ${context.rows[index].text}`;
-        const correctionLines = [at, at + 1, at + 2].filter((index) => index < context.rows.length).map(line);
-        items.push({ id: `s${items.length + 1}`, topicIndex, kind, rowIndex, row: text(record.text, 800),
-          earlier: earlier.map(line).join('\n'), correction: correctionLines.join('\n'),
-          passage: [...earlier.map(line), ...correctionLines].join('\n') });
+        const item = supersededItemFor(record, units, context);
+        if (item) items.push({ id: `s${items.length + 1}`, topicIndex, kind, rowIndex, ...item });
       });
     }
   });
   return items.slice(0, 12);
+}
+
+// The superseded statement often arrives already in supporting context (the
+// referee put it there), where the demotion rule never sees it. Label it there
+// too, with the same flag, so it cannot read as the current position.
+const SUPERSEDED_LABEL = 'Earlier position, revised later in the meeting: ';
+function labelSupersededContext(discussion = [], units = []) {
+  const context = evidenceContextFor(units);
+  const flags = [];
+  let labelled = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      if (!Array.isArray(topic?.[kind])) continue;
+      next[kind] = topic[kind].map((record) => {
+        const details = Array.isArray(record?.supportingDetails) ? record.supportingDetails : [];
+        if (!details.length) return record;
+        let changed = false;
+        const updated = details.map((detail) => {
+          if (String(detail?.text || '').startsWith(SUPERSEDED_LABEL)) return detail;
+          const item = supersededItemFor(detail, units, context);
+          if (!item || rowReflectsCorrection(item)) return detail;
+          const flag = normaliseFlag({
+            kind: 'uncertain_fact',
+            message: `Conflicting passage: the speaker revised this later ("${salientExcerpt(item.correctionUnit.text, /./).slice(0, 200)}"). This line states the earlier position.`,
+            evidenceIds: detail.evidenceIds || []
+          }, flags.length);
+          flags.push(flag);
+          changed = true;
+          labelled += 1;
+          return {
+            ...detail,
+            text: `${SUPERSEDED_LABEL}${detail.text}`,
+            reviewFlagIds: [...new Set([...(detail.reviewFlagIds || []), flag.id])]
+          };
+        });
+        return changed ? { ...record, supportingDetails: updated } : record;
+      });
+    }
+    return next;
+  });
+  return { discussion: checked, flags, labelled };
 }
 
 // A row citing a self-correction must carry what the correction says. Rows
@@ -2467,7 +2521,7 @@ function demoteSupersededRows(discussion = [], units = [], outdated = null) {
     const { supportingDetails, ...detail } = record;
     // Labelled so that, in context, it cannot read as the current position.
     parent.supportingDetails = [...(parent.supportingDetails || []),
-      { ...detail, text: `Earlier position, revised later in the meeting: ${detail.text}` }];
+      { ...detail, text: `${SUPERSEDED_LABEL}${detail.text}` }];
     demoted += 1;
   }
   const kept = topics.filter((topic) => topic.points.length || topic.decisions.length || (topic.openQuestions || []).length);
@@ -3148,6 +3202,7 @@ module.exports = {
   mentionedPeople,
   describesUsualPractice,
   demoteSupersededRows,
+  labelSupersededContext,
   supersededCheckItems,
   supersededVerdicts,
   applyRequesterOwnerRule,
