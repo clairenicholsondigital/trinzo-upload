@@ -986,6 +986,22 @@ function timingFrom(item = {}, options = {}) {
   return { kind: wording || exactDate ? kind : 'not_stated', wording, exactDate };
 }
 
+// A timing column must contain timing. Models occasionally copy a nearby
+// status clause into it ("there are some further updates that need to happen")
+// simply because the clause appeared beside a commitment. Evidence support is
+// not enough in that case: the words are in the transcript, but they do not say
+// when the work is due or what it depends on.
+const CALENDAR_TIMING = /\b(?:today|tonight|tomorrow|morning|afternoon|evening|day|days|week|weeks|month|months|quarter|quarters|year|years|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|asap|immediately|shortly|soon|later|next|this|end of|by|before|within|no later than|due|deadline|target|\d{1,4})\b/i;
+const DEPENDENCY_TIMING = /\b(?:if|after|before|once|when|whenever|following|upon|subject to|dependent on|depends on|pending|until|unless|provided that|based on|contingent on|as soon as|where .* (?:identified|found)|on completion|on approval|on receipt)\b/i;
+function timingWordingHasMeaning(timing = {}) {
+  const kind = text(timing?.kind, 30);
+  const wording = text(timing?.wording, 220);
+  if (kind === 'not_stated') return !wording;
+  if (!wording && /^\d{4}-\d{2}-\d{2}$/.test(text(timing?.exactDate, 20))) return true;
+  if (!wording) return false;
+  return kind === 'dependency' ? DEPENDENCY_TIMING.test(wording) : CALENDAR_TIMING.test(wording);
+}
+
 function isIdeaOnlyContemplation(value) {
   const action = text(value, 2000).toLowerCase();
   const exploratory = /\b(?:think|thinking|consider|considering)\s+(?:about|through|of)\b/.test(action)
@@ -2265,6 +2281,122 @@ function applyAnsweredCheckResults(actions = [], items = [], results = []) {
   };
 }
 
+// ---- Resolved open-question check -----------------------------------------
+// Discovery often cites only the lines which ask a question. The answer is in
+// the next few turns, so a citation-only heuristic leaves answered questions
+// labelled as open. This critic sees a bounded forward window. It may retype a
+// question only when it quotes the answer verbatim and supplies a grounded,
+// client-ready sentence that states the answer rather than merely saying a
+// question was discussed.
+function openQuestionCheckItems(discussion = [], units = []) {
+  const items = [];
+  (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    (topic?.openQuestions || []).forEach((record, rowIndex) => {
+      const passageUnits = evidenceWindowUnits(units, record?.evidenceIds || [], 1, 12).slice(0, 28);
+      if (!passageUnits.length || !text(record?.text)) return;
+      items.push({
+        id: `oq${items.length + 1}`, topicIndex, rowIndex,
+        question: text(record.text, 800),
+        passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n')
+      });
+    });
+  });
+  return items.slice(0, 24);
+}
+
+function openQuestionCheckPrompt(items = []) {
+  return [
+    'DISCUSSION_CRITIC_OPEN_QUESTION',
+    'Each item is labelled as an open question in meeting minutes, followed by the nearby transcript passage. The passage is the only authority.',
+    'Decide whether the meeting actually leaves it open or answers it in the supplied passage.',
+    '- "answered": the passage directly answers or explains the question. This includes a speaker asking a rhetorical process question and immediately explaining what happens next.',
+    '- "open": the passage does not answer it, answers only part of it, or says that checking or a decision is still needed after the meeting.',
+    'For "answered", give answerQuote: the exact words that answer it, copied verbatim as one contiguous span of at most 25 words, and resolvedText: one complete factual minutes sentence stating the answer. Do not say merely that the question was discussed or answered. Do not introduce a fact outside the passage.',
+    'If you are unsure, choose "open". Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","answerQuote":"","resolvedText":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, question: item.question, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+function applyOpenQuestionCheckResults(discussion = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const replacements = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    const resolvedText = text(row?.resolvedText, 800);
+    if (!row || row.verdict !== 'answered' || !decisionQuoteFound(row.answerQuote, item.passage, 25)) continue;
+    if (!resolvedText || /\?|\b(?:open question|remains? (?:open|unresolved)|to be confirmed|not yet (?:known|decided|confirmed))\b/i.test(resolvedText)) continue;
+    // A fluent but invented summary must not replace the question. The answer
+    // quote is mandatory, and the complete passage must substantially support
+    // the proposed sentence.
+    if (evidenceSupportScore(resolvedText, item.passage) < 0.42) continue;
+    const quotedUnitIds = String(item.passage).split('\n').filter((line) => decisionQuoteFound(row.answerQuote, line, 25))
+      .map((line) => line.match(/^\[([^\]]+)\]/)?.[1]).filter(Boolean);
+    replacements.set(`${item.topicIndex}|${item.rowIndex}`, { resolvedText, quotedUnitIds });
+  }
+  let resolved = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
+    const points = [...(topic?.points || [])];
+    const openQuestions = [];
+    (topic?.openQuestions || []).forEach((record, rowIndex) => {
+      const replacement = replacements.get(`${topicIndex}|${rowIndex}`);
+      if (!replacement) { openQuestions.push(record); return; }
+      points.push({
+        ...record,
+        text: replacement.resolvedText,
+        evidenceIds: [...new Set([...(record.evidenceIds || []), ...replacement.quotedUnitIds])]
+      });
+      resolved += 1;
+    });
+    return { ...topic, points, openQuestions };
+  });
+  return { discussion: checked, checked: items.length, resolved };
+}
+
+// ---- Work completed during the meeting -----------------------------------
+// A request to explain, demonstrate or walk through something now can look
+// exactly like an action until the next speaker actually does it. Only these
+// presentation-shaped actions are checked, and they leave the published list
+// only with a verbatim completion quote. The caller retains them as an optional
+// proposal, matching the answered-action safety pattern above.
+const LIVE_DELIVERY_ACTION = /^(?:explain|demonstrate|show|present|outline|describe|play|share (?:the )?(?:screen|presentation|slides)|walk (?:us|the team|everyone) through|take (?:us|the team|everyone) through|provide (?:an? )?(?:overview|walkthrough|explanation|demonstration))\b/i;
+function completedInMeetingCheckItems(actions = [], units = []) {
+  return (Array.isArray(actions) ? actions : []).map((action, index) => {
+    if (!LIVE_DELIVERY_ACTION.test(text(action?.action))) return null;
+    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 2, 18).slice(0, 36)
+      .map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n');
+    return passage ? { id: `done${index + 1}`, index, action: text(action.action, 600), passage } : null;
+  }).filter(Boolean).slice(0, 16);
+}
+
+function completedInMeetingCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_COMPLETED_IN_MEETING',
+    'Each item is a possible outstanding action and its transcript passage. The passage is the only authority.',
+    'Decide whether the requested explanation, demonstration, presentation or walkthrough was actually delivered during this meeting.',
+    '- "completed": the passage shows the requested information being explained, demonstrated or walked through in the meeting, so it is not outstanding work.',
+    '- "outstanding": it was deferred, only partly delivered, or still needs to happen after the meeting.',
+    'For "completed", give completionQuote: an exact contiguous quote of at most 25 words showing the delivery itself, not merely the request. If unsure, choose "outstanding".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","completionQuote":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+function applyCompletedInMeetingCheckResults(actions = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const completed = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || row.verdict !== 'completed' || !decisionQuoteFound(row.completionQuote, item.passage, 25)) continue;
+    completed.set(item.index, text(row.completionQuote, 300));
+  }
+  const list = Array.isArray(actions) ? actions : [];
+  return {
+    actions: list.filter((_, index) => !completed.has(index)),
+    completed: list.map((action, index) => completed.has(index)
+      ? { action, completionQuote: completed.get(index) } : null).filter(Boolean)
+  };
+}
+
 // ---- Chained first-step timing --------------------------------------------
 // "Conduct a call today ..., load the documents for Grace ..., then download
 // them and point the auditor": "today" is the call's, not the chain's. When
@@ -3009,6 +3141,18 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
       action.reviewFlagIds.push(flag.id);
     }
     if (action.timing.kind !== 'not_stated') {
+      if (correctnessChecksEnabled() && !timingWordingHasMeaning(action.timing)) {
+        const meaninglessTiming = action.timing.wording || action.timing.exactDate;
+        if (enforceEvidence) action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `Timing ${enforceEvidence ? 'removed' : 'needs checking'} because "${meaninglessTiming}" does not state a date, target or dependency.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+        if (enforceEvidence) continue;
+      }
       const wordingSupported = action.timing.wording && (
         evidenceText.toLowerCase().includes(action.timing.wording.toLowerCase()) ||
         tokenOverlap(action.timing.wording, evidenceText) >= 0.5
@@ -3465,6 +3609,7 @@ module.exports = {
   mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
   relativeExactDate,
+  timingWordingHasMeaning,
   correctnessChecksEnabled,
   timingClauseIssue,
   applyTimingClauseChecks,
@@ -3490,6 +3635,12 @@ module.exports = {
   answeredCheckItems,
   answeredCheckPrompt,
   applyAnsweredCheckResults,
+  openQuestionCheckItems,
+  openQuestionCheckPrompt,
+  applyOpenQuestionCheckResults,
+  completedInMeetingCheckItems,
+  completedInMeetingCheckPrompt,
+  applyCompletedInMeetingCheckResults,
   commitmentCheckEnabled,
   commitmentCheckItems,
   commitmentCheckPrompt,

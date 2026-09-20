@@ -208,6 +208,12 @@ const {
   answeredCheckItems,
   answeredCheckPrompt,
   applyAnsweredCheckResults,
+  openQuestionCheckItems,
+  openQuestionCheckPrompt,
+  applyOpenQuestionCheckResults,
+  completedInMeetingCheckItems,
+  completedInMeetingCheckPrompt,
+  applyCompletedInMeetingCheckResults,
   applyChainedTimingRule,
   mergeDuplicateCommitments,
   applyRequesterOwnerRule,
@@ -13101,6 +13107,24 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
       }
     }
+    if (meetingMinutesAnsweredCheckEnabled()) {
+      // Open questions are checked against a bounded forward window rather
+      // than only their cited lines. A verified answer becomes a normal point;
+      // failed or uncertain checks leave the question untouched.
+      const questionItems = openQuestionCheckItems(finalDiscussion, draft.sourceUnits);
+      const questionBatches = [];
+      for (let index = 0; index < questionItems.length; index += 8) questionBatches.push(questionItems.slice(index, index + 8));
+      const questionResults = (await Promise.all(questionBatches.map((batch, index) => call(
+        `critic-open-question-${index + 1}`, openQuestionCheckPrompt(batch),
+        { optional: true, responseKind: 'answered_check', maxAttempts: 2, candidateCount: batch.length }
+      )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+      const questionChecked = applyOpenQuestionCheckResults(finalDiscussion, questionItems, questionResults);
+      finalDiscussion = questionChecked.discussion;
+      console.log(JSON.stringify({
+        event: 'meeting_agent_open_question_check', journeyId: draft.draftId,
+        checked: questionChecked.checked, resolved: questionChecked.resolved
+      }));
+    }
     let supersededContextFlags = [];
     let attributionFlags = [];
     if (correctnessChecksEnabled()) {
@@ -13493,6 +13517,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     timingChecked = { actions: ownersChecked.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags] };
   }
   let answeredInMeetingCount = 0;
+  let completedDuringMeetingCount = 0;
   if (meetingMinutesAnsweredCheckEnabled()) {
     // A clarify/confirm action whose question was answered and accepted in the
     // meeting is not outstanding work. It leaves the published list only with
@@ -13517,6 +13542,31 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           reviewContext: {
             label: 'answered, then accepted',
             reason: `This looks answered during the meeting ("${item.answerQuote}" … "${item.acceptanceQuote}"). Add it only if something is still open.`,
+            evidenceIds: item.action.evidenceIds || []
+          }
+        });
+      }
+    }
+    const completedItems = completedInMeetingCheckItems(timingChecked.actions, draft.sourceUnits);
+    const completedBatches = [];
+    for (let index = 0; index < completedItems.length; index += 8) completedBatches.push(completedItems.slice(index, index + 8));
+    const completedResults = (await Promise.all(completedBatches.map((batch, index) => call(
+      `critic-completed-in-meeting-${index + 1}`, completedInMeetingCheckPrompt(batch),
+      { optional: true, responseKind: 'answered_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const completed = applyCompletedInMeetingCheckResults(timingChecked.actions, completedItems, completedResults);
+    completedDuringMeetingCount = completed.completed.length;
+    if (completedDuringMeetingCount) {
+      timingChecked = { ...timingChecked, actions: completed.actions };
+      const at = completed.actions.length;
+      for (const item of completed.completed) {
+        proposal.changes.push({
+          id: `change-completed-live-${crypto.createHash('sha1').update(item.action.action || '').digest('hex').slice(0, 10)}`,
+          type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'completed during the meeting',
+            reason: `This appears to have been done during the meeting ("${item.completionQuote}"). Add it only if follow-up work remains.`,
             evidenceIds: item.action.evidenceIds || []
           }
         });
@@ -13599,6 +13649,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         proposalRescueCount,
         rescuedActionTexts,
         answeredInMeetingCount,
+        completedDuringMeetingCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
