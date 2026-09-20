@@ -95,6 +95,56 @@ test('a walkthrough delivered during the meeting is held back as completed', () 
   assert.equal(result.completed.length, 1);
 });
 
+test('a completed walkthrough is held back when its exact evidence quote exceeds 25 words', () => {
+  const completion = 'Customers place an order through our business platform, the order enters a pending approval queue, and the warehouse team then picks, packs, labels and ships the goods to the customer.';
+  const units = [
+    { id: 'T0001', speaker: 'Jacqui', text: 'Could you take us through an order from product and information-flow perspectives?' },
+    { id: 'T0002', speaker: 'Orla', text: completion }
+  ];
+  const actions = [{ action: 'Take the team through an order process overview.', owners: ['Orla'], evidenceIds: ['T0001'] }];
+  const items = V.completedInMeetingCheckItems(actions, units);
+  const result = V.applyCompletedInMeetingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'completed', completionQuote: completion
+  }]);
+  assert.ok(completion.split(' ').length > 25);
+  assert.equal(result.actions.length, 0);
+  assert.equal(result.completed.length, 1);
+  assert.deepEqual(result.rejected, []);
+});
+
+test('the final lifecycle gate withholds only quote-verified non-outstanding work', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Alex', text: 'Could you explain the order process now?' },
+    { id: 'T0002', speaker: 'Sam', text: 'I already walked through the complete order process during this meeting.' },
+    { id: 'T0003', speaker: 'Alex', text: 'Please send the revised manual tomorrow.' },
+    { id: 'T0004', speaker: 'Sam', text: 'Yes, I will send the revised manual tomorrow.' }
+  ];
+  const actions = [
+    { action: 'Explain the order process.', owners: ['Sam'], evidenceIds: ['T0001', 'T0002'] },
+    { action: 'Send the revised manual.', owners: ['Sam'], evidenceIds: ['T0003', 'T0004'] }
+  ];
+  const items = V.finalActionLifecycleCheckItems(actions, units);
+  const result = V.applyFinalActionLifecycleResults(actions, items, [
+    { id: items[0].id, verdict: 'not_outstanding', evidenceQuote: 'I already walked through the complete order process during this meeting.' },
+    { id: items[1].id, verdict: 'outstanding', evidenceQuote: '' }
+  ]);
+  assert.deepEqual(result.actions.map((action) => action.action), ['Send the revised manual.']);
+  assert.equal(result.withheld.length, 1);
+  assert.deepEqual(result.rejected, []);
+});
+
+test('the final lifecycle gate keeps an action when non-outstanding evidence is invented', () => {
+  const units = [{ id: 'T0001', speaker: 'Sam', text: 'Yes, I will send the revised manual tomorrow.' }];
+  const actions = [{ action: 'Send the revised manual.', owners: ['Sam'], evidenceIds: ['T0001'] }];
+  const items = V.finalActionLifecycleCheckItems(actions, units);
+  const result = V.applyFinalActionLifecycleResults(actions, items, [{
+    id: items[0].id, verdict: 'not_outstanding', evidenceQuote: 'The revised manual was already sent yesterday.'
+  }]);
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.withheld.length, 0);
+  assert.equal(result.rejected[0].reason, 'quote_not_found');
+});
+
 test('ordinary deliverables are never sent through the live-delivery gate', () => {
   const actions = [
     { action: 'Send the revised QMS manual to Orla.', owners: ['Jacqui'], evidenceIds: ['T0001'] },

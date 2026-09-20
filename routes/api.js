@@ -206,6 +206,9 @@ const {
   commitmentCheckItems,
   commitmentCheckPrompt,
   applyCommitmentCheckResults,
+  finalActionLifecycleCheckItems,
+  finalActionLifecycleCheckPrompt,
+  applyFinalActionLifecycleResults,
   isMeetingAdminAction,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   answeredCheckItems,
@@ -13205,7 +13208,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       fidelityFlags = fidelityChecked.flags;
       console.log(JSON.stringify({
         event: 'meeting_agent_discussion_fidelity', journeyId: draft.draftId,
-        checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain
+        checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain,
+        rejected: fidelityChecked.rejected
       }));
     }
     // Rows are rebuilt by several steps that keep the rows but not the flags
@@ -13535,6 +13539,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       { optional: true, responseKind: 'timing_check', maxAttempts: 2, candidateCount: batch.length }
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
     const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: details.meetingDate });
+    if (reviewed.rejected.length) console.log(JSON.stringify({
+      event: 'meeting_agent_timing_check_rejected', journeyId: draft.draftId, rejected: reviewed.rejected
+    }));
     timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
   }
   if (correctnessChecksEnabled()) {
@@ -13585,6 +13592,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
     const completed = applyCompletedInMeetingCheckResults(timingChecked.actions, completedItems, completedResults);
     completedDuringMeetingCount = completed.completed.length;
+    if (completed.rejected.length) console.log(JSON.stringify({
+      event: 'meeting_agent_completed_check_rejected', journeyId: draft.draftId, rejected: completed.rejected
+    }));
     if (completedDuringMeetingCount) {
       timingChecked = { ...timingChecked, actions: completed.actions };
       const at = completed.actions.length;
@@ -13660,6 +13670,43 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }
     }
   }
+  let finalLifecycleCheckedCount = 0;
+  let finalLifecycleWithheldCount = 0;
+  let finalLifecycleRejectedCount = 0;
+  if (meetingMinutesCommitmentCheckEnabled() && timingChecked.actions.length) {
+    const lifecycleItems = finalActionLifecycleCheckItems(timingChecked.actions, draft.sourceUnits);
+    const lifecycleBatches = [];
+    for (let index = 0; index < lifecycleItems.length; index += 8) lifecycleBatches.push(lifecycleItems.slice(index, index + 8));
+    const lifecycleResults = (await Promise.all(lifecycleBatches.map((batch, index) => call(
+      `critic-final-lifecycle-${index + 1}`, finalActionLifecycleCheckPrompt(batch),
+      { optional: true, responseKind: 'commitment_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const lifecycle = applyFinalActionLifecycleResults(timingChecked.actions, lifecycleItems, lifecycleResults);
+    finalLifecycleCheckedCount = lifecycleItems.length;
+    finalLifecycleWithheldCount = lifecycle.withheld.length;
+    finalLifecycleRejectedCount = lifecycle.rejected.length;
+    if (lifecycle.withheld.length) {
+      timingChecked = { ...timingChecked, actions: lifecycle.actions };
+      const at = lifecycle.actions.length;
+      for (const item of lifecycle.withheld) {
+        proposal.changes.push({
+          id: `change-lifecycle-${crypto.createHash('sha1').update(item.action.action || '').digest('hex').slice(0, 10)}`,
+          selected: false,
+          type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'not outstanding after the meeting',
+            reason: `This appears not to be outstanding work ("${item.evidenceQuote}"). Add it only if follow-up is still required.`,
+            evidenceIds: item.action.evidenceIds || []
+          }
+        });
+      }
+    }
+    console.log(JSON.stringify({
+      event: 'meeting_agent_final_action_lifecycle', journeyId: draft.draftId,
+      checked: finalLifecycleCheckedCount, withheld: finalLifecycleWithheldCount, rejected: lifecycle.rejected
+    }));
+  }
   const actionFlagState = reconcileRecordFlags({ actions: timingChecked.actions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
@@ -13677,7 +13724,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         callPerformance: meetingAgentCallPerformance(measuredProvenance),
         stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
         stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
-        automaticCount: reconciledPublishedActions.length, proposalCount: proposal.changes.length,
+        automaticCount: actionFlagState.content.actions.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
         agentProposalPromotionCount: safeProposalPromotions.length,
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
@@ -13687,6 +13734,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         rescuedActionTexts,
         answeredInMeetingCount,
         completedDuringMeetingCount,
+        finalLifecycleCheckedCount,
+        finalLifecycleWithheldCount,
+        finalLifecycleRejectedCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,

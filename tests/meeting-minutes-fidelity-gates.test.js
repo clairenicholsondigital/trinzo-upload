@@ -123,6 +123,21 @@ test('a quote-verified direction correction replaces the row and raises a review
   assert.equal(result.flags.length, 1);
 });
 
+test('a fidelity correction accepts an exact evidence quote longer than 25 words', () => {
+  const original = 'The timeline was considered on track despite the remaining documentation work and the planned holidays at the end of the month.';
+  const evidence = 'We are at the end of June now, there are only two weeks before the holidays, and I am concerned because time is becoming very tight for the remaining documentation work.';
+  const discussion = [{ topic: 'Timing', points: [{ id: 'p1', text: original, evidenceIds: ['T0001'], reviewFlagIds: [] }], decisions: [], openQuestions: [] }];
+  const units = [{ id: 'T0001', speaker: 'Jacqui', text: evidence }];
+  const items = V.discussionFidelityCheckItems(discussion, units);
+  const result = V.applyDiscussionFidelityResults(discussion, items, [{
+    id: items[0].id, verdict: 'corrected', problemQuote: original, evidenceQuote: evidence,
+    correctedText: 'With only two weeks before the holidays, the remaining documentation timeline was becoming tight.'
+  }]);
+  assert.ok(evidence.split(' ').length > 25);
+  assert.equal(result.corrected, 1);
+  assert.deepEqual(result.rejected, []);
+});
+
 test('an unquoted fidelity correction changes nothing', () => {
   const discussion = [{ topic: 'Counts', points: [{
     id: 'p1', text: 'Four items require minor updates.', evidenceIds: ['T0001'], reviewFlagIds: []

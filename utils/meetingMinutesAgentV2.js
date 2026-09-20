@@ -2027,9 +2027,37 @@ function quoteText(value) {
   return String(value || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim();
 }
 
-function quotedVerbatim(quote, passage) {
+function quotedVerbatimValidation(quote, passage, maxWords = 120) {
   const needle = quoteText(quote);
-  return needle.length >= 3 && needle.split(' ').length <= 30 && quoteText(passage).includes(needle);
+  const words = needle ? needle.split(' ').length : 0;
+  if (needle.length < 3) return { valid: false, reason: 'quote_too_short', words };
+  if (words > maxWords) return { valid: false, reason: 'quote_too_long', words };
+  const valid = quoteText(passage).includes(needle);
+  return { valid, reason: valid ? '' : 'quote_not_found', words };
+}
+
+function quotedVerbatim(quote, passage) {
+  return quotedVerbatimValidation(quote, passage).valid;
+}
+
+function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacementTiming = '') {
+  const source = String(actionText || '').trim();
+  const previous = String(previousTiming || '').trim();
+  if (!source || !previous) return source;
+  const escaped = previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const pattern = new RegExp(`(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?${escaped}`, 'i');
+  if (!pattern.test(source)) return source;
+  const replacement = String(replacementTiming || '').trim();
+  let revised = source.replace(pattern, replacement);
+  revised = revised
+    .replace(/\s+([,.;:])/g, '$1')
+    .replace(/,\s*(and|then)\b/gi, ' $1')
+    .replace(/\b(and|then)\s+(?:and|then)\b/gi, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^\s*[,;:]\s*/, '')
+    .replace(/\s+([.?!])$/, '$1')
+    .trim();
+  return revised || source;
 }
 
 // One item per timed action: the action, its timing and the passage it cites.
@@ -2063,6 +2091,7 @@ function timingCheckPrompt(items = [], meetingDate = '') {
 // Apply verified verdicts. Anything unverifiable leaves the timing as it is.
 function applyTimingCheckResults(actions = [], items = [], results = [], options = {}) {
   const flags = [];
+  const rejected = [];
   const byIndex = new Map(items.map((item) => [item.index, item]));
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const checked = (Array.isArray(actions) ? actions : []).map((action, index) => {
@@ -2073,16 +2102,32 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     const item = byIndex.get(index);
     const row = item ? verdicts.get(item.id) : null;
     if (!row || !['belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
-    if (!quotedVerbatim(row.timingQuote, item.passage)) return action;
+    const timingQuoteCheck = quotedVerbatimValidation(row.timingQuote, item.passage);
+    if (!timingQuoteCheck.valid) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: `timing_${timingQuoteCheck.reason}` });
+      return action;
+    }
     // "Misread" means the passage does not say it. If the timing's own words
     // are right there, the verdict contradicts the transcript.
-    if (row.verdict === 'misread' && quotedVerbatim(wording, item.passage)) return action;
+    if (row.verdict === 'misread' && quotedVerbatim(wording, item.passage)) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'timing_is_verbatim_in_passage' });
+      return action;
+    }
     if (row.verdict === 'belongs_to_other_step') {
-      if (!quotedVerbatim(row.stepQuote, item.passage)) return action;
+      const stepQuoteCheck = quotedVerbatimValidation(row.stepQuote, item.passage);
+      if (!stepQuoteCheck.valid) {
+        rejected.push({ id: item.id, verdict: row.verdict, reason: `step_${stepQuoteCheck.reason}` });
+        return action;
+      }
       const actionWords = timingCheckWords(action.action);
-      const shared = [...timingCheckWords(row.stepQuote)].filter((word) => actionWords.has(word)).length;
+      const timingWords = timingCheckWords(row.timingQuote);
+      const shared = [...timingCheckWords(row.stepQuote)]
+        .filter((word) => !timingWords.has(word) && actionWords.has(word)).length;
       // The "other step" must not be a step the action itself names.
-      if (shared >= 2) return action;
+      if (shared >= 2) {
+        rejected.push({ id: item.id, verdict: row.verdict, reason: 'other_step_is_named_by_action' });
+        return action;
+      }
     }
     const replacement = text(row.correctTiming, 120);
     // "by the end of the week" -> "by the end of the week, hopefully" is the
@@ -2094,6 +2139,7 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     if (replacement && sameTiming(replacement, wording)) return action;
     const usable = replacement && quotedVerbatim(replacement, item.passage) && quoteText(replacement) !== quoteText(wording);
     const timing = usable ? timingFrom({ timing: { wording: replacement } }, options) : { kind: 'not_stated', wording: '', exactDate: '' };
+    const actionText = replaceEmbeddedTiming(action.action, wording, usable ? replacement : '');
     const said = row.verdict === 'belongs_to_other_step'
       ? `in the transcript it was said about "${text(row.stepQuote, 160)}"`
       : row.verdict === 'past_event'
@@ -2107,9 +2153,9 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
       evidenceIds: action.evidenceIds
     }, flags.length);
     flags.push(flag);
-    return { ...action, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    return { ...action, action: actionText, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
   });
-  return { actions: checked, flags };
+  return { actions: checked, flags, rejected };
 }
 
 // ---- Commitment check -----------------------------------------------------
@@ -2215,6 +2261,57 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
     rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []), reviewFlagIds: [] });
   }
   return rescued;
+}
+
+// Every action that survives the extraction and recovery branches gets one
+// final lifecycle decision. This is deliberately conservative: an action is
+// withheld only when the model both classifies it as non-outstanding work and
+// supplies an exact transcript quote proving that classification. Missing or
+// unverifiable results leave the action untouched.
+function finalActionLifecycleCheckItems(actions = [], units = []) {
+  return (Array.isArray(actions) ? actions : []).map((action, index) => {
+    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 3, 10).slice(0, 32)
+      .map((unit) => `${unit.speaker}: ${unit.text}`).join('\n');
+    if (!passage || !text(action?.action)) return null;
+    return { id: `life${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], passage };
+  }).filter(Boolean);
+}
+
+function finalActionLifecycleCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_FINAL_LIFECYCLE',
+    'Each item is an Action that would otherwise be published in final meeting minutes. The transcript passage is the only authority.',
+    'Decide whether it is genuine work still outstanding after the meeting.',
+    '- "outstanding": someone committed to it, accepted it, or was assigned it as work to be done after the meeting.',
+    '- "not_outstanding": it is only a question, discussion, suggestion nobody accepted, status update, description of normal practice, work already completed before or during the meeting, meeting housekeeping, or work belonging only to an outside organisation.',
+    'Do not reject an Action merely because its owner or date is unclear. If any genuine follow-up remains, or if you are unsure, choose "outstanding".',
+    'For "not_outstanding", provide evidenceQuote: exact contiguous words from the passage that prove why no work remains. Quote the completion, answer, status, or lack-of-acceptance context—not merely the original request. Never paraphrase.',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"outstanding|not_outstanding","evidenceQuote":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+function applyFinalActionLifecycleResults(actions = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const withheld = new Map();
+  const rejected = [];
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || row.verdict !== 'not_outstanding') continue;
+    const quoteCheck = decisionQuoteValidation(row.evidenceQuote, item.passage);
+    if (!quoteCheck.valid) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: quoteCheck.reason });
+      continue;
+    }
+    withheld.set(item.index, { evidenceQuote: text(row.evidenceQuote, 500), reason: text(row.reason, 500) });
+  }
+  const list = Array.isArray(actions) ? actions : [];
+  return {
+    actions: list.filter((_, index) => !withheld.has(index)),
+    withheld: list.map((action, index) => withheld.has(index)
+      ? { action, ...withheld.get(index) } : null).filter(Boolean),
+    rejected
+  };
 }
 
 // ---- Answered check -------------------------------------------------------
@@ -2331,13 +2428,13 @@ function applyOpenQuestionCheckResults(discussion = [], items = [], results = []
   for (const item of items) {
     const row = verdicts.get(item.id);
     const resolvedText = text(row?.resolvedText, 800);
-    if (!row || row.verdict !== 'answered' || !decisionQuoteFound(row.answerQuote, item.passage, 25)) continue;
+    if (!row || row.verdict !== 'answered' || !decisionQuoteFound(row.answerQuote, item.passage)) continue;
     if (!resolvedText || /\?|\b(?:open question|remains? (?:open|unresolved)|to be confirmed|not yet (?:known|decided|confirmed))\b/i.test(resolvedText)) continue;
     // A fluent but invented summary must not replace the question. The answer
     // quote is mandatory, and the complete passage must substantially support
     // the proposed sentence.
     if (evidenceSupportScore(resolvedText, item.passage) < 0.42) continue;
-    const quotedUnitIds = String(item.passage).split('\n').filter((line) => decisionQuoteFound(row.answerQuote, line, 25))
+    const quotedUnitIds = String(item.passage).split('\n').filter((line) => decisionQuoteFound(row.answerQuote, line))
       .map((line) => line.match(/^\[([^\]]+)\]/)?.[1]).filter(Boolean);
     replacements.set(`${item.topicIndex}|${item.rowIndex}`, { resolvedText, quotedUnitIds });
   }
@@ -2392,16 +2489,23 @@ function completedInMeetingCheckPrompt(items = []) {
 function applyCompletedInMeetingCheckResults(actions = [], items = [], results = []) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const completed = new Map();
+  const rejected = [];
   for (const item of items) {
     const row = verdicts.get(item.id);
-    if (!row || row.verdict !== 'completed' || !decisionQuoteFound(row.completionQuote, item.passage, 25)) continue;
+    if (!row || row.verdict !== 'completed') continue;
+    const quoteCheck = decisionQuoteValidation(row.completionQuote, item.passage);
+    if (!quoteCheck.valid) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: quoteCheck.reason });
+      continue;
+    }
     completed.set(item.index, text(row.completionQuote, 300));
   }
   const list = Array.isArray(actions) ? actions : [];
   return {
     actions: list.filter((_, index) => !completed.has(index)),
     completed: list.map((action, index) => completed.has(index)
-      ? { action, completionQuote: completed.get(index) } : null).filter(Boolean)
+      ? { action, completionQuote: completed.get(index) } : null).filter(Boolean),
+    rejected
   };
 }
 
@@ -3123,13 +3227,22 @@ function decisionCheckPrompt(items = []) {
 }
 
 // A quote may run across adjacent lines; speaker labels are not spoken words.
-function decisionQuoteFound(quote, passage, maxWords = 30) {
+// Prompts ask for short quotations, but a longer exact quotation is still
+// stronger evidence than a truncated or paraphrased one. Keep the hard limit
+// generous enough for a complete spoken sentence while still bounding input.
+function decisionQuoteValidation(quote, passage, maxWords = 120) {
   const flat = (value) => quoteText(value).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const needle = flat(String(quote || '').replace(/^[^:]{2,40}:\s*/, ''));
   const words = needle ? needle.split(' ').length : 0;
-  if (words < 3 || words > maxWords) return false;
+  if (words < 3) return { valid: false, reason: 'quote_too_short', words };
+  if (words > maxWords) return { valid: false, reason: 'quote_too_long', words };
   const spoken = String(passage || '').split('\n').map((line) => line.replace(/^[^:]{2,40}:\s*/, '')).join(' ');
-  return flat(spoken).includes(needle);
+  const valid = flat(spoken).includes(needle);
+  return { valid, reason: valid ? '' : 'quote_not_found', words };
+}
+
+function decisionQuoteFound(quote, passage, maxWords = 120) {
+  return decisionQuoteValidation(quote, passage, maxWords).valid;
 }
 
 // Items with no verdict (a failed call) keep their label.
@@ -3200,15 +3313,27 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const replacements = new Map();
   const warnings = new Map();
+  const rejected = [];
   for (const item of items) {
     const row = verdicts.get(item.id);
     if (!row || !['corrected', 'uncertain'].includes(row.verdict)) continue;
-    if (!decisionQuoteFound(row.problemQuote, item.row, 25) || !decisionQuoteFound(row.evidenceQuote, item.passage, 25)) continue;
+    const problemCheck = decisionQuoteValidation(row.problemQuote, item.row);
+    const evidenceCheck = decisionQuoteValidation(row.evidenceQuote, item.passage);
+    if (!problemCheck.valid || !evidenceCheck.valid) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: !problemCheck.valid ? `problem_${problemCheck.reason}` : `evidence_${evidenceCheck.reason}` });
+      continue;
+    }
     const key = `${item.topicIndex}|${item.kind}|${item.rowIndex}`;
     if (row.verdict === 'uncertain') { warnings.set(key, row); continue; }
     const correctedText = text(row.correctedText, 1000);
-    if (!correctedText || /\.\.\.|\w\.[A-Z]/.test(correctedText)) continue;
-    if (evidenceSupportScore(correctedText, item.passage) < 0.42) continue;
+    if (!correctedText || /\.\.\.|\w\.[A-Z]/.test(correctedText)) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'invalid_corrected_text' });
+      continue;
+    }
+    if (evidenceSupportScore(correctedText, item.passage) < 0.42) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'support_too_low' });
+      continue;
+    }
     replacements.set(key, { ...row, correctedText });
   }
   const flags = [];
@@ -3239,7 +3364,7 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     }
     return next;
   });
-  return { discussion: checked, flags, checked: items.length, corrected, uncertain };
+  return { discussion: checked, flags, checked: items.length, corrected, uncertain, rejected };
 }
 
 const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'meeting_admin', 'unaccepted_request']);
@@ -3872,6 +3997,9 @@ module.exports = {
   commitmentCheckItems,
   commitmentCheckPrompt,
   applyCommitmentCheckResults,
+  finalActionLifecycleCheckItems,
+  finalActionLifecycleCheckPrompt,
+  applyFinalActionLifecycleResults,
   commitmentQuoteTiesOwner,
   commitmentQuoteAboutAction,
   isMeetingAdminAction,
@@ -3879,6 +4007,7 @@ module.exports = {
   decisionCheckItems,
   decisionCheckPrompt,
   decisionQuoteFound,
+  decisionQuoteValidation,
   applyDecisionCheckResults,
   discussionFidelityCheckItems,
   discussionFidelityCheckPrompt,

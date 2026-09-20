@@ -46,6 +46,25 @@ test('a verified "other step" verdict removes the timing and flags it with the q
   assert.ok(out[0].reviewFlagIds.includes(flags[0].id));
 });
 
+test('removing an unsupported timing also removes it from the action wording', () => {
+  const actions = [{
+    id: 'x5', action: 'Change the barcodes by early July and review the label design.', owners: ['Jenny'],
+    timing: { kind: 'deadline', wording: 'early July', exactDate: '' }, evidenceIds: ['T0300', 'T0301'], reviewFlagIds: []
+  }];
+  const source = [
+    { id: 'T0300', speaker: 'Alex', text: 'We hope to have the process figured out by early July.' },
+    { id: 'T0301', speaker: 'Alex', text: 'After that the barcode changes can be implemented.' }
+  ];
+  const items = V.timingCheckItems(actions, source);
+  const result = V.applyTimingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'belongs_to_other_step', timingQuote: 'by early July',
+    stepQuote: 'have the process figured out by early July', correctTiming: ''
+  }]);
+  assert.equal(result.actions[0].timing.kind, 'not_stated');
+  assert.equal(result.actions[0].action, 'Change the barcodes and review the label design.');
+  assert.equal(result.flags.length, 1);
+});
+
 test('a verified replacement from the passage is used when the model gives this action\'s own timing', () => {
   const actions = [sendSchedule];
   const items = V.timingCheckItems(actions, units);

@@ -36,6 +36,14 @@ test('a quote may cross adjacent lines but must be the spoken words', () => {
   assert.ok(!decisionQuoteFound('every day', passage));
 });
 
+test('a long exact evidence sentence is accepted while invented evidence is rejected', () => {
+  const exact = 'This complete sentence contains enough detail to explain what happened during the meeting and why the earlier interpretation was wrong without truncating the evidence needed for a safe correction';
+  const passage = `Alex: ${exact}.`;
+  assert.ok(exact.split(' ').length > 25);
+  assert.ok(decisionQuoteFound(exact, passage));
+  assert.ok(!decisionQuoteFound(`${exact} and an invented conclusion`, passage));
+});
+
 test('only verified decisions keep the label; the rest become points unchanged', () => {
   const items = decisionCheckItems(discussion(), units);
   const results = [
