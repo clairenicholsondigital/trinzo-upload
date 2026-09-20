@@ -101,6 +101,17 @@ function startStubServer() {
     }]
   };
   drafts.set('proposals', proposals);
+  const unlinkedWarning = baseDraft('unlinked-warning', false);
+  unlinkedWarning.sourceUnits.push({ id: 'T0002', speaker: 'Sam Okoro', timestamp: '00:20', text: 'The training attestation needs to be signed by Friday.' });
+  unlinkedWarning.actions = [{
+    id: 'training-action', action: 'Complete and sign the training attestation.', owners: ['Sam Okoro'],
+    timing: { kind: 'deadline', wording: 'by Friday', exactDate: '2026-09-18' }, evidenceIds: ['T0002'], reviewFlagIds: []
+  }];
+  unlinkedWarning.reviewFlags = [{
+    id: 'training-timing-flag', kind: 'timing', message: 'Confirm the Action timing “by Friday”.',
+    evidenceIds: ['T0002'], status: 'open', correctionNote: ''
+  }];
+  drafts.set('unlinked-warning', unlinkedWarning);
   const layout = baseDraft('layout', false);
   layout.currentStep = 5;
   layout.selectedStep = 4;
@@ -245,7 +256,6 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
     assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'resume link stays hidden after an autosave while an unfinished row exists');
 
-    await page.click('#actionsBody [data-action-row="0"] [data-edit-action]');
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const customOwner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
     await customOwner.fill('Jordan Lee');
@@ -367,6 +377,7 @@ test('starting Actions keeps the reviewer on Discussion and exposes background p
     const started = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor/generate-background'));
     await page.click('#generateActions');
+    await page.click('#confirmRegeneration');
     const response = await started;
     assert.equal(response.request().postDataJSON().selectedStep, 2);
     assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
@@ -492,7 +503,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
     const actionDeleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
-    await page.click('#actionsBody [data-edit-action]');
+    await page.click('#actionsBody .record-menu>summary');
     await page.click('#actionsBody [data-delete-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     await page.click('[data-step="2"]');
@@ -551,7 +562,6 @@ test('details status clears on Focus and unfinished owner text survives a backgr
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=summary-running`);
     await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
     assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true);
-    await page.click('#actionsBody [data-action-row="0"] [data-edit-action]');
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const owner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
     await owner.fill('Jordan Lee');
@@ -634,10 +644,63 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
     assert.match(await page.textContent('#proposalSelectionCount'), /1 of 1 selected/i);
     assert.match(await page.textContent('#acceptSelectedProposal'), /Apply 1 change/i);
+    assert.match(await page.textContent('#proposalPanel'), /Unchecked suggestions stay/i);
     await page.click('.proposal-detail>summary');
     assert.equal(await page.locator('.proposal-content').isVisible(), true);
     await page.uncheck('[data-proposal-change]');
     assert.equal(await page.locator('#acceptSelectedProposal').isDisabled(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('an unlinked timing warning routes to its Action field and resolves when that Action is deleted', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'unlinked-warning');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('#reviewFlags>summary');
+    assert.match(await page.textContent('.flag-target'), /Complete and sign the training attestation/i);
+    await page.click('[data-view-flag-target]');
+    await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
+    assert.equal(await page.locator('#minutes-action-training-action [data-timing-wording]').evaluate((node) => node === document.activeElement), true);
+
+    const savedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/unlinked-warning')
+      && response.request().method() === 'PATCH');
+    await page.click('#minutes-action-training-action .record-menu>summary');
+    await page.click('#minutes-action-training-action [data-delete-action]');
+    await savedResponse;
+    const saved = await page.evaluate(async () => (await (await fetch('/test-state/unlinked-warning')).json()).draft);
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'training-timing-flag').status, 'dismissed');
+    assert.equal(await page.locator('#reviewFlags').isHidden(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('save and generation panels always show the same leave-safety state', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    await page.click('#addDiscussion');
+    await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
+    await page.click('[data-delete-topic="1"]');
+    const messages = await page.evaluate(() => ({
+      save: document.getElementById('saveStatus').textContent,
+      generation: document.getElementById('generationLeaveMessage').textContent
+    }));
+    assert.match(messages.save, /Keep this tab open/i);
+    assert.equal(messages.generation, messages.save);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -666,14 +729,16 @@ test('dense layouts give writing space to content rather than repeated controls'
       const row = document.querySelector('[data-action-row="0"]');
       return {
         headers,
-        timing: row.querySelector('.timing-summary').textContent.trim(),
-        editInUtilityCell: row.querySelector('[data-edit-action]').closest('td').classList.contains('row-action-cell')
+        timingType: row.querySelector('[data-timing-kind]').value,
+        directOwnerControl: Boolean(row.querySelector('[data-add-owner]')),
+        directTimingControl: Boolean(row.querySelector('[data-timing-wording]'))
       };
     });
     assert.ok(actionLayout.headers[0] > actionLayout.headers[1] * 3, JSON.stringify(actionLayout));
-    assert.ok(actionLayout.headers[3] < 70, JSON.stringify(actionLayout));
-    assert.equal(actionLayout.timing, '—');
-    assert.equal(actionLayout.editInUtilityCell, true);
+    assert.equal(actionLayout.headers.length, 3, JSON.stringify(actionLayout));
+    assert.equal(actionLayout.timingType, 'not_stated');
+    assert.equal(actionLayout.directOwnerControl, true);
+    assert.equal(actionLayout.directTimingControl, true);
     assert.equal(await page.locator('[data-screen="3"] .toolbar .agent-edit-inline').count(), 1);
     await page.click('[data-screen="3"] .agent-edit-inline>summary');
     assert.equal(await page.locator('[data-screen="3"] .agent-edit-body').isVisible(), true);

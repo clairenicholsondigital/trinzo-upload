@@ -19,8 +19,8 @@
   var navigationScrollStep = null;
   var navigationScrollToken = 0;
   var navigationScrollTimer = null;
-  var actionEditorState = { pendingRows: {}, customOwners: {}, editingId: '' };
-  var discussionEditorState = { pendingTopics: {}, pendingRecords: {} };
+  var actionEditorState = { pendingRows: {}, customOwners: {} };
+  var discussionEditorState = { pendingTopics: {}, pendingRecords: {}, collapsedTopics: {} };
   var editVersion = 0;
   var rendering = false;
   var fileInput = document.getElementById('transcriptFile');
@@ -63,10 +63,10 @@
     var keepOpen = mustKeepTabOpen(element ? element.dataset.state : '');
     var resumeLink = document.getElementById('resumeLaterLink');
     if (resumeLink) resumeLink.hidden = keepOpen;
-    // Refresh on every save transition, not only mid-run: once a run ended the
-    // panel froze on "Everything is saved" beside a live unfinished-entry warning.
+    // There is one save/leave message. The generation panel mirrors it rather
+    // than independently guessing whether the tab is safe to close.
     var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage) leaveMessage.textContent = generationSaveText(generationRunning());
+    if (leaveMessage) leaveMessage.textContent = element ? element.textContent : '';
   }
 
   function setSaveStatus(message, kind) {
@@ -714,8 +714,8 @@
       });
     });
     if (!rows.length) return '';
-    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Supporting context</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">Related facts are grouped here so you can review context without opening each sentence.</p><div class="supporting-detail-list">' + rows.map(function (row) {
-      return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Promote to minutes</button></div></div>';
+    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Supporting context <small>Not included in main minutes</small></span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
+      return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
     }).join('') + '</div></div></details>';
   }
 
@@ -727,7 +727,7 @@
     return '<div class="record-section proposition-section"><div class="record-list proposition-list">' + (rows.map(function (row) {
       var label = labels[row.field];
       var targetId = recordDomId('discussion', row.item.id, topicIndex + '-' + row.field + '-' + row.itemIndex);
-      var actions = (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button>';
+      var actions = (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="secondary quiet" data-move-record-new-topic="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to new topic</button><button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button>';
       return '<div id="' + escapeHtml(targetId) + '" class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea rows="1" data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + recordMenu(row.item, actions) + '</div>';
     }).join('') || '<p class="muted record-empty">No meeting content recorded.</p>') + '</div>' + topicSupportingDetails(topic, topicIndex) + '</div>';
   }
@@ -743,7 +743,13 @@
     }
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
-      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div>' + discussionPropositions(topic, index) + '</article>';
+      var topicId = String(topic.id || ('topic-' + index));
+      var collapsed = Boolean(discussionEditorState.collapsedTopics[topicId]);
+      var rows = ['points','decisions','openQuestions'].reduce(function (total, field) { return total + (topic[field] || []).length; }, 0);
+      var flagIds = new Set(linkedReviewFlagIds(topic));
+      var checks = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status === 'open' && flagIds.has(flag.id); }).length;
+      var meta = rows + ' item' + (rows === 1 ? '' : 's') + (checks ? ' · ' + checks + ' to review' : '');
+      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><span class="visually-hidden">Discussion topic</span><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
   }
@@ -840,11 +846,10 @@
 
   function timingEditor(timing, index) {
     var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline'], ['dependency', 'Dependency']];
-    var segments = kinds.map(function (pair) {
-      var checked = timing.kind === pair[0] ? ' checked' : '';
-      return '<label><input type="radio" name="timing-' + index + '" value="' + pair[0] + '" data-timing-kind data-action-index="' + index + '"' + checked + '><span>' + pair[1] + '</span></label>';
+    var options = kinds.map(function (pair) {
+      return '<option value="' + pair[0] + '"' + (timing.kind === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
     }).join('');
-    return '<div class="timing-editor"><div class="seg" role="radiogroup" aria-label="Timing kind">' + segments + '</div><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Timing wording"><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></div>';
+    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label><span>Original wording</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label><span>Interpreted date</span><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Interpreted exact date"></label></div>';
   }
 
   function renderActions() {
@@ -858,21 +863,21 @@
           ? 'These saved actions remain visible while a refreshed version is prepared.'
           : 'Possible actions will appear here as soon as the evidence check finishes.';
       var readOnlyRows = function (items, className) { return items.map(function (item) {
-        return '<tr class="preview-action-row ' + className + '"><td data-label="Action"><div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingDisplayText(item.timing)) + '</div></td><td aria-hidden="true"></td></tr>';
+        return '<tr class="preview-action-row ' + className + '"><td data-label="Action"><div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingDisplayText(item.timing)) + '</div></td></tr>';
       }).join(''); };
       var sections = '';
-      if (preview.length) sections += '<tr class="generation-section-row"><th colspan="4">Evidence-checked preview</th></tr>' + readOnlyRows(preview, 'preview-current');
-      if (prior.length) sections += '<tr class="generation-section-row saved-actions-heading"><th colspan="4">Previously saved actions</th></tr>' + readOnlyRows(prior, 'preview-saved');
-      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="4"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + sections;
+      if (preview.length) sections += '<tr class="generation-section-row"><th colspan="3">Evidence-checked preview</th></tr>' + readOnlyRows(preview, 'preview-current');
+      if (prior.length) sections += '<tr class="generation-section-row saved-actions-heading"><th colspan="3">Previously saved actions</th></tr>' + readOnlyRows(prior, 'preview-saved');
+      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + sections;
       return;
     }
     var actions = (state.draft && state.draft.actions) || [];
     document.getElementById('actionsBody').innerHTML = actions.map(function (item, index) {
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
       var targetId = recordDomId('action', item.id, index);
-      var editing = actionEditorState.editingId === String(item.id || targetId);
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (editing ? ' is-editing' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove</button></div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing"><div class="timing-summary">' + escapeHtml(timingDisplayText(timing)) + '</div>' + timingEditor(timing, index) + '</td><td class="row-action-cell"><button class="secondary quiet action-edit" data-edit-action="' + index + '" type="button" aria-label="' + (editing ? 'Finish editing action ' : 'Edit action ') + (index + 1) + '">' + (editing ? 'Done' : 'Edit') + '</button></td></tr>';
-    }).join('') || '<tr><td colspan="4" class="muted">No actions have been generated.</td></tr>';
+      var menu = recordMenu(item, '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove action</button>');
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main"><textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" class="muted">No actions have been generated.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
   }
 
@@ -892,7 +897,7 @@
       var area = row.querySelector('[data-action]');
       if (area) action.action = area.value.trim();
       action.owners = Array.from(row.querySelectorAll('[data-owner-chip]')).map(function (chip) { return chip.dataset.owner; }).filter(Boolean);
-      var kind = row.querySelector('[data-timing-kind]:checked');
+      var kind = row.querySelector('[data-timing-kind]');
       var wording = row.querySelector('[data-timing-wording]');
       var date = row.querySelector('[data-timing-date]');
       action.timing = { kind: kind ? kind.value : 'not_stated', wording: wording ? wording.value.trim() : '', exactDate: date ? date.value : '' };
@@ -917,6 +922,33 @@
   }
 
   var ITEM_REMOVED_NOTE = 'The item was removed.';
+
+  function sharedEvidenceCount(left, right) {
+    var wanted = new Set(left || []);
+    return (right || []).filter(function (id) { return wanted.has(id); }).length;
+  }
+
+  // Some older and recovered drafts contain a useful warning and a correctly
+  // evidenced Action, but not the reviewFlagIds link between them. Recover the
+  // link conservatively from the warning type, evidence and quoted wording so
+  // the reviewer is never left with a warning that leads nowhere.
+  function inferredActionForFlag(flag) {
+    if (!flag || !['ownership', 'timing', 'possible_missed_follow_up'].includes(flag.kind)) return null;
+    var message = String(flag.message || '').toLowerCase();
+    var ranked = ((state.draft && state.draft.actions) || []).map(function (action, index) {
+      var timing = action.timing || {};
+      var score = sharedEvidenceCount(flag.evidenceIds, action.evidenceIds) * 4;
+      var field = flag.kind === 'timing' ? 'timing' : flag.kind === 'ownership' ? 'owners' : 'action';
+      if (timing.wording && message.includes(String(timing.wording).toLowerCase())) score += 8;
+      if (timing.exactDate && message.includes(String(timing.exactDate).toLowerCase())) score += 8;
+      if ((action.owners || []).some(function (owner) { return message.includes(String(owner).toLowerCase()); })) score += 5;
+      var actionWords = String(action.action || '').toLowerCase().split(/\s+/).filter(function (word) { return word.length > 4; });
+      score += Math.min(4, actionWords.filter(function (word) { return message.includes(word); }).length);
+      return { action: action, index: index, score: score, field: field };
+    }).filter(function (candidate) { return candidate.score >= 4; }).sort(function (left, right) { return right.score - left.score; });
+    if (!ranked.length || (ranked[1] && ranked[1].score === ranked[0].score)) return null;
+    return ranked[0];
+  }
 
   function resolveDeletedTargetFlags(flagIds) {
     if (!state.draft || !flagIds || !flagIds.length) return;
@@ -966,7 +998,8 @@
             stage: 2,
             elementId: recordDomId('discussion', item.id, topicIndex + '-' + field + '-' + itemIndex),
             label: field === 'decisions' ? 'Decision' : field === 'openQuestions' ? 'Open question' : 'Discussion sentence',
-            text: item.text || ''
+            text: item.text || '',
+            field: 'text'
           };
         }
       }
@@ -984,7 +1017,8 @@
               stage: 2,
               elementId: recordDomId('supporting', detail.id, ti + '-' + ctxField + '-' + ii + '-' + di),
               label: 'Supporting context',
-              text: detail.text || ''
+              text: detail.text || '',
+              field: 'text'
             };
           }
         }
@@ -996,10 +1030,48 @@
         stage: 3,
         elementId: recordDomId('action', action.id, actionIndex),
         label: 'Action',
-        text: action.action || ''
+        text: action.action || '',
+        field: flag.kind === 'timing' ? 'timing' : flag.kind === 'ownership' ? 'owners' : 'action'
       };
     }
+    var inferred = inferredActionForFlag(flag);
+    if (inferred) return {
+      stage: 3,
+      elementId: recordDomId('action', inferred.action.id, inferred.index),
+      label: inferred.field === 'timing' ? 'Action timing' : inferred.field === 'owners' ? 'Action owner' : 'Action',
+      text: inferred.action.action || '',
+      field: inferred.field,
+      inferred: true
+    };
     return null;
+  }
+
+  function flagsTargetingAction(action, index) {
+    var elementId = recordDomId('action', action && action.id, index);
+    return ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) {
+      var target = flagTarget(flag);
+      return target && target.elementId === elementId;
+    }).map(function (flag) { return flag.id; });
+  }
+
+  function reviewQueueCounts() {
+    var flags = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status === 'open'; }).length;
+    var proposal = state.draft && state.draft.pendingProposal;
+    var suggestions = proposal && Array.isArray(proposal.changes) ? proposal.changes.length : 0;
+    return { flags: flags, suggestions: suggestions, total: flags + suggestions };
+  }
+
+  function updateReviewQueueSummary() {
+    var counts = reviewQueueCounts();
+    var panel = document.getElementById('reviewFlags');
+    panel.hidden = counts.total === 0;
+    document.getElementById('flagCount').textContent = counts.total
+      ? counts.total + ' item' + (counts.total === 1 ? '' : 's') + ' to review'
+      : 'Review complete';
+    var intro = document.getElementById('reviewQueueIntro');
+    if (intro) intro.textContent = counts.suggestions
+      ? 'Warnings and suggested changes are kept together here. Open an item to review its source and make a decision.'
+      : 'Check or correct each item before sharing. Open items do not prevent export.';
   }
 
   function renderFlags() {
@@ -1007,27 +1079,24 @@
     var open = flags.filter(function (flag) { return flag.status === 'open'; });
     var panel = document.getElementById('reviewFlags');
     var wasHidden = panel.hidden;
-    panel.hidden = !flags.length;
-    if (flags.length && wasHidden) panel.open = false;
-    document.getElementById('flagCount').textContent = open.length ? open.length + ' item' + (open.length === 1 ? '' : 's') + ' to check' : 'Checks complete';
+    if (open.length && wasHidden) panel.open = false;
     var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Source evidence needed', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
+      if (flag.status !== 'open') return '';
       var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
-      var body = '<span class="flag-kind">' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
+      var body = '<span class="flag-kind">Warning · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
       var target = flagTarget(flag);
-      if (target) body += '<div class="flag-target"><span>Affected ' + escapeHtml(target.label.toLowerCase()) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-step="' + target.stage + '" type="button">View and edit</button></div>';
-      if (flag.status === 'open') {
-        body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
-      } else if (flag.correctionNote) {
-        body += '<div class="muted">Correction: ' + escapeHtml(flag.correctionNote) + '</div>';
-      }
-      if ((flag.evidenceIds || []).length) body += evidenceBlock(flag.evidenceIds);
+      if (target) {
+        var selector = target.field === 'timing' ? '[data-timing-wording]' : target.field === 'owners' ? '[data-add-owner]' : 'textarea,input';
+        body += '<div class="flag-target"><span>Affected ' + escapeHtml(target.label.toLowerCase()) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '" data-target-step="' + target.stage + '" type="button">View and edit</button></div>';
+      } else body += '<p class="review-route-missing">No current item is linked. Dismiss this warning if the referenced content has already been removed.</p>';
+      body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
       // One primary: "Looks correct" is the answer a reviewer gives most often.
-      var actions = flag.status === 'open'
-        ? '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Looks correct</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save correction</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>'
-        : '<button class="secondary" data-flag-index="' + index + '" data-flag-status="open" type="button">Reopen</button>';
-      return '<div class="flag' + (flag.status === 'open' ? '' : ' resolved') + '"><div>' + body + '</div><div class="flag-actions">' + actions + '</div></div>';
+      var actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Looks correct</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save correction</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>';
+      var evidence = '<aside class="review-evidence"><strong>Source passage</strong>' + evidenceHtml(flag.evidenceIds) + '</aside>';
+      return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + '<div class="flag-actions">' + actions + '</div></div>' + evidence + '</div></div>';
     }).join('');
+    updateReviewQueueSummary();
   }
 
   function proposalRecord(value) {
@@ -1050,12 +1119,23 @@
     return '';
   }
 
+  function proposalTarget(change, stage) {
+    var record = change && (change.before || change.after);
+    if (!record || !record.id || change.type === 'add') return null;
+    var rows = stage === 'discussion' ? (state.draft.discussion || []) : (state.draft.actions || []);
+    var index = rows.findIndex(function (candidate) { return candidate.id === record.id; });
+    if (index < 0) return null;
+    return stage === 'discussion'
+      ? { stage: 2, elementId: recordDomId('topic', record.id, index), selector: '[data-topic]' }
+      : { stage: 3, elementId: recordDomId('action', record.id, index), selector: '[data-action]' };
+  }
+
   function renderProposal() {
     var proposal = state.draft && state.draft.pendingProposal;
     var panel = document.getElementById('proposalPanel');
     var wasHidden = panel.hidden;
     panel.hidden = !proposal || !(proposal.changes || []).length;
-    if (panel.hidden) return;
+    if (panel.hidden) { updateReviewQueueSummary(); return; }
     var changeLabels = { add:'New item', modify:'Suggested edit', remove:'Suggested removal' };
     document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
       var content;
@@ -1069,12 +1149,15 @@
           + (change.reviewContext.label ? '<div class="commitment-chain"><span>In the transcript</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
           + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds) : '') + '</div>';
       }
+      var target = proposalTarget(change, proposal.stage);
+      if (target) content += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
       var summary = proposalRecord(change.after || change.before);
-      return '<div class="proposal-change"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Suggested change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
+      return '<div class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">Suggestion · ' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Suggested change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
     }).join('');
     updateProposalSelection();
-    if (wasHidden) panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+    updateReviewQueueSummary();
+    if (wasHidden) document.getElementById('reviewFlags').open = true;
   }
 
   function updateProposalSelection() {
@@ -1281,6 +1364,26 @@
 
   // Kicks a stage off server-side and returns straight away, so the reviewer can
   // read while it runs. The server keeps going even if this tab closes.
+  var pendingRegenerationStage = '';
+
+  function stageHasContent(stage) {
+    if (!state.draft) return false;
+    if (stage === 'discussion') return (state.draft.discussion || []).length > 0;
+    if (stage === 'actions') return (state.draft.actions || []).length > 0;
+    if (stage === 'summary') return Boolean(String(state.draft.executiveSummary || '').trim() || (state.draft.meetingObjectives || []).length);
+    return false;
+  }
+
+  function requestBackgroundStage(stage) {
+    if (!stageHasContent(stage)) { startBackgroundStage(stage); return; }
+    pendingRegenerationStage = stage;
+    var dialog = document.getElementById('regenerationDialog');
+    document.getElementById('regenerationMessage').textContent = stage === 'summary'
+      ? 'Your current summary stays visible while the agent works. The refreshed summary will replace it when ready.'
+      : 'Your current draft stays visible while the agent works. Anything you edited remains unchanged; new differences arrive as suggestions for you to apply or dismiss.';
+    dialog.showModal();
+  }
+
   async function startBackgroundStage(stage) {
     if (!state.draft) return;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
@@ -1430,7 +1533,11 @@
     setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...', proposalStage);
     try {
       var payload = await jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
-      adoptDraft(payload.draft); setStatus(decision === 'reject' ? 'Proposed changes rejected.' : 'Selected agent changes applied.', false, proposalStage);
+      adoptDraft(payload.draft);
+      var remaining = payload.draft && payload.draft.pendingProposal && (payload.draft.pendingProposal.changes || []).length;
+      setStatus(decision === 'reject' ? 'All remaining suggestions were dismissed.'
+        : remaining ? 'Selected changes applied. ' + remaining + ' unchecked suggestion' + (remaining === 1 ? ' remains' : 's remain') + ' in the review queue.'
+          : 'Selected agent changes applied.', false, proposalStage);
     } catch (error) { setStatus(error.message, true, proposalStage); }
     finally { setBusy(false); }
   }
@@ -1508,9 +1615,9 @@
     if (step === MAX_STEP) renderFinal();
     showStep(step, { scroll: true });
   });
-  document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); startBackgroundStage('discussion'); });
+  document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); requestBackgroundStage('discussion'); });
   document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
-  document.getElementById('generateSummary').addEventListener('click', function () { startBackgroundStage('summary'); });
+  document.getElementById('generateSummary').addEventListener('click', function () { requestBackgroundStage('summary'); });
   document.getElementById('addObjective').addEventListener('click', function () {
     readSummary();
     state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat({id:'objective-'+Date.now(),text:'',evidenceIds:[]});
@@ -1526,7 +1633,13 @@
     renderSummary();
     scheduleSave();
   });
-  document.getElementById('generateActions').addEventListener('click', function () { startBackgroundStage('actions'); });
+  document.getElementById('generateActions').addEventListener('click', function () { requestBackgroundStage('actions'); });
+  document.getElementById('regenerationDialog').addEventListener('close', function (event) {
+    if (event.target.returnValue !== 'confirm' || !pendingRegenerationStage) { pendingRegenerationStage = ''; return; }
+    var stage = pendingRegenerationStage;
+    pendingRegenerationStage = '';
+    startBackgroundStage(stage);
+  });
   document.getElementById('viewGeneratedStage').addEventListener('click', function () {
     var generation = state.draft && state.draft.generation;
     var stage = generation ? generation.stage : completedGenerationNotice && completedGenerationNotice.stage;
@@ -1547,18 +1660,27 @@
   });
 
   document.getElementById('discussionList').addEventListener('click', function (event) {
+    var toggle=event.target.closest('[data-toggle-topic]');
+    if(toggle){
+      var toggleId=toggle.dataset.toggleTopic;
+      discussionEditorState.collapsedTopics[toggleId]=!discussionEditorState.collapsedTopics[toggleId];
+      renderDiscussion();
+      return;
+    }
     var add=event.target.closest('[data-add-record]');
     var remove=event.target.closest('[data-remove-record]');
     var demote=event.target.closest('[data-demote-record]');
     var promote=event.target.closest('[data-promote-supporting]');
+    var moveNew=event.target.closest('[data-move-record-new-topic]');
     var topicButton=event.target.closest('[data-delete-topic]');
-    if(!add && !remove && !demote && !promote && !topicButton) return;
+    if(!add && !remove && !demote && !promote && !moveNew && !topicButton) return;
     readDiscussion();
     // Only a change to real content makes the Actions outdated. Adding a blank
     // row, or deleting a row or topic that never had any text, changes nothing
     // the Actions were built from and must not ask for a regeneration.
-    var material = Boolean(demote || promote);
+    var material = Boolean(demote || promote || moveNew);
     var addedRecord = null;
+    var movedTopicIndex = -1;
     if(add){
       var addTopic=state.draft.discussion[Number(add.dataset.topicIndex)];
       addedRecord={id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[]};
@@ -1578,7 +1700,7 @@
       var targets=demoteTopic && ['decisions','openQuestions','points'].flatMap(function(field){return (demoteTopic[field]||[]).filter(function(item){return item!==demoted;});});
       if(demoted && targets && targets.length){
         var target=targets[0];
-        target.supportingDetails=(target.supportingDetails||[]).concat([{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[]}],demoted.supportingDetails||[]);
+        target.supportingDetails=(target.supportingDetails||[]).concat([{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[],reviewFlagIds:demoted.reviewFlagIds||[]}],demoted.supportingDetails||[]);
         demoteList.splice(Number(demote.dataset.itemIndex),1);
       }
     }
@@ -1587,7 +1709,19 @@
       var promoteList=promoteTopic && promoteTopic[promote.dataset.parentField];
       var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
-      if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:[],supportingDetails:[]});
+      if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[]});
+    }
+    if(moveNew){
+      var sourceIndex=Number(moveNew.dataset.topicIndex);
+      var sourceTopic=state.draft.discussion[sourceIndex];
+      var sourceField=moveNew.dataset.moveRecordNewTopic;
+      var movedRecord=sourceTopic && (sourceTopic[sourceField]||[]).splice(Number(moveNew.dataset.itemIndex),1)[0];
+      if(movedRecord){
+        var newTopic={id:'manual-topic-'+Date.now(),topic:'New topic',points:[],decisions:[],openQuestions:[]};
+        newTopic[sourceField].push(movedRecord);
+        state.draft.discussion.splice(sourceIndex+1,0,newTopic);
+        movedTopicIndex=sourceIndex+1;
+      }
     }
     // Removing a topic with content deletes all its rows at once: ask first.
     var topicToRemove=topicButton && state.draft.discussion[Number(topicButton.dataset.deleteTopic)];
@@ -1603,6 +1737,10 @@
     }
     if(material) markDownstreamStale();
     renderDiscussion();
+    if(movedTopicIndex>=0){
+      var movedTopicField=document.querySelector('[data-topic-index="'+movedTopicIndex+'"][data-topic]');
+      if(movedTopicField){movedTopicField.focus({preventScroll:true});movedTopicField.select();}
+    }
     if(addedRecord){
       rememberPendingDiscussion();
       setSaveStatus('New discussion row is kept in this tab until you enter its text.', 'local-only');
@@ -1614,16 +1752,6 @@
   });
 
   document.getElementById('actionsBody').addEventListener('click', function (event) {
-    var edit = event.target.closest('[data-edit-action]');
-    if (edit) {
-      readActions();
-      var editable = state.draft.actions[Number(edit.dataset.editAction)];
-      var editId = String((editable && editable.id) || recordDomId('action', '', edit.dataset.editAction));
-      actionEditorState.editingId = actionEditorState.editingId === editId ? '' : editId;
-      rerenderActions();
-      if (!actionEditorState.editingId) scheduleSave();
-      return;
-    }
     var removeOwner = event.target.closest('[data-remove-owner]');
     if (removeOwner) {
       readActions();
@@ -1635,8 +1763,11 @@
     var button = event.target.closest('[data-delete-action]');
     if (!button) return;
     readActions();
-    var removedAction = state.draft.actions.splice(Number(button.dataset.deleteAction),1)[0];
-    resolveDeletedTargetFlags(linkedReviewFlagIds(removedAction));
+    var removedIndex = Number(button.dataset.deleteAction);
+    var actionToRemove = state.draft.actions[removedIndex];
+    var inferredFlagIds = flagsTargetingAction(actionToRemove, removedIndex);
+    var removedAction = state.draft.actions.splice(removedIndex,1)[0];
+    resolveDeletedTargetFlags(linkedReviewFlagIds(removedAction).concat(inferredFlagIds));
     if (removedAction && removedAction.id) {
       delete actionEditorState.pendingRows[removedAction.id];
       delete actionEditorState.customOwners[removedAction.id];
@@ -1704,25 +1835,35 @@
     var action = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[]};
     state.draft.actions.push(action);
     actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
-    actionEditorState.editingId = action.id;
     renderActions();
     setSaveStatus('New action row is kept in this tab until you enter the action.', 'local-only');
     var field = document.querySelector('#' + recordDomId('action', action.id) + ' [data-action]');
     if (field) field.focus({ preventScroll:true });
   });
+  function openReviewTarget(targetButton) {
+    showStep(Number(targetButton.dataset.targetStep), { scroll:true });
+    window.setTimeout(function () {
+        var target = document.getElementById(targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget);
+        if (!target) return;
+        var topicCard = target.closest('.discussion-card');
+        if (topicCard && topicCard.classList.contains('is-collapsed')) {
+          var toggle = topicCard.querySelector('[data-toggle-topic]');
+          if (toggle) toggle.click();
+          target = document.getElementById(targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget);
+          if (!target) return;
+        }
+        target.scrollIntoView({behavior:'smooth',block:'center'});
+        target.classList.add('flag-target-highlight');
+        var editor = target.querySelector(targetButton.dataset.targetSelector || 'textarea,input');
+        if (editor) editor.focus({preventScroll:true});
+        window.setTimeout(function () { target.classList.remove('flag-target-highlight'); }, 2400);
+    }, 0);
+  }
+
   document.getElementById('flagList').addEventListener('click', function (event) {
     var targetButton = event.target.closest('[data-view-flag-target]');
     if (targetButton) {
-      showStep(Number(targetButton.dataset.targetStep), { scroll:true });
-      window.setTimeout(function () {
-        var target = document.getElementById(targetButton.dataset.viewFlagTarget);
-        if (!target) return;
-        target.scrollIntoView({behavior:'smooth',block:'center'});
-        target.classList.add('flag-target-highlight');
-        var editor = target.querySelector('textarea,input');
-        if (editor) editor.focus({preventScroll:true});
-        window.setTimeout(function () { target.classList.remove('flag-target-highlight'); }, 2400);
-      }, 0);
+      openReviewTarget(targetButton);
       return;
     }
     var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); scheduleSave();
@@ -1732,6 +1873,10 @@
   document.getElementById('rejectProposal').addEventListener('click', function () { reviewProposal('reject',false); });
   document.getElementById('proposalChanges').addEventListener('change', function (event) {
     if (event.target.matches('[data-proposal-change]')) updateProposalSelection();
+  });
+  document.getElementById('proposalChanges').addEventListener('click', function (event) {
+    var targetButton = event.target.closest('[data-view-review-target]');
+    if (targetButton) openReviewTarget(targetButton);
   });
   document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Items to check do not prevent saving or export.',false,'review'); });
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Final minutes saved to the Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });

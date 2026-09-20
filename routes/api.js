@@ -10700,12 +10700,18 @@ function meetingAgentProposalFlagMatchesChange(flag = {}, change = {}) {
   return sharedEvidence && (!recordText || message.includes(recordText.slice(0, 80)));
 }
 
-function resolveMeetingAgentProposalFlags(flags = [], proposal = {}, acceptedIds = []) {
-  const accepted = new Set(acceptedIds || []);
+function resolveMeetingAgentProposalFlags(flags = [], proposal = {}, acceptedIds = [], rejectedIds) {
   const changes = Array.isArray(proposal?.changes) ? proposal.changes : [];
+  const accepted = new Set(acceptedIds || []);
+  // Preserve the original three-argument helper contract for internal callers
+  // and older tests. The review endpoint passes an explicit fourth argument so
+  // unchecked changes can remain pending rather than being treated as rejected.
+  const rejected = new Set(arguments.length < 4
+    ? changes.map((change) => change.id).filter((id) => !accepted.has(id))
+    : (rejectedIds || []));
   return (Array.isArray(flags) ? flags : []).map((flag) => {
     const change = changes.find((candidate) => meetingAgentProposalFlagMatchesChange(flag, candidate));
-    if (!change || flag.status !== 'open') return flag;
+    if (!change || flag.status !== 'open' || (!accepted.has(change.id) && !rejected.has(change.id))) return flag;
     return {
       ...flag,
       status: accepted.has(change.id) ? 'confirmed' : 'dismissed',
@@ -10714,6 +10720,35 @@ function resolveMeetingAgentProposalFlags(flags = [], proposal = {}, acceptedIds
         : 'Resolved when the proposed change was rejected.')
     };
   });
+}
+
+// After applying only some suggestions, keep the unchecked suggestions
+// pending. Their indexes are rebased against the newly updated list so a later
+// review still edits the intended record rather than whichever row moved into
+// its former position.
+function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRows = [], completedIds = []) {
+  const completed = new Set(completedIds || []);
+  const original = Array.isArray(originalRows) ? originalRows : [];
+  const current = Array.isArray(currentRows) ? currentRows : [];
+  const rowIndex = (row) => {
+    const id = meetingMinutesAgentText(row?.id, 80);
+    if (id) return current.findIndex((candidate) => meetingMinutesAgentText(candidate?.id, 80) === id);
+    const serialised = JSON.stringify(row || null);
+    return current.findIndex((candidate) => JSON.stringify(candidate || null) === serialised);
+  };
+  const changes = (Array.isArray(proposal.changes) ? proposal.changes : []).filter((change) => !completed.has(change.id)).map((change) => {
+    let beforeIndex;
+    if (change.type === 'add') {
+      const originalIndex = Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0;
+      beforeIndex = originalIndex >= original.length ? current.length : rowIndex(original[originalIndex]);
+      if (beforeIndex < 0) beforeIndex = Math.min(originalIndex, current.length);
+    } else {
+      beforeIndex = rowIndex(change.before);
+      if (beforeIndex < 0) beforeIndex = Math.min(Number(change.beforeIndex) || 0, Math.max(0, current.length - 1));
+    }
+    return { ...change, beforeIndex, index: beforeIndex };
+  });
+  return changes.length ? { ...proposal, changes } : null;
 }
 
 function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false) {
@@ -14029,6 +14064,16 @@ function meetingAgentActionsFingerprint(actions = []) {
   return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
 }
 
+function meetingAgentDiscussionFingerprint(discussion = []) {
+  const rows = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    topic: meetingMinutesAgentText(topic?.topic, 220),
+    points: (topic?.points || []).map((item) => meetingMinutesAgentText(item?.text, 1600)),
+    decisions: (topic?.decisions || []).map((item) => meetingMinutesAgentText(item?.text, 1600)),
+    openQuestions: (topic?.openQuestions || []).map((item) => meetingMinutesAgentText(item?.text, 1600))
+  }));
+  return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
+}
+
 function meetingAgentReferencedFlagIds(records = []) {
   const ids = new Set();
   const walk = (value) => {
@@ -14064,6 +14109,28 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
   const changes = { ...scopedChanges };
   let incomingFlags = Array.isArray(result.reviewFlags) ? result.reviewFlags : [];
   let keptReviewerActions = false;
+  if (stage === 'discussion' && Object.prototype.hasOwnProperty.call(changes, 'discussion')) {
+    const generated = Array.isArray(changes.discussion) ? changes.discussion : [];
+    const current = Array.isArray(fresh.discussion) ? fresh.discussion : [];
+    const previousFingerprint = fresh.qualityState?.discussion?.generatedFingerprint || '';
+    const reviewerEdited = current.length > 0 && (!previousFingerprint
+      || meetingAgentDiscussionFingerprint(current) !== previousFingerprint);
+    const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
+    changes.qualityState = {
+      ...qualityState,
+      discussion: {
+        ...(qualityState.discussion || {}),
+        generatedFingerprint: meetingAgentDiscussionFingerprint(generated)
+      }
+    };
+    if (reviewerEdited) {
+      const proposal = buildProposal('discussion', current, generated);
+      changes.pendingProposal = proposal.changes.length ? { ...proposal, source: 'regeneration' } : null;
+      delete changes.discussion;
+      const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
+      incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
+    }
+  }
   if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'actions')) {
     const generated = Array.isArray(changes.actions) ? changes.actions : [];
     const current = Array.isArray(fresh.actions) ? fresh.actions : [];
@@ -14571,25 +14638,26 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     const acceptedIds = decision === 'reject' ? []
       : req.body?.acceptAll === true ? allIds
         : (Array.isArray(req.body?.changeIds) ? req.body.changeIds : []);
-    const resolvedFlags = resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, acceptedIds);
+    const acceptedIdSet = new Set(acceptedIds.filter((id) => allIds.includes(id)));
     if (decision === 'reject') {
       const saved = await saveMeetingAgentDraft(draft, req, {
         pendingProposal: null,
-        reviewFlags: resolvedFlags
+        reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [], allIds)
       });
       return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
     }
     const before = proposal.stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
-    const after = applyProposal(before, proposal, acceptedIds);
+    const after = applyProposal(before, proposal, [...acceptedIdSet]);
+    const remainingProposal = rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
     const history = [...(draft.changeHistory || []), {
       id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,
-      acceptedChangeIds: acceptedIds, before, after, acceptedAt: new Date().toISOString()
+      acceptedChangeIds: [...acceptedIdSet], before, after, acceptedAt: new Date().toISOString()
     }].slice(-30);
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...(proposal.stage === 'discussion' ? { discussion: after } : { actions: after }),
-      pendingProposal: null,
+      pendingProposal: remainingProposal,
       changeHistory: history,
-      reviewFlags: resolvedFlags
+      reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [...acceptedIdSet], [])
     });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
@@ -14805,12 +14873,14 @@ router.stagedEvaluation = {
   persistMeetingAgentBackgroundStage,
   meetingAgentRegenerationChanges,
   meetingAgentActionsFingerprint,
+  meetingAgentDiscussionFingerprint,
   meetingAgentAuditPublishCandidates,
   meetingMinutesAuditPublishEnabled,
   reopenFlagsOfReAddedItems,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,
+  rebaseMeetingAgentProposal,
   normaliseMeetingAgentPassCache,
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,

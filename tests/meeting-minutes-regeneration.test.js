@@ -3,7 +3,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { meetingAgentRegenerationChanges, meetingAgentActionsFingerprint } = require('../routes/api').stagedEvaluation;
+const {
+  meetingAgentRegenerationChanges,
+  meetingAgentActionsFingerprint,
+  meetingAgentDiscussionFingerprint,
+  rebaseMeetingAgentProposal,
+  resolveMeetingAgentProposalFlags
+} = require('../routes/api').stagedEvaluation;
 const { normaliseAgentResult, reconcileRecordFlags } = require('../utils/meetingMinutesAgentV2');
 
 const units = [
@@ -60,6 +66,41 @@ test('drafts without a generation fingerprint keep the old replace behaviour', (
   const out = meetingAgentRegenerationChanges(fresh, 'actions', { actions: regenerated, qualityState: { actions: {} } }, { reviewFlags: [] });
   assert.equal(out.keptReviewerActions, false);
   assert.deepEqual(out.changes.actions.map((a) => a.id), ['b1', 'b3']);
+});
+
+test('edited Discussion is kept and regenerated topics become suggestions', () => {
+  const generated = [{ id: 't1', topic: 'Training', points: [{ id: 'p1', text: 'Training is required.', evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] }];
+  const edited = [{ ...generated[0], points: [{ ...generated[0].points[0], text: 'Training and signed attestation are required.' }] }];
+  const refreshed = [{ ...generated[0], points: [{ ...generated[0].points[0], text: 'Training must be complete by Friday.' }] }];
+  const fresh = {
+    discussion: edited, reviewFlags: [], qualityState: { discussion: { generatedFingerprint: meetingAgentDiscussionFingerprint(generated) } }
+  };
+  const out = meetingAgentRegenerationChanges(fresh, 'discussion', {
+    discussion: refreshed, qualityState: { discussion: {} }
+  }, { reviewFlags: [] });
+  assert.ok(!('discussion' in out.changes));
+  assert.equal(out.changes.pendingProposal.stage, 'discussion');
+  assert.ok(out.changes.pendingProposal.changes.length > 0);
+  assert.ok(out.changes.qualityState.discussion.generatedFingerprint);
+});
+
+test('applying selected suggestions leaves unchecked suggestions and warnings unresolved', () => {
+  const before = [{ id: 'a1', action: 'First.' }, { id: 'a2', action: 'Second.' }];
+  const proposal = { stage: 'actions', changes: [
+    { id: 'c1', type: 'add', before: null, after: { id: 'new', action: 'Inserted.' }, beforeIndex: 1, index: 1 },
+    { id: 'c2', type: 'modify', before: before[1], after: { id: 'a2', action: 'Second revised.' }, beforeIndex: 1, index: 1 }
+  ] };
+  const current = [before[0], proposal.changes[0].after, before[1]];
+  const remaining = rebaseMeetingAgentProposal(proposal, before, current, ['c1']);
+  assert.deepEqual(remaining.changes.map((change) => change.id), ['c2']);
+  assert.equal(remaining.changes[0].beforeIndex, 2);
+  const flags = [
+    { id: 'proposal-review-c1', kind: 'possible_missed_follow_up', status: 'open' },
+    { id: 'proposal-review-c2', kind: 'possible_missed_follow_up', status: 'open' }
+  ];
+  const resolved = resolveMeetingAgentProposalFlags(flags, proposal, ['c1'], []);
+  assert.equal(resolved[0].status, 'confirmed');
+  assert.equal(resolved[1].status, 'open');
 });
 
 test('identical open flags are shown once; handled flags are kept', () => {

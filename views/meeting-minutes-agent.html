@@ -315,12 +315,19 @@
 .meeting-agent-page .card-head{
   display:flex;align-items:center;gap:.55rem;padding:.45rem .65rem;
   border-bottom:1px solid var(--border);background:var(--soft)}
+.meeting-agent-page .topic-collapse{
+  display:grid;place-items:center;flex:none;width:2rem;height:2rem;padding:0;
+  border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
+.meeting-agent-page .topic-collapse:hover{background:var(--soft-2);color:var(--heading)}
+.meeting-agent-page .topic-collapse span{font-size:var(--fs-lg);transition:transform .15s ease;transform:rotate(90deg)}
+.meeting-agent-page .discussion-card.is-collapsed .topic-collapse span{transform:none}
 .meeting-agent-page .topic-field{flex:1;min-width:0}
 .meeting-agent-page .topic-field textarea{
   font-size:var(--fs-md);font-weight:var(--fw-bold);color:var(--heading);
   min-height:36px;border-color:transparent;background:transparent;padding:.25rem .35rem;resize:none}
 .meeting-agent-page .topic-field textarea:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .topic-field textarea:focus{border-color:var(--accent);background:var(--surface)}
+.meeting-agent-page .topic-count{display:block;margin:-.1rem .35rem .15rem;color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .topic-menu{position:relative;flex:none}
 .meeting-agent-page .topic-menu>summary{min-width:2.35rem;padding:.35rem .55rem;list-style:none}
 .meeting-agent-page .topic-menu>summary::-webkit-details-marker{display:none}
@@ -381,6 +388,7 @@
 .meeting-agent-page .supporting-context-head::before{content:"›";color:var(--muted);font-size:var(--fs-lg);line-height:1;transition:transform .15s ease}
 .meeting-agent-page .supporting-context[open]>.supporting-context-head::before{transform:rotate(90deg)}
 .meeting-agent-page .supporting-context-title{margin-right:auto;font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
+.meeting-agent-page .supporting-context-title small{display:inline;margin-left:.35rem;color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw)}
 .meeting-agent-page .supporting-context-head>span:last-child{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
 .meeting-agent-page .supporting-context-body{padding:0 .65rem .65rem}
 .meeting-agent-page .supporting-context-body>.muted{margin:0 0 .45rem;font-size:var(--fs-cap)}
@@ -422,26 +430,13 @@
   border-bottom:1px solid var(--border-strong)}
 .meeting-agent-page .actions-table td{
   padding:.55rem .6rem;vertical-align:top;border-bottom:1px solid var(--border)}
-.meeting-agent-page .editable-actions-table th:nth-child(1){width:60%}
-.meeting-agent-page .editable-actions-table th:nth-child(2){width:17%}
-.meeting-agent-page .editable-actions-table th:nth-child(3){width:18%}
-.meeting-agent-page .editable-actions-table th:nth-child(4){width:5%}
+.meeting-agent-page .editable-actions-table th:nth-child(1){width:62%}
+.meeting-agent-page .editable-actions-table th:nth-child(2){width:16%}
+.meeting-agent-page .editable-actions-table th:nth-child(3){width:22%}
 .meeting-agent-page .actions-table textarea{min-height:36px;padding:.3rem .4rem;border-color:transparent;background:transparent;resize:none}
 .meeting-agent-page .actions-table textarea:hover{border-color:var(--border-strong);background:var(--surface)}
-.meeting-agent-page .action-row .owner-add,
-.meeting-agent-page .action-row .timing-editor,
-.meeting-agent-page .action-row .action-tools{display:none}
-.meeting-agent-page .action-row .owner-chip button{display:none}
-.meeting-agent-page .action-row.is-editing{background:var(--soft)}
-.meeting-agent-page .action-row.is-editing .owner-add,
-.meeting-agent-page .action-row.is-editing .timing-editor,
-.meeting-agent-page .action-row.is-editing .action-tools{display:grid}
-.meeting-agent-page .action-row.is-editing .action-tools{grid-template-columns:minmax(0,1fr) auto}
-.meeting-agent-page .action-row.is-editing .owner-chip button{display:grid}
-.meeting-agent-page .action-row.is-editing .timing-summary{display:none}
-.meeting-agent-page .timing-summary{margin:.25rem 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
-.meeting-agent-page .row-action-cell{text-align:right;padding-left:.15rem!important;padding-right:.25rem!important}
-.meeting-agent-page .action-edit{min-width:0;padding:.3rem .35rem;color:var(--accent)}
+.meeting-agent-page .action-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem;align-items:start}
+.meeting-agent-page .action-main .record-menu{margin-top:.15rem}
 .meeting-agent-page .action-tools{margin-top:.4rem}
 .meeting-agent-page .preview-action-row{background:var(--soft)}
 .meeting-agent-page .preview-action-row td{color:var(--heading)}
@@ -467,7 +462,10 @@
 .meeting-agent-page .owner-add input{font-size:var(--fs-sm);padding:.4rem .5rem}
 .meeting-agent-page .owner-add input[hidden]{display:none}
 
-.meeting-agent-page .timing-editor{display:grid;gap:.4rem}
+.meeting-agent-page .timing-editor{display:grid;gap:.3rem}
+.meeting-agent-page .timing-editor select{padding:.35rem .45rem;font-size:var(--fs-sm)}
+.meeting-agent-page .timing-editor label{display:grid;gap:.12rem}
+.meeting-agent-page .timing-editor label>span{color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .seg{
   display:inline-flex;overflow:hidden;border:1px solid var(--border-strong);
   border-radius:var(--radius-sm);background:var(--surface)}
@@ -512,14 +510,20 @@
 .meeting-agent-page .flag-actions{
   display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.6rem}
 .meeting-agent-page .flag-actions .quiet{margin-left:auto}
+.meeting-agent-page .review-item-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,38%);gap:.8rem;align-items:start}
+.meeting-agent-page .review-item-main{min-width:0}
+.meeting-agent-page .review-evidence{min-width:0;padding:.55rem;border-radius:var(--radius-sm);background:var(--soft-2)}
+.meeting-agent-page .review-evidence>strong{display:block;margin-bottom:.25rem;font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .review-evidence .evidence-row{margin:.25rem 0}
+.meeting-agent-page .review-route-missing{margin:.5rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
 
 /* ------------------------------------------------------------ proposal -- */
-.meeting-agent-page .proposal{margin:.85rem 0;border-color:var(--accent)}
+.meeting-agent-page .proposal{margin:.85rem 0 0;padding-top:.8rem;border-top:1px solid var(--border)}
 .meeting-agent-page .proposal-header{
   display:flex;align-items:center;justify-content:space-between;gap:1rem;
   flex-wrap:wrap;padding-bottom:.55rem}
 .meeting-agent-page .proposal-heading{min-width:0}
-.meeting-agent-page .proposal-heading h2{margin:0 0 .1rem;font-size:var(--fs-lg)}
+.meeting-agent-page .proposal-heading h3{margin:0 0 .1rem;font-size:var(--fs-lg)}
 .meeting-agent-page #proposalChanges{
   border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);overflow:hidden}
@@ -562,6 +566,14 @@
   margin-top:.65rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);box-shadow:var(--shadow-lg)}
 .meeting-agent-page .proposal-footer>.muted{margin-right:auto}
+.meeting-agent-page .regeneration-dialog{
+  width:min(520px,calc(100vw - 2rem));padding:0;border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--text);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .regeneration-dialog::backdrop{background:rgba(21,38,48,.38)}
+.meeting-agent-page .regeneration-dialog form{display:grid;gap:.7rem;padding:1.1rem}
+.meeting-agent-page .regeneration-dialog h2,.meeting-agent-page .regeneration-dialog p{margin:0}
+.meeting-agent-page .regeneration-dialog h2{font-size:var(--fs-lg)}
+.meeting-agent-page .dialog-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.25rem}
 
 /* ------------------------------------------------------ final document -- */
 .meeting-agent-page .final-document{max-width:76ch;margin:0 auto}
@@ -597,6 +609,7 @@
   .meeting-agent-page .steps{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media(max-width:900px){
+  .meeting-agent-page .review-item-layout{grid-template-columns:1fr}
   .meeting-agent-page .actions-table,
   .meeting-agent-page .actions-table tbody,
   .meeting-agent-page .actions-table tr,
@@ -646,16 +659,22 @@
   .meeting-agent-page .proposition-row textarea{grid-column:1;grid-row:2}
   .meeting-agent-page .proposition-row .record-menu{grid-column:2;grid-row:1/3}
   .meeting-agent-page .editable-actions-table tr{
-    display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+    display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:.35rem .45rem;margin:.55rem 0;padding:.55rem}
   .meeting-agent-page .editable-actions-table td{padding:.2rem!important}
   .meeting-agent-page .editable-actions-table td[data-label="Action"]{grid-column:1/3;grid-row:1}
   .meeting-agent-page .editable-actions-table td[data-label="Owners"]{grid-column:1;grid-row:2}
   .meeting-agent-page .editable-actions-table td[data-label="Timing"]{grid-column:2;grid-row:2}
-  .meeting-agent-page .editable-actions-table .row-action-cell{grid-column:3;grid-row:1/3;align-self:start}
   .meeting-agent-page .editable-actions-table td[data-label="Action"]::before{display:none}
   .meeting-agent-page .editable-actions-table .owner-chips{margin:.1rem 0}
   .meeting-agent-page .editable-actions-table .timing-summary{margin:.1rem 0}
+  .meeting-agent-page .editable-actions-table .owner-add{gap:.2rem}
+  .meeting-agent-page .editable-actions-table .owner-add select,
+  .meeting-agent-page .editable-actions-table .owner-add input{padding:.3rem .4rem}
+  .meeting-agent-page .editable-actions-table .timing-editor{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.2rem}
+  .meeting-agent-page .editable-actions-table .timing-editor select{grid-column:1/-1;padding:.3rem .4rem}
+  .meeting-agent-page .editable-actions-table .timing-editor label>span{display:none}
+  .meeting-agent-page .editable-actions-table .timing-editor input{min-width:0;padding:.3rem .35rem}
   .meeting-agent-page .proposal-comparison{grid-template-columns:1fr}
   .meeting-agent-page .screen-actions>*{width:100%}
   .meeting-agent-page .final-actions .divider,
@@ -709,7 +728,7 @@
 
   <div class="workflow-utilities">
     <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Resume later from Library</a></span></div>
-    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p class="muted">Check, correct or dismiss these items before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
+    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
   </div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
@@ -719,7 +738,7 @@
     <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
     <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span id="generationLeaveMessage" class="muted"></span></div>
   </section>
-  <p id="staleNotice" class="notice" hidden>Earlier meeting content changed, so <strong id="staleStages"></strong> may be out of date. Regenerate when ready. If you have edited them, your version is kept and the new results are offered as proposed changes.</p>
+  <p id="staleNotice" class="notice" hidden>Earlier meeting content changed, so <strong id="staleStages"></strong> may be out of date. Regenerate when ready. Edited Discussion and Actions stay in place and refreshed differences arrive as suggestions; a refreshed Summary replaces the current Summary only after you confirm regeneration.</p>
 
   <!-- ============================================ 0 - upload and details -->
   <section class="panel screen active" data-screen="0">
@@ -774,15 +793,12 @@
   <section class="panel screen" data-screen="3">
     <div class="paper">
       <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. You will preview them before anything is applied.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button></div></div>
-      <p class="muted">Scan the list, then open Edit only on actions you want to change.</p>
-      <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th><th><span class="visually-hidden">Row actions</span></th></tr></thead><tbody id="actionsBody"></tbody></table></div>
+      <p class="muted">Edit an Action, its owners or timing directly. Open Sources only when you need to check the transcript.</p>
+      <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
     </div>
     <p class="prewarm-notice" data-speculation-notice="summary" role="status" hidden></p>
     <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="Review the transcript again for additional actions.">Check transcript for more actions</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
-
-  <!-- ==================================================== ai proposals -->
-  <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Review suggested changes</h2><p class="muted">Open a suggestion for the comparison. Nothing is applied until you confirm.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section>
 
   <!-- ======================================= 4 - summary and objectives -->
   <section class="panel screen" data-screen="4">
@@ -813,6 +829,13 @@
     </div>
     <div class="screen-actions"><button id="newMinutes" class="secondary quiet" type="button">Start new minutes</button></div>
   </section>
+  <dialog id="regenerationDialog" class="regeneration-dialog" aria-labelledby="regenerationTitle">
+    <form method="dialog">
+      <h2 id="regenerationTitle">Generate new suggestions?</h2>
+      <p id="regenerationMessage">Your current edits will remain. New results will arrive as suggestions, and nothing will change until you apply them.</p>
+      <div class="dialog-actions"><button class="secondary" value="cancel" type="submit">Cancel</button><button id="confirmRegeneration" class="button" value="confirm" type="submit">Generate suggestions</button></div>
+    </form>
+  </dialog>
 </main>
 </body>
 </html>
