@@ -209,10 +209,17 @@ function retypeRows(topic, index) {
 // 3. Demotion of rows that are not minutes
 // ---------------------------------------------------------------------------
 
+// Distance to the row's NEAREST cited line, not its earliest. A row citing
+// T0118-T0121 plus one stray T0020 is not "at" line 20: measuring from the
+// earliest put every later detail next to it, which is how one row in run 9
+// collected nineteen supporting lines.
 function nearestPrimary(rows, sequence) {
   let best = null;
   for (const row of rows) {
-    const distance = Number.isFinite(sequence) ? Math.abs(earliest(row.record, row.index) - sequence) : Number.POSITIVE_INFINITY;
+    const sequences = recordSequences(row.record, row.index);
+    const distance = Number.isFinite(sequence) && sequences.length
+      ? Math.min(...sequences.map((value) => Math.abs(value - sequence)))
+      : Number.POSITIVE_INFINITY;
     if (!best || distance < best.distance) best = { row, distance };
   }
   return best ? best.row.record : null;
@@ -385,6 +392,23 @@ async function consolidateTopics(topics, index, options = {}) {
 // 5. Supporting context re-homed by evidence
 // ---------------------------------------------------------------------------
 
+// A supporting line that is a copy of the transcript line it cites is not
+// context, it is the raw speech - "Andrew is off at the moment, so we'll get
+// the.Bottomed out by the end of the week..." - and three of run 8's twelve
+// context rows were of this kind. The same test already screens primary rows.
+// It keys on the line's OWN source, never on what its parent cites, so a
+// paraphrase carrying a distinctive fact cannot be caught by it.
+function dropVerbatimSupporting(topics, index) {
+  for (const topic of topics) {
+    for (const { record } of topicRows(topic)) {
+      if (!Array.isArray(record.supportingDetails) || !record.supportingDetails.length) continue;
+      record.supportingDetails = record.supportingDetails
+        .filter((detail) => !isVerbatimUnit(detail?.text, index, detail?.evidenceIds || []));
+    }
+  }
+  return topics;
+}
+
 function rehomeSupportingDetails(topics, index, margin = 2) {
   const windows = topics.map((topic) => topicWindow(topic, index));
   for (let from = 0; from < topics.length; from += 1) {
@@ -396,10 +420,16 @@ function rehomeSupportingDetails(topics, index, margin = 2) {
         const at = Math.min(...sequences);
         const here = windows[from];
         if (here && at >= here.start - margin && at <= here.end + margin) { kept.push(detail); continue; }
+        // The narrowest topic whose window contains the line, not the first.
+        // A topic with one stray citation spans the whole meeting and would
+        // otherwise swallow every homeless detail.
         let to = -1;
+        let span = Number.POSITIVE_INFINITY;
         for (let i = 0; i < topics.length; i += 1) {
           if (i === from || !windows[i]) continue;
-          if (at >= windows[i].start - margin && at <= windows[i].end + margin) { to = i; break; }
+          if (at < windows[i].start - margin || at > windows[i].end + margin) continue;
+          const width = windows[i].end - windows[i].start;
+          if (width < span) { span = width; to = i; }
         }
         if (to < 0) { kept.push(detail); continue; }
         const host = nearestPrimary(topicRows(topics[to]).map((row) => ({ ...row, index })), at);
@@ -445,6 +475,7 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
   topics = topics.map((topic) => retypeRows(topic, index));
   topics = demoteUnreadyRows(topics, index);
   topics = await consolidateTopics(topics, index, options);
+  topics = dropVerbatimSupporting(topics, index);
   topics = rehomeSupportingDetails(topics, index);
   topics = sortByEvidence(topics, index);
   const after = { topics: topics.length, rows: topics.reduce((sum, topic) => sum + topicRows(topic).length, 0) };
@@ -455,6 +486,7 @@ module.exports = {
   organiseDiscussionForReview,
   stripClosure,
   isVerbatimUnit,
+  dropVerbatimSupporting,
   isConversational,
   looksLikeStatusNotDecision,
   questionIsAnswered,
