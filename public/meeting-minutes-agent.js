@@ -950,6 +950,27 @@
     return ranked[0];
   }
 
+  function proposalChangeForFlag(flag) {
+    var proposal = state.draft && state.draft.pendingProposal;
+    var changes = proposal && Array.isArray(proposal.changes) ? proposal.changes : [];
+    if (!flag || !changes.length) return null;
+    var exact = changes.find(function (change) { return String(flag.id || '') === 'proposal-review-' + change.id; });
+    if (exact) return exact;
+    if (flag.kind !== 'possible_missed_follow_up') return null;
+    var message = String(flag.message || '').toLowerCase();
+    var candidates = changes.filter(function (change) {
+      var record = change.after || change.before || {};
+      var recordText = String(record.action || record.text || record.topic || '').toLowerCase();
+      return sharedEvidenceCount(flag.evidenceIds, record.evidenceIds) > 0
+        && (!recordText || message.includes(recordText.slice(0, 80)));
+    });
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  function proposalDomId(change) {
+    return recordDomId('proposal', change && change.id, 'change');
+  }
+
   function resolveDeletedTargetFlags(flagIds) {
     if (!state.draft || !flagIds || !flagIds.length) return;
     var stillLinked = new Set(linkedReviewFlagIds([
@@ -1034,6 +1055,20 @@
         field: flag.kind === 'timing' ? 'timing' : flag.kind === 'ownership' ? 'owners' : 'action'
       };
     }
+    // A missed-content warning can describe an Action that deliberately has
+    // not entered the register yet. Route to the pending suggestion instead of
+    // pretending there ought to be a current Action to edit.
+    var proposed = proposalChangeForFlag(flag);
+    if (proposed) {
+      var proposedRecord = proposed.after || proposed.before || {};
+      return {
+        elementId: proposalDomId(proposed),
+        label: proposed.after ? 'Proposed item' : 'Suggested removal',
+        text: proposedRecord.action || proposedRecord.text || proposedRecord.topic || '',
+        field: 'proposal',
+        proposal: true
+      };
+    }
     var inferred = inferredActionForFlag(flag);
     if (inferred) return {
       stage: 3,
@@ -1087,9 +1122,10 @@
       var body = '<span class="flag-kind">Warning · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
       var target = flagTarget(flag);
       if (target) {
-        var selector = target.field === 'timing' ? '[data-timing-wording]' : target.field === 'owners' ? '[data-add-owner]' : 'textarea,input';
-        body += '<div class="flag-target"><span>Affected ' + escapeHtml(target.label.toLowerCase()) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '" data-target-step="' + target.stage + '" type="button">View and edit</button></div>';
-      } else body += '<p class="review-route-missing">No current item is linked. Dismiss this warning if the referenced content has already been removed.</p>';
+        var selector = target.field === 'timing' ? '[data-timing-wording]' : target.field === 'owners' ? '[data-add-owner]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
+        var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
+        body += '<div class="flag-target"><span>' + (target.proposal ? 'Related suggestion' : 'Affected ' + escapeHtml(target.label.toLowerCase())) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review suggestion' : 'View and edit') + '</button></div>';
+      } else body += '<p class="review-route-missing"><strong>No saved item or pending suggestion matches this warning.</strong> If the issue still matters, add or correct the relevant item and then resolve the warning. If its content was removed, dismiss it.</p>';
       body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
       // One primary: "Looks correct" is the answer a reviewer gives most often.
       var actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Looks correct</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save correction</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>';
@@ -1153,7 +1189,7 @@
       if (target) content += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
       var summary = proposalRecord(change.after || change.before);
-      return '<div class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '" checked aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">Suggestion · ' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Suggested change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
+      return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === false ? '' : ' checked') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">Suggestion · ' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Suggested change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
     }).join('');
     updateProposalSelection();
     updateReviewQueueSummary();
@@ -1841,7 +1877,7 @@
     if (field) field.focus({ preventScroll:true });
   });
   function openReviewTarget(targetButton) {
-    showStep(Number(targetButton.dataset.targetStep), { scroll:true });
+    if (targetButton.dataset.targetStep !== undefined) showStep(Number(targetButton.dataset.targetStep), { scroll:true });
     window.setTimeout(function () {
         var target = document.getElementById(targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget);
         if (!target) return;
@@ -1854,6 +1890,8 @@
         }
         target.scrollIntoView({behavior:'smooth',block:'center'});
         target.classList.add('flag-target-highlight');
+        var detail = target.querySelector('.proposal-detail');
+        if (detail) detail.open = true;
         var editor = target.querySelector(targetButton.dataset.targetSelector || 'textarea,input');
         if (editor) editor.focus({preventScroll:true});
         window.setTimeout(function () { target.classList.remove('flag-target-highlight'); }, 2400);

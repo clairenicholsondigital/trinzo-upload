@@ -10565,7 +10565,11 @@ function meetingAgentWithoutDanglingFlagRefs(records = [], flagIds = new Set()) 
 }
 
 function meetingAgentDraftPayload(draft = {}) {
-  const payloadFlags = (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag);
+  const payloadFlags = reconcileMeetingAgentOrphanFlags(
+    (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
+    [...(draft.discussion || []), ...(draft.actions || [])],
+    draft.pendingProposal
+  );
   const payloadFlagIds = new Set(payloadFlags.map((flag) => String(flag.id)));
   return {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
@@ -10637,8 +10641,11 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, ...publicFields } = draft;
-  const visibleReviewFlags = (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : [])
-    .filter(isUsefulMeetingAgentReviewFlag);
+  const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
+    (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
+    [...(publicFields.discussion || []), ...(publicFields.actions || [])],
+    publicFields.pendingProposal
+  );
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
     reviewFlags: visibleReviewFlags
@@ -10746,7 +10753,10 @@ function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRow
       beforeIndex = rowIndex(change.before);
       if (beforeIndex < 0) beforeIndex = Math.min(Number(change.beforeIndex) || 0, Math.max(0, current.length - 1));
     }
-    return { ...change, beforeIndex, index: beforeIndex };
+    // These are precisely the suggestions the reviewer left unchecked when
+    // applying a subset. Persist that choice so a refresh cannot silently
+    // select them again.
+    return { ...change, beforeIndex, index: beforeIndex, selected: false };
   });
   return changes.length ? { ...proposal, changes } : null;
 }
@@ -13750,6 +13760,16 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       ? Math.max(0, Math.min(furthestStep,
         Number(req.body?.selectedStep ?? req.body?.currentStep ?? draft.selectedStep ?? draft.currentStep) || 0))
       : Math.max(0, Math.min(furthestStep, Number(draft.selectedStep ?? draft.currentStep) || 0));
+    const mergedReviewFlags = reopenFlagsOfReAddedItems(
+      mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
+      [...normalised.discussion, ...normalised.actions]
+    );
+    const reconciledReviewFlags = reconcileMeetingAgentOrphanFlags(
+      mergedReviewFlags,
+      [...normalised.discussion, ...normalised.actions],
+      draft.pendingProposal,
+      [...(draft.discussion || []), ...(draft.actions || [])]
+    );
     const saved = await saveMeetingAgentDraft(draft, req, {
       details,
       steer: req.body?.steer ?? draft.steer,
@@ -13757,10 +13777,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       actions: normalised.actions,
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
-      reviewFlags: reopenFlagsOfReAddedItems(
-        mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-        [...normalised.discussion, ...normalised.actions]
-      ),
+      reviewFlags: reconciledReviewFlags,
       staleStages: [...new Set([
         ...(draft.staleStages || []),
         ...meetingAgentDerivedStaleStages(draft, {
@@ -14084,6 +14101,79 @@ function meetingAgentReferencedFlagIds(records = []) {
   };
   walk(records);
   return ids;
+}
+
+function meetingAgentReviewRecords(records = []) {
+  const found = [];
+  const walk = (value, type = '') => {
+    if (Array.isArray(value)) { value.forEach((item) => walk(item, type)); return; }
+    if (!value || typeof value !== 'object') return;
+    if (value.action || value.text) found.push({ value, type: value.action ? 'action' : type || 'discussion' });
+    for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails']) {
+      if (Array.isArray(value[key])) walk(value[key], key === 'supportingDetails' ? 'supporting' : 'discussion');
+    }
+  };
+  walk(records);
+  return found;
+}
+
+function meetingAgentFlagLikelyHasCurrentTarget(flag = {}, records = []) {
+  const flagId = String(flag.id || '');
+  const message = meetingMinutesAgentText(flag.message, 500).toLowerCase();
+  const evidence = new Set(Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []);
+  const candidates = meetingAgentReviewRecords(records).filter(({ value, type }) => {
+    if ((value.reviewFlagIds || []).map(String).includes(flagId)) return true;
+    if (['ownership', 'timing', 'possible_missed_follow_up'].includes(flag.kind) && type !== 'action') return false;
+    const valueText = meetingMinutesAgentText(value.action || value.text, 1600).toLowerCase();
+    const wording = meetingMinutesAgentText(value.timing?.wording, 220).toLowerCase();
+    const exactDate = meetingMinutesAgentText(value.timing?.exactDate, 40).toLowerCase();
+    const owners = Array.isArray(value.owners) ? value.owners : [];
+    const explicitlyNamed = (valueText.length >= 12 && message.includes(valueText.slice(0, 90)))
+      || (wording && message.includes(wording))
+      || (exactDate && message.includes(exactDate))
+      || owners.some((owner) => message.includes(meetingMinutesAgentText(owner, 180).toLowerCase()));
+    const sharesEvidence = (value.evidenceIds || []).some((id) => evidence.has(id));
+    return explicitlyNamed || sharesEvidence;
+  });
+  if (!candidates.length) return false;
+  if (candidates.some(({ value }) => (value.reviewFlagIds || []).map(String).includes(flagId))) return true;
+  const named = candidates.filter(({ value }) => {
+    const valueText = meetingMinutesAgentText(value.action || value.text, 1600).toLowerCase();
+    const wording = meetingMinutesAgentText(value.timing?.wording, 220).toLowerCase();
+    const exactDate = meetingMinutesAgentText(value.timing?.exactDate, 40).toLowerCase();
+    return (valueText.length >= 12 && message.includes(valueText.slice(0, 90)))
+      || (wording && message.includes(wording)) || (exactDate && message.includes(exactDate));
+  });
+  return named.length === 1 || (named.length === 0 && candidates.length === 1);
+}
+
+const MEETING_AGENT_PROPOSAL_REMOVED_NOTE = 'The related suggestion is no longer available.';
+const MEETING_AGENT_ITEM_SCOPED_FLAG_KINDS = new Set(['missing_evidence', 'ownership', 'attribution', 'timing']);
+
+// Keep the review queue aligned with what can actually be reviewed. A warning
+// follows a surviving saved item or pending suggestion; if its only target was
+// removed, the warning closes automatically and remains closed after reload.
+// Broader issues such as unresolved decisions and possible follow-ups remain
+// open when they have no item, because their purpose is to ask the reviewer to
+// add or clarify missing content.
+function reconcileMeetingAgentOrphanFlags(flags = [], records = [], proposal = null, previousRecords = []) {
+  const currentReferences = meetingAgentReferencedFlagIds(records);
+  const previousReferences = meetingAgentReferencedFlagIds(previousRecords);
+  const changes = Array.isArray(proposal?.changes) ? proposal.changes : [];
+  return (Array.isArray(flags) ? flags : []).map((flag) => {
+    if ((flag.status || 'open') !== 'open') return flag;
+    const id = String(flag.id || '');
+    const hasProposal = changes.some((change) => meetingAgentProposalFlagMatchesChange(flag, change));
+    if (currentReferences.has(id) || hasProposal || meetingAgentFlagLikelyHasCurrentTarget(flag, records)) return flag;
+    const lostSavedTarget = previousReferences.has(id);
+    const lostProposal = /^proposal-review-/i.test(id);
+    if (!lostSavedTarget && !lostProposal && !MEETING_AGENT_ITEM_SCOPED_FLAG_KINDS.has(flag.kind)) return flag;
+    return {
+      ...flag,
+      status: 'dismissed',
+      correctionNote: flag.correctionNote || (lostProposal ? MEETING_AGENT_PROPOSAL_REMOVED_NOTE : MEETING_AGENT_ITEM_REMOVED_NOTE)
+    };
+  });
 }
 
 // A flag dismissed only because its item was deleted reopens when an item
@@ -14877,6 +14967,7 @@ router.stagedEvaluation = {
   meetingAgentAuditPublishCandidates,
   meetingMinutesAuditPublishEnabled,
   reopenFlagsOfReAddedItems,
+  reconcileMeetingAgentOrphanFlags,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,

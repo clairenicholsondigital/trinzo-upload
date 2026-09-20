@@ -100,7 +100,30 @@ function startStubServer() {
       reviewContext: { reason: 'The owner still needs confirming.', label: 'agreed, then committed', evidenceIds: ['T0001'] }
     }]
   };
+  proposals.reviewFlags.push({
+    id: 'proposal-review-proposal-1', kind: 'possible_missed_follow_up',
+    message: 'Possible missed action: Confirm access to the audit folder.',
+    evidenceIds: ['T0001'], status: 'open', correctionNote: ''
+  });
   drafts.set('proposals', proposals);
+  const partialProposals = baseDraft('partial-proposals', false);
+  partialProposals.pendingProposal = {
+    stage: 'actions',
+    changes: [{
+      id: 'partial-1', type: 'add', before: null,
+      after: { id: 'partial-action-1', action: 'Confirm folder access.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'] },
+      beforeIndex: 1, index: 1
+    }, {
+      id: 'partial-2', type: 'add', before: null,
+      after: { id: 'partial-action-2', action: 'Circulate the audit checklist.', owners: ['Alex Reed'], timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'] },
+      beforeIndex: 1, index: 1
+    }]
+  };
+  partialProposals.reviewFlags.push(
+    { id: 'proposal-review-partial-1', kind: 'possible_missed_follow_up', message: 'Possible missed action: Confirm folder access.', evidenceIds: ['T0001'], status: 'open', correctionNote: '' },
+    { id: 'proposal-review-partial-2', kind: 'possible_missed_follow_up', message: 'Possible missed action: Circulate the audit checklist.', evidenceIds: ['T0001'], status: 'open', correctionNote: '' }
+  );
+  drafts.set('partial-proposals', partialProposals);
   const unlinkedWarning = baseDraft('unlinked-warning', false);
   unlinkedWarning.sourceUnits.push({ id: 'T0002', speaker: 'Sam Okoro', timestamp: '00:20', text: 'The training attestation needs to be signed by Friday.' });
   unlinkedWarning.actions = [{
@@ -186,6 +209,31 @@ function startStubServer() {
     };
     drafts.set(req.params.id, next);
     res.status(202).json({ ok: true, generation, draft: next });
+  });
+  app.post('/api/meeting-minutes-agent/drafts/:id/proposal', (req, res) => {
+    const prior = drafts.get(req.params.id);
+    const proposal = prior.pendingProposal;
+    const allIds = (proposal?.changes || []).map((change) => change.id);
+    const accepted = req.body.decision === 'accept'
+      ? new Set(req.body.acceptAll ? allIds : (req.body.changeIds || [])) : new Set();
+    const rejected = req.body.decision === 'reject' ? new Set(allIds) : new Set();
+    const acceptedAdds = (proposal?.changes || []).filter((change) => accepted.has(change.id) && change.type === 'add').map((change) => change.after);
+    const remainingChanges = (proposal?.changes || []).filter((change) => !accepted.has(change.id) && !rejected.has(change.id))
+      .map((change) => ({ ...change, selected: false }));
+    const next = {
+      ...prior,
+      actions: [...(prior.actions || []), ...acceptedAdds],
+      pendingProposal: remainingChanges.length ? { ...proposal, changes: remainingChanges } : null,
+      reviewFlags: (prior.reviewFlags || []).map((flag) => {
+        const change = (proposal?.changes || []).find((item) => flag.id === `proposal-review-${item.id}`);
+        if (!change || (!accepted.has(change.id) && !rejected.has(change.id))) return flag;
+        return { ...flag, status: accepted.has(change.id) ? 'confirmed' : 'dismissed' };
+      }),
+      revision: prior.revision + 1,
+      updatedAt: new Date().toISOString()
+    };
+    drafts.set(req.params.id, next);
+    res.json({ ok: true, draft: next });
   });
   app.get('/api/meeting-minutes-agent/drafts/:id/generation', (req, res) => {
     let draft = drafts.get(req.params.id);
@@ -656,6 +704,64 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
   }
 });
 
+test('a missing-content warning opens and highlights its exact pending suggestion', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'proposals');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
+    const warning = page.locator('.flag').filter({ hasText: 'Possible missed action: Confirm access to the audit folder.' });
+    assert.match(await warning.textContent(), /Related suggestion/i);
+    assert.equal(await warning.locator('text=No saved item or pending suggestion matches').count(), 0);
+    await warning.locator('[data-view-flag-target]').click();
+    const suggestion = page.locator('#minutes-proposal-proposal-1');
+    await suggestion.waitFor();
+    assert.equal(await suggestion.locator('.proposal-detail').evaluate((node) => node.open), true);
+    assert.equal(await suggestion.locator('.proposal-detail>summary').evaluate((node) => node === document.activeElement), true);
+    assert.equal(await suggestion.evaluate((node) => node.classList.contains('flag-target-highlight')), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('applying one proposal preserves the unchecked proposal and warning after refresh', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'partial-proposals');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const boxes = page.locator('[data-proposal-change]');
+    await boxes.nth(1).uncheck();
+    const applied = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/partial-proposals/proposal'));
+    await page.click('#acceptSelectedProposal');
+    await applied;
+    assert.equal(await page.locator('[data-proposal-change]').count(), 1);
+    assert.equal(await page.locator('[data-proposal-change]').isChecked(), false);
+    assert.match(await page.textContent('.proposal-summary'), /Circulate the audit checklist/i);
+    let saved = await page.evaluate(async () => (await (await fetch('/test-state/partial-proposals')).json()).draft);
+    assert.deepEqual(saved.pendingProposal.changes.map((change) => change.id), ['partial-2']);
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-partial-1').status, 'confirmed');
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-partial-2').status, 'open');
+
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('[data-proposal-change]').length === 1);
+    assert.equal(await page.locator('[data-proposal-change]').isChecked(), false, 'unchecked state survives refresh');
+    assert.match(await page.textContent('.proposal-summary'), /Circulate the audit checklist/i);
+    saved = await page.evaluate(async () => (await (await fetch('/test-state/partial-proposals')).json()).draft);
+    assert.equal(saved.pendingProposal.changes[0].id, 'partial-2');
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-partial-2').status, 'open');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('an unlinked timing warning routes to its Action field and resolves when that Action is deleted', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -677,6 +783,9 @@ test('an unlinked timing warning routes to its Action field and resolves when th
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/unlinked-warning')).json()).draft);
     assert.equal(saved.reviewFlags.find((flag) => flag.id === 'training-timing-flag').status, 'dismissed');
     assert.equal(await page.locator('#reviewFlags').isHidden(), true);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
+    assert.equal(await page.locator('#reviewFlags').isHidden(), true, 'the deleted Action warning stays resolved after refresh');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
