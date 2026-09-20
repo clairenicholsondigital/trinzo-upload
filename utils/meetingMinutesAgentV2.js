@@ -2402,9 +2402,18 @@ function commitmentIsAboutAction(line, actionText) {
   return contentTokens(line).some((word) => subject.has(word));
 }
 
-function ownerTakesItOn(owner, lines = [], actionText = '') {
+function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
   const names = nameParts(owner);
   if (!names.length) return true;
+  // Whether anyone else is in the frame. The subject test exists to stop a
+  // commitment about other work ("I'll update that table for the new set of
+  // minutes") claiming an action someone else was just given - in run 9's case
+  // one line after "So Rebecca is kind of managing that through with Andrew."
+  // Where no one else is named, there is no rival claim to guard against, and
+  // demanding a subject match strips a plain commitment: run 10 removed Ciaran
+  // Ryan from TFO3 work evidenced by three consecutive lines of his own.
+  const contested = people.some((person) => !person.parts.some((part) => names.includes(part))
+    && lines.some((line) => personIsNamedIn(person, line?.text)));
   const mentions = (value) => names.some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
   const isOwner = (speaker) => nameParts(speaker).some((word) => names.includes(word));
   for (let index = 0; index < lines.length; index += 1) {
@@ -2424,6 +2433,7 @@ function ownerTakesItOn(owner, lines = [], actionText = '') {
     const utterance = [line];
     if (runsOn(line) && sameSpeaker(lines[index + 1])) utterance.push(lines[index + 1]);
     if (sameSpeaker(lines[index - 1]) && runsOn(lines[index - 1])) utterance.unshift(lines[index - 1]);
+    if (!contested) return true;
     if (commitmentIsAboutAction(utterance.map((row) => String(row.text || '')).join(' '), actionText)) return true;
   }
   return false;
@@ -2431,6 +2441,12 @@ function ownerTakesItOn(owner, lines = [], actionText = '') {
 
 function applyRequesterOwnerRule(actions = [], units = []) {
   const context = evidenceContextFor(units);
+  // A rival claimant need not be someone who spoke: work is regularly given to
+  // a Louise or a Kevin who is only talked about.
+  const people = [...speakerIdentities(units),
+    ...mentionedPeople(units).map((name) => ({ label: name, parts: nameParts(name) }))]
+    .filter((person, index, all) => person.parts.length
+      && all.findIndex((other) => other.parts.join(' ') === person.parts.join(' ')) === index);
   const rows = context.rows;
   const flags = [];
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
@@ -2440,7 +2456,7 @@ function applyRequesterOwnerRule(actions = [], units = []) {
     if (!cited.length) return action;
     const window = [...new Set(cited.flatMap((index) => [index - 1, index, index + 1]))]
       .filter((index) => index >= 0 && index < rows.length).sort((a, b) => a - b).map((index) => rows[index]);
-    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window, action?.action));
+    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window, action?.action, people));
     if (!unsupported.length) return action;
     const flag = normaliseFlag({
       kind: 'ownership',

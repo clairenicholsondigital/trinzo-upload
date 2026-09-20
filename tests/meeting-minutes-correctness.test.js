@@ -433,7 +433,11 @@ test('a commitment about other work does not make the speaker an owner', () => {
     { id: 'T0014', speaker: 'Jacqui Fox', text: "Okay, so just if I step down through each of the core areas, I'll update that table for the new set of minutes." },
     { id: 'T0015', speaker: 'Jacqui Fox', text: 'The focus still remains on risk and software.' },
     { id: 'T0018', speaker: 'Jacqui Fox', text: 'some cybersecurity stuff as a result of the USB ports that is on the back of the CPAP machine.' },
-    { id: 'T0019', speaker: 'Jacqui Fox', text: 'So Rebecca is kind of managing that through with Andrew.' }
+    { id: 'T0019', speaker: 'Jacqui Fox', text: 'So Rebecca is kind of managing that through with Andrew.' },
+    // Rebecca and Andrew speak in this meeting, so they are rival claimants for
+    // the work Jacqui is narrating.
+    { id: 'T0020', speaker: 'Rebecca Gill', text: 'Yes, I have the cybersecurity risk updates in hand with Andrew.' },
+    { id: 'T0021', speaker: 'Andrew', text: 'I am working through the USB port changes now.' }
   ];
   const out = V.applyRequesterOwnerRule([{
     action: 'Update the risk table and incorporate cybersecurity considerations related to USB ports, ensuring mitigation measures are documented.',
@@ -491,4 +495,23 @@ test('a "follow up on" action is checked for having been answered in the meeting
     owners: ['Rebecca Gill'], evidenceIds: ['T0063']
   }];
   assert.equal(V.answeredCheckItems(composite, units).length, 0);
+});
+
+test('a plain commitment owns the work when no one else is in the frame', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0105', speaker: 'Ciaran Ryan', text: 'focus on TFO3 this week.' },
+    { id: 'T0106', speaker: 'Ciaran Ryan', text: "Once that's done, then I can start." },
+    { id: 'T0107', speaker: 'Ciaran Ryan', text: "Because there's quite a lot of stuff that needs to go into the documents so that they're all in the same level as well." },
+    { id: 'T0108', speaker: 'Ciaran Ryan', text: 'Once I get that over with this week, I should have a lot more.' }
+  ];
+  const out = V.applyRequesterOwnerRule([{
+    action: 'Complete TFO3 and then begin updating the associated documents so they are aligned to the same level.',
+    owners: ['Ciaran Ryan'], evidenceIds: ['T0107']
+  }], units);
+  // Run 10 stripped Ciaran here: "Once that's done, then I can start." shares no
+  // subject word with the action. But no one else is named anywhere in the
+  // cited window, so there is no rival claim the subject test exists to settle.
+  assert.deepEqual(out.actions[0].owners, ['Ciaran Ryan']);
+  assert.equal(out.flags.length, 0);
 });
