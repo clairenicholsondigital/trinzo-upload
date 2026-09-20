@@ -3,7 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { normaliseAttendeeReferences, findAttendeeSurnameCorrections } = require('../utils/entityNormalization');
+const {
+  normaliseAttendeeReferences,
+  findAttendeeSurnameCorrections,
+  normaliseFixedPersonAliases,
+  normaliseFixedPersonAliasesDeep
+} = require('../utils/entityNormalization');
 
 // A transcription that gets the first name right and invents the surname.
 //
@@ -47,4 +52,26 @@ test('an attendee recorded without a surname cannot supply one', () => {
 test('other people in the same sentence are unaffected', () => {
   const { text } = normaliseAttendeeReferences('Rebecca Cuckoo asked David Didsbury to review it.', attendees);
   assert.match(text, /Rebecca Gill asked David Didsbury/);
+});
+
+test('the confirmed Rebecca alias is corrected without needing an attendee list', () => {
+  assert.equal(
+    normaliseFixedPersonAliases('Owner: Rebecca Cuckoo; reviewer: REBECCA   CUCKOO.'),
+    'Owner: Rebecca Gill; reviewer: Rebecca Gill.'
+  );
+});
+
+test('the confirmed Rebecca alias is corrected throughout nested review data', () => {
+  const corrected = normaliseFixedPersonAliasesDeep({
+    attendees: ['Rebecca Cuckoo'],
+    discussion: [{ text: 'Rebecca Cuckoo reviewed the file.' }],
+    actions: [{ owners: ['Rebecca Cuckoo'], action: 'Send the update to Rebecca Cuckoo.' }],
+    warning: 'Check Rebecca Cuckoo.'
+  });
+  assert.deepEqual(corrected, {
+    attendees: ['Rebecca Gill'],
+    discussion: [{ text: 'Rebecca Gill reviewed the file.' }],
+    actions: [{ owners: ['Rebecca Gill'], action: 'Send the update to Rebecca Gill.' }],
+    warning: 'Check Rebecca Gill.'
+  });
 });

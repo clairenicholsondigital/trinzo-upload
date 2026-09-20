@@ -76,3 +76,18 @@ test('a residents meeting with two Jos keeps both spellings distinct in entityNa
   assert.ok(names.includes('Jo Bennett'));
   assert.ok(names.includes('Jo Marsh'));
 });
+
+test('existing drafts are corrected at the public response boundary', () => {
+  const draft = api.stagedEvaluation.publicMeetingAgentDraft({
+    draftId: 'alias-test', revision: 1, currentStep: 3,
+    details: { allAttendees: ['Rebecca Cuckoo'], clientAttendees: ['Rebecca Cuckoo'] },
+    sourceUnits: [{ id: 'T0001', speaker: 'Rebecca Cuckoo', text: 'Rebecca Cuckoo will review it.' }],
+    discussion: [{ topic: 'Review', points: [{ text: 'Rebecca Cuckoo owns this.', evidenceIds: ['T0001'] }] }],
+    actions: [{ action: 'Send the file to Rebecca Cuckoo.', owners: ['Rebecca Cuckoo'], evidenceIds: ['T0001'] }],
+    reviewFlags: [{ id: 'f1', status: 'open', kind: 'attribution', message: 'Check Rebecca Cuckoo.' }]
+  });
+  assert.doesNotMatch(JSON.stringify(draft), /Rebecca\s+Cuckoo/i);
+  assert.equal(draft.details.allAttendees[0], 'Rebecca Gill');
+  assert.equal(draft.actions[0].owners[0], 'Rebecca Gill');
+  assert.equal(draft.sourceUnits[0].speaker, 'Rebecca Gill');
+});

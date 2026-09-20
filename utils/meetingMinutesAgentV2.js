@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { normaliseFixedPersonAliases } = require('./entityNormalization');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -69,7 +70,8 @@ function normaliseColloquialTimes(value) {
 }
 
 function normaliseKnownTerms(value) {
-  return normaliseColloquialTimes(value).replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
+  return normaliseFixedPersonAliases(normaliseColloquialTimes(value))
+    .replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
 }
 
 function normaliseKnownTermsDeep(value) {

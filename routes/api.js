@@ -10640,7 +10640,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     deadline: meetingAgentTimingLabel(action?.timing)
   }));
   const minutes = { details, executiveSummary, meetingObjectives, discussion, actions };
-  if (!includeEvidence) return minutes;
+  if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
   minutes.supportingDetails = (Array.isArray(draft.discussion) ? draft.discussion : []).flatMap((topic) =>
     [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
       (record?.supportingDetails || []).map((detail) => ({ topic: topic?.topic || 'Discussion', text: detail?.text || '' })))).filter((detail) => detail.text);
@@ -10656,7 +10656,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   }
   minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
   minutes.reviewFlags = (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag);
-  return minutes;
+  return normaliseMeetingAgentKnownTermsDeep(minutes);
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
@@ -15046,11 +15046,11 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
 router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
-    const exportDraft = {
+    const exportDraft = normaliseMeetingAgentKnownTermsDeep({
       ...draft,
       details: sanitiseMeetingAgentDetails(draft.details),
       reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
-    };
+    });
     const buffer = await generateMeetingMinutesAgentDocx(exportDraft, req.body?.includeEvidence === true);
     const filename = docxFilename(exportDraft).replace(/["\\]/g, '');
     res.set({

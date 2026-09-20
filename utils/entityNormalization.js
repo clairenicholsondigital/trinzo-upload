@@ -8,6 +8,32 @@ function key(value) {
   return clean(value).toLowerCase().normalize('NFKD').replace(/[^a-z0-9'’-]+/g, ' ').trim();
 }
 
+// Confirmed person aliases that must never be shown as separate people. This is
+// intentionally an exact, boundary-safe replacement: the transcript repeatedly
+// labels Rebecca Gill as "Rebecca Cuckoo", and that spelling must be corrected
+// consistently even when no attendee list is available yet.
+const FIXED_PERSON_ALIASES = Object.freeze([
+  { pattern: /\bRebecca\s+Cuckoo\b/giu, replacement: 'Rebecca Gill' }
+]);
+
+function normaliseFixedPersonAliases(value) {
+  let output = String(value == null ? '' : value);
+  for (const alias of FIXED_PERSON_ALIASES) output = output.replace(alias.pattern, alias.replacement);
+  return output;
+}
+
+function normaliseFixedPersonAliasesDeep(value) {
+  if (typeof value === 'string') return normaliseFixedPersonAliases(value);
+  if (Array.isArray(value)) return value.map(normaliseFixedPersonAliasesDeep);
+  if (value && typeof value === 'object') {
+    if (value instanceof Date) return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value;
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, normaliseFixedPersonAliasesDeep(item)]));
+  }
+  return value;
+}
+
 function damerauLevenshtein(left, right) {
   const a = key(left);
   const b = key(right);
@@ -144,8 +170,9 @@ function findAttendeeSurnameCorrections(text, attendees = []) {
 }
 
 function normaliseAttendeeReferences(text, attendees = []) {
-  const firstNameCorrections = findAttendeeTextCorrections(text, attendees);
-  const surnameCorrections = findAttendeeSurnameCorrections(text, attendees);
+  const source = normaliseFixedPersonAliases(text);
+  const firstNameCorrections = findAttendeeTextCorrections(source, attendees);
+  const surnameCorrections = findAttendeeSurnameCorrections(source, attendees);
   // A surname correction spans two tokens and can overlap a first-name one. The surname
   // fix carries more information, so it wins and the overlapping first-name fix is dropped
   // rather than both being applied to the same span.
@@ -153,8 +180,8 @@ function normaliseAttendeeReferences(text, attendees = []) {
     ...surnameCorrections,
     ...firstNameCorrections.filter((item) => !surnameCorrections.some((other) => item.start < other.end && other.start < item.end))
   ].sort((left, right) => left.start - right.start);
-  if (!corrections.length) return { text: String(text || ''), corrections: [] };
-  let output = String(text || '');
+  if (!corrections.length) return { text: source, corrections: [] };
+  let output = source;
   for (const correction of [...corrections].sort((left, right) => right.start - left.start)) {
     output = `${output.slice(0, correction.start)}${correction.replacement}${output.slice(correction.end)}`;
   }
@@ -166,5 +193,7 @@ module.exports = {
   extractMentionedPeople,
   findAttendeeTextCorrections,
   findAttendeeSurnameCorrections,
+  normaliseFixedPersonAliases,
+  normaliseFixedPersonAliasesDeep,
   normaliseAttendeeReferences
 };

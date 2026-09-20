@@ -4,6 +4,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
 
+test('confirmed person aliases are normalised through every nested minutes field', () => {
+  const result = V.normaliseKnownTermsDeep({
+    sourceUnits: [{ speaker: 'Rebecca Cuckoo', text: 'Rebecca Cuckoo will review it.' }],
+    details: { allAttendees: ['Rebecca Cuckoo'] },
+    discussion: [{ points: [{ text: 'Rebecca Cuckoo owns the review.' }] }],
+    actions: [{ owners: ['Rebecca Cuckoo'], action: 'Send the file to Rebecca Cuckoo.' }],
+    reviewFlags: [{ message: 'Check Rebecca Cuckoo.' }]
+  });
+  assert.doesNotMatch(JSON.stringify(result), /Rebecca\s+Cuckoo/i);
+  assert.equal(result.sourceUnits[0].speaker, 'Rebecca Gill');
+  assert.equal(result.details.allAttendees[0], 'Rebecca Gill');
+  assert.equal(result.actions[0].owners[0], 'Rebecca Gill');
+});
+
 test('timing wording must contain an actual date, target or dependency', () => {
   assert.equal(V.timingWordingHasMeaning({ kind: 'deadline', wording: 'there are some further updates that need to happen to that' }), false);
   assert.equal(V.timingWordingHasMeaning({ kind: 'target', wording: 'trying to get as much as possible done this week' }), true);
