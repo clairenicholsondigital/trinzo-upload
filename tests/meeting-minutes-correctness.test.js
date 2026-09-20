@@ -232,7 +232,7 @@ test('a person who only asks someone else to do the work is not its owner', () =
     { action: 'Complete TF03.', owners: ['Ciaran Ryan'], evidenceIds: ['T0010'] }
   ], units);
   assert.deepEqual(out.actions[0].owners, []);
-  assert.match(out.flags[0].message, /Owner unclear: Jacqui Fox asked someone else/);
+  assert.match(out.flags[0].message, /Owner unclear: the cited evidence does not show Jacqui Fox taking this on/);
   assert.deepEqual(out.actions[1].owners, ['Ciaran Ryan']);
 });
 

@@ -2346,41 +2346,52 @@ function mergeDuplicateCommitments(actions = []) {
 // owner speaks in the passage is addressed to someone else ("could you...",
 // "you'd need to...") and they never commit themselves, and nobody else names
 // them, the owner is removed and flagged. The right owner is not guessed.
-const OWNER_FIRST_PERSON = /\b(?:i|we)(?:'ll| will| can| shall| am going to|'m going to|'m gonna|'d be happy to| could| would need to| need to| have to)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\bi'll\b|\blet me\b/i;
-const OWNER_ADDRESSES_OTHERS = /\b(?:could|can|would|will) you\b|\byou(?:'d| would| will|'ll)? need to\b|\bif you(?:'re| are)?\b|\byou (?:have|want) to\b|\byou should\b|\byou might\b/i;
+const OWNER_FIRST_PERSON = /\b(?:i|we)\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|we'll|i'd|we'd|i'm going to|we're going to|i'm gonna|we're gonna)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
+const OWNER_ACCEPTS = /^\s*(?:yes|yeah|yep|okay|ok|sure|will do|absolutely|of course|perfect|no problem)\b/i;
+function nameParts(value) {
+  return String(value || '').toLowerCase().split(/[^a-zà-öø-ÿ']+/).filter((word) => word.length >= 3);
+}
+
+// An owner is supported when somebody else names them in the cited lines (or
+// one either side), or when they speak there and commit or accept ("I'll ...",
+// "we need to ...", "Okay."). A chair who merely asks or comments is not an
+// owner: run 8 published two actions owned by the chair, and one owned by a
+// person who was not at the meeting.
+function ownerTakesItOn(owner, lines = []) {
+  const names = nameParts(owner);
+  if (!names.length) return true;
+  const mentions = (value) => names.some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
+  const isOwner = (speaker) => nameParts(speaker).some((word) => names.includes(word));
+  for (const line of lines) {
+    const value = String(line?.text || '');
+    if (!isOwner(line?.speaker) && mentions(value)) return true;
+    if (isOwner(line?.speaker) && (OWNER_FIRST_PERSON.test(value) || OWNER_ACCEPTS.test(value))) return true;
+  }
+  return false;
+}
+
 function applyRequesterOwnerRule(actions = [], units = []) {
   const context = evidenceContextFor(units);
   const rows = context.rows;
   const flags = [];
-  const firstName = (value) => String(value || '').trim().split(/\s+/)[0].toLowerCase();
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
     const owners = Array.isArray(action?.owners) ? action.owners : [];
     if (!owners.length) return action;
     const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+    if (!cited.length) return action;
     const window = [...new Set(cited.flatMap((index) => [index - 1, index, index + 1]))]
       .filter((index) => index >= 0 && index < rows.length).sort((a, b) => a - b).map((index) => rows[index]);
-    const doubtful = owners.filter((owner) => {
-      const name = firstName(owner);
-      if (!name) return false;
-      const own = window.filter((unit) => firstName(unit.speaker) === name).map((unit) => String(unit.text || ''));
-      if (!own.length || own.some((line) => OWNER_FIRST_PERSON.test(line))) return false;
-      if (!own.some((line) => OWNER_ADDRESSES_OTHERS.test(line))) return false;
-      const namedByOthers = window.some((unit) => firstName(unit.speaker) !== name
-        && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(String(unit.text || '')));
-      return !namedByOthers;
-    });
-    if (!doubtful.length) return action;
-    const request = window.find((unit) => doubtful.some((owner) => firstName(unit.speaker) === firstName(owner))
-      && OWNER_ADDRESSES_OTHERS.test(String(unit.text || '')));
+    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window));
+    if (!unsupported.length) return action;
     const flag = normaliseFlag({
       kind: 'ownership',
-      message: `Owner unclear: ${doubtful.join(' and ')} asked someone else to do this${request ? ` ("${salientExcerpt(request.text, /./).slice(0, 160)}")` : ''}, so ${doubtful.length > 1 ? 'they were' : 'they were'} removed as owner. Add the person who is doing it.`,
+      message: `Owner unclear: the cited evidence does not show ${unsupported.join(' or ')} taking this on, so it was removed. Add the person who is doing it.`,
       evidenceIds: action.evidenceIds || []
     }, flags.length);
     flags.push(flag);
     return {
       ...action,
-      owners: owners.filter((owner) => !doubtful.includes(owner)),
+      owners: owners.filter((owner) => !unsupported.includes(owner)),
       reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])]
     };
   });
@@ -3269,6 +3280,7 @@ module.exports = {
   supersededCheckItems,
   supersededVerdicts,
   applyRequesterOwnerRule,
+  ownerTakesItOn,
   mergeDuplicateCommitments,
   applyChainedTimingRule,
   answeredCheckEnabled,
