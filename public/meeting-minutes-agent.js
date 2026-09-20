@@ -273,7 +273,8 @@
   function autoGrow(root) {
     (root || document).querySelectorAll('textarea').forEach(function (area) {
       area.style.height = 'auto';
-      area.style.height = Math.max(area.scrollHeight, 52) + 'px';
+      var compact = area.matches('[data-record-field],[data-action],[data-objective-index]');
+      area.style.height = Math.max(area.scrollHeight, compact ? 36 : 52) + 'px';
     });
   }
 
@@ -583,7 +584,7 @@
     var objectives = draft.meetingObjectives || [];
     document.getElementById('objectivesList').innerHTML = objectives.map(function (item, index) {
       var objectiveText = typeof item === 'string' ? item : item.text;
-      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="2" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
+      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
     autoGrow(document.getElementById('objectivesList'));
   }
@@ -659,12 +660,16 @@
     var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
       return (topic[field] || []).map(function (item, itemIndex) { return {field:field,item:item,itemIndex:itemIndex}; });
     });
-    return '<div class="record-section proposition-section"><div class="record-section-head"><details class="record-add-menu"><summary class="secondary compact">Add item</summary><div class="record-add-options"><button class="secondary compact" data-add-record="points" data-topic-index="' + topicIndex + '" type="button">Add discussion</button><button class="secondary compact" data-add-record="decisions" data-topic-index="' + topicIndex + '" type="button">Add decision</button><button class="secondary compact" data-add-record="openQuestions" data-topic-index="' + topicIndex + '" type="button">Add open question</button></div></details></div><div class="record-list proposition-list">' + (rows.map(function (row) {
+    return '<div class="record-section proposition-section"><div class="record-list proposition-list">' + (rows.map(function (row) {
       var label = labels[row.field];
       var targetId = recordDomId('discussion', row.item.id, topicIndex + '-' + row.field + '-' + row.itemIndex);
       var actions = (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button>';
-      return '<div id="' + escapeHtml(targetId) + '" class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + recordMenu(row.item, actions) + '</div>';
+      return '<div id="' + escapeHtml(targetId) + '" class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea rows="1" data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + recordMenu(row.item, actions) + '</div>';
     }).join('') || '<p class="muted record-empty">No meeting content recorded.</p>') + '</div>' + topicSupportingDetails(topic, topicIndex) + '</div>';
+  }
+
+  function recordAddMenu(topicIndex) {
+    return '<details class="record-add-menu"><summary class="secondary compact">Add item</summary><div class="record-add-options"><button class="secondary compact" data-add-record="points" data-topic-index="' + topicIndex + '" type="button">Add discussion</button><button class="secondary compact" data-add-record="decisions" data-topic-index="' + topicIndex + '" type="button">Add decision</button><button class="secondary compact" data-add-record="openQuestions" data-topic-index="' + topicIndex + '" type="button">Add open question</button></div></details>';
   }
 
   function renderDiscussion() {
@@ -674,7 +679,7 @@
     }
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
-      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic" placeholder="Topic"></label><details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div>' + discussionPropositions(topic, index) + '</article>';
+      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic" placeholder="Topic"></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div>' + discussionPropositions(topic, index) + '</article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
   }
@@ -789,12 +794,12 @@
           ? 'These saved actions remain visible while a refreshed version is prepared.'
           : 'Possible actions will appear here as soon as the evidence check finishes.';
       var readOnlyRows = function (items, className) { return items.map(function (item) {
-        return '<tr class="preview-action-row ' + className + '"><td data-label="Action"><div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingText(item.timing)) + '</div></td></tr>';
+        return '<tr class="preview-action-row ' + className + '"><td data-label="Action"><div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingDisplayText(item.timing)) + '</div></td><td aria-hidden="true"></td></tr>';
       }).join(''); };
       var sections = '';
-      if (preview.length) sections += '<tr class="generation-section-row"><th colspan="3">Evidence-checked preview</th></tr>' + readOnlyRows(preview, 'preview-current');
-      if (prior.length) sections += '<tr class="generation-section-row saved-actions-heading"><th colspan="3">Previously saved actions</th></tr>' + readOnlyRows(prior, 'preview-saved');
-      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + sections;
+      if (preview.length) sections += '<tr class="generation-section-row"><th colspan="4">Evidence-checked preview</th></tr>' + readOnlyRows(preview, 'preview-current');
+      if (prior.length) sections += '<tr class="generation-section-row saved-actions-heading"><th colspan="4">Previously saved actions</th></tr>' + readOnlyRows(prior, 'preview-saved');
+      document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="4"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + sections;
       return;
     }
     var actions = (state.draft && state.draft.actions) || [];
@@ -802,8 +807,8 @@
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
       var targetId = recordDomId('action', item.id, index);
       var editing = actionEditorState.editingId === String(item.id || targetId);
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (editing ? ' is-editing' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><textarea data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove</button></div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing"><div class="timing-summary">' + escapeHtml(timingText(timing)) + '</div>' + timingEditor(timing, index) + '<button class="secondary compact action-edit" data-edit-action="' + index + '" type="button">' + (editing ? 'Done' : 'Edit') + '</button></td></tr>';
-    }).join('') || '<tr><td colspan="3" class="muted">No actions have been generated.</td></tr>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (editing ? ' is-editing' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove</button></div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing"><div class="timing-summary">' + escapeHtml(timingDisplayText(timing)) + '</div>' + timingEditor(timing, index) + '</td><td class="row-action-cell"><button class="secondary quiet action-edit" data-edit-action="' + index + '" type="button" aria-label="' + (editing ? 'Finish editing action ' : 'Edit action ') + (index + 1) + '">' + (editing ? 'Done' : 'Edit') + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="4" class="muted">No actions have been generated.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
   }
 
@@ -1027,6 +1032,10 @@
     if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'Not stated';
     var prefix = timing.kind === 'target' ? 'Target: ' : (timing.kind === 'dependency' ? 'Dependent on: ' : 'Deadline: ');
     return prefix + (timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording);
+  }
+
+  function timingDisplayText(timing) {
+    return timingText(timing) === 'Not stated' ? '—' : timingText(timing);
   }
 
   function renderFinal() {

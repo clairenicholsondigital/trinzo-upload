@@ -101,6 +101,11 @@ function startStubServer() {
     }]
   };
   drafts.set('proposals', proposals);
+  const layout = baseDraft('layout', false);
+  layout.currentStep = 4;
+  layout.selectedStep = 4;
+  layout.meetingObjectives = [{ id: 'objective-1', text: 'Rehearse presenter transitions and webinar delivery flow before the live session.' }];
+  drafts.set('layout', layout);
   const actionsCompleting = baseDraft('actions-completing', true);
   actionsCompleting.selectedStep = 2;
   actionsCompleting.staleStages = ['actions'];
@@ -620,6 +625,51 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     assert.equal(await page.locator('.proposal-content').isVisible(), true);
     await page.uncheck('[data-proposal-change]');
     assert.equal(await page.locator('#acceptSelectedProposal').isDisabled(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('dense layouts give writing space to content rather than repeated controls', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'layout');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const objectiveLayout = await page.evaluate(() => {
+      const list = document.getElementById('objectivesList').getBoundingClientRect();
+      const editor = document.querySelector('[data-objective-index]').getBoundingClientRect();
+      return { listWidth: list.width, editorWidth: editor.width, editorHeight: editor.height };
+    });
+    assert.ok(objectiveLayout.editorWidth > objectiveLayout.listWidth * 0.8, JSON.stringify(objectiveLayout));
+    assert.ok(objectiveLayout.editorHeight < 80, JSON.stringify(objectiveLayout));
+
+    await page.click('[data-step="3"]');
+    const actionLayout = await page.evaluate(() => {
+      const headers = Array.from(document.querySelectorAll('.editable-actions-table th')).map((node) => node.getBoundingClientRect().width);
+      const row = document.querySelector('[data-action-row="0"]');
+      return {
+        headers,
+        timing: row.querySelector('.timing-summary').textContent.trim(),
+        editInUtilityCell: row.querySelector('[data-edit-action]').closest('td').classList.contains('row-action-cell')
+      };
+    });
+    assert.ok(actionLayout.headers[0] > actionLayout.headers[1] * 3, JSON.stringify(actionLayout));
+    assert.ok(actionLayout.headers[3] < 70, JSON.stringify(actionLayout));
+    assert.equal(actionLayout.timing, '—');
+    assert.equal(actionLayout.editInUtilityCell, true);
+    assert.equal(await page.locator('[data-screen="3"] .toolbar .agent-edit-inline').count(), 1);
+    await page.click('[data-screen="3"] .agent-edit-inline>summary');
+    assert.equal(await page.locator('[data-screen="3"] .agent-edit-body').isVisible(), true);
+    await page.click('[data-screen="3"] .agent-edit-inline>summary');
+
+    await page.click('[data-step="2"]');
+    assert.equal(await page.locator('.discussion-card .card-head .record-add-menu').count(), 1);
+    assert.ok(await page.locator('.proposition-row').first().evaluate((node) => node.getBoundingClientRect().height < 60));
+    assert.ok(await page.locator('.review-flags-summary').evaluate((node) => node.getBoundingClientRect().width < 260));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
