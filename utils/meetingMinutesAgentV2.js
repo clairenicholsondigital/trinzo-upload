@@ -1011,6 +1011,14 @@ function isIdeaOnlyContemplation(value) {
   return !/\b(?:analysis|assessment|decision|document|draft|plan|recommendation|report|specification|test results?|written proposal)\b/.test(action);
 }
 
+function cleanActionWording(value = '') {
+  const source = text(value, 1600);
+  // Remove tautological scaffolding while retaining every deliverable:
+  // "Implement a system to implement X and add Y" ->
+  // "Implement a system for X and add Y".
+  return source.replace(/^(Implement\s+(?:an?|the)\s+[^.;]{1,100}?)\s+to implement\s+(.+)$/i, '$1 for $2');
+}
+
 const ACTION_COMMITMENT_PATTERN = /\b(?:i|we)\s*(?:'ll|will|shall|can do|am going to|are going to)|\b(?:he|she|they)\s+(?:will|shall)|\b(?:agreed|committed|assigned|action(?:\s+for)?|need(?:s)? to|must|shall|is to|are to|due to)\b/i;
 const ACTION_CONCRETE_INTENTION_PATTERN = /\b(?:(?:i|we)\s+(?:want|intend|plan|expect)\s+to|what\s+(?:i|we)\s+want\s+to\s+do\s+is(?:\s+to)?)\s+(?:arrange|assess|book|build|check|clarify|complete|confirm|contact|create|decide|define|determine|document|draft|email|establish|finalise|finalize|fix|forward|investigate|issue|message|prepare|provide|record|resolve|review|run|schedule|send|share|submit|take|test|track|update|validate|verify|write)\b/i;
 const ACTION_JOINT_INTENTION_PATTERN = /\b(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s+and\s+I|I\s+and\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,})\s+(?:am\s+|are\s+)?going\s+to\s+(?:arrange|assess|book|build|check|clarify|complete|confirm|contact|create|decide|define|determine|document|draft|email|establish|finalise|finalize|fix|forward|investigate|issue|message|prepare|provide|record|resolve|review|run|schedule|send|share|submit|take|test|track|update|validate|verify|write)\b/i;
@@ -2421,11 +2429,71 @@ function timingOnlyInFirstCitedLine(action, units = []) {
   return lastSaid >= 0 && lastSaid < cited.length - 1 && !cited.slice(lastSaid + 1).some(said) ? cited[lastSaid] : '';
 }
 
+function timingAttachedToEarlierStep(action = {}, units = []) {
+  const wording = text(action?.timing?.wording, 220).toLowerCase();
+  if (!wording || !/^(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/.test(wording)) return '';
+  const context = evidenceContextFor(units);
+  const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  for (const index of cited) {
+    const line = String(context.rows[index]?.text || '');
+    const lower = line.toLowerCase();
+    const at = lower.indexOf(wording.replace(/^on\s+/, ''));
+    if (at < 0) continue;
+    const before = line.slice(0, at);
+    const after = line.slice(at + wording.replace(/^on\s+/, '').length);
+    const priorStep = /\b(?:had|was|were|did|made|review(?:ed)?|met|discussed|spoke|call)\b/i.test(before);
+    const laterWork = /\b(?:and|but|then)\b[\s\S]{0,180}\b(?:need(?:s)? to|must|will|remain(?:s|ing)?|further|additional|outstanding|update(?:s|d|ing)?)\b/i.test(after);
+    if (priorStep && laterWork && tokenOverlap(action.action, after) >= 0.25) return line;
+  }
+  return '';
+}
+
+function timingReportedForDifferentActor(action = {}, units = []) {
+  const wording = text(action?.timing?.wording, 220).toLowerCase();
+  const spokenWording = wording.replace(/^(?:within|in|by)\s+/, '');
+  const owners = (action?.owners || []).map((owner) => nameParts(owner));
+  if (!wording || !owners.length) return '';
+  const ownerIsSpeaker = (speaker) => {
+    const speakerParts = nameParts(speaker);
+    return owners.some((parts) => parts.some((part) => speakerParts.includes(part)));
+  };
+  for (const row of evidenceWindowUnits(units, action.evidenceIds || [], 1, 2)) {
+    const line = String(row?.text || '');
+    if (!(line.toLowerCase().includes(wording) || line.toLowerCase().includes(spokenWording))
+      || !ownerIsSpeaker(row?.speaker)) continue;
+    // If the supposed owner explicitly attributes the estimate to he/she/they,
+    // it cannot establish that owner's deadline. Keep the work, clear only the
+    // timing, and send the attribution to review.
+    if (/\b(?:he|she|they)\s+(?:said|says|thought|thinks|expect(?:s|ed)?|estimate(?:s|d)?|reckon(?:s|ed)?)\b/i.test(line)) return line;
+  }
+  return '';
+}
+
 function applyChainedTimingRule(actions = [], units = []) {
   const flags = [];
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
     const wording = text(action?.timing?.wording, 220).toLowerCase();
     if (!action?.timing || action.timing.kind === 'not_stated' || !wording) return action;
+    const earlierStep = timingAttachedToEarlierStep(action, units);
+    if (earlierStep) {
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: `"${text(action.timing.wording, 120)}" described an earlier step in the cited sentence, not this follow-up, so it is not shown as the deadline.`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    }
+    const reportedForAnother = timingReportedForDifferentActor(action, units);
+    if (reportedForAnother) {
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: `"${text(action.timing.wording, 120)}" was reported by the proposed owner as another person's estimate, so it is not shown as this owner's deadline.`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    }
     const statement = text(action.action, 1600);
     const marker = statement.match(CHAIN_STEP_MARKER) || statement.match(/,\s+(?:load|download|upload|send|share|submit|return|insert|point|forward)\b/i);
     if (!marker || marker.index < 8) return action;
@@ -2461,6 +2529,9 @@ const DUPLICATE_STOP = new Set(['with', 'that', 'this', 'then', 'from', 'into', 
 function duplicateWords(value) {
   return new Set((String(value || '').toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []).filter((word) => !DUPLICATE_STOP.has(word)));
 }
+function schedulingCommitment(value = '') {
+  return /\b(?:schedule|scheduling|arrange|arranging|book|booking|set up|put)\b[^.]{0,100}\b(?:call|meeting|session|catch[- ]?up|review)\b/i.test(String(value || ''));
+}
 function sameCommitment(left = {}, right = {}) {
   const owners = (record) => (record.owners || []).map((owner) => String(owner).toLowerCase().trim()).sort().join('|');
   // An owner-less copy of an owned commitment is still the same commitment.
@@ -2469,6 +2540,13 @@ function sameCommitment(left = {}, right = {}) {
   const leftIds = new Set(left.evidenceIds || []);
   const rightIds = [...new Set(right.evidenceIds || [])];
   const shared = rightIds.filter((id) => leftIds.has(id)).length;
+  // Referee variants of one scheduled event often retain only the single line
+  // where the call was agreed, so requiring two shared citations preserves a
+  // duplicate. One shared citation plus the same stated timing is sufficient
+  // only for explicit scheduling-shaped actions.
+  const timing = (record) => comparisonText(record?.timing?.wording || '').replace(/[^a-z0-9 ]/g, '').trim();
+  if (shared >= 1 && schedulingCommitment(left.action) && schedulingCommitment(right.action)
+    && timing(left) && timing(left) === timing(right)) return true;
   if (shared < 2 || shared / Math.min(leftIds.size, rightIds.length) < 0.66) return false;
   const a = duplicateWords(left.action); const b = duplicateWords(right.action);
   let common = 0; for (const word of a) if (b.has(word)) common += 1;
@@ -2502,7 +2580,7 @@ function mergeDuplicateCommitments(actions = []) {
 // owner speaks in the passage is addressed to someone else ("could you...",
 // "you'd need to...") and they never commit themselves, and nobody else names
 // them, the owner is removed and flagged. The right owner is not guessed.
-const OWNER_FIRST_PERSON = /\b(?:i|we)\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|we'll|i'd|we'd|i'm going to|we're going to|i'm gonna|we're gonna)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
+const OWNER_FIRST_PERSON = /\b(?:i|we)\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|we'll|i'd|we'd|i'm going to|we're going to|i'm gonna|we're gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
 const OWNER_ACCEPTS = /^\s*(?:yes|yeah|yep|okay|ok|sure|will do|absolutely|of course|perfect|no problem)\b/i;
 function nameParts(value) {
   return String(value || '').toLowerCase().split(/[^a-zà-öø-ÿ']+/).filter((word) => word.length >= 3);
@@ -2523,7 +2601,8 @@ const MEETING_WORK_WORDS = new Set([
   'week', 'weeks', 'month', 'next', 'some', 'need', 'needs', 'make', 'take', 'look', 'send',
   'give', 'kind', 'step', 'down', 'through', 'each', 'then', 'here', 'has', 'had', 'will',
   'should', 'well', 'back', 'good', 'okay', 'yeah', 'know', 'think', 'going', 'gonna', 'want',
-  'done', 'doing', 'start', 'first', 'second'
+  'done', 'doing', 'start', 'first', 'second', 'review', 'reviewing', 'confirm', 'confirming',
+  'ensure', 'ensuring'
 ]);
 
 function actionSubjectWords(value) {
@@ -2560,7 +2639,9 @@ function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
     const value = String(line?.text || '');
     if (!isOwner(line?.speaker) && mentions(value)) return true;
     if (!isOwner(line?.speaker)) continue;
-    if (!OWNER_FIRST_PERSON.test(value) && !OWNER_ACCEPTS.test(value)) continue;
+    const firstPerson = OWNER_FIRST_PERSON.test(value);
+    const accepts = OWNER_ACCEPTS.test(value);
+    if (!firstPerson && !accepts) continue;
     // The preparer splits speech into sentences, so "That document, but I'm
     // gonna..." and "focus on TFO3 this week." arrive as two lines and the
     // subject sits in the second. Only an unfinished line runs on into the next
@@ -2572,6 +2653,15 @@ function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
     const utterance = [line];
     if (runsOn(line) && sameSpeaker(lines[index + 1])) utterance.push(lines[index + 1]);
     if (sameSpeaker(lines[index - 1]) && runsOn(lines[index - 1])) utterance.unshift(lines[index - 1]);
+    // A bare "yes/okay" proves ownership only when it answers a nearby request
+    // about this work. Previously any acknowledgement in a disconnected cited
+    // line could make that speaker the owner of an unrelated action.
+    if (accepts && !firstPerson) {
+      const requestContext = [lines[index - 2], lines[index - 1]].filter(Boolean)
+        .map((row) => String(row.text || '')).join(' ');
+      if (!commitmentIsAboutAction(requestContext, actionText)) continue;
+      return true;
+    }
     if (!contested) return true;
     if (commitmentIsAboutAction(utterance.map((row) => String(row.text || '')).join(' '), actionText)) return true;
   }
@@ -2787,6 +2877,54 @@ function isSocialAside(action = {}, units = []) {
   const frequency = new Map();
   for (const row of rows) for (const word of new Set(contentTokens(row.text))) frequency.set(word, (frequency.get(word) || 0) + 1);
   return subject.every((word) => (frequency.get(word) || 0) <= 1);
+}
+
+// A contact-only sentence in the closing pleasantries ("speak to you next
+// week", "see you soon") is a farewell, not a follow-up. The rule requires all
+// three signals: a short/vague contact action, evidence in the final portion of
+// the meeting, and nearby thanks/goodbye language. A substantive contact task
+// ("speak to Alex about the risk register") is deliberately excluded.
+const FAREWELL_CONTACT_ACTION = /^(?:speak|talk|catch up|connect|meet|see)\s+(?:(?:to|with)\s+)?(?:[A-Z][\p{L}'’.-]*(?:\s+[A-Z][\p{L}'’.-]*)?|you|everyone|the team)(?:\s+(?:again|next week|later|soon|tomorrow|this week))?\.?$/iu;
+const CLOSING_PLEASANTRY = /\b(?:thank(?:s| you)|bye|goodbye|good night|brilliant stuff|appreciate your help|talk to you|speak to you|see you|have a good|take care)\b/i;
+function isFarewellAction(action = {}, units = []) {
+  const wording = text(action?.action, 600);
+  if (!FAREWELL_CONTACT_ACTION.test(wording) || /\b(?:about|regarding|concerning|to (?:review|send|confirm|decide|resolve|check|prepare|update))\b/i.test(wording)) return false;
+  const context = evidenceContextFor(units);
+  if (context.rows.length < 12) return false;
+  const cited = [...new Set(action?.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  if (!cited.length || Math.min(...cited) / context.rows.length < 0.85) return false;
+  const nearby = [...new Set(cited.flatMap((index) => [index - 2, index - 1, index, index + 1, index + 2]))]
+    .filter((index) => index >= 0 && index < context.rows.length).map((index) => context.rows[index].text).join(' ');
+  return CLOSING_PLEASANTRY.test(nearby);
+}
+
+// "I'll try to get as much as I can done" supports progress, not a promise to
+// complete. Preserve the task and its target, but soften a completion verb when
+// all cited commitment language is explicitly best-efforts and no cited line
+// commits to finishing it.
+const BEST_EFFORT_PROGRESS = /\b(?:try(?:ing)? to|get as much as (?:i|we) can|as much as (?:is )?possible|make as much progress|progress as far as|see how (?:i|we) get on)\b/i;
+const EXPLICIT_COMPLETION = /\b(?:(?:i|we)(?:'ll| will| shall| must| need to| have to)\s+(?:complete|finish|finali[sz]e)|(?:complete|finish|finali[sz]e)(?:d)?\s+by)\b/i;
+function softenBestEffortCompletion(actions = [], units = []) {
+  const flags = [];
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    if (!/^(?:complete|finish|finali[sz]e)\b/i.test(text(action?.action, 1600))) return action;
+    const passageUnits = evidenceWindowUnits(units, action.evidenceIds || [], 1, 2);
+    const passage = passageUnits.map((unit) => unit.text).join(' ');
+    const citedIds = new Set(action.evidenceIds || []);
+    const relevantBestEffort = passageUnits.some((unit) => citedIds.has(unit.id)
+      && BEST_EFFORT_PROGRESS.test(unit.text));
+    if (!relevantBestEffort || EXPLICIT_COMPLETION.test(passage)) return action;
+    const original = text(action.action, 1600);
+    const softened = original.replace(/^(?:complete|finish|finali[sz]e)\b/i, 'Progress');
+    const flag = normaliseFlag({
+      kind: 'uncertain_fact',
+      message: `Action wording changed from "${original}" to "${softened}" because the cited commitment promises best-efforts progress, not completion.`,
+      evidenceIds: action.evidenceIds || []
+    }, flags.length);
+    flags.push(flag);
+    return { ...action, action: softened, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+  });
+  return { actions: checked, flags };
 }
 
 // ---- Usual practice is not an action ------------------------------------------
@@ -3020,11 +3158,95 @@ function applyDecisionCheckResults(discussion = [], items = [], results = []) {
   return { discussion: checked, demoted, checked: items.length };
 }
 
+// ---- Discussion evidence fidelity ----------------------------------------
+// A row can cite the right passage while reversing a count, condition, cause,
+// responsibility or milestone during compression. Check only higher-risk
+// shapes and accept a correction only when both the generated problem and the
+// correcting transcript words are quoted verbatim.
+const DISCUSSION_FIDELITY_RISK = /\d|;|\b(?:if|unless|whether|before|after|then|because|due to|result(?:s|ed)? in|inform(?:ed|s)|depend(?:s|ed|ent)?|aim(?:s|ed|ing)?|target|rollout|on track|tight on time|complete(?:d|ion)?|submission|items?|responsib(?:le|ility)|require(?:d|ment|s)?|must|expected|plan(?:ned)?|working|progress(?:ing|ed)?|minor|major|more substantial|less|more|increase|decrease)\b/i;
+function discussionFidelityCheckItems(discussion = [], units = []) {
+  const items = [];
+  (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    for (const kind of ['points', 'decisions']) {
+      (topic?.[kind] || []).forEach((record, rowIndex) => {
+        const row = text(record?.text, 1000);
+        if (!row || !DISCUSSION_FIDELITY_RISK.test(row)) return;
+        const passageUnits = evidenceWindowUnits(units, record.evidenceIds || [], 2, 10).slice(0, 32);
+        if (!passageUnits.length) return;
+        items.push({
+          id: `df${items.length + 1}`, topicIndex, kind, rowIndex, row,
+          passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n')
+        });
+      });
+    }
+  });
+  return items.slice(0, 48);
+}
+
+function discussionFidelityCheckPrompt(items = []) {
+  return [
+    'DISCUSSION_CRITIC_EVIDENCE_FIDELITY',
+    'Each item contains a proposed meeting-minutes sentence and its nearby transcript passage. The passage is the only authority. Check fidelity to what participants said; do not supply outside-domain knowledge.',
+    'Look for changed counts, reversed cause/responsibility/direction, a condition rewritten as a requirement, a planning milestone rewritten as completion or rollout, hopes rewritten as commitments, past work rewritten as future work, unsupported certainty, unexplained transcript shorthand, and compressed note fragments that are not clear client-ready sentences.',
+    'Choose "supported", "corrected", or "uncertain". Use "corrected" only when one accurate, complete, client-ready replacement sentence can be written from the passage. Use "uncertain" when the row appears wrong but the passage does not support a safe replacement.',
+    'For "corrected", provide problemQuote copied exactly from the proposed row, evidenceQuote copied exactly from the transcript passage, and correctedText. Preserve qualifications and sequence; never merge different people or workstreams.',
+    'For "uncertain", provide problemQuote and evidenceQuote where possible. Quotes must be contiguous and at most 25 words. If unsure whether meaning changed, choose "supported".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","problemQuote":"","evidenceQuote":"","correctedText":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+function applyDiscussionFidelityResults(discussion = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const replacements = new Map();
+  const warnings = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || !['corrected', 'uncertain'].includes(row.verdict)) continue;
+    if (!decisionQuoteFound(row.problemQuote, item.row, 25) || !decisionQuoteFound(row.evidenceQuote, item.passage, 25)) continue;
+    const key = `${item.topicIndex}|${item.kind}|${item.rowIndex}`;
+    if (row.verdict === 'uncertain') { warnings.set(key, row); continue; }
+    const correctedText = text(row.correctedText, 1000);
+    if (!correctedText || /\.\.\.|\w\.[A-Z]/.test(correctedText)) continue;
+    if (evidenceSupportScore(correctedText, item.passage) < 0.42) continue;
+    replacements.set(key, { ...row, correctedText });
+  }
+  const flags = [];
+  let corrected = 0;
+  let uncertain = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions']) {
+      next[kind] = (topic?.[kind] || []).map((record, rowIndex) => {
+        const key = `${topicIndex}|${kind}|${rowIndex}`;
+        const replacement = replacements.get(key);
+        const warning = warnings.get(key);
+        if (!replacement && !warning) return record;
+        const result = replacement || warning;
+        const flag = normaliseFlag({
+          kind: 'uncertain_fact',
+          message: replacement
+            ? `Wording corrected against the cited passage: "${text(result.problemQuote, 180)}" → "${replacement.correctedText}".`
+            : `Check this sentence against the cited passage: ${text(result.reason, 260) || 'the wording may change the meaning.'}`,
+          evidenceIds: record.evidenceIds || []
+        }, flags.length);
+        flags.push(flag);
+        if (replacement) corrected += 1; else uncertain += 1;
+        return replacement
+          ? { ...record, text: replacement.correctedText, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] }
+          : { ...record, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] };
+      });
+    }
+    return next;
+  });
+  return { discussion: checked, flags, checked: items.length, corrected, uncertain };
+}
+
 const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'meeting_admin', 'unaccepted_request']);
 
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
-    const action = text(item?.action, 1600);
+    const action = cleanActionWording(item?.action);
     if (!action || isIdeaOnlyContemplation(action)) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
@@ -3583,6 +3805,7 @@ module.exports = {
   buildProposal,
   applyProposal,
   isIdeaOnlyContemplation,
+  cleanActionWording,
   normaliseKnownTerms,
   normaliseColloquialTimes,
   normaliseKnownTermsDeep,
@@ -3621,6 +3844,8 @@ module.exports = {
   describesUsualPractice,
   isNotAnAction,
   isSocialAside,
+  isFarewellAction,
+  softenBestEffortCompletion,
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
@@ -3631,6 +3856,8 @@ module.exports = {
   groundRowAttributions,
   mergeDuplicateCommitments,
   applyChainedTimingRule,
+  timingAttachedToEarlierStep,
+  timingReportedForDifferentActor,
   answeredCheckEnabled,
   answeredCheckItems,
   answeredCheckPrompt,
@@ -3653,6 +3880,9 @@ module.exports = {
   decisionCheckPrompt,
   decisionQuoteFound,
   applyDecisionCheckResults,
+  discussionFidelityCheckItems,
+  discussionFidelityCheckPrompt,
+  applyDiscussionFidelityResults,
   timingCheckItems,
   timingCheckPrompt,
   applyTimingCheckResults,

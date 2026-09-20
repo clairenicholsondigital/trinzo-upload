@@ -198,6 +198,9 @@ const {
   decisionCheckItems,
   decisionCheckPrompt,
   applyDecisionCheckResults,
+  discussionFidelityCheckItems,
+  discussionFidelityCheckPrompt,
+  applyDiscussionFidelityResults,
   reconcileRecordFlags,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   commitmentCheckItems,
@@ -224,6 +227,8 @@ const {
   describesUsualPractice,
   isNotAnAction,
   isSocialAside,
+  isFarewellAction,
+  softenBestEffortCompletion,
   discussionActionCandidates,
   supersededCheckItems,
   supersededVerdicts,
@@ -10880,8 +10885,13 @@ function hybridActionsEquivalent(left = '', right = '') {
 
 function isVagueReconstructedAction(value = '') {
   const source = meetingMinutesAgentText(value, 500).toLowerCase().replace(/[.?!]+$/, '').trim();
+  const vagueReferences = [
+    /\bfollow up\b/, /\bwhat can be done\b/, /\b(?:the|this|that) plan\b/,
+    /\bbetter picture\b/, /\b(?:crossover|overlap)\b/, /\bregarding (?:it|this|that)\b/
+  ].filter((pattern) => pattern.test(source)).length;
   return /^(?:plan|address|handle|manage|resolve|sort out|deal with)\s+(?:the\s+)?(?:timeline|situation|issue|matter|arrangements?|logistics?|availability|constraint)(?:\s+(?:around|regarding|for)\s+(?:the\s+)?(?:recorded\s+)?(?:availability\s+)?constraint)?$/.test(source)
-    || /^(?:ensure|make sure)\s+(?:that\s+)?(?:everything|things|items)\s+(?:is|are)\s+(?:ready|in place)$/.test(source);
+    || /^(?:ensure|make sure)\s+(?:that\s+)?(?:everything|things|items)\s+(?:is|are)\s+(?:ready|in place)$/.test(source)
+    || vagueReferences >= 3;
 }
 
 function isReviewableActionProposal(record = {}, sourceUnits = []) {
@@ -13127,6 +13137,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     }
     let supersededContextFlags = [];
     let attributionFlags = [];
+    let fidelityFlags = [];
     if (correctnessChecksEnabled()) {
       // Rows citing an assumption and its correction are rare; those that do
       // not carry the correction's content leave the primary rows.
@@ -13181,9 +13192,25 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       console.log(JSON.stringify({ event: 'meeting_agent_decision_check', journeyId: draft.draftId, checked: decisionChecked.checked, demoted: decisionChecked.demoted }));
       finalDiscussion = decisionChecked.discussion;
     }
+    if (correctnessChecksEnabled()) {
+      const fidelityItems = discussionFidelityCheckItems(finalDiscussion, draft.sourceUnits);
+      const fidelityBatches = [];
+      for (let index = 0; index < fidelityItems.length; index += 8) fidelityBatches.push(fidelityItems.slice(index, index + 8));
+      const fidelityResults = (await Promise.all(fidelityBatches.map((batch, index) => call(
+        `critic-discussion-fidelity-${index + 1}`, discussionFidelityCheckPrompt(batch),
+        { optional: true, responseKind: 'correction_check', maxAttempts: 2, candidateCount: batch.length }
+      )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+      const fidelityChecked = applyDiscussionFidelityResults(finalDiscussion, fidelityItems, fidelityResults);
+      finalDiscussion = fidelityChecked.discussion;
+      fidelityFlags = fidelityChecked.flags;
+      console.log(JSON.stringify({
+        event: 'meeting_agent_discussion_fidelity', journeyId: draft.draftId,
+        checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain
+      }));
+    }
     // Rows are rebuilt by several steps that keep the rows but not the flags
     // those steps raised; recover what the rows point at, drop dead references.
-    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags], isUsefulMeetingAgentReviewFlag);
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
@@ -13514,7 +13541,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits);
     const deduped = mergeDuplicateCommitments(chained.actions);
     const ownersChecked = applyRequesterOwnerRule(deduped.actions, draft.sourceUnits);
-    timingChecked = { actions: ownersChecked.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags] };
+    const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
+    timingChecked = { actions: softened.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags, ...softened.flags] };
   }
   let answeredInMeetingCount = 0;
   let completedDuringMeetingCount = 0;
@@ -13537,6 +13565,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       for (const item of answered.answered) {
         proposal.changes.push({
           id: `change-answered-${crypto.createHash('sha1').update(item.action.action || '').digest('hex').slice(0, 10)}`,
+          selected: false,
           type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
           beforeIndex: at, afterIndex: null, index: at,
           reviewContext: {
@@ -13562,6 +13591,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       for (const item of completed.completed) {
         proposal.changes.push({
           id: `change-completed-live-${crypto.createHash('sha1').update(item.action.action || '').digest('hex').slice(0, 10)}`,
+          selected: false,
           type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
           beforeIndex: at, afterIndex: null, index: at,
           reviewContext: {
@@ -13582,6 +13612,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !notActions.includes(action)) };
       console.log(JSON.stringify({ event: 'meeting_agent_not_actions', journeyId: draft.draftId, removed: notActions.length }));
     }
+    const farewells = timingChecked.actions.filter((action) => isFarewellAction(action, draft.sourceUnits));
+    if (farewells.length) {
+      timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !farewells.includes(action)) };
+      console.log(JSON.stringify({ event: 'meeting_agent_farewell_actions', journeyId: draft.draftId, removed: farewells.length }));
+    }
     // A commitment in the goodbyes about something the meeting never otherwise
     // discusses - "Book a holiday." - is offered, not published. The signal is
     // statistical, so a genuine late commitment costs the reviewer one click
@@ -13593,6 +13628,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       for (const action of asides) {
         proposal.changes.push({
           id: `change-aside-${crypto.createHash('sha1').update(action.action || '').digest('hex').slice(0, 10)}`,
+          selected: false,
           type: 'add', before: null, after: { ...action, reviewFlagIds: [] },
           beforeIndex: at, afterIndex: null, index: at,
           reviewContext: {
@@ -13612,6 +13648,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       for (const action of practice) {
         proposal.changes.push({
           id: `change-practice-${crypto.createHash('sha1').update(action.action || '').digest('hex').slice(0, 10)}`,
+          selected: false,
           type: 'add', before: null, after: { ...action, reviewFlagIds: [] },
           beforeIndex: at, afterIndex: null, index: at,
           reviewContext: {
