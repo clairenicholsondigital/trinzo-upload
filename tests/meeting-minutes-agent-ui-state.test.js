@@ -91,6 +91,16 @@ function startStubServer() {
   prewarming.selectedStep = 2;
   prewarming.actionsPrewarm = { status: 'preparing', startedAt: '2026-09-16T12:00:02.000Z', completedAt: '' };
   drafts.set('prewarming', prewarming);
+  const proposals = baseDraft('proposals', false);
+  proposals.pendingProposal = {
+    stage: 'actions',
+    changes: [{
+      id: 'proposal-1', type: 'add', before: null,
+      after: { id: 'action-2', action: 'Confirm access to the audit folder.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' } },
+      reviewContext: { reason: 'The owner still needs confirming.', label: 'agreed, then committed', evidenceIds: ['T0001'] }
+    }]
+  };
+  drafts.set('proposals', proposals);
   const actionsCompleting = baseDraft('actions-completing', true);
   actionsCompleting.selectedStep = 2;
   actionsCompleting.staleStages = ['actions'];
@@ -217,6 +227,7 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
     assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'resume link stays hidden after an autosave while an unfinished row exists');
 
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-action]');
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const customOwner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
     await customOwner.fill('Jordan Lee');
@@ -252,14 +263,15 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     const { page, errors } = launched;
 
     assert.match(await page.textContent('#actionsBody'), /evidence-checked report/i);
-    assert.match(await page.textContent('#actionsBody'), /final missed-action checks continue/i);
+    assert.match(await page.textContent('#actionsBody'), /final quality checks continue/i);
     assert.equal(await page.locator('#actionsBody textarea').count(), 0, 'preview remains read-only');
     assert.equal(await page.locator('#generationProgress').isVisible(), true);
-    assert.match(await page.textContent('#generationPhases'), /Find possible actions.*Final missed-action check/s);
+    assert.match(await page.textContent('#generationPhases'), /Find possible actions.*Finish the draft/s);
     assert.equal(await page.locator('.generation-phase.done').count(), 3);
     assert.equal(await page.locator('.generation-phase.active').count(), 1);
     for (const selector of ['#addAction', '#applyActionsEdit', '#auditActions', '#toSummary']) {
-      assert.equal(await page.locator(selector).isDisabled(), true, `${selector} is disabled while actions run`);
+      const control = page.locator(selector);
+      assert.equal((await control.isHidden()) || (await control.isDisabled()), true, `${selector} is unavailable while actions run`);
     }
     assert.equal(await page.locator('#addDiscussion').isDisabled(), false, 'safe Discussion additions remain available');
     assert.match(await page.textContent('#saveStatus'), /Everything is saved.*leave and resume later/i);
@@ -268,7 +280,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     assert.match(await page.textContent('#actionsBody'), /Send the revised report/i);
 
     await page.waitForFunction(() => document.getElementById('workflowStatus').dataset.stage === 'actions');
-    assert.equal(await page.locator('#workflowStatus').isVisible(), true);
+    assert.equal(await page.locator('#workflowStatus').isHidden(), true, 'the progress panel replaces duplicate stage status');
     await page.click('[data-step="2"]');
     assert.equal(await page.locator('#workflowStatus').isHidden(), true);
     assert.equal(await page.locator('#generationProgress').isVisible(), true, 'generation progress remains visible across stages');
@@ -385,6 +397,7 @@ test('unfinished topics and discussion rows survive autosave responses while exp
     cards = page.locator('#discussionList .discussion-card');
     assert.equal(await cards.last().locator('[data-topic]').inputValue(), 'New topic in progress');
 
+    await cards.last().locator('.record-add-menu>summary').click();
     await cards.last().locator('[data-add-record="points"]').click();
     cards = page.locator('#discussionList .discussion-card');
     assert.equal(await cards.last().locator('[data-record-field="points"]').count(), 1);
@@ -413,6 +426,7 @@ test('unfinished topics and discussion rows survive autosave responses while exp
     const deleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
+    await cards.first().locator('.record-menu>summary').click();
     await cards.first().locator('[data-remove-record="points"]').click();
     await deleteSave;
     const afterDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
@@ -436,6 +450,7 @@ test('deleting a topic dismisses warnings belonging to its nested records', { ti
       response.url().endsWith('/api/meeting-minutes-agent/drafts/topic-cleanup')
         && response.request().method() === 'PATCH');
     page.once('dialog', (dialog) => dialog.accept());
+    await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
     await page.click('[data-delete-topic="1"]');
     await deleteSave;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/topic-cleanup')).json()).draft);
@@ -459,6 +474,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
     const actionDeleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
+    await page.click('#actionsBody [data-edit-action]');
     await page.click('#actionsBody [data-delete-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     await page.click('[data-step="2"]');
@@ -479,6 +495,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
     const discussionDeleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
+    await page.click('#discussionList .record-menu>summary');
     await page.click('[data-remove-record]');
     await discussionDeleteSave;
     const savedAfterDiscussionDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
@@ -516,6 +533,7 @@ test('details status clears on Focus and unfinished owner text survives a backgr
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=summary-running`);
     await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
     assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true);
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-action]');
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const owner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
     await owner.fill('Jordan Lee');
@@ -569,14 +587,39 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
     await page.click('[data-step="2"]');
     await page.click('#addDiscussion');
     assert.equal(await page.locator('#staleNotice').isHidden(), true, 'a blank topic is not a material edit');
+    await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
     await page.click('[data-delete-topic="1"]');
     assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
     assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
     // Deleting a topic that carries real content still is.
     page.once('dialog', (dialog) => dialog.accept());
+    await page.click('#discussionList .discussion-card:first-child .topic-menu>summary');
     await page.click('[data-delete-topic="0"]');
     assert.equal(await page.locator('#staleNotice').isVisible(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('suggested changes are compact until the reviewer asks for detail', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'proposals');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.equal(await page.locator('.proposal-detail').isVisible(), true);
+    assert.equal(await page.locator('.proposal-content').isHidden(), true);
+    assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
+    assert.match(await page.textContent('#proposalSelectionCount'), /1 of 1 selected/i);
+    assert.match(await page.textContent('#acceptSelectedProposal'), /Apply 1 change/i);
+    await page.click('.proposal-detail>summary');
+    assert.equal(await page.locator('.proposal-content').isVisible(), true);
+    await page.uncheck('[data-proposal-change]');
+    assert.equal(await page.locator('#acceptSelectedProposal').isDisabled(), true);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
