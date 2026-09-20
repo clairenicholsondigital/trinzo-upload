@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const {
   organiseDiscussionForReview, stripClosure, retypeRows, demoteUnreadyRows,
   consolidateTopics, rehomeSupportingDetails, sortByEvidence, unitIndex,
-  removeAnsweredQuestionClauses, removeContradictoryResponsibilities
+  removeAnsweredQuestionClauses, removeContradictoryResponsibilities,
+  isPersonalAside, removePersonalAsides
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -39,6 +40,56 @@ test('closure clauses are stripped from row wording', () => {
   assert.equal(stripClosure('Outstanding mute button issue reviewed with clinical input to confirm acceptability and closure.'),
     'Outstanding mute button issue reviewed with clinical input to confirm acceptability and closure.');
   assert.equal(stripClosure('Next steps agreed; thanks and farewells.'), 'Next steps agreed');
+});
+
+test('personal wellbeing and time-away asides are not meeting content', () => {
+  for (const wording of [
+    'Morgan suggests that Alex needs a break.',
+    'Morgan suggested that Alex take a break.',
+    'Alex could use some rest.',
+    'Priya thinks Morgan deserves some time off.',
+    'Sam should book a holiday.',
+    'Alex should get some downtime.',
+    'Sam looks exhausted after a long week.',
+    'It was suggested that he should get some sleep.'
+  ]) assert.equal(isPersonalAside(wording), true, wording);
+});
+
+test('formal cover and safety arrangements are not mistaken for personal asides', () => {
+  for (const wording of [
+    'Alex will take a 15-minute break at 15:00 while Priya covers the session.',
+    'Staff breaks must be staggered under the working-time policy to maintain coverage.',
+    'The team agreed to take a break from testing until the results arrive.',
+    'Operator fatigue was recorded as a safety risk requiring shift controls.',
+    'Alex is overworked, putting the delivery schedule at risk.',
+    'Alex should leave the meeting at 15:00 to join the client call.',
+    'The team needs a break-even analysis before approving the plan.',
+    'The warehouse break-in remains a security risk.'
+  ]) assert.equal(isPersonalAside(wording), false, wording);
+});
+
+test('personal asides are removed from primary rows and supporting context', () => {
+  const cleaned = removePersonalAsides([{
+    id: 'topic-1', topic: 'Audit preparation',
+    points: [
+      {
+        id: 'p1', text: 'The evidence pack is ready for review.', evidenceIds: ['T0001'],
+        supportingDetails: [
+          { id: 's1', text: 'Morgan says Alex needs a proper break.', evidenceIds: ['T0002'] },
+          { id: 's2', text: 'The audit begins on Monday.', evidenceIds: ['T0003'] }
+        ]
+      },
+      { id: 'p2', text: 'Alex seems very tired.', evidenceIds: ['T0004'], reviewFlagIds: ['flag-1'] }
+    ],
+    decisions: [], openQuestions: []
+  }, {
+    id: 'topic-2', topic: 'Social chat',
+    points: [{ id: 'p3', text: 'Priya deserves a holiday.', evidenceIds: ['T0005'] }],
+    decisions: [], openQuestions: []
+  }]);
+  assert.equal(cleaned.length, 1);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['p1']);
+  assert.deepEqual(cleaned[0].points[0].supportingDetails.map((row) => row.id), ['s2']);
 });
 
 test('status statements labelled Decision become points; answered open questions become points', () => {

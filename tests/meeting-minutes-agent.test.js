@@ -216,6 +216,45 @@ test('action dedupe deterministically keeps the strongest wording and combines m
   assert.equal(forward[0].timing.kind, 'deadline');
 });
 
+test('question delivery outcome and sending step merge as one deliverable', () => {
+  const records = [
+    {
+      id: 'outcome',
+      action: 'Ask the freight partner the agreed questions about duty handling, local representation and package changes.',
+      owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0030']
+    },
+    {
+      id: 'mechanical', action: 'Send the freight partner question list to the freight partner.',
+      owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0031']
+    }
+  ];
+  const forward = dedupeHybridActionRecords(structuredClone(records));
+  const reverse = dedupeHybridActionRecords(structuredClone(records).reverse());
+  assert.deepEqual(forward, reverse);
+  assert.equal(forward.length, 1);
+  assert.equal(forward[0].id, 'outcome');
+  assert.deepEqual(forward[0].evidenceIds, ['T0030', 'T0031']);
+});
+
+test('question deliverable dedupe preserves separate work', () => {
+  const base = (id, action, evidenceId) => ({
+    id, action, owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [evidenceId]
+  });
+  const rows = dedupeHybridActionRecords([
+    base('prepare', 'Prepare the supplier question list.', 'T0040'),
+    base('send', 'Send the supplier question list.', 'T0041'),
+    base('customs', 'Ask the supplier questions about customs processing.', 'T0050'),
+    base('labels', 'Ask the supplier questions about label artwork.', 'T0051'),
+    base('client', 'Send the client question list.', 'T0060'),
+    base('laboratory', 'Ask the laboratory the agreed questions.', 'T0061'),
+    base('delegate', 'Ask Morgan to send the audit questions.', 'T0070'),
+    base('deliver', 'Send Morgan the audit questions.', 'T0071')
+  ]);
+  assert.deepEqual(rows.map((row) => row.id), [
+    'prepare', 'send', 'customs', 'labels', 'client', 'laboratory', 'delegate', 'deliver'
+  ]);
+});
+
 test('proposal dedupe is stable across input order and adjacent evidence windows', () => {
   const records = [
     {

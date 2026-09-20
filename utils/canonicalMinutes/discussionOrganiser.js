@@ -10,6 +10,7 @@
 // fallback. Record ids, evidence ids and review-flag links are preserved.
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
+const { isPersonalAside, removePersonalAsides } = require('./discussionContentPolicy');
 
 const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should', 'are', 'was', 'were', 'has', 'have', 'been']);
 const ROW_KINDS = ['points', 'decisions', 'openQuestions'];
@@ -594,6 +595,10 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
   topics = topics.map((topic) => removeAnsweredQuestionClauses(topic, index));
   topics = topics.map((topic) => retypeRows(topic, index));
   topics = topics.map((topic) => removeContradictoryResponsibilities(topic, index));
+  // A transcript may contain friendly observations about somebody needing a
+  // break or looking tired. They are neither minutes nor supporting context,
+  // even when an AI has rewritten them into a grammatical sentence.
+  topics = removePersonalAsides(topics);
   topics = demoteUnreadyRows(topics, index);
   topics = await consolidateTopics(topics, index, options);
   topics = dropVerbatimSupporting(topics, index);
@@ -606,6 +611,8 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
 module.exports = {
   organiseDiscussionForReview,
   stripClosure,
+  isPersonalAside,
+  removePersonalAsides,
   isVerbatimUnit,
   dropVerbatimSupporting,
   isConversational,

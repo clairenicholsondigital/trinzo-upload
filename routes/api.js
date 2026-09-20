@@ -55,7 +55,8 @@ const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semantic
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
-const { organiseDiscussionForReview } = require('../utils/canonicalMinutes/discussionOrganiser');
+const { organiseDiscussionForReview, removePersonalAsides } = require('../utils/canonicalMinutes/discussionOrganiser');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -10879,7 +10880,7 @@ function hybridActionType(value = '') {
 
 function hybridActionTypes(value = '') {
   const source = meetingMinutesAgentText(value, 1600).toLowerCase();
-  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(confirm|clarify|determine|decide|resolve|figure out|work out|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|update|revise|amend|change|edit|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
+  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(ask|confirm|clarify|determine|decide|resolve|figure out|work out|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|update|revise|amend|change|edit|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
   return new Set([...matches].map((match) => hybridActionType(match[1])).filter(Boolean));
 }
 
@@ -10945,12 +10946,21 @@ function publishedActionCoversProposal(published = {}, proposal = {}) {
 
 function hybridCandidateMatchesRecord(candidate, record) {
   if (record?._recordType && candidate?.recordType && record._recordType !== candidate.recordType) return false;
+  const candidateAction = candidate.record || { action: candidate?.text, evidenceIds: candidate?.evidenceIds };
+  const candidateQuestionFrame = candidate?.recordType === 'action' && questionCommunicationFrame(candidateAction);
+  const recordQuestionFrame = candidate?.recordType === 'action' && questionCommunicationFrame(record);
+  const sameQuestionDeliverable = Boolean(candidateQuestionFrame && recordQuestionFrame
+    && sameQuestionCommunicationDeliverable(candidateAction, record));
+  // Once both rows identify a question-delivery frame, their recipient/topic
+  // identity is authoritative. Generic word overlap must not merge different
+  // question sets merely because both mention the same supplier.
+  if (candidateQuestionFrame && recordQuestionFrame && !sameQuestionDeliverable) return false;
   const candidateIds = new Set(candidate?.evidenceIds || []);
   const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
   const sharesEvidence = recordIds.some((id) => candidateIds.has(id));
   const score = Math.max(hybridTokenOverlap(candidate?.text, hybridRecordText(record)), evidenceSupportScore(candidate?.text || '', hybridRecordText(record)));
-  if (!sharesEvidence && score < 0.55) return false;
-  if (sharesEvidence && score < 0.25) return false;
+  if (!sameQuestionDeliverable && !sharesEvidence && score < 0.55) return false;
+  if (!sameQuestionDeliverable && sharesEvidence && score < 0.25) return false;
   if (candidate?.recordType === 'action') {
     const candidateTypes = hybridActionTypes(candidate?.text || candidate?.record?.action);
     const recordTypes = hybridActionTypes(hybridRecordText(record));
@@ -10958,11 +10968,12 @@ function hybridCandidateMatchesRecord(candidate, record) {
     // deciding are separate accountability items even when their nouns and
     // evidence IDs overlap, so incompatible predicates can never cover one
     // another.
-    if (candidateTypes.size && recordTypes.size && ![...candidateTypes].some((type) => recordTypes.has(type))
-      && hybridContentTokenOverlap(candidate?.text || candidate?.record?.action, hybridRecordText(record)) < 0.7) return false;
+    if (!sameQuestionDeliverable && candidateTypes.size && recordTypes.size
+      && ![...candidateTypes].some((type) => recordTypes.has(type))) return false;
     const candidateOwners = candidate?.record?.owners || [];
     const recordOwners = record?.owners || [];
     if (candidateOwners.length && recordOwners.length && !candidateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()))) return false;
+    if (sameQuestionDeliverable) return true;
   }
   return true;
 }
@@ -13148,6 +13159,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
       }
     }
+    // Apply the policy before later checks so irrelevant asides do not consume
+    // reviewer calls. This is deliberately unconditional when the optional
+    // organiser is disabled or safely falls back after an internal error.
+    finalDiscussion = removePersonalAsides(finalDiscussion);
     if (meetingMinutesAnsweredCheckEnabled()) {
       // Open questions are checked against a bounded forward window rather
       // than only their cited lines. A verified answer becomes a normal point;
@@ -13240,6 +13255,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         rejected: fidelityChecked.rejected
       }));
     }
+    // A final publication-boundary pass also covers wording returned by the
+    // later question, attribution and fidelity checks. Flag reconciliation
+    // below then drops any warning whose only target was removed here.
+    finalDiscussion = removePersonalAsides(finalDiscussion);
     // Rows are rebuilt by several steps that keep the rows but not the flags
     // those steps raised; recover what the rows point at, drop dead references.
     const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
