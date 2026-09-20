@@ -366,3 +366,62 @@ test('named or dated facts are promoted out of context; raw speech and repeats a
   assert.equal(out.discussion[0].points[1].text, 'Hazard analysis needs updates for USB cybersecurity; Rebecca is managing it.');
   assert.deepEqual(out.discussion[0].points[0].supportingDetails.map((detail) => detail.id), ['s2', 's3']);
 });
+
+test('a row naming someone absent from its citation is repaired when a nearby line supplies them', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0031', speaker: 'Rebecca Gill', text: "I can't remember the first one, but it was a quick amend." },
+    { id: 'T0032', speaker: 'Rebecca Gill', text: 'And then the second one, I just kind of put a bit more detail into the use of kind of FMEAs to, as a way of measuring risk across software, hardware and various different things.' },
+    { id: 'T0033', speaker: 'Rebecca Gill', text: "So I've kind of put the detail a wee bit more in there.I don't know, David, if you want to maybe have a pop in, have an RV look at that, just make sure I'm along the right lines." },
+    { id: 'T0034', speaker: 'David Didsbury', text: 'Yes, I will take a look at that this week.' }
+  ];
+  const out = V.groundRowAttributions([{
+    topic: 'Risk', points: [{ text: 'David may require an RV to review the updated FMEA detail.', evidenceIds: ['T0032'] }]
+  }], units);
+  // T0033 is the line that actually names David and shares the row's content,
+  // so it joins the citation and the reviewer can see the words that were said.
+  assert.deepEqual(out.discussion[0].points[0].evidenceIds, ['T0032', 'T0033']);
+  assert.equal(out.widened, 1);
+  assert.equal(out.flags.length, 0);
+});
+
+test('a row naming someone no cited or nearby line mentions keeps its wording and is flagged', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0063', speaker: 'Smith, Stuart M', text: "So it's a deep dive into their software management system." },
+    { id: 'T0064', speaker: 'Smith, Stuart M', text: 'I think your expertise looking at the specifics associated with software and the dedicated time is what we need.' },
+    { id: 'T0065', speaker: 'Smith, Stuart M', text: 'That is the shape of it.' },
+    { id: 'T0200', speaker: 'Niamh Lynch', text: 'Understood, thanks.' }
+  ];
+  const text = 'Niamh will be the lead for the software deep dive.';
+  const out = V.groundRowAttributions([{ topic: 'Audit', points: [{ text, evidenceIds: ['T0063', 'T0064'] }] }], units);
+  assert.equal(out.discussion[0].points[0].text, text, 'the row is flagged, never reworded');
+  assert.equal(out.flags.length, 1);
+  assert.equal(out.flags[0].kind, 'attribution');
+  assert.match(out.flags[0].message, /does not mention Niamh Lynch/);
+  assert.ok(out.discussion[0].points[0].reviewFlagIds.includes(out.flags[0].id));
+});
+
+test('a row whose cited lines already name the person is left untouched', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0027', speaker: 'Jacqui Fox', text: 'And David, you obviously had reviewed their risk management plan.' },
+    { id: 'T0028', speaker: 'Jacqui Fox', text: "Rebecca, you've reviewed David feedback on that." }
+  ];
+  const out = V.groundRowAttributions([{
+    topic: 'Risk', points: [{ text: 'Rebecca has reviewed David feedback on the risk management plan.', evidenceIds: ['T0027', 'T0028'] }]
+  }], units);
+  assert.equal(out.widened, 0);
+  assert.equal(out.flags.length, 0);
+});
+
+test('a speaker named only by their surname in the row still counts as supported', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0110', speaker: 'Ciaran Ryan', text: 'My submission is scheduled for Friday.' }
+  ];
+  const out = V.groundRowAttributions([{
+    topic: 'Submission', points: [{ text: "Ciaran Ryan's submission is scheduled for Friday.", evidenceIds: ['T0110'] }]
+  }], units);
+  assert.equal(out.flags.length, 0, 'the speaker label supplies the person');
+});

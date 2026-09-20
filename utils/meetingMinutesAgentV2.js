@@ -39,7 +39,7 @@ function migrateDraftPayload(payload = {}) {
   };
 }
 const FLAG_KINDS = new Set([
-  'uncertain_fact', 'unclear_reference', 'ownership', 'timing',
+  'uncertain_fact', 'unclear_reference', 'ownership', 'attribution', 'timing',
   'unresolved_decision', 'missing_evidence', 'possible_missed_follow_up'
 ]);
 const FLAG_KIND_ALIASES = Object.freeze({
@@ -2554,6 +2554,88 @@ function describesUsualPractice(action = {}, units = []) {
   return lines.length > 0 && lines.every((line) => HABITUAL_DESCRIPTION.test(line)) && !lines.some((line) => FUTURE_COMMITMENT.test(line));
 }
 
+// ---- A named person must be in the row's own evidence -----------------------
+// The minutes are read a row at a time, so a row reading "Rebecca has reviewed
+// David's feedback" while citing only the line in which *David* does the
+// reviewing tells the reader the opposite of what was said. Where a
+// neighbouring line supplies the person the model cited one line short, so that
+// line joins the citation. Where nothing supplies them, the wording is left
+// alone and the row carries a flag: which name is right is the reviewer's call,
+// not ours to guess.
+const ATTRIBUTION_WINDOW = 2;
+const ATTRIBUTION_SHARED_WORDS = 2;
+
+function speakerIdentities(units = []) {
+  return [...new Set(evidenceContextFor(units).rows.map((row) => row.speaker).filter(Boolean))]
+    .map((label) => ({ label, parts: nameParts(label) }))
+    .filter((person) => person.parts.length);
+}
+
+function personIsNamedIn(person, ...values) {
+  const words = new Set(values.flatMap((value) => nameParts(value)));
+  return person.parts.some((part) => words.has(part));
+}
+
+function groundRowAttributions(discussion = [], units = []) {
+  const context = evidenceContextFor(units);
+  const rows = context.rows;
+  const people = speakerIdentities(units);
+  const flags = [];
+  let widened = 0;
+  if (!people.length || !rows.length) return { discussion, widened, flags };
+
+  const unsupported = (named, indexes) => {
+    const words = new Set(indexes.flatMap((index) => [
+      ...nameParts(rows[index]?.speaker), ...nameParts(rows[index]?.text)
+    ]));
+    return named.filter((person) => !person.parts.some((part) => words.has(part)));
+  };
+
+  const check = (record) => {
+    const cited = [...new Set(record?.evidenceIds || [])]
+      .map((id) => context.indexById.get(id)).filter(Number.isInteger);
+    if (!cited.length) return record;
+    const named = people.filter((person) => personIsNamedIn(person, record?.text));
+    if (!named.length) return record;
+    let missing = unsupported(named, cited);
+    if (!missing.length) return record;
+
+    // The line that names them usually sits a turn or two from what was cited.
+    const rowWords = new Set(contentTokens(record?.text));
+    const neighbours = [...new Set(cited.flatMap((index) => Array.from(
+      { length: ATTRIBUTION_WINDOW * 2 + 1 }, (ignored, step) => index - ATTRIBUTION_WINDOW + step)))]
+      .filter((index) => index >= 0 && index < rows.length && !cited.includes(index))
+      .sort((a, b) => a - b);
+    const added = [];
+    for (const person of missing) {
+      const source = neighbours.find((index) => personIsNamedIn(person, rows[index]?.text, rows[index]?.speaker)
+        && contentTokens(rows[index]?.text).filter((word) => rowWords.has(word)).length >= ATTRIBUTION_SHARED_WORDS);
+      if (Number.isInteger(source)) added.push(source);
+    }
+    let evidenceIds = [...new Set(record.evidenceIds || [])];
+    if (added.length) {
+      evidenceIds = [...new Set([...evidenceIds, ...added.map((index) => rows[index].id)])];
+      widened += 1;
+      missing = unsupported(named, [...new Set([...cited, ...added])]);
+    }
+    if (!missing.length) return { ...record, evidenceIds };
+    const flag = normaliseFlag({
+      kind: 'attribution',
+      message: `Check who did this: the quoted evidence does not mention ${missing.map((person) => person.label).join(' or ')}. Confirm the name or reword the line.`,
+      evidenceIds
+    }, flags.length);
+    flags.push(flag);
+    return { ...record, evidenceIds, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] };
+  };
+
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: (topic.points || []).map(check),
+    decisions: (topic.decisions || []).map(check)
+  }));
+  return { discussion: checked, widened, flags };
+}
+
 // ---- Named facts belong in the minutes ------------------------------------
 // The exported minutes contain the primary rows only, so a fact left in
 // supporting context never reaches the reader. A context line naming a person
@@ -3281,6 +3363,7 @@ module.exports = {
   supersededVerdicts,
   applyRequesterOwnerRule,
   ownerTakesItOn,
+  groundRowAttributions,
   mergeDuplicateCommitments,
   applyChainedTimingRule,
   answeredCheckEnabled,
