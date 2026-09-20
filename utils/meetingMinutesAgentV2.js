@@ -2203,7 +2203,13 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
 // determine whether it is acceptable"). Splitting would damage 180 actions to
 // correct one. The clauses are only separable by their evidence, which is held
 // per action, not per clause. Left anchored at the start of the action.
-const ANSWERABLE_ACTION = /^(?:clarify|confirm|determine|decide|finali[sz]e|check|verify|establish|find out|agree)\b/i;
+// "Follow up on the dates for the formative studies ..." is the series' most
+// persistent unsupported claim - the meeting settled those dates ("Okay, so
+// that's fine", "So, I'm happy with that") - and run 9 published it twice.
+// It is answerable work like the rest, so it is checked like the rest. Still
+// anchored at the start of the action: a clause buried mid-sentence must not
+// drag a composite's genuine half off the list with it.
+const ANSWERABLE_ACTION = /^(?:clarify|confirm|determine|decide|finali[sz]e|check|verify|establish|find out|follow[- ]up|agree)\b/i;
 function answeredCheckEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_ANSWERED_CHECK_V1 || '0'));
 }

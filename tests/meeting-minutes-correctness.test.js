@@ -464,3 +464,31 @@ test('a commitment split across an unfinished line keeps its owner', () => {
   assert.deepEqual(out.actions[0].owners, ['Ciaran Ryan']);
   assert.equal(out.flags.length, 0);
 });
+
+test('a "follow up on" action is checked for having been answered in the meeting', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0063', speaker: 'Jacqui Fox', text: 'One thing I did want to follow up on was around that date in relation to the formative studies and how that aligns with your MDR submission.' },
+    { id: 'T0069', speaker: 'Rebecca Gill', text: 'I presumed that the formative would be ready for submission and then to follow up with the summative.' },
+    { id: 'T0070', speaker: 'Rebecca Gill', text: 'But the formula would be ready to be just shortly after, but still prior to the protect file being lifted.' },
+    { id: 'T0072', speaker: 'Jacqui Fox', text: "Okay, so that's fine." }
+  ];
+  const actions = [{
+    action: 'Follow up on the dates for the formative studies to align with the MDR submission and review dates.',
+    owners: ['Rebecca Gill'], evidenceIds: ['T0063']
+  }];
+  // The meeting settled these dates, so the action must at least reach the
+  // check; whether it is retired still depends on verified answer and
+  // acceptance quotes.
+  const items = V.answeredCheckItems(actions, units);
+  assert.equal(items.length, 1);
+  assert.match(items[0].passage, /that's fine/);
+
+  // A composite whose answerable clause is buried must NOT be checked: retiring
+  // it would take its genuine half with it.
+  const composite = [{
+    action: 'Fill gaps in documentation with justifications and follow up on the dates for the formative studies.',
+    owners: ['Rebecca Gill'], evidenceIds: ['T0063']
+  }];
+  assert.equal(V.answeredCheckItems(composite, units).length, 0);
+});
