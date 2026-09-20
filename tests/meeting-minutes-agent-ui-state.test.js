@@ -158,6 +158,7 @@ function startStubServer() {
   drafts.set('navigation', navigation);
   const patchCounts = new Map();
   const patchBodies = new Map();
+  const reviewHistory = new Map();
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
@@ -175,6 +176,12 @@ function startStubServer() {
     if (req.params.id === 'navigation') await new Promise((resolve) => setTimeout(resolve, 250));
     patchBodies.set(req.params.id, req.body);
     const prior = drafts.get(req.params.id);
+    const history = reviewHistory.get(req.params.id) || [];
+    if (req.body.reviewDecisionLabel) history.push({
+      label: req.body.reviewDecisionLabel,
+      snapshot: JSON.parse(JSON.stringify(prior))
+    });
+    reviewHistory.set(req.params.id, history);
     const next = {
       ...prior,
       ...req.body,
@@ -182,6 +189,7 @@ function startStubServer() {
       updatedAt: new Date().toISOString(),
       currentStep: Math.max(Number(prior.currentStep || 0), Number(req.body.currentStep || 0)),
       selectedStep: Number(req.body.selectedStep == null ? req.body.currentStep : req.body.selectedStep),
+      lastUndo: history.length ? { id: `undo-${history.length}`, label: history[history.length - 1].label } : null,
       // Match production normalisation: incomplete structured rows are not persisted.
       actions: (req.body.actions || prior.actions).filter((action) => String(action.action || '').trim()),
       discussion: (req.body.discussion || prior.discussion).map((topic) => ({
@@ -212,6 +220,7 @@ function startStubServer() {
   });
   app.post('/api/meeting-minutes-agent/drafts/:id/proposal', (req, res) => {
     const prior = drafts.get(req.params.id);
+    const history = reviewHistory.get(req.params.id) || [];
     const proposal = prior.pendingProposal;
     const allIds = (proposal?.changes || []).map((change) => change.id);
     const accepted = req.body.decision === 'accept'
@@ -220,6 +229,9 @@ function startStubServer() {
     const acceptedAdds = (proposal?.changes || []).filter((change) => accepted.has(change.id) && change.type === 'add').map((change) => change.after);
     const remainingChanges = (proposal?.changes || []).filter((change) => !accepted.has(change.id) && !rejected.has(change.id))
       .map((change) => ({ ...change, selected: false }));
+    const label = req.body.decision === 'reject' ? `${allIds.length} suggestions dismissed` : `${accepted.size} suggestion${accepted.size === 1 ? '' : 's'} applied`;
+    history.push({ label, snapshot: JSON.parse(JSON.stringify(prior)) });
+    reviewHistory.set(req.params.id, history);
     const next = {
       ...prior,
       actions: [...(prior.actions || []), ...acceptedAdds],
@@ -230,7 +242,23 @@ function startStubServer() {
         return { ...flag, status: accepted.has(change.id) ? 'confirmed' : 'dismissed' };
       }),
       revision: prior.revision + 1,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      lastUndo: { id: `undo-${history.length}`, label }
+    };
+    drafts.set(req.params.id, next);
+    res.json({ ok: true, draft: next });
+  });
+  app.post('/api/meeting-minutes-agent/drafts/:id/undo', (req, res) => {
+    const prior = drafts.get(req.params.id);
+    const history = reviewHistory.get(req.params.id) || [];
+    const latest = history.pop();
+    if (!latest) return res.status(409).json({ ok: false, error: 'There is no review decision to undo.' });
+    reviewHistory.set(req.params.id, history);
+    const next = {
+      ...latest.snapshot,
+      revision: prior.revision + 1,
+      updatedAt: new Date().toISOString(),
+      lastUndo: history.length ? { id: `undo-${history.length}`, label: history[history.length - 1].label } : null
     };
     drafts.set(req.params.id, next);
     res.json({ ok: true, draft: next });
@@ -554,8 +582,11 @@ test('selected stage and deletions survive save responses, navigation and reopen
     await page.click('#actionsBody .record-menu>summary');
     await page.click('#actionsBody [data-delete-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
+    const navigationSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().selectedStep === 2);
     await page.click('[data-step="2"]');
     await actionDeleteSave;
+    await navigationSave;
 
     const stateAfterActionDelete = await page.evaluate(async () => await (await fetch('/test-state/editor')).json());
     const savedAfterActionDelete = stateAfterActionDelete.draft;
@@ -786,6 +817,100 @@ test('an unlinked timing warning routes to its Action field and resolves when th
     await page.reload();
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
     assert.equal(await page.locator('#reviewFlags').isHidden(), true, 'the deleted Action warning stays resolved after refresh');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('every warning decision exposes a durable Undo that survives refresh', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
+    const warning = page.locator('.flag').filter({ hasText: 'Check the owner of this action.' });
+    const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Warning confirmed');
+    await warning.getByRole('button', { name: 'Looks correct' }).click();
+    await saved;
+    assert.equal(await page.locator('#undoToast').isVisible(), true);
+    assert.match(await page.textContent('#undoToastMessage'), /Warning confirmed/i);
+    assert.equal(await page.locator('#undoLastDecision').isVisible(), true);
+
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector('#undoLastDecision').hidden);
+    const undone = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor/undo'));
+    await page.click('#undoLastDecision');
+    await undone;
+    const restored = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
+    assert.equal(restored.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'open');
+    assert.match(await page.textContent('#workflowStatus'), /undone/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('final minutes edit source records in place and the finishing bar remains available', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'layout');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.equal(await page.locator('#saveStrip').evaluate((node) => getComputedStyle(node).position), 'fixed');
+    assert.match(await page.textContent('#checksRemaining'), /2 checks remaining/i);
+    await page.click('#previewDocument');
+    await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
+    assert.match(await page.getAttribute('#previewDocument', 'aria-label'), /Back to editing/i);
+
+    await page.locator('#finalDocument [data-kind="discussion"][data-field="text"]').first().click();
+    await page.fill('#finalDocument [data-final-editor-value]', 'The final report is ready to circulate.');
+    let saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Meeting sentence edited');
+    await page.click('#finalDocument [data-final-save]');
+    await saved;
+
+    await page.locator('#finalDocument [data-kind="action"][data-field="owners"]').first().click();
+    await page.fill('#finalDocument [data-final-editor-value]', 'Alex Reed, Sam Okoro');
+    saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Action owners edited');
+    await page.click('#finalDocument [data-final-save]');
+    await saved;
+
+    await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').first().click();
+    await page.selectOption('#finalDocument [data-final-timing-kind]', 'deadline');
+    await page.fill('#finalDocument [data-final-timing-wording]', 'by Friday');
+    await page.fill('#finalDocument [data-final-timing-date]', '2026-09-18');
+    saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Action timing edited');
+    await page.click('#finalDocument [data-final-save]');
+    await saved;
+
+    let stored = await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft);
+    assert.equal(stored.discussion[0].points[0].text, 'The final report is ready to circulate.');
+    assert.deepEqual(stored.actions[0].owners, ['Alex Reed', 'Sam Okoro']);
+    assert.deepEqual(stored.actions[0].timing, { kind: 'deadline', wording: 'by Friday', exactDate: '2026-09-18' });
+
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
+    assert.match(await page.textContent('#finalDocument'), /The final report is ready to circulate/i);
+    assert.match(await page.textContent('#finalDocument'), /Alex Reed, Sam Okoro/i);
+    assert.match(await page.textContent('#finalDocument'), /18 Sept 2026/i);
+    const undone = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout/undo'));
+    await page.click('#undoLastDecision');
+    await undone;
+    stored = await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft);
+    assert.equal(stored.actions[0].timing.kind, 'not_stated');
+    assert.deepEqual(stored.actions[0].owners, ['Alex Reed', 'Sam Okoro'], 'Undo restores only the latest review decision');
+
+    await page.click('#previewDocument');
+    await page.waitForFunction(() => document.querySelector('[data-screen="4"]').classList.contains('active'));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

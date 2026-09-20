@@ -147,11 +147,14 @@
 .meeting-agent-page .mobile-step-picker{display:none}
 
 /* ---------------------------------------------------------- save strip -- */
+.meeting-agent-page.has-draft{padding-bottom:5rem}
 .meeting-agent-page .save-strip{
+  position:fixed;z-index:20;left:50%;bottom:.7rem;transform:translateX(-50%);
   display:flex;justify-content:space-between;align-items:center;gap:1rem;
-  min-height:42px;padding:.5rem .85rem;margin-bottom:.75rem;
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--radius-sm);font-size:var(--fs-sm)}
+  width:min(calc(100% - 2rem),1180px);min-height:52px;padding:.55rem .75rem;margin:0;
+  background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:var(--radius);box-shadow:var(--shadow-lg);font-size:var(--fs-sm)}
+.meeting-agent-page .save-strip-primary{display:flex;align-items:center;gap:.7rem;min-width:0}
 .meeting-agent-page .save-status[data-state="saved"]{color:var(--ok-text)}
 .meeting-agent-page .save-status[data-state="error"]{color:var(--danger-text)}
 .meeting-agent-page .save-status[data-state="dirty"],
@@ -159,13 +162,21 @@
 .meeting-agent-page .save-status[data-state="generating"]{color:var(--muted)}
 .meeting-agent-page .save-status[data-state="waiting"],
 .meeting-agent-page .save-status[data-state="local-only"]{color:var(--warn-text)}
-.meeting-agent-page .save-strip-actions{display:flex;align-items:center;gap:.75rem}
+.meeting-agent-page .save-strip-actions{display:flex;align-items:center;gap:.4rem}
 .meeting-agent-page .save-strip-actions button{padding:.35rem .65rem;font-size:var(--fs-cap)}
+.meeting-agent-page .narrow-label{display:none}
 .meeting-agent-page .workflow-utilities{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem}
 .meeting-agent-page .workflow-utilities .save-strip{flex:1;margin:0}
 .meeting-agent-page .workflow-utilities .review-flags{flex:none;margin:0}
 .meeting-agent-page .workflow-utilities .review-flags[open]{flex:1 0 100%}
 .meeting-agent-page .workflow-utilities .review-flags[open] .review-flags-body{width:100%}
+.meeting-agent-page .undo-toast{
+  position:fixed;z-index:21;left:50%;bottom:4.55rem;transform:translateX(-50%);
+  display:flex;align-items:center;gap:.75rem;width:min(calc(100% - 2rem),540px);
+  padding:.7rem .85rem;border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+  background:var(--heading);color:#fff;box-shadow:var(--shadow-lg);font-size:var(--fs-sm)}
+.meeting-agent-page .undo-toast span{flex:1}
+.meeting-agent-page .undo-toast button{color:#fff;border-color:rgba(255,255,255,.55);background:transparent}
 
 /* ------------------------------------------------------ status / notice -- */
 .meeting-agent-page .notice{
@@ -582,6 +593,20 @@
 .meeting-agent-page .final-document h4{font-size:var(--fs-md);margin:.9rem 0 .3rem}
 .meeting-agent-page .final-document section{
   margin-top:1.2rem;padding-top:.9rem;border-top:1px solid var(--border)}
+.meeting-agent-page .final-editable{
+  display:inline;text-align:left;padding:.12rem .2rem;margin:-.12rem -.2rem;
+  border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;
+  color:inherit;font:inherit;line-height:inherit;cursor:text}
+.meeting-agent-page .final-editable:hover{border-color:var(--border);background:var(--soft)}
+.meeting-agent-page .final-editable.block{display:block;width:100%}
+.meeting-agent-page .final-editable-cell{width:100%;min-height:2rem}
+.meeting-agent-page .final-inline-editor{
+  display:grid;gap:.45rem;padding:.55rem;border:1px solid var(--accent);
+  border-radius:var(--radius-sm);background:var(--brand-050)}
+.meeting-agent-page .final-inline-editor.timing{grid-template-columns:repeat(3,minmax(0,1fr))}
+.meeting-agent-page .final-inline-editor.timing .final-edit-actions{grid-column:1/-1}
+.meeting-agent-page .final-edit-actions{display:flex;justify-content:flex-end;gap:.4rem}
+.meeting-agent-page .final-edit-hint{margin:0;color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .final-actions{
   position:static;gap:.5rem;margin-top:1.2rem;padding:.7rem .85rem;
   background:var(--surface);border:1px solid var(--border);
@@ -638,13 +663,20 @@
   .meeting-agent-page .mobile-step-picker select{padding:.35rem .5rem;border-color:transparent;font-weight:var(--fw-bold)}
   .meeting-agent-page:not(.has-draft) .workflow-utilities{display:none}
   .meeting-agent-page .workflow-utilities{margin-bottom:.55rem}
-  .meeting-agent-page .workflow-utilities .save-strip[data-state="saved"]{display:none}
   .meeting-agent-page .workflow-utilities .review-flags{margin-left:auto}
   .meeting-agent-page .review-flags-summary{min-height:40px}
   .meeting-agent-page .form-grid,
   .meeting-agent-page .attendee-groups{grid-template-columns:1fr}
   .meeting-agent-page .field.full{grid-column:auto}
-  .meeting-agent-page .save-strip{flex-direction:column;align-items:flex-start;gap:.35rem}
+  .meeting-agent-page.has-draft{padding-bottom:7rem}
+  .meeting-agent-page .save-strip{align-items:center;gap:.35rem;width:calc(100% - 1rem);bottom:.45rem;padding:.45rem .5rem}
+  .meeting-agent-page .save-strip-primary{display:grid;gap:.15rem;flex:1}
+  .meeting-agent-page .save-strip-actions{gap:.2rem}
+  .meeting-agent-page .save-strip-actions button{padding:.4rem .48rem}
+  .meeting-agent-page .save-strip-actions .wide-label{display:none}
+  .meeting-agent-page .save-strip-actions .narrow-label{display:inline}
+  .meeting-agent-page #resumeLaterLink{display:none}
+  .meeting-agent-page .undo-toast{bottom:6.2rem;width:calc(100% - 1rem)}
   .meeting-agent-page .attendee-chip{grid-template-columns:minmax(0,1fr) auto auto}
   .meeting-agent-page .attendee-chip input{grid-column:auto}
   .meeting-agent-page .attendee-chip .move-long{display:none}
@@ -684,6 +716,8 @@
   .meeting-agent-page .export-menu{width:100%}
   .meeting-agent-page .export-menu>summary{width:100%}
   .meeting-agent-page .export-menu-body{position:static;margin-top:.4rem;box-shadow:none}
+  .meeting-agent-page .final-inline-editor.timing{grid-template-columns:1fr}
+  .meeting-agent-page .final-inline-editor.timing .final-edit-actions{grid-column:auto}
 }
 
 /* ------------------------------------------------------------- print -- */
@@ -727,7 +761,7 @@
   <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 6</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="1" disabled>Focus</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
   <div class="workflow-utilities">
-    <div id="saveStrip" class="save-strip" hidden><span id="saveStatus" class="save-status">Saved draft</span><span class="save-strip-actions"><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Resume later from Library</a></span></div>
+    <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved draft</span><button id="checksRemaining" class="secondary quiet" type="button" hidden>Checks complete</button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo last</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview document"><span class="wide-label">Preview document</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
     <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
   </div>
 
@@ -836,6 +870,7 @@
       <div class="dialog-actions"><button class="secondary" value="cancel" type="submit">Cancel</button><button id="confirmRegeneration" class="button" value="confirm" type="submit">Generate suggestions</button></div>
     </form>
   </dialog>
+  <div id="undoToast" class="undo-toast" role="status" aria-live="polite" hidden><span id="undoToastMessage"></span><button id="undoToastButton" class="secondary" type="button">Undo</button></div>
 </main>
 </body>
 </html>

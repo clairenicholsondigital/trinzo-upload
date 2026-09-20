@@ -21,6 +21,10 @@
   var navigationScrollTimer = null;
   var actionEditorState = { pendingRows: {}, customOwners: {} };
   var discussionEditorState = { pendingTopics: {}, pendingRecords: {}, collapsedTopics: {} };
+  var pendingReviewDecisionLabel = '';
+  var undoToastTimer = null;
+  var activeFinalEdit = null;
+  var previewReturnStep = 4;
   var editVersion = 0;
   var rendering = false;
   var fileInput = document.getElementById('transcriptFile');
@@ -78,6 +82,49 @@
     element.textContent = message || '';
     element.dataset.state = kind || '';
     refreshLeaveSafety();
+    updateFinishingBar();
+  }
+
+  function updateFinishingBar() {
+    if (!state.draft) return;
+    var counts = typeof reviewQueueCounts === 'function' ? reviewQueueCounts() : { total: 0 };
+    var checks = document.getElementById('checksRemaining');
+    if (checks) {
+      checks.hidden = false;
+      checks.textContent = counts.total ? counts.total + ' check' + (counts.total === 1 ? '' : 's') + ' remaining' : 'Checks complete';
+      checks.classList.toggle('quiet', counts.total === 0);
+    }
+    var undo = document.getElementById('undoLastDecision');
+    if (undo) {
+      undo.hidden = !state.draft.lastUndo;
+      undo.title = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : '';
+    }
+    var preview = document.getElementById('previewDocument');
+    if (preview) {
+      var label = state.currentStep === MAX_STEP ? 'Back to editing' : 'Preview document';
+      var wide = preview.querySelector('.wide-label');
+      var narrow = preview.querySelector('.narrow-label');
+      if (wide) wide.textContent = label;
+      if (narrow) narrow.textContent = state.currentStep === MAX_STEP ? 'Back' : 'Preview';
+      preview.setAttribute('aria-label', label);
+    }
+  }
+
+  function showUndoToast(label) {
+    var toast = document.getElementById('undoToast');
+    var message = document.getElementById('undoToastMessage');
+    if (!toast || !message) return;
+    clearTimeout(undoToastTimer);
+    message.textContent = (label || 'Review decision') + '. ';
+    toast.hidden = false;
+    undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 10000);
+  }
+
+  function queueReviewDecision(label) {
+    pendingReviewDecisionLabel = String(label || 'Review decision').slice(0, 160);
+    editVersion += 1;
+    setSaveStatus('Saving review decision...', 'saving');
+    saveDraftNow().catch(function (error) { setStatus(error.message, true, currentStageName()); });
   }
 
   function savedStatusText(value) {
@@ -373,6 +420,7 @@
     // settling it must not restore the position from the previous section.
     if (options && options.scroll) beginStepNavigationScroll();
     renderGenerationProgress();
+    updateFinishingBar();
     if (options && options.scroll) maybeOpenPreparedSummary();
   }
 
@@ -1107,6 +1155,7 @@
     if (intro) intro.textContent = counts.suggestions
       ? 'Warnings and suggested changes are kept together here. Open an item to review its source and make a decision.'
       : 'Check or correct each item before sharing. Open items do not prevent export.';
+    updateFinishingBar();
   }
 
   function renderFlags() {
@@ -1221,18 +1270,50 @@
     return timingText(timing) === 'Not stated' ? '—' : timingText(timing);
   }
 
+  function finalEditMatches(kind, id, field) {
+    return activeFinalEdit && activeFinalEdit.kind === kind && String(activeFinalEdit.id || '') === String(id || '') && activeFinalEdit.field === field;
+  }
+
+  function finalTextEditor(kind, id, field, value, options) {
+    options = options || {};
+    if (!finalEditMatches(kind, id, field)) {
+      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(id || '') + '" data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(value || options.empty || 'Not stated') + '</button>';
+    }
+    var control = options.singleLine
+      ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
+      : '<textarea data-final-editor-value rows="' + (options.rows || 2) + '" aria-label="' + escapeHtml(options.label || 'Edit text') + '">' + escapeHtml(value || '') + '</textarea>';
+    return '<span class="final-inline-editor" data-final-editor>' + control + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
+  }
+
+  function finalTimingEditor(action) {
+    var timing = action.timing || {};
+    if (!finalEditMatches('action', action.id, 'timing')) {
+      return '<button class="final-editable final-editable-cell" data-final-edit data-kind="action" data-record-id="' + escapeHtml(action.id) + '" data-field="timing" type="button" title="Click to edit timing">' + escapeHtml(timingText(timing)) + '</button>';
+    }
+    return '<span class="final-inline-editor timing" data-final-editor>'
+      + '<label><span class="lbl">Type</span><select data-final-timing-kind><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option></select></label>'
+      + '<label><span class="lbl">As said</span><input data-final-timing-wording value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. by Friday"></label>'
+      + '<label><span class="lbl">Date</span><input data-final-timing-date type="date" value="' + escapeHtml(timing.exactDate || '') + '"></label>'
+      + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
+  }
+
   function renderFinal() {
-    readDetails(); readSteer(); readDiscussion(); readActions(); readSummary();
     var draft = state.draft || {}; var details = draft.details || {};
-    var objectives = (draft.meetingObjectives || []).map(function(item){return typeof item === 'string' ? item : item.text;}).filter(Boolean);
-    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></section>' : '')
-      + (draft.executiveSummary ? '<section><h3>Executive summary</h3><p>' + escapeHtml(draft.executiveSummary) + '</p></section>' : '');
-    var finalDiscussion = (draft.discussion || []).map(function (topic) {
+    var objectives = (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;});
+    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
+      + (draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+    var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
+      var topicId = topic.id || 'topic-' + topicIndex;
       var rows = [{key:'points',label:'Discussion'}, {key:'decisions',label:'Decision'}, {key:'openQuestions',label:'Open question'}]
-        .flatMap(function (group) { return (topic[group.key] || []).map(function (item) { return {label:group.label,text:item.text}; }); });
-      return '<h4>' + escapeHtml(topic.topic) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><span class="final-kind">' + escapeHtml(item.label) + '</span>' + escapeHtml(item.text) + '</li>'; }).join('') + '</ul>' : '');
+        .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text}; }); });
+      return '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><span class="final-kind">' + escapeHtml(item.label) + '</span>' + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,label:'Edit meeting sentence'}) + '</li>'; }).join('') + '</ul>' : '');
     }).join('');
-    document.getElementById('finalDocument').innerHTML = '<h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2><p><strong>Date:</strong> ' + escapeHtml(details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated') + '<br><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + ((draft.actions || []).map(function (action) { return '<tr><td>' + escapeHtml(action.action) + '</td><td>' + escapeHtml((action.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingText(action.timing)) + '</td></tr>'; }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>') + '</tbody></table></div></section>';
+    var actionsHtml = (draft.actions || []).map(function (action) {
+      return '<tr><td>' + finalTextEditor('action', action.id, 'action', action.action, {block:true,label:'Edit action'}) + '</td><td>' + finalTextEditor('action', action.id, 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated'}) + '</td><td>' + finalTimingEditor(action) + '</td></tr>';
+    }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
+    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select');
+    if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
   }
 
   function renderAll() {
@@ -1312,7 +1393,7 @@
     state.draft.selectedStep = state.currentStep;
   }
 
-  function draftPatchBody(statusValue) {
+  function draftPatchBody(statusValue, reviewDecisionLabel) {
     var body = {
       revision: state.draft.revision,
       // Tells the server this client speaks the six-step numbering. A tab loaded
@@ -1331,6 +1412,7 @@
       selectedStep: state.currentStep
     };
     if (statusValue) body.status = statusValue;
+    if (reviewDecisionLabel) body.reviewDecisionLabel = reviewDecisionLabel;
     return body;
   }
 
@@ -1372,18 +1454,24 @@
     if (saveInFlight) { saveQueued = true; await saveInFlight; if (!saveQueued) return state.draft; saveQueued = false; }
     readEditors();
     var requestEditVersion = editVersion;
+    var reviewDecisionLabel = pendingReviewDecisionLabel;
     setSaveStatus('Saving...', 'saving');
-    saveInFlight = jsonRequest(draftUrl(), {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftPatchBody(statusValue))}).then(function (payload) {
+    saveInFlight = jsonRequest(draftUrl(), {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftPatchBody(statusValue, reviewDecisionLabel))}).then(function (payload) {
+      if (reviewDecisionLabel && pendingReviewDecisionLabel === reviewDecisionLabel) pendingReviewDecisionLabel = '';
       if (editVersion !== requestEditVersion) {
         // A newer keystroke landed while this request was in flight. Advance the
         // revision but do not replace the newer editor values with the response.
         state.draft.revision = payload.draft.revision;
         state.draft.updatedAt = payload.draft.updatedAt;
+        state.draft.lastUndo = payload.draft.lastUndo;
+        if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
         setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
         return state.draft;
       }
       pendingGenerationEdits = false;
-      adoptDraft(payload.draft); return state.draft;
+      adoptDraft(payload.draft);
+      if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
+      return state.draft;
     }).catch(function (error) {
       // A conflict used to adopt the server copy, silently destroying the edits
       // the message was warning about. Keep them on screen and let the reviewer
@@ -1570,6 +1658,7 @@
     try {
       var payload = await jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
       adoptDraft(payload.draft);
+      if (payload.draft && payload.draft.lastUndo) showUndoToast(payload.draft.lastUndo.label);
       var remaining = payload.draft && payload.draft.pendingProposal && (payload.draft.pendingProposal.changes || []).length;
       setStatus(decision === 'reject' ? 'All remaining suggestions were dismissed.'
         : remaining ? 'Selected changes applied. ' + remaining + ' unchecked suggestion' + (remaining === 1 ? ' remains' : 's remain') + ' in the review queue.'
@@ -1578,9 +1667,23 @@
     finally { setBusy(false); }
   }
 
+  async function undoLastReviewDecision() {
+    if (!state.draft || !state.draft.lastUndo) return;
+    try {
+      if (saveTimer || saveInFlight || pendingReviewDecisionLabel) await saveDraftNow();
+      setBusy(true, 'Undoing the last review decision...', currentStageName());
+      var payload = await jsonRequest(draftUrl('/undo'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
+      activeFinalEdit = null;
+      adoptDraft(payload.draft);
+      document.getElementById('undoToast').hidden = true;
+      setStatus('Last review decision undone.', false, currentStageName());
+    } catch (error) { setStatus(error.message, true, currentStageName()); }
+    finally { setBusy(false); }
+  }
+
   async function downloadExport(kind) {
     var isPdf = kind === 'pdf';
-    try { await saveDraftNow('complete'); } catch (error) { return setStatus(error.message, true); }
+    try { await saveDraftNow(); } catch (error) { return setStatus(error.message, true); }
     setBusy(true, isPdf ? 'Generating your PDF...' : 'Creating the Word document...');
     try {
       var response = await fetch(draftUrl(isPdf ? '/export.pdf' : '/export.docx'), {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({includeEvidence:document.getElementById('includeEvidence').checked})});
@@ -1648,7 +1751,7 @@
   document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(1, { scroll: true }); });
   document.getElementById('mobileStepSelect').addEventListener('change', function (event) {
     var step = Number(event.target.value);
-    if (step === MAX_STEP) renderFinal();
+    if (step === MAX_STEP) { readEditors(); activeFinalEdit=null; renderFinal(); }
     showStep(step, { scroll: true });
   });
   document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); requestBackgroundStage('discussion'); });
@@ -1667,7 +1770,9 @@
     readSummary();
     state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1);
     renderSummary();
-    scheduleSave();
+    if (remove) queueReviewDecision('Discussion item removed');
+    else if (topicButton) queueReviewDecision('Discussion topic removed');
+    else scheduleSave();
   });
   document.getElementById('generateActions').addEventListener('click', function () { requestBackgroundStage('actions'); });
   document.getElementById('regenerationDialog').addEventListener('close', function (event) {
@@ -1715,6 +1820,7 @@
     // row, or deleting a row or topic that never had any text, changes nothing
     // the Actions were built from and must not ask for a regeneration.
     var material = Boolean(demote || promote || moveNew);
+    var removedReviewContent = false;
     var addedRecord = null;
     var movedTopicIndex = -1;
     if(add){
@@ -1726,6 +1832,7 @@
     if(remove){
       var removedRecord=state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1)[0];
       material = material || discussionRecordHasContent(removedRecord);
+      removedReviewContent = discussionRecordHasContent(removedRecord);
       forgetPendingDiscussion(removedRecord);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
     }
@@ -1768,6 +1875,7 @@
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
       material = material || discussionTopicHasContent(removedTopic);
+      removedReviewContent = discussionTopicHasContent(removedTopic);
       forgetPendingDiscussion(removedTopic);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
     }
@@ -1784,7 +1892,9 @@
       if(addedField){var editor=addedField.querySelector('textarea');if(editor)editor.focus({preventScroll:true});}
       return;
     }
-    scheduleSave();
+    if (remove && removedReviewContent) queueReviewDecision('Discussion item removed');
+    else if (topicButton && removedReviewContent) queueReviewDecision('Discussion topic removed');
+    else scheduleSave();
   });
 
   document.getElementById('actionsBody').addEventListener('click', function (event) {
@@ -1808,7 +1918,7 @@
       delete actionEditorState.pendingRows[removedAction.id];
       delete actionEditorState.customOwners[removedAction.id];
     }
-    renderActions(); scheduleSave();
+    renderActions(); queueReviewDecision('Action removed');
   });
 
   document.getElementById('actionsBody').addEventListener('change', function (event) {
@@ -1876,6 +1986,90 @@
     var field = document.querySelector('#' + recordDomId('action', action.id) + ' [data-action]');
     if (field) field.focus({ preventScroll:true });
   });
+
+  function findFinalDiscussionRecord(id) {
+    for (var topicIndex = 0; topicIndex < (state.draft.discussion || []).length; topicIndex += 1) {
+      var topic = state.draft.discussion[topicIndex];
+      var topicId = topic.id || 'topic-' + topicIndex;
+      for (var fieldIndex = 0; fieldIndex < 3; fieldIndex += 1) {
+        var field = ['points','decisions','openQuestions'][fieldIndex];
+        var itemIndex = (topic[field] || []).findIndex(function (item, index) { return String(item.id || (topicId+'-'+field+'-'+index)) === String(id); });
+        if (itemIndex >= 0) return topic[field][itemIndex];
+      }
+    }
+    return null;
+  }
+
+  function applyFinalEdit() {
+    if (!activeFinalEdit || !state.draft) return false;
+    var edit = activeFinalEdit;
+    var editor = document.querySelector('#finalDocument [data-final-editor]');
+    if (!editor) return false;
+    var valueControl = editor.querySelector('[data-final-editor-value]');
+    var value = valueControl ? valueControl.value.trim() : '';
+    var label = 'Final minutes updated';
+    if (edit.kind === 'details') {
+      state.draft.details[edit.field] = value;
+      label = edit.field === 'meetingTitle' ? 'Meeting title edited' : edit.field === 'meetingDate' ? 'Meeting date edited' : 'Meeting location edited';
+    } else if (edit.kind === 'topic') {
+      var topic = (state.draft.discussion || []).find(function (item, index) { return String(item.id || 'topic-'+index) === String(edit.id); });
+      if (!topic || !value) return false;
+      topic.topic = value; label = 'Topic heading edited';
+    } else if (edit.kind === 'discussion') {
+      var record = findFinalDiscussionRecord(edit.id);
+      if (!record || !value) return false;
+      record.text = value; label = 'Meeting sentence edited';
+    } else if (edit.kind === 'objective') {
+      var objectiveIndex = (state.draft.meetingObjectives || []).findIndex(function (item, index) { return String(typeof item === 'string' ? 'objective-'+index : item.id) === String(edit.id); });
+      if (objectiveIndex < 0 || !value) return false;
+      var objective = state.draft.meetingObjectives[objectiveIndex];
+      state.draft.meetingObjectives[objectiveIndex] = typeof objective === 'string' ? value : Object.assign({}, objective, {text:value});
+      label = 'Meeting objective edited';
+    } else if (edit.kind === 'summary') {
+      if (!value) return false;
+      state.draft.executiveSummary = value; label = 'Executive summary edited';
+    } else if (edit.kind === 'action') {
+      var action = (state.draft.actions || []).find(function (item) { return String(item.id) === String(edit.id); });
+      if (!action) return false;
+      if (edit.field === 'action') {
+        if (!value) return false;
+        action.action = value; label = 'Action edited';
+      } else if (edit.field === 'owners') {
+        action.owners = value.split(/[,;]+/).map(function (owner) { return owner.trim(); }).filter(Boolean);
+        label = 'Action owners edited';
+      } else if (edit.field === 'timing') {
+        action.timing = {
+          kind: editor.querySelector('[data-final-timing-kind]').value,
+          wording: editor.querySelector('[data-final-timing-wording]').value.trim(),
+          exactDate: editor.querySelector('[data-final-timing-date]').value
+        };
+        label = 'Action timing edited';
+      }
+    }
+    activeFinalEdit = null;
+    // saveDraftNow reads the hidden stage editors before sending. Refresh them
+    // so an edit made on the final document cannot be replaced by stale fields.
+    renderDetails(); renderDiscussion(); renderActions(); renderSummary(); renderFinal();
+    queueReviewDecision(label);
+    return true;
+  }
+
+  document.getElementById('finalDocument').addEventListener('click', function (event) {
+    var editable = event.target.closest('[data-final-edit]');
+    if (editable) {
+      activeFinalEdit = { kind:editable.dataset.kind, id:editable.dataset.recordId || '', field:editable.dataset.field };
+      renderFinal();
+      return;
+    }
+    if (event.target.closest('[data-final-cancel]')) { activeFinalEdit = null; renderFinal(); return; }
+    if (event.target.closest('[data-final-save]')) applyFinalEdit();
+  });
+
+  document.getElementById('finalDocument').addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && activeFinalEdit) { event.preventDefault(); activeFinalEdit = null; renderFinal(); }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && activeFinalEdit) { event.preventDefault(); applyFinalEdit(); }
+  });
+
   function openReviewTarget(targetButton) {
     if (targetButton.dataset.targetStep !== undefined) showStep(Number(targetButton.dataset.targetStep), { scroll:true });
     window.setTimeout(function () {
@@ -1904,7 +2098,7 @@
       openReviewTarget(targetButton);
       return;
     }
-    var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); scheduleSave();
+    var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); var decisionLabel=button.dataset.flagStatus==='dismissed'?'Warning dismissed':button.dataset.flagStatus==='corrected'?'Warning correction saved':'Warning confirmed'; queueReviewDecision(decisionLabel);
   });
   document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
   document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });
@@ -1916,7 +2110,19 @@
     var targetButton = event.target.closest('[data-view-review-target]');
     if (targetButton) openReviewTarget(targetButton);
   });
-  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Items to check do not prevent saving or export.',false,'review'); });
+  document.getElementById('openFinalReview').addEventListener('click', function () { readEditors(); activeFinalEdit=null; renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Click any sentence, owner or date to edit it here.',false,'review'); });
+  document.getElementById('checksRemaining').addEventListener('click', function () {
+    var panel=document.getElementById('reviewFlags');
+    if(panel.hidden)return;
+    panel.open=true;panel.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  document.getElementById('previewDocument').addEventListener('click', function () {
+    if(state.currentStep===MAX_STEP){showStep(previewReturnStep,{scroll:true});return;}
+    readEditors();previewReturnStep=state.currentStep;activeFinalEdit=null;renderFinal();showStep(MAX_STEP,{scroll:true});
+  });
+  document.getElementById('downloadDraft').addEventListener('click', function () { downloadExport('docx'); });
+  document.getElementById('undoLastDecision').addEventListener('click', undoLastReviewDecision);
+  document.getElementById('undoToastButton').addEventListener('click', undoLastReviewDecision);
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Final minutes saved to the Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });
   document.getElementById('reloadDraft').addEventListener('click', function () {
     if (state.draft) loadDraft(state.draft.draftId);
@@ -1926,7 +2132,7 @@
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
   document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back, { scroll: true });});});
-  document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP)renderFinal();showStep(button.dataset.step, { scroll: true });}});});
+  document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP){readEditors();activeFinalEdit=null;renderFinal();}showStep(button.dataset.step, { scroll: true });}});});
 
   document.addEventListener('focusin', function (event) {
     if (navigationScrollStep !== state.currentStep) return;
@@ -1945,7 +2151,7 @@
       setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
       return;
     }
-    if (event.target.matches('textarea,input,select') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
+    if (event.target.matches('textarea,input,select') && !event.target.closest('[data-final-editor]') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
       readEditors();
       rememberPendingActions();
       rememberPendingDiscussion();

@@ -10664,6 +10664,12 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   // The client only needs to know whether an undo exists. Shipping up to 30
   // full before/after snapshots on every save was pure weight.
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
+  const latestUndo = Array.isArray(changeHistory) ? changeHistory[changeHistory.length - 1] : null;
+  safe.lastUndo = latestUndo ? {
+    id: meetingMinutesAgentText(latestUndo.id, 80),
+    label: meetingMinutesAgentText(latestUndo.label || 'Last review decision', 160),
+    createdAt: latestUndo.createdAt || latestUndo.acceptedAt || ''
+  } : null;
   if (options.summary) {
     return {
       draftId: safe.draftId,
@@ -10759,6 +10765,28 @@ function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRow
     return { ...change, beforeIndex, index: beforeIndex, selected: false };
   });
   return changes.length ? { ...proposal, changes } : null;
+}
+
+const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
+  'details', 'steer', 'discussion', 'actions', 'executiveSummary',
+  'meetingObjectives', 'reviewFlags', 'pendingProposal', 'staleStages',
+  'currentStep', 'selectedStep', 'status'
+];
+
+function meetingAgentReviewSnapshot(draft = {}) {
+  return Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS.map((key) => [
+    key, JSON.parse(JSON.stringify(draft[key] == null ? null : draft[key]))
+  ]));
+}
+
+function meetingAgentReviewHistoryEntry(draft = {}, label = 'Review decision') {
+  return {
+    id: crypto.randomUUID(),
+    type: 'review_decision',
+    label: meetingMinutesAgentText(label, 160) || 'Review decision',
+    createdAt: new Date().toISOString(),
+    beforeState: meetingAgentReviewSnapshot(draft)
+  };
 }
 
 function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false) {
@@ -13770,6 +13798,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       draft.pendingProposal,
       [...(draft.discussion || []), ...(draft.actions || [])]
     );
+    const reviewDecisionLabel = meetingMinutesAgentText(req.body?.reviewDecisionLabel, 160);
+    const changeHistory = reviewDecisionLabel
+      ? [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, reviewDecisionLabel)].slice(-30)
+      : draft.changeHistory;
     const saved = await saveMeetingAgentDraft(draft, req, {
       details,
       steer: req.body?.steer ?? draft.steer,
@@ -13786,6 +13818,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       ])],
       currentStep: furthestStep,
       selectedStep: requestedSelectedStep,
+      changeHistory,
       status: req.body?.status
     });
     // Edits settle for a while before the next stage is run ahead of the
@@ -14730,8 +14763,12 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
         : (Array.isArray(req.body?.changeIds) ? req.body.changeIds : []);
     const acceptedIdSet = new Set(acceptedIds.filter((id) => allIds.includes(id)));
     if (decision === 'reject') {
+      const history = [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(
+        draft, `${allIds.length} suggestion${allIds.length === 1 ? '' : 's'} dismissed`
+      )].slice(-30);
       const saved = await saveMeetingAgentDraft(draft, req, {
         pendingProposal: null,
+        changeHistory: history,
         reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [], allIds)
       });
       return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
@@ -14741,7 +14778,9 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     const remainingProposal = rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
     const history = [...(draft.changeHistory || []), {
       id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,
-      acceptedChangeIds: [...acceptedIdSet], before, after, acceptedAt: new Date().toISOString()
+      label: `${acceptedIdSet.size} suggestion${acceptedIdSet.size === 1 ? '' : 's'} applied`,
+      acceptedChangeIds: [...acceptedIdSet], before, after, acceptedAt: new Date().toISOString(),
+      beforeState: meetingAgentReviewSnapshot(draft)
     }].slice(-30);
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...(proposal.stage === 'discussion' ? { discussion: after } : { actions: after }),
@@ -14766,12 +14805,16 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
     }
     const history = [...(draft.changeHistory || [])];
     const latest = history.pop();
-    if (!latest) return res.status(409).json({ ok: false, error: 'There is no accepted AI change to undo.' });
-    const saved = await saveMeetingAgentDraft(draft, req, {
-      ...(latest.stage === 'discussion' ? { discussion: latest.before || [] } : { actions: latest.before || [] }),
-      changeHistory: history,
-      pendingProposal: null
-    });
+    if (!latest) return res.status(409).json({ ok: false, error: 'There is no review decision to undo.' });
+    const restored = latest.beforeState && typeof latest.beforeState === 'object'
+      ? Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS
+        .filter((key) => Object.prototype.hasOwnProperty.call(latest.beforeState, key))
+        .map((key) => [key, latest.beforeState[key]]))
+      : {
+          ...(latest.stage === 'discussion' ? { discussion: latest.before || [] } : { actions: latest.before || [] }),
+          pendingProposal: null
+        };
+    const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory: history });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
@@ -14968,6 +15011,8 @@ router.stagedEvaluation = {
   meetingMinutesAuditPublishEnabled,
   reopenFlagsOfReAddedItems,
   reconcileMeetingAgentOrphanFlags,
+  meetingAgentReviewSnapshot,
+  meetingAgentReviewHistoryEntry,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,

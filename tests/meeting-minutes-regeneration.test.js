@@ -9,7 +9,10 @@ const {
   meetingAgentDiscussionFingerprint,
   rebaseMeetingAgentProposal,
   resolveMeetingAgentProposalFlags,
-  reconcileMeetingAgentOrphanFlags
+  reconcileMeetingAgentOrphanFlags,
+  meetingAgentReviewSnapshot,
+  meetingAgentReviewHistoryEntry,
+  publicMeetingAgentDraft
 } = require('../routes/api').stagedEvaluation;
 const { normaliseAgentResult, reconcileRecordFlags } = require('../utils/meetingMinutesAgentV2');
 
@@ -141,6 +144,27 @@ test('legacy unlinked field warnings are retained only when a current item is a 
   const out = reconcileMeetingAgentOrphanFlags([matched, orphan], [action], null);
   assert.equal(out[0].status, 'open');
   assert.equal(out[1].status, 'dismissed');
+});
+
+test('review checkpoints preserve a complete independent Undo state and expose only its label', () => {
+  const draft = {
+    draftId: 'undo-draft', revision: 4, status: 'draft', details: { meetingTitle: 'Review' },
+    discussion: [], actions: [{ id: 'a1', action: 'Send report.', owners: ['Alex'], timing: { kind: 'not_stated' }, reviewFlagIds: [] }],
+    reviewFlags: [{ id: 'f1', kind: 'ownership', message: 'Check owner.', status: 'open' }],
+    pendingProposal: { stage: 'actions', changes: [{ id: 'c1', selected: false }] },
+    meetingObjectives: [], staleStages: [], currentStep: 5, selectedStep: 5
+  };
+  const snapshot = meetingAgentReviewSnapshot(draft);
+  const entry = meetingAgentReviewHistoryEntry(draft, 'Suggestion dismissed');
+  draft.actions[0].action = 'Changed later.';
+  draft.reviewFlags[0].status = 'dismissed';
+  assert.equal(snapshot.actions[0].action, 'Send report.');
+  assert.equal(entry.beforeState.reviewFlags[0].status, 'open');
+  assert.equal(entry.beforeState.pendingProposal.changes[0].selected, false);
+  const visible = publicMeetingAgentDraft({ ...draft, changeHistory: [entry] });
+  assert.equal(visible.lastUndo.label, 'Suggestion dismissed');
+  assert.equal(visible.changeHistory, undefined);
+  assert.equal(visible.changeHistoryCount, 1);
 });
 
 test('identical open flags are shown once; handled flags are kept', () => {
