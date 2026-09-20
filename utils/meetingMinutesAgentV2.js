@@ -246,13 +246,14 @@ function comparisonText(value) {
     .replace(/\b([a-z]{3,})(?<!s|u|i)s\b/g, '$1');
 }
 
-function evidenceWindowUnits(units = [], ids = [], radius = 1) {
+function evidenceWindowUnits(units = [], ids = [], radius = 1, forward = null) {
   const rows = evidenceContextFor(units).rows;
+  const ahead = Number.isInteger(forward) ? forward : radius;
   const wanted = new Set((Array.isArray(ids) ? ids : []).map((id) => text(id, 30)));
   const indexes = rows.map((unit, index) => wanted.has(unit.id) ? index : -1).filter((index) => index >= 0);
   const included = new Set(indexes.flatMap((index) => {
     const values = [];
-    for (let offset = -radius; offset <= radius; offset += 1) values.push(index + offset);
+    for (let offset = -radius; offset <= ahead; offset += 1) values.push(index + offset);
     return values;
   }).filter((index) => index >= 0 && index < rows.length));
   return [...included].sort((a, b) => a - b).map((index) => rows[index]);
@@ -2102,7 +2103,13 @@ function commitmentCheckEnabled() {
 
 function commitmentCheckItems(actions = [], units = []) {
   return (Array.isArray(actions) ? actions : []).slice(0, 24).map((action, index) => {
-    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 2).slice(0, 24).map((unit) => `${unit.speaker}: ${unit.text}`);
+    // The words that hand work over come AFTER the description of it: run 10's
+    // clinical review cited only T0036, so the passage stopped at T0038 and the
+    // line that assigns it - "So Janine, and I think Adil, you're involved in
+    // that as well next week" - was never shown to the model, which then
+    // answered not_commitment about a sentence this prompt uses as its own
+    // example. The window runs further forward than back for that reason.
+    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 2, 6).slice(0, 24).map((unit) => `${unit.speaker}: ${unit.text}`);
     if (!passage.length || !text(action?.action)) return null;
     return { id: `c${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], passage: passage.join('\n') };
   }).filter(Boolean);

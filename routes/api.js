@@ -14464,6 +14464,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       const candidates = meetingAgentAuditPublishCandidates(
         audited.actions, declaredProposals, draft.actions || [], draft.sourceUnits);
       const commitmentItems = commitmentCheckItems(candidates, draft.sourceUnits);
+      let verifiedCount = 0;
+      let resultCount = 0;
       if (commitmentItems.length) {
         const batches = [];
         for (let index = 0; index < commitmentItems.length; index += 8) batches.push(commitmentItems.slice(index, index + 8));
@@ -14474,16 +14476,23 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
             .catch(() => [])))).flat();
         // requireOwnerTie: the quoted words must tie this work to this owner,
         // so "I'll update that table" cannot carry an unrelated action.
+        resultCount = commitmentResults.length;
         const verified = applyCommitmentCheckResults(candidates, commitmentItems, commitmentResults, { requireOwnerTie: true })
           .filter((record) => (record.owners || []).length);
+        verifiedCount = verified.length;
         const owners = correctnessChecksEnabled()
           ? applyRequesterOwnerRule(verified, draft.sourceUnits)
           : { actions: verified, flags: [] };
         rescuedActions = owners.actions.filter((record) => (record.owners || []).length);
         rescueFlags = owners.flags;
       }
-      if (rescuedActions.length) {
-        console.log(JSON.stringify({ event: 'meeting_agent_audit_published', journeyId: draft.draftId, published: rescuedActions.length, considered: candidates.length }));
+      // Logged whenever there was anything to consider, not only on success:
+      // a silent zero is indistinguishable from the call never running, which
+      // is exactly the ambiguity that made run 10's result unreadable.
+      if (candidates.length) {
+        console.log(JSON.stringify({ event: 'meeting_agent_audit_published', journeyId: draft.draftId,
+          considered: candidates.length, verified: verifiedCount, published: rescuedActions.length,
+          ownersRemoved: rescueFlags.length, results: resultCount }));
       }
     }
     // audited rows were already enforced above; the existing register holds the
