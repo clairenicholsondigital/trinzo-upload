@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   organiseDiscussionForReview, stripClosure, retypeRows, demoteUnreadyRows,
-  consolidateTopics, rehomeSupportingDetails, sortByEvidence, unitIndex
+  consolidateTopics, rehomeSupportingDetails, sortByEvidence, unitIndex,
+  removeAnsweredQuestionClauses, removeContradictoryResponsibilities
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -80,7 +81,7 @@ test('a topic made only of a raw sentence is folded into the nearest topic as co
   assert.equal(topics[0].points[0].supportingDetails[0].id, 'raw');
 });
 
-test('topics are consolidated by evidence adjacency and label similarity, generic topics fold in, and a cap applies', async () => {
+test('topics are consolidated by evidence adjacency and label similarity without forcing unrelated topics into a cap', async () => {
   const topics = [
     { id: 'a', topic: 'Software language support and code changes', points: [{ id: 'p1', text: 'Memory capacity exists for the twelve additional languages.', evidenceIds: ['T0006'] }], decisions: [], openQuestions: [] },
     { id: 'b', topic: 'Detail added on software changes', points: [{ id: 'p2', text: 'The two code changes should be completed by the end of next week.', evidenceIds: ['T0007'] }], decisions: [], openQuestions: [] },
@@ -90,12 +91,66 @@ test('topics are consolidated by evidence adjacency and label similarity, generi
   ];
   const merged = await consolidateTopics(topics, index, { encode: cloneVectors, minTopics: 2, maxTopics: 3 });
   const labels = merged.map((topic) => topic.topic);
-  // Software topics merged (similar + adjacent); generic "Discussion" folded into its neighbour; cap of 3 respected; transcript order.
-  assert.ok(merged.length <= 3, labels.join(' | '));
+  // Software topics merge and a generic neighbour folds in, but unrelated
+  // subjects are not merged merely to meet a presentation cap.
+  assert.ok(merged.length >= 3, labels.join(' | '));
   const software = merged.find((topic) => topic.points.some((r) => r.id === 'p1'));
   assert.ok(software.points.some((r) => r.id === 'p2'), 'adjacent software topics merge');
   assert.ok(!labels.includes('Discussion'), 'generic label does not survive');
   assert.equal(merged[0].points.some((r) => r.id === 'p3') || merged[0].points.some((r) => r.id === 'p5'), true, 'earliest evidence first');
+});
+
+test('an explicit hard topic cap remains available to legacy callers', async () => {
+  const topics = [1, 3, 5, 7].map((sequence, i) => ({
+    topic: `Distinct subject ${i + 1}`,
+    points: [{ id: `p${i}`, text: `Independent outcome number ${i + 1}.`, evidenceIds: [`T000${sequence}`] }],
+    decisions: [], openQuestions: []
+  }));
+  const merged = await consolidateTopics(topics, index, { encode: cloneVectors, minTopics: 2, maxTopics: 2, forceTopicCap: true });
+  assert.equal(merged.length, 2);
+});
+
+test('short verbatim speech and unresolved role labels are not published as primary rows', () => {
+  const localUnits = [
+    { id: 'T0100', speaker: 'Alex', text: "It's approved, yeah, it was approved for Wednesday." },
+    { id: 'T0101', speaker: 'Morgan', text: 'David will contact the speaker about the command letters.' }
+  ];
+  const cleaned = demoteUnreadyRows([{
+    topic: 'Approval',
+    points: [
+      { id: 'good', text: 'The change request was approved and can be signed off.', evidenceIds: ['T0100'] },
+      { id: 'raw', text: "It's approved, yeah, it was approved for Wednesday.", evidenceIds: ['T0100'] },
+      { id: 'role', text: 'David will contact the speaker about the command letters.', evidenceIds: ['T0101'] }
+    ], decisions: [], openQuestions: []
+  }], unitIndex(localUnits));
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['good']);
+});
+
+test('answered question clauses embedded in decisions are removed and cite the answer', () => {
+  const localUnits = [
+    { id: 'T0200', speaker: 'Deepa', text: 'We are agreed on medals rather than shirts.' },
+    { id: 'T0201', speaker: 'Deepa', text: 'Who ordered them last year?' },
+    { id: 'T0202', speaker: 'Jo', text: 'Was that you, Deepa?' },
+    { id: 'T0203', speaker: 'Deepa', text: 'It was me, yeah.' }
+  ];
+  const topic = removeAnsweredQuestionClauses({ topic: 'Medals', points: [], decisions: [{
+    id: 'd1', text: 'Agreed to provide medals again, not shirts; question on who ordered last year.',
+    evidenceIds: ['T0200', 'T0201']
+  }], openQuestions: [] }, unitIndex(localUnits));
+  assert.equal(topic.decisions[0].text, 'Agreed to provide medals again, not shirts');
+  assert.deepEqual(topic.decisions[0].evidenceIds, ['T0200', 'T0201', 'T0203']);
+});
+
+test('a conflicting responsibility loses only to a directly supported first-person commitment', () => {
+  const localUnits = [
+    { id: 'T0300', speaker: 'Tom Whitfield', text: 'That was awkward.' },
+    { id: 'T0301', speaker: 'Priya Sethi', text: 'I will close with a proper thank you and next step.' }
+  ];
+  const topic = removeContradictoryResponsibilities({ topic: 'Closing', points: [
+    { id: 'wrong', text: 'Tom Whitfield will take the closing segment and final thank you.', evidenceIds: ['T0300', 'T0301'] },
+    { id: 'right', text: 'Priya Sethi will close with a proper thank you and next step.', evidenceIds: ['T0301'] }
+  ], decisions: [], openQuestions: [] }, unitIndex(localUnits));
+  assert.deepEqual(topic.points.map((row) => row.id), ['right']);
 });
 
 test('topics whose labels share a distinctive word and read alike merge; different subjects do not', async () => {

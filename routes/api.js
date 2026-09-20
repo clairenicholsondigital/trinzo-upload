@@ -190,6 +190,7 @@ const {
   groundedExecutiveSummary,
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
   applyTimingClauseChecks,
+  backfillActionCommitmentEvidence,
   timingCheckEnabled: meetingMinutesTimingCheckEnabled,
   timingCheckItems,
   timingCheckPrompt,
@@ -201,6 +202,9 @@ const {
   discussionFidelityCheckItems,
   discussionFidelityCheckPrompt,
   applyDiscussionFidelityResults,
+  actionCompletenessCheckItems,
+  actionCompletenessCheckPrompt,
+  applyActionCompletenessResults,
   reconcileRecordFlags,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   commitmentCheckItems,
@@ -11170,9 +11174,33 @@ function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
   // Two independent Agent discovery passes are sufficient even when their
   // formal wording is slightly broader than one cited turn. A deterministic
   // accepted/committed chain may also supply the second independent signal.
-  return (sourceInfo.discoverySources.length >= 2 && support >= 0.24)
+  return repeatedOwnerCommitment(action, sourceUnits)
+    || (sourceInfo.discoverySources.length >= 2 && support >= 0.24)
     || (sourceInfo.explicitDeterministic && support >= 0.3)
     || highConfidenceRefereedAction(action, candidates, sourceUnits);
+}
+
+// A direct commitment which is repeated in the meeting's action recap is
+// stronger than a single model classification. This is deliberately strict:
+// the same named owner must speak both cited lines, both lines must describe
+// the action, and the confirmations must be separated in the transcript.
+function repeatedOwnerCommitment(action = {}, sourceUnits = []) {
+  const owners = (action.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
+  if (!owners.length || !(action.evidenceIds || []).length) return false;
+  const units = new Map(normaliseSourceUnits(sourceUnits).map((unit, index) => [unit.id, {
+    ...unit,
+    index: Number(String(unit.id || '').match(/\d+/)?.[0] || index)
+  }]));
+  const ownerMatches = (speaker = '') => owners.some((owner) => {
+    const a = owner.split(/\s+/)[0]; const b = String(speaker).trim().toLowerCase().split(/\s+/)[0];
+    return owner === String(speaker).trim().toLowerCase() || (a && a === b);
+  });
+  const commitment = /\b(?:i(?:'ll| will| can| am going to|'m going to)|we(?:'ll| will| can| are going to)|leave (?:it|that|this) with me|will do)\b|^\s*me\s*[,;:-]/i;
+  const supported = (action.evidenceIds || []).map((id) => units.get(id)).filter(Boolean)
+    .filter((unit) => ownerMatches(unit.speaker) && commitment.test(unit.text)
+      && hybridContentTokenOverlap(action.action, unit.text) >= 0.24);
+  if (supported.length < 2) return false;
+  return Math.max(...supported.map((unit) => unit.index)) - Math.min(...supported.map((unit) => unit.index)) >= 3;
 }
 
 // Reuse the existing final critic as the targeted promotion referee. An action
@@ -13470,7 +13498,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
     actions: [...finalPublishedActions, ...remainingProposalCandidates]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
-  const reconciledPublishedActions = mergePublishedActionEvidence(finalPublishedActions, complete);
+  const reconciledPublishedActions = backfillActionCommitmentEvidence(
+    mergePublishedActionEvidence(finalPublishedActions, complete), draft.sourceUnits,
+    { meetingDate: details.meetingDate }
+  );
   const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
   );
@@ -13550,6 +13581,25 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const ownersChecked = applyRequesterOwnerRule(deduped.actions, draft.sourceUnits);
     const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
     timingChecked = { actions: softened.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags, ...softened.flags] };
+  }
+  let actionCompletenessCheckedCount = 0;
+  let actionCompletenessCorrectedCount = 0;
+  if (correctnessChecksEnabled()) {
+    const completenessItems = actionCompletenessCheckItems(timingChecked.actions, draft.sourceUnits);
+    const completenessBatches = [];
+    for (let index = 0; index < completenessItems.length; index += 8) completenessBatches.push(completenessItems.slice(index, index + 8));
+    const completenessResults = (await Promise.all(completenessBatches.map((batch, index) => call(
+      `critic-action-completeness-${index + 1}`, actionCompletenessCheckPrompt(batch),
+      { optional: true, responseKind: 'correction_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const completeness = applyActionCompletenessResults(timingChecked.actions, completenessItems, completenessResults);
+    timingChecked = { ...timingChecked, actions: completeness.actions };
+    actionCompletenessCheckedCount = completeness.checked;
+    actionCompletenessCorrectedCount = completeness.corrected;
+    if (completeness.checked || completeness.rejected.length) console.log(JSON.stringify({
+      event: 'meeting_agent_action_completeness', journeyId: draft.draftId,
+      checked: completeness.checked, corrected: completeness.corrected, rejected: completeness.rejected
+    }));
   }
   let answeredInMeetingCount = 0;
   let completedDuringMeetingCount = 0;
@@ -13734,6 +13784,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         rescuedActionTexts,
         answeredInMeetingCount,
         completedDuringMeetingCount,
+        actionCompletenessCheckedCount,
+        actionCompletenessCorrectedCount,
         finalLifecycleCheckedCount,
         finalLifecycleWithheldCount,
         finalLifecycleRejectedCount,
@@ -15139,6 +15191,7 @@ router.stagedEvaluation = {
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
   safeAgentProposalPromotion,
+  repeatedOwnerCommitment,
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,
   mergeHybridDiscussionTopics,

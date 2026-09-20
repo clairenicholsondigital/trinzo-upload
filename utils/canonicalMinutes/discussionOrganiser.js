@@ -26,6 +26,11 @@ const STATUS_LANGUAGE = /\b(?:reviewed|inquir(?:es|ed|y)|asks?|asked|queries|exp
 const QUESTION_MARKER = /\?|\b(?:whether|unclear|unresolved|undecided|to be (?:confirmed|decided|agreed|clarified)|awaiting (?:a )?(?:decision|confirmation|response|answer)|not yet (?:agreed|decided|confirmed|known|resolved)|open (?:point|question|item)|outstanding (?:point|question|query|item)|quer(?:y|ies)|questions? (?:raised|remains?|about|on|of|was|were)|pending|needs? (?:to be )?(?:confirm|clarif)|tbc)\b/i;
 const ANSWER_OPENER = /^\s*(?:yes|yeah|yep|no|nope|okay|ok)\b/i;
 const ANSWER_CLAIM = /\b(?:i(?:'ve| have)|we(?:'ve| have)|she(?:'s| has)|he(?:'s| has)|they(?:'ve| have)) (?:done|sent|put|added|updated|completed|addressed|closed|finished|amended|reviewed)\b/i;
+const DIRECT_ANSWER = /\b(?:(?:it|that) was me|i (?:did|ordered|sent|made|handled|owned|prepared|completed|reviewed|booked|arranged)\b|(?:he|she|they|we) (?:did|ordered|sent|made|handled|owned|prepared|completed|reviewed|booked|arranged)\b)/i;
+const EMBEDDED_QUESTION_CLAUSE = /(?:[;,]\s*)questions?\s+(?:on|about|of|was|were|regarding)\b[^.;?]*(?:[.?]|$)/i;
+const NOTE_STYLE_START = /^(?:need to\b|(?:current|existing|planned|expected|required|proposed)\b[^.;]{3,140};|[A-Z][^.;]{1,100}\s+to\s+(?:arrange|check|confirm|contact|email|prepare|provide|reorder|review|send|share|update)\b)/;
+const UNRESOLVED_ROLE = /\b(?:the speaker|the presenter|the attendee|the participant)\b/i;
+const ROUTINE_INTRODUCTION = /\b(?:meeting (?:started|opened|began) with (?:attendee )?introductions?|attendees? introduced themselves|presence of .{0,80}(?:was|were) noted)\b/i;
 
 function text(value, max = 4000) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
@@ -123,16 +128,25 @@ function stripClosure(value) {
 
 function isVerbatimUnit(value, index, evidenceIds = []) {
   const tokens = contentTokens(value);
-  if (tokens.size < 8) return false;
+  if (tokens.size < 4) return false;
   const candidates = (Array.isArray(evidenceIds) ? evidenceIds : [])
     .map((id) => index.byId.get(text(id, 30))).filter(Boolean);
-  return candidates.some((unit) => overlap(value, unit.text) >= 0.9 && contentTokens(unit.text).size >= tokens.size * 0.8);
+  const normal = (input) => text(input).toLowerCase().replace(/[’]/g, "'")
+    .replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return candidates.some((unit) => {
+    const sourceTokens = contentTokens(unit.text);
+    const exact = normal(value) === normal(unit.text);
+    // Short transcript turns used to bypass this gate entirely. Exact matching
+    // is safe at four words; fuzzy matching remains reserved for longer rows.
+    return exact || (tokens.size >= 8 && overlap(value, unit.text) >= 0.9 && sourceTokens.size >= tokens.size * 0.8);
+  });
 }
 
 const INQUIRY_ONLY = /^[A-Z][\w'’-]+(?: [A-Z][\w'’-]+)? (?:inquires|enquires|asks|queries|questions|checks) (?:about|on|if|whether|for|regarding)\b/;
 
 function isConversational(value) {
   if (CONVERSATIONAL_OPENER.test(value) || CONVERSATIONAL_FILLER.test(value) || /\.\.\.|\w\.[A-Z]/.test(value)) return true;
+  if (NOTE_STYLE_START.test(value) || UNRESOLVED_ROLE.test(value) || ROUTINE_INTRODUCTION.test(value)) return true;
   // "Jacqui inquires about PMS progress from Ciaran." records that a question
   // was asked, not what was said; it reads as context, not a minute.
   return INQUIRY_ONLY.test(value) && contentTokens(value).size <= 8;
@@ -153,12 +167,111 @@ function looksLikeStatusNotDecision(value) {
 }
 
 function questionIsAnswered(record, index) {
-  const cited = recordSequences(record, index).sort((a, b) => a - b)
-    .map((sequence) => [...index.byId.values()].find((unit) => unit.sequence === sequence)).filter(Boolean);
-  if (cited.length < 2) return false;
-  const asker = text(cited[0].speaker).toLowerCase();
-  return cited.slice(1).some((unit) => text(unit.speaker).toLowerCase() !== asker
-    && (ANSWER_OPENER.test(unit.text) || ANSWER_CLAIM.test(unit.text)));
+  return Boolean(answeredQuestionEvidence(record, index).length);
+}
+
+function answeredQuestionEvidence(record, index) {
+  const ordered = [...index.byId.values()].sort((a, b) => a.sequence - b.sequence);
+  const cited = new Set(recordSequences(record, index));
+  const questions = ordered.filter((unit) => cited.has(unit.sequence)
+    && (QUESTION_MARKER.test(unit.text) || /\b(?:who|what|when|where|why|how)\b/i.test(unit.text)));
+  const answerIds = [];
+  for (const question of questions) {
+    const position = ordered.findIndex((unit) => unit.sequence === question.sequence);
+    const answer = ordered.slice(position + 1, position + 5).find((unit) =>
+      ANSWER_OPENER.test(unit.text) || ANSWER_CLAIM.test(unit.text) || DIRECT_ANSWER.test(unit.text));
+    if (answer) answerIds.push(answer.id);
+  }
+  return [...new Set(answerIds)];
+}
+
+function removeAnsweredQuestionClauses(topic, index) {
+  const clean = (record) => {
+    if (!EMBEDDED_QUESTION_CLAUSE.test(text(record?.text))) return record;
+    const answerIds = answeredQuestionEvidence(record, index);
+    if (!answerIds.length) return record;
+    const cleaned = text(record.text).replace(EMBEDDED_QUESTION_CLAUSE, '').replace(/[;,]\s*$/, '').trim();
+    if (contentTokens(cleaned).size < 2) return record;
+    return { ...record, text: cleaned, evidenceIds: [...new Set([...(record.evidenceIds || []), ...answerIds])] };
+  };
+  return {
+    ...topic,
+    points: (topic.points || []).map(clean),
+    decisions: (topic.decisions || []).map(clean),
+    openQuestions: topic.openQuestions || []
+  };
+}
+
+const RESPONSIBILITY_LANGUAGE = /\b(?:will|shall|is responsible for|takes? responsibility|owns?|will handle|will lead|will close|will present|will deliver|will run|will take)\b/i;
+const FIRST_PERSON_RESPONSIBILITY = /\b(?:i(?:'ll| will| shall| can| am going to|'m going to)|my (?:job|action|responsibility) is|i (?:think i )?(?:take|own|handle|lead|close|present|deliver|run|review|send|prepare|build|restore))\b/i;
+const TASK_STOP = new Set(['final', 'proper', 'actual', 'including', 'with', 'then', 'also', 'segment', 'responsibility', 'you', 'your', 'their', 'some']);
+
+function namedResponsibilityOwner(record, index) {
+  if (!RESPONSIBILITY_LANGUAGE.test(text(record?.text))) return null;
+  const value = text(record.text).toLowerCase();
+  const people = [...new Set([...index.byId.values()].map((unit) => text(unit.speaker, 180)).filter(Boolean))];
+  const leading = people.filter((person) => {
+    const full = person.toLowerCase(); const first = full.split(/\s+/)[0];
+    return value.startsWith(`${full} `) || value.startsWith(`${first} `);
+  });
+  if (leading.length === 1) return leading[0];
+  const matches = people.filter((person) => {
+    const full = person.toLowerCase(); const first = full.split(/\s+/)[0];
+    return value.includes(full) || new RegExp(`^${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(value);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function responsibilityTaskTokens(record, owner) {
+  const ownerWords = new Set(contentTokens(owner));
+  return new Set([...contentTokens(record?.text)].filter((token) => !ownerWords.has(token)
+    && !TASK_STOP.has(token) && !/^(?:will|shall|take|responsib|own|handle|lead)$/.test(token)));
+}
+
+function responsibilitySupport(record, owner, index) {
+  const target = responsibilityTaskTokens(record, owner);
+  return (record.evidenceIds || []).map((id) => index.byId.get(text(id, 30))).filter(Boolean)
+    .filter((unit) => text(unit.speaker).toLowerCase() === owner.toLowerCase()
+      && FIRST_PERSON_RESPONSIBILITY.test(unit.text)
+      && (() => {
+        const source = responsibilityTaskTokens({ text: unit.text }, owner);
+        let shared = 0; for (const token of target) if (source.has(token)) shared += 1;
+        return shared / Math.max(1, Math.min(target.size, source.size)) >= 0.4;
+      })()).length;
+}
+
+// When two rows assign the same responsibility to different people, retain a
+// uniquely supported first-person commitment. If neither side wins cleanly,
+// leave both for the later reviewer checks rather than guessing.
+function removeContradictoryResponsibilities(topic, index) {
+  const rows = topicRows(topic);
+  const removed = new Set();
+  for (let left = 0; left < rows.length; left += 1) {
+    if (removed.has(rows[left].record)) continue;
+    const leftOwner = namedResponsibilityOwner(rows[left].record, index);
+    if (!leftOwner) continue;
+    for (let right = left + 1; right < rows.length; right += 1) {
+      if (removed.has(rows[right].record)) continue;
+      const rightOwner = namedResponsibilityOwner(rows[right].record, index);
+      if (!rightOwner || rightOwner.toLowerCase() === leftOwner.toLowerCase()) continue;
+      const a = responsibilityTaskTokens(rows[left].record, leftOwner);
+      const b = responsibilityTaskTokens(rows[right].record, rightOwner);
+      let shared = 0; for (const token of a) if (b.has(token)) shared += 1;
+      const sharedEvidence = (rows[left].record.evidenceIds || []).some((id) => (rows[right].record.evidenceIds || []).includes(id));
+      if (!shared || (!sharedEvidence && shared / Math.max(1, Math.min(a.size, b.size)) < 0.35)) continue;
+      const leftSupport = responsibilitySupport(rows[left].record, leftOwner, index);
+      const rightSupport = responsibilitySupport(rows[right].record, rightOwner, index);
+      if (leftSupport === rightSupport) continue;
+      removed.add(leftSupport > rightSupport ? rows[right].record : rows[left].record);
+    }
+  }
+  if (!removed.size) return topic;
+  return {
+    ...topic,
+    points: (topic.points || []).filter((record) => !removed.has(record)),
+    decisions: (topic.decisions || []).filter((record) => !removed.has(record)),
+    openQuestions: (topic.openQuestions || []).filter((record) => !removed.has(record))
+  };
 }
 
 // A point that states an agreement in so many words, and whose cited
@@ -233,7 +346,10 @@ function demoteUnreadyRows(topics, index) {
     const demoted = [];
     for (const row of rows) {
       const flagged = Array.isArray(row.record.reviewFlagIds) && row.record.reviewFlagIds.length > 0;
-      if (!flagged && notClientReady(row.record, index)) demoted.push(row);
+      // A warning must not make raw transcript wording publishable. Other
+      // conversational rows remain visible when a reviewer must resolve them.
+      if (isVerbatimUnit(row.record.text, index, row.record.evidenceIds)
+        || (!flagged && notClientReady(row.record, index))) demoted.push(row);
       else keep[row.kind].push(row.record);
     }
     const remaining = topicRows(keep).map((row) => ({ ...row, index }));
@@ -360,7 +476,10 @@ async function consolidateTopics(topics, index, options = {}) {
   const rowsOf = (group) => group.reduce((sum, i) => sum + topicRows(ordered[i]).length, 0);
   const total = ordered.reduce((sum, topic) => sum + topicRows(topic).length, 0);
   const target = Math.min(Number(options.maxTopics || 8), Math.max(Number(options.minTopics || 4), Math.ceil(total / 2)));
-  while (groups.length > target) {
+  // A topic-count target is a presentation preference, not evidence that two
+  // subjects belong together. Only legacy callers which explicitly request a
+  // hard cap may fold unrelated chronological neighbours.
+  while (options.forceTopicCap === true && groups.length > target) {
     let smallest = 0;
     groups.forEach((group, g) => { if (rowsOf(group) < rowsOf(groups[smallest])) smallest = g; });
     let best = -1; let bestScore = -1;
@@ -472,7 +591,9 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
     for (const { record } of topicRows(topic)) record.text = stripClosure(record.text);
     for (const kind of ROW_KINDS) topic[kind] = (topic[kind] || []).filter((record) => contentTokens(record.text).size >= 2);
   }
+  topics = topics.map((topic) => removeAnsweredQuestionClauses(topic, index));
   topics = topics.map((topic) => retypeRows(topic, index));
+  topics = topics.map((topic) => removeContradictoryResponsibilities(topic, index));
   topics = demoteUnreadyRows(topics, index);
   topics = await consolidateTopics(topics, index, options);
   topics = dropVerbatimSupporting(topics, index);
@@ -490,6 +611,9 @@ module.exports = {
   isConversational,
   looksLikeStatusNotDecision,
   questionIsAnswered,
+  answeredQuestionEvidence,
+  removeAnsweredQuestionClauses,
+  removeContradictoryResponsibilities,
   retypeRows,
   isExplicitDecision,
   demoteUnreadyRows,

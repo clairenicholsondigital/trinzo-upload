@@ -50,6 +50,8 @@ const {
   acceptedVisitAssignmentActions,
   strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
+  safeAgentProposalPromotion,
+  repeatedOwnerCommitment,
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,
   mergeHybridDiscussionTopics,
@@ -1424,6 +1426,25 @@ test('the independent critic can promote a strongly evidenced single-source refe
   const suggestionUnits = [{ id: 'T0002', sequence: 2, speaker: 'Priya Shah', text: 'Maybe we could consider reviewing the report.', classification: 'keep' }];
   const suggestion = { ...refereeAction, evidenceIds: ['T0002'], timing: { kind: 'not_stated', wording: '', exactDate: '' } };
   assert.deepEqual(criticConfirmedActionPromotions([suggestion], [suggestion], [], suggestionUnits), []);
+});
+
+test('a named owner repeating the same commitment in the action recap is safe to promote', () => {
+  const action = {
+    action: 'Reorder 350 medals for finishers, same as last year.',
+    owners: ['Deepa Sharma'], evidenceIds: ['T0055', 'T0074'], reviewFlagIds: []
+  };
+  const units = [
+    { id: 'T0055', speaker: 'Deepa Sharma', text: "I'll reorder the medals, same as last year; I'll order three hundred and fifty." },
+    { id: 'T0074', speaker: 'Deepa Sharma', text: 'Me, reorder three hundred and fifty medals and run the social media.' }
+  ];
+  assert.equal(repeatedOwnerCommitment(action, units), true);
+  assert.equal(safeAgentProposalPromotion(action, [], units), true);
+});
+
+test('one owner statement is not enough for repeated-commitment promotion', () => {
+  const action = { action: 'Order 350 medals.', owners: ['Deepa Sharma'], evidenceIds: ['T0055'], reviewFlagIds: [] };
+  const units = [{ id: 'T0055', speaker: 'Deepa Sharma', text: "I'll order three hundred and fifty medals." }];
+  assert.equal(repeatedOwnerCommitment(action, units), false);
 });
 
 test('candidate dispositions expose publish, proposal and reject outcomes', () => {

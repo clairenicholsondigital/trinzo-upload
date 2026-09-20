@@ -16,6 +16,41 @@ test('timing wording must contain an actual date, target or dependency', () => {
   assert.equal(V.timingWordingHasMeaning({ kind: 'not_stated', wording: '' }), true);
 });
 
+test('final action evidence recovers an explicit cited owner commitment and its timing', () => {
+  const units = [
+    { id: 'T0058', speaker: 'Dan Threlfall', text: 'Josie, can you confirm the order in writing?' },
+    { id: 'T0059', speaker: 'Josie Kaur', text: "Yeah, I'll email them today to confirm the fifteen casks with our terms." }
+  ];
+  const [action] = V.backfillActionCommitmentEvidence([{
+    action: 'Email the festival to confirm the fifteen-cask order.', owners: ['Josie Kaur'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0058']
+  }], units, { meetingDate: '2026-08-10' });
+  assert.deepEqual(action.evidenceIds, ['T0058', 'T0059']);
+  assert.deepEqual(action.timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+});
+
+test('final action evidence can recover a later anaphoric review commitment without inventing timing', () => {
+  const units = Array.from({ length: 30 }, (_, offset) => {
+    const number = offset + 1;
+    return {
+      id: `T${String(number).padStart(4, '0')}`,
+      speaker: number === 30 ? 'Rebecca Gill' : 'David Didsbury',
+      text: number === 14
+        ? 'That is not the same as justifying the frequency values.'
+        : number === 30 ? "Right, I'll have a look at that." : 'The risk probability rationale remains under discussion.'
+    };
+  });
+  const [action] = V.backfillActionCommitmentEvidence([{
+    action: 'Review and document justification for the risk probability values.', owners: ['Rebecca Gill'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0014']
+  }], units);
+  assert.deepEqual(action.evidenceIds, ['T0014', 'T0030']);
+  assert.equal(action.timing.kind, 'not_stated');
+  const ownerChecked = V.applyRequesterOwnerRule([action], units);
+  assert.deepEqual(ownerChecked.actions[0].owners, ['Rebecca Gill']);
+  assert.deepEqual(ownerChecked.flags, []);
+});
+
 test('meaningless timing is removed and clearly flagged on generated actions', () => {
   const prior = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
   process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
@@ -151,4 +186,45 @@ test('ordinary deliverables are never sent through the live-delivery gate', () =
     { action: 'Share the completed risk analysis with Niamh.', owners: ['Jacqui'], evidenceIds: ['T0001'] }
   ];
   assert.deepEqual(V.completedInMeetingCheckItems(actions, questionUnits), []);
+});
+
+test('action completeness can add a quote-verified outcome from the same owner', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Dan', text: 'Mick, can we get the chiller serviced before the fifteenth?' },
+    { id: 'T0002', speaker: 'Mick', text: "I'll ring the refrigeration engineer today." },
+    { id: 'T0003', speaker: 'Mick', text: "I'll get the chiller serviced before we pitch the IPA on the fifteenth." }
+  ];
+  const actions = [{
+    action: 'Contact the refrigeration engineer about the chiller service.', owners: ['Mick'],
+    timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: ['T0001', 'T0002', 'T0003']
+  }];
+  const items = V.actionCompletenessCheckItems(actions, units);
+  assert.equal(items.length, 1);
+  const result = V.applyActionCompletenessResults(actions, items, [{
+    id: items[0].id, verdict: 'corrected',
+    problemQuote: 'Contact the refrigeration engineer about the chiller service.',
+    evidenceQuote: "I'll get the chiller serviced before we pitch the IPA on the fifteenth.",
+    correctedAction: 'Contact the refrigeration engineer and arrange for the chiller to be serviced before the IPA is pitched.'
+  }]);
+  assert.equal(result.corrected, 1);
+  assert.match(result.actions[0].action, /arrange for the chiller to be serviced/i);
+  assert.deepEqual(result.actions[0].timing, actions[0].timing);
+});
+
+test('action completeness rejects a correction unsupported by its passage', () => {
+  const actions = [{ action: 'Contact the engineer.', owners: ['Mick'], evidenceIds: ['T0001'] }];
+  const items = [{ id: 'ac1', index: 0, action: actions[0].action, owners: ['Mick'], passage: '[T0001] Mick: I will contact the engineer.' }];
+  const result = V.applyActionCompletenessResults(actions, items, [{
+    id: 'ac1', verdict: 'corrected', problemQuote: 'Contact the engineer.',
+    evidenceQuote: 'I will replace the compressor.', correctedAction: 'Contact the engineer and replace the compressor.'
+  }]);
+  assert.equal(result.corrected, 0);
+  assert.equal(result.actions[0].action, 'Contact the engineer.');
+});
+
+test('discussion fidelity explicitly checks enumerated mappings and time direction', () => {
+  const prompt = V.discussionFidelityCheckPrompt([]);
+  assert.match(prompt, /preserve every source pairing/i);
+  assert.match(prompt, /current-period condition caused a previous-period result/i);
+  assert.match(prompt, /the speaker/i);
 });
