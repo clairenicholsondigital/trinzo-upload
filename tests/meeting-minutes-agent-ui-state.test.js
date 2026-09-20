@@ -112,6 +112,16 @@ function startStubServer() {
   actionsCompleting.selectedStep = 2;
   actionsCompleting.staleStages = ['actions'];
   drafts.set('actions-completing', actionsCompleting);
+  const navigation = baseDraft('navigation', false);
+  navigation.currentStep = 5;
+  navigation.selectedStep = 3;
+  navigation.actions = Array.from({ length: 7 }, (_, index) => ({
+    id: `navigation-action-${index + 1}`,
+    action: `Complete preparation task ${index + 1} and share the outcome with the meeting attendees.`,
+    owners: [index % 2 ? 'Sam Okoro' : 'Alex Reed'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+  }));
+  drafts.set('navigation', navigation);
   const patchCounts = new Map();
   const patchBodies = new Map();
 
@@ -127,7 +137,8 @@ function startStubServer() {
     res.json({ ok: true, draft: prepared, resumeUrl: '/meeting-minutes-agent?draftId=prepared' });
   });
   app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: drafts.get(req.params.id) }));
-  app.patch('/api/meeting-minutes-agent/drafts/:id', (req, res) => {
+  app.patch('/api/meeting-minutes-agent/drafts/:id', async (req, res) => {
+    if (req.params.id === 'navigation') await new Promise((resolve) => setTimeout(resolve, 250));
     patchBodies.set(req.params.id, req.body);
     const prior = drafts.get(req.params.id);
     const next = {
@@ -738,6 +749,48 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     await page.click('.export-menu>summary');
     assert.equal(await page.locator('.export-menu-body').isVisible(), true);
     assert.match(await page.textContent('#saveMinutes'), /Save final minutes/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('step navigation wins over an in-flight autosave scroll restore', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    page.setDefaultTimeout(10000);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=navigation`);
+    await page.waitForSelector('[data-screen="3"].active [data-action-row]');
+
+    const saveRequest = page.waitForRequest((request) => request.method() === 'PATCH' && request.url().endsWith('/drafts/navigation'));
+    const saveResponse = page.waitForResponse((response) => response.request().method() === 'PATCH' && response.url().endsWith('/drafts/navigation'));
+    await page.fill('[data-action-row="0"] [data-action]', 'Complete the first preparation task and circulate the confirmed outcome.');
+    await saveRequest;
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.click('[data-screen="3"] [data-back="2"]');
+    await saveResponse;
+    await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
+    await page.waitForTimeout(100);
+
+    const position = await page.evaluate(() => {
+      const screen = document.querySelector('[data-screen="2"]');
+      return {
+        top: Math.round(screen.getBoundingClientRect().top),
+        scrollY: Math.round(window.scrollY),
+        maxScroll: Math.round(document.documentElement.scrollHeight - window.innerHeight),
+        activeInsideScreen: screen.contains(document.activeElement),
+        activeTag: document.activeElement.tagName
+      };
+    });
+    assert.ok(position.top <= 16 || Math.abs(position.scrollY - position.maxScroll) <= 2, JSON.stringify(position));
+    assert.equal(position.activeInsideScreen, true, JSON.stringify(position));
+    assert.equal(position.activeTag, 'H2');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
