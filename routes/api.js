@@ -213,6 +213,7 @@ const {
   applyRequesterOwnerRule,
   demoteSupersededRows,
   labelSupersededContext,
+  promoteNamedFactDetails,
   describesUsualPractice,
   discussionActionCandidates,
   supersededCheckItems,
@@ -13033,6 +13034,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         finalDiscussion = labelled.discussion;
         supersededContextFlags = labelled.flags;
       }
+      if (meetingMinutesPromoteNamedFactsEnabled()) {
+        // The exported minutes carry primary rows only: bring a few named or
+        // dated facts back out of supporting context.
+        const details = sanitiseMeetingAgentDetails(draft.details);
+        const facts = promoteNamedFactDetails(finalDiscussion, draft.sourceUnits,
+          [...(details.internalAttendees || []), ...(details.clientAttendees || [])]);
+        if (facts.promoted) {
+          finalDiscussion = facts.discussion;
+          console.log(JSON.stringify({ event: 'meeting_agent_promoted_facts', journeyId: draft.draftId, promoted: facts.promoted }));
+        }
+      }
       if (superseded.demoted || labelled.labelled) {
         console.log(JSON.stringify({ event: 'meeting_agent_superseded_rows', journeyId: draft.draftId, demoted: superseded.demoted, labelledInContext: labelled.labelled }));
       }
@@ -13923,6 +13935,10 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
 // costs more than it gains (actions 0.406 -> 0.392, missing 8 -> 9) because the
 // extra published rows are mostly practice descriptions and duplicates. Off;
 // the code stays for a future re-test with tighter candidate filtering.
+function meetingMinutesPromoteNamedFactsEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PROMOTE_NAMED_FACTS_V1 || '0'));
+}
+
 function meetingMinutesDiscussionActionCandidatesEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_CANDIDATES_V1 || '0'));
 }

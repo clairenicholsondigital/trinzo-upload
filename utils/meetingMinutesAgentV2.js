@@ -2543,6 +2543,68 @@ function describesUsualPractice(action = {}, units = []) {
   return lines.length > 0 && lines.every((line) => HABITUAL_DESCRIPTION.test(line)) && !lines.some((line) => FUTURE_COMMITMENT.test(line));
 }
 
+// ---- Named facts belong in the minutes ------------------------------------
+// The exported minutes contain the primary rows only, so a fact left in
+// supporting context never reaches the reader. A context line naming a person
+// or a date, which does not repeat a visible row, is promoted back - a few per
+// meeting, so the Discussion does not fill up with secondary detail.
+const FACT_DATE = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|next week|this week|end of (?:the )?(?:week|month)|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?[A-Z][a-z]+|\d{4}-\d{2}-\d{2})\b/i;
+function promoteNamedFactDetails(discussion = [], units = [], people = [], limit = 4) {
+  const names = [...new Set([...(Array.isArray(people) ? people : []), ...mentionedPeople(units)])]
+    .map((person) => text(person, 180).split(/\s+/)[0]).filter((name) => name.length > 2);
+  const visible = (Array.isArray(discussion) ? discussion : [])
+    .flatMap((topic) => ['points', 'decisions', 'openQuestions'].flatMap((kind) => topic?.[kind] || []));
+  const said = (value) => names.some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value)) || FACT_DATE.test(value);
+  const restates = (value) => visible.some((record) => {
+    const left = contentTokens(comparisonText(value)); const right = contentTokens(comparisonText(record?.text || ''));
+    if (!left.length || !right.length) return false;
+    const shared = left.filter((token) => right.includes(token)).length;
+    return shared / Math.min(left.length, right.length) >= 0.5;
+  });
+  // Raw speech and run-together transcription ("the.Bottomed out") are not
+  // minutes: they stay in context whatever they mention.
+  const context = evidenceContextFor(units);
+  const readable = (value) => !/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you|your)\b/i.test(value)
+    && !/[a-z]\.[A-Z]/.test(value)
+    && !(value.match(/\b(?:kind of|sort of|you know|i mean|i suppose)\b/gi) || []).length;
+  const verbatim = (value, ids) => (ids || []).some((id) => {
+    const unit = context.rows[context.indexById.get(id)];
+    if (!unit) return false;
+    const left = contentTokens(comparisonText(value)); const right = contentTokens(comparisonText(unit.text));
+    if (!left.length || !right.length) return false;
+    return left.filter((token) => right.includes(token)).length / Math.min(left.length, right.length) >= 0.8;
+  });
+  let promoted = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    const additions = [];
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      if (!Array.isArray(topic?.[kind])) continue;
+      next[kind] = topic[kind].map((record) => {
+        const details = Array.isArray(record?.supportingDetails) ? record.supportingDetails : [];
+        if (!details.length) return record;
+        const kept = [];
+        for (const detail of details) {
+          const value = text(detail?.text, 800);
+          if (promoted < limit && value && !value.startsWith(SUPERSEDED_LABEL)
+            && (detail.evidenceIds || []).length && said(value) && !restates(value)
+            && readable(value) && !verbatim(value, detail.evidenceIds)) {
+            additions.push({ id: detail.id || stableId('promoted', value, promoted), text: value,
+              evidenceIds: [...(detail.evidenceIds || [])], reviewFlagIds: [...(detail.reviewFlagIds || [])], supportingDetails: [] });
+            promoted += 1;
+            continue;
+          }
+          kept.push(detail);
+        }
+        return kept.length === details.length ? record : { ...record, supportingDetails: kept };
+      });
+    }
+    if (additions.length) next.points = [...(next.points || []), ...additions];
+    return next;
+  });
+  return { discussion: checked, promoted };
+}
+
 // ---- Decision check -------------------------------------------------------
 // A Discussion row keeps the "decision" label only when the model quotes the
 // words in its passage that make or accept the choice, and the quote is found
@@ -3203,6 +3265,7 @@ module.exports = {
   describesUsualPractice,
   demoteSupersededRows,
   labelSupersededContext,
+  promoteNamedFactDetails,
   supersededCheckItems,
   supersededVerdicts,
   applyRequesterOwnerRule,
