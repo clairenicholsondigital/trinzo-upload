@@ -274,7 +274,7 @@
 .meeting-agent-page .summary-field{
   padding:.85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
 .meeting-agent-page .summary-field>.lbl{display:block;margin-bottom:.5rem}
-.meeting-agent-page .summary-field textarea{min-height:170px}
+.meeting-agent-page #executiveSummary{min-height:170px}
 .meeting-agent-page .generating{
   display:flex;align-items:center;gap:.7rem;padding:1.1rem;margin-top:.85rem;
   border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft);
@@ -287,29 +287,16 @@
 
 /* -------------------------------------------------- editor + agent bar -- */
 .meeting-agent-page .paper{min-width:0}
-.meeting-agent-page .agent-edit{
-  margin-bottom:.85rem;border:1px solid var(--border);border-radius:var(--radius-sm);
-  background:var(--surface);overflow:hidden}
-.meeting-agent-page .agent-edit[open]{border-color:var(--accent)}
-.meeting-agent-page .agent-edit-summary{
-  display:flex;align-items:center;gap:.6rem;padding:.65rem .85rem;
-  cursor:pointer;list-style:none;font-size:var(--fs-sm)}
-.meeting-agent-page .agent-edit-summary::-webkit-details-marker{display:none}
-.meeting-agent-page .agent-edit-title{font-weight:var(--fw-bold);color:var(--heading)}
-.meeting-agent-page .status-dot{
-  display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
-  background:var(--ok-text);margin-right:.15rem}
-.meeting-agent-page .agent-edit-hint{color:var(--muted);font-size:var(--fs-cap)}
-.meeting-agent-page .agent-edit-toggle{
-  display:inline-flex;align-items:center;gap:.3rem;margin-left:auto;
-  color:var(--accent);font-weight:var(--fw-bold);font-size:var(--fs-cap);white-space:nowrap}
-.meeting-agent-page .agent-edit[open] .agent-edit-toggle .ic{transform:rotate(180deg)}
-.meeting-agent-page .agent-edit-toggle-open{display:none}
-.meeting-agent-page .agent-edit[open] .agent-edit-toggle-closed{display:none}
-.meeting-agent-page .agent-edit[open] .agent-edit-toggle-open{display:inline}
+.meeting-agent-page .screen-toolbar-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.meeting-agent-page .agent-edit-inline{position:relative}
+.meeting-agent-page .agent-edit-inline>summary{list-style:none}
+.meeting-agent-page .agent-edit-inline>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .agent-edit-inline[open]>summary{border-color:var(--accent);background:var(--brand-050)}
 .meeting-agent-page .agent-edit-body{
-  display:grid;gap:.6rem;padding:.85rem;border-top:1px solid var(--border);
-  background:var(--soft)}
+  position:absolute;z-index:8;top:calc(100% + .35rem);right:0;display:grid;gap:.6rem;
+  width:min(520px,calc(100vw - 2rem));padding:.85rem;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--soft);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .agent-edit-body p{margin:0}
 .meeting-agent-page .agent-edit-body textarea{min-height:90px;background:var(--surface)}
 .meeting-agent-page .agent-edit-body .button{justify-self:start}
 
@@ -335,19 +322,16 @@
 .meeting-agent-page .topic-menu-popover .delete{width:100%}
 .meeting-agent-page .record-section{padding:.55rem .65rem .65rem}
 .meeting-agent-page .record-section+.record-section{border-top:1px solid var(--border)}
-.meeting-agent-page .record-section-head{
-  display:flex;align-items:center;justify-content:flex-end;gap:.5rem;margin-bottom:.2rem}
-.meeting-agent-page .record-section-head h3{margin:0}
 .meeting-agent-page .record-list{display:grid;gap:.35rem}
-.meeting-agent-page .record-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.25rem .5rem;align-items:start}
+.meeting-agent-page .record-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.25rem .5rem;align-items:start}
 .meeting-agent-page .record-row+.record-row{padding-top:.35rem;border-top:1px solid var(--border)}
 .meeting-agent-page .record-row textarea{
-  min-height:40px;padding:.35rem .45rem;border-color:transparent;background:transparent;font-size:var(--fs-sm)}
+  min-height:36px;padding:.3rem .4rem;border-color:transparent;background:transparent;font-size:var(--fs-sm);resize:none}
 .meeting-agent-page .record-row textarea:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .record-row textarea:focus{border-color:var(--accent);background:var(--surface)}
 .meeting-agent-page .record-tools,
 .meeting-agent-page .action-tools{display:flex;align-items:flex-start;gap:.5rem}
-.meeting-agent-page .record-row>.record-tools{grid-column:1/-1;margin-top:-.05rem}
+.meeting-agent-page #objectivesList .record-tools{align-self:center;margin:0}
 .meeting-agent-page .record-tools>details,
 .meeting-agent-page .action-tools>details{flex:1;min-width:0}
 .meeting-agent-page .record-tools .delete,
@@ -363,7 +347,7 @@
   min-width:170px;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);box-shadow:var(--shadow-lg)}
 .meeting-agent-page .record-add-options .secondary{justify-content:flex-start;width:100%}
-.meeting-agent-page .proposition-row{padding:.4rem .5rem;border-left:3px solid var(--accent);background:var(--surface)}
+.meeting-agent-page .proposition-row{grid-template-columns:auto minmax(0,1fr) auto;padding:.25rem .4rem;border-left:3px solid var(--accent);background:var(--surface)}
 .meeting-agent-page .proposition-row+.proposition-row{padding-top:.4rem}
 .meeting-agent-page .proposition-kind,.meeting-agent-page .final-kind{
   display:inline-flex;width:max-content;padding:.18rem .5rem;border-radius:999px;
@@ -430,10 +414,11 @@
   border-bottom:1px solid var(--border-strong)}
 .meeting-agent-page .actions-table td{
   padding:.55rem .6rem;vertical-align:top;border-bottom:1px solid var(--border)}
-.meeting-agent-page .actions-table th:nth-child(1){width:52%}
-.meeting-agent-page .actions-table th:nth-child(2){width:24%}
-.meeting-agent-page .actions-table th:nth-child(3){width:24%}
-.meeting-agent-page .actions-table textarea{min-height:42px;padding:.35rem .45rem;border-color:transparent;background:transparent}
+.meeting-agent-page .editable-actions-table th:nth-child(1){width:60%}
+.meeting-agent-page .editable-actions-table th:nth-child(2){width:17%}
+.meeting-agent-page .editable-actions-table th:nth-child(3){width:18%}
+.meeting-agent-page .editable-actions-table th:nth-child(4){width:5%}
+.meeting-agent-page .actions-table textarea{min-height:36px;padding:.3rem .4rem;border-color:transparent;background:transparent;resize:none}
 .meeting-agent-page .actions-table textarea:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .action-row .owner-add,
 .meeting-agent-page .action-row .timing-editor,
@@ -446,8 +431,9 @@
 .meeting-agent-page .action-row.is-editing .action-tools{grid-template-columns:minmax(0,1fr) auto}
 .meeting-agent-page .action-row.is-editing .owner-chip button{display:grid}
 .meeting-agent-page .action-row.is-editing .timing-summary{display:none}
-.meeting-agent-page .timing-summary{margin:.2rem 0 .45rem;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
-.meeting-agent-page .action-edit{min-width:4.2rem}
+.meeting-agent-page .timing-summary{margin:.25rem 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
+.meeting-agent-page .row-action-cell{text-align:right;padding-left:.15rem!important;padding-right:.25rem!important}
+.meeting-agent-page .action-edit{min-width:0;padding:.3rem .35rem;color:var(--accent)}
 .meeting-agent-page .action-tools{margin-top:.4rem}
 .meeting-agent-page .preview-action-row{background:var(--soft)}
 .meeting-agent-page .preview-action-row td{color:var(--heading)}
@@ -487,20 +473,19 @@
 .meeting-agent-page .timing-editor input{font-size:var(--fs-sm);padding:.4rem .5rem}
 
 /* -------------------------------------------------------- review flags -- */
-.meeting-agent-page .review-flags{margin-bottom:.75rem;padding:0;overflow:hidden}
+.meeting-agent-page .review-flags{margin:.25rem 0 .75rem;padding:0}
 .meeting-agent-page .review-flags-summary{
-  display:flex;align-items:center;gap:.65rem;padding:.8rem 1rem;cursor:pointer;list-style:none}
+  display:flex;width:max-content;align-items:center;gap:.45rem;margin-left:auto;padding:.4rem .65rem;
+  cursor:pointer;list-style:none;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface)}
 .meeting-agent-page .review-flags-summary::-webkit-details-marker{display:none}
-.meeting-agent-page .review-flags-heading{font-size:var(--fs-lg);font-weight:var(--fw-bold);color:var(--heading)}
+.meeting-agent-page .review-flags-heading{font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
 .meeting-agent-page .flag-count{
   padding:.15rem .5rem;border-radius:var(--radius-pill);
   background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);
   font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .review-flags-summary::after{
-  content:"Show";margin-left:auto;color:var(--muted);
-  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .review-flags[open] .review-flags-summary::after{content:"Hide"}
-.meeting-agent-page .review-flags-body{padding:0 1rem 1rem;border-top:1px solid var(--border)}
+.meeting-agent-page .review-flags-summary::after{content:"›";color:var(--muted);font-size:var(--fs-md);line-height:1}
+.meeting-agent-page .review-flags[open] .review-flags-summary::after{transform:rotate(90deg)}
+.meeting-agent-page .review-flags-body{margin-top:.45rem;padding:0 1rem 1rem}
 .meeting-agent-page .review-flags-body>.muted{margin:.75rem 0}
 .meeting-agent-page .flag-list{display:grid;gap:.6rem}
 .meeting-agent-page .flag{
@@ -677,7 +662,7 @@
   </section>
   <p id="staleNotice" class="notice" hidden>Earlier meeting content changed, so <strong id="staleStages"></strong> may be out of date. Regenerate when ready. If you have edited them, your version is kept and the new results are offered as proposed changes.</p>
 
-  <details id="reviewFlags" class="panel review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading">Details to review</span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
+  <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading">Review details</span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
 
   <!-- ============================================ 0 - upload and details -->
   <section class="panel screen active" data-screen="0">
@@ -719,9 +704,8 @@
 
   <!-- ================================================== 2 - discussion -->
   <section class="panel screen" data-screen="2">
-    <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">Changes are previewed before anything is applied</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview agent changes</button></div></details>
     <div class="paper">
-      <div class="toolbar"><h2>Discussion, decisions and questions</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div>
+      <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Edit with agent</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. You will preview them before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button></div></div>
       <p class="muted">Edit the minutes directly. Sources are available from each item's menu when you need them.</p>
       <div id="discussionList"></div>
     </div>
@@ -731,11 +715,10 @@
 
   <!-- ===================================================== 2 - actions -->
   <section class="panel screen" data-screen="3">
-    <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Edit multiple actions</span><span class="agent-edit-hint">For example: merge true duplicates and make the wording concise.</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details>
     <div class="paper">
-      <div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div>
+      <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Edit with agent</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. You will preview them before anything is applied.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button></div></div>
       <p class="muted">Scan the list, then open Edit only on actions you want to change.</p>
-      <div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
+      <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th><th><span class="visually-hidden">Row actions</span></th></tr></thead><tbody id="actionsBody"></tbody></table></div>
     </div>
     <p class="prewarm-notice" data-speculation-notice="summary" role="status" hidden></p>
     <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="Review the transcript again for additional actions.">Review action coverage</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
