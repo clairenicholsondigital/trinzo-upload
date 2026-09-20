@@ -2192,6 +2192,17 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
 // actions are checked. An action is taken off the published list only when the
 // model quotes both the answer and its acceptance and both are in the passage;
 // the caller offers it back as a proposal, so nothing is lost.
+// Measured and rejected (20 Sep 2026): matching an answerable verb at the start
+// of any clause rather than of the whole action, so that run 8's "Fill gaps in
+// documentation ... and follow up on the dates for formative studies" would be
+// checked. Two findings against the 40 stored drafts. First, retiring a
+// composite retires the genuine half with it - that action's gap-filling clause
+// is real work. Second, splitting on "and" to avoid that is not viable: 180 of
+// 277 actions are "and"-joined, and almost all are single actions ("Review the
+// outputs and update the documents", "Review the mute-button change ... and
+// determine whether it is acceptable"). Splitting would damage 180 actions to
+// correct one. The clauses are only separable by their evidence, which is held
+// per action, not per clause. Left anchored at the start of the action.
 const ANSWERABLE_ACTION = /^(?:clarify|confirm|determine|decide|finali[sz]e|check|verify|establish|find out|agree)\b/i;
 function answeredCheckEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_ANSWERED_CHECK_V1 || '0'));
