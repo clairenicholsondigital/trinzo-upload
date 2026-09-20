@@ -21,6 +21,7 @@ const FRAME_WORDS = new Set([
 ]);
 
 function stem(token) {
+  token = token.replace(/[’']s?$/, '');
   if (token === 'queries') return 'question';
   if (token === 'questionnaire') return 'question';
   if (token.length > 6 && token.endsWith('ing')) return token.slice(0, -3);
@@ -32,6 +33,96 @@ function stem(token) {
 
 function tokens(value) {
   return (String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]*/g) || []).map(stem);
+}
+
+const ACTION_VERBS = new Set([
+  ...COMMUNICATION_VERBS, 'apply', 'arrange', 'assess', 'book', 'check',
+  'complete', 'confirm', 'create', 'draft', 'finalise', 'finalize', 'finish',
+  'prepare', 'review', 'schedule', 'test', 'update', 'verify'
+]);
+const CONTENT_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'all', 'also', 'as', 'at', 'by', 'for', 'from', 'has',
+  'have', 'if', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'their', 'then',
+  'to', 'when', 'whether', 'with'
+]);
+
+function contentTokens(value) {
+  return tokens(value).filter((word) => word.length > 1 && !CONTENT_STOP_WORDS.has(word));
+}
+
+function originalInitialisms(value) {
+  return String(value || '').match(/\b[A-Z]{2,5}\b/g) || [];
+}
+
+function expandInitialisms(words, ownText, otherText) {
+  const expanded = new Set(words);
+  const other = contentTokens(otherText);
+  for (const abbreviation of originalInitialisms(ownText)) {
+    const initials = abbreviation.toLowerCase();
+    for (let width = 2; width <= Math.min(5, other.length); width += 1) {
+      for (let at = 0; at <= other.length - width; at += 1) {
+        const phrase = other.slice(at, at + width);
+        if (phrase.map((word) => word[0]).join('') !== initials) continue;
+        phrase.forEach((word) => expanded.add(word));
+      }
+    }
+  }
+  return expanded;
+}
+
+function actionClauses(value) {
+  const words = tokens(value);
+  const starts = [];
+  words.forEach((word, index) => { if (ACTION_VERBS.has(word)) starts.push(index); });
+  if (!starts.length) return [];
+  return starts.map((start, index) => {
+    const end = starts[index + 1] ?? words.length;
+    return { verb: words[start], words: words.slice(start, end).filter((word) => !CONTENT_STOP_WORDS.has(word)) };
+  }).filter((clause) => clause.words.length >= 2);
+}
+
+function clauseCoverage(left, right, leftText, rightText) {
+  if (left.verb !== right.verb) return 0;
+  const a = expandInitialisms(left.words, leftText, rightText);
+  const b = expandInitialisms(right.words, rightText, leftText);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
+// A later turn often expands an existing commitment rather than creating another one:
+// "send the contract" becomes "send the contract and the supporting schedules", or a
+// standalone check is repeated inside a compound action. Compare verb/object clauses so
+// the fuller record can replace the partial one without relying on any client vocabulary.
+function sameOrNestedActionDeliverable(left = {}, right = {}) {
+  const leftText = String(left.action || left.text || '');
+  const rightText = String(right.action || right.text || '');
+  const a = actionClauses(leftText); const b = actionClauses(rightText);
+  if (!a.length || !b.length) return false;
+  return a.some((one) => b.some((two) => clauseCoverage(one, two, leftText, rightText) >= 0.67));
+}
+
+function recipientTokens(value = '') {
+  const match = String(value || '').match(/\b(?:to|with)\s+(?:the\s+)?(.+?)(?=\s+\b(?:for|by|before|after|so\s+that|in\s+order\s+to)\b|[.;]|$)/i);
+  return new Set(match ? contentTokens(match[1]) : []);
+}
+
+function conflictingActionRecipients(left = {}, right = {}) {
+  const a = recipientTokens(left.action || left.text); const b = recipientTokens(right.action || right.text);
+  return Boolean(a.size && b.size && ![...a].some((word) => b.has(word)));
+}
+
+// Questions about whether the very same activity should happen are not commitments to do
+// that activity. This is deliberately structural: the repeated verb and necessity phrase
+// must both be present, so an ordinary review that happens to mention another review is
+// left alone.
+function circularMetaAction(value = '') {
+  const text = String(value || '').trim().toLowerCase();
+  const opening = text.match(/^([a-z]+)\b/)?.[1];
+  if (!opening) return false;
+  const noun = opening === 'review' ? 'review' : opening.replace(/e$/, '') + '(?:e|ing)?';
+  return new RegExp(`\\bto\\s+(?:check|confirm|decide|determine|establish|understand)\\s+(?:if|whether)\\b[^.]{0,100}\\b${noun}\\b[^.]{0,40}\\b(?:need(?:ed|s)?|necessar(?:y|ily)|required)\\b`, 'i').test(text);
 }
 
 function ownerSet(record = {}) {
@@ -92,5 +183,9 @@ function sameQuestionCommunicationDeliverable(left = {}, right = {}) {
 
 module.exports = {
   questionCommunicationFrame,
-  sameQuestionCommunicationDeliverable
+  sameQuestionCommunicationDeliverable,
+  sameOrNestedActionDeliverable,
+  circularMetaAction,
+  actionClauses,
+  conflictingActionRecipients
 };

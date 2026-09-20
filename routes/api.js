@@ -56,7 +56,7 @@ const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedD
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const { organiseDiscussionForReview, removePersonalAsides } = require('../utils/canonicalMinutes/discussionOrganiser');
-const { questionCommunicationFrame, sameQuestionCommunicationDeliverable } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -10897,7 +10897,8 @@ function isVagueReconstructedAction(value = '') {
     /\bfollow up\b/, /\bwhat can be done\b/, /\b(?:the|this|that) plan\b/,
     /\bbetter picture\b/, /\b(?:crossover|overlap)\b/, /\bregarding (?:it|this|that)\b/
   ].filter((pattern) => pattern.test(source)).length;
-  return /^(?:plan|address|handle|manage|resolve|sort out|deal with)\s+(?:the\s+)?(?:timeline|situation|issue|matter|arrangements?|logistics?|availability|constraint)(?:\s+(?:around|regarding|for)\s+(?:the\s+)?(?:recorded\s+)?(?:availability\s+)?constraint)?$/.test(source)
+  return circularMetaAction(source)
+    || /^(?:plan|address|handle|manage|resolve|sort out|deal with)\s+(?:the\s+)?(?:timeline|situation|issue|matter|arrangements?|logistics?|availability|constraint)(?:\s+(?:around|regarding|for)\s+(?:the\s+)?(?:recorded\s+)?(?:availability\s+)?constraint)?$/.test(source)
     || /^(?:ensure|make sure)\s+(?:that\s+)?(?:everything|things|items)\s+(?:is|are)\s+(?:ready|in place)$/.test(source)
     || vagueReferences >= 3;
 }
@@ -10955,6 +10956,7 @@ function hybridCandidateMatchesRecord(candidate, record) {
   // identity is authoritative. Generic word overlap must not merge different
   // question sets merely because both mention the same supplier.
   if (candidateQuestionFrame && recordQuestionFrame && !sameQuestionDeliverable) return false;
+  if (candidate?.recordType === 'action' && conflictingActionRecipients(candidateAction, record)) return false;
   const candidateIds = new Set(candidate?.evidenceIds || []);
   const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
   const sharesEvidence = recordIds.some((id) => candidateIds.has(id));
@@ -11001,7 +11003,7 @@ function hybridCandidateDispositions(candidates = [], published = [], proposed =
   }).slice(0, 1200);
 }
 
-function dedupeHybridActionRecords(records = []) {
+function dedupeHybridActionRecords(records = [], options = {}) {
   const merged = [];
   const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
   const preference = (record = {}) => {
@@ -11017,10 +11019,45 @@ function dedupeHybridActionRecords(records = []) {
   const stableEvidence = (rows) => [...new Set(rows.flatMap((record) => record.evidenceIds || []))]
     .sort((left, right) => Number(String(left).match(/\d+/)?.[0] || Infinity)
       - Number(String(right).match(/\d+/)?.[0] || Infinity)).slice(0, 12);
+  const unitsById = new Map(normaliseSourceUnits(options.sourceUnits || []).map((unit) => [String(unit.id), unit]));
+  const ownerEvidenceStrength = (record, owner) => {
+    const wanted = meetingMinutesAgentText(owner, 160).toLowerCase();
+    let score = 0;
+    for (const id of record.evidenceIds || []) {
+      const unit = unitsById.get(String(id));
+      if (!unit || meetingMinutesAgentText(unit.speaker, 160).toLowerCase() !== wanted) continue;
+      score = Math.max(score, 1);
+      if (/\b(?:I['’]?ll|I\s+will|I\s+shall|I\s+can|I['’]?m\s+going\s+to|let\s+me)\b/i.test(unit.text || '')) score = 3;
+    }
+    return score;
+  };
+  const supportedOwner = (left, right) => {
+    const leftOwners = left.owners || []; const rightOwners = right.owners || [];
+    if (!leftOwners.length || !rightOwners.length) return null;
+    if (leftOwners.some((owner) => rightOwners.some((other) => other.toLowerCase() === owner.toLowerCase()))) return null;
+    const ranked = [
+      ...leftOwners.map((owner) => ({ owner, score: ownerEvidenceStrength(left, owner) })),
+      ...rightOwners.map((owner) => ({ owner, score: ownerEvidenceStrength(right, owner) }))
+    ].sort((a, b) => b.score - a.score || a.owner.localeCompare(b.owner));
+    return ranked[0]?.score >= 3 && ranked[0].score > (ranked[1]?.score || 0) ? ranked[0].owner : '';
+  };
   for (const record of Array.isArray(records) ? records : []) {
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
-    const duplicate = merged.find((existing) => hybridCandidateMatchesRecord(candidate, existing)
-      && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record));
+    const duplicate = merged.find((existing) => {
+      const conventional = hybridCandidateMatchesRecord(candidate, existing)
+        && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
+      if (conventional) return true;
+      if (!sameOrNestedActionDeliverable(record, existing)) return false;
+      const recordQuestionFrame = questionCommunicationFrame(record);
+      const existingQuestionFrame = questionCommunicationFrame(existing);
+      if (recordQuestionFrame && existingQuestionFrame
+        && !sameQuestionCommunicationDeliverable(record, existing)) return false;
+      if (conflictingActionRecipients(record, existing)) return false;
+      const recordOwners = record.owners || []; const existingOwners = existing.owners || [];
+      const compatible = !recordOwners.length || !existingOwners.length
+        || recordOwners.some((owner) => existingOwners.some((other) => other.toLowerCase() === owner.toLowerCase()));
+      return compatible || Boolean(supportedOwner(record, existing));
+    });
     if (!duplicate) {
       merged.push(record);
       continue;
@@ -11033,9 +11070,10 @@ function dedupeHybridActionRecords(records = []) {
     const duplicateOwners = duplicate.owners || []; const recordOwners = record.owners || [];
     const ownersCompatible = !duplicateOwners.length || !recordOwners.length
       || duplicateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()));
+    const evidenceOwner = ownersCompatible ? null : supportedOwner(record, duplicate);
     const combinedOwners = ownersCompatible
       ? [...new Set([...duplicateOwners, ...recordOwners])].slice(0, 8)
-      : (preferred.owners || []);
+      : evidenceOwner ? [evidenceOwner] : (preferred.owners || []);
     const timing = Number(timingRank[record.timing?.kind] || 0) > Number(timingRank[duplicate.timing?.kind] || 0)
       ? record.timing : duplicate.timing;
     Object.assign(duplicate, preferred, {
@@ -13491,7 +13529,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     commitmentRescueCount = accepted.length - proposalRescueCount;
     automatic.push(...accepted);
   }
-  const publishedActions = dedupeHybridActionRecords(automatic)
+  const publishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
     .filter((record) => !isVagueReconstructedAction(record.action));
   agentDeclaredProposals = dedupeHybridActionRecords(agentDeclaredProposals)
     .filter((record) => !publishedActions.some((existing) => hybridCandidateMatchesRecord({
@@ -13512,11 +13550,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const remainingProposalCandidates = proposalCandidates.filter((record) =>
     !safeProposalPromotions.includes(record) && !isVagueReconstructedAction(record.action)
     && isReviewableActionProposal(record, draft.sourceUnits));
-  const finalPublishedActions = dedupeHybridActionRecords(automatic)
+  const finalPublishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
     .filter((record) => !isVagueReconstructedAction(record.action));
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
     actions: [...finalPublishedActions, ...remainingProposalCandidates]
-  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
+  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions,
+  { sourceUnits: draft.sourceUnits });
   const reconciledPublishedActions = backfillActionCommitmentEvidence(
     mergePublishedActionEvidence(finalPublishedActions, complete), draft.sourceUnits,
     { meetingDate: details.meetingDate }

@@ -255,6 +255,58 @@ test('question deliverable dedupe preserves separate work', () => {
   ]);
 });
 
+test('action dedupe recognises a partial deliverable inside its fuller action', () => {
+  const base = (id, action, evidenceId) => ({
+    id, action, owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [evidenceId]
+  });
+  const records = [
+    base('contract-only', 'Send the authorised representative contract.', 'T0010'),
+    base('contract-pack', 'Send the AR contract and the two supply contracts if they can be found.', 'T0011'),
+    base('towpath-only', 'Confirm that the resurfaced towpath section has reopened.', 'T0020'),
+    base('road-and-towpath', 'Apply for the road closure and confirm the towpath’s reopened.', 'T0021')
+  ];
+  const forward = dedupeHybridActionRecords(structuredClone(records));
+  const reverse = dedupeHybridActionRecords(structuredClone(records).reverse());
+  assert.deepEqual(forward, reverse);
+  assert.deepEqual(forward.map((record) => record.id), ['contract-pack', 'road-and-towpath']);
+  assert.deepEqual(forward[0].evidenceIds, ['T0010', 'T0011']);
+  assert.deepEqual(forward[1].evidenceIds, ['T0020', 'T0021']);
+});
+
+test('action dedupe preserves distinct predicates and recipients', () => {
+  const base = (id, action) => ({
+    id, action, owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [`T-${id}`]
+  });
+  const rows = dedupeHybridActionRecords([
+    base('prepare', 'Prepare the supplier question list.'),
+    base('send', 'Send the supplier question list.'),
+    base('alex', 'Send the report to Alex.'),
+    base('priya', 'Send the report to Priya.')
+  ]);
+  assert.deepEqual(new Set(rows.map((row) => row.id)), new Set(['prepare', 'send', 'alex', 'priya']));
+});
+
+test('an exact deliverable with conflicting owners uses a unique explicit self-commitment', () => {
+  const rows = [
+    { id: 'inferred', action: 'Send the code of conduct to Niamh and require completion before sharing further materials.', owners: ['Stuart Smith'], timing: { kind: 'not_stated' }, evidenceIds: ['T0010'] },
+    { id: 'accepted', action: 'Send the code of conduct to Niamh.', owners: ['Jacqui Fox'], timing: { kind: 'not_stated' }, evidenceIds: ['T0020'] }
+  ];
+  const sourceUnits = [
+    { id: 'T0010', speaker: 'Stuart Smith', text: 'The code of conduct must be signed before any further materials are shared.' },
+    { id: 'T0020', speaker: 'Jacqui Fox', text: "I'll send the code of conduct to Niamh today." }
+  ];
+  const merged = dedupeHybridActionRecords(structuredClone(rows), { sourceUnits });
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].owners, ['Jacqui Fox']);
+  assert.deepEqual(merged[0].evidenceIds, ['T0010', 'T0020']);
+  assert.equal(dedupeHybridActionRecords(structuredClone(rows)).length, 2, 'an unsupported owner conflict remains visible');
+});
+
+test('a circular question about whether the same work needs doing is not an action', () => {
+  assert.equal(isVagueReconstructedAction('Review the replies to comments to understand if a review is needed on those replies.'), true);
+  assert.equal(isVagueReconstructedAction('Review the replies and send the agreed amendments.'), false);
+});
+
 test('proposal dedupe is stable across input order and adjacent evidence windows', () => {
   const records = [
     {
