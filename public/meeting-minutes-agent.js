@@ -69,7 +69,9 @@
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
     if (mustKeepTabOpen(kind) && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
-    document.getElementById('saveStrip').hidden = !state.draft;
+    var strip = document.getElementById('saveStrip');
+    strip.hidden = !state.draft;
+    strip.dataset.state = kind || '';
     element.textContent = message || '';
     element.dataset.state = kind || '';
     refreshLeaveSafety();
@@ -225,7 +227,7 @@
   function attendeeChip(name, group) {
     var destination = group === 'internal' ? 'Client' : 'Internal';
     var removeLabel = 'Remove ' + (name || 'attendee');
-    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary" data-move-attendee="' + group + '" type="button">Move to ' + destination + '</button><button class="delete icon-only" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '" title="' + escapeHtml(removeLabel) + '">' + icon('trash') + '<span class="visually-hidden">' + escapeHtml(removeLabel) + '</span></button></div>';
+    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button" aria-label="Move ' + escapeHtml(name || 'attendee') + ' to ' + destination + '"><span class="move-long">Move to ' + destination + '</span><span class="move-short">Move</span></button><button class="delete icon-only" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '" title="' + escapeHtml(removeLabel) + '">' + icon('trash') + '<span class="visually-hidden">' + escapeHtml(removeLabel) + '</span></button></div>';
   }
 
   function renderAttendeeGroup(group, names) {
@@ -273,7 +275,7 @@
   function autoGrow(root) {
     (root || document).querySelectorAll('textarea').forEach(function (area) {
       area.style.height = 'auto';
-      var compact = area.matches('[data-record-field],[data-action],[data-objective-index]');
+      var compact = area.matches('[data-record-field],[data-action],[data-objective-index],[data-topic]');
       area.style.height = Math.max(area.scrollHeight, compact ? 36 : 52) + 'px';
     });
   }
@@ -295,6 +297,16 @@
       button.classList.toggle('active', step === state.currentStep);
       button.classList.toggle('complete', step < state.currentStep);
     });
+    var mobileStep = document.getElementById('mobileStepSelect');
+    if (mobileStep) {
+      var draft = state.draft || {};
+      var furthestStep = Math.max(Number(draft.currentStep || 0), state.currentStep);
+      mobileStep.value = String(state.currentStep);
+      Array.from(mobileStep.options).forEach(function (option) {
+        option.disabled = Number(option.value) > furthestStep;
+      });
+      document.getElementById('mobileStepCount').textContent = 'Step ' + (state.currentStep + 1) + ' of ' + (MAX_STEP + 1);
+    }
     if (state.draft) {
       state.draft.currentStep = Math.max(Number(state.draft.currentStep || 0), state.currentStep);
       state.draft.selectedStep = state.currentStep;
@@ -586,6 +598,7 @@
       var objectiveText = typeof item === 'string' ? item : item.text;
       return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
+    document.getElementById('generateSummary').textContent = (draft.executiveSummary || objectives.length) ? 'Regenerate summary' : 'Create summary';
     autoGrow(document.getElementById('objectivesList'));
   }
 
@@ -679,7 +692,7 @@
     }
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
-      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><input data-topic-index="' + index + '" data-topic value="' + escapeHtml(topic.topic || '') + '" aria-label="Discussion topic" placeholder="Topic"></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div>' + discussionPropositions(topic, index) + '</article>';
+      return '<article class="discussion-card"><div class="card-head"><label class="topic-field"><span class="visually-hidden">Discussion topic</span><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div>' + discussionPropositions(topic, index) + '</article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
   }
@@ -945,7 +958,7 @@
     var wasHidden = panel.hidden;
     panel.hidden = !flags.length;
     if (flags.length && wasHidden) panel.open = false;
-    document.getElementById('flagCount').textContent = open.length + ' open';
+    document.getElementById('flagCount').textContent = open.length ? open.length + ' item' + (open.length === 1 ? '' : 's') + ' to check' : 'Checks complete';
     var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Source evidence needed', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
       var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
@@ -1055,6 +1068,7 @@
   function renderAll() {
     var snapshot = captureFocus();
     rendering = true;
+    document.body.classList.toggle('has-draft', Boolean(state.draft));
     uploadZone.hidden = Boolean(state.draft);
     detailsEditor.hidden = !state.draft;
     document.getElementById('saveStrip').hidden = !state.draft;
@@ -1396,7 +1410,7 @@
 
   async function loadDraft(draftId) {
     setBusy(true, 'Loading your saved draft...');
-    try { var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId)); adoptDraft(payload.draft); setStatus('Saved draft restored.', false, currentStageName()); }
+    try { var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId)); adoptDraft(payload.draft); setStatus('', false); }
     catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }
@@ -1438,6 +1452,11 @@
     document.getElementById('clientAttendeeHeading').textContent = event.target.value === 'External' ? 'External' : 'Client';
   });
   document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(1, { scroll: true }); });
+  document.getElementById('mobileStepSelect').addEventListener('change', function (event) {
+    var step = Number(event.target.value);
+    if (step === MAX_STEP) renderFinal();
+    showStep(step, { scroll: true });
+  });
   document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); startBackgroundStage('discussion'); });
   document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
   document.getElementById('generateSummary').addEventListener('click', function () { startBackgroundStage('summary'); });
@@ -1663,8 +1682,8 @@
   document.getElementById('proposalChanges').addEventListener('change', function (event) {
     if (event.target.matches('[data-proposal-change]')) updateProposalSelection();
   });
-  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Open flags do not prevent saving or export.',false,'review'); });
-  document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Minutes saved. You can resume them from Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });
+  document.getElementById('openFinalReview').addEventListener('click', function () { renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Items to check do not prevent saving or export.',false,'review'); });
+  document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Final minutes saved to the Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });
   document.getElementById('reloadDraft').addEventListener('click', function () {
     if (state.draft) loadDraft(state.draft.draftId);
   });
@@ -1685,7 +1704,7 @@
       setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
       return;
     }
-    if (event.target.matches('textarea,input,select') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,[data-add-owner],[data-owner-other]')) {
+    if (event.target.matches('textarea,input,select') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
       readEditors();
       rememberPendingActions();
       rememberPendingDiscussion();
