@@ -425,3 +425,42 @@ test('a speaker named only by their surname in the row still counts as supported
   }], units);
   assert.equal(out.flags.length, 0, 'the speaker label supplies the person');
 });
+
+test('a commitment about other work does not make the speaker an owner', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0013', speaker: 'Jacqui Fox', text: 'I know what to do.' },
+    { id: 'T0014', speaker: 'Jacqui Fox', text: "Okay, so just if I step down through each of the core areas, I'll update that table for the new set of minutes." },
+    { id: 'T0015', speaker: 'Jacqui Fox', text: 'The focus still remains on risk and software.' },
+    { id: 'T0018', speaker: 'Jacqui Fox', text: 'some cybersecurity stuff as a result of the USB ports that is on the back of the CPAP machine.' },
+    { id: 'T0019', speaker: 'Jacqui Fox', text: 'So Rebecca is kind of managing that through with Andrew.' }
+  ];
+  const out = V.applyRequesterOwnerRule([{
+    action: 'Update the risk table and incorporate cybersecurity considerations related to USB ports, ensuring mitigation measures are documented.',
+    owners: ['Jacqui Fox'], evidenceIds: ['T0014', 'T0018']
+  }], units);
+  // "I'll update that table for the new set of minutes" is the minutes tracker,
+  // not the risk table: the words shared are the act of meeting-work, not its
+  // subject. The neighbouring "The focus still remains on risk" is a complete
+  // sentence of its own and may not lend its subject to the commitment.
+  assert.deepEqual(out.actions[0].owners, []);
+  assert.equal(out.flags.length, 1);
+  assert.equal(out.flags[0].kind, 'ownership');
+});
+
+test('a commitment split across an unfinished line keeps its owner', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0103', speaker: 'Rebecca Gill', text: 'summary documents, so once they are finalized, they...' },
+    { id: 'T0104', speaker: 'Ciaran Ryan', text: "That document, but I'm gonna..." },
+    { id: 'T0105', speaker: 'Ciaran Ryan', text: 'focus on TFO3 this week.' },
+    { id: 'T0106', speaker: 'Ciaran Ryan', text: "Once that's done, then I can start." }
+  ];
+  const out = V.applyRequesterOwnerRule([{
+    action: 'Focus on TFO3 this week.', owners: ['Ciaran Ryan'], evidenceIds: ['T0105']
+  }], units);
+  // The preparer splits speech into sentences: "I'm gonna..." trails off into
+  // "focus on TFO3 this week.", so the subject sits in the following line.
+  assert.deepEqual(out.actions[0].owners, ['Ciaran Ryan']);
+  assert.equal(out.flags.length, 0);
+});

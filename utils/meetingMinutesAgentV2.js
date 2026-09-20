@@ -2368,15 +2368,57 @@ function nameParts(value) {
 // "we need to ...", "Okay."). A chair who merely asks or comments is not an
 // owner: run 8 published two actions owned by the chair, and one owned by a
 // person who was not at the meeting.
-function ownerTakesItOn(owner, lines = []) {
+// Words for the act of meeting-work rather than its subject. Sharing one of
+// these says nothing about *which* work a commitment is about.
+const MEETING_WORK_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'was', 'not', 'but', 'all', 'any', 'out', 'its', 'our', 'you', 'who',
+  'how', 'why', 'one', 'two', 'new', 'update', 'updates', 'updated', 'table', 'tables', 'minutes',
+  'meeting', 'set', 'core', 'area', 'areas', 'thing', 'things', 'work', 'working', 'list', 'item',
+  'items', 'document', 'documents', 'file', 'files', 'call', 'calls', 'date', 'dates', 'time',
+  'week', 'weeks', 'month', 'next', 'some', 'need', 'needs', 'make', 'take', 'look', 'send',
+  'give', 'kind', 'step', 'down', 'through', 'each', 'then', 'here', 'has', 'had', 'will',
+  'should', 'well', 'back', 'good', 'okay', 'yeah', 'know', 'think', 'going', 'gonna', 'want',
+  'done', 'doing', 'start', 'first', 'second'
+]);
+
+function actionSubjectWords(value) {
+  return contentTokens(value).filter((word) => !MEETING_WORK_WORDS.has(word));
+}
+
+// Run 9 published "Update the risk table ... USB ports ..." under Jacqui Fox on
+// the strength of "I'll update that table for the new set of minutes" - a
+// different table, one line before "So Rebecca is kind of managing that through
+// with Andrew." The only words shared were "update" and "table". So a
+// first-person commitment counts only when it also shares the subject.
+function commitmentIsAboutAction(line, actionText) {
+  const subject = new Set(actionSubjectWords(actionText));
+  if (!subject.size) return true;
+  return contentTokens(line).some((word) => subject.has(word));
+}
+
+function ownerTakesItOn(owner, lines = [], actionText = '') {
   const names = nameParts(owner);
   if (!names.length) return true;
   const mentions = (value) => names.some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
   const isOwner = (speaker) => nameParts(speaker).some((word) => names.includes(word));
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     const value = String(line?.text || '');
     if (!isOwner(line?.speaker) && mentions(value)) return true;
-    if (isOwner(line?.speaker) && (OWNER_FIRST_PERSON.test(value) || OWNER_ACCEPTS.test(value))) return true;
+    if (!isOwner(line?.speaker)) continue;
+    if (!OWNER_FIRST_PERSON.test(value) && !OWNER_ACCEPTS.test(value)) continue;
+    // The preparer splits speech into sentences, so "That document, but I'm
+    // gonna..." and "focus on TFO3 this week." arrive as two lines and the
+    // subject sits in the second. Only an unfinished line runs on into the next
+    // one: a line closing on a full stop is its own sentence, and borrowing the
+    // subject from it let run 9's "I'll update that table for the new set of
+    // minutes." take its subject from "The focus still remains on risk...".
+    const runsOn = (row) => Boolean(row) && /(?:\.\.\.|[^.!?])\s*$/.test(String(row.text || ''));
+    const sameSpeaker = (row) => Boolean(row) && isOwner(row.speaker);
+    const utterance = [line];
+    if (runsOn(line) && sameSpeaker(lines[index + 1])) utterance.push(lines[index + 1]);
+    if (sameSpeaker(lines[index - 1]) && runsOn(lines[index - 1])) utterance.unshift(lines[index - 1]);
+    if (commitmentIsAboutAction(utterance.map((row) => String(row.text || '')).join(' '), actionText)) return true;
   }
   return false;
 }
@@ -2392,7 +2434,7 @@ function applyRequesterOwnerRule(actions = [], units = []) {
     if (!cited.length) return action;
     const window = [...new Set(cited.flatMap((index) => [index - 1, index, index + 1]))]
       .filter((index) => index >= 0 && index < rows.length).sort((a, b) => a - b).map((index) => rows[index]);
-    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window));
+    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window, action?.action));
     if (!unsupported.length) return action;
     const flag = normaliseFlag({
       kind: 'ownership',
