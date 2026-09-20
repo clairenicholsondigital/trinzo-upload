@@ -16,6 +16,9 @@
   var pendingGenerationEdits = false;
   var actionsInvalidatedDuringGeneration = false;
   var generationPollKey = '';
+  var navigationScrollStep = null;
+  var navigationScrollToken = 0;
+  var navigationScrollTimer = null;
   var actionEditorState = { pendingRows: {}, customOwners: {}, editingId: '' };
   var discussionEditorState = { pendingTopics: {}, pendingRecords: {} };
   var editVersion = 0;
@@ -171,6 +174,10 @@
 
   function restoreFocus(snapshot) {
     if (!snapshot) return;
+    if (navigationScrollStep === state.currentStep) {
+      applyStepNavigationScroll(navigationScrollToken, false);
+      return;
+    }
     if (typeof snapshot.scrollY === 'number') window.scrollTo(0, snapshot.scrollY);
     restoreAnchor(snapshot.anchor);
     if (!snapshot.selector) return;
@@ -181,6 +188,49 @@
     element.focus({ preventScroll: true });
     if (snapshot.start == null) return;
     try { element.setSelectionRange(snapshot.start, snapshot.end); } catch (error) { /* unsupported input type */ }
+  }
+
+  function clearStepNavigationScroll() {
+    navigationScrollStep = null;
+    clearTimeout(navigationScrollTimer);
+    navigationScrollTimer = null;
+  }
+
+  function applyStepNavigationScroll(token, focusHeading) {
+    window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(function () {
+        if (token !== navigationScrollToken || navigationScrollStep !== state.currentStep) return;
+        var screen = document.querySelector('[data-screen="' + state.currentStep + '"]');
+        if (!screen) return;
+        screen.scrollIntoView({ block: 'start', behavior: 'auto' });
+        if (!focusHeading) return;
+        var heading = screen.querySelector('h2') || screen;
+        if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+        heading.focus({ preventScroll: true });
+      });
+    });
+  }
+
+  function beginStepNavigationScroll() {
+    navigationScrollToken += 1;
+    navigationScrollStep = state.currentStep;
+    clearTimeout(navigationScrollTimer);
+    applyStepNavigationScroll(navigationScrollToken, true);
+    // A step change normally saves within 900 ms. This fallback prevents an
+    // active navigation from suppressing scroll restoration indefinitely if
+    // no save is needed or the request never starts.
+    navigationScrollTimer = window.setTimeout(clearStepNavigationScroll, 5000);
+  }
+
+  function settleStepNavigationScroll() {
+    if (navigationScrollStep !== state.currentStep) return;
+    var token = navigationScrollToken;
+    applyStepNavigationScroll(token, false);
+    window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(function () {
+        if (token === navigationScrollToken) clearStepNavigationScroll();
+      });
+    });
   }
 
   async function jsonRequest(url, options) {
@@ -318,9 +368,10 @@
     // step. During generation scheduleSave holds it until the background write is
     // complete, so reopening the draft returns to the screen the reviewer chose.
     if (!rendering && stepChanged && !(options && options.persist === false)) scheduleSave();
-    // Only a deliberate navigation scrolls. A re-render triggered by autosave
-    // must leave the reader exactly where they were.
-    if (options && options.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Deliberate navigation goes to the beginning of the newly opened section.
+    // Autosave normally preserves the reader's position, but while this move is
+    // settling it must not restore the position from the previous section.
+    if (options && options.scroll) beginStepNavigationScroll();
     renderGenerationProgress();
     if (options && options.scroll) maybeOpenPreparedSummary();
   }
@@ -1224,7 +1275,7 @@
         throw error;
       }
       setSaveStatus(error.message, 'error'); throw error;
-    }).finally(function () { saveInFlight = null; });
+    }).finally(function () { saveInFlight = null; settleStepNavigationScroll(); });
     return saveInFlight;
   }
 
@@ -1693,6 +1744,13 @@
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
   document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back, { scroll: true });});});
   document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP)renderFinal();showStep(button.dataset.step, { scroll: true });}});});
+
+  document.addEventListener('focusin', function (event) {
+    if (navigationScrollStep !== state.currentStep) return;
+    if (event.target.matches('input,textarea,select,button,summary,[role="button"]') && event.target.closest('[data-screen].active')) {
+      clearStepNavigationScroll();
+    }
+  });
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
