@@ -207,6 +207,14 @@
 .meeting-agent-page .generation-progress-actions{display:flex;align-items:center;gap:.65rem;margin-top:.75rem}
 .meeting-agent-page .generation-preview-note{margin:.65rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
 .meeting-agent-page .prewarm-notice{margin:.75rem 0;padding:.65rem .75rem;border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);font-size:var(--fs-sm)}
+.meeting-agent-page .generation-skeleton{display:grid;gap:.55rem;padding:.75rem 0}
+.meeting-agent-page .generation-skeleton span{display:block;height:.75rem;border-radius:var(--radius-pill);background:var(--soft-2)}
+.meeting-agent-page .generation-skeleton span:nth-child(2){width:86%}
+.meeting-agent-page .generation-skeleton span:nth-child(3){width:68%}
+.meeting-agent-page.generation-active [data-screen].active .agent-edit,
+.meeting-agent-page.generation-active [data-screen].active .paper>.toolbar button,
+.meeting-agent-page.generation-active [data-screen].active>.screen-actions{display:none}
+.meeting-agent-page.generation-active #workflowStatus{display:none!important}
 @media(prefers-reduced-motion:reduce){.meeting-agent-page .generation-phase.active::before{animation:none}}
 .meeting-agent-page.busy button,
 .meeting-agent-page.busy input,
@@ -307,28 +315,39 @@
 
 /* ---------------------------------------------------- discussion cards -- */
 .meeting-agent-page .discussion-card{
-  margin-top:.85rem;border:1px solid var(--border);border-radius:var(--radius);
-  background:var(--surface);overflow:hidden}
+  margin-top:.6rem;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface);overflow:visible}
 .meeting-agent-page .card-head{
-  display:flex;align-items:center;gap:.75rem;padding:.7rem .85rem;
+  display:flex;align-items:center;gap:.55rem;padding:.45rem .65rem;
   border-bottom:1px solid var(--border);background:var(--soft)}
 .meeting-agent-page .topic-field{flex:1;min-width:0}
 .meeting-agent-page .topic-field input{
-  font-size:var(--fs-lg);font-weight:var(--fw-bold);color:var(--heading);
-  border-color:transparent;background:transparent;padding:.3rem .4rem}
+  font-size:var(--fs-md);font-weight:var(--fw-bold);color:var(--heading);
+  border-color:transparent;background:transparent;padding:.25rem .35rem}
 .meeting-agent-page .topic-field input:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .topic-field input:focus{border-color:var(--accent);background:var(--surface)}
-.meeting-agent-page .record-section{padding:.85rem}
+.meeting-agent-page .topic-menu{position:relative;flex:none}
+.meeting-agent-page .topic-menu>summary{min-width:2.35rem;padding:.35rem .55rem;list-style:none}
+.meeting-agent-page .topic-menu>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .topic-menu-popover{
+  position:absolute;z-index:5;top:calc(100% + .3rem);right:0;min-width:140px;padding:.4rem;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .topic-menu-popover .delete{width:100%}
+.meeting-agent-page .record-section{padding:.55rem .65rem .65rem}
 .meeting-agent-page .record-section+.record-section{border-top:1px solid var(--border)}
 .meeting-agent-page .record-section-head{
-  display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.5rem}
+  display:flex;align-items:center;justify-content:flex-end;gap:.5rem;margin-bottom:.2rem}
 .meeting-agent-page .record-section-head h3{margin:0}
-.meeting-agent-page .record-list{display:grid;gap:.5rem}
-.meeting-agent-page .record-row{display:grid;gap:.4rem}
-.meeting-agent-page .record-row+.record-row{padding-top:.5rem;border-top:1px solid var(--border)}
-.meeting-agent-page .record-row textarea{min-height:52px}
+.meeting-agent-page .record-list{display:grid;gap:.35rem}
+.meeting-agent-page .record-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.25rem .5rem;align-items:start}
+.meeting-agent-page .record-row+.record-row{padding-top:.35rem;border-top:1px solid var(--border)}
+.meeting-agent-page .record-row textarea{
+  min-height:40px;padding:.35rem .45rem;border-color:transparent;background:transparent;font-size:var(--fs-sm)}
+.meeting-agent-page .record-row textarea:hover{border-color:var(--border-strong);background:var(--surface)}
+.meeting-agent-page .record-row textarea:focus{border-color:var(--accent);background:var(--surface)}
 .meeting-agent-page .record-tools,
 .meeting-agent-page .action-tools{display:flex;align-items:flex-start;gap:.5rem}
+.meeting-agent-page .record-row>.record-tools{grid-column:1/-1;margin-top:-.05rem}
 .meeting-agent-page .record-tools>details,
 .meeting-agent-page .action-tools>details{flex:1;min-width:0}
 .meeting-agent-page .record-tools .delete,
@@ -336,24 +355,50 @@
 .meeting-agent-page .record-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 .meeting-agent-page .add-record{
   width:100%;margin-top:.6rem;border-style:dashed;color:var(--accent);font-weight:var(--fw)}
-.meeting-agent-page .proposition-add{display:flex;flex-wrap:wrap;gap:.35rem}
-.meeting-agent-page .proposition-row{padding:.65rem;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);background:var(--surface)}
-.meeting-agent-page .proposition-row+.proposition-row{padding-top:.65rem}
+.meeting-agent-page .record-add-menu{position:relative}
+.meeting-agent-page .record-add-menu>summary{list-style:none}
+.meeting-agent-page .record-add-menu>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .record-add-options{
+  position:absolute;z-index:4;top:calc(100% + .3rem);right:0;display:grid;gap:.3rem;
+  min-width:170px;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .record-add-options .secondary{justify-content:flex-start;width:100%}
+.meeting-agent-page .proposition-row{padding:.4rem .5rem;border-left:3px solid var(--accent);background:var(--surface)}
+.meeting-agent-page .proposition-row+.proposition-row{padding-top:.4rem}
 .meeting-agent-page .proposition-kind,.meeting-agent-page .final-kind{
   display:inline-flex;width:max-content;padding:.18rem .5rem;border-radius:999px;
   background:var(--soft-2);color:var(--heading);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
 .meeting-agent-page .proposition-kind.decisions{background:#dff6eb;color:#17633e}
 .meeting-agent-page .proposition-kind.openQuestions{background:#fff0c7;color:#704b00}
-.meeting-agent-page .supporting-context{padding:.75rem .85rem;border-top:1px solid var(--border);background:var(--soft)}
-.meeting-agent-page .supporting-context-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
-.meeting-agent-page .supporting-context-head h3{margin:0;font-size:var(--fs-md)}
-.meeting-agent-page .supporting-context-head span{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .supporting-context>.muted{margin:.3rem 0 .65rem;font-size:var(--fs-cap)}
-.meeting-agent-page .supporting-detail-list{display:grid;gap:.45rem}
-.meeting-agent-page .supporting-detail{padding:.65rem;border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface)}
+.meeting-agent-page .proposition-kind.points{display:none}
+.meeting-agent-page .proposition-row:has(.proposition-kind.points){grid-template-columns:minmax(0,1fr) auto}
+.meeting-agent-page .record-menu{position:relative;align-self:center}
+.meeting-agent-page .record-menu>summary{min-width:2.2rem;padding:.25rem .45rem;list-style:none}
+.meeting-agent-page .record-menu>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .record-menu-popover{
+  position:absolute;z-index:6;top:calc(100% + .25rem);right:0;display:grid;gap:.4rem;min-width:220px;padding:.5rem;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .record-menu-label{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--muted)}
+.meeting-agent-page .record-menu-popover>.secondary,.meeting-agent-page .record-menu-popover>.delete{width:100%;justify-content:flex-start}
+.meeting-agent-page .record-menu-popover>details{min-width:0}
+.meeting-agent-page .supporting-context{margin:.4rem 0 0;border-top:1px solid var(--border);background:var(--soft)}
+.meeting-agent-page .supporting-context-head{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.55rem .65rem;
+  cursor:pointer;list-style:none}
+.meeting-agent-page .supporting-context-head::-webkit-details-marker{display:none}
+.meeting-agent-page .supporting-context-head::before{content:"›";color:var(--muted);font-size:var(--fs-lg);line-height:1;transition:transform .15s ease}
+.meeting-agent-page .supporting-context[open]>.supporting-context-head::before{transform:rotate(90deg)}
+.meeting-agent-page .supporting-context-title{margin-right:auto;font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
+.meeting-agent-page .supporting-context-head>span:last-child{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .supporting-context-body{padding:0 .65rem .65rem}
+.meeting-agent-page .supporting-context-body>.muted{margin:0 0 .45rem;font-size:var(--fs-cap)}
+.meeting-agent-page .supporting-detail-list{display:grid;gap:.35rem}
+.meeting-agent-page .supporting-detail{padding:.5rem;border-left:3px solid var(--border-strong);background:var(--surface)}
 .meeting-agent-page .supporting-detail p{margin:0 0 .35rem}
 .meeting-agent-page .supporting-parent{display:grid;gap:.2rem;margin-bottom:.35rem;font-size:var(--fs-sm)}
+.meeting-agent-page .supporting-parent strong{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .meeting-agent-page .supporting-parent span{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold);text-transform:uppercase;letter-spacing:.03em}
+@media(min-width:900px){.meeting-agent-page .supporting-detail-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .meeting-agent-page .generation-row td{padding:0;border:0}
 .meeting-agent-page .generation-row .generating{margin:0}
 .meeting-agent-page .secondary.compact{min-height:34px;padding:.35rem .6rem;font-size:var(--fs-sm)}
@@ -384,11 +429,25 @@
   padding:.5rem .6rem;text-align:left;vertical-align:bottom;
   border-bottom:1px solid var(--border-strong)}
 .meeting-agent-page .actions-table td{
-  padding:.7rem .6rem;vertical-align:top;border-bottom:1px solid var(--border)}
+  padding:.55rem .6rem;vertical-align:top;border-bottom:1px solid var(--border)}
 .meeting-agent-page .actions-table th:nth-child(1){width:52%}
 .meeting-agent-page .actions-table th:nth-child(2){width:24%}
 .meeting-agent-page .actions-table th:nth-child(3){width:24%}
-.meeting-agent-page .actions-table textarea{min-height:56px}
+.meeting-agent-page .actions-table textarea{min-height:42px;padding:.35rem .45rem;border-color:transparent;background:transparent}
+.meeting-agent-page .actions-table textarea:hover{border-color:var(--border-strong);background:var(--surface)}
+.meeting-agent-page .action-row .owner-add,
+.meeting-agent-page .action-row .timing-editor,
+.meeting-agent-page .action-row .action-tools{display:none}
+.meeting-agent-page .action-row .owner-chip button{display:none}
+.meeting-agent-page .action-row.is-editing{background:var(--soft)}
+.meeting-agent-page .action-row.is-editing .owner-add,
+.meeting-agent-page .action-row.is-editing .timing-editor,
+.meeting-agent-page .action-row.is-editing .action-tools{display:grid}
+.meeting-agent-page .action-row.is-editing .action-tools{grid-template-columns:minmax(0,1fr) auto}
+.meeting-agent-page .action-row.is-editing .owner-chip button{display:grid}
+.meeting-agent-page .action-row.is-editing .timing-summary{display:none}
+.meeting-agent-page .timing-summary{margin:.2rem 0 .45rem;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
+.meeting-agent-page .action-edit{min-width:4.2rem}
 .meeting-agent-page .action-tools{margin-top:.4rem}
 .meeting-agent-page .preview-action-row{background:var(--soft)}
 .meeting-agent-page .preview-action-row td{color:var(--heading)}
@@ -399,7 +458,7 @@
 .meeting-agent-page .generation-section-row th{padding:.75rem .6rem .35rem;background:#fff;color:var(--heading);font-size:var(--fs-sm)}
 .meeting-agent-page .preview-saved{background:#fff}
 
-.meeting-agent-page .owner-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.4rem}
+.meeting-agent-page .owner-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0 .4rem}
 .meeting-agent-page .owner-chip{
   display:inline-flex;align-items:center;gap:.15rem;padding:.15rem .2rem .15rem .55rem;
   border-radius:var(--radius-pill);background:var(--brand-100);color:var(--accent-700);
@@ -466,24 +525,31 @@
 .meeting-agent-page .proposal{margin:.85rem 0;border-color:var(--accent)}
 .meeting-agent-page .proposal-header{
   display:flex;align-items:center;justify-content:space-between;gap:1rem;
-  flex-wrap:wrap;padding-bottom:.7rem}
+  flex-wrap:wrap;padding-bottom:.55rem}
 .meeting-agent-page .proposal-heading{min-width:0}
 .meeting-agent-page .proposal-heading h2{margin:0 0 .1rem;font-size:var(--fs-lg)}
-.meeting-agent-page .proposal-actions{display:flex;align-items:center;gap:.45rem;flex:0 0 auto}
 .meeting-agent-page #proposalChanges{
   border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);overflow:hidden}
 .meeting-agent-page .proposal-change{
-  display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:.55rem;
-  align-items:start;padding:.65rem .7rem}
-.meeting-agent-page .proposal-change>input{margin-top:.35rem}
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:.6rem;
+  align-items:start;padding:.45rem .65rem}
+.meeting-agent-page .proposal-change>input{margin-top:.55rem}
 .meeting-agent-page .proposal-change+.proposal-change{border-top:1px solid var(--border)}
 .meeting-agent-page .proposal-change:hover{background:var(--soft)}
+.meeting-agent-page .proposal-detail{min-width:0}
+.meeting-agent-page .proposal-detail>summary{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.55rem;
+  min-height:36px;cursor:pointer;list-style:none}
+.meeting-agent-page .proposal-detail>summary::-webkit-details-marker{display:none}
 .meeting-agent-page .proposal-kind{
   padding:.15rem .5rem;border-radius:var(--radius-pill);white-space:nowrap;
   background:var(--brand-100);color:var(--accent-700);
   font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .proposal-content{min-width:0}
+.meeting-agent-page .proposal-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--heading);font-size:var(--fs-sm)}
+.meeting-agent-page .proposal-chevron{color:var(--muted);font-size:var(--fs-lg);transition:transform .15s ease}
+.meeting-agent-page .proposal-detail[open] .proposal-chevron{transform:rotate(90deg)}
+.meeting-agent-page .proposal-content{min-width:0;padding:.45rem 0 .2rem}
 .meeting-agent-page .proposal-change pre{
   margin:0;padding:.35rem .5rem;border-radius:var(--radius-sm);background:var(--soft);
   font-family:inherit;font-size:var(--fs-sm);line-height:1.45;white-space:pre-wrap}
@@ -499,6 +565,11 @@
 .meeting-agent-page .commitment-chain span{
   padding:.12rem .42rem;border-radius:var(--radius-pill);background:var(--brand-100);
   color:var(--accent-700);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .proposal-footer{
+  position:sticky;bottom:.5rem;display:flex;align-items:center;justify-content:flex-end;gap:.5rem;
+  margin-top:.65rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .proposal-footer>.muted{margin-right:auto}
 
 /* ------------------------------------------------------ final document -- */
 .meeting-agent-page .final-document{max-width:76ch;margin:0 auto}
@@ -651,7 +722,7 @@
     <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">Changes are previewed before anything is applied</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview agent changes</button></div></details>
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><button id="addDiscussion" class="secondary" type="button">Add topic</button></div>
-      <p class="muted">Edit directly and open Evidence beneath any record to inspect its source.</p>
+      <p class="muted">Edit the minutes directly. Sources are available from each item's menu when you need them.</p>
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>
@@ -660,18 +731,18 @@
 
   <!-- ===================================================== 2 - actions -->
   <section class="panel screen" data-screen="3">
-    <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Ask the agent for bulk edits</span><span class="agent-edit-hint">For example: merge true duplicates and make the wording concise.</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details>
+    <details class="agent-edit"><summary class="agent-edit-summary"><span class="status-dot"></span><span class="agent-edit-title">Edit multiple actions</span><span class="agent-edit-hint">For example: merge true duplicates and make the wording concise.</span><span class="agent-edit-toggle"><span class="agent-edit-toggle-closed">Open</span><span class="agent-edit-toggle-open">Close</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></span></summary><div class="agent-edit-body"><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview agent changes</button></div></details>
     <div class="paper">
       <div class="toolbar"><h2>Actions and timing</h2><button id="addAction" class="secondary" type="button">Add action</button></div>
-      <p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p>
+      <p class="muted">Scan the list, then open Edit only on actions you want to change.</p>
       <div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
     </div>
     <p class="prewarm-notice" data-speculation-notice="summary" role="status" hidden></p>
-    <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="The initial generation already includes a missed-action check.">Run an additional action check</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+    <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="Review the transcript again for additional actions.">Review action coverage</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ==================================================== ai proposals -->
-  <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Proposed AI changes</h2><p class="muted">Select only the changes you want. Nothing has been applied yet.</p></div><div class="proposal-actions"><button id="rejectProposal" class="secondary" type="button">Reject all</button><button id="acceptSelectedProposal" class="secondary" type="button">Accept selected</button><button id="acceptAllProposal" class="button" type="button">Accept all</button></div></div><div id="proposalChanges"></div></section>
+  <section id="proposalPanel" class="panel proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h2>Review suggested changes</h2><p class="muted">Open a suggestion for the comparison. Nothing is applied until you confirm.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section>
 
   <!-- ======================================= 4 - summary and objectives -->
   <section class="panel screen" data-screen="4">
