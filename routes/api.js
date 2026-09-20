@@ -216,6 +216,8 @@ const {
   labelSupersededContext,
   promoteNamedFactDetails,
   describesUsualPractice,
+  isNotAnAction,
+  isSocialAside,
   discussionActionCandidates,
   supersededCheckItems,
   supersededVerdicts,
@@ -13522,6 +13524,36 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     }
   }
   if (correctnessChecksEnabled()) {
+    // "Possibly have some questions on the reviewed document." describes a state
+    // of mind, not work anyone is doing. Dropped rather than offered: there is
+    // nothing here for a reviewer to accept.
+    const notActions = timingChecked.actions.filter((action) => isNotAnAction(action?.action));
+    if (notActions.length) {
+      timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !notActions.includes(action)) };
+      console.log(JSON.stringify({ event: 'meeting_agent_not_actions', journeyId: draft.draftId, removed: notActions.length }));
+    }
+    // A commitment in the goodbyes about something the meeting never otherwise
+    // discusses - "Book a holiday." - is offered, not published. The signal is
+    // statistical, so a genuine late commitment costs the reviewer one click
+    // rather than being lost.
+    const asides = timingChecked.actions.filter((action) => isSocialAside(action, draft.sourceUnits));
+    if (asides.length) {
+      timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !asides.includes(action)) };
+      const at = timingChecked.actions.length;
+      for (const action of asides) {
+        proposal.changes.push({
+          id: `change-aside-${crypto.createHash('sha1').update(action.action || '').digest('hex').slice(0, 10)}`,
+          type: 'add', before: null, after: { ...action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'said in passing at the end',
+            reason: 'This was said in the closing moments and the meeting does not discuss it anywhere else. Add it only if it is really a task.',
+            evidenceIds: action.evidenceIds || []
+          }
+        });
+      }
+      console.log(JSON.stringify({ event: 'meeting_agent_social_asides', journeyId: draft.draftId, offered: asides.length }));
+    }
     // A description of how someone usually works is offered, not published.
     const practice = timingChecked.actions.filter((action) => describesUsualPractice(action, draft.sourceUnits));
     if (practice.length) {

@@ -2621,6 +2621,42 @@ function demoteSupersededRows(discussion = [], units = [], outdated = null) {
   return { discussion: kept, demoted };
 }
 
+// ---- Not an action at all -----------------------------------------------------
+// Two shapes seen in real client meetings. "Maybe I'll have some questions on
+// that also." became the published action "Possibly have some questions on the
+// reviewed document." - nobody is doing anything, and the speaker hedged. A
+// hedged opener and a "have questions/thoughts" object both describe a state of
+// mind rather than work, so neither is a task.
+const NOT_A_DELIVERABLE = /^\s*(?:possibly\s+|maybe\s+|perhaps\s+|potentially\s+)?(?:have|raise)\s+(?:some\s+|any\s+)?(?:questions|queries|thoughts|concerns|a look)\b/i;
+const SPECULATIVE_ACTION = /^\s*(?:possibly|maybe|perhaps|potentially)\b/i;
+function isNotAnAction(value = '') {
+  const wording = text(value, 600);
+  return NOT_A_DELIVERABLE.test(wording) || SPECULATIVE_ACTION.test(wording);
+}
+
+// ---- Social asides in the goodbyes --------------------------------------------
+// "I'm gonna, yeah, I need to book a holiday." - said at unit 365 of 374,
+// between "They definitely love you anyway" and "Just another form of tax" -
+// was published as the action "Book a holiday." It reads as a commitment
+// because grammatically it is one. What marks it out is that the meeting never
+// discusses it: every subject word appears in exactly one line, and that line
+// is in the closing moments. Real business gets talked about more than once.
+// The signal is statistical, so such a row is offered, never simply deleted.
+const ASIDE_TAIL_FRACTION = 0.9;
+function isSocialAside(action = {}, units = []) {
+  const context = evidenceContextFor(units);
+  const rows = context.rows;
+  if (rows.length < 40) return false;
+  const cited = [...new Set(action?.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  if (!cited.length) return false;
+  if (Math.min(...cited) / rows.length < ASIDE_TAIL_FRACTION) return false;
+  const subject = actionSubjectWords(action?.action);
+  if (!subject.length) return false;
+  const frequency = new Map();
+  for (const row of rows) for (const word of new Set(contentTokens(row.text))) frequency.set(word, (frequency.get(word) || 0) + 1);
+  return subject.every((word) => (frequency.get(word) || 0) <= 1);
+}
+
 // ---- Usual practice is not an action ------------------------------------------
 // In a case-study conversation ("First thing I go in, are there posters on the
 // wall...", "In most cases the education comes from...") the model turns a
@@ -3438,6 +3474,8 @@ module.exports = {
   discussionActionCandidates,
   mentionedPeople,
   describesUsualPractice,
+  isNotAnAction,
+  isSocialAside,
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
