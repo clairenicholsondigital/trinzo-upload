@@ -13946,6 +13946,30 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
 // costs more than it gains (actions 0.406 -> 0.392, missing 8 -> 9) because the
 // extra published rows are mostly practice descriptions and duplicates. Off;
 // the code stays for a future re-test with tighter candidate filtering.
+// The completeness check that runs after every Actions generation finds real
+// omissions - run 8's Janine/Adil clinical review, run 9's TF03 work - but has
+// only ever offered them as proposals, so a missed commitment stays missed
+// unless the reviewer spots the flag. With this on, one whose commitment the
+// model can quote and tie to its named owner is published, on the same bar the
+// generation pass uses to rescue its own proposals. The rest stay proposals.
+// The candidates the completeness check may publish: work that names an owner,
+// reads as a client-ready action, is not meeting admin or a description of
+// usual practice, and is not already published. Verification of the commitment
+// itself is the model's, on top of this.
+function meetingAgentAuditPublishCandidates(audited = [], declared = [], published = [], units = []) {
+  return dedupeHybridActionRecords([...(audited || []), ...(declared || [])]
+    .filter((record) => (record?.owners || []).length
+      && isClientReadyActionWording(record.action)
+      && !isMeetingAdminAction(record.action)
+      && !describesUsualPractice(record, units)
+      && !(published || []).some((existing) => hybridActionsEquivalent(record.action, existing?.action || ''))))
+    .slice(0, 16);
+}
+
+function meetingMinutesAuditPublishEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_AUDIT_PUBLISH_V1 || '0'));
+}
+
 function meetingMinutesPromoteNamedFactsEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PROMOTE_NAMED_FACTS_V1 || '0'));
 }
@@ -14427,12 +14451,41 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate
     });
     audited.reviewFlags = audited.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
+    let rescuedActions = [];
+    let rescueFlags = [];
+    if (meetingMinutesAuditPublishEnabled() && meetingMinutesCommitmentCheckEnabled()) {
+      const candidates = meetingAgentAuditPublishCandidates(
+        audited.actions, declaredProposals, draft.actions || [], draft.sourceUnits);
+      const commitmentItems = commitmentCheckItems(candidates, draft.sourceUnits);
+      if (commitmentItems.length) {
+        const batches = [];
+        for (let index = 0; index < commitmentItems.length; index += 8) batches.push(commitmentItems.slice(index, index + 8));
+        const commitmentResults = (await Promise.all(batches.map((batch) =>
+          askPowerAutomateMeetingMinutesAgentWithRetry(commitmentCheckPrompt(batch),
+            { pass: 'actions:critic-audit-commitment', maxAttempts: 2 })
+            .then((response) => (Array.isArray(response?.result?.results) ? response.result.results : []))
+            .catch(() => [])))).flat();
+        // requireOwnerTie: the quoted words must tie this work to this owner,
+        // so "I'll update that table" cannot carry an unrelated action.
+        const verified = applyCommitmentCheckResults(candidates, commitmentItems, commitmentResults, { requireOwnerTie: true })
+          .filter((record) => (record.owners || []).length);
+        const owners = correctnessChecksEnabled()
+          ? applyRequesterOwnerRule(verified, draft.sourceUnits)
+          : { actions: verified, flags: [] };
+        rescuedActions = owners.actions.filter((record) => (record.owners || []).length);
+        rescueFlags = owners.flags;
+      }
+      if (rescuedActions.length) {
+        console.log(JSON.stringify({ event: 'meeting_agent_audit_published', journeyId: draft.draftId, published: rescuedActions.length, considered: candidates.length }));
+      }
+    }
     // audited rows were already enforced above; the existing register holds the
     // reviewer's edits and must not be re-stripped when the two are merged.
+    const publishedBase = [...(draft.actions || []), ...rescuedActions];
     const combined = normaliseAgentResult({
-      actions: [...(draft.actions || []), ...audited.actions, ...declaredProposals]
+      actions: [...publishedBase, ...audited.actions, ...declaredProposals]
     }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
-    const reconciledActions = mergePublishedActionEvidence(draft.actions || [], combined);
+    const reconciledActions = mergePublishedActionEvidence(publishedBase, combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
       buildProposal('actions', reconciledActions, combined), reconciledActions
     ), actionChains);
@@ -14451,7 +14504,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     const saved = await saveMeetingAgentDraft(draft, req, {
       actions: reconciledActions,
       pendingProposal: proposal.changes.length ? proposal : null,
-      reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...missedFlags])
+      reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...rescueFlags, ...missedFlags])
     });
     return res.json({ ok: true, proposal: proposal.changes.length ? proposal : null, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
@@ -14711,6 +14764,8 @@ router.stagedEvaluation = {
   persistMeetingAgentBackgroundStage,
   meetingAgentRegenerationChanges,
   meetingAgentActionsFingerprint,
+  meetingAgentAuditPublishCandidates,
+  meetingMinutesAuditPublishEnabled,
   reopenFlagsOfReAddedItems,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
