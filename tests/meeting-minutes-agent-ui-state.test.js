@@ -102,9 +102,11 @@ function startStubServer() {
   };
   drafts.set('proposals', proposals);
   const layout = baseDraft('layout', false);
-  layout.currentStep = 4;
+  layout.currentStep = 5;
   layout.selectedStep = 4;
   layout.meetingObjectives = [{ id: 'objective-1', text: 'Rehearse presenter transitions and webinar delivery flow before the live session.' }];
+  layout.executiveSummary = 'The team confirmed the main preparation priorities and owners.';
+  layout.discussion[0].topic = 'Audit preparation and document access for the upcoming site visit';
   drafts.set('layout', layout);
   const actionsCompleting = baseDraft('actions-completing', true);
   actionsCompleting.selectedStep = 2;
@@ -670,6 +672,72 @@ test('dense layouts give writing space to content rather than repeated controls'
     assert.equal(await page.locator('.discussion-card .card-head .record-add-menu').count(), 1);
     assert.ok(await page.locator('.proposition-row').first().evaluate((node) => node.getBoundingClientRect().height < 60));
     assert.ok(await page.locator('.review-flags-summary').evaluate((node) => node.getBoundingClientRect().width < 260));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('phone layout reaches the work quickly and keeps editing controls compact', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    page.setDefaultTimeout(5000);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=layout`);
+    await page.waitForSelector('#discussionList .discussion-card', { state: 'attached' });
+
+    assert.equal(await page.locator('.hero').isHidden(), true);
+    assert.equal(await page.locator('.steps').isHidden(), true);
+    assert.equal(await page.locator('.mobile-step-picker').isVisible(), true);
+    assert.equal(await page.locator('#mobileStepCount').textContent(), 'Step 5 of 6');
+    assert.ok(await page.locator('.nav a').first().evaluate((node) => node.getBoundingClientRect().height >= 40));
+    await page.click('.review-flags-summary');
+    assert.ok(await page.locator('.review-flags-body').evaluate((node) => node.getBoundingClientRect().width > 330));
+    await page.click('.review-flags-summary');
+
+    await page.selectOption('#mobileStepSelect', '2');
+    const discussionLayout = await page.evaluate(() => {
+      const topic = document.querySelector('.topic-field textarea');
+      const card = topic.closest('.discussion-card');
+      const kind = card.querySelector('.proposition-kind');
+      const text = card.querySelector('[data-record-field]');
+      return {
+        titleVisible: topic.scrollHeight <= topic.clientHeight + 1,
+        titleWidth: topic.getBoundingClientRect().width,
+        cardWidth: card.getBoundingClientRect().width,
+        kindAboveText: kind.getBoundingClientRect().bottom <= text.getBoundingClientRect().top + 1
+      };
+    });
+    assert.equal(discussionLayout.titleVisible, true, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.titleWidth > discussionLayout.cardWidth * 0.8, JSON.stringify(discussionLayout));
+    assert.equal(discussionLayout.kindAboveText, true, JSON.stringify(discussionLayout));
+
+    await page.selectOption('#mobileStepSelect', '3');
+    const actionLayout = await page.evaluate(() => {
+      const row = document.querySelector('[data-action-row="0"]');
+      const owners = row.querySelector('[data-label="Owners"]').getBoundingClientRect();
+      const timing = row.querySelector('[data-label="Timing"]').getBoundingClientRect();
+      return { height: row.getBoundingClientRect().height, metaAligned: Math.abs(owners.top - timing.top) < 4 };
+    });
+    assert.ok(actionLayout.height < 180, JSON.stringify(actionLayout));
+    assert.equal(actionLayout.metaAligned, true, JSON.stringify(actionLayout));
+    assert.match(await page.textContent('#auditActions'), /Check transcript for more actions/i);
+
+    await page.selectOption('#mobileStepSelect', '4');
+    assert.match(await page.textContent('#generateSummary'), /Regenerate summary/i);
+    assert.ok(await page.locator('#executiveSummary').evaluate((node) => node.getBoundingClientRect().height < 150));
+
+    await page.selectOption('#mobileStepSelect', '5');
+    assert.equal(await page.locator('.final-actions>.secondary, .final-actions>.button, .final-actions>.export-menu').count(), 3);
+    assert.equal(await page.locator('.export-menu-body').isHidden(), true);
+    await page.click('.export-menu>summary');
+    assert.equal(await page.locator('.export-menu-body').isVisible(), true);
+    assert.match(await page.textContent('#saveMinutes'), /Save final minutes/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
