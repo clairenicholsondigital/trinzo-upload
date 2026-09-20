@@ -13973,6 +13973,25 @@ function meetingAgentAuditPublishCandidates(audited = [], declared = [], publish
     .slice(0, 16);
 }
 
+// The critic's reply arrives as the object, wrapped in another, or as a JSON
+// string in output/text depending on the flow's mood. Read all three rather
+// than silently treating an unfamiliar wrapper as "no results".
+function meetingAgentCriticResults(result) {
+  const candidates = [result, result?.result, result?.output, result?.text, result?.body];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (Array.isArray(candidate?.results)) return candidate.results;
+    if (typeof candidate === 'string') {
+      try {
+        const parsed = parseJsonLenient(candidate);
+        if (Array.isArray(parsed?.results)) return parsed.results;
+        if (Array.isArray(parsed?.result?.results)) return parsed.result.results;
+      } catch { /* not JSON: try the next shape */ }
+    }
+  }
+  return [];
+}
+
 function meetingMinutesAuditPublishEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_AUDIT_PUBLISH_V1 || '0'));
 }
@@ -14469,11 +14488,17 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       if (commitmentItems.length) {
         const batches = [];
         for (let index = 0; index < commitmentItems.length; index += 8) batches.push(commitmentItems.slice(index, index + 8));
+        // Never swallow the reason. Run 11 logged results: 0 here with no clue
+        // why, which is the same blindness the unconditional log above exists
+        // to remove.
         const commitmentResults = (await Promise.all(batches.map((batch) =>
           askPowerAutomateMeetingMinutesAgentWithRetry(commitmentCheckPrompt(batch),
-            { pass: 'actions:critic-audit-commitment', maxAttempts: 2 })
-            .then((response) => (Array.isArray(response?.result?.results) ? response.result.results : []))
-            .catch(() => [])))).flat();
+            { pass: 'actions:critic-audit-commitment', maxAttempts: 2, responseKind: 'commitment_check' })
+            .then((response) => meetingAgentCriticResults(response?.result))
+            .catch((error) => {
+              console.log(JSON.stringify({ event: 'meeting_agent_audit_commitment_failed', journeyId: draft.draftId, message: String(error?.message || error).slice(0, 200) }));
+              return [];
+            })))).flat();
         // requireOwnerTie: the quoted words must tie this work to this owner,
         // so "I'll update that table" cannot carry an unrelated action.
         resultCount = commitmentResults.length;
