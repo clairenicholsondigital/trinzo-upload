@@ -6,7 +6,7 @@
   // 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review
   var MAX_STEP = 5;
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
-  var GENERATION_POLL_MS = 2000;
+  var GENERATION_POLL_MS = 1000;
   var generationTimer = null;
   var prewarmTimer = null;
   var completedGenerationNotice = null;
@@ -46,17 +46,33 @@
     return ['details', 'focus', 'discussion', 'actions', 'summary', 'review'][state.currentStep] || '';
   }
 
+  // One rule for whether leaving is safe: anything unsaved, anything waiting
+  // behind a running generation, or any unfinished entry that only exists in
+  // this tab. Every "Keep this tab open" message and the Resume-later link
+  // read this, so they can never disagree.
+  function mustKeepTabOpen(kind) {
+    var unsaved = ['dirty','waiting','local-only','saving','error'].includes(kind);
+    return unsaved || Boolean(pendingGenerationEdits) || hasTransientEditorState();
+  }
+
+  function refreshLeaveSafety() {
+    var element = document.getElementById('saveStatus');
+    var keepOpen = mustKeepTabOpen(element ? element.dataset.state : '');
+    var resumeLink = document.getElementById('resumeLaterLink');
+    if (resumeLink) resumeLink.hidden = keepOpen;
+    // Refresh on every save transition, not only mid-run: once a run ended the
+    // panel froze on "Everything is saved" beside a live unfinished-entry warning.
+    var leaveMessage = document.getElementById('generationLeaveMessage');
+    if (leaveMessage) leaveMessage.textContent = generationSaveText(generationRunning());
+  }
+
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
-    var unsaved = ['dirty','waiting','local-only','saving','error'].includes(kind);
-    if (unsaved && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
+    if (mustKeepTabOpen(kind) && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
     document.getElementById('saveStrip').hidden = !state.draft;
     element.textContent = message || '';
     element.dataset.state = kind || '';
-    var resumeLink = document.getElementById('resumeLaterLink');
-    if (resumeLink) resumeLink.hidden = unsaved;
-    var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage && generationRunning()) leaveMessage.textContent = generationSaveText();
+    refreshLeaveSafety();
   }
 
   function savedStatusText(value) {
@@ -82,11 +98,10 @@
     return hasTransientActionState() || hasTransientDiscussionState();
   }
 
-  function generationSaveText() {
-    if (pendingGenerationEdits || hasTransientEditorState()) {
-      return 'Unsaved edits are waiting to save. Keep this tab open.';
-    }
-    return 'Everything is saved. You can leave and resume later while generation continues.';
+  function generationSaveText(running) {
+    if (pendingGenerationEdits) return 'Unsaved edits are waiting to save. Keep this tab open.';
+    if (hasTransientEditorState()) return 'New unfinished entries are kept in this tab until their text is entered. Keep this tab open.';
+    return 'Everything is saved. You can leave and resume later' + (running === false ? '.' : ' while generation continues.');
   }
 
   function setBusy(busy, message, stage) {
@@ -112,8 +127,34 @@
     return parts.length ? element.tagName.toLowerCase() + parts.join('') : '';
   }
 
+  // The reader's place: the focused field, else the first field visible on
+  // screen. Kept at the same screen position after a re-render, so a panel
+  // appearing or disappearing above it no longer moves what they are reading.
+  function captureAnchor() {
+    var active = document.activeElement;
+    var candidates = controlSelector(active) ? [active] : Array.prototype.filter.call(
+      document.querySelectorAll('textarea, input[type="text"], input:not([type])'),
+      function (field) { var box = field.getBoundingClientRect(); return box.height > 0 && box.bottom > 0 && box.top < window.innerHeight; });
+    var field = candidates[0];
+    var selector = controlSelector(field);
+    if (!selector) return null;
+    var matches;
+    try { matches = document.querySelectorAll(selector); } catch (error) { return null; }
+    return { selector: selector, index: Array.prototype.indexOf.call(matches, field), top: field.getBoundingClientRect().top };
+  }
+
+  function restoreAnchor(anchor) {
+    if (!anchor) return;
+    var matches;
+    try { matches = document.querySelectorAll(anchor.selector); } catch (error) { return; }
+    var field = matches[anchor.index >= 0 ? anchor.index : 0];
+    if (!field) return;
+    var drift = field.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(drift) >= 1) window.scrollBy(0, drift);
+  }
+
   function captureFocus() {
-    var snapshot = { scrollY: window.pageYOffset };
+    var snapshot = { scrollY: window.pageYOffset, anchor: captureAnchor() };
     var element = document.activeElement;
     var selector = controlSelector(element);
     if (!selector) return snapshot;
@@ -129,6 +170,7 @@
   function restoreFocus(snapshot) {
     if (!snapshot) return;
     if (typeof snapshot.scrollY === 'number') window.scrollTo(0, snapshot.scrollY);
+    restoreAnchor(snapshot.anchor);
     if (!snapshot.selector) return;
     var matches;
     try { matches = document.querySelectorAll(snapshot.selector); } catch (error) { return; }
@@ -255,12 +297,22 @@
     // must leave the reader exactly where they were.
     if (options && options.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
     renderGenerationProgress();
+    if (options && options.scroll) maybeOpenPreparedSummary();
   }
 
   function setFieldValue(id, value) {
     var element = document.getElementById(id);
     if (!element || element === document.activeElement) return;
     if (element.value !== value) element.value = value;
+  }
+
+  // Measured on real meetings: Discussion about a minute, Actions 15–45 s when
+  // nothing could be prepared ahead, the summary a few seconds.
+  var TYPICAL_SECONDS = { discussion: 120, actions: 60, summary: 30 };
+  function typicalDurationText(stage, elapsed) {
+    var typical = TYPICAL_SECONDS[stage] || 90;
+    if (elapsed > typical * 2) return 'taking longer than usual, still working';
+    return stage === 'discussion' ? 'usually 1–2 minutes' : stage === 'actions' ? 'usually under a minute' : 'usually a few seconds';
   }
 
   function generationRunning(stage) {
@@ -305,6 +357,14 @@
   }
 
   function renderGenerationProgress() {
+    // The progress panel sits above the content; keep the reader's place when it
+    // appears, changes size or goes away.
+    var anchor = captureAnchor();
+    renderGenerationProgressPanel();
+    restoreAnchor(anchor);
+  }
+
+  function renderGenerationProgressPanel() {
     var panel = document.getElementById('generationProgress');
     if (!panel) return;
     var generation = state.draft && state.draft.generation;
@@ -325,11 +385,11 @@
       ? (generation.message || 'Preparing independent quality checks…')
       : (notice.message || 'The completed draft is ready to review.');
     var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage) leaveMessage.textContent = generation ? generationSaveText() : 'Everything is saved. You can leave and resume later.';
+    if (leaveMessage) leaveMessage.textContent = generationSaveText(Boolean(generation));
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
-      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + ' · usually around 2–4 minutes'
+      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + ' · ' + typicalDurationText(stage, elapsed)
       : 'Complete';
     document.getElementById('generationPhases').innerHTML = generationPhases(generation || {stage:stage}).map(function (phase) {
       var phaseState = generation ? generationPhaseStatus(generation, phase) : 'done';
@@ -345,42 +405,125 @@
     view.textContent = generation ? 'View action preview' : 'View actions';
   }
 
-  function markRunningActionsStale() {
-    if (!generationRunning('actions') || !state.draft) return;
-    state.draft.staleStages = Array.from(new Set([...(state.draft.staleStages || []), 'actions']));
-    actionsInvalidatedDuringGeneration = true;
+  // An edit to earlier content marks what is derived from it as outdated,
+  // whether or not a generation is running. The server derives the same thing
+  // from the saved content, so the mark survives a refresh and other tabs;
+  // this is the immediate, local half.
+  function discussionRecordHasContent(record) {
+    return Boolean(record && String(record.text || '').trim());
+  }
+
+  function discussionTopicHasContent(topic) {
+    if (!topic) return false;
+    if (String(topic.topic || '').trim()) return true;
+    return ['points', 'decisions', 'openQuestions'].some(function (field) {
+      return (topic[field] || []).some(discussionRecordHasContent);
+    });
+  }
+
+  function markDownstreamStale() {
+    if (!state.draft) return;
+    var stale = new Set(state.draft.staleStages || []);
+    if ((state.draft.actions || []).length) stale.add('actions');
+    if (state.draft.executiveSummary) stale.add('summary');
+    if (generationRunning('actions')) actionsInvalidatedDuringGeneration = true;
+    if (!stale.size) return;
+    state.draft.staleStages = Array.from(stale);
     var notice = document.getElementById('staleNotice');
     notice.hidden = false;
     document.getElementById('staleStages').textContent = state.draft.staleStages.join(' and ');
   }
 
+  function speculationFor(stage) {
+    var speculation = state.draft && state.draft.speculation;
+    return speculation && speculation.stage === stage ? speculation : null;
+  }
+
+  var SPECULATION_NOTICE_TEXT = {
+    discussion: {
+      preparing: 'Preparing the Discussion in the background while you check the details…',
+      ready: 'The Discussion is ready. Continue to open it.'
+    },
+    actions: {
+      preparing: 'Preparing Actions in the background while you review Discussion…',
+      ready: 'Actions preparation is ready. Starting Actions will reuse this work.'
+    },
+    summary: {
+      preparing: 'Preparing the Summary in the background while you review Actions…',
+      ready: 'The Summary is ready. It opens with the next step.'
+    }
+  };
+
+  var RUNNING_NOTICE_TEXT = {
+    discussion: 'The Discussion is being prepared.',
+    actions: 'Actions are being prepared. You can keep editing the Discussion.',
+    summary: 'The summary is being prepared.'
+  };
+
+  function renderSpeculationNotice(element, stage, info) {
+    if (!element) return;
+    // A notice that is showing when its run starts keeps its place and says
+    // the run is under way. Hiding it moved everything above it when the
+    // reader was scrolled to the bottom, so the next click missed.
+    if (generationRunning(stage)) {
+      if (!element.hidden) element.textContent = RUNNING_NOTICE_TEXT[stage] || element.textContent;
+      return;
+    }
+    element.hidden = !info;
+    if (element.hidden) return;
+    element.textContent = SPECULATION_NOTICE_TEXT[stage][info.status === 'ready' ? 'ready' : 'preparing'];
+  }
+
   function renderActionsPrewarm() {
-    var notice = document.getElementById('actionsPrewarmNotice');
-    if (!notice) return;
-    var prewarm = state.draft && state.draft.actionsPrewarm;
-    notice.hidden = !prewarm || generationRunning('actions');
-    if (notice.hidden) return;
-    notice.textContent = prewarm.status === 'ready'
-      ? 'Actions preparation is ready. Starting Actions will reuse this work.'
-      : 'Preparing Actions in the background while you review Discussion…';
+    if (!state.draft) return;
+    // The Actions notice keeps its older prewarm source so a deployment
+    // without the speculative pipeline still says what it used to.
+    renderSpeculationNotice(document.getElementById('actionsPrewarmNotice'), 'actions',
+      speculationFor('actions') || state.draft.actionsPrewarm);
+    document.querySelectorAll('[data-speculation-notice]').forEach(function (element) {
+      var stage = element.dataset.speculationNotice;
+      renderSpeculationNotice(element, stage, speculationFor(stage));
+    });
+  }
+
+  function backgroundWorkPreparing() {
+    if (!state.draft) return false;
+    var speculation = state.draft.speculation;
+    var prewarm = state.draft.actionsPrewarm;
+    return Boolean((speculation && speculation.status === 'preparing') || (prewarm && prewarm.status === 'preparing'));
   }
 
   function pollActionPrewarm() {
     clearTimeout(prewarmTimer);
-    var prewarm = state.draft && state.draft.actionsPrewarm;
-    if (!prewarm || prewarm.status !== 'preparing' || generationRunning()) return;
+    if (!backgroundWorkPreparing() || generationRunning()) return;
     prewarmTimer = window.setTimeout(async function () {
       if (!state.draft || generationRunning()) return;
       try {
         var payload = await jsonRequest(draftUrl('/generation'));
         state.draft.actionsPrewarm = payload.actionsPrewarm || null;
+        state.draft.speculation = payload.speculation || null;
         renderActionsPrewarm();
+        maybeOpenPreparedSummary();
         pollActionPrewarm();
       } catch (error) {
         prewarmTimer = window.setTimeout(pollActionPrewarm, 5000);
       }
     }, GENERATION_POLL_MS);
   }
+
+  // On the Summary screen with nothing written yet, the Summary the server
+  // has been preparing (or is preparing) is what the Generate button would
+  // produce, so start it without the click. Without the speculative pipeline
+  // there is no such notice and the button behaves as before.
+  function maybeOpenPreparedSummary() {
+    if (!state.draft || state.currentStep !== STAGE_STEP.summary || rendering) return;
+    if (generationRunning() || autoSummaryStarted) return;
+    if (String(state.draft.executiveSummary || '').trim()) return;
+    if (!speculationFor('summary')) return;
+    autoSummaryStarted = true;
+    startBackgroundStage('summary');
+  }
+  var autoSummaryStarted = false;
 
   function readSteer() {
     var field = document.getElementById('meetingSteer');
@@ -484,7 +627,7 @@
     });
     if (!rows.length) return '';
     return '<section class="supporting-context"><div class="supporting-context-head"><h3>Supporting context</h3><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></div><p class="muted">Related facts are grouped here so you can review context without opening each sentence.</p><div class="supporting-detail-list">' + rows.map(function (row) {
-      return '<div class="supporting-detail"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Promote to minutes</button></div></div>';
+      return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Promote to minutes</button></div></div>';
     }).join('') + '</div></section>';
   }
 
@@ -679,6 +822,8 @@
     return own.concat(nested.flatMap(linkedReviewFlagIds));
   }
 
+  var ITEM_REMOVED_NOTE = 'The item was removed.';
+
   function resolveDeletedTargetFlags(flagIds) {
     if (!state.draft || !flagIds || !flagIds.length) return;
     var stillLinked = new Set(linkedReviewFlagIds([
@@ -687,7 +832,9 @@
     var removed = new Set(flagIds);
     state.draft.reviewFlags = (state.draft.reviewFlags || []).map(function (flag) {
       if (!removed.has(flag.id) || stillLinked.has(flag.id)) return flag;
-      return Object.assign({}, flag, { status: 'dismissed' });
+      // Marked so the server can tell it from a reviewer's own dismissal and
+      // reopen it if the same item is added again.
+      return Object.assign({}, flag, { status: 'dismissed', correctionNote: ITEM_REMOVED_NOTE });
     });
   }
 
@@ -727,6 +874,25 @@
             label: field === 'decisions' ? 'Decision' : field === 'openQuestions' ? 'Open question' : 'Discussion sentence',
             text: item.text || ''
           };
+        }
+      }
+    }
+    // A flag can belong to a line in supporting context.
+    for (var ti = 0; ti < (state.draft.discussion || []).length; ti += 1) {
+      var ctxTopic = state.draft.discussion[ti];
+      for (var fi = 0; fi < 3; fi += 1) {
+        var ctxField = ['points', 'decisions', 'openQuestions'][fi];
+        for (var ii = 0; ii < (ctxTopic[ctxField] || []).length; ii += 1) {
+          var parentItem = ctxTopic[ctxField][ii];
+          for (var di = 0; di < (parentItem.supportingDetails || []).length; di += 1) {
+            var detail = parentItem.supportingDetails[di];
+            if ((detail.reviewFlagIds || []).indexOf(flagId) >= 0) return {
+              stage: 2,
+              elementId: recordDomId('supporting', detail.id, ti + '-' + ctxField + '-' + ii + '-' + di),
+              label: 'Supporting context',
+              text: detail.text || ''
+            };
+          }
         }
       }
     }
@@ -805,7 +971,7 @@
       }
       if (change.reviewContext) {
         content += '<div class="proposal-rationale"><div><strong>Why this needs review:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
-          + (change.reviewContext.label ? '<div class="commitment-chain"><span>Evidence path</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
+          + (change.reviewContext.label ? '<div class="commitment-chain"><span>In the transcript</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
           + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds) : '') + '</div>';
       }
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
@@ -873,6 +1039,9 @@
       document.getElementById('staleNotice').hidden = !stale.length;
       document.getElementById('staleStages').textContent = stale.join(' and ');
     } else document.getElementById('staleNotice').hidden = true;
+    // The Review page's document is built on entry; a draft resumed on Review
+    // (or re-rendered while it is open) must build it too.
+    if (state.draft && state.currentStep === MAX_STEP) renderFinal();
     showStep(state.draft ? state.currentStep : 0, { persist: false });
     renderGenerationProgress();
     rendering = false;
@@ -939,6 +1108,13 @@
     return '/api/meeting-minutes-agent/drafts/' + encodeURIComponent(state.draft.draftId) + (suffix || '');
   }
 
+  function editingInside(containerId) {
+    var container = document.getElementById(containerId);
+    var active = document.activeElement;
+    return Boolean(container && active && active !== document.body && container.contains(active)
+      && active.matches('textarea,input,select,[contenteditable]'));
+  }
+
   function scheduleSave() {
     if (rendering || !state.draft) return;
     rememberPendingDiscussion();
@@ -950,8 +1126,10 @@
     if (generationRunning()) {
       pendingGenerationEdits = true;
       setSaveStatus(generationSaveText(), 'waiting');
-      renderDiscussion();
-      renderActions();
+      // Never rebuild the section the reviewer is typing in: rebuilding it
+      // destroys the focused field, so every later keystroke was lost.
+      if (!editingInside('discussionList')) renderDiscussion();
+      if (!editingInside('actionsBody')) renderActions();
       return;
     }
     setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
@@ -1027,6 +1205,7 @@
         if (!state.draft || state.draft.draftId !== expectedDraftId || (generationPollKey && currentKey !== expectedKey)) return;
         var activeStage = (state.draft.generation && state.draft.generation.stage) || 'discussion';
         state.draft.generation = payload.generation;
+        if (payload.speculation !== undefined) state.draft.speculation = payload.speculation;
         if (payload.generation && payload.generation.status === 'running') {
           setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
           setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false, activeStage);
@@ -1071,7 +1250,10 @@
         if (payload.generation && payload.generation.status === 'failed') {
           setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true, activeStage);
         } else {
-          setStatus(state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), Boolean(state.draft.qualityNotice), activeStage);
+          var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
+          setStatus(keptEdits
+            ? 'Your edited Actions were kept. The regenerated Actions are shown as proposed changes: accept the ones you want.'
+            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
@@ -1238,7 +1420,6 @@
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true,'discussion'); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('addDiscussion').addEventListener('click', function () {
-    markRunningActionsStale();
     readDiscussion();
     var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]};
     state.draft.discussion.push(topic);
@@ -1256,8 +1437,11 @@
     var promote=event.target.closest('[data-promote-supporting]');
     var topicButton=event.target.closest('[data-delete-topic]');
     if(!add && !remove && !demote && !promote && !topicButton) return;
-    markRunningActionsStale();
     readDiscussion();
+    // Only a change to real content makes the Actions outdated. Adding a blank
+    // row, or deleting a row or topic that never had any text, changes nothing
+    // the Actions were built from and must not ask for a regeneration.
+    var material = Boolean(demote || promote);
     var addedRecord = null;
     if(add){
       var addTopic=state.draft.discussion[Number(add.dataset.topicIndex)];
@@ -1267,6 +1451,7 @@
     }
     if(remove){
       var removedRecord=state.draft.discussion[Number(remove.dataset.topicIndex)][remove.dataset.removeRecord].splice(Number(remove.dataset.itemIndex),1)[0];
+      material = material || discussionRecordHasContent(removedRecord);
       forgetPendingDiscussion(removedRecord);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
     }
@@ -1288,11 +1473,19 @@
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
       if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:[],supportingDetails:[]});
     }
+    // Removing a topic with content deletes all its rows at once: ask first.
+    var topicToRemove=topicButton && state.draft.discussion[Number(topicButton.dataset.deleteTopic)];
+    if(topicButton && discussionTopicHasContent(topicToRemove)){
+      var rowCount=['points','decisions','openQuestions'].reduce(function(total,key){return total+((topicToRemove[key]||[]).length);},0);
+      if(!window.confirm('Remove the topic "'+(topicToRemove.topic||'Untitled')+'" and its '+rowCount+' row'+(rowCount===1?'':'s')+'?')) topicButton=null;
+    }
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
+      material = material || discussionTopicHasContent(removedTopic);
       forgetPendingDiscussion(removedTopic);
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
     }
+    if(material) markDownstreamStale();
     renderDiscussion();
     if(addedRecord){
       rememberPendingDiscussion();
@@ -1347,6 +1540,7 @@
     if (!input.value.trim()) {
       delete actionEditorState.customOwners[actionId];
       input.hidden = true;
+      refreshLeaveSafety();
       return;
     }
     var index = (state.draft.actions || []).findIndex(function (action) { return action.id === actionId; });
@@ -1354,6 +1548,7 @@
     var added = addOwner(index, input.value);
     input.value = '';
     delete actionEditorState.customOwners[actionId];
+    refreshLeaveSafety();
     if (!added) return;
     renderActions();
     // The field this was typed into is hidden again by the re-render, so focus
@@ -1422,9 +1617,8 @@
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
-    if (generationRunning('actions') && (event.target.closest('#discussionList')
-      || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer')) {
-      markRunningActionsStale();
+    if (event.target.closest('#discussionList') || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer') {
+      markDownstreamStale();
     }
     if (event.target.matches('[data-owner-other]')) {
       actionEditorState.customOwners[event.target.dataset.actionId] = { visible:true, value:event.target.value };

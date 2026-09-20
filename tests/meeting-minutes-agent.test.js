@@ -60,6 +60,13 @@ const {
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
+  meetingAgentRefereeAccountedForAllCandidates,
+  dedupeActionDiscoveryInventory,
+  compactMeetingAgentDiscussionContext,
+  meetingAgentEmptyDiscoveryRepairPrompt,
+  meetingAgentDerivedStaleStages,
+  meetingAgentStaleStagesAfterGeneration,
+  dedupeSupportingDetailsSemantically,
   isVagueReconstructedAction,
   isReviewableActionProposal,
   publishedActionCoversProposal,
@@ -1765,8 +1772,8 @@ test('review proposals expose a concise commitment-chain rationale', () => {
     signals: { offer: true }, scores: { action: 0.48 },
     uncertainties: [{ kind: 'ownership', evidenceIds: ['T1100'] }]
   }]);
-  assert.equal(proposal.changes[0].reviewContext.label, 'offer');
-  assert.match(proposal.changes[0].reviewContext.reason, /ownership/i);
+  assert.equal(proposal.changes[0].reviewContext.label, 'offered');
+  assert.match(proposal.changes[0].reviewContext.reason, /who owns it/i);
   assert.deepEqual(proposal.changes[0].reviewContext.evidenceIds, ['T1100']);
 });
 
@@ -2002,4 +2009,210 @@ test('the summary stage gets its own contract rather than the action instruction
   assert.doesNotMatch(summary, /Populate actions as/);
   assert.doesNotMatch(actions, /executiveSummary/);
   assert.ok(summary.endsWith(transcript));
+});
+
+test('an owner follow-up the referee filed as a decision is shown as a discussion point, not a decision', () => {
+  const units = [
+    { id: 'T0080', sequence: 80, speaker: 'Mick', text: "I'll ring the refrigeration engineer today and get the chiller serviced before the fifteenth.", classification: 'keep' },
+    { id: 'T0081', sequence: 81, speaker: 'Dan', text: 'Agreed, we order six sacks of Maris Otter to cover the shortfall.', classification: 'keep' }
+  ];
+  const compact = compactDiscussionPropositions([{ topic: 'Chiller',
+    points: [],
+    decisions: [
+      { id: 'd1', text: 'Mick to contact the refrigeration engineer today to service the chiller before the fifteenth.', evidenceIds: ['T0080'] },
+      { id: 'd2', text: 'Decision to order six additional sacks of Maris Otter malt to cover the shortfall.', evidenceIds: ['T0081'] }
+    ],
+    openQuestions: []
+  }], [], units);
+  const decisions = compact.flatMap((topic) => topic.decisions).map((record) => record.text);
+  const points = compact.flatMap((topic) => topic.points).map((record) => record.text);
+  assert.ok(points.some((text) => /^Mick to contact/.test(text)));
+  assert.ok(decisions.some((text) => /^Decision to order/.test(text)));
+  assert.ok(!decisions.some((text) => /^Mick to contact/.test(text)));
+});
+
+test('supporting context is deduplicated across the whole draft, not per parent row', () => {
+  const units = [
+    { id: 'T0090', sequence: 90, speaker: 'Ravi', text: 'I will order the full thirteen kilos of hops Monday morning so they arrive before the fifteenth.', classification: 'keep' },
+    { id: 'T0091', sequence: 91, speaker: 'Mick', text: 'If the chiller fails mid-ferment we could lose the whole twelve hundred litres.', classification: 'keep' }
+  ];
+  const discussion = [{ topic: 'Brew plan', points: [
+    { id: 'p1', text: 'Ravi will order the full hop bill of thirteen kilos on Monday morning.', evidenceIds: ['T0090'] },
+    { id: 'p2', text: 'A chiller failure during the IPA ferment risks the whole twelve hundred litre batch.', evidenceIds: ['T0091'] }
+  ], decisions: [], openQuestions: [] }];
+  const supportingCandidates = [
+    { candidate: { candidateId: 'c1', text: 'The full hop order of thirteen kilos is to be placed on Monday morning to ensure delivery before the fifteenth.', evidenceIds: ['T0090'], topic: 'Hops' }, mergeTarget: 'p1' },
+    { candidate: { candidateId: 'c2', text: 'Thirteen kilos of hops are to be ordered Monday morning to ensure delivery before the fifteenth.', evidenceIds: ['T0090'], topic: 'Hops' }, mergeTarget: 'p2' },
+    { candidate: { candidateId: 'c3', text: 'Failure of the chiller mid-ferment risks losing the entire twelve hundred litres.', evidenceIds: ['T0091'], topic: 'Chiller' }, mergeTarget: 'p2' },
+    { candidate: { candidateId: 'c4', text: 'If the chiller fails mid-ferment the entire twelve hundred litres could be lost.', evidenceIds: ['T0091'], topic: 'Chiller' }, mergeTarget: 'p1' }
+  ];
+  const compact = compactDiscussionPropositions(discussion, [], units, { supportingCandidates });
+  const details = compact.flatMap((topic) => topic.points).flatMap((record) => record.supportingDetails || []).map((detail) => detail.text);
+  assert.ok(details.length <= 2, `expected at most one hop detail and one chiller detail, got ${JSON.stringify(details)}`);
+  assert.ok(details.filter((text) => /thirteen kilos/i.test(text)).length <= 1);
+  assert.ok(details.filter((text) => /chiller/i.test(text)).length <= 1);
+});
+
+test('cluster members that restate an already released member are not released again', () => {
+  const dispositions = [
+    { candidateId: 'r1', disposition: 'core' },
+    { candidateId: 'r2', disposition: 'supporting', targetId: 'r1' }
+  ];
+  const candidates = [
+    { candidateId: 'r1', text: 'Order thirteen kilos of hops on Monday morning.', evidenceIds: ['T0001'], clusterMembers: [
+      { text: 'Thirteen kilos of hops are to be ordered on Monday morning.', evidenceIds: ['T0001'], sourcePass: 'primary', clusterRelation: 'paraphrase' }
+    ] },
+    { candidateId: 'r2', text: 'Order thirteen kilos of hops by Monday the fifteenth.', evidenceIds: ['T0001'], clusterMembers: [
+      { text: 'Thirteen kilos of hops to be ordered Monday morning.', evidenceIds: ['T0001'], sourcePass: 'recovery', clusterRelation: 'paraphrase' },
+      { text: 'Citra hops are around twenty-eight pounds a kilo.', evidenceIds: ['T0002'], sourcePass: 'primary', clusterRelation: 'paraphrase' }
+    ] }
+  ];
+  const released = refereeClusterSupportingCandidates(dispositions, candidates).map((item) => item.candidate.text);
+  assert.equal(released.filter((text) => /thirteen kilos/i.test(text)).length, 1);
+  assert.ok(released.some((text) => /twenty-eight pounds/i.test(text)));
+});
+
+test('an empty action recovery result is accepted when the agent disposed of every candidate with a reason', () => {
+  const candidates = [{
+    candidateId: 'commitment-chain-de0fcbece5', recordType: 'action_chain', priority: 10,
+    dispositionHint: 'committed', signals: { commitment: true }, ownerHints: ['Ravi Menon']
+  }];
+  const accounted = {
+    schemaVersion: 4, discussion: [], actions: [], actionProposals: [],
+    candidateDispositions: [{
+      candidateId: 'commitment-chain-de0fcbece5', disposition: 'reject',
+      reason: 'Hop ordering commitment is already represented in CURRENT DRAFT as the full 13 kilo hop order by Ravi Menon.',
+      owners: ['Ravi Menon'], evidenceIds: ['T0001']
+    }]
+  };
+  assert.equal(meetingAgentEmptyDiscoveryError(accounted, 'actions', candidates), null);
+
+  // A disposition without a reason, or one that claims publish while returning nothing, still fails.
+  const unexplained = { ...accounted, candidateDispositions: [{ candidateId: 'commitment-chain-de0fcbece5', disposition: 'reject', reason: '' }] };
+  assert.equal(meetingAgentEmptyDiscoveryError(unexplained, 'actions', candidates)?.code, 'empty_action_with_substantive_candidates');
+  const contradictory = { ...accounted, candidateDispositions: [{ candidateId: 'commitment-chain-de0fcbece5', disposition: 'publish', reason: 'Genuine commitment.' }] };
+  assert.equal(meetingAgentEmptyDiscoveryError(contradictory, 'actions', candidates)?.code, 'empty_action_with_substantive_candidates');
+  // Only some substantive candidates accounted for is still a gap, and the
+  // error names the ones left unexplained.
+  const partial = meetingAgentEmptyDiscoveryError(accounted, 'actions', [
+    ...candidates,
+    { candidateId: 'other', recordType: 'action', priority: 10, owners: ['Dan'] }
+  ]);
+  assert.equal(partial?.code, 'empty_action_with_substantive_candidates');
+  assert.match(partial.message, /1 of 2 without a reasoned disposition: other/);
+  // Low-priority windows the agent did not mention do not make a correct
+  // empty answer fail: the recovery prompt carries dozens of them.
+  assert.equal(meetingAgentEmptyDiscoveryError(accounted, 'actions', [
+    ...candidates,
+    { candidateId: 'window-1', recordType: 'action', priority: 3, owners: [] },
+    { candidateId: 'window-2', recordType: 'action_chain', priority: 4, dispositionHint: 'suggestion', signals: {}, ownerHints: [] }
+  ]), null);
+});
+
+test('supporting details that restate a primary row or each other semantically are dropped, primaries never', async () => {
+  const discussion = [{ topic: 'Chiller', points: [
+    { id: 'p1', text: 'A chiller failure during the IPA ferment risks the whole batch.', evidenceIds: ['T0001'], supportingDetails: [
+      { id: 'c1', text: 'If the chiller fails mid-ferment the entire twelve hundred litres could be lost.', evidenceIds: ['T0001'] },
+      { id: 'c2', text: 'The IPA needs holding at nineteen degrees.', evidenceIds: ['T0002'] }
+    ] },
+    { id: 'p2', text: 'The last IPA batch was muted on aroma.', evidenceIds: ['T0003'], supportingDetails: [
+      { id: 'c3', text: 'Failure of the chiller mid-ferment poses a risk of losing the entire batch.', evidenceIds: ['T0001'] },
+      { id: 'c4', text: 'There was feedback that the previous IPA was flat on the nose.', evidenceIds: ['T0003'] }
+    ] }
+  ], decisions: [], openQuestions: [] }];
+  // Text order handed to the grouper is primaries first (p1, p2) then details
+  // (c1, c2, c3, c4). Unit vectors: c1 and c3 restate p1; c4 restates p2; c2 is distinct.
+  const vectors = [[1, 0, 0], [0, 1, 0], [1, 0, 0], [0, 0, 1], [1, 0, 0], [0, 1, 0]];
+  const result = await dedupeSupportingDetailsSemantically(discussion, { vectors, threshold: 0.8 });
+  const [p1, p2] = result[0].points;
+  assert.deepEqual(p1.supportingDetails.map((detail) => detail.id), ['c2']);
+  assert.deepEqual(p2.supportingDetails.map((detail) => detail.id), []);
+  assert.equal(result[0].points.length, 2, 'primary rows are never removed by the supporting dedupe');
+
+  // With no vectors and the worker unreachable the lexical fallback decides;
+  // a grouper failure leaves the discussion untouched.
+  const untouched = await dedupeSupportingDetailsSemantically([{ topic: 'X', points: [
+    { id: 'q1', text: 'Alpha.', evidenceIds: ['T0001'], supportingDetails: [{ id: 'd1', text: 'Beta gamma delta.', evidenceIds: ['T0001'] }, { id: 'd2', text: 'Epsilon zeta eta.', evidenceIds: ['T0001'] }] }
+  ], decisions: [], openQuestions: [] }], { vectors: null });
+  assert.equal(untouched[0].points[0].supportingDetails.length, 2);
+});
+
+test('a material edit to discussion, steer or attendees marks existing Actions and Summary outdated on the server', () => {
+  const stored = {
+    details: { internalAttendees: ['Dan Threlfall'], clientAttendees: [] },
+    steer: '',
+    discussion: [{ id: 't1', topic: 'Malt', points: [{ id: 'p1', text: 'Eighteen sacks will not cover both brews.', evidenceIds: ['T0001'], reviewFlagIds: ['f1'] }], decisions: [], openQuestions: [] }],
+    actions: [{ id: 'a1', action: 'Order six sacks of malt.', owners: ['Dan Threlfall'] }],
+    executiveSummary: 'Malt is short.',
+    staleStages: []
+  };
+  // Re-normalised but unchanged content (new ids, flags, evidence) is not an edit.
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, {
+    ...stored,
+    discussion: [{ id: 'other', topic: 'Malt', points: [{ id: 'x', text: 'Eighteen sacks will not cover both brews.', evidenceIds: [], reviewFlagIds: [] }], decisions: [], openQuestions: [] }]
+  }), []);
+  // A wording change, a structural change, a steer change and an attendee change each count.
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored,
+    discussion: [{ topic: 'Malt', points: [{ text: 'Eighteen sacks will cover both brews.' }], decisions: [], openQuestions: [] }] }), ['actions', 'summary']);
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored,
+    discussion: [{ topic: 'Malt', points: [{ text: 'Eighteen sacks will not cover both brews.' }], decisions: [{ text: 'Buy six more.' }], openQuestions: [] }] }), ['actions', 'summary']);
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored, steer: 'Focus on procurement.' }), ['actions', 'summary']);
+  assert.deepEqual(meetingAgentDerivedStaleStages(stored, { ...stored, details: { internalAttendees: ['Dan Threlfall', 'Mick Dolan'], clientAttendees: [] } }), ['actions', 'summary']);
+  // Nothing downstream yet: nothing to mark.
+  assert.deepEqual(meetingAgentDerivedStaleStages({ ...stored, actions: [], executiveSummary: '' }, { ...stored, steer: 'x' }), []);
+});
+
+test('a completed run clears its own outdated mark unless its inputs changed while it ran', () => {
+  const source = { discussion: [{ topic: 'Malt', points: [{ text: 'Short by three sacks.' }], decisions: [], openQuestions: [] }], steer: '', details: {}, staleStages: ['actions', 'summary'] };
+  // Unchanged inputs: the actions run clears 'actions' and leaves 'summary'.
+  assert.deepEqual(meetingAgentStaleStagesAfterGeneration({ ...source }, source, 'actions'), ['summary']);
+  // The discussion was edited while the run was in flight: the new actions are already outdated.
+  const edited = { ...source, discussion: [{ topic: 'Malt', points: [{ text: 'Short by six sacks.' }], decisions: [], openQuestions: [] }] };
+  assert.deepEqual(meetingAgentStaleStagesAfterGeneration(edited, source, 'actions'), ['actions', 'summary']);
+  // A discussion run never depends on that fingerprint.
+  assert.deepEqual(meetingAgentStaleStagesAfterGeneration({ ...edited, staleStages: ['discussion', 'actions'] }, source, 'discussion'), ['actions']);
+});
+
+test('the fast action path only trusts a structured referee that disposed of every candidate', () => {
+  const contract = { expectedCandidateIds: ['a', 'b', 'c'] };
+  const full = { candidateDispositions: [{ candidateId: 'a', disposition: 'publish' }, { candidateId: 'b', disposition: 'reject' }, { candidateId: 'c', disposition: 'completed' }] };
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates(full, contract, 'structured_prompt'), true);
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates(full, contract, 'legacy'), false, 'only the structured route counts');
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates({ candidateDispositions: full.candidateDispositions.slice(0, 2) }, contract, 'structured_prompt'), false, 'one missing disposition keeps the critic');
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates({ candidateDispositions: [...full.candidateDispositions, { candidateId: 'zzz', disposition: 'publish' }] }, contract, 'structured_prompt'), false, 'an unexpected id is not a complete accounting');
+  assert.equal(meetingAgentRefereeAccountedForAllCandidates(full, { expectedCandidateIds: [] }, 'structured_prompt'), false);
+});
+
+test('the deduplicated discovery inventory keeps a chain and drops the thread and raw candidates it already contains', () => {
+  const chains = [{ candidateId: 'chain-1', recordType: 'action_chain', candidateIds: ['c1', 'c2'] }];
+  const threads = [
+    { candidateId: 'thread-1', recordType: 'action_thread', candidateIds: ['c1', 'c2'] },
+    { candidateId: 'thread-2', recordType: 'action_thread', candidateIds: ['c3', 'c4'] }
+  ];
+  const candidates = [{ candidateId: 'c1' }, { candidateId: 'c2' }, { candidateId: 'c3' }, { candidateId: 'c4' }, { candidateId: 'c5' }];
+  const result = dedupeActionDiscoveryInventory(chains, threads, candidates).map((item) => item.candidateId);
+  assert.deepEqual(result, ['chain-1', 'thread-2', 'c5']);
+  // Nothing to fold: everything survives, order preserved.
+  assert.deepEqual(dedupeActionDiscoveryInventory([], [], candidates).map((item) => item.candidateId), ['c1', 'c2', 'c3', 'c4', 'c5']);
+});
+
+test('the recovery prompt receives a compact discussion context, not the whole draft object', () => {
+  const discussion = [{
+    id: 't1', topic: 'Malt', points: [{ id: 'p1', text: 'Eighteen sacks will not cover both brews.', evidenceIds: ['T0001'], reviewFlagIds: ['f'], supportingDetails: [{ text: 'x'.repeat(2000) }] }],
+    decisions: [{ id: 'd1', text: 'Buy six more sacks.', evidenceIds: ['T0002'] }], openQuestions: []
+  }];
+  const compact = compactMeetingAgentDiscussionContext(discussion);
+  assert.deepEqual(compact, [{ topic: 'Malt', points: ['Eighteen sacks will not cover both brews.'], decisions: ['Buy six more sacks.'], openQuestions: [] }]);
+  assert.ok(JSON.stringify(compact).length < 200);
+  // The cap stops adding whole topics once the budget is spent.
+  const many = Array.from({ length: 200 }, (_, index) => ({ topic: `Topic ${index}`, points: [{ text: 'y'.repeat(300) }], decisions: [], openQuestions: [] }));
+  assert.ok(JSON.stringify(compactMeetingAgentDiscussionContext(many, 6000)).length <= 6000);
+});
+
+test('an empty-discovery retry carries a repair instruction naming what was missing', () => {
+  const error = new Error('The action agent returned an empty draft despite substantive evidence candidates (2 of 3 without a reasoned disposition: chain-1, c5).');
+  const prompt = meetingAgentEmptyDiscoveryRepairPrompt({ error, originalPrompt: 'ORIGINAL' });
+  assert.ok(prompt.startsWith('ORIGINAL'));
+  assert.match(prompt, /REPAIR INSTRUCTION: .*chain-1, c5/);
+  assert.match(prompt, /candidateDisposition with a reason/);
 });

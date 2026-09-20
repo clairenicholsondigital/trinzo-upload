@@ -190,7 +190,7 @@ test('unsupported evidence IDs are removed and visibly flagged', () => {
     action: 'Send the report to Alex.', owner: 'Priya', deadline: 'Friday', evidenceIds: ['T9999']
   }] }, sourceUnits, 'actions');
   assert.ok(!result.actions[0].evidenceIds.includes('T9999'));
-  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'missing_evidence' && /unsupported source T9999/.test(flag.message)));
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'missing_evidence' && /do not exist \(T9999\)/.test(flag.message)));
   assert.ok(result.actions[0].reviewFlagIds.length);
 });
 
@@ -946,4 +946,148 @@ test('summary and objectives normalise alongside the rest of the draft', () => {
   // Objectives are a synthesis, so they stay out of the missing-evidence sweep
   // and must not leak its internal bookkeeping into the stored payload.
   assert.ok(!('_unsupportedEvidenceIds' in result.objectives[0]));
+});
+
+test('a weekday matching the meeting weekday is not silently pushed a week out', () => {
+  // Meeting on Monday 10 August: "Monday morning" is the same day, a bare
+  // "Monday" is ambiguous and keeps its wording, "next Monday" is a week on.
+  assert.equal(relativeExactDate('Monday morning', '2026-08-10'), '2026-08-10');
+  assert.equal(relativeExactDate('Monday', '2026-08-10'), '');
+  assert.equal(relativeExactDate('this Monday', '2026-08-10'), '2026-08-10');
+  assert.equal(relativeExactDate('next Monday', '2026-08-10'), '2026-08-17');
+  assert.equal(relativeExactDate('Tuesday', '2026-08-10'), '2026-08-11');
+});
+
+test('an exact date that breaches a stated limit in the same commitment is removed and flagged', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2001', speaker: 'Ravi', text: "I'll place the full order Monday morning so it's here before the fifteenth.", classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Place the full 13 kg hop order.',
+    owners: ['Ravi'],
+    timing: { kind: 'target', wording: 'Monday morning', exactDate: '2026-08-17' },
+    evidenceIds: ['T2001']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].timing, { kind: 'target', wording: 'Monday morning', exactDate: '' });
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /before the fifteenth/i.test(flag.message)));
+
+  // The same commitment with a compliant date is left alone.
+  const compliant = normaliseAgentResult({ actions: [{
+    action: 'Place the full 13 kg hop order.',
+    owners: ['Ravi'],
+    timing: { kind: 'target', wording: 'Monday morning', exactDate: '2026-08-10' },
+    evidenceIds: ['T2001']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.equal(compliant.actions[0].timing.exactDate, '2026-08-10');
+  assert.ok(!compliant.reviewFlags.some((flag) => flag.kind === 'timing'));
+});
+
+test('a date earlier than the meeting date is removed and flagged', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2010', speaker: 'Priya', text: 'I will send the report by Friday.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Send the report.', owners: ['Priya'],
+    timing: { kind: 'deadline', wording: 'by Friday', exactDate: '2026-08-07' }, evidenceIds: ['T2010']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.equal(result.actions[0].timing.exactDate, '');
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /earlier than the meeting date/i.test(flag.message)));
+});
+
+test('same-day wording in the cited commitment is recovered when the model returned no timing', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2020', speaker: 'Dan', text: 'Fine. Let me order six sacks today, I get a better rate.', classification: 'keep' },
+    { id: 'T2021', speaker: 'Josie', text: 'We discussed today whether the festival wants forty kegs.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Order six sacks of Maris Otter malt.', owners: ['Dan'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2020'] },
+    { action: 'Check what the festival wants.', owners: ['Josie'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2021'] }
+  ] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+  // Narration is not a commitment: "we discussed today" must not become a deadline.
+  assert.equal(result.actions[1].timing.kind, 'not_stated');
+});
+
+test("the owner's nearby commitment turn is added to an action's citation", () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0019', speaker: 'Josie Kaur', text: 'What about malt, are we okay on malt?', classification: 'keep' },
+    { id: 'T0020', speaker: 'Dan Threlfall', text: "We've got, Mick, how many sacks of the Maris Otter left?", classification: 'keep' },
+    { id: 'T0021', speaker: 'Mick Dolan', text: "Eighteen sacks. Each brew's about, the pale's ten sacks, the IPA's eleven, so eighteen won't cover both.", classification: 'keep' },
+    { id: 'T0022', speaker: 'Dan Threlfall', text: "No, we're short. We need another, if it's twenty-one total and we've got eighteen, get another, say, six sacks to have a buffer.", classification: 'keep' },
+    { id: 'T0023', speaker: 'Mick Dolan', text: "Six sacks of Maris Otter. They're about thirty-two pounds a sack at the minute.", classification: 'keep' },
+    { id: 'T0024', speaker: 'Dan Threlfall', text: "Fine. Actually, hang on, let me do that one, I get a better rate from the maltster than we do on the account. Leave the malt with me, I'll order six sacks today.", classification: 'keep' },
+    { id: 'T0025', speaker: 'Mick Dolan', text: "Righto, malt's yours.", classification: 'keep' },
+    { id: 'T0026', speaker: 'Dan Threlfall', text: 'Now the festival. Josie, you took the call.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Order six sacks of Maris Otter malt.', owners: ['Dan Threlfall'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  const action = result.actions[0];
+  assert.ok(action.evidenceIds.includes('T0024'), `expected the commitment turn to be cited, got ${JSON.stringify(action.evidenceIds)}`);
+  // With the commitment cited, its same-day wording is recovered and the owner is supported.
+  assert.deepEqual(action.timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+  assert.ok(!result.reviewFlags.some((flag) => flag.kind === 'ownership'));
+
+  // A nearby turn by someone other than the owner, or by the owner without a
+  // commitment, is not pulled in.
+  const other = normaliseAgentResult({ actions: [{
+    action: 'Order six sacks of Maris Otter malt.', owners: ['Mick Dolan'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0023']
+  }] }, units, 'actions', { meetingDate: '2026-08-10', enforceEvidence: false });
+  assert.ok(!other.actions[0].evidenceIds.includes('T0024'));
+});
+
+test("the commitment anchor reaches across sentence-level units, as the live preparer produces them", () => {
+  // These are the units the MiniLM preparer actually emits for this exchange:
+  // one sentence each, so the owner's commitment sits seven units after the
+  // question the model likes to cite.
+  const units = normaliseSourceUnits([
+    { id: "T0034", speaker: "Josie Kaur", text: "What about malt, are we okay on malt?", classification: "retain" },
+    { id: "T0035", speaker: "Dan Threlfall", text: "We've got, Mick, how many sacks of the Maris Otter left?", classification: "uncertain" },
+    { id: "T0036", speaker: "Mick Dolan", text: "Each brew's about, the pale's ten sacks, the IPA's eleven, so eighteen won't cover both.", classification: "retain" },
+    { id: "T0037", speaker: "Dan Threlfall", text: "No, we're short.", classification: "uncertain" },
+    { id: "T0038", speaker: "Dan Threlfall", text: "We need another, if it's twenty-one total and we've got eighteen, get another, say, six sacks to have a buffer.", classification: "retain" },
+    { id: "T0039", speaker: "Mick Dolan", text: "Six sacks of Maris Otter.", classification: "uncertain" },
+    { id: "T0040", speaker: "Mick Dolan", text: "They're about thirty-two pounds a sack at the minute.", classification: "uncertain" },
+    { id: "T0041", speaker: "Dan Threlfall", text: "Actually, hang on, let me do that one, I get a better rate from the maltster than we do on the account.", classification: "retain" },
+    { id: "T0042", speaker: "Dan Threlfall", text: "Leave the malt with me, I'll order six sacks today.", classification: "retain" },
+    { id: "T0043", speaker: "Mick Dolan", text: "Righto, malt's yours.", classification: "uncertain" },
+    { id: "T0044", speaker: "Dan Threlfall", text: "Now the festival.", classification: "uncertain" },
+    { id: "T0045", speaker: "Dan Threlfall", text: "Josie, you took the call.", classification: "uncertain" }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Order six sacks of Maris Otter malt.', owners: ['Dan Threlfall'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0035']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions[0].evidenceIds, ['T0035', 'T0042']);
+  assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'today', exactDate: '2026-08-10' });
+  assert.equal(result.reviewFlags.length, 0);
+});
+
+test('a leaving remark is not a commitment, even with a "need to" cue', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0075', speaker: 'Dan Threlfall', text: "So, to recap the plan, and then I'll let you go.", classification: 'keep' },
+    { id: 'T0080', speaker: 'Dan Threlfall', text: "Right, I've got a delivery arriving, I need to shoot.", classification: 'keep' },
+    { id: 'T0081', speaker: 'Ravi Menon', text: "I'll shoot the revised hop order over to you tonight.", classification: 'keep' }
+  ]);
+  assert.equal(actionEvidenceDisposition('Manage the delivery arriving and shoot accordingly.', "Dan Threlfall: Right, I've got a delivery arriving, I need to shoot."), 'meeting_admin');
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Manage the delivery arriving and shoot accordingly.', owners: ['Dan Threlfall'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0080', 'T0075'] },
+    { action: 'Send the revised hop order to Dan.', owners: ['Ravi Menon'], timing: { kind: 'deadline', wording: 'tonight', exactDate: '' }, evidenceIds: ['T0081'] }
+  ] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions.map((action) => action.action), ['Send the revised hop order to Dan.'], 'the leaving remark is dropped; "shoot X over" is a real commitment');
+});
+
+test('a weekday phrase in the cited commitment is recovered when the model returned no usable timing', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0033', speaker: 'Ravi Menon', text: "Monday, yep, I'll place the hop order Monday morning, all thirteen kilos.", classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Place the full hop order on Monday morning.', owners: ['Ravi Menon'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0033']
+  }] }, units, 'actions', { meetingDate: '2026-08-10' });
+  assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'monday morning', exactDate: '2026-08-10' });
+  assert.ok(!result.reviewFlags.some((flag) => flag.kind === 'timing'));
 });

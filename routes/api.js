@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerProjectKnowledge } = require('../utils/knowledge');
 
 const {
@@ -54,6 +55,7 @@ const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semantic
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
+const { organiseDiscussionForReview } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -185,7 +187,36 @@ const {
   mergeGroundedObjectiveRecords,
   evidenceSupportScore,
   actionEvidenceDisposition,
-  groundedExecutiveSummary
+  groundedExecutiveSummary,
+  timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
+  applyTimingClauseChecks,
+  timingCheckEnabled: meetingMinutesTimingCheckEnabled,
+  timingCheckItems,
+  timingCheckPrompt,
+  applyTimingCheckResults,
+  decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
+  decisionCheckItems,
+  decisionCheckPrompt,
+  applyDecisionCheckResults,
+  reconcileRecordFlags,
+  commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
+  commitmentCheckItems,
+  commitmentCheckPrompt,
+  applyCommitmentCheckResults,
+  isMeetingAdminAction,
+  answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
+  answeredCheckItems,
+  answeredCheckPrompt,
+  applyAnsweredCheckResults,
+  applyChainedTimingRule,
+  mergeDuplicateCommitments,
+  applyRequesterOwnerRule,
+  demoteSupersededRows,
+  describesUsualPractice,
+  discussionActionCandidates,
+  supersededCheckItems,
+  supersededVerdicts,
+  correctnessChecksEnabled
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
@@ -6163,6 +6194,20 @@ function withTestUpload(handler) {
   };
 }
 
+// Models on some AI Builder prompts wrap an otherwise valid JSON reply in a
+// Markdown fence. Accept that shape quietly; anything that is still not JSON
+// returns null and is rejected by the caller exactly as before.
+function parseJsonLenient(text) {
+  if (typeof text !== 'string') return null;
+  try { return JSON.parse(text); } catch { /* try the fenced form */ }
+  const cleaned = text.trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+  if (cleaned === text.trim() || !cleaned.startsWith('{')) return null;
+  try { return JSON.parse(cleaned); } catch { return null; }
+}
+
 function extractJsonFromText(text) {
   if (!text) return null;
 
@@ -8343,6 +8388,11 @@ function meetingMinutesAgentHybridEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_HYBRID_V4 || '0'));
 }
 
+function meetingMinutesAgentSupportingDedupeThreshold() {
+  const value = Number(process.env.MEETING_MINUTES_AGENT_SUPPORTING_DEDUPE_THRESHOLD);
+  return Number.isFinite(value) && value > 0 && value <= 1 ? value : 0.72;
+}
+
 function meetingMinutesAgentCompactDiscussionEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_AGENT_COMPACT_DISCUSSION_V1 || '0'));
 }
@@ -8369,10 +8419,104 @@ function meetingMinutesAgentAnchoredDiscussionEnabled() {
   ));
 }
 
+function meetingMinutesAgentDiscussionOrganiseEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ORGANISE_V1 || '0'));
+}
+
+function meetingMinutesAgentFastActionPathEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_FAST_ACTION_PATH_V1 || '0'));
+}
+
+function meetingMinutesAgentDedupedCoverageEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DEDUPED_COVERAGE_V1 || '0'));
+}
+
+function meetingMinutesAgentEarlyActionPrewarmEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_EARLY_ACTION_PREWARM_V1 || '0'));
+}
+
+// Run the next stage ahead of the reviewer with exactly the inputs the real
+// run would use, keep the result privately, and let the real run adopt it if
+// those inputs are unchanged. Nothing about the prompts, passes or flags
+// differs; only when the work happens.
+function meetingMinutesAgentSpeculativePipelineEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1 || '0'));
+}
+
+function meetingAgentCandidateContextChars() {
+  const value = Number(process.env.MEETING_MINUTES_AGENT_CANDIDATE_CONTEXT_CHARS);
+  return Number.isFinite(value) && value >= 400 ? Math.min(5000, Math.floor(value)) : 5000;
+}
+
+// A structured referee that returned exactly one disposition for every
+// candidate it was given has already judged the whole inventory. The critic
+// and salvage passes exist to catch what an incomplete referee missed; on a
+// complete one they have returned nothing material in every measured run.
+function meetingAgentRefereeAccountedForAllCandidates(refereeParsed = {}, refereeContract = {}, refereeRoute = '') {
+  const expected = Array.isArray(refereeContract?.expectedCandidateIds) ? refereeContract.expectedCandidateIds : [];
+  if (refereeRoute !== 'structured_prompt' || !expected.length) return false;
+  const returned = new Set((Array.isArray(refereeParsed?.candidateDispositions) ? refereeParsed.candidateDispositions : [])
+    .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean));
+  return returned.size === expected.length && expected.every((candidateId) => returned.has(candidateId));
+}
+
+// The discovery inventory lists one commitment up to three times: as a chain,
+// as the thread inside it, and as each raw candidate the chain was built
+// from. Every coverage test (recovery, critic, salvage) then counts the same
+// gap three times. Keep the chain, drop the members it already contains.
+function dedupeActionDiscoveryInventory(chains = [], threads = [], candidates = []) {
+  const covered = new Set();
+  for (const chain of chains) for (const id of chain?.candidateIds || []) covered.add(String(id));
+  const keptThreads = threads.filter((thread) => {
+    const members = (thread?.candidateIds || []).map(String);
+    return !(members.length && members.every((id) => covered.has(id)));
+  });
+  for (const thread of keptThreads) for (const id of thread?.candidateIds || []) covered.add(String(id));
+  const keptCandidates = candidates.filter((candidate) => !covered.has(String(candidate?.candidateId || '')));
+  return [...chains, ...keptThreads, ...keptCandidates];
+}
+
+// Only the rows the Actions passes reason about: topic and primary texts.
+// Recovery used to receive the whole discussion object (ids, evidence,
+// flags, supporting details) uncapped, which made it the largest prompt of
+// the stage.
+function compactMeetingAgentDiscussionContext(discussion = [], maxChars = 6000) {
+  const rows = [];
+  let chars = 2;
+  for (const topic of Array.isArray(discussion) ? discussion : []) {
+    const compact = {
+      topic: meetingMinutesAgentText(topic?.topic, 160),
+      points: (topic?.points || []).map((item) => meetingMinutesAgentText(item?.text, 400)).filter(Boolean),
+      decisions: (topic?.decisions || []).map((item) => meetingMinutesAgentText(item?.text, 400)).filter(Boolean),
+      openQuestions: (topic?.openQuestions || []).map((item) => meetingMinutesAgentText(item?.text, 400)).filter(Boolean)
+    };
+    const size = JSON.stringify(compact).length + 1;
+    if (chars + size > maxChars) break;
+    chars += size;
+    rows.push(compact);
+  }
+  return rows;
+}
+
+// A retry after an empty-discovery validation failure used to re-send the
+// byte-identical prompt. Tell the model what was missing instead.
+function meetingAgentEmptyDiscoveryRepairPrompt({ error, originalPrompt }) {
+  const detail = meetingMinutesAgentText(error?.message, 400);
+  return `${originalPrompt}\n\nREPAIR INSTRUCTION: ${detail} Return the complete JSON object again. Give every UNCOVERED CANDIDATE a candidateDisposition with a reason (reject, completed or suggestion when it is not a genuine outstanding commitment), and return each genuine commitment as an action with owners, timing and evidenceIds.`;
+}
+
 function meetingMinutesAgentAnchoredActionEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(
     process.env.MEETING_MINUTES_AGENT_ANCHORED_ACTION_V1 || '0'
   ));
+}
+
+// When a speaker corrects themselves ("I presumed X ... but that has changed,
+// it will now be Y"), minutes must state Y. Sent as data with the Discussion
+// requests; off unless MEETING_MINUTES_AGENT_CORRECTION_RULE_V1 is on.
+const MEETING_AGENT_CORRECTION_RULE = 'When a speaker corrects, updates or revises something they said earlier (for example "I presumed X ... but I think that has changed ... it will be Y"), write only the final position Y. Do not state the earlier position as current, and do not combine the two. If the final position is unclear, say only what is clear.';
+function meetingAgentCorrectionRuleEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_CORRECTION_RULE_V1 || '0'));
 }
 
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
@@ -8381,6 +8525,7 @@ function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anch
     stage: 'DISCUSSION_ANCHORED_DISCOVERY',
     details: details || {},
     reviewerEmphasis: meetingAgentSteerText(steer),
+    ...(meetingAgentCorrectionRuleEnabled() ? { writingRules: [MEETING_AGENT_CORRECTION_RULE] } : {}),
     preparedTranscript: String(transcript || '').trim(),
     anchors: (Array.isArray(anchors) ? anchors : []).map((anchor) => ({
       anchorId: meetingMinutesAgentText(anchor?.anchorId, 180),
@@ -8668,7 +8813,7 @@ function hybridCandidatePack(candidates = [], maxChars = 70000, maxCandidates = 
           signals: item.signals, scores: item.scores, uncertainties: item.uncertainties,
           eventUnits: item.eventUnits, topicAnchors: item.topicAnchors
         } : {}),
-        context: meetingMinutesAgentText(item.context, 5000)
+        context: meetingMinutesAgentText(item.context, meetingAgentCandidateContextChars())
       } : item.sourcePass === 'deterministic' && Number(item.priority || 0) >= 8 ? {
         context: meetingMinutesAgentText(item.context, 1200)
       } : {})
@@ -8739,9 +8884,13 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
         const sharedEvidence = (other.evidenceIds || []).some((id) => evidence.has(id));
         const leftNumbers = new Set(String(other.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
         const rightNumbers = new Set(String(candidate.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
+        // Only a genuine quantity conflict keeps two phrasings apart. Requiring
+        // the same *count* of numbers split "order 13 kilos Monday" from
+        // "order 13 kilos by the 15th" into separate clusters, and each then
+        // released its own paraphrases as context. Same rule as
+        // supportingDetailAddsInformation.
         const incompatibleNumbers = leftNumbers.size && rightNumbers.size
-          && (leftNumbers.size !== rightNumbers.size
-            || [...leftNumbers].some((value) => !rightNumbers.has(value)));
+          && ![...leftNumbers].some((value) => rightNumbers.has(value));
         if (incompatibleNumbers) return false;
         const leftTopic = discussionInformationTokens(other.topic || '');
         const rightTopic = discussionInformationTokens(candidate.topic || '');
@@ -8889,7 +9038,7 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
     `MEETING DETAILS:\n${JSON.stringify(details || {})}`,
     `IMPORTANT DETAILS:\n${JSON.stringify((salientDetails || []).slice(0, 80))}`,
     `CURRENT DRAFT:\n${JSON.stringify(current || {})}`,
-    ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(discussion)}`] : []),
+    ...(!isDiscussion && discussion.length ? [`CONFIRMED DISCUSSION CONTEXT:\n${JSON.stringify(compactMeetingAgentDiscussionContext(discussion))}`] : []),
     `UNCOVERED CANDIDATES:\n${JSON.stringify(hybridCandidatePack(candidates, isDiscussion ? 55000 : 36000, isDiscussion ? 260 : 180))}`,
     `PREPARED TRANSCRIPT:\n${String(transcript || '').trim()}`
   ].join('\n\n');
@@ -8955,6 +9104,7 @@ function compactMeetingAgentRefereeCandidate(candidate = {}) {
 }
 
 function refereeClusterSupportingCandidates(dispositions = [], candidates = []) {
+  const dedupeThreshold = meetingMinutesAgentSupportingDedupeThreshold();
   const dispositionById = new Map((Array.isArray(dispositions) ? dispositions : [])
     .filter((item) => item?.candidateId).map((item) => [String(item.candidateId), item]));
   const result = [];
@@ -8977,6 +9127,9 @@ function refereeClusterSupportingCandidates(dispositions = [], candidates = []) 
         && !/^\s*(?:yeah|yes|no|okay|ok|right|thanks|thank you|bye|cheers)\b/i.test(String(member.text || ''));
       if (!editorialMember && !deterministicContext) continue;
       if (kind === 'reject' && member.clusterRelation !== 'overflow') continue;
+      // Members of different clusters can still say the same thing; release
+      // each fact once rather than once per cluster.
+      if (result.some((item) => hybridContentTokenOverlap(item.candidate.text, member.text) >= dedupeThreshold)) continue;
       result.push({ candidate: member, mergeTarget: targetId, clusterRepresentativeId: candidate.candidateId });
     }
   }
@@ -9039,7 +9192,8 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
     candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
-    preparedTranscript: evidencePacket.preparedTranscript
+    preparedTranscript: evidencePacket.preparedTranscript,
+    ...(contract.stage.startsWith('DISCUSSION') && meetingAgentCorrectionRuleEnabled() ? { writingRules: [MEETING_AGENT_CORRECTION_RULE] } : {})
   };
   return [
     `[${contract.stage}]`,
@@ -9306,10 +9460,25 @@ function meetingAgentActionQualityCandidateBudget(transcript = '', fixedPayload 
     50000 - String(transcript || '').length - String(fixedPayload || '').length - 4000));
 }
 
+// A published action reads as an instruction: it starts with a verb and is not
+// a fragment of speech. The verb list is deliberately wide; the evidence gates
+// decide whether the work is real, this only rejects wording.
+const CLIENT_READY_ACTION_VERBS = new Set(('accept add address agree align analyse analyze apply approve arrange ask assess assign attach attend '
+  + 'book brief build buy calculate call capture chase check circulate clarify close collate collect communicate compare compile complete '
+  + 'conduct confirm consider consolidate contact continue coordinate correct create cross-check decide define deliver design determine develop '
+  + 'discuss distribute document download draft email engage ensure escalate establish evaluate explore fill finalise finalize finish fix '
+  + 'flag focus follow forward gather generate get hold host identify implement include incorporate inform input inspect introduce investigate '
+  + 'invite issue launch liaise link list load log map measure meet merge monitor notify obtain order organise organize outline '
+  + 'pay perform plan populate prepare present prioritise prioritize procure produce progress provide publish purchase raise '
+  + 're-run rerun reconcile record redo refine register reissue remove replace reply report request resend resolve respond restart retest return '
+  + 'review revise rework run save schedule scope seek select send set share sign source speak specify split standardise standardize start '
+  + 'store submit summarise summarize supply support switch talk test tidy trace track train transfer translate trial update upload '
+  + 'validate verify visit walk write').split(' '));
 function isClientReadyActionWording(value = '') {
   const source = meetingMinutesAgentText(value, 1600);
   if (!source || /^(?:and|but|so|yeah|yes|no|okay|ok|well|i(?:'ll| will| am|'m)|we(?:'ll| will| are|'re)|you(?:'ll| will| are|'re))\b/i.test(source)) return false;
-  return /^(?:accept|add|address|agree|analyse|analyze|arrange|assess|attend|book|build|calculate|check|circulate|clarify|close|complete|conduct|confirm|coordinate|create|decide|define|deliver|determine|develop|document|draft|email|establish|evaluate|finalise|finalize|finish|follow up|forward|generate|get|hold|identify|implement|inspect|investigate|issue|list|meet|monitor|obtain|organise|organize|plan|prepare|provide|record|resolve|review|revise|run|schedule|send|share|sign|submit|support|test|track|update|validate|verify|write)\b/i.test(source);
+  const first = (source.toLowerCase().match(/^[a-z][a-z-]*/) || [''])[0];
+  return CLIENT_READY_ACTION_VERBS.has(first);
 }
 
 function meetingMinutesAgentCriticPrompt({ transcript, details, discussion, actions, candidates }) {
@@ -9373,9 +9542,13 @@ let meetingAgentActiveCalls = 0;
 let meetingAgentLastCallStartedAt = 0;
 let meetingAgentQueueTimer = null;
 
-const MEETING_AGENT_MAX_ACTIVE_CALLS = Math.max(1, Math.min(2,
+// Defaults are unchanged (2 in flight, 6.5 s between starts). The clamps used
+// to pin both values regardless of the environment, so three "parallel"
+// referee batches always paid a 13 s stagger; they can now be tuned per
+// deployment and measured with the performance baseline harness.
+const MEETING_AGENT_MAX_ACTIVE_CALLS = Math.max(1, Math.min(4,
   Number(process.env.MEETING_MINUTES_AGENT_MAX_ACTIVE_CALLS || 2)));
-const MEETING_AGENT_CALL_START_GAP_MS = Math.max(6500,
+const MEETING_AGENT_CALL_START_GAP_MS = Math.max(1000,
   Number(process.env.MEETING_MINUTES_AGENT_CALL_START_GAP_MS || 6500));
 
 function drainMeetingAgentCallQueue() {
@@ -9388,7 +9561,10 @@ function drainMeetingAgentCallQueue() {
     }, waitMs);
     return;
   }
-  const resolve = meetingAgentCallQueue.shift();
+  // Speculative work never delays a reviewer who is waiting on screen: a
+  // foreground request queues ahead of every background one.
+  const foregroundIndex = meetingAgentCallQueue.findIndex((entry) => !entry.background);
+  const { resolve } = meetingAgentCallQueue.splice(foregroundIndex >= 0 ? foregroundIndex : 0, 1)[0];
   meetingAgentActiveCalls += 1;
   meetingAgentLastCallStartedAt = Date.now();
   resolve(() => {
@@ -9398,9 +9574,15 @@ function drainMeetingAgentCallQueue() {
   if (meetingAgentCallQueue.length) setTimeout(drainMeetingAgentCallQueue, MEETING_AGENT_CALL_START_GAP_MS);
 }
 
+const meetingAgentCallContext = new AsyncLocalStorage();
+
+function meetingAgentCallIsBackground() {
+  return Boolean(meetingAgentCallContext.getStore()?.background);
+}
+
 function acquireMeetingAgentCallSlot() {
   return new Promise((resolve) => {
-    meetingAgentCallQueue.push(resolve);
+    meetingAgentCallQueue.push({ resolve, background: meetingAgentCallIsBackground() });
     drainMeetingAgentCallQueue();
   });
 }
@@ -9474,12 +9656,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     throw error;
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(rawBody);
-  } catch {
-    parsed = null;
-  }
+  const parsed = parseJsonLenient(rawBody);
   const queue = [parsed];
   const seen = new Set();
   let structured = null;
@@ -9502,13 +9679,17 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
+    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind)
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
-      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult) {
+      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult || isTimingCheckResult) {
       structured = candidate;
       break;
     }
     if (typeof candidate === 'string') {
-      try { queue.push(JSON.parse(candidate)); } catch { /* prose is rejected below */ }
+      const nested = parseJsonLenient(candidate);
+      if (nested !== null) queue.push(nested); /* prose is rejected below */
     } else if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
       for (const key of ['result', 'output', 'response', 'lastResponse', 'body', 'value']) {
         if (Object.prototype.hasOwnProperty.call(candidate, key)) queue.push(candidate[key]);
@@ -9529,8 +9710,10 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
+  const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
+      && !timingCheck
       && !flatDiscussionDiscovery
       && !anchoredDiscussionDiscovery
       && !anchoredActionDiscovery
@@ -9568,6 +9751,19 @@ function meetingAgentResultError(result) {
   return error;
 }
 
+function agentUnaccountedCandidates(result = {}, candidates = [], sourceUnits = []) {
+  const supplied = (Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 120)).filter(Boolean);
+  const dispositions = Array.isArray(sourceUnits) && sourceUnits.length
+    ? normaliseAgentCandidateDispositions(result, sourceUnits)
+    : (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : []);
+  const settled = new Set(dispositions
+    .filter((item) => ['reject', 'completed', 'suggestion'].includes(item?.disposition)
+      && meetingMinutesAgentText(item?.reason, 500))
+    .map((item) => meetingMinutesAgentText(item?.candidateId, 120)));
+  return supplied.filter((candidateId) => !settled.has(candidateId));
+}
+
 function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceUnits = [], options = {}) {
   const isDiscussion = stage === 'discussion';
   const isActions = stage === 'actions';
@@ -9587,7 +9783,7 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
       : (Array.isArray(result?.actions) && result.actions.length > 0)
         || (Array.isArray(result?.actionProposals) && result.actionProposals.length > 0);
   if (hasOutput) return null;
-  const hasSubstantiveEvidence = (Array.isArray(candidates) ? candidates : []).some((candidate) => {
+  const isSubstantiveCandidate = (candidate) => {
     const recordType = String(candidate?.recordType || candidate?.kind || '');
     if (isDiscussion) {
       return ['decision', 'open_question', 'objective'].includes(recordType)
@@ -9600,9 +9796,19 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
         && Boolean(signals.commitment || signals.acceptance || signals.assignment || signals.scheduled)
       : recordType === 'action' && Number(candidate?.priority || 0) >= 8
         && (Array.isArray(owners) ? owners.length > 0 : Boolean(owners));
-  });
-  if (!hasSubstantiveEvidence) return null;
-  const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates.`);
+  };
+  const substantive = (Array.isArray(candidates) ? candidates : []).filter(isSubstantiveCandidate);
+  if (!substantive.length) return null;
+  // An empty actions draft is not a failed call when the agent has explicitly
+  // disposed of every substantive candidate as already covered, completed or a
+  // mere suggestion. Retrying that answer only re-sends the same prompt and
+  // costs a minute of the reviewer's wait; the Power Automate run itself
+  // succeeded. Only the substantive candidates need accounting for: the
+  // error exists because of them, not the low-priority windows around them.
+  const unaccounted = isActions ? agentUnaccountedCandidates(result, substantive, sourceUnits) : substantive;
+  if (isActions && !unaccounted.length) return null;
+  const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates`
+    + (isActions ? ` (${unaccounted.length} of ${substantive.length} without a reasoned disposition: ${unaccounted.slice(0, 4).join(', ')}).` : '.'));
   error.code = `empty_${isDiscussion ? 'discussion' : 'action'}_with_substantive_candidates`;
   error.statusCode = 502;
   error.retryable = true;
@@ -10129,7 +10335,228 @@ function prewarmPrivateStagedCandidateLedgers(draft) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Speculative pipeline
+// ---------------------------------------------------------------------------
+
+// One private entry per draft and stage, keyed "draftId:stage". An entry holds
+// the outcome of running that stage with a specific input fingerprint; the
+// real run adopts it only while the draft still has that fingerprint.
+const privateStageSpeculations = new Map();
+const speculationTimers = new Map();
+const SPECULATION_TTL_MS = 2 * 60 * 60 * 1000;
+const SPECULATION_IDLE_LIMIT_MS = 45 * 60 * 1000;
+const SPECULATION_EDIT_DEBOUNCE_MS = Math.max(5000, Number(process.env.MEETING_MINUTES_AGENT_SPECULATION_DEBOUNCE_MS || 30000));
+const SPECULATION_MAX_RUNNING = Math.max(1, Math.min(4, Number(process.env.MEETING_MINUTES_AGENT_SPECULATION_MAX_RUNNING || 2)));
+
+function speculationKey(draftId, stage) {
+  return `${String(draftId || '')}:${String(stage || '')}`;
+}
+
+const SPECULATION_MAX_ENTRIES = 40;
+
+function pruneStageSpeculations(now = Date.now()) {
+  for (const [key, entry] of privateStageSpeculations) {
+    if (entry.status !== 'running' && Number(entry.expiresAt || 0) <= now) privateStageSpeculations.delete(key);
+  }
+  // Results carry their pass caches, so bound what one process holds.
+  for (const [key, entry] of privateStageSpeculations) {
+    if (privateStageSpeculations.size <= SPECULATION_MAX_ENTRIES) break;
+    if (entry.status !== 'running') privateStageSpeculations.delete(key);
+  }
+}
+
+// Everything a stage reads from the draft, hashed. If this changes between
+// the speculative run and the real one the result is not adopted.
+function meetingAgentStageInputFingerprint(draft = {}, stage = '') {
+  const preparedTranscript = String(draft.preparedTranscript || '');
+  const input = {
+    stage,
+    transcript: draft.transcriptSha256 || '',
+    prepared: crypto.createHash('sha256').update(preparedTranscript).digest('hex'),
+    details: sanitiseMeetingAgentDetails(draft.details),
+    steer: meetingMinutesAgentText(draft.steer, 4000),
+    salientDetails: Array.isArray(draft.salientDetails) ? draft.salientDetails : []
+  };
+  if (stage === 'actions' || stage === 'summary') input.upstream = meetingAgentUpstreamFingerprint(draft);
+  if (stage === 'summary') {
+    input.actions = (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
+      action: meetingMinutesAgentText(action?.action, 1600),
+      owners: Array.isArray(action?.owners) ? action.owners.map((owner) => meetingMinutesAgentText(owner, 120)) : [],
+      timing: action?.timing || null
+    }));
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
+
+// The first stage the reviewer will ask for next: an empty stage, or one the
+// server has marked outdated after an upstream edit.
+function meetingAgentNextSpeculativeStage(draft = {}) {
+  const generation = meetingAgentGenerationState(draft.generation);
+  if (generation && generation.status === 'running') return '';
+  const stale = new Set(Array.isArray(draft.staleStages) ? draft.staleStages : []);
+  if (!(Array.isArray(draft.discussion) && draft.discussion.length)) return 'discussion';
+  if (!(Array.isArray(draft.actions) && draft.actions.length) || stale.has('actions')) return 'actions';
+  if (!meetingMinutesAgentText(draft.executiveSummary, 20) || stale.has('summary')) return 'summary';
+  return '';
+}
+
+function meetingAgentSpeculationFor(draft = {}, stage = '') {
+  pruneStageSpeculations();
+  const entry = privateStageSpeculations.get(speculationKey(draft.draftId, stage));
+  if (!entry || entry.status === 'failed') return null;
+  if (entry.fingerprint !== meetingAgentStageInputFingerprint(draft, stage)) return null;
+  return entry;
+}
+
+// Pass results from any speculation of this stage, whatever its fingerprint.
+// Entries are keyed by prompt hash, so a real run reuses only identical calls.
+function meetingAgentSpeculationPassCacheSeed(draftId, stage) {
+  const entry = privateStageSpeculations.get(speculationKey(draftId, stage));
+  const caches = [];
+  for (let current = entry; current; current = current.previous) {
+    if (Array.isArray(current.passCache) && current.passCache.length) caches.push(current.passCache);
+  }
+  return caches.flat();
+}
+
+// What the reviewer's screen may say about work happening ahead of them.
+function meetingAgentSpeculationState(draft = {}) {
+  if (!meetingMinutesAgentSpeculativePipelineEnabled()) return null;
+  const stage = meetingAgentNextSpeculativeStage(draft);
+  if (!stage) return null;
+  const entry = meetingAgentSpeculationFor(draft, stage);
+  if (!entry) return null;
+  return {
+    stage,
+    status: entry.status === 'ready' ? 'ready' : 'preparing',
+    startedAt: entry.startedAt || '',
+    completedAt: entry.status === 'ready' ? entry.completedAt || '' : ''
+  };
+}
+
+function applyStageResultVirtually(draft = {}, stage = '', result = {}) {
+  const changes = result?.changes || {};
+  return {
+    ...draft,
+    ...changes,
+    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
+    staleStages: (Array.isArray(draft.staleStages) ? draft.staleStages : []).filter((value) => value !== stage),
+    currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage] || 0, Number(draft.currentStep || 0)),
+    generation: null
+  };
+}
+
+function runningStageSpeculationCount() {
+  let count = 0;
+  for (const entry of privateStageSpeculations.values()) if (entry.status === 'running') count += 1;
+  return count;
+}
+
+function startStageSpeculation(draft = {}, userId = '', options = {}) {
+  if (!meetingMinutesAgentSpeculativePipelineEnabled() || !meetingMinutesAgentHybridEnabled()) return null;
+  const draftId = String(draft.draftId || '');
+  if (!draftId || !String(draft.preparedTranscript || '').trim()) return null;
+  const stage = options.stage || meetingAgentNextSpeculativeStage(draft);
+  if (!stage) return null;
+  const idleMs = Date.now() - new Date(draft.updatedAt || draft.createdAt || Date.now()).getTime();
+  if (Number.isFinite(idleMs) && idleMs > SPECULATION_IDLE_LIMIT_MS) return null;
+  pruneStageSpeculations();
+  const key = speculationKey(draftId, stage);
+  const fingerprint = meetingAgentStageInputFingerprint(draft, stage);
+  const existing = privateStageSpeculations.get(key);
+  if (existing && existing.fingerprint === fingerprint && existing.status !== 'failed') return existing;
+  if (runningStageSpeculationCount() >= SPECULATION_MAX_RUNNING) {
+    scheduleStageSpeculation(draftId, userId, { delayMs: 15000 });
+    return null;
+  }
+  if (existing && existing.status === 'running') existing.superseded = true;
+  const entry = {
+    draftId, userId, stage, fingerprint,
+    status: 'running', superseded: false, previous: existing || null,
+    startedAt: new Date().toISOString(), completedAt: '',
+    expiresAt: Date.now() + SPECULATION_TTL_MS,
+    progress: { pass: 'starting', message: 'Preparing independent quality checks…', completedPasses: [], callTimings: [], degradedSources: [] },
+    preview: null, passCache: null, result: null, error: null, promise: null
+  };
+  const speculativeDraft = { ...draft, generation: null };
+  entry.promise = meetingAgentCallContext.run({ background: true, draftId, stage }, () =>
+    generateHybridMeetingAgentStage(speculativeDraft, stage, {
+      onProgress: async (progress) => { entry.progress = { ...entry.progress, ...progress }; },
+      onCheckpoint: async (passCache) => { entry.passCache = normaliseMeetingAgentPassCache(passCache); },
+      onPreview: async (preview) => { entry.preview = preview; }
+    })
+  ).then((result) => {
+    entry.status = 'ready';
+    entry.result = result;
+    entry.completedAt = new Date().toISOString();
+    entry.previous = null;
+    if (Array.isArray(result?.changes?.passCache)) entry.passCache = normaliseMeetingAgentPassCache(result.changes.passCache);
+    console.info(JSON.stringify({
+      event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: true,
+      elapsedMs: Date.now() - new Date(entry.startedAt).getTime(), superseded: entry.superseded
+    }));
+    // Carry on down the pipeline from the result the reviewer has not yet
+    // asked for; every later adoption is protected by its own fingerprint.
+    if (!entry.superseded) {
+      setImmediate(() => {
+        try { startStageSpeculation(applyStageResultVirtually(speculativeDraft, stage, result), userId); } catch (error) {
+          safeLogError('[meeting-minutes-agent] speculation chain failed', error);
+        }
+      });
+    }
+    return result;
+  }).catch((error) => {
+    entry.status = 'failed';
+    entry.error = error;
+    console.warn(JSON.stringify({
+      event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: false,
+      message: meetingMinutesAgentText(error.message, 300)
+    }));
+    return null;
+  });
+  privateStageSpeculations.set(key, entry);
+  console.info(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: draftId, stage, started: true }));
+  return entry;
+}
+
+function scheduleStageSpeculation(draftId, userId, options = {}) {
+  if (!meetingMinutesAgentSpeculativePipelineEnabled()) return;
+  const key = String(draftId || '');
+  if (!key) return;
+  clearTimeout(speculationTimers.get(key));
+  const delayMs = Math.max(0, Number(options.delayMs ?? SPECULATION_EDIT_DEBOUNCE_MS));
+  const timer = setTimeout(async () => {
+    speculationTimers.delete(key);
+    try {
+      const fresh = await getMeetingMinutesAgentDraft(key, userId, { includeTranscript: true });
+      if (!fresh) return;
+      startStageSpeculation(fresh, userId);
+    } catch (error) {
+      console.warn(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: key, ok: false, message: meetingMinutesAgentText(error.message, 300) }));
+    }
+  }, delayMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  speculationTimers.set(key, timer);
+}
+
+// A row must never point at a flag the draft does not hold (the reviewer would
+// see a flag count or link that leads nowhere). Applied on every save.
+function meetingAgentWithoutDanglingFlagRefs(records = [], flagIds = new Set()) {
+  const clean = (value) => {
+    if (Array.isArray(value)) return value.map(clean);
+    if (!value || typeof value !== 'object') return value;
+    const next = { ...value };
+    if (Array.isArray(next.reviewFlagIds)) next.reviewFlagIds = [...new Set(next.reviewFlagIds)].filter((id) => flagIds.has(String(id)));
+    for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails']) if (Array.isArray(next[key])) next[key] = next[key].map(clean);
+    return next;
+  };
+  return (Array.isArray(records) ? records : []).map(clean);
+}
+
 function meetingAgentDraftPayload(draft = {}) {
+  const payloadFlags = (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag);
+  const payloadFlagIds = new Set(payloadFlags.map((flag) => String(flag.id)));
   return {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     payloadVersion: MEETING_AGENT_PAYLOAD_VERSION,
@@ -10139,9 +10566,9 @@ function meetingAgentDraftPayload(draft = {}) {
     preparedTranscript: normaliseMeetingAgentKnownTerms(draft.preparedTranscript || ''),
     salientDetails: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.salientDetails) ? draft.salientDetails : []),
     details: sanitiseMeetingAgentDetails(draft.details),
-    discussion: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.discussion) ? draft.discussion : []),
-    actions: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.actions) ? draft.actions : []),
-    reviewFlags: normaliseMeetingAgentKnownTermsDeep((Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)),
+    discussion: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.discussion, payloadFlagIds)),
+    actions: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.actions, payloadFlagIds)),
+    reviewFlags: normaliseMeetingAgentKnownTermsDeep(payloadFlags),
     pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
     changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
     staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
@@ -10209,6 +10636,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.details = sanitiseMeetingAgentDetails(safe.details);
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);
+  safe.speculation = meetingAgentSpeculationState(draft);
   // Degraded-source details remain in private qualityState and telemetry. If a
   // recovery path produced a grounded result and the stage persisted it as a
   // success, reviewers should see that success—not an implementation warning.
@@ -10995,6 +11423,78 @@ function discussionRefereeHasCompleteCandidateAccounting(diagnostics = {}) {
     && Number(diagnostics?.incompleteDispositionCount || 0) === 0;
 }
 
+function meetingMinutesAgentSupportingSemanticThreshold() {
+  const value = Number(process.env.MEETING_MINUTES_AGENT_SUPPORTING_SEMANTIC_THRESHOLD);
+  return Number.isFinite(value) && value > 0 && value <= 1 ? value : 0.8;
+}
+
+// Word overlap cannot see that "Dan takes responsibility to order six sacks
+// today" and "Dan will order malt directly to get a better rate" are one
+// fact. The MiniLM worker can, and the legacy staged path already uses it.
+// One embedding call over every supporting detail (plus the primary rows, so
+// a detail restating a primary row goes too), keeping the first member of
+// each group. Primary rows are never dropped here; they are listed first so
+// they win any group they belong to. Falls back to lexical grouping when the
+// worker is unavailable, and to no change on any error.
+async function dedupeSupportingDetailsSemantically(discussion = [], options = {}) {
+  const topics = Array.isArray(discussion) ? discussion : [];
+  const primaries = flattenHybridDiscussion(topics).map((item) => meetingMinutesAgentText(item.record?.text, 1600));
+  const details = [];
+  for (const topic of topics) {
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      for (const record of Array.isArray(topic?.[kind]) ? topic[kind] : []) {
+        (record.supportingDetails || []).forEach((detail, index) => {
+          details.push({ record, index, text: meetingMinutesAgentText(detail?.text, 1600) });
+        });
+      }
+    }
+  }
+  if (details.length < 2) return topics;
+  let dedupe;
+  try {
+    dedupe = await duplicateGroups([...primaries, ...details.map((detail) => detail.text)], {
+      threshold: options.threshold || meetingMinutesAgentSupportingSemanticThreshold(),
+      ...(options.vectors !== undefined ? { vectors: options.vectors } : {})
+    });
+  } catch (error) {
+    safeLogError('[meeting-minutes-agent] supporting semantic dedupe skipped', error);
+    return topics;
+  }
+  const dropped = new Set();
+  for (const group of dedupe?.groups || []) {
+    const ordered = [...group].sort((left, right) => left - right);
+    for (const memberIndex of ordered.slice(1)) {
+      if (memberIndex >= primaries.length) dropped.add(memberIndex - primaries.length);
+    }
+  }
+  if (!dropped.size) return topics;
+  const droppedByRecord = new Map();
+  dropped.forEach((detailIndex) => {
+    const entry = details[detailIndex];
+    if (!droppedByRecord.has(entry.record)) droppedByRecord.set(entry.record, new Set());
+    droppedByRecord.get(entry.record).add(entry.index);
+  });
+  for (const [record, indexes] of droppedByRecord) {
+    record.supportingDetails = (record.supportingDetails || []).filter((detail, index) => !indexes.has(index));
+  }
+  console.log(JSON.stringify({
+    event: 'meeting_agent_supporting_semantic_dedupe',
+    journeyId: options.journeyId,
+    detailCount: details.length,
+    droppedCount: dropped.size,
+    via: dedupe.pairs?.[0]?.via || (dedupe.semantic === false ? 'lexical' : 'semantic'),
+    dropped: [...dropped].map((index) => details[index].text.slice(0, 160))
+  }));
+  return topics;
+}
+
+const OWNER_FOLLOW_UP_PATTERN = new RegExp(
+  '^(?!(?:Action|Agreed|Agreement|Aim|Approval|Commitment|Confirmation|Decided|Decision|Goal|Intention|It|Need|Option|Plan|Proposal|Request|Requirement|Rule|Team|That|The|This)\\b)'
+  + "[A-Z][\\p{L}'’.-]+(?:\\s+[A-Z][\\p{L}'’.-]+){0,2}\\s+(?:to|will|is to)\\s+"
+  + '(?:arrange|book|call|chase|check|circulate|complete|confirm|contact|draft|email|finalise|finalize|follow up|forward|get|investigate|issue|liaise|order|organise|organize|place|prepare|produce|provide|raise|review|ring|schedule|send|service|share|sign|source|speak|submit|test|update|write)\\b',
+  'u'
+);
+
 function compactDiscussionPropositions(discussion = [], recovered = [], sourceUnits = [], options = {}) {
   const kindRank = { discussion_point: 1, open_question: 2, decision: 3 };
   const numberTokens = (value) => new Set(String(value || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
@@ -11054,7 +11554,11 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     record.supportingDetails = details.filter((detail, index) => details.findIndex((other) =>
       hybridContentTokenOverlap(other.text, detail.text) >= 0.9) === index).slice(0, 50);
     const topic = topicFor(selected.topic);
-    const key = selected.recordType === 'decision' ? 'decisions'
+    // "Mick to contact the engineer today" is a follow-up, not a decision; the
+    // Referee's bucket is otherwise taken verbatim, so keep it visible as a
+    // discussion point rather than mislabel it. The Actions stage owns it.
+    const ownerFollowUp = selected.recordType === 'decision' && OWNER_FOLLOW_UP_PATTERN.test(String(record.text || ''));
+    const key = selected.recordType === 'decision' && !ownerFollowUp ? 'decisions'
       : selected.recordType === 'open_question' ? 'openQuestions' : 'points';
     topic[key].push(record);
   }
@@ -11101,6 +11605,13 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // ledger remains private; only the evidence-grounded detail is exposed.
   const allPrimary = topics.flatMap((topic) => [...topic.decisions, ...topic.openQuestions, ...topic.points]
     .map((record) => ({ topic, record })));
+  // Dedupe across the whole draft, not per parent: the same chiller-risk fact
+  // attached under four different propositions was four reviewer rows.
+  const supportingDedupeThreshold = meetingMinutesAgentSupportingDedupeThreshold();
+  const attachedTexts = allPrimary.flatMap(({ record }) => [
+    record.text,
+    ...(record.supportingDetails || []).map((detail) => detail.text)
+  ]).filter(Boolean);
   for (const item of Array.isArray(options.supportingCandidates) ? options.supportingCandidates : []) {
     const candidate = item?.candidate || item;
     const detailText = meetingMinutesAgentText(candidate?.text || candidate?.record?.text, 1600);
@@ -11116,14 +11627,14 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     }).sort((left, right) => right.score - left.score);
     if (!ranked[0] || ranked[0].score < 0.24) continue;
     const target = ranked[0].target.record;
-    if (hybridContentTokenOverlap(target.text, detailText) >= 0.88) continue;
+    if (attachedTexts.some((existingText) => hybridContentTokenOverlap(existingText, detailText) >= supportingDedupeThreshold)) continue;
     const existing = target.supportingDetails || [];
-    if (existing.some((detail) => hybridContentTokenOverlap(detail.text, detailText) >= 0.88)) continue;
     target.supportingDetails = [...existing, {
       id: candidate.candidateId || candidate.record?.id || `supporting-${target.id}-${existing.length}`,
       text: detailText,
       evidenceIds: [...new Set(candidate.evidenceIds || candidate.record?.evidenceIds || [])].slice(0, 8)
     }].slice(0, 50);
+    attachedTexts.push(detailText);
   }
   // A Referee may conservatively label a genuinely material proposition as
   // supporting. Keep secondary context collapsed by default, but promote a
@@ -11477,6 +11988,9 @@ function removePublishedActionProposalDuplicates(proposal = {}, published = []) 
   };
 }
 
+const MEETING_AGENT_UNCERTAINTY_WORDS = { unclear_reference: 'what it refers to', acceptance: 'whether it was accepted', ownership: 'who owns it' };
+const MEETING_AGENT_SIGNAL_WORDS = { request: 'asked', offer: 'offered', acceptance: 'agreed', commitment: 'committed', completed: 'done', rejected: 'declined' };
+
 function annotateActionProposalChains(proposal = {}, chains = []) {
   const chainRows = (Array.isArray(chains) ? chains : []).filter((candidate) => candidate?.recordType === 'action_chain');
   return {
@@ -11496,10 +12010,10 @@ function annotateActionProposalChains(proposal = {}, chains = []) {
       const signals = signalOrder.filter((name) => match.signals?.[name]);
       const uncertainties = [...new Set((match.uncertainties || []).map((item) => item.kind).filter(Boolean))];
       const reason = uncertainties.length
-        ? `The transcript supports a possible deliverable, but ${uncertainties.map((value) => value.replace(/_/g, ' ')).join(' and ')} still needs confirmation.`
-        : 'The transcript contains a linked commitment sequence, but it did not meet the threshold for automatic publication.';
+        ? `The transcript suggests this task, but ${uncertainties.map((value) => MEETING_AGENT_UNCERTAINTY_WORDS[value] || value.replace(/_/g, ' ')).join(' and ')} still needs confirming.`
+        : 'The transcript suggests someone took this on, but not clearly enough to add it automatically. Check the linked lines and add it if it is a real action.';
       return { ...change, reviewContext: {
-        label: signals.length ? signals.join(' → ') : 'linked transcript evidence',
+        label: signals.length ? signals.map((name) => MEETING_AGENT_SIGNAL_WORDS[name] || name).join(', then ') : 'related transcript lines',
         reason, evidenceIds: [...new Set(match.evidenceIds || [])].slice(0, 12),
         actionConfidence: match.scores?.action
       } };
@@ -11945,7 +12459,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
 
   const deterministic = deterministicHybridLedger(draft, stage);
-  const deterministicActionCandidates = stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : [];
+  const deterministicActionCandidates = stage === 'actions'
+    ? [...actionCandidateInventory(draft.sourceUnits),
+      ...(meetingMinutesDiscussionActionCandidatesEnabled()
+        ? discussionActionCandidates(draft.discussion || [], draft.sourceUnits,
+          [...(sanitiseMeetingAgentDetails(draft.details).internalAttendees || []), ...(sanitiseMeetingAgentDetails(draft.details).clientAttendees || [])])
+        : [])]
+    : [];
   const actionThreads = stage === 'actions'
     ? actionCommitmentThreadInventory(draft.sourceUnits, deterministicActionCandidates)
     : [];
@@ -11953,7 +12473,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     ? actionCommitmentChainInventory(draft.sourceUnits, deterministicActionCandidates)
     : [];
   const actionDiscoveryInventory = stage === 'actions'
-    ? [...actionChains, ...actionThreads, ...deterministicActionCandidates]
+    ? (meetingMinutesAgentDedupedCoverageEnabled()
+      ? dedupeActionDiscoveryInventory(actionChains, actionThreads, deterministicActionCandidates)
+      : [...actionChains, ...actionThreads, ...deterministicActionCandidates])
     : [];
   const stagedRecordTypes = stage === 'discussion'
     ? new Set(['discussion_point', 'decision', 'open_question', 'objective'])
@@ -11997,6 +12519,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
     candidateCount: primaryValidationCandidates.length,
+    ...(stage === 'actions' ? { repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt } : {}),
     // A valid empty discussion response is a discovery miss, not a transport
     // failure. Repeating the identical request has proved both slow and
     // stochastic; the dedicated gap pass and deterministic ledger are the
@@ -12044,7 +12567,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
     candidateDispositions: [], reviewFlags: []
   };
-  const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+  // Model actions vetoed by the keyword reading, for the commitment check.
+  const vetoedModelActions = [];
+  const vetoSink = stage === 'actions' ? { vetoed: vetoedModelActions } : {};
+  const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
   if (stage === 'discussion' && !flattenHybridDiscussion(primary.discussion).length) {
     degradedSources.push('Primary discussion discovery returned no grounded propositions; deterministic evidence and gap recovery were used without repeating the same request.');
   }
@@ -12088,6 +12614,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const recoveryParsed = await call('recovery', recoveryPrompt, {
       optional: true,
       candidateCount: recoveryDecision.uncovered.length,
+      ...(stage === 'actions' ? { repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt } : {}),
       ...(stage === 'discussion' ? {
         responseKind: 'discussion_discovery',
         transformResult: (result) => normaliseReferenceArrays(result, {
@@ -12116,7 +12643,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       })
     });
     if (recoveryParsed) {
-      recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+      recovery = normaliseAgentResult(recoveryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
       if (stage === 'actions') {
         const recoveryDeclaredProposals = normaliseAgentDeclaredProposals(
           recoveryParsed, draft.sourceUnits, { meetingDate: details.meetingDate }
@@ -12342,6 +12869,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const refereeRoute = completedPasses.includes('referee')
     ? meetingAgentRefereeRoute(refereeParsed, refereeContract)
     : 'not_completed';
+  const fastRefereeAuthoritative = stage === 'actions' && meetingMinutesAgentFastActionPathEnabled()
+    && meetingAgentRefereeAccountedForAllCandidates(refereeParsed, refereeContract, refereeRoute);
+  if (fastRefereeAuthoritative) {
+    console.log(JSON.stringify({
+      event: 'meeting_agent_fast_action_path', journeyId: draft.draftId, stage,
+      expectedCandidateCount: refereeContract.expectedCandidateIds.length, skipped: ['critic', 'salvage']
+    }));
+  }
   const reconstructedRefereeActions = stage === 'actions'
     ? reconstructRefereeActions(
       refereeParsed?.candidateDispositions,
@@ -12369,7 +12904,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       ...reconstructedRefereeActions.actionProposals
     ])
   };
-  const referee = normaliseAgentResult(refereeInput, draft.sourceUnits, stage, { meetingDate: details.meetingDate });
+  const referee = normaliseAgentResult(refereeInput, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
   if (stage === 'actions') {
     agentDeclaredProposals.push(...normaliseAgentDeclaredProposals(refereeParsed, draft.sourceUnits, { meetingDate: details.meetingDate }));
     agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(refereeParsed, draft.sourceUnits));
@@ -12471,6 +13006,48 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }
+    finalDiscussion = await dedupeSupportingDetailsSemantically(finalDiscussion, { journeyId: draft.draftId });
+    if (meetingMinutesAgentDiscussionOrganiseEnabled()) {
+      try {
+        const organised = await organiseDiscussionForReview(finalDiscussion, draft.sourceUnits);
+        console.log(JSON.stringify({ event: 'meeting_agent_discussion_organised', journeyId: draft.draftId, ...organised.before, afterTopics: organised.after.topics, afterRows: organised.after.rows }));
+        finalDiscussion = organised.discussion;
+      } catch (error) {
+        safeLogError('[meeting-minutes-agent] discussion organiser skipped', error);
+      }
+    }
+    if (correctnessChecksEnabled()) {
+      // Rows citing an assumption and its correction are rare; those that do
+      // not carry the correction's content leave the primary rows.
+      const supersededItems = supersededCheckItems(finalDiscussion, draft.sourceUnits);
+      const outdatedRows = supersededVerdicts(supersededItems);
+      const superseded = outdatedRows.size
+        ? demoteSupersededRows(finalDiscussion, draft.sourceUnits, outdatedRows)
+        : { demoted: 0 };
+      if (superseded.demoted) {
+        console.log(JSON.stringify({ event: 'meeting_agent_superseded_rows', journeyId: draft.draftId, demoted: superseded.demoted }));
+        finalDiscussion = superseded.discussion;
+      }
+    }
+    if (meetingMinutesDecisionCheckEnabled()) {
+      // Each "decision" must be backed by a verified quote of the words that
+      // make the choice; the rest become points, wording unchanged. A failed
+      // call leaves every label as it was.
+      const decisionItems = decisionCheckItems(finalDiscussion, draft.sourceUnits);
+      const decisionBatches = [];
+      for (let index = 0; index < decisionItems.length; index += 8) decisionBatches.push(decisionItems.slice(index, index + 8));
+      const decisionResults = (await Promise.all(decisionBatches.map((batch, index) => call(
+        `critic-decision-${index + 1}`, decisionCheckPrompt(batch),
+        { optional: true, responseKind: 'decision_check', maxAttempts: 2, candidateCount: batch.length }
+      )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+      const decisionChecked = applyDecisionCheckResults(finalDiscussion, decisionItems, decisionResults);
+      console.log(JSON.stringify({ event: 'meeting_agent_decision_check', journeyId: draft.draftId, checked: decisionChecked.checked, demoted: decisionChecked.demoted }));
+      finalDiscussion = decisionChecked.discussion;
+    }
+    // Rows are rebuilt by several steps that keep the rows but not the flags
+    // those steps raised; recover what the rows point at, drop dead references.
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, refereeFlags, isUsefulMeetingAgentReviewFlag);
+    finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -12531,12 +13108,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
           candidateDispositions
         } }
       },
-      reviewFlags: refereeFlags, replaceCoverageFlags: false
+      reviewFlags: discussionFlagState.flags, replaceCoverageFlags: false
     };
   }
 
   let refereeActions = referee.actions.filter((record) => !isVagueReconstructedAction(record.action)
     && isClientReadyActionWording(record.action));
+
   const sparseFloor = Math.max(2, Math.ceil(primary.actions.length * 0.5));
   if (primary.actions.length && refereeActions.length < sparseFloor) {
     degradedSources.push('The final action referee returned an implausibly sparse result; the evidence-normalised primary draft was retained for safety.');
@@ -12568,7 +13146,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // auditing refereeActions would instruct it not to return the very records
   // that need a second judgement before automatic publication.
   const remaining = uncoveredCandidateInventory(actionDiscoveryInventory, automatic);
-  const criticCandidates = meetingAgentActionAuditCandidates(remaining, 12000, 40);
+  const criticCandidates = fastRefereeAuthoritative ? [] : meetingAgentActionAuditCandidates(remaining, 12000, 40);
   let criticError = null;
   const criticPrompt = criticCandidates.length ? meetingMinutesAgentCriticPrompt({
     transcript, details, discussion: draft.discussion || [], actions: automatic, candidates: criticCandidates
@@ -12592,10 +13170,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const unpromotedCriticActions = critic.actions.filter((record) => !criticPromotions.some((promoted) =>
     hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
   ));
-  const salvageCandidates = uncoveredCandidateInventory(
+  const salvageCandidates = (fastRefereeAuthoritative ? [] : uncoveredCandidateInventory(
     actionDiscoveryInventory,
     [...automatic, ...critic.actions]
-  ).filter((candidate) => candidate?.context
+  )).filter((candidate) => candidate?.context
     // Salvage is an expensive last adjudication, not another general sweep.
     // Lower-priority unresolved rows remain available to the deterministic
     // proposal backstops below without consuming another Microsoft call.
@@ -12651,6 +13229,53 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     [...actionChains, ...actionThreads], [...refereeActions, ...critic.actions, ...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop], draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
+  let commitmentRescueCount = 0;
+  let proposalRescueCount = 0;
+  let rescuedActionTexts = [];
+  const proposalRecheck = meetingMinutesProposalRecheckEnabled();
+  if (meetingMinutesCommitmentCheckEnabled() && (vetoedModelActions.length || proposalRecheck)) {
+    // Model-extracted work that did not reach the published list gets one
+    // quote-verified look: actions the keyword reading vetoed and, when
+    // enabled, the model's own proposals. A proposal is published only with a
+    // verified commitment quote and a named owner the passage supports.
+    const sameOwner = (left, right) => (left.owners || []).some((owner) => (right.owners || [])
+      .some((other) => String(other).toLowerCase() === String(owner).toLowerCase()));
+    const sharesLine = (left, right) => (left.evidenceIds || []).some((id) => (right.evidenceIds || []).includes(id));
+    // Part of a published action (same owner, same transcript lines) is not new work.
+    const notPublished = (record) => isClientReadyActionWording(record.action) && !isMeetingAdminAction(record.action)
+      && !automatic.some((existing) => hybridActionsEquivalent(record.action, existing.action)
+        || (sameOwner(record, existing) && sharesLine(record, existing)));
+    const deterministic = [...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop];
+    const covered = [...automatic, ...singleSource, ...critic.actions, ...salvage.actions, ...deterministic, ...agentDeclaredProposals];
+    const vetoRecheck = dedupeHybridActionRecords(vetoedModelActions.filter((record) => notPublished(record)
+      && (proposalRecheck || !covered.some((existing) => hybridActionsEquivalent(record.action, existing.action)))));
+    const poolRecheck = proposalRecheck
+      ? dedupeHybridActionRecords([...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...agentDeclaredProposals]
+        .filter((record) => (record.owners || []).length && notPublished(record)
+          && !vetoRecheck.some((existing) => hybridActionsEquivalent(record.action, existing.action))))
+      : [];
+    const recheck = [...vetoRecheck, ...poolRecheck].slice(0, 24);
+    const commitmentItems = commitmentCheckItems(recheck, draft.sourceUnits);
+    const commitmentBatches = [];
+    for (let index = 0; index < commitmentItems.length; index += 8) commitmentBatches.push(commitmentItems.slice(index, index + 8));
+    const commitmentResults = (await Promise.all(commitmentBatches.map((batch, index) => call(
+      `critic-commitment-${index + 1}`, commitmentCheckPrompt(batch),
+      { optional: true, responseKind: 'commitment_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const fromPool = new Set(poolRecheck.map((record) => record.action));
+    const poolItems = commitmentItems.filter((item) => fromPool.has(recheck[item.index].action));
+    const vetoItems = commitmentItems.filter((item) => !fromPool.has(recheck[item.index].action));
+    const rescued = [
+      ...applyCommitmentCheckResults(recheck, vetoItems, commitmentResults),
+      // A proposal becomes published only when the verified words tie the work to its owner.
+      ...applyCommitmentCheckResults(recheck, poolItems, commitmentResults, { requireOwnerTie: true })
+    ];
+    const accepted = rescued.filter((record) => !fromPool.has(record.action) || (record.owners || []).length);
+    proposalRescueCount = accepted.filter((record) => fromPool.has(record.action)).length;
+    rescuedActionTexts = accepted.map((record) => meetingMinutesAgentText(record.action, 200));
+    commitmentRescueCount = accepted.length - proposalRescueCount;
+    automatic.push(...accepted);
+  }
   const publishedActions = dedupeHybridActionRecords(automatic)
     .filter((record) => !isVagueReconstructedAction(record.action));
   agentDeclaredProposals = dedupeHybridActionRecords(agentDeclaredProposals)
@@ -12678,9 +13303,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actions: [...finalPublishedActions, ...remainingProposalCandidates]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions);
   const reconciledPublishedActions = mergePublishedActionEvidence(finalPublishedActions, complete);
-  const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
+  const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
-  ), actionChains);
+  );
+  builtProposal.changes = (builtProposal.changes || []).filter(meetingAgentProposalChangeIsVisible);
+  const proposal = annotateActionProposalChains(builtProposal, actionChains);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
   const processGapProposalIds = new Set(processGapBackstop.map((action) => action.id));
@@ -12689,14 +13316,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     id: meetingAgentProposalReviewFlagId(change),
     kind: 'possible_missed_follow_up',
     message: corroboratedProposalIds.has(change.after?.id)
-      ? `Two independent extraction passes found an evidence-backed action omitted by the final referee. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
+      ? `Possible action to check. It was found twice in the transcript but not added automatically: ${change.after?.action || 'Review this proposed action.'}`
       : strongDiscoveryProposalIds.has(change.after?.id)
-        ? `A strong transcript commitment found by an Agent pass was omitted during consolidation. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
+        ? `Possible action to check. Someone clearly committed to this, but it was not added automatically: ${change.after?.action || 'Review this proposed action.'}`
       : processGapProposalIds.has(change.after?.id)
-        ? `An unresolved operational question is supported by evidence of a current process gap. Decide whether to add this ownerless follow-up: ${change.after?.action || 'Review this proposed follow-up.'}`
+        ? `Possible follow-up to check. A question about a current process gap was left open, and no one took it on: ${change.after?.action || 'Review this proposed follow-up.'}`
         : threadBackstopProposalIds.has(change.after?.id)
-          ? `A multi-turn request and acceptance describe a supported follow-up that the Agent omitted. Review before adding: ${change.after?.action || 'Review this proposed action.'}`
-        : `An evidence-backed action found by one extraction source needs review: ${change.after?.action || 'Review this proposed action.'}`,
+          ? `Possible action to check. Someone asked for this and it was accepted, but it was not added automatically: ${change.after?.action || 'Review this proposed action.'}`
+        : `Possible action to check. The transcript suggests it, but it was not added automatically: ${change.after?.action || 'Review this proposed action.'}`,
     evidenceIds: change.after?.evidenceIds || []
   }, index));
   const proposedRecords = proposal.changes.filter((change) => change.type === 'add').map((change) => change.after).filter(Boolean);
@@ -12727,9 +13354,91 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         }, proposalRecord))).length }
   });
   const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
+  // Timing ownership is corrected once, on what the reviewer will see, so
+  // every change carries its flag.
+  let timingChecked = meetingMinutesTimingClauseChecksEnabled()
+    ? applyTimingClauseChecks(reconciledPublishedActions, draft.sourceUnits, { meetingDate: details.meetingDate })
+    : { actions: reconciledPublishedActions, flags: [] };
+  if (meetingMinutesTimingCheckEnabled()) {
+    // The model says which step each timing was spoken for, quoting the
+    // passage; applyTimingCheckResults verifies every quote before changing
+    // anything. A failed call leaves the timings exactly as they were.
+    const timingItems = timingCheckItems(timingChecked.actions, draft.sourceUnits);
+    const timingBatches = [];
+    for (let index = 0; index < timingItems.length; index += 8) timingBatches.push(timingItems.slice(index, index + 8));
+    const timingResults = (await Promise.all(timingBatches.map((batch, index) => call(
+      `critic-timing-${index + 1}`, timingCheckPrompt(batch, details.meetingDate),
+      { optional: true, responseKind: 'timing_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: details.meetingDate });
+    timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
+  }
+  if (correctnessChecksEnabled()) {
+    const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits);
+    const deduped = mergeDuplicateCommitments(chained.actions);
+    const ownersChecked = applyRequesterOwnerRule(deduped.actions, draft.sourceUnits);
+    timingChecked = { actions: ownersChecked.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags] };
+  }
+  let answeredInMeetingCount = 0;
+  if (meetingMinutesAnsweredCheckEnabled()) {
+    // A clarify/confirm action whose question was answered and accepted in the
+    // meeting is not outstanding work. It leaves the published list only with
+    // both quotes verified, and comes back as a one-click proposal.
+    const answeredItems = answeredCheckItems(timingChecked.actions, draft.sourceUnits);
+    const answeredBatches = [];
+    for (let index = 0; index < answeredItems.length; index += 8) answeredBatches.push(answeredItems.slice(index, index + 8));
+    const answeredResults = (await Promise.all(answeredBatches.map((batch, index) => call(
+      `critic-answered-${index + 1}`, answeredCheckPrompt(batch),
+      { optional: true, responseKind: 'answered_check', maxAttempts: 2, candidateCount: batch.length }
+    )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
+    const answered = applyAnsweredCheckResults(timingChecked.actions, answeredItems, answeredResults);
+    answeredInMeetingCount = answered.answered.length;
+    if (answeredInMeetingCount) {
+      timingChecked = { ...timingChecked, actions: answered.actions };
+      const at = answered.actions.length;
+      for (const item of answered.answered) {
+        proposal.changes.push({
+          id: `change-answered-${crypto.createHash('sha1').update(item.action.action || '').digest('hex').slice(0, 10)}`,
+          type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'answered, then accepted',
+            reason: `This looks answered during the meeting ("${item.answerQuote}" … "${item.acceptanceQuote}"). Add it only if something is still open.`,
+            evidenceIds: item.action.evidenceIds || []
+          }
+        });
+      }
+    }
+  }
+  if (correctnessChecksEnabled()) {
+    // A description of how someone usually works is offered, not published.
+    const practice = timingChecked.actions.filter((action) => describesUsualPractice(action, draft.sourceUnits));
+    if (practice.length) {
+      timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !practice.includes(action)) };
+      const at = timingChecked.actions.length;
+      for (const action of practice) {
+        proposal.changes.push({
+          id: `change-practice-${crypto.createHash('sha1').update(action.action || '').digest('hex').slice(0, 10)}`,
+          type: 'add', before: null, after: { ...action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'described as usual practice',
+            reason: 'This describes how things are usually done rather than a task someone took on. Add it only if someone committed to it.',
+            evidenceIds: action.evidenceIds || []
+          }
+        });
+      }
+    }
+  }
+  const actionFlagState = reconcileRecordFlags({ actions: timingChecked.actions }, mergeMeetingAgentFlags(refereeFlags, [
+    ...timingChecked.flags,
+    ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
+    ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
+    ...unresolvedStrongCandidateFlags
+  ]), isUsefulMeetingAgentReviewFlag);
   return {
     changes: {
-      actions: reconciledPublishedActions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
+      actions: actionFlagState.content.actions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
       qualityState: { ...(draft.qualityState || {}), actions: {
@@ -12743,6 +13452,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         agentProposalPromotionCount: safeProposalPromotions.length,
         acceptedVisitAssignmentCount: acceptedVisitAssignments.length,
         criticPromotionCount: criticPromotions.length,
+        commitmentRescueCount,
+        proposalRescueCount,
+        rescuedActionTexts,
+        answeredInMeetingCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
@@ -12761,11 +13474,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         candidateDispositions
       } }
     },
-    reviewFlags: mergeMeetingAgentFlags(refereeFlags, [
-      ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
-      ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
-      ...unresolvedStrongCandidateFlags
-    ]),
+    reviewFlags: actionFlagState.flags,
     replaceCoverageFlags: false
   };
 }
@@ -12791,7 +13500,13 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     const transcriptReadMs = Date.now() - readStartedAt;
     validateTranscriptText(transcript.text);
     const preparationStartedAt = Date.now();
-    const prepared = await prepareMiniLmTranscript(transcript.text);
+    const prepared = await prepareMiniLmTranscript(transcript.text, {
+      // Measured twice on the six real meetings (3 runs each): keeping short
+      // replies lifts T733 reference commitments (18/42 -> 29/42) but costs
+      // more on the golden set than it gains (actions 0.443 -> 0.348, overall
+      // 0.699 -> 0.668). Left off; the code stays for a future re-test.
+      keepShortReplies: /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_KEEP_SHORT_REPLIES_V1 || '0'))
+    });
     const preparationMs = Date.now() - preparationStartedAt;
     const metadataStartedAt = Date.now();
     const details = sanitiseMeetingAgentDetails(extractStagedDetailsFromTranscript(transcript.text, transcript.fileName).screens.details);
@@ -12839,6 +13554,18 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       // Starting here hides most of the staged candidate latency behind the
       // reviewer's details/discussion work.
       setImmediate(() => prewarmPrivateStagedCandidateLedgers({ ...created, rawTranscript: transcript.text }));
+      if (meetingMinutesAgentEarlyActionPrewarmEnabled()) {
+        // The actions primary prompt depends on nothing the Discussion stage
+        // produces, so its ~30 s can overlap the whole Discussion stage rather
+        // than start when it ends. The cache is private; the draft stays
+        // authoritative.
+        setImmediate(() => startPrivateActionPrimaryPrewarm({ ...created }).catch((error) => {
+          console.warn(JSON.stringify({ event: 'meeting_agent_action_prewarm', when: 'prepare', ok: false, message: error.message }));
+        }));
+      }
+    }
+    if (meetingMinutesAgentHybridEnabled() && meetingMinutesAgentSpeculativePipelineEnabled()) {
+      scheduleStageSpeculation(created.draftId, req.authUser?.userId, { delayMs: 0 });
     }
     return res.json({
       ok: true,
@@ -12874,6 +13601,52 @@ router.get('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, re
     return sendMeetingAgentFailure(res, error);
   }
 });
+
+// What Actions and the Summary are derived from: the discussion's wording and
+// structure, the steer, and who was in the room (owners are chosen from the
+// attendee lists). Ids, flags and evidence are left out so a re-normalised but
+// unchanged draft does not read as an edit.
+function meetingAgentUpstreamFingerprint(draft = {}) {
+  const rows = (kind, topic) => (Array.isArray(topic?.[kind]) ? topic[kind] : [])
+    .map((record) => meetingMinutesAgentText(record?.text, 1600));
+  const details = draft.details || {};
+  return JSON.stringify({
+    discussion: (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
+      topic: meetingMinutesAgentText(topic?.topic, 240),
+      points: rows('points', topic), decisions: rows('decisions', topic), openQuestions: rows('openQuestions', topic)
+    })),
+    steer: meetingMinutesAgentText(draft.steer, 4000),
+    attendees: [
+      ...(Array.isArray(details.internalAttendees) ? details.internalAttendees : []),
+      '|',
+      ...(Array.isArray(details.clientAttendees) ? details.clientAttendees : [])
+    ].map((name) => meetingMinutesAgentText(name, 120))
+  });
+}
+
+// The server decides what an edit makes outdated, so the warning is the same
+// in every tab and after a refresh. Previously the browser was trusted to
+// send staleStages, and it only ever marked Actions while a run was in
+// flight, so the ordinary "edit the discussion, look at the actions" flow
+// produced no warning at all.
+function meetingAgentDerivedStaleStages(previous = {}, next = {}) {
+  if (meetingAgentUpstreamFingerprint(previous) === meetingAgentUpstreamFingerprint(next)) return [];
+  const stale = [];
+  if (Array.isArray(previous.actions) && previous.actions.length) stale.push('actions');
+  if (meetingMinutesAgentText(previous.executiveSummary, 20000)) stale.push('summary');
+  return stale;
+}
+
+// A completed run clears its own stage, unless the content that stage is
+// derived from changed while it was running: those edits are newer than the
+// output, so the output is already outdated.
+function meetingAgentStaleStagesAfterGeneration(fresh = {}, sourceDraft = {}, stage = '') {
+  const current = Array.isArray(fresh.staleStages) ? fresh.staleStages : [];
+  const upstreamChangedDuringRun = ['actions', 'summary'].includes(stage)
+    && meetingAgentUpstreamFingerprint(fresh) !== meetingAgentUpstreamFingerprint(sourceDraft);
+  if (upstreamChangedDuringRun) return [...new Set([...current, stage])];
+  return current.filter((value) => value !== stage);
+}
 
 router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
   try {
@@ -12911,14 +13684,23 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       actions: normalised.actions,
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
-      reviewFlags: mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      staleStages: (Array.isArray(req.body?.staleStages) ? req.body.staleStages : draft.staleStages || [])
-        .map((value) => meetingMinutesAgentText(value, 40))
-        .filter((value) => ['discussion', 'actions', 'summary'].includes(value)),
+      reviewFlags: reopenFlagsOfReAddedItems(
+        mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
+        [...normalised.discussion, ...normalised.actions]
+      ),
+      staleStages: [...new Set([
+        ...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, {
+          discussion: normalised.discussion, steer: req.body?.steer ?? draft.steer, details
+        })
+      ])],
       currentStep: furthestStep,
       selectedStep: requestedSelectedStep,
       status: req.body?.status
     });
+    // Edits settle for a while before the next stage is run ahead of the
+    // reviewer, so a burst of typing costs one speculative run, not many.
+    scheduleStageSpeculation(saved.draftId, req.authUser?.userId);
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
@@ -13127,6 +13909,147 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
   return { conflictFields: [], changes };
 }
 
+// A suggested edit must change what the action says: its wording, owners or
+// timing. One that only re-cites lines (or nothing at all) is noise.
+// Paired replay on 12 journeys: offering Discussion rows as Actions candidates
+// costs more than it gains (actions 0.406 -> 0.392, missing 8 -> 9) because the
+// extra published rows are mostly practice descriptions and duplicates. Off;
+// the code stays for a future re-test with tighter candidate filtering.
+function meetingMinutesDiscussionActionCandidatesEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_CANDIDATES_V1 || '0'));
+}
+
+function meetingMinutesProposalRecheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PROPOSAL_RECHECK_V1 || '0'));
+}
+
+function meetingAgentProposalChangeIsVisible(change = {}) {
+  if (change?.type !== 'modify') return true;
+  const visible = (record = {}) => JSON.stringify([
+    meetingMinutesAgentText(record.action || record.text, 1600),
+    (Array.isArray(record.owners) ? record.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)),
+    meetingMinutesAgentText(record.timing?.kind, 40), meetingMinutesAgentText(record.timing?.wording, 220)
+  ]);
+  return visible(change.before) !== visible(change.after);
+}
+
+// What the reviewer sees of an Actions list: wording, owners and timing, in order.
+function meetingAgentActionsFingerprint(actions = []) {
+  const rows = (Array.isArray(actions) ? actions : []).map((action) => [
+    meetingMinutesAgentText(action?.action, 1600),
+    (Array.isArray(action?.owners) ? action.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)).join('|'),
+    meetingMinutesAgentText(action?.timing?.kind, 40),
+    meetingMinutesAgentText(action?.timing?.wording, 220)
+  ]);
+  return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
+}
+
+function meetingAgentReferencedFlagIds(records = []) {
+  const ids = new Set();
+  const walk = (value) => {
+    if (Array.isArray(value)) { value.forEach(walk); return; }
+    if (!value || typeof value !== 'object') return;
+    for (const id of Array.isArray(value.reviewFlagIds) ? value.reviewFlagIds : []) ids.add(String(id));
+    for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails']) if (Array.isArray(value[key])) walk(value[key]);
+  };
+  walk(records);
+  return ids;
+}
+
+// A flag dismissed only because its item was deleted reopens when an item
+// pointing at it comes back (the reviewer re-adds the same unsupported text).
+const MEETING_AGENT_ITEM_REMOVED_NOTE = 'The item was removed.';
+function reopenFlagsOfReAddedItems(flags = [], records = []) {
+  const referenced = meetingAgentReferencedFlagIds(records);
+  return (Array.isArray(flags) ? flags : []).map((flag) => (referenced.has(String(flag.id))
+    && flag.status === 'dismissed' && meetingMinutesAgentText(flag.correctionNote, 500) === MEETING_AGENT_ITEM_REMOVED_NOTE
+    ? { ...flag, status: 'open', correctionNote: '' } : flag));
+}
+
+function meetingAgentFlagUntouched(flag = {}) {
+  return (flag.status || 'open') === 'open' && !meetingMinutesAgentText(flag.correctionNote, 500);
+}
+
+// Decides what a finished Discussion or Actions run writes.
+// - Actions a reviewer has edited since they were generated are never
+//   replaced: the new run arrives as proposed changes to accept or reject.
+// - Open flags that belonged to replaced rows or a replaced proposal go with
+//   them, and identical open flags are shown once.
+function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges = {}, result = {}) {
+  const changes = { ...scopedChanges };
+  let incomingFlags = Array.isArray(result.reviewFlags) ? result.reviewFlags : [];
+  let keptReviewerActions = false;
+  if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'actions')) {
+    const generated = Array.isArray(changes.actions) ? changes.actions : [];
+    const current = Array.isArray(fresh.actions) ? fresh.actions : [];
+    // Both lists go through the same normalisation a save applies, so a
+    // save's own tidying never reads as a reviewer edit.
+    const asSaved = (actions) => meetingAgentActionsFingerprint(
+      normaliseAgentResult({ actions }, fresh.sourceUnits || [], '', { enforceEvidence: false }).actions
+    );
+    const previousFingerprint = fresh.qualityState?.actions?.generatedFingerprint || '';
+    const reviewerEdited = current.length > 0 && Boolean(previousFingerprint)
+      && asSaved(current) !== previousFingerprint;
+    const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
+    // What was generated last time, so a later regeneration can tell the
+    // reviewer's own edits, additions and deletions apart.
+    const generatedTexts = generated.map((action) => meetingMinutesAgentText(action?.action, 1600)).filter(Boolean);
+    changes.qualityState = {
+      ...qualityState,
+      actions: { ...(qualityState.actions || {}), generatedFingerprint: asSaved(generated), generatedTexts }
+    };
+    if (reviewerEdited) {
+      keptReviewerActions = true;
+      const previousTexts = Array.isArray(fresh.qualityState?.actions?.generatedTexts) ? fresh.qualityState.actions.generatedTexts : null;
+      const reviewerTouched = (row) => previousTexts && !previousTexts.includes(meetingMinutesAgentText(row?.action, 1600));
+      const deletedByReviewer = previousTexts
+        ? previousTexts.filter((textValue) => !current.some((row) => meetingMinutesAgentText(row?.action, 1600) === textValue))
+        : [];
+      // Never propose undoing the reviewer's work: re-adding what they deleted,
+      // changing a row they wrote or edited, or removing a row they added.
+      const respectsReviewer = (change) => {
+        if (change.type === 'add') return !deletedByReviewer.some((textValue) => hybridActionsEquivalent(textValue, change.after?.action || ''));
+        if (change.type === 'modify' || change.type === 'remove') return !reviewerTouched(change.before);
+        return true;
+      };
+      const diff = buildProposal('actions', current, generated);
+      const generatedProposal = changes.pendingProposal && Array.isArray(changes.pendingProposal.changes) ? changes.pendingProposal : null;
+      const extraAdds = (generatedProposal?.changes || []).filter((change) => change?.type === 'add' && change.after)
+        .map((change) => ({ ...change, beforeIndex: current.length, index: current.length, afterIndex: null }));
+      const combined = [...diff.changes.filter(meetingAgentProposalChangeIsVisible), ...extraAdds].filter(respectsReviewer);
+      changes.pendingProposal = combined.length
+        ? { ...diff, changes: combined, source: 'regeneration' }
+        : null;
+      delete changes.actions;
+      // Flags raised on rows that were not applied would point at nothing.
+      const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
+      incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
+    }
+  }
+  const field = stage === 'actions' ? 'actions' : stage === 'discussion' ? 'discussion' : '';
+  let priorFlags = Array.isArray(fresh.reviewFlags) ? fresh.reviewFlags : [];
+  if (field && Object.prototype.hasOwnProperty.call(changes, field)) {
+    const oldIds = meetingAgentReferencedFlagIds(fresh[field] || []);
+    const newIds = meetingAgentReferencedFlagIds(changes[field] || []);
+    priorFlags = priorFlags.filter((flag) => !(oldIds.has(String(flag.id)) && !newIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
+  }
+  if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'pendingProposal')) {
+    const liveProposalFlagIds = new Set(((changes.pendingProposal && changes.pendingProposal.changes) || []).map(meetingAgentProposalReviewFlagId));
+    priorFlags = priorFlags.filter((flag) => !(String(flag.id || '').startsWith('proposal-review-')
+      && !liveProposalFlagIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
+  }
+  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags);
+  const seen = new Set();
+  const reviewFlags = merged.filter((flag) => {
+    if (!meetingAgentFlagUntouched(flag)) return true;
+    const key = `${flag.kind}|${meetingMinutesAgentText(flag.message, 500).toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { changes, reviewFlags, keptReviewerActions };
+}
+
 async function persistMeetingAgentBackgroundStage(options = {}) {
   const {
     draftId, userId, stage, sourceDraft = {}, result = null, failure = null,
@@ -13153,15 +14076,16 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
               error: `This ${stage} section changed while generation was running. Your newer edits were kept; generate it again to replace them.`
             }
           }
-          : {
-            ...scoped.changes,
-            reviewFlags: mergeMeetingAgentGenerationFlags(
-              fresh.reviewFlags, result.reviewFlags, result.replaceCoverageFlags
-            ),
-            staleStages: (fresh.staleStages || []).filter((value) => value !== stage),
-            currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
-            generation: null
-          };
+          : (() => {
+            const regeneration = meetingAgentRegenerationChanges(fresh, stage, scoped.changes, result);
+            return {
+              ...regeneration.changes,
+              reviewFlags: regeneration.reviewFlags,
+              staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage),
+              currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
+              generation: null
+            };
+          })();
       } else {
         changes = {
           generation: {
@@ -13184,6 +14108,33 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
   });
 }
 
+// A real run adopts a speculative result only while the draft's inputs for
+// that stage are byte-for-byte what the speculation used. If it is still in
+// flight, the reviewer sees its progress and gets its result; if the inputs
+// moved on, the real run happens as before, seeded with any identical passes.
+async function adoptStageSpeculation(fresh, stage, draftId, userId) {
+  const entry = meetingAgentSpeculationFor(fresh, stage);
+  if (!entry) return null;
+  const waitedFrom = Date.now();
+  if (entry.status === 'running') {
+    const forward = async () => {
+      try {
+        await updateMeetingAgentHybridProgress(draftId, userId, stage, { ...(entry.progress || {}), ...(entry.preview || {}) });
+      } catch (error) { /* progress is best effort */ }
+    };
+    await forward();
+    const timer = setInterval(forward, 1500);
+    try { await entry.promise; } finally { clearInterval(timer); }
+  }
+  if (entry.status !== 'ready' || !entry.result) return null;
+  privateStageSpeculations.delete(speculationKey(draftId, stage));
+  console.info(JSON.stringify({
+    event: 'meeting_agent_speculation', journeyId: draftId, stage, adopted: true,
+    waitedMs: Date.now() - waitedFrom, speculationStartedAt: entry.startedAt, speculationCompletedAt: entry.completedAt
+  }));
+  return entry;
+}
+
 // Runs after the response has already gone back to the reviewer. Same in-process
 // pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
 // process, so there is no other executor to hand it to.
@@ -13192,6 +14143,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
   let result = null;
   let failure = null;
   let sourceDraft = null;
+  let speculationAdopted = false;
   const hybrid = meetingMinutesAgentHybridEnabled();
   const stageRetryDelays = hybrid ? [] : MEETING_AGENT_RETRY_MS;
   for (let attempt = 0; attempt <= stageRetryDelays.length; attempt += 1) {
@@ -13199,13 +14151,26 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
       sourceDraft = fresh;
-      result = hybrid
-        ? await generateHybridMeetingAgentStage(fresh, stage, {
-          onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
-          onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
-          onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
-        })
-        : await generateMeetingAgentStage(fresh, stage, '');
+      let adopted = null;
+      if (hybrid && meetingMinutesAgentSpeculativePipelineEnabled()) {
+        adopted = await adoptStageSpeculation(fresh, stage, draftId, userId);
+        if (!adopted) {
+          const seed = meetingAgentSpeculationPassCacheSeed(draftId, stage);
+          if (seed.length) {
+            fresh.passCache = normaliseMeetingAgentPassCache([...normaliseMeetingAgentPassCache(fresh.passCache), ...seed]);
+          }
+        }
+      }
+      speculationAdopted = Boolean(adopted);
+      result = adopted
+        ? adopted.result
+        : hybrid
+          ? await generateHybridMeetingAgentStage(fresh, stage, {
+            onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
+            onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
+            onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
+          })
+          : await generateMeetingAgentStage(fresh, stage, '');
       failure = null;
       break;
     } catch (error) {
@@ -13231,9 +14196,12 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
     draftId, userId, stage, sourceDraft: sourceDraft || {}, result, failure
   });
   const persistenceElapsedMs = Date.now() - persistenceStartedAt;
+  if (persistence?.saved && meetingMinutesAgentSpeculativePipelineEnabled()) {
+    scheduleStageSpeculation(draftId, userId, { delayMs: 0 });
+  }
   console.info(JSON.stringify({
     event: 'meeting_agent_stage_performance', journeyId: draftId, stage,
-    ok: Boolean(result && !failure), processingElapsedMs, persistenceElapsedMs,
+    ok: Boolean(result && !failure), processingElapsedMs, persistenceElapsedMs, speculationAdopted,
     totalElapsedMs: Date.now() - backgroundStartedAt,
     telemetry: result?.changes?.qualityState?.[stage]?.telemetry,
     passImpact: result?.changes?.qualityState?.[stage]?.passImpact,
@@ -13328,6 +14296,7 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
       ok: true,
       generation: publicMeetingAgentGeneration(generation),
       actionsPrewarm: meetingAgentActionsPrewarmState(draft),
+      speculation: meetingAgentSpeculationState(draft),
       // Carry the draft only once the run is over, so completion is one round trip.
       draft: running ? undefined : publicMeetingAgentDraft(draft),
       performance: observedPerformance
@@ -13432,6 +14401,12 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
       buildProposal('actions', reconciledActions, combined), reconciledActions
     ), actionChains);
+    // Never re-propose an action the reviewer deleted since it was generated.
+    const generatedTexts = Array.isArray(draft.qualityState?.actions?.generatedTexts) ? draft.qualityState.actions.generatedTexts : [];
+    const deletedByReviewer = generatedTexts.filter((textValue) => !(draft.actions || [])
+      .some((row) => meetingMinutesAgentText(row?.action, 1600) === textValue));
+    proposal.changes = (proposal.changes || []).filter((change) => change.type !== 'add'
+      || !deletedByReviewer.some((textValue) => hybridActionsEquivalent(textValue, change.after?.action || '')));
     const missedFlags = proposal.changes.filter((change) => change.type === 'add').map((change, index) => normaliseMeetingAgentFlag({
       id: meetingAgentProposalReviewFlagId(change),
       kind: 'possible_missed_follow_up',
@@ -13674,6 +14649,7 @@ router.stagedEvaluation = {
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
+  dedupeSupportingDetailsSemantically,
   isVagueReconstructedAction,
   isReviewableActionProposal,
   publishedActionCoversProposal,
@@ -13690,7 +14666,17 @@ router.stagedEvaluation = {
   meetingAgentStageContentFields,
   meetingAgentStageContentConflicts,
   meetingAgentStagePersistenceChanges,
+  meetingAgentUpstreamFingerprint,
+  meetingAgentDerivedStaleStages,
+  meetingAgentStaleStagesAfterGeneration,
+  meetingAgentRefereeAccountedForAllCandidates,
+  dedupeActionDiscoveryInventory,
+  compactMeetingAgentDiscussionContext,
+  meetingAgentEmptyDiscoveryRepairPrompt,
   persistMeetingAgentBackgroundStage,
+  meetingAgentRegenerationChanges,
+  meetingAgentActionsFingerprint,
+  reopenFlagsOfReAddedItems,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,
@@ -13698,7 +14684,17 @@ router.stagedEvaluation = {
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,
   normaliseAgentDiscussion,
-  normaliseAgentActions
+  normaliseAgentActions,
+  meetingAgentStageInputFingerprint,
+  meetingAgentNextSpeculativeStage,
+  meetingAgentSpeculationState,
+  startStageSpeculation,
+  adoptStageSpeculation,
+  applyStageResultVirtually,
+  privateStageSpeculations,
+  meetingAgentCallContext,
+  MEETING_AGENT_BOOT_ID,
+  parseJsonLenient
 };
 
 module.exports = router;

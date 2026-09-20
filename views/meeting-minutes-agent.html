@@ -166,6 +166,9 @@
   border:1px solid var(--info-border);border-left:var(--rail) solid var(--accent);
   border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);
   font-size:var(--fs-sm);line-height:1.45}
+/* The stale notice is running text with an inline stage name; as a flex row
+   its text nodes became three separate columns. */
+.meeting-agent-page #staleNotice{display:block}
 .meeting-agent-page #workflowStatus::before{
   content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--accent)}
 .meeting-agent-page.busy #workflowStatus::before{
@@ -601,7 +604,7 @@
     <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
     <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span id="generationLeaveMessage" class="muted"></span></div>
   </section>
-  <p id="staleNotice" class="notice" hidden>Earlier meeting content changed. Your reviewed content is preserved, but <strong id="staleStages"></strong> should be regenerated explicitly.</p>
+  <p id="staleNotice" class="notice" hidden>Earlier meeting content changed, so <strong id="staleStages"></strong> may be out of date. Regenerate when ready. If you have edited them, your version is kept and the new results are offered as proposed changes.</p>
 
   <details id="reviewFlags" class="panel review-flags" hidden><summary class="review-flags-summary"><span class="review-flags-heading">Details to review</span><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body"><p class="muted">Check, correct or dismiss these details before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div></div></details>
 
@@ -626,6 +629,7 @@
           <div class="attendee-help">Edit names directly, or move a person between the Internal and Client groups. Choosing External changes only the heading used in the minutes.</div>
         </div>
       </div>
+      <p class="prewarm-notice" data-speculation-notice="discussion" role="status" hidden></p>
       <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="toSteer" class="button" type="button">Continue<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
     </div>
   </section>
@@ -638,6 +642,7 @@
       <textarea id="meetingSteer" rows="6" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
       <p class="steer-hint">It never lets the agent state something the transcript does not support, and nothing supported is dropped just because you did not mention it. Leave it blank to work from the transcript alone.</p>
     </div>
+    <p class="prewarm-notice" data-speculation-notice="discussion" role="status" hidden></p>
     <div class="screen-actions"><button class="secondary" data-back="0" type="button">Back to details</button><button id="startDiscussion" class="button" type="button">Continue<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
@@ -661,6 +666,7 @@
       <p class="muted">Use Target for provisional timing and Deadline only for firm commitments. Choose an optional exact date where supported.</p>
       <div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
     </div>
+    <p class="prewarm-notice" data-speculation-notice="summary" role="status" hidden></p>
     <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="The initial generation already includes a missed-action check.">Run an additional action check</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 

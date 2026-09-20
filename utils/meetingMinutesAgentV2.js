@@ -523,6 +523,10 @@ function evidenceIdsFor(value, units = [], supplied = []) {
 // How the meeting was run, not what it decided. These lines are real speech and
 // often survive denoising, but they are not minutes content, so they must never
 // be inventoried as an important detail and surfaced as something to check.
+// "I've got a delivery arriving, I need to shoot" is someone leaving the call,
+// not a commitment, even though "need to" is a commitment cue. Leaving verbs
+// are only treated as leaving when nothing is being shot/sent *to* anyone.
+const LEAVING_REMARK_PATTERN = /\b(?:(?:need|needs|have|got|going|about|time) to (?:shoot|dash|go|run|head (?:off|out)|get off|leave|be off)\b(?!\s+(?:you|it|that|this|the|a|an|over|across|through|them))|i(?:'ll| will) (?:shoot|dash|head off|be off)\b(?!\s+(?:you|it|that|this|the|a|an|over|across|through|them))|let you go|gotta go|got to go|delivery(?:'s| is)? (?:here|arriving|at the door)|someone(?:'s| is)? at the door|catch you later|see you (?:later|then|soon|all)|speak (?:later|soon))\b/i;
 const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute))\b/i;
 const DELIVERABLE_CONTEXT_PATTERN = /\b(?:action|approval|audit|assessment|CAPA|change|compliance|decision|document|file|finding|plan|procedure|report|review|risk|scope|software|standard|submission|test|tracker|training|translation|validation|version)\b/i;
 
@@ -555,7 +559,7 @@ function salientDetailInventory(units = []) {
   ];
   const result = [];
   for (const unit of normaliseSourceUnits(units).filter(includedUnit)) {
-    if (MEETING_ADMIN_PATTERN.test(unit.text)) continue;
+    if (MEETING_ADMIN_PATTERN.test(unit.text) || LEAVING_REMARK_PATTERN.test(unit.text)) continue;
     for (const [kind, pattern] of patterns) {
       if (!pattern.test(unit.text)) continue;
       if (kind === 'alarm_behaviour' && /\bno alarm bells?\b/i.test(unit.text)) continue;
@@ -584,14 +588,56 @@ function normaliseFlag(flag = {}, index = 0) {
   const aliasedKind = FLAG_KIND_ALIASES[suppliedKind] || suppliedKind;
   const kind = FLAG_KINDS.has(aliasedKind) ? aliasedKind : 'uncertain_fact';
   const message = text(flag.message || flag.text || 'Review this item against the transcript.', 500);
-  return {
+  return rememberFlag({
     id: text(flag.id, 80) || stableId('flag', `${kind}|${message}`, index),
     kind,
     message,
     evidenceIds: [...new Set((Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean))].slice(0, 8),
     status: ['open', 'confirmed', 'corrected', 'dismissed'].includes(flag.status) ? flag.status : 'open',
     correctionNote: text(flag.correctionNote, 500)
-  };
+  });
+}
+
+// Many pipeline steps re-normalise records and keep only the records, so a
+// flag created on the way (and referenced by the record's reviewFlagIds) was
+// dropped while the reference survived. Every flag is remembered here by id so
+// a stage can recover what its records point at. Bounded; oldest go first.
+const FLAG_REGISTRY = new Map();
+const FLAG_REGISTRY_LIMIT = 20000;
+function rememberFlag(flag) {
+  FLAG_REGISTRY.delete(flag.id);
+  FLAG_REGISTRY.set(flag.id, flag);
+  if (FLAG_REGISTRY.size > FLAG_REGISTRY_LIMIT) FLAG_REGISTRY.delete(FLAG_REGISTRY.keys().next().value);
+  return flag;
+}
+
+function flagRecordsIn(value, out = []) {
+  if (Array.isArray(value)) { for (const item of value) flagRecordsIn(item, out); return out; }
+  if (!value || typeof value !== 'object') return out;
+  if (Array.isArray(value.reviewFlagIds)) out.push(value);
+  for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails', 'actions', 'discussion']) {
+    if (Array.isArray(value[key])) flagRecordsIn(value[key], out);
+  }
+  return out;
+}
+
+// Returns the flags the records point at (recovered where they were dropped)
+// and strips references that cannot be resolved. Mutates only copies.
+function reconcileRecordFlags(content = {}, flags = [], isUseful = () => true) {
+  const copy = JSON.parse(JSON.stringify(content || {}));
+  const byId = new Map((Array.isArray(flags) ? flags : []).map((flag) => [flag.id, flag]));
+  const recovered = [];
+  for (const record of flagRecordsIn(copy)) {
+    record.reviewFlagIds = [...new Set(record.reviewFlagIds)].filter((id) => {
+      if (byId.has(id)) return true;
+      const remembered = FLAG_REGISTRY.get(id);
+      if (!remembered || !isUseful(remembered)) return false;
+      byId.set(id, remembered);
+      recovered.push(remembered);
+      return true;
+    });
+  }
+  return { content: copy, flags: [...(Array.isArray(flags) ? flags : []), ...recovered], recovered: recovered.length };
 }
 
 function isSalientCoverageFlag(flag = {}) {
@@ -628,16 +674,23 @@ function normalisePoint(value, units, prefix, index) {
   if (!pointText) return null;
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
   const resolved = resolveEvidence(pointText, units, candidate.evidenceIds);
+  if (correctnessChecksEnabled() && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
+    && resolved.evidenceIds.length && !uncitedClaimSupported(pointText, resolved, units)) {
+    resolved.evidenceIds = [];
+  }
   const supportingDetails = (Array.isArray(candidate.supportingDetails) ? candidate.supportingDetails : [])
     .map((detail, detailIndex) => {
       const source = typeof detail === 'string' ? { text: detail } : (detail || {});
       const detailText = text(source.text || source.point || source.value, 1600);
       if (!detailText) return null;
       const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds);
+      const detailFlags = [...new Set((Array.isArray(source.reviewFlagIds) ? source.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))];
       return {
         id: text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex),
         text: detailText,
-        evidenceIds: detailEvidence.evidenceIds
+        evidenceIds: detailEvidence.evidenceIds,
+        // A context line keeps its flag, so the flag can point at it.
+        ...(detailFlags.length ? { reviewFlagIds: detailFlags } : {})
       };
     }).filter(Boolean).slice(0, 50);
   return {
@@ -812,7 +865,15 @@ function relativeExactDate(wording, meetingDate) {
     const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
     let offset = (named - current + 7) % 7;
     if (/\bnext\s+/.test(value)) offset = offset === 0 ? 7 : offset + 7;
-    else if (offset === 0 && !/\bthis\s+/.test(value)) offset = 7;
+    else if (offset === 0) {
+      // The meeting's own weekday. "Monday morning" said on a Monday means
+      // today far more often than a week hence; the old silent +7 invented a
+      // date that contradicted "before the fifteenth" in the same sentence.
+      // Keep a calendar date only when the wording carries a same-day cue; a
+      // bare weekday stays as wording for the reviewer to resolve.
+      const sameDayCue = /\b(?:this|morning|afternoon|evening|lunchtime|first thing|later|tonight|straight after)\b/.test(value);
+      if (!sameDayCue) return '';
+    }
     return isoDateOffset(meetingDate, offset);
   }
   if (/\bend of (?:this )?week\b/.test(value)) {
@@ -826,12 +887,94 @@ function relativeExactDate(wording, meetingDate) {
   return '';
 }
 
+const ORDINAL_DAY_WORDS = Object.freeze({
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17,
+  eighteenth: 18, nineteenth: 19, twentieth: 20, 'twenty-first': 21, 'twenty-second': 22, 'twenty-third': 23,
+  'twenty-fourth': 24, 'twenty-fifth': 25, 'twenty-sixth': 26, 'twenty-seventh': 27, 'twenty-eighth': 28,
+  'twenty-ninth': 29, thirtieth: 30, 'thirty-first': 31
+});
+const MONTH_WORDS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const STATED_DAY_BOUND_PATTERN = new RegExp(
+  '\\b(before|by|ahead of|no later than|prior to)\\s+(?:the\\s+)?'
+  + '(\\d{1,2}(?=(?:st|nd|rd|th)\\b)|' + Object.keys(ORDINAL_DAY_WORDS).join('|').replace(/-/g, '[- ]') + ')'
+  + '(?:st|nd|rd|th)?\\b(?:\\s+(?:of\\s+)?(' + MONTH_WORDS.join('|') + '))?'
+  // An ordinal followed by a noun is a thing, not a date: "before the first batch".
+  + '(?!\\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year)\\b)',
+  'i'
+);
+
+// "Monday morning, so it's here before the fifteenth" carries its own outer
+// bound. Returns that bound as an ISO date, whether the bound day itself is
+// allowed ("by", "no later than") or excluded ("before"), and the phrase.
+function statedDayBound(value, meetingDate) {
+  const source = text(value, 4000);
+  if (!source || !/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return null;
+  const match = source.match(STATED_DAY_BOUND_PATTERN);
+  if (!match) return null;
+  const dayToken = match[2].toLowerCase().replace(/\s+/g, '-');
+  const day = Number(dayToken) || ORDINAL_DAY_WORDS[dayToken];
+  if (!day || day > 31) return null;
+  const [meetingYear, meetingMonth, meetingDay] = meetingDate.split('-').map(Number);
+  let year = meetingYear;
+  let month = match[3] ? MONTH_WORDS.indexOf(match[3].toLowerCase()) + 1 : meetingMonth;
+  // A bound day earlier than the meeting day with no month named means next month.
+  if (!match[3] && day < meetingDay) month += 1;
+  if (match[3] && month < meetingMonth) year += 1;
+  if (month > 12) { month = 1; year += 1; }
+  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const inclusive = /^(?:by|no later than)$/i.test(match[1]);
+  return { date, inclusive, phrase: match[0].trim() };
+}
+
+// A day and month written in the timing itself ("by 17th June"). Without a
+// year, a date more than six months before the meeting is taken to mean next
+// year ("by 10 January" in a December meeting).
+const SHORT_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function statedCalendarDate(wording = '', meetingDate = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return '';
+  const value = String(wording || '').toLowerCase();
+  const month = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+  const dayFirst = value.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${month}\\b(?:,?\\s+(\\d{4}))?`));
+  const monthFirst = value.match(new RegExp(`\\b${month}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?:,?\\s+(\\d{4}))?`));
+  const found = dayFirst ? { day: dayFirst[1], month: dayFirst[2], year: dayFirst[3] } : monthFirst ? { day: monthFirst[2], month: monthFirst[1], year: monthFirst[3] } : null;
+  if (!found) return '';
+  const monthIndex = SHORT_MONTHS.indexOf(found.month.slice(0, 3)) + 1;
+  const day = Number(found.day);
+  if (!monthIndex || !day || day > 31) return '';
+  const [meetingYear] = meetingDate.split('-').map(Number);
+  let year = found.year ? Number(found.year) : meetingYear;
+  const iso = (y) => `${y}-${String(monthIndex).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (!found.year && iso(year) < meetingDate) {
+    const daysBefore = (Date.parse(`${meetingDate}T00:00:00Z`) - Date.parse(`${iso(year)}T00:00:00Z`)) / 86400000;
+    if (daysBefore > 183) year += 1;
+  }
+  return iso(year);
+}
+
+function timingBoundBreach(timing = {}, source = '', meetingDate = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(timing.exactDate || ''))) return null;
+  const bound = statedDayBound(source, meetingDate);
+  if (!bound) return null;
+  const breached = bound.inclusive ? timing.exactDate > bound.date : timing.exactDate >= bound.date;
+  return breached ? bound : null;
+}
+
 function timingFrom(item = {}, options = {}) {
   const supplied = item.timing && typeof item.timing === 'object' ? item.timing : {};
   let wording = text(supplied.wording || item.deadline || item.target, 220);
   let kind = ['deadline', 'target', 'dependency', 'not_stated'].includes(supplied.kind) ? supplied.kind : 'not_stated';
+  // "As soon as Christina is back" is a condition, not a date: whatever kind
+  // was supplied, a purely conditional wording with no day or date in it is a
+  // dependency.
+  const conditional = /^(?:as soon as|once|after|when|following|upon|subject to|dependent on|depends on|pending)\b/i.test(wording.trim())
+    && !/\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|january|february|march|april|may|june|july|august|september|october|november|december|\d)\b/i.test(wording);
+  const urgent = /\b(?:as soon as possible|asap|as soon as you can|as soon as we can)\b/i.test(wording);
+  if (conditional && !urgent && (kind === 'deadline' || kind === 'target')) kind = 'dependency';
+  // "By the end of the week, hopefully" is a hope, not a deadline.
+  if (kind === 'deadline' && /\b(?:hopefully|ideally|aim(?:ing)? (?:for|to)|try(?:ing)? to|should be|expected|expect(?:ing)?|possibly|maybe|all being well|fingers crossed|if (?:we|all) can)\b/i.test(wording)) kind = 'target';
   if (kind === 'not_stated' && wording) {
-    kind = /\b(?:once|after|when|following|subject to|dependent on|depends on)\b/i.test(wording)
+    kind = !urgent && /\b(?:as soon as|once|after|when|following|subject to|dependent on|depends on)\b/i.test(wording)
       ? 'dependency'
       : (/\b(?:target|aim|ideally|provisional|expected|this week|next week)\b/i.test(wording) ? 'target' : 'deadline');
   }
@@ -861,7 +1004,7 @@ const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will 
 const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|consider|considering|possible|potentially|it would be good|worth thinking)\b/i;
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
-const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite)\b/i;
+const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share)\b/i;
 const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
 const ACTION_IMPERATIVE_PATTERN = /^\s*(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s*,\s*)?(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
@@ -882,6 +1025,10 @@ function isDecisionResolutionCommitment(value) {
 
 function actionEvidenceDisposition(action, evidence) {
   const source = text(evidence, 15000);
+  // A leaving remark grounds no work. Guard on the action too so a genuine
+  // "shoot the report over" survives.
+  if (LEAVING_REMARK_PATTERN.test(source) && !DELIVERABLE_CONTEXT_PATTERN.test(action)
+    && !/\b(?:send|email|order|book|confirm|ring|call|contact|arrange|prepare|review|update|write|share|forward|submit)\b/i.test(action)) return 'meeting_admin';
   if (!source) return 'unclear';
   const actionTokens = contentTokens(action).slice(0, 12);
   const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
@@ -909,6 +1056,72 @@ function actionEvidenceDisposition(action, evidence) {
   if (/\b(?:if|once|after|when|subject to|dependent on|depends on|cannot .* until)\b/i.test(source) && hasCommitment) return 'conditional_commitment';
   if (hasCommitment) return accepted ? 'accepted_request' : 'committed';
   return 'unclear';
+}
+
+// A published Discussion row often states work nobody turned into an action
+// ("Ciaran Ryan will focus on TFO3 this week"). Those rows are offered to the
+// Actions stage as candidates so the usual evidence checks can judge them;
+// they are never published from here.
+const DISCUSSION_FUTURE_TASK = /\b(?:will|to be|is to|are to|plans? to|planning to|planning|scheduled to|due to|expected to|going to|needs? to|must)\b/i;
+// People named in the meeting who never spoke and are not listed as attendees
+// (work is often assigned to them). Capitalised names in person-like positions,
+// mentioned more than once.
+const NOT_A_PERSON = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+  'teams', 'excel', 'word', 'sharepoint', 'trinzo', 'udimed', 'udamed', 'eudamed', 'mdr', 'qms', 'sop', 'ppe', 'usb', 'gui',
+  'the', 'this', 'that', 'yeah', 'okay', 'sorry', 'thanks', 'hello', 'right', 'well', 'and', 'but', 'once', 'because']);
+function mentionedPeople(units = []) {
+  const counts = new Map();
+  for (const unit of evidenceContextFor(units).rows) {
+    const value = String(unit.text || '');
+    const patterns = [/\b(?:with|to|for|from|ask|asked|tell|told|and|by)\s+([A-Z][a-z]{2,15})\b/g, /\b([A-Z][a-z]{2,15})\s+(?:will|is|has|can|should|to)\b/g];
+    for (const pattern of patterns) {
+      for (const match of value.matchAll(pattern)) {
+        const name = match[1];
+        if (NOT_A_PERSON.has(name.toLowerCase())) continue;
+        counts.set(name, (counts.get(name) || 0) + 1);
+      }
+    }
+  }
+  return [...counts.entries()].filter(([, count]) => count >= 2).map(([name]) => name);
+}
+
+function discussionActionCandidates(discussion = [], units = [], people = []) {
+  const context = evidenceContextFor(units);
+  // Named people include those who never spoke (work is often assigned to them).
+  const speakers = [...new Set([
+    ...context.rows.map((unit) => text(unit.speaker, 180)),
+    ...(Array.isArray(people) ? people : []).map((person) => text(person, 180)),
+    ...mentionedPeople(units)
+  ].filter(Boolean))];
+  const candidates = [];
+  for (const topic of Array.isArray(discussion) ? discussion : []) {
+    for (const kind of ['points', 'decisions']) {
+      for (const record of topic?.[kind] || []) {
+        const value = text(record?.text, 800);
+        if (!value || !DISCUSSION_FUTURE_TASK.test(value)) continue;
+        const owner = speakers.find((speaker) => new RegExp(`\\b${speaker.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
+        if (!owner) continue;
+        const ids = [...new Set(record.evidenceIds || [])].slice(0, 8);
+        if (!ids.length) continue;
+        const sequence = Math.min(...ids.map((id) => context.indexById.get(id)).filter(Number.isInteger), Infinity);
+        candidates.push({
+          candidateId: stableId('candidate-discussion', `${owner}|${value}`),
+          focusEvidenceId: ids[0],
+          evidenceIds: ids,
+          dispositionHint: 'committed',
+          cueKinds: ['commitment'],
+          priority: 4,
+          sequence: Number.isFinite(sequence) ? sequence : 0,
+          focusText: value,
+          context: text(evidenceWindowText(units, ids, 1), 900),
+          sourcePass: 'discussion_row',
+          ownerHints: [owner]
+        });
+      }
+    }
+  }
+  return candidates.slice(0, 24);
 }
 
 function actionCandidateInventory(units = []) {
@@ -1280,7 +1493,7 @@ function discussionCandidateInventory(units = []) {
     const unit = rows[index];
     const words = contentTokens(unit.text);
     if (LOW_INFORMATION_UTTERANCE.test(unit.text) || words.length < 4) continue;
-    if (MEETING_ADMIN_PATTERN.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+    if ((MEETING_ADMIN_PATTERN.test(unit.text) || LEAVING_REMARK_PATTERN.test(unit.text)) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
     const kindHints = [
       DISCUSSION_DECISION_PATTERN.test(unit.text) ? 'decision' : '',
       DISCUSSION_QUESTION_PATTERN.test(unit.text) ? 'open_question' : '',
@@ -1499,22 +1712,900 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
   return knownSpeaker && ownerWords.some((word) => evidenceWords.includes(word));
 }
 
+// Timing is otherwise entirely model-supplied, so when the model returned
+// nothing for "let me order six sacks today" the same-day wording was lost for
+// good. Recover only plain relative-day phrases, only from the cited units
+// themselves (never a neighbouring turn), and only where that unit reads as a
+// commitment rather than narration ("we discussed today").
+const CITED_TIMING_PHRASE = /\b(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon))?|this\s+(?:morning|afternoon|evening|week)|next\s+week|end\s+of\s+(?:this\s+|next\s+)?week|(?:this\s+|next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?)\b(?!['’]s)/i;
+const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
+function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {}) {
+  if (timing.kind !== 'not_stated') return timing;
+  for (const unit of evidenceWindowUnits(units, evidenceIds, 0)) {
+    const source = String(unit.text || '');
+    // "Monday, yep, I'll place it Monday morning": take the most specific
+    // phrase in the unit, not the first.
+    const phrases = [...source.matchAll(new RegExp(CITED_TIMING_PHRASE.source, 'gi'))].map((match) => match[0]);
+    const phrase = phrases.sort((left, right) =>
+      Number(/\b(?:morning|afternoon|evening|this|next|end of)\b/i.test(right)) - Number(/\b(?:morning|afternoon|evening|this|next|end of)\b/i.test(left))
+      || right.length - left.length)[0];
+    if (!phrase) continue;
+    const committed = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source)
+      || NAMED_WILL_PATTERN.test(source) || CITED_TIMING_COMMITMENT_CUE.test(source);
+    if (!committed) continue;
+    return timingFrom({ timing: { wording: phrase.toLowerCase().replace(/\s+/g, ' ') } }, options);
+  }
+  return timing;
+}
+
+// Lexical evidence resolution favours the turn that names the deliverable
+// ("Six sacks of Maris Otter, thirty-two pounds a sack") over the turn where
+// the owner takes the job on ("leave that with me, I'll order six sacks
+// today"). The reviewer needs the second one: it carries the ownership, the
+// timing and the commitment itself. When such a turn sits within a few turns
+// of the cited passage, add it to the citation. Additive only.
+const COMMITMENT_ANCHOR_RADIUS = 8;
+function speakerIsOwner(speaker, owners = []) {
+  const words = (value) => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s'’-]/gu, ' ').split(/\s+/).filter(Boolean);
+  const speakerWords = words(speaker);
+  if (!speakerWords.length) return false;
+  return owners.some((owner) => {
+    const ownerWords = words(owner);
+    if (!ownerWords.length) return false;
+    if (ownerWords.join(' ') === speakerWords.join(' ')) return true;
+    // "Dan" for "Dan Threlfall", either way round, but never a surname alone.
+    return (ownerWords.length === 1 && ownerWords[0] === speakerWords[0])
+      || (speakerWords.length === 1 && speakerWords[0] === ownerWords[0]);
+  });
+}
+function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []) {
+  if (!owners.length || !evidenceIds.length) return evidenceIds;
+  const cited = new Set(evidenceIds);
+  const actionTokens = materialTokens(action);
+  if (actionTokens.length < 2) return evidenceIds;
+  const nearby = evidenceWindowUnits(units, evidenceIds, COMMITMENT_ANCHOR_RADIUS)
+    .filter((unit) => !cited.has(unit.id) && speakerIsOwner(unit.speaker, owners));
+  let best = null;
+  for (const unit of nearby) {
+    const unitTokens = new Set(contentTokens(unit.text));
+    const shared = actionTokens.filter((token) => unitTokens.has(token)).length;
+    if (shared < 2) continue;
+    const disposition = actionEvidenceDisposition(action, `${unit.speaker}: ${unit.text}`);
+    if (!['committed', 'accepted_request', 'conditional_commitment'].includes(disposition)) continue;
+    if (!best || shared > best.shared) best = { id: unit.id, shared };
+  }
+  if (!best) return evidenceIds;
+  return [...evidenceIds, best.id].slice(0, 8);
+}
+
+// ---------------------------------------------------------------------------
+// Correctness checks (MEETING_MINUTES_AGENT_CORRECTNESS_V1)
+//
+// Each check is deterministic and transcript-agnostic. They either correct a
+// value the evidence contradicts (agent output only) or surface it to the
+// reviewer as a flag; none invents content.
+// ---------------------------------------------------------------------------
+function correctnessChecksEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 || '0'));
+}
+
+// The timing-ownership rule is kept separate and off. It corrects the
+// evaluation's example sentences, but on 131 timed actions from live meetings
+// it produced no clearly correct change and several wrong ones.
+function timingClauseChecksEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TIMING_CLAUSE_V1 || '0'));
+}
+
+// Sentences and "and then"/"then" steps of the cited passage. Transcripts
+// often lose the space after a full stop ("successfully.Across").
+function evidenceClauses(value) {
+  return String(value || '')
+    .replace(/([.!?;])(?=[A-Za-z])/g, '$1 ')
+    .split(/(?<=[.!?;])\s+/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 3);
+}
+
+const TIMING_TOKEN = /^(?:today|tonight|tomorrow|week|weeks|end|next|morning|afternoon|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|day|days|hopefully|before|this)$/;
+
+// A timing phrase belongs to the step it was spoken with. "Bottomed out by
+// the end of the week ... the two code changes completed by the end of next
+// week": the code-change action takes the second phrase, not the first. When
+// the clause holding the action's timing barely mentions the action while
+// another cited clause clearly describes it, the timing is reassigned to that
+// clause's own phrase, or removed when that clause states none.
+function timingClauseIssue(action, timing = {}, units = [], evidenceIds = []) {
+  const wording = text(timing.wording, 220).toLowerCase().replace(/\s+/g, ' ');
+  // Conditions ("once I get finished", "when Christina is back") are spoken in
+  // their own clause by nature; only dates and deadlines are checked.
+  if (!wording || !['deadline', 'target'].includes(timing.kind) || !evidenceIds.length) return null;
+  const actionTokens = [...new Set(materialTokens(comparisonText(action)))]
+    .filter((token) => !TIMING_TOKEN.test(token) && !NOVELTY_STOP_WORDS.has(token));
+  if (actionTokens.length < 3) return null;
+  const scored = evidenceClauses(evidenceWindowText(units, evidenceIds, 1)).map((clause) => {
+    const words = new Set(contentTokens(comparisonText(clause)));
+    return { clause, lower: clause.toLowerCase().replace(/\s+/g, ' '), score: actionTokens.filter((token) => words.has(token)).length };
+  });
+  const own = scored.filter((item) => item.lower.includes(wording));
+  if (!own.length) return null;
+  // "Should be able to get that done next week": the clause names the work
+  // only by pronoun, so the sentences just before it are part of its subject.
+  const ANAPHORA = /\b(?:that|this|it|those|them|these)\b/i;
+  const ownScore = Math.max(...own.map((item) => {
+    if (item.score > 0 || !ANAPHORA.test(item.clause)) return item.score;
+    const at = scored.indexOf(item);
+    const context = scored.slice(Math.max(0, at - 2), at + 1).map((entry) => entry.clause).join(' ');
+    const words = new Set(contentTokens(comparisonText(context)));
+    return actionTokens.filter((token) => words.has(token)).length;
+  }));
+  if (ownScore > 1) return null;
+  const best = scored.filter((item) => !item.lower.includes(wording)).sort((left, right) => right.score - left.score)[0];
+  if (!best || best.score < 2 || best.score <= ownScore) return null;
+  const phrases = [...best.clause.matchAll(new RegExp(CITED_TIMING_PHRASE.source, 'gi'))]
+    .map((match) => match[0].toLowerCase().replace(/\s+/g, ' '))
+    .sort((left, right) => right.length - left.length);
+  const replacement = phrases[0];
+  // Only a clear reassignment is acted on: another cited clause states its
+  // own timing and plainly describes this action. When that clause states no
+  // timing, the original is left alone; on live meetings removal guessed wrong
+  // more often than right ("get that done for Wednesday", "a call with Cody
+  // this evening" were the action's own timing).
+  if (replacement && replacement !== wording) return { type: 'reassign', from: timing.wording, to: replacement };
+  return null;
+}
+
+const NOVELTY_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'was', 'were', 'will', 'can', 'its', 'our', 'not', 'but', 'all', 'any', 'each', 'which',
+  'what', 'when', 'where', 'who', 'whom', 'whose', 'than', 'then', 'them', 'these', 'those', 'some', 'such', 'very',
+  'well', 'should', 'must', 'may', 'might', 'shall', 'has', 'had', 'did', 'does', 'done', 'upon', 'per', 'via',
+  'within', 'without', 'across', 'between', 'through', 'during', 'before', 'under', 'above', 'below', 'further',
+  'once', 'here', 'both', 'few', 'most', 'other', 'same', 'own', 'too', 'how', 'why', 'because', 'while', 'until',
+  'against', 'among', 'onto', 'off', 'out', 'his', 'her', 'him', 'she', 'you', 'your', 'about', 'after', 'again',
+  'also', 'been', 'being', 'could', 'from', 'have', 'into', 'just', 'more', 'only', 'over', 'said', 'that',
+  'their', 'there', 'they', 'this', 'with', 'would',
+  'next', 'last', 'week', 'month', 'update', 'plan', 'ensure', 'provide', 'confirm', 'confirmed', 'check',
+  'discuss', 'discussed', 'decision', 'decided', 'status', 'ongoing', 'progres', 'point', 'item', 'noted', 'note',
+  'issue', 'required', 'require', 'including', 'include', 'regarding', 'related', 'relation', 'current',
+  'currently', 'additional', 'new', 'first', 'second', 'potential', 'possible', 'expected', 'appropriate',
+  'relevant', 'specific', 'overall', 'key', 'main', 'agreed', 'agreement'
+]);
+
+function transcriptVocabulary(units = []) {
+  const context = evidenceContextFor(units);
+  if (!context.vocabulary) {
+    context.vocabulary = new Set(context.rows.flatMap((unit) => contentTokens(comparisonText(`${unit.speaker} ${unit.text}`))));
+  }
+  return context.vocabulary;
+}
+
+// Share of a claim's distinctive words the meeting never used. A reviewer's
+// sentence about relocating the factory to Mars borrows "team" and "agreed"
+// from every meeting, so lexical scoring alone found it three citations; its
+// distinctive words ("relocate", "Mars", "quarter") appear nowhere at all.
+function claimNovelty(value, units = []) {
+  const vocabulary = transcriptVocabulary(units);
+  const tokens = [...new Set(materialTokens(comparisonText(value)))].filter((token) => !NOVELTY_STOP_WORDS.has(token));
+  if (!tokens.length) return 0;
+  return tokens.filter((token) => !vocabulary.has(token)).length / tokens.length;
+}
+
+// Applies only to text that arrived without citations of its own, which in
+// practice is what a reviewer typed. Unsupported text gets no decorative
+// citations; the missing-evidence flag then asks for it to be checked.
+function uncitedClaimSupported(value, resolved = {}, units = []) {
+  return claimNovelty(value, units) < 0.6 && Number(resolved.supportScore || 0) >= 0.3;
+}
+
+const COMMON_SPEECH_WORDS = new Set([
+  'get', 'got', 'let', 'say', 'one', 'make', 'made', 'take', 'put', 'going', 'think', 'know', 'want', 'like',
+  'yeah', 'yes', 'sure', 'okay', 'well', 'right', 'thing', 'things', 'bit', 'kind', 'sort', 'really',
+  'actually', 'maybe', 'now', 'see', 'look', 'come', 'back', 'way', 'lot', 'time', 'good', 'fine', 'sorry',
+  'hang', 'yep', 'probably', 'still', 'even', 'much', 'many', 'thank', 'thanks'
+]);
+
+const STRONG_REVISION_CUE = /(?:^|[.!?]\s*)(?:sorry\b|actually\b|correction\b|scratch that\b)|\b(?:(?:has|have|had)\s+(?:since\s+)?(?:slightly\s+)?changed|slightly\s+changed|since\s+changed|no\s+longer|i\s+was\s+wrong|i\s+got\s+that\s+wrong|not\s+any\s*more)\b/i;
+const WEAK_REVISION_CUE = /^\s*but\b/i;
+const PRESUMPTION_CUE = /\b(?:i\s+presumed|i\s+assumed|i\s+thought|we\s+thought|originally|initially|in\s+an\s+earlier\s+call|i\s+had\s+it\s+(?:as|that))\b/i;
+
+// "I presumed the formative would be ready for submission ... But I think
+// maybe that slightly changed": a record citing the first sentence states
+// something its own speaker went on to revise. Surface the revision and cite
+// it alongside; the reviewer decides which statement is current.
+// The row cites both the assumption and its correction ("I presumed ... But I
+// think maybe that slightly changed"): the model often fuses the two, so the
+// reviewer is pointed at the correction. Strong correction wording only.
+function citedRevisionUnit(units = [], evidenceIds = [], rowText = null) {
+  const context = evidenceContextFor(units);
+  const cited = [...new Set(evidenceIds)].map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+  const rows = context.rows;
+  const presumption = cited.find((index) => PRESUMPTION_CUE.test(String(rows[index]?.text || '')));
+  if (presumption === undefined) return null;
+  // Citations are sometimes enriched with lines from elsewhere in the meeting.
+  // The row must be about what was presumed, or the correction is not its own.
+  if (rowText !== null) {
+    const presumed = aboutWords(rows[presumption]?.text || '');
+    const shared = [...aboutWords(rowText)].filter((word) => presumed.has(word)).length;
+    if (shared < 2) return null;
+  }
+  const correction = cited.find((index) => index > presumption && STRONG_REVISION_CUE.test(String(rows[index]?.text || '')));
+  return correction === undefined ? null : rows[correction];
+}
+
+function laterRevisionUnit(units = [], evidenceIds = []) {
+  const context = evidenceContextFor(units);
+  const cited = new Set(evidenceIds);
+  const indexes = evidenceIds.map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+  for (const index of indexes) {
+    const unit = context.rows[index];
+    const unitTokens = [...new Set(materialTokens(comparisonText(unit.text)))]
+      .filter((token) => !NOVELTY_STOP_WORDS.has(token) && !COMMON_SPEECH_WORDS.has(token));
+    if (!unitTokens.length) continue;
+    for (let next = index + 1; next <= index + 3 && next < context.rows.length; next += 1) {
+      const later = context.rows[next];
+      if (cited.has(later.id) || later.speaker !== unit.speaker) continue;
+      const strong = STRONG_REVISION_CUE.test(later.text);
+      const weak = WEAK_REVISION_CUE.test(later.text) && PRESUMPTION_CUE.test(unit.text);
+      if (!strong && !weak) continue;
+      const laterWords = new Set(contentTokens(comparisonText(later.text)));
+      if (unitTokens.some((token) => laterWords.has(token))) return later;
+    }
+  }
+  return null;
+}
+
+// Correct the published actions' timing in one pass and return a flag for each
+// change, so nothing is altered without the reviewer seeing why.
+function applyTimingClauseChecks(actions = [], units = [], options = {}) {
+  const flags = [];
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    const issue = timingClauseIssue(action.action, action.timing || {}, units, action.evidenceIds || []);
+    if (!issue) return action;
+    const timing = issue.type === 'reassign'
+      ? timingFrom({ timing: { kind: action.timing.kind, wording: issue.to } }, options)
+      : { kind: 'not_stated', wording: '', exactDate: '' };
+    const flag = normaliseFlag({
+      kind: 'timing',
+      message: issue.type === 'reassign'
+        ? `Timing changed from "${issue.from}" to "${issue.to}": the cited passage gives "${issue.from}" for a different step. Confirm the timing.`
+        : `Timing "${issue.from}" removed: in the cited passage it belongs to a different step. Confirm whether this action has its own timing.`,
+      evidenceIds: action.evidenceIds
+    }, flags.length);
+    flags.push(flag);
+    return { ...action, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+  });
+  return { actions: checked, flags };
+}
+
+// ---------------------------------------------------------------------------
+// Timing check (MEETING_MINUTES_AGENT_TIMING_CHECK_V1)
+//
+// The model judges which step each timing was spoken for and must quote the
+// passage word for word; the code verifies every quote before anything
+// changes, and every change carries a flag showing the quote. Measured on
+// 163 hand-labelled timings from six real meetings: 92% of changes correct,
+// the remainder judgement calls; 59% of wrong timings corrected.
+// ---------------------------------------------------------------------------
+function timingCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TIMING_CHECK_V1 || '0'));
+}
+
+const TIMING_NO_VALUE = /^(?:not stated|not specified|unspecified|none|n\/a|na|tbc|tbd|unknown|no (?:date|deadline|timing))\.?$/i;
+const TIMING_CHECK_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'you', 'your', 'will', 'need',
+  'next', 'first', 'week', 'before', 'after', 'any', 'all', 'can', 'get', 'have', 'was', 'are', 'from', 'into', 'our',
+  'them', 'they', 'what', 'when', 'then', 'just', 'also', 'out', 'sort', 'anything', 'thing']);
+
+function timingCheckWords(value) {
+  return new Set((comparisonText(value).match(/[a-z0-9][a-z0-9-]{2,}/g) || []).filter((word) => !TIMING_CHECK_STOP_WORDS.has(word)));
+}
+
+function quoteText(value) {
+  return String(value || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim();
+}
+
+function quotedVerbatim(quote, passage) {
+  const needle = quoteText(quote);
+  return needle.length >= 3 && needle.split(' ').length <= 30 && quoteText(passage).includes(needle);
+}
+
+// One item per timed action: the action, its timing and the passage it cites.
+function timingCheckItems(actions = [], units = []) {
+  return (Array.isArray(actions) ? actions : []).map((action, index) => {
+    if (!action?.timing || action.timing.kind === 'not_stated' || !text(action.timing.wording, 220)) return null;
+    if (TIMING_NO_VALUE.test(text(action.timing.wording, 220))) return null;
+    const passage = evidenceWindowUnits(units, action.evidenceIds || [], 2).map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`);
+    if (!passage.length) return null;
+    return { id: `a${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], timing: text(action.timing.wording, 220), passage: passage.join('\n') };
+  }).filter(Boolean);
+}
+
+function timingCheckPrompt(items = [], meetingDate = '') {
+  return [
+    'ACTION_CRITIC_TIMING',
+    "You check whether each action's timing belongs to that action. Each item gives an action, the timing attached to it, and the transcript passage it was drawn from. The passage is the only authority.",
+    `The meeting took place on ${meetingDate || 'an unstated date'}. Do not calculate dates.`,
+    'For each item decide one verdict:',
+    `- "correct": the timing was said about this action's own work. When an action names several steps or deliverables, the timing is correct if it was said about ANY of them. Judge only the steps the action names.`,
+    `- "belongs_to_other_step": the timing was said about a different piece of work: another step in a sequence, another person's task, a related meeting, an approval, a regulatory deadline or a schedule of other events.`,
+    '- "past_event": the timing refers to something that has already happened.',
+    '- "misread": the timing states a day or date the passage does not support as said (for example a wrong month, or an arrival time used as a meeting time).',
+    `For every verdict give timingQuote: the exact words in the passage where the timing was said. For "belongs_to_other_step" also give stepQuote: the exact words naming the other piece of work the timing applies to (that work must not be one of the steps the action names). For any verdict other than "correct" give correctTiming: the exact words in the passage that give THIS action's own timing, or an empty string if the passage gives none.`,
+    'Every quote must be copied verbatim from the passage as one contiguous span of at most 25 words. Never paraphrase a quote. If you are unsure, choose "correct".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","timingQuote":"","stepQuote":"","correctTiming":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, timing: item.timing, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+// Apply verified verdicts. Anything unverifiable leaves the timing as it is.
+function applyTimingCheckResults(actions = [], items = [], results = [], options = {}) {
+  const flags = [];
+  const byIndex = new Map(items.map((item) => [item.index, item]));
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const checked = (Array.isArray(actions) ? actions : []).map((action, index) => {
+    const wording = text(action?.timing?.wording, 220);
+    if (action?.timing && action.timing.kind !== 'not_stated' && TIMING_NO_VALUE.test(wording)) {
+      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' } };
+    }
+    const item = byIndex.get(index);
+    const row = item ? verdicts.get(item.id) : null;
+    if (!row || !['belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
+    if (!quotedVerbatim(row.timingQuote, item.passage)) return action;
+    // "Misread" means the passage does not say it. If the timing's own words
+    // are right there, the verdict contradicts the transcript.
+    if (row.verdict === 'misread' && quotedVerbatim(wording, item.passage)) return action;
+    if (row.verdict === 'belongs_to_other_step') {
+      if (!quotedVerbatim(row.stepQuote, item.passage)) return action;
+      const actionWords = timingCheckWords(action.action);
+      const shared = [...timingCheckWords(row.stepQuote)].filter((word) => actionWords.has(word)).length;
+      // The "other step" must not be a step the action itself names.
+      if (shared >= 2) return action;
+    }
+    const replacement = text(row.correctTiming, 120);
+    // "by the end of the week" -> "by the end of the week, hopefully" is the
+    // same timing with a hedge: no change, and no flag quoting another step.
+    const sameTiming = (left, right) => quoteText(left).replace(/\b(?:hopefully|ideally|roughly|about|approximately|around|maybe|possibly)\b/g, '')
+      .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+      === quoteText(right).replace(/\b(?:hopefully|ideally|roughly|about|approximately|around|maybe|possibly)\b/g, '')
+        .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (replacement && sameTiming(replacement, wording)) return action;
+    const usable = replacement && quotedVerbatim(replacement, item.passage) && quoteText(replacement) !== quoteText(wording);
+    const timing = usable ? timingFrom({ timing: { wording: replacement } }, options) : { kind: 'not_stated', wording: '', exactDate: '' };
+    const said = row.verdict === 'belongs_to_other_step'
+      ? `in the transcript it was said about "${text(row.stepQuote, 160)}"`
+      : row.verdict === 'past_event'
+        ? `it refers to something that has already happened ("${text(row.timingQuote, 160)}")`
+        : `the transcript does not say this ("${text(row.timingQuote, 160)}")`;
+    const flag = normaliseFlag({
+      kind: 'timing',
+      message: usable
+        ? `Timing changed from "${wording}" to "${replacement}": ${said}. Confirm the timing.`
+        : `Timing "${wording}" removed: ${said}. Confirm whether this action has its own timing.`,
+      evidenceIds: action.evidenceIds
+    }, flags.length);
+    flags.push(flag);
+    return { ...action, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+  });
+  return { actions: checked, flags };
+}
+
+// ---- Commitment check -----------------------------------------------------
+// Model-extracted actions that the keyword reading vetoed get one second look.
+// An action comes back only when the model quotes the words where someone
+// commits to it, is assigned it or agrees to it, and the quote is in the
+// passage. Owners the model cannot tie to those words are removed.
+function isMeetingAdminAction(value = '') {
+  return ACTION_ADMIN_PATTERN.test(String(value || ''));
+}
+
+function commitmentCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_COMMITMENT_CHECK_V1 || '0'));
+}
+
+function commitmentCheckItems(actions = [], units = []) {
+  return (Array.isArray(actions) ? actions : []).slice(0, 24).map((action, index) => {
+    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 2).slice(0, 24).map((unit) => `${unit.speaker}: ${unit.text}`);
+    if (!passage.length || !text(action?.action)) return null;
+    return { id: `c${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], passage: passage.join('\n') };
+  }).filter(Boolean);
+}
+
+function commitmentCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_COMMITMENT',
+    'Each item is a possible action from a meeting, with the transcript passage it came from. The passage is the only authority.',
+    'Decide whether, in the passage, someone committed to this work, was assigned it, or agreed to do it, as work still to be done after the meeting.',
+    `- "commitment": yes. Examples: "I'm gonna focus on TFO3 this week", "Janine and Adil, you're involved in that next week", "leave that with me", "can you send it over? Yes, will do".`,
+    '- "not_commitment": a suggestion or idea nobody took on, a status update, work already done, a description of how something works, a question, meeting housekeeping such as taking these minutes, something done during this meeting itself (for example sharing a screen or playing a sound now), or something an outside organisation will do.',
+    'For "commitment" give commitmentQuote: the exact words where the person commits, is assigned or agrees, copied verbatim as one contiguous span of at most 25 words (it may run across adjacent lines; leave out speaker names). Also give ownerSupported: true if the passage ties the listed owners to the work, false otherwise.',
+    'Never paraphrase a quote. If you are unsure, choose "not_commitment".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","commitmentQuote":"","ownerSupported":true,"reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+// The verified words tie the work to an owner when they name the owner
+// ("Janine, and I think Adil, you're involved") or are the owner committing in
+// the first person ("I'm gonna focus on TFO3").
+const FIRST_PERSON_COMMITMENT = /\b(?:i|we)(?:'ll| will| shall| can| am going to|'m going to|'m gonna| am gonna|'re going to| are going to)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\bi'll\b|\bokay\b|\byes\b|\bsure\b/i;
+function commitmentQuoteTiesOwner(quote = '', owners = [], passage = '') {
+  const said = quoteText(quote);
+  const names = (Array.isArray(owners) ? owners : []).map((owner) => String(owner || '').trim()).filter(Boolean);
+  if (!names.length) return false;
+  const firstNames = names.map((owner) => owner.split(/\s+/)[0].toLowerCase());
+  const lines = String(passage || '').split('\n');
+  // The line(s) carrying the quote: a quote may run across adjacent lines.
+  const inLine = (index) => index >= 0 && index < lines.length
+    && (decisionQuoteFound(quote, lines[index]) || quoteText(lines[index]).includes(said.slice(0, 40)));
+  // A line carries the quote when the quote is in it, or starts in it and runs
+  // into the next line (but not when it sits wholly in the next line).
+  const carryingIndexes = lines.map((line, index) => (inLine(index)
+    || (!inLine(index + 1) && decisionQuoteFound(quote, `${line}\n${lines[index + 1] || ''}`)) ? index : -1))
+    .filter((index) => index >= 0);
+  const carrying = carryingIndexes.map((index) => lines[index]);
+  const spoken = (line) => quoteText(String(line || '').slice(String(line || '').indexOf(':') + 1));
+  // "he's just looking into that" refers back to "there's Andrew who ..." a
+  // few lines earlier, so the owner may be named up to three lines before.
+  const nearby = [...new Set(carryingIndexes.flatMap((index) => [index - 3, index - 2, index - 1, index]).filter((index) => index >= 0))].map((index) => lines[index]);
+  if (firstNames.some((name) => said.includes(name) || nearby.some((line) => new RegExp(`\\b${name}\\b`).test(spoken(line))))) return true;
+  const speakers = carrying.map((line) => line.split(':')[0].trim().toLowerCase());
+  const ownerSpoke = speakers.some((speaker) => names.some((owner) => speaker === owner.toLowerCase() || speaker.split(/\s+/)[0] === owner.toLowerCase().split(/\s+/)[0]));
+  return ownerSpoke && FIRST_PERSON_COMMITMENT.test(quote);
+}
+
+const ABOUT_STOP = new Set(['with', 'that', 'this', 'then', 'from', 'into', 'their', 'about', 'will', 'have', 'been', 'just', 'kind', 'look', 'make', 'sure', 'what', 'when', 'where', 'which', 'also', 'there', 'they', 'your', 'need', 'needs', 'able', 'going', 'gonna', 'okay', 'yeah', 'week', 'next']);
+function aboutWords(value) {
+  return new Set((String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'-]{3,}/g) || [])
+    .filter((word) => !ABOUT_STOP.has(word))
+    .map((word) => word.replace(/'s$/, '').replace(/(?:ing|ed|es|s)$/, '').replace(/e$/, ''))
+    .filter((word) => word.length >= 4));
+}
+function commitmentQuoteAboutAction(quote = '', action = '', passage = '') {
+  const lines = String(passage || '').split('\n');
+  const said = quoteText(quote);
+  const carrying = lines.filter((line) => decisionQuoteFound(quote, line) || quoteText(line).includes(said.slice(0, 40)));
+  const source = aboutWords([quote, ...carrying].join(' '));
+  const target = aboutWords(action);
+  let shared = 0;
+  for (const word of target) if (source.has(word)) shared += 1;
+  return shared >= 2;
+}
+
+function applyCommitmentCheckResults(actions = [], items = [], results = [], options = {}) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const rescued = [];
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || row.verdict !== 'commitment' || !decisionQuoteFound(row.commitmentQuote, item.passage)) continue;
+    const action = actions[item.index];
+    if (options.requireOwnerTie && !commitmentQuoteTiesOwner(row.commitmentQuote, action.owners, item.passage)) continue;
+    // The quoted commitment must be about this work: "I'll update that table
+    // for the new set of minutes" does not commit anyone to a cybersecurity
+    // update. Checked on the quote's line(s), which carry the subject.
+    if (options.requireOwnerTie && !commitmentQuoteAboutAction(row.commitmentQuote, action.action, item.passage)) continue;
+    rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []), reviewFlagIds: [] });
+  }
+  return rescued;
+}
+
+// ---- Answered check -------------------------------------------------------
+// "Clarify the formative dates" published as outstanding work, when the date
+// was clarified and accepted two lines later. Only clarify/confirm/decide-type
+// actions are checked. An action is taken off the published list only when the
+// model quotes both the answer and its acceptance and both are in the passage;
+// the caller offers it back as a proposal, so nothing is lost.
+const ANSWERABLE_ACTION = /^(?:clarify|confirm|determine|decide|finali[sz]e|check|verify|establish|find out|agree)\b/i;
+function answeredCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_ANSWERED_CHECK_V1 || '0'));
+}
+
+function answeredCheckItems(actions = [], units = []) {
+  const context = evidenceContextFor(units);
+  return (Array.isArray(actions) ? actions : []).map((action, index) => {
+    if (!ANSWERABLE_ACTION.test(text(action?.action))) return null;
+    const cited = (action.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger);
+    if (!cited.length) return null;
+    const from = Math.max(0, Math.min(...cited) - 1);
+    const to = Math.min(context.rows.length - 1, Math.max(...cited) + 8);
+    const passage = context.rows.slice(from, to + 1).map((unit) => `${unit.speaker}: ${unit.text}`).join('\n');
+    return { id: `q${index + 1}`, index, action: text(action.action, 600), passage };
+  }).filter(Boolean).slice(0, 24);
+}
+
+function answeredCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_ANSWERED',
+    'Each item is an action from meeting minutes asking someone to clarify, confirm, determine or decide something, with the transcript passage around it. The passage is the only authority.',
+    'Decide whether the question was already answered and accepted DURING the meeting, later in the passage, so nothing is left to do.',
+    `- "answered": someone gave the answer in the passage AND the person who raised it accepted it (for example "Okay, so that's fine", "that answers it"). Give answerQuote (the exact words giving the answer) and acceptanceQuote (the exact words accepting it).`,
+    '- "open": the answer was not given, was only partly given, depends on someone outside the meeting, or needs checking or documenting afterwards.',
+    'Quotes must be verbatim, one contiguous span of at most 25 words each (may run across adjacent lines; leave out speaker names). If you are unsure, choose "open".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","answerQuote":"","acceptanceQuote":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+// Returns the actions to keep and those answered in the meeting, each with
+// the verified quotes.
+function applyAnsweredCheckResults(actions = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const answered = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || row.verdict !== 'answered') continue;
+    if (!decisionQuoteFound(row.answerQuote, item.passage, 45) || !decisionQuoteFound(row.acceptanceQuote, item.passage, 45)) continue;
+    answered.set(item.index, { answerQuote: text(row.answerQuote, 300), acceptanceQuote: text(row.acceptanceQuote, 200) });
+  }
+  const list = Array.isArray(actions) ? actions : [];
+  return {
+    actions: list.filter((_, index) => !answered.has(index)),
+    answered: list.map((action, index) => (answered.has(index) ? { action, ...answered.get(index) } : null)).filter(Boolean)
+  };
+}
+
+// ---- Chained first-step timing --------------------------------------------
+// "Conduct a call today ..., load the documents for Grace ..., then download
+// them and point the auditor": "today" is the call's, not the chain's. When
+// the timing's words sit in the first step of a chained action, the words stay
+// in the action text and the deadline column is cleared, with a flag.
+const CHAIN_STEP_MARKER = /,?\s*\b(?:and then|then|after that|afterwards|once (?:that|this|it|they|approved|done|complete)|followed by)\b/i;
+// The transcript form of the same pattern, for when the action's wording does
+// not repeat the timing: the timing is spoken only in the earliest cited line,
+// and the later cited lines (the later steps) carry none.
+function timingOnlyInFirstCitedLine(action, units = []) {
+  const wording = text(action?.timing?.wording, 220).toLowerCase();
+  if (!wording || !Array.isArray(units) || !units.length) return '';
+  const context = evidenceContextFor(units);
+  const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id))
+    .filter(Number.isInteger).sort((a, b) => a - b).map((index) => String(context.rows[index]?.text || ''));
+  if (cited.length < 2) return '';
+  const said = (line) => line.toLowerCase().includes(wording);
+  // Returns the line where the timing was said, for the reviewer's flag.
+  return said(cited[0]) && !cited.slice(1).some(said) ? cited[0] : '';
+}
+
+function applyChainedTimingRule(actions = [], units = []) {
+  const flags = [];
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    const wording = text(action?.timing?.wording, 220).toLowerCase();
+    if (!action?.timing || action.timing.kind === 'not_stated' || !wording) return action;
+    const statement = text(action.action, 1600);
+    const marker = statement.match(CHAIN_STEP_MARKER) || statement.match(/,\s+(?:load|download|upload|send|share|submit|return|insert|point|forward)\b/i);
+    if (!marker || marker.index < 8) return action;
+    const firstStep = statement.slice(0, marker.index).toLowerCase();
+    if (!firstStep.includes(wording)) {
+      const firstLine = action.timing.kind === 'deadline' ? timingOnlyInFirstCitedLine(action, units) : '';
+      if (!firstLine) return action;
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: `"${text(action.timing.wording, 120)}" was said about an earlier step ("${text(firstLine, 200)}"), not the whole action, so it is not shown as this action's deadline. Add one if the later steps have a date.`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    }
+    const flag = normaliseFlag({
+      kind: 'timing',
+      message: `"${text(action.timing.wording, 120)}" applies to the first step only ("${text(statement.slice(0, marker.index), 160)}"), so it is not shown as the deadline for the whole action. Add a deadline if the later steps have one.`,
+      evidenceIds: action.evidenceIds || []
+    }, flags.length);
+    flags.push(flag);
+    return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+  });
+  return { actions: checked, flags };
+}
+
+// ---- Same-commitment duplicates -------------------------------------------
+// Two published actions with the same owners, drawn from mostly the same
+// transcript lines (at least two shared) and describing overlapping work, are
+// one commitment written twice. The one with a timing (else the fuller
+// wording) is kept and takes the other's citations and flags.
+const DUPLICATE_STOP = new Set(['with', 'that', 'this', 'then', 'from', 'into', 'their', 'about', 'review', 'ensure', 'complete']);
+function duplicateWords(value) {
+  return new Set((String(value || '').toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []).filter((word) => !DUPLICATE_STOP.has(word)));
+}
+function sameCommitment(left = {}, right = {}) {
+  const owners = (record) => (record.owners || []).map((owner) => String(owner).toLowerCase().trim()).sort().join('|');
+  // An owner-less copy of an owned commitment is still the same commitment.
+  if ((owners(left) || owners(right)) && owners(left) && owners(right) && owners(left) !== owners(right)) return false;
+  if (!owners(left) && !owners(right)) return false;
+  const leftIds = new Set(left.evidenceIds || []);
+  const rightIds = [...new Set(right.evidenceIds || [])];
+  const shared = rightIds.filter((id) => leftIds.has(id)).length;
+  if (shared < 2 || shared / Math.min(leftIds.size, rightIds.length) < 0.66) return false;
+  const a = duplicateWords(left.action); const b = duplicateWords(right.action);
+  let common = 0; for (const word of a) if (b.has(word)) common += 1;
+  return common / Math.max(1, Math.min(a.size, b.size)) >= 0.3;
+}
+function mergeDuplicateCommitments(actions = []) {
+  const kept = [];
+  let merged = 0;
+  for (const action of Array.isArray(actions) ? actions : []) {
+    const index = kept.findIndex((existing) => sameCommitment(existing, action));
+    if (index < 0) { kept.push(action); continue; }
+    merged += 1;
+    const existing = kept[index];
+    const timed = (record) => Number(Boolean(record.timing && record.timing.kind !== 'not_stated'))
+      + 2 * Number(Boolean((record.owners || []).length));
+    const [winner, loser] = timed(action) > timed(existing)
+      || (timed(action) === timed(existing) && text(action.action).length > text(existing.action).length)
+      ? [action, existing] : [existing, action];
+    kept[index] = {
+      ...winner,
+      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])].slice(0, 8),
+      reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
+    };
+  }
+  return { actions: kept, merged };
+}
+
+// ---- Requester is not the owner ---------------------------------------------
+// "So if you're talking to Cody, could you just maybe mention it to him?" makes
+// the listener the owner, not the chair who asked. When every line the named
+// owner speaks in the passage is addressed to someone else ("could you...",
+// "you'd need to...") and they never commit themselves, and nobody else names
+// them, the owner is removed and flagged. The right owner is not guessed.
+const OWNER_FIRST_PERSON = /\b(?:i|we)(?:'ll| will| can| shall| am going to|'m going to|'m gonna|'d be happy to| could| would need to| need to| have to)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\bi'll\b|\blet me\b/i;
+const OWNER_ADDRESSES_OTHERS = /\b(?:could|can|would|will) you\b|\byou(?:'d| would| will|'ll)? need to\b|\bif you(?:'re| are)?\b|\byou (?:have|want) to\b|\byou should\b|\byou might\b/i;
+function applyRequesterOwnerRule(actions = [], units = []) {
+  const context = evidenceContextFor(units);
+  const rows = context.rows;
+  const flags = [];
+  const firstName = (value) => String(value || '').trim().split(/\s+/)[0].toLowerCase();
+  const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    const owners = Array.isArray(action?.owners) ? action.owners : [];
+    if (!owners.length) return action;
+    const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+    const window = [...new Set(cited.flatMap((index) => [index - 1, index, index + 1]))]
+      .filter((index) => index >= 0 && index < rows.length).sort((a, b) => a - b).map((index) => rows[index]);
+    const doubtful = owners.filter((owner) => {
+      const name = firstName(owner);
+      if (!name) return false;
+      const own = window.filter((unit) => firstName(unit.speaker) === name).map((unit) => String(unit.text || ''));
+      if (!own.length || own.some((line) => OWNER_FIRST_PERSON.test(line))) return false;
+      if (!own.some((line) => OWNER_ADDRESSES_OTHERS.test(line))) return false;
+      const namedByOthers = window.some((unit) => firstName(unit.speaker) !== name
+        && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(String(unit.text || '')));
+      return !namedByOthers;
+    });
+    if (!doubtful.length) return action;
+    const request = window.find((unit) => doubtful.some((owner) => firstName(unit.speaker) === firstName(owner))
+      && OWNER_ADDRESSES_OTHERS.test(String(unit.text || '')));
+    const flag = normaliseFlag({
+      kind: 'ownership',
+      message: `Owner unclear: ${doubtful.join(' and ')} asked someone else to do this${request ? ` ("${salientExcerpt(request.text, /./).slice(0, 160)}")` : ''}, so ${doubtful.length > 1 ? 'they were' : 'they were'} removed as owner. Add the person who is doing it.`,
+      evidenceIds: action.evidenceIds || []
+    }, flags.length);
+    flags.push(flag);
+    return {
+      ...action,
+      owners: owners.filter((owner) => !doubtful.includes(owner)),
+      reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])]
+    };
+  });
+  return { actions: checked, flags };
+}
+
+// ---- Superseded statements ---------------------------------------------------
+// A primary row whose own citations hold an assumption and then the speaker's
+// correction ("I presumed X ... but I think that slightly changed") is most
+// often the superseded X restated (T733's formative line, identical in every
+// run because a deterministic extractor writes it). It is not published as a
+// primary statement: it moves, flag and all, into the supporting context of
+// the nearest primary row, where the reviewer still sees it.
+// Candidate rows (rare) with their passage, for the model's judgement.
+function supersededCheckItems(discussion = [], units = []) {
+  const context = evidenceContextFor(units);
+  const items = [];
+  (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    for (const kind of ['points', 'decisions']) {
+      (topic?.[kind] || []).forEach((record, rowIndex) => {
+        const correction = citedRevisionUnit(units, record?.evidenceIds || [], record?.text || '');
+        if (!correction) return;
+        const at = context.indexById.get(correction.id);
+        const cited = (record.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger).sort((a, b) => a - b);
+        const earlier = cited.filter((index) => index < at && PRESUMPTION_CUE.test(String(context.rows[index]?.text || '')));
+        const line = (index) => `${context.rows[index].speaker}: ${context.rows[index].text}`;
+        const correctionLines = [at, at + 1, at + 2].filter((index) => index < context.rows.length).map(line);
+        items.push({ id: `s${items.length + 1}`, topicIndex, kind, rowIndex, row: text(record.text, 800),
+          earlier: earlier.map(line).join('\n'), correction: correctionLines.join('\n'),
+          passage: [...earlier.map(line), ...correctionLines].join('\n') });
+      });
+    }
+  });
+  return items.slice(0, 12);
+}
+
+// A row citing a self-correction must carry what the correction says. Rows
+// using fewer than three words found in the correction (and not in the
+// earlier statement) restate the earlier position; the model could not be
+// used to judge this, as it read a misheard "protect file being lifted" as the
+// earlier "summative submission".
+function rowReflectsCorrection(item) {
+  const earlier = aboutWords(item.earlier);
+  const correctionOnly = [...aboutWords(item.correction)].filter((word) => !earlier.has(word));
+  const row = aboutWords(item.row);
+  return correctionOnly.filter((word) => row.has(word)).length >= 3;
+}
+
+function supersededVerdicts(items = []) {
+  return new Set(items.filter((item) => !rowReflectsCorrection(item))
+    .map((item) => `${item.topicIndex}|${item.kind}|${item.rowIndex}`));
+}
+
+function demoteSupersededRows(discussion = [], units = [], outdated = null) {
+  const context = evidenceContextFor(units);
+  const position = (record) => Math.min(...(record?.evidenceIds || []).map((id) => context.indexById.get(id)).filter(Number.isInteger), Infinity);
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: [...(topic.points || [])],
+    decisions: [...(topic.decisions || [])]
+  }));
+  const moved = [];
+  topics.forEach((topic, topicIndex) => {
+    for (const kind of ['points', 'decisions']) {
+      topic[kind] = topic[kind].filter((record, rowIndex) => {
+        if (!citedRevisionUnit(units, record?.evidenceIds || [], record?.text || '')) return true;
+        // Only rows judged outdated move; a row stating the corrected position stays.
+        if (outdated && !outdated.has(`${topicIndex}|${kind}|${rowIndex}`)) return true;
+        moved.push({ record, topicIndex });
+        return false;
+      });
+    }
+  });
+  let demoted = 0;
+  for (const { record, topicIndex } of moved) {
+    const own = topics[topicIndex];
+    const sameTopic = [...own.points, ...own.decisions];
+    const everywhere = topics.flatMap((topic) => [...topic.points, ...topic.decisions]);
+    const pool = sameTopic.length ? sameTopic : everywhere;
+    const target = position(record);
+    const parent = pool.slice().sort((a, b) => Math.abs(position(a) - target) - Math.abs(position(b) - target))[0];
+    if (!parent) {
+      // Nowhere to attach it: keep it where it was rather than lose it.
+      own.points.push(record);
+      continue;
+    }
+    const { supportingDetails, ...detail } = record;
+    // Labelled so that, in context, it cannot read as the current position.
+    parent.supportingDetails = [...(parent.supportingDetails || []),
+      { ...detail, text: `Earlier position, revised later in the meeting: ${detail.text}` }];
+    demoted += 1;
+  }
+  const kept = topics.filter((topic) => topic.points.length || topic.decisions.length || (topic.openQuestions || []).length);
+  return { discussion: kept, demoted };
+}
+
+// ---- Usual practice is not an action ------------------------------------------
+// In a case-study conversation ("First thing I go in, are there posters on the
+// wall...", "In most cases the education comes from...") the model turns a
+// description of how someone usually works into an action. When every cited
+// line is habitual description and none takes on future work, the action is
+// offered as a proposal instead of being published.
+const HABITUAL_DESCRIPTION = /\b(?:usually|typically|normally|in most cases|generally|every time|whenever|what (?:we|i) (?:do|typically do|normally do) is|first thing (?:i|we)|when (?:i|we|you) (?:go|come) in|we (?:go|come) in|we ask them|we look at|we give them|we frame it|you know, you)\b/i;
+const FUTURE_COMMITMENT = /\b(?:i|we)(?:'ll| will| am going to|'m going to|'m gonna)\b|\bnext (?:week|month|call)\b|\btomorrow\b|\bby (?:monday|tuesday|wednesday|thursday|friday|the end)\b|\bleave (?:it|that) with me\b/i;
+function describesUsualPractice(action = {}, units = []) {
+  const context = evidenceContextFor(units);
+  const lines = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger)
+    .map((index) => String(context.rows[index]?.text || ''));
+  return lines.length > 0 && lines.every((line) => HABITUAL_DESCRIPTION.test(line)) && !lines.some((line) => FUTURE_COMMITMENT.test(line));
+}
+
+// ---- Decision check -------------------------------------------------------
+// A Discussion row keeps the "decision" label only when the model quotes the
+// words in its passage that make or accept the choice, and the quote is found
+// there. Everything else becomes an ordinary point with its wording unchanged.
+// The check only ever demotes: tested on real meetings, promoting points was
+// too noisy to trust.
+function decisionCheckEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DECISION_CHECK_V1 || '0'));
+}
+
+function decisionCheckItems(discussion = [], units = []) {
+  const items = [];
+  (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    (Array.isArray(topic?.decisions) ? topic.decisions : []).forEach((record, rowIndex) => {
+      const passage = evidenceWindowUnits(units, record?.evidenceIds || [], 2).slice(0, 24)
+        .map((unit) => `${unit.speaker}: ${unit.text}`);
+      if (!passage.length || !text(record?.text)) return;
+      items.push({ id: `d${items.length + 1}`, topicIndex, rowIndex, row: text(record.text, 800), passage: passage.join('\n') });
+    });
+  });
+  return items;
+}
+
+function decisionCheckPrompt(items = []) {
+  return [
+    'ACTION_CRITIC_DECISION',
+    'You check which meeting-minutes rows record a decision. Each item gives a row and the transcript passage it was drawn from. The passage is the only authority.',
+    `A decision is a choice the meeting settled: someone in the meeting chose a course of action, approved or rejected something, ruled something in or out, or the participants agreed what will be done. Examples: "I've made the decision we are covering it", "let's set up sessions on Wednesday, Thursday and Friday", "we'll go with option B", "that is approved".`,
+    'These are NOT decisions: status or progress updates, lists of next steps in an update, work already done, descriptions of how a process, tool or regulation works, facts, explanations, opinions, goals described as probable, an idea people liked without settling what will happen, a suggestion or proposal nobody accepted, a question, a routine task someone will do, and anything decided, scheduled or to be approved outside this meeting that is only being reported.',
+    `The decisionQuote must be the words that make or accept the choice (for example "let's", "we'll", "I've decided", "agreed", "go ahead"), not words that merely mention the topic.`,
+    'For each item give verdict "decision" or "not_decision". For "decision" give decisionQuote: the exact words in the passage where the choice is made or agreed, copied verbatim as one contiguous span of at most 25 words. Never paraphrase a quote. If you are unsure, choose "not_decision".',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","decisionQuote":"","reason":""}]}',
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage })))}`
+  ].join('\n\n');
+}
+
+// A quote may run across adjacent lines; speaker labels are not spoken words.
+function decisionQuoteFound(quote, passage, maxWords = 30) {
+  const flat = (value) => quoteText(value).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const needle = flat(String(quote || '').replace(/^[^:]{2,40}:\s*/, ''));
+  const words = needle ? needle.split(' ').length : 0;
+  if (words < 3 || words > maxWords) return false;
+  const spoken = String(passage || '').split('\n').map((line) => line.replace(/^[^:]{2,40}:\s*/, '')).join(' ');
+  return flat(spoken).includes(needle);
+}
+
+// Items with no verdict (a failed call) keep their label.
+function applyDecisionCheckResults(discussion = [], items = [], results = []) {
+  const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
+  const demote = new Map();
+  for (const item of items) {
+    const row = verdicts.get(item.id);
+    if (!row || !['decision', 'not_decision'].includes(row.verdict)) continue;
+    if (row.verdict === 'decision' && decisionQuoteFound(row.decisionQuote, item.passage)) continue;
+    if (!demote.has(item.topicIndex)) demote.set(item.topicIndex, new Set());
+    demote.get(item.topicIndex).add(item.rowIndex);
+  }
+  let demoted = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
+    const rows = demote.get(topicIndex);
+    if (!rows || !Array.isArray(topic?.decisions)) return topic;
+    const moved = topic.decisions.filter((_, rowIndex) => rows.has(rowIndex));
+    demoted += moved.length;
+    return {
+      ...topic,
+      decisions: topic.decisions.filter((_, rowIndex) => !rows.has(rowIndex)),
+      points: [...(Array.isArray(topic.points) ? topic.points : []), ...moved]
+    };
+  });
+  return { discussion: checked, demoted, checked: items.length };
+}
+
+const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'meeting_admin', 'unaccepted_request']);
+
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
     const action = text(item?.action, 1600);
     if (!action || isIdeaOnlyContemplation(action)) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
-    const evidenceText = evidenceWindowText(units, resolved.evidenceIds, 1);
+    const checks = correctnessChecksEnabled();
+    if (checks && options.enforceEvidence === false && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
+      && resolved.evidenceIds.length && !uncitedClaimSupported(action, resolved, units)) {
+      resolved.evidenceIds = [];
+    }
+    const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
+    const evidenceIds = anchorOwnerCommitment(action, owners, units, resolved.evidenceIds);
+    const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
-    if (options.enforceEvidence !== false && !resolved.evidenceIds.length) return null;
-    if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) return null;
+    if (options.enforceEvidence !== false && !evidenceIds.length) return null;
+    if (options.enforceEvidence !== false && ['completed', 'suggestion', 'status_only', 'meeting_admin', 'unaccepted_request', 'rejected'].includes(disposition)) {
+      // The keyword reading can be wrong ("Janine and Adil, you're involved in
+      // that next week" reads as no commitment). A caller may collect these
+      // for a quote-verified second look; they are never published from here.
+      if (Array.isArray(options.vetoed) && COMMITMENT_RECHECK_DISPOSITIONS.has(disposition) && !ACTION_ADMIN_PATTERN.test(action)) {
+        options.vetoed.push({ id: text(item?.id, 80) || stableId('action', action, index), action, owners, timing: timingFrom(item, options), evidenceIds, reviewFlagIds: [], disposition });
+      }
+      return null;
+    }
+    // Recovery fills gaps in fresh agent output only. A save (enforceEvidence
+    // false) carries timings a reviewer or a timing check has already settled,
+    // so an empty timing there is deliberate and must stay empty.
+    const timing = options.enforceEvidence === false
+      ? timingFrom(item, options)
+      : backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
+    // Agent output is corrected once, on the published actions, so every
+    // change reaches the reviewer with its flag (see applyTimingClauseChecks).
+    // Here only a reviewer's own entry is checked, and only flagged.
+    const timingClauseNote = timingClauseChecksEnabled() && options.enforceEvidence === false
+      ? timingClauseIssue(action, timing, units, evidenceIds) : null;
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
       action,
-      owners: splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units)),
-      timing: timingFrom(item, options),
-      evidenceIds: resolved.evidenceIds,
+      owners,
+      timing,
+      _timingClauseNote: timingClauseNote,
+      evidenceIds,
       reviewFlagIds: [...new Set((Array.isArray(item?.reviewFlagIds) ? item.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
       _unsupportedEvidenceIds: resolved.invalidIds,
       _weakEvidenceIds: resolved.weakIds,
@@ -1596,6 +2687,48 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         tokenOverlap(action.timing.wording, evidenceText) >= 0.5
       );
       let exactDateSupported = false;
+      // "by 17th June" in a meeting held on 22 June cannot be a future
+      // deadline: the date was misheard or the month misread.
+      const statedDate = correctnessChecksEnabled() ? statedCalendarDate(action.timing.wording, options.meetingDate) : '';
+      if (statedDate && statedDate < options.meetingDate) {
+        const pastWording = action.timing.wording;
+        if (enforceEvidence) action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `The date in "${pastWording}" is before the meeting (${options.meetingDate})${enforceEvidence ? ' and has been removed' : ''}; confirm the intended date.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+      }
+      if (action.timing.kind !== 'not_stated' && action.timing.exactDate && /^\d{4}-\d{2}-\d{2}$/.test(String(options.meetingDate || ''))
+        && action.timing.exactDate < options.meetingDate) {
+        const pastDate = action.timing.exactDate;
+        if (enforceEvidence) action.timing.exactDate = '';
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `The exact date ${pastDate} is earlier than the meeting date and has been removed; confirm the intended timing.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+      }
+      // A derived date is only as good as the whole commitment. "Monday
+      // morning" resolved a week out passed the support check while the same
+      // sentence said "before the fifteenth"; that contradiction must surface
+      // to the reviewer, not be published as a confident target.
+      const breach = timingBoundBreach(action.timing, `${action.timing.wording} ${evidenceText}`, options.meetingDate);
+      if (breach) {
+        const breachedDate = action.timing.exactDate;
+        if (enforceEvidence) action.timing.exactDate = '';
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `The exact date ${breachedDate} falls ${breach.inclusive ? 'after' : 'on or after'} the stated limit "${breach.phrase}" and has been removed; confirm the intended date.`,
+          evidenceIds: action.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        action.reviewFlagIds.push(flag.id);
+      }
       if (action.timing.exactDate) {
         const [year, month, day] = action.timing.exactDate.split('-');
         const monthNames = ['', 'jan(?:uary)?', 'feb(?:ruary)?', 'mar(?:ch)?', 'apr(?:il)?', 'may', 'jun(?:e)?', 'jul(?:y)?', 'aug(?:ust)?', 'sep(?:tember)?', 'oct(?:ober)?', 'nov(?:ember)?', 'dec(?:ember)?'];
@@ -1627,6 +2760,18 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         action.reviewFlagIds.push(flag.id);
       }
     }
+    if (action._timingClauseNote) {
+      const note = action._timingClauseNote;
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: note.type === 'reassign'
+          ? `The cited passage gives "${note.from}" for a different step and "${note.to}" for this one. Confirm the timing.`
+          : '',
+        evidenceIds: action.evidenceIds
+      }, flags.length);
+      flags.push(flag);
+      action.reviewFlagIds.push(flag.id);
+    }
     if (action._timingConflicts?.length) {
       const flag = normaliseFlag({
         kind: 'timing',
@@ -1637,11 +2782,28 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
       action.reviewFlagIds.push(flag.id);
     }
   }
+  if (correctnessChecksEnabled()) {
+    const discussionRecords = new Set(discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]));
+    for (const record of records) {
+      if (!discussionRecords.has(record) || !record.evidenceIds.length) continue;
+      const revision = laterRevisionUnit(units, record.evidenceIds) || citedRevisionUnit(units, record.evidenceIds, record.text || record.action || '');
+      if (revision) {
+        record.evidenceIds = [...new Set([...record.evidenceIds, revision.id])].slice(0, 8);
+        const flag = normaliseFlag({
+          kind: 'uncertain_fact',
+          message: `Conflicting passage: the speaker appears to revise this shortly afterwards ("${salientExcerpt(revision.text, /./).slice(0, 200)}"). Confirm which statement is current.`,
+          evidenceIds: record.evidenceIds
+        }, flags.length);
+        flags.push(flag);
+        record.reviewFlagIds.push(flag.id);
+      }
+    }
+  }
   for (const [index, record] of records.entries()) {
     if (record._unsupportedEvidenceIds?.length) {
       const flag = normaliseFlag({
         kind: 'missing_evidence',
-        message: `The agent cited unsupported source ${record._unsupportedEvidenceIds.join(', ')}; verify this record against the linked transcript evidence.`,
+        message: `"${recordLabel(record)}" pointed to transcript lines that do not exist (${record._unsupportedEvidenceIds.join(', ')}). Check it against the transcript.`,
         evidenceIds: record.evidenceIds
       }, flags.length + index);
       flags.push(flag);
@@ -1651,7 +2813,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     if (hadWeakEvidence) {
       const flag = normaliseFlag({
         kind: 'missing_evidence',
-        message: `The cited source does not sufficiently support this generated item; verify or correct it.`,
+        message: `The linked transcript lines only partly support "${recordLabel(record)}". Check the wording against the transcript.`,
         evidenceIds: record.evidenceIds
       }, flags.length + index);
       flags.push(flag);
@@ -1661,14 +2823,40 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     delete record._weakEvidenceIds;
     delete record._evidenceDisposition;
     delete record._timingConflicts;
+    delete record._timingClauseNote;
     if (hadWeakEvidence && !record.evidenceIds.length) continue;
     if (record.evidenceIds.length) continue;
-    const flag = normaliseFlag({ kind: 'missing_evidence', message: 'No sufficiently close source passage was found for this generated item.' }, flags.length + index);
+    const flag = normaliseFlag({ kind: 'missing_evidence', message: `No transcript passage clearly supports "${recordLabel(record)}". Check it, or delete it if it was not said.` }, flags.length + index);
     flags.push(flag);
     record.reviewFlagIds.push(flag.id);
   }
   if (stage === 'discussion') flags.push(...unresolvedReferenceFlags(units));
+  // Identical flags (same kind, message and evidence) are shown once; every
+  // record that pointed at a dropped copy is repointed at the kept one, so a
+  // hand-typed unsupported action keeps its flag.
+  const alias = new Map();
+  const kept = new Map();
+  for (const flag of flags) {
+    const key = `${flag.kind}|${flag.message}|${flag.evidenceIds.join(',')}`.toLowerCase();
+    if (kept.has(key)) alias.set(flag.id, kept.get(key));
+    else kept.set(key, flag.id);
+  }
+  if (alias.size) {
+    const repoint = (record) => {
+      if (Array.isArray(record?.reviewFlagIds)) record.reviewFlagIds = [...new Set(record.reviewFlagIds.map((id) => alias.get(id) || id))];
+    };
+    for (const topic of discussion) for (const record of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) repoint(record);
+    for (const action of actions) repoint(action);
+  }
   return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags: uniqueFlags(flags) };
+}
+
+// Evidence flags name their item, so flags for different items never merge (a
+// new unsupported item always gets its own open flag, even when an earlier
+// item with the same problem was resolved).
+function recordLabel(record = {}) {
+  const value = text(record.action || record.text, 400);
+  return value.length > 90 ? `${value.slice(0, 87).replace(/\s+\S*$/, '')}…` : value;
 }
 
 function uniqueFlags(flags = []) {
@@ -1949,5 +3137,48 @@ module.exports = {
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
-  relativeExactDate
+  relativeExactDate,
+  correctnessChecksEnabled,
+  timingClauseIssue,
+  applyTimingClauseChecks,
+  timingCheckEnabled,
+  statedCalendarDate,
+  reconcileRecordFlags,
+  discussionActionCandidates,
+  mentionedPeople,
+  describesUsualPractice,
+  demoteSupersededRows,
+  supersededCheckItems,
+  supersededVerdicts,
+  applyRequesterOwnerRule,
+  mergeDuplicateCommitments,
+  applyChainedTimingRule,
+  answeredCheckEnabled,
+  answeredCheckItems,
+  answeredCheckPrompt,
+  applyAnsweredCheckResults,
+  commitmentCheckEnabled,
+  commitmentCheckItems,
+  commitmentCheckPrompt,
+  applyCommitmentCheckResults,
+  commitmentQuoteTiesOwner,
+  commitmentQuoteAboutAction,
+  isMeetingAdminAction,
+  decisionCheckEnabled,
+  decisionCheckItems,
+  decisionCheckPrompt,
+  decisionQuoteFound,
+  applyDecisionCheckResults,
+  timingCheckItems,
+  timingCheckPrompt,
+  applyTimingCheckResults,
+  claimNovelty,
+  uncitedClaimSupported,
+  timingClauseChecksEnabled,
+  laterRevisionUnit,
+  evidenceClauses,
+  materialTokens,
+  contentTokens,
+  comparisonText,
+  evidenceWindowText
 };

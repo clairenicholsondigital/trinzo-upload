@@ -1,0 +1,96 @@
+.meeting-agent-simple {
+  min-height: 100vh;
+  padding: 32px 20px;
+  background:
+    radial-gradient(900px 500px at 50% -120px, #fff 0%, #eef4f6 62%, transparent 100%),
+    var(--bg);
+}
+
+.meeting-agent-shell { width: 100%; max-width: 720px; margin: 0 auto; }
+.meeting-agent-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.meeting-agent-logo { display: block; width: auto; height: 30px; }
+.meeting-agent-product { color: var(--muted); font-size: .92rem; font-weight: 700; }
+
+.meeting-agent-card {
+  padding: clamp(24px, 5vw, 42px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--brand);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+}
+.meeting-agent-card h1 { margin: 6px 0 12px; font-size: clamp(1.75rem, 5vw, 2.45rem); }
+.meeting-agent-card .lead { max-width: 580px; margin: 0 0 28px; color: var(--muted); font-size: 1.06rem; }
+.state-card { text-align: center; }
+.state-card p { color: var(--muted); }
+.spinner {
+  display: inline-block; width: 34px; height: 34px; border: 3px solid var(--brand-100);
+  border-top-color: var(--accent); border-radius: 50%; animation: meeting-agent-spin .8s linear infinite;
+}
+@keyframes meeting-agent-spin { to { transform: rotate(360deg); } }
+
+.microsoft-button { min-height: 48px; padding-inline: 18px; }
+.microsoft-mark { display: grid; grid-template-columns: repeat(2, 8px); gap: 2px; }
+.microsoft-mark i { display: block; width: 8px; height: 8px; background: #f25022; }
+.microsoft-mark i:nth-child(2) { background: #7fba00; }
+.microsoft-mark i:nth-child(3) { background: #00a4ef; }
+.microsoft-mark i:nth-child(4) { background: #ffb900; }
+.privacy-note { margin-top: 18px; color: var(--muted); font-size: .85rem; }
+
+.account-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding-bottom: 20px; margin-bottom: 28px; border-bottom: 1px solid var(--border);
+}
+.account-bar > div { display: grid; gap: 2px; min-width: 0; }
+.account-bar strong, .account-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-label { color: var(--accent-700); font-size: .74rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#accountEmail { color: var(--muted); font-size: .88rem; }
+.transcript-monitoring { margin: -6px 0 28px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--soft); }
+.transcript-monitoring > strong { display: block; margin-top: 3px; }
+.monitoring-status { margin: 5px 0 0; color: var(--muted); font-size: .9rem; }
+.monitoring-status.success { color: var(--ok-text); }
+.monitoring-status.warning { color: var(--warn-text); }
+.transcript-events { margin: 12px 0 0; padding-left: 20px; color: var(--muted); font-size: .88rem; }
+.button.compact { flex: 0 0 auto; padding: .48rem .72rem; font-size: .84rem; }
+.upload-intro p { margin-bottom: 24px; color: var(--muted); }
+
+.document-drop-zone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  min-height: 260px; padding: 30px; border: 2px dashed var(--border-strong); border-radius: 16px;
+  background: var(--soft); text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.document-drop-zone:hover, .document-drop-zone.dragover, .document-drop-zone:focus-visible {
+  border-color: var(--accent); background: var(--brand-050);
+}
+.document-drop-zone > span, .document-drop-zone small { color: var(--muted); }
+.document-icon {
+  display: grid; place-items: center; width: 48px; height: 56px; border-radius: 6px;
+  background: #185abd; color: #fff; font-size: 1.45rem; font-weight: 800; box-shadow: var(--shadow);
+}
+.selected-file {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-top: 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+}
+.selected-file[hidden] { display: none; }
+.selected-file-copy { display: grid; min-width: 0; }
+.selected-file-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-file-copy span { color: var(--muted); font-size: .85rem; }
+.upload-button { width: 100%; margin-top: 18px; min-height: 48px; }
+
+.status { max-width: 720px; margin-top: 16px; padding: 13px 15px; border: 1px solid var(--info-border); border-radius: 10px; background: var(--info-bg); color: var(--info-text); }
+.status.error { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger-text); }
+.status.warning { border-color: var(--warn-border); background: var(--warn-bg); color: var(--warn-text); }
+.status.success { border-color: var(--ok-border); background: var(--ok-bg); color: var(--ok-text); }
+.status.working::before { content: '●'; display: inline-block; margin-right: 8px; animation: meeting-agent-pulse 1s ease-in-out infinite; }
+@keyframes meeting-agent-pulse { 50% { opacity: .25; } }
+
+@media (max-width: 560px) {
+  .meeting-agent-simple { padding: 20px 12px; }
+  .meeting-agent-card { border-radius: 16px; }
+  .account-bar { align-items: flex-start; }
+  .document-drop-zone { min-height: 230px; padding: 22px 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .status.working::before { animation: none; }
+}

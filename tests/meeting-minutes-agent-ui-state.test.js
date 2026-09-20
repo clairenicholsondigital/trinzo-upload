@@ -205,12 +205,17 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     await page.click('#addAction');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 2);
     assert.match(await page.textContent('#saveStatus'), /kept in this tab/i);
+    assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'no resume-later invitation while an unfinished row exists');
 
     // Force an autosave which returns a server-normalised draft without the
     // blank row. The local editor row must remain available for entry.
     await page.fill('#actionsBody [data-action-row="0"] [data-action]', 'Send the revised report promptly.');
     await page.waitForFunction(async () => (await (await fetch('/test-state/editor')).json()).patches >= 1);
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 2);
+    // The autosave succeeded, but the blank row still lives only in this tab:
+    // the status must keep saying so and the resume link must stay hidden.
+    assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
+    assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'resume link stays hidden after an autosave while an unfinished row exists');
 
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const customOwner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
@@ -430,6 +435,7 @@ test('deleting a topic dismisses warnings belonging to its nested records', { ti
     const deleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/topic-cleanup')
         && response.request().method() === 'PATCH');
+    page.once('dialog', (dialog) => dialog.accept());
     await page.click('[data-delete-topic="1"]');
     await deleteSave;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/topic-cleanup')).json()).draft);
@@ -527,6 +533,50 @@ test('details status clears on Focus and unfinished owner text survives a backgr
     assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true);
     assert.equal(await owner.isVisible(), true);
     assert.equal(await owner.inputValue(), 'Jordan Lee');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('editing the discussion with nothing running marks the existing Actions outdated', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'no warning before any edit');
+    await page.click('[data-step="2"]');
+    await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation next week.');
+    assert.equal(await page.locator('#staleNotice').isVisible(), true, 'a material discussion edit warns immediately');
+    assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('adding and deleting a blank discussion topic does not mark the Actions outdated', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    await page.click('#addDiscussion');
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'a blank topic is not a material edit');
+    await page.click('[data-delete-topic="1"]');
+    assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
+    // Deleting a topic that carries real content still is.
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.click('[data-delete-topic="0"]');
+    assert.equal(await page.locator('#staleNotice').isVisible(), true);
+    assert.match(await page.textContent('#staleStages'), /actions/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

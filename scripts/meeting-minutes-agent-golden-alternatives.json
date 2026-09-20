@@ -1,0 +1,32 @@
+{
+  "_about": "Reviewed equivalent phrasings for golden mustContain items, used only for the agent scorer's secondary 'tolerant' score. Each alternative was checked against real outputs where the expected content was present but the strict matcher missed it. The strict score is unchanged and remains comparable with stored baselines.",
+  "021_real_dita_importer_obligations_transcript": {
+    "actions": {
+      "HPRA authorised-representative bill": ["HPRA invoice"],
+      "follow up on the Med Envoy project plan or task list": ["MedEnvoy project plan", "MedEnvoy task list", "MedEnvoy's registration activities and related task list"]
+    }
+  },
+  "024_real_dita_internal_followup_transcript": {
+    "decisions": {
+      "PPE and sunglasses requirements should be covered in the procedures": ["cover PPE in the procedures", "include PPE in the procedures", "PPE is covered in the procedures"]
+    },
+    "actions": {
+      "Confirm the PPE and sunglasses procedure scope with the client": ["confirm the approach of including PPE", "confirm the approach of covering PPE", "planned approach of covering PPE"],
+      "Schedule a weekly client check-in call": ["weekly recurring call"],
+      "Set up working sessions with the client": ["arrange working sessions", "set up recurring working sessions", "schedule working sessions"],
+      "Follow up internally on declaration of conformity language requirements": ["clarify language translation requirements", "declaration-of-conformity language requirements"]
+    }
+  },
+  "025_real_t761_eakin_sw_weekly_transcript": {
+    "actions": {
+      "electrical compliance testing": ["60601-1 compliance document", "60601-1 compliance testing"],
+      "clinical review": ["clinician review", "clinician mini review", "clinician mini-review", "review with clinicians"]
+    }
+  },
+  "026_real_qip_assessment_tool_case_study_transcript": {
+    "actions": {
+      "Review referenced reports": ["West and Korza QIP assessment reports", "Korza QIP assessment report", "West QIP assessment reports"],
+      "Draft content and send it for review": ["draft material related to the QIP assessment tool", "draft material and send it", "draft materials related to the QIP assessment"]
+    }
+  }
+}
