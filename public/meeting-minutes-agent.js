@@ -1116,7 +1116,7 @@
       var proposedRecord = proposed.after || proposed.before || {};
       return {
         elementId: proposalDomId(proposed),
-        label: proposed.after ? 'Proposed item' : 'Suggested removal',
+        label: proposed.after ? 'Proposed item' : 'Removal',
         text: proposedRecord.action || proposedRecord.text || proposedRecord.topic || '',
         field: 'proposal',
         proposal: true
@@ -1226,7 +1226,7 @@
     var wasHidden = panel.hidden;
     panel.hidden = !proposal || !(proposal.changes || []).length;
     if (panel.hidden) { updateReviewQueueSummary(); return; }
-    var changeLabels = { add:'New item', modify:'Suggested edit', remove:'Suggested removal' };
+    var changeLabels = { add:'New item', modify:'Edit', remove:'Removal' };
     document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
       var content;
       if (change.before && change.after) {
@@ -1282,7 +1282,8 @@
   function finalTextEditor(kind, id, field, value, options) {
     options = options || {};
     if (!finalEditMatches(kind, id, field)) {
-      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(id || '') + '" data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(value || options.empty || 'Not stated') + '</button>';
+      var displayValue = options.displayValue == null ? value : options.displayValue;
+      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(id || '') + '" data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
     }
     var control = options.singleLine
       ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
@@ -1309,14 +1310,14 @@
       + (draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
-      var rows = [{key:'points',label:'Discussion'}, {key:'decisions',label:'Decision'}, {key:'openQuestions',label:'Open question'}]
+      var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
         .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text}; }); });
-      return '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><span class="final-kind">' + escapeHtml(item.label) + '</span>' + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,label:'Edit meeting sentence'}) + '</li>'; }).join('') + '</ul>' : '');
+      return '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
     }).join('');
     var actionsHtml = (draft.actions || []).map(function (action) {
       return '<tr><td>' + finalTextEditor('action', action.id, 'action', action.action, {block:true,label:'Edit action'}) + '</td><td>' + finalTextEditor('action', action.id, 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated'}) + '</td><td>' + finalTimingEditor(action) + '</td></tr>';
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
-    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select');
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
   }

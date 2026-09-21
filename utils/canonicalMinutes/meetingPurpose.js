@@ -139,7 +139,11 @@ const MEETING_PROFILES = [
     topicHints: [
       { intent: 'Identify', pattern: /\b(?:option|alternative|proposal|recommendation|approach|route)\b/i },
       { intent: 'Review', pattern: /\b(?:criteria|trade[- ]?off|impact|cost|benefit|implication|consequence)\b/i },
-      { intent: 'Agree', pattern: /\b(?:decide|decision|agreed?|approve|approved|sign[- ]?off|go ahead|proceed)\b/i },
+      // Supporting signals such as options, risks and owners occur in ordinary project
+      // reviews too. A body-derived Decision meeting suggestion must therefore include
+      // recurring evidence from this defining category; meetingTypeSuggestion enforces
+      // the marker without changing how these hints order the generated minutes.
+      { intent: 'Agree', requiredForSuggestion: true, pattern: /\b(?:decid(?:e|ed|ing)|decision|agreed?|approv(?:e|ed|al)|sign(?:ed)?[- ]?off|go ahead|proceed(?:ed|ing)?)\b/i },
       { intent: 'Identify', pattern: /\b(?:risk|concern|objection|reservation|unknown|assumption)\b/i },
       { intent: 'Confirm', pattern: /\b(?:owner|responsib|next step|implement|communicate|action)\b/i }
     ]

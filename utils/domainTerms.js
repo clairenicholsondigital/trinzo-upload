@@ -67,4 +67,28 @@ function mentionsDomainTerm(value) {
   return DOMAIN_TERM_PATTERN.test(String(value || ''));
 }
 
-module.exports = { DOMAIN_TERMS, AUTO_CORRECTIONS, DOMAIN_TERM_PATTERN, mentionsDomainTerm, escapeRegExp };
+function normaliseUdimed(value) {
+  return String(value == null ? '' : value).replace(/\budimed\b/gi, 'EUDAMED');
+}
+
+function normaliseUdimedDeep(value) {
+  if (typeof value === 'string') return normaliseUdimed(value);
+  if (Array.isArray(value)) return value.map(normaliseUdimedDeep);
+  if (value && typeof value === 'object') {
+    if (value instanceof Date) return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseUdimedDeep(item)]));
+  }
+  return value;
+}
+
+module.exports = {
+  DOMAIN_TERMS,
+  AUTO_CORRECTIONS,
+  DOMAIN_TERM_PATTERN,
+  mentionsDomainTerm,
+  normaliseUdimed,
+  normaliseUdimedDeep,
+  escapeRegExp
+};

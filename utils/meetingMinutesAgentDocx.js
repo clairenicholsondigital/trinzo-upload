@@ -1,6 +1,7 @@
 'use strict';
 
 const JSZip = require('jszip');
+const { timingForPublication } = require('./meetingMinutesAgentV2');
 function formatUkDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return String(value || '');
   return new Intl.DateTimeFormat('en-GB', {
@@ -36,6 +37,7 @@ function cell(value, width, options = {}) {
 }
 
 function timingLabel(timing = {}) {
+  timing = timingForPublication(timing);
   if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'Not stated';
   const prefix = timing.kind === 'target' ? 'Target' : (timing.kind === 'dependency' ? 'Dependent on' : 'Deadline');
   const value = timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording;

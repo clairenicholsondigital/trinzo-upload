@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
+const { normaliseUdimed } = require('./domainTerms');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -70,7 +71,9 @@ function normaliseColloquialTimes(value) {
 }
 
 function normaliseKnownTerms(value) {
-  return normaliseFixedPersonAliases(normaliseColloquialTimes(value))
+  // Deterministic domain correction: this transcription variant must never reach a
+  // reviewer-facing field, flag, export or persisted minutes payload.
+  return normaliseUdimed(normaliseFixedPersonAliases(normaliseColloquialTimes(value)))
     .replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
 }
 
@@ -1012,12 +1015,50 @@ function timingFrom(item = {}, options = {}) {
 // when the work is due or what it depends on.
 const CALENDAR_TIMING = /\b(?:today|tonight|tomorrow|morning|afternoon|evening|day|days|week|weeks|month|months|quarter|quarters|year|years|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|asap|immediately|shortly|soon|later|next|this|end of|by|before|within|no later than|due|deadline|target|\d{1,4})\b/i;
 const DEPENDENCY_TIMING = /\b(?:if|after|before|once|when|whenever|following|upon|subject to|dependent on|depends on|pending|until|unless|provided that|based on|contingent on|as soon as|where .* (?:identified|found)|on completion|on approval|on receipt)\b/i;
-function timingWordingHasMeaning(timing = {}) {
+const DEPENDENCY_LEAD_IN = /^(?:(?:and\s+)?(?:in parallel|then|separately|at the same time|in tandem)[,;:]?\s+)+(?=(?:if|after|before|once|when|whenever|following|upon|subject to|dependent on|pending|until|unless|provided that|based on|contingent on|as soon as|on completion|on approval|on receipt)\b)/i;
+const DURATION_TASK_NOUN = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[ -](?:business[ -])?(?:day|week|month|quarter|year)s?[ -](?:pilot|trial|test|review|programme|program|project|phase|study|workshop|exercise|engagement|contract|period|cycle|sprint)\b/i;
+const EXPLICIT_DUE_CUE = /\b(?:by|before|within|no later than|due|deadline|target|today|tonight|tomorrow|this\s+(?:week|month|quarter|year)|next\s+(?:week|month|quarter|year)|end of|on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2})|at\s+\d{1,2})\b/i;
+const RAW_TIMING_CLAUSE_START = /^(?:(?:i|we|you|he|she|they|it)\s+(?:['’]?ll|will|shall|can|could|would|should|do|does|did|am|is|are|was|were|have|has|had|need|needs|want|wants|plan|plans|start|starts)|(?:the|a|an|this|that)\s+[\p{L}\p{N}'’-]+\s+(?:will|shall|can|could|would|should|is|are|was|were|has|had|needs|starts)|[\p{Lu}][\p{L}'’-]+\s+(?:will|shall|can|could|would|should|is|was|has|needs|starts))\b/iu;
+
+function normaliseTimingWording(timing = {}) {
   const kind = text(timing?.kind, 30);
-  const wording = text(timing?.wording, 220);
+  let wording = text(timing?.wording, 220);
+  if (kind === 'dependency') {
+    const trimmed = wording.replace(DEPENDENCY_LEAD_IN, '');
+    if (trimmed !== wording) wording = trimmed.replace(/^([a-z])/, (letter) => letter.toUpperCase());
+  }
+  return { ...timing, kind, wording };
+}
+
+// Timing is a compact date/target/dependency field, not a second copy of the action.
+// Fail closed when a generated value is shaped like spoken action prose or when its only
+// apparent calendar signal is the duration of the work itself ("four-week pilot").
+function timingPublicationIssue(timing = {}) {
+  const cleanTiming = normaliseTimingWording(timing);
+  const wording = cleanTiming.wording;
+  if (cleanTiming.kind === 'not_stated' || !wording) return '';
+  if (RAW_TIMING_CLAUSE_START.test(wording)) return 'sentence_shaped_timing';
+  if (cleanTiming.kind !== 'dependency' && DURATION_TASK_NOUN.test(wording) && !EXPLICIT_DUE_CUE.test(wording)) {
+    return 'task_duration_not_due_date';
+  }
+  return '';
+}
+
+function timingForPublication(timing = {}) {
+  const cleanTiming = normaliseTimingWording(timing);
+  if (!timingPublicationIssue(cleanTiming)) return cleanTiming;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text(cleanTiming.exactDate, 20))) return { ...cleanTiming, wording: '' };
+  return { kind: 'not_stated', wording: '', exactDate: '' };
+}
+
+function timingWordingHasMeaning(timing = {}) {
+  const cleanTiming = normaliseTimingWording(timing);
+  const kind = cleanTiming.kind;
+  const wording = cleanTiming.wording;
   if (kind === 'not_stated') return !wording;
   if (!wording && /^\d{4}-\d{2}-\d{2}$/.test(text(timing?.exactDate, 20))) return true;
   if (!wording) return false;
+  if (timingPublicationIssue(cleanTiming)) return false;
   return kind === 'dependency' ? DEPENDENCY_TIMING.test(wording) : CALENDAR_TIMING.test(wording);
 }
 
@@ -3704,9 +3745,15 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     // Recovery fills gaps in fresh agent output only. A save (enforceEvidence
     // false) carries timings a reviewer or a timing check has already settled,
     // so an empty timing there is deliberate and must stay empty.
-    const timing = options.enforceEvidence === false
+    let timing = options.enforceEvidence === false
       ? timingFrom(item, options)
       : backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
+    let timingShapeIssue = '';
+    if (options.enforceEvidence !== false) {
+      timing = normaliseTimingWording(timing);
+      timingShapeIssue = timingPublicationIssue(timing);
+      if (timingShapeIssue) timing = timingForPublication(timing);
+    }
     // Agent output is corrected once, on the published actions, so every
     // change reaches the reviewer with its flag (see applyTimingClauseChecks).
     // Here only a reviewer's own entry is checked, and only flagged.
@@ -3717,6 +3764,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       action,
       owners,
       timing,
+      _timingPublicationIssue: timingShapeIssue,
       _timingClauseNote: timingClauseNote,
       evidenceIds,
       reviewFlagIds: [...new Set((Array.isArray(item?.reviewFlagIds) ? item.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
@@ -3789,6 +3837,17 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
       const flag = normaliseFlag({
         kind: 'ownership',
         message: `Confirm or correct unsupported action ownership: ${unsupportedOwners.join(', ')}.`,
+        evidenceIds: action.evidenceIds
+      }, flags.length);
+      flags.push(flag);
+      action.reviewFlagIds.push(flag.id);
+    }
+    if (action._timingPublicationIssue) {
+      const flag = normaliseFlag({
+        kind: 'timing',
+        message: action._timingPublicationIssue === 'task_duration_not_due_date'
+          ? 'Timing was removed because it described how long the work lasts rather than when it is due.'
+          : 'Timing was removed because it was a copied action sentence rather than a date, target or dependency phrase.',
         evidenceIds: action.evidenceIds
       }, flags.length);
       flags.push(flag);
@@ -3949,6 +4008,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     delete record._evidenceDisposition;
     delete record._timingConflicts;
     delete record._timingClauseNote;
+    delete record._timingPublicationIssue;
     if (hadWeakEvidence && !record.evidenceIds.length) continue;
     if (record.evidenceIds.length) continue;
     const flag = normaliseFlag({ kind: 'missing_evidence', message: `No transcript passage clearly supports "${recordLabel(record)}". Check it, or delete it if it was not said.` }, flags.length + index);
@@ -4265,6 +4325,9 @@ module.exports = {
   groundedExecutiveSummary,
   relativeExactDate,
   timingWordingHasMeaning,
+  normaliseTimingWording,
+  timingPublicationIssue,
+  timingForPublication,
   correctnessChecksEnabled,
   timingClauseIssue,
   applyTimingClauseChecks,

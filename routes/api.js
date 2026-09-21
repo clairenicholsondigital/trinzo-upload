@@ -63,6 +63,7 @@ const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
+const { normaliseUdimedDeep } = require('../utils/domainTerms');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
@@ -170,6 +171,7 @@ const {
   applyProposal,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
   normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
+  timingForPublication: meetingAgentTimingForPublication,
   isIdeaOnlyContemplation,
   isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag,
   isSalientCoverageFlag: isMeetingAgentCoverageFlag,
@@ -1009,7 +1011,10 @@ function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
   if (isTechnicalFile) return 'Technical file review';
   if (/\b(?:process|pipeline|lead generation)\b.*\b(?:planning|review|design)\b|\b(?:planning|review|design)\b.*\b(?:process|pipeline)\b/i.test(titleHint)) return 'General';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
-  if (/\bdecision\b/i.test(titleHint)) return 'Decision meeting';
+  // Ordinary project reviews discuss decisions, and filenames often use "decision" for
+  // an agenda item or document. Only an explicit decision-making meeting identity should
+  // override General here; the evidence fallback below handles titles that say nothing.
+  if (/\b(?:decision(?:[ -]making)?[ -](?:meeting|review|session)|approval[ -](?:meeting|review|session)|sign[ -]?off(?:[ -](?:meeting|review|session))?|go[ /-]?no[ -]?go)\b/i.test(titleHint)) return 'Decision meeting';
   return 'General';
 }
 
@@ -1424,7 +1429,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     message: `The meeting type was set to "${suggestedType}" from the discussion itself - ${meetingTypeSuggestion.supportedHints.length} of that type's topic areas recur across ${meetingTypeSuggestion.totalMatchedEvents} moments in the transcript, while the title alone reads as a general project review. Change it if that is not what this meeting was.`
   }] : [];
 
-  return {
+  return normaliseUdimedDeep({
     ok: true,
     staged: true,
     stagedStage: 'details',
@@ -1461,7 +1466,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'
       }
     }
-  };
+  });
 }
 
 const STAGED_TOPIC_RULES = [
@@ -5756,7 +5761,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       ]
     };
   }
-  return {
+  return normaliseUdimedDeep({
     source: transcript.source,
     fileName: transcript.fileName || null,
     transcriptLength: transcript.text.length,
@@ -5793,7 +5798,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
     },
     preparedTranscriptTelemetry: semanticTranscript.preparedTranscriptTelemetry || transcript.preparedTranscriptTelemetry || null
-  };
+  });
 }
 
 function stagedStageResumeUrl(inputPayload, payload) {
@@ -5935,6 +5940,10 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         payload.screens.raisedActions = filterActionsForPresentation(payload.screens.raisedActions);
       }
     }
+
+    // Apply unconditional terminology corrections after current and prior screens have
+    // been assembled, so queued results are clean both in storage and on retrieval.
+    payload = normaliseUdimedDeep(payload);
 
     await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
     const resultPayload = {
@@ -6849,7 +6858,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         durationMs: Date.now() - startedAt
       }));
 
-      return res.json(detailsResponse);
+      return res.json(normaliseUdimedDeep(detailsResponse));
     }
 
     if (['summary', 'discussion', 'actions'].includes(requestedStage)) {
@@ -6875,7 +6884,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         humanConfirmedInputIsAuthoritative: true,
         durationMs: Date.now() - startedAt
       }));
-      return res.json(response);
+      return res.json(normaliseUdimedDeep(response));
     }
 
     const scriptArgs = [];
@@ -10690,6 +10699,10 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
     ...publicFields,
     reviewFlags: visibleReviewFlags
   });
+  safe.actions = (Array.isArray(safe.actions) ? safe.actions : []).map((action) => ({
+    ...action,
+    timing: meetingAgentTimingForPublication(action?.timing)
+  }));
   safe.details = sanitiseMeetingAgentDetails(safe.details);
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);

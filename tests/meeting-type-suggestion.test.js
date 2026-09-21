@@ -90,6 +90,64 @@ test('a near-empty transcript cannot clear the gates - the floor', () => {
   assert.ok(!suggestion || !suggestion.accepted, 'three turns are not a classification');
 });
 
+test('options, impacts, risks and actions without recurring decision evidence stay General', () => {
+  // These are all normal project-review ingredients. Before the defining-evidence gate,
+  // enough repetition could make this look like a Decision meeting even though nobody
+  // decided, approved, rejected or signed off anything.
+  const ordinaryReview = [
+    'The team reviewed option A and the alternative route for the implementation.',
+    'A second proposal described another approach for the rollout.',
+    'The cost impact and operational benefit still need further analysis.',
+    'The consequences and trade-offs will be documented before the next meeting.',
+    'A delivery risk remains because one assumption has not been tested.',
+    'The client raised another concern and an unknown dependency.',
+    'Priya owns the next step to gather the missing figures.',
+    'Martin is responsible for the follow-up action on the schedule.',
+    'The implementation option remains open pending technical input.',
+    'The alternative route has a different cost impact for the team.',
+    'The principal risk and objection will be revisited next week.',
+    'The owner will communicate the proposal after the analysis is complete.',
+    'The evaluation criteria remain under analysis.',
+    'A further implication needs to be understood.',
+    'The operational consequence is not yet clear.',
+    'The commercial trade-off needs more evidence.',
+    'The benefit cannot yet be quantified.',
+    'Another consequence will be assessed before the next review.'
+  ];
+  const suggestion = suggestMeetingTypeFromEvidence(events(...ordinaryReview, ...ordinaryReview));
+  assert.equal(suggestion.profileId, 'decision_meeting', JSON.stringify(suggestion));
+  assert.ok(suggestion.supportedHints.length >= MIN_SUPPORTED_HINTS, JSON.stringify(suggestion));
+  assert.ok(suggestion.totalMatchedEvents >= MIN_TOTAL_EVENTS, JSON.stringify(suggestion));
+  assert.ok(suggestion.marginRatio >= DOMINANCE_RATIO, JSON.stringify(suggestion));
+  assert.equal(suggestion.accepted, false, JSON.stringify(suggestion));
+});
+
+test('recurring explicit decisions can still support a Decision meeting suggestion', () => {
+  const genuineDecisionMeeting = [
+    'The group reviewed option A and the alternative route.',
+    'The second proposal offered a different implementation approach.',
+    'The cost impact and benefits of option A were compared.',
+    'The trade-offs and consequences of the alternative were reviewed.',
+    'The board approved option A for implementation.',
+    'The group decided to proceed with the proposed route.',
+    'A delivery risk remains and the main assumption will be tested.',
+    'The client concern and objection were recorded before approval.',
+    'Priya owns the next step and implementation action.',
+    'Martin is responsible for communicating the approved decision.',
+    'The agreed proposal will proceed after the final risk check.',
+    'The owner will implement the decision and report the outcome.',
+    'The board formally approved the recommendation.',
+    'The chair confirmed that the decision was final.',
+    'The release was signed off by the approval group.',
+    'Everyone agreed to proceed.',
+    'The directors approved the selected route.',
+    'The group decided that no further vote was needed.'
+  ];
+  const suggestion = suggestMeetingTypeFromEvidence(events(...genuineDecisionMeeting, ...genuineDecisionMeeting));
+  assert.equal(suggestion.profileId, 'decision_meeting', JSON.stringify(suggestion));
+  assert.equal(suggestion.accepted, true, JSON.stringify(suggestion));
+});
+
 test('the suggestion never proposes the default it exists to replace', () => {
   assert.ok(!('project_review' in DROPDOWN_LABEL_BY_PROFILE));
 });

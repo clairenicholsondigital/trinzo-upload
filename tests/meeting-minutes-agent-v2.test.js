@@ -38,7 +38,9 @@ const {
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
-  relativeExactDate
+  relativeExactDate,
+  timingWordingHasMeaning,
+  timingForPublication
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 const {
@@ -121,6 +123,54 @@ test('MDSAP spoken variants are corrected before generation and never become rev
   assert.equal(normaliseKnownTermsDeep(savedAt), savedAt);
   assert.equal(JSON.stringify(normaliseKnownTermsDeep({ updatedAt: savedAt })), '{"updatedAt":"2026-09-08T12:34:00.000Z"}');
   assert.equal(isAutomaticTerminologyFlag({ message: 'Confirm Meds app.' }), true);
+});
+
+test('generated timing rejects raw action sentences and task durations but keeps the action', () => {
+  const units = normaliseSourceUnits([{
+    id: 'T0150', speaker: 'Conor Flynn', classification: 'keep', confidence: 0.99,
+    text: "We do a four-week pilot where we'd have a mix of manual and AI in order to test lead volume and quality."
+  }]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Run a mixed manual and AI pilot to test lead volume and quality.',
+    owners: ['Conor Flynn'],
+    timing: { kind: 'deadline', wording: "We do a four-week pilot where we'd have a mix of manual and AI", exactDate: '' },
+    evidenceIds: ['T0150']
+  }] }, units, 'actions');
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(result.actions[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /copied action sentence/i.test(flag.message)));
+  assert.equal(timingWordingHasMeaning({ kind: 'deadline', wording: 'four-week pilot', exactDate: '' }), false);
+  assert.deepEqual(timingForPublication({ kind: 'deadline', wording: 'four-week pilot', exactDate: '' }), {
+    kind: 'not_stated', wording: '', exactDate: ''
+  });
+});
+
+test('generated timing trims dependency lead-ins and retains concise valid timing phrases', () => {
+  const cases = [
+    [{ kind: 'dependency', wording: 'In parallel once they start manually doing the process', exactDate: '' }, { kind: 'dependency', wording: 'Once they start manually doing the process', exactDate: '' }],
+    [{ kind: 'deadline', wording: 'within four weeks', exactDate: '' }, { kind: 'deadline', wording: 'within four weeks', exactDate: '' }],
+    [{ kind: 'deadline', wording: 'by Friday', exactDate: '' }, { kind: 'deadline', wording: 'by Friday', exactDate: '' }],
+    [{ kind: 'dependency', wording: 'once approval is received', exactDate: '' }, { kind: 'dependency', wording: 'once approval is received', exactDate: '' }]
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(timingWordingHasMeaning(input), true, JSON.stringify(input));
+    assert.deepEqual(timingForPublication(input), expected);
+  }
+});
+
+test('Udimed is unconditionally normalised to EUDAMED throughout nested minutes data', () => {
+  assert.equal(normaliseKnownTerms('Udimed, udimed and UDIMED'), 'EUDAMED, EUDAMED and EUDAMED');
+  const result = normaliseKnownTermsDeep({
+    details: { meetingTitle: 'Udimed registration review' },
+    discussion: [{ topic: 'Udimed', points: [{ text: 'Review UDIMED registration.' }] }],
+    actions: [{ action: 'Upload the udimed evidence.' }],
+    reviewFlags: [{ message: 'Check UdiMed wording.' }]
+  });
+  assert.doesNotMatch(JSON.stringify(result), /udimed/i);
+  assert.equal(result.details.meetingTitle, 'EUDAMED registration review');
+  assert.equal(result.discussion[0].topic, 'EUDAMED');
+  assert.equal(result.actions[0].action, 'Upload the EUDAMED evidence.');
+  assert.equal(result.reviewFlags[0].message, 'Check EUDAMED wording.');
 });
 
 test('UK half-hour wording is parsed and does not create a false uncertainty flag', () => {
@@ -755,6 +805,8 @@ test('proposal changes can be partially accepted without altering unselected rec
 
 test('Word export uses UK dates, timing labels and contains no organisation field', async () => {
   assert.equal(timingLabel({ kind: 'deadline', exactDate: '2026-06-23' }), 'Deadline: 23 Jun 2026');
+  assert.equal(timingLabel({ kind: 'deadline', wording: "We do a four-week pilot where we'd test the process" }), 'Not stated');
+  assert.equal(timingLabel({ kind: 'dependency', wording: 'In parallel once approval is received' }), 'Dependent on: Once approval is received');
   const draft = {
     title: 'Review', details: { meetingTitle: 'Review', meetingDate: '2026-06-23', organisation: 'Hidden' },
     discussion: [{

@@ -34,6 +34,10 @@ const { profileHintCatalogue } = require('./meetingPurpose');
 //             consulted for it.
 //   floor     >=12 matched events, so a near-empty transcript cannot clear the ratio on
 //             noise.
+//   defining  profiles may mark a hint as requiredForSuggestion. This prevents broad
+//             supporting material from naming the meeting without its defining act - in
+//             particular, options, risks and actions do not make a Decision meeting
+//             unless explicit deciding/approval evidence also recurs.
 
 const MIN_SUPPORTED_HINTS = 3;
 const MIN_EVENTS_PER_HINT = 2;
@@ -71,17 +75,26 @@ function scoreProfiles(events) {
     const matchedEventIds = new Set();
     let supportedHints = 0;
     const supported = [];
+    const requiredHints = profile.topicHints.filter((hint) => hint.requiredForSuggestion);
+    let supportedRequiredHints = 0;
     for (const hint of profile.topicHints) {
       const matching = events.filter((event) => hint.pattern.test(String(event && event.text || '')));
       if (matching.length >= MIN_EVENTS_PER_HINT) {
         supportedHints += 1;
+        if (hint.requiredForSuggestion) supportedRequiredHints += 1;
         supported.push({ pattern: String(hint.pattern), eventCount: matching.length });
       }
       // Dedupe by event id so one chatty turn matching several patterns cannot count
       // itself once per pattern.
       for (const event of matching) matchedEventIds.add(event.id);
     }
-    scores.push({ profileId: profile.id, supportedHints, supported, totalMatchedEvents: matchedEventIds.size });
+    scores.push({
+      profileId: profile.id,
+      supportedHints,
+      supported,
+      requiredHintsSatisfied: requiredHints.length === supportedRequiredHints,
+      totalMatchedEvents: matchedEventIds.size
+    });
   }
   return scores.sort((left, right) => right.totalMatchedEvents - left.totalMatchedEvents);
 }
@@ -99,7 +112,8 @@ function suggestMeetingTypeFromEvidence(evidence) {
     : Infinity;
   const accepted = best.supportedHints >= MIN_SUPPORTED_HINTS
     && best.totalMatchedEvents >= MIN_TOTAL_EVENTS
-    && marginRatio >= DOMINANCE_RATIO;
+    && marginRatio >= DOMINANCE_RATIO
+    && best.requiredHintsSatisfied;
   return {
     type: PROFILE_LABEL[best.profileId],
     profileId: best.profileId,

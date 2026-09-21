@@ -868,6 +868,9 @@ test('final minutes edit source records in place and the finishing bar remains a
     await page.click('#previewDocument');
     await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
     assert.match(await page.getAttribute('#previewDocument', 'aria-label'), /Back to editing/i);
+    assert.equal(await page.locator('#finalDocument [data-kind="details"][data-field="meetingDate"]').textContent(), '16 Sept 2026');
+    assert.equal(await page.locator('#finalDocument .final-propositions').first().evaluate((node) => getComputedStyle(node).listStyleType), 'disc');
+    assert.equal(await page.locator('#finalDocument .final-kind-label').filter({ hasText: 'Discussion' }).count(), 0);
 
     await page.locator('#finalDocument [data-kind="discussion"][data-field="text"]').first().click();
     await page.fill('#finalDocument [data-final-editor-value]', 'The final report is ready to circulate.');

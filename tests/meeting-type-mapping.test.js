@@ -72,6 +72,15 @@ test('recurring software titles are classified separately from technical-file re
   assert.equal(inferStagedMeetingType('', 'Eakin T733 technical file weekly review.docx'), 'Technical file review');
 });
 
+test('only an explicit decision-meeting title overrides General', () => {
+  const { inferStagedMeetingType } = require('../routes/api').stagedEvaluation;
+  assert.equal(inferStagedMeetingType('', 'Quarterly decision log review.docx'), 'General');
+  assert.equal(inferStagedMeetingType('', 'Project review - decisions and actions.docx'), 'General');
+  assert.equal(inferStagedMeetingType('', 'Supplier decision meeting.docx'), 'Decision meeting');
+  assert.equal(inferStagedMeetingType('', 'Release approval meeting.docx'), 'Decision meeting');
+  assert.equal(inferStagedMeetingType('', 'Product go-no-go.docx'), 'Decision meeting');
+});
+
 test('a specific title still wins over a generic type', () => {
   // The case the ordering exists to protect: the reviewer leaves the pre-selected
   // "General" and the title names what the meeting actually was.

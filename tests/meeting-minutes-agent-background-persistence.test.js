@@ -74,6 +74,22 @@ test('successful recovered stages do not expose internal degradation warnings', 
   assert.equal(Object.prototype.hasOwnProperty.call(publicDraft, 'qualityState'), false);
 });
 
+test('existing drafts cannot expose raw action prose as a timing value', () => {
+  const draft = baseDraft();
+  draft.actions = [{
+    id: 'A1', action: 'Run the pilot.', owners: ['Alex Reed'],
+    timing: { kind: 'deadline', wording: "We do a four-week pilot where we'd test the process", exactDate: '' }
+  }, {
+    id: 'A2', action: 'Start the manual process.', owners: ['Priya Shah'],
+    timing: { kind: 'dependency', wording: 'In parallel once approval is received', exactDate: '' }
+  }];
+  const publicDraft = publicMeetingAgentDraft(draft);
+  assert.deepEqual(publicDraft.actions[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
+  assert.deepEqual(publicDraft.actions[1].timing, {
+    kind: 'dependency', wording: 'Once approval is received', exactDate: ''
+  });
+});
+
 const results = {
   discussion: { changes: {
     discussion: [{ topic: 'Generated discussion', points: [] }],
