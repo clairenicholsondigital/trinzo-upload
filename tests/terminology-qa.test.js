@@ -21,7 +21,7 @@ test('terminology QA marks configured transcript corrections for automatic appli
       topic: 'Regulatory terms',
       points: [
         'Udemed and Udimed evidence was reviewed for existing products.',
-        'Deta Inc and T Inc were named in the generated minutes.',
+        'Deta Inc, DD Inc and T Inc were named in the generated minutes.',
         'The Meds app audit scope included S-BOM and Kappa evidence.'
       ]
     }],
@@ -31,6 +31,7 @@ test('terminology QA marks configured transcript corrections for automatic appli
   assert.ok(automatic.includes('Udemed->EUDAMED'));
   assert.ok(automatic.includes('Udimed->EUDAMED'));
   assert.ok(automatic.includes('Deta Inc->DITA'));
+  assert.ok(automatic.includes('DD Inc->DITA'));
   assert.ok(automatic.includes('T Inc->DITA'));
   assert.ok(automatic.includes('Meds app->MDSAP'));
   assert.ok(automatic.includes('S-BOM->SBOM'));

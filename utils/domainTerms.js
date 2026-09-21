@@ -37,6 +37,7 @@ const AUTO_CORRECTIONS = [
   { original: 'Udemed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
   { original: 'Udimed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
   { original: 'Deta Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
+  { original: 'DD Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
   { original: 'T Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
   { original: 'Meds app', replacement: 'MDSAP', reason: 'Recognised terminology correction' },
   { original: 'S-BOM', replacement: 'SBOM', reason: 'Recognised terminology correction' },
@@ -72,7 +73,7 @@ function mentionsDomainTerm(value) {
 function normaliseDomainTerms(value) {
   return String(value == null ? '' : value)
     .replace(/\b(?:udimed|udemed)\b/gi, 'EUDAMED')
-    .replace(/\b(?:deta|t)\s+inc\b/gi, 'DITA');
+    .replace(/\b(?:deta|dd|t)\s+inc\b/gi, 'DITA');
 }
 
 function normaliseDomainTermsDeep(value) {

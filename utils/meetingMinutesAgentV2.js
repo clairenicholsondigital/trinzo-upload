@@ -1097,6 +1097,9 @@ const ACTION_CONCRETE_OFFER_PATTERN = /\b(?:I|we)\s+(?:can|could|would be able t
 const ACTION_DECISION_RESOLUTION_PATTERN = /\b(?:try(?:ing)? to work out|(?:have|has|got|need(?:s)?) to (?:work (?:out|through)|decide|determine|resolve|plan through)|need(?:s)? to (?:confirm|clarify)|figure out)\b/i;
 const DISCUSSION_DECISION_PATTERN = /\b(?:agreed|decided|confirmed|approved|accepted|selected|settled|concluded|signed off|will proceed|going ahead|the decision)\b/i;
 const DISCUSSION_QUESTION_PATTERN = /\?|\b(?:open question|outstanding|to be confirmed|to be decided|not (?:yet )?(?:decided|confirmed|clear|resolved)|need to (?:confirm|clarify|determine|decide)|whether|which option|who will)\b/i;
+const DISCUSSION_NEGATIVE_POSITION_PATTERN = /\b(?:(?:i|we)\s+(?:will not|won['’]?t|am not going to|are not going to|do not agree|don['’]?t agree|cannot accept|can['’]?t accept|refuse|decline)|i['’](?:ll not|m not going to)|we['’](?:ll not|re not going to))\b/i;
+const DISCUSSION_UNRESOLVED_POSITION_PATTERN = /\b(?:i|we)\s+(?:do not|don['’]?t)\s+know\b|\b(?:no clear|no obvious)\s+answer\b|\bnot (?:yet )?(?:known|clear|decided|resolved)\b/i;
+const ACTION_EXPLICIT_RESOLUTION_AFTER_UNCERTAINTY = /\b(?:i|we)\s*(?:['’]ll|will|am going to|are going to)\s+(?:ask|check|clarify|confirm|contact|find out|investigate|review|verify)\b/i;
 const LOW_INFORMATION_UTTERANCE = /^(?:yes|yeah|yep|no|nope|okay|ok|right|fine|great|thanks|thank you|sure|agreed|exactly|correct|perfect|lovely|brilliant|understood|makes sense|i see|mm+|uh+|hello|hi|bye)[.!? ]*$/i;
 
 function isDecisionResolutionCommitment(value) {
@@ -1236,6 +1239,11 @@ function actionCandidateInventory(units = []) {
     const explicitAcceptedCommitment = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
       && (ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text));
     if (!directCue && !contextualAcceptance && !acceptedOfferAhead) continue;
+    // An honest unknown is meeting content, not a promise. Keep an explicit
+    // follow-up ("I don't know; I'll check tomorrow"), but do not manufacture
+    // work from "I don't know" or "I'll know after the meeting".
+    if (DISCUSSION_UNRESOLVED_POSITION_PATTERN.test(unit.text)
+      && !ACTION_EXPLICIT_RESOLUTION_AFTER_UNCERTAINTY.test(unit.text)) continue;
     // Bare acknowledgements inherit the nearby request's context, but adding each
     // "Okay", "Yep" or "Will do" as a separate high-priority candidate crowds real
     // commitments out of bounded referee prompts. The request/offer candidate already
@@ -1593,6 +1601,8 @@ function discussionCandidateInventory(units = []) {
     const kindHints = [
       DISCUSSION_DECISION_PATTERN.test(unit.text) ? 'decision' : '',
       DISCUSSION_QUESTION_PATTERN.test(unit.text) ? 'open_question' : '',
+      DISCUSSION_NEGATIVE_POSITION_PATTERN.test(unit.text) ? 'negative_position' : '',
+      DISCUSSION_UNRESOLVED_POSITION_PATTERN.test(unit.text) ? 'unresolved_position' : '',
       salientIds.has(unit.id) ? 'important_detail' : '',
       actionIds.has(unit.id) ? 'action_context' : '',
       'discussion_fact'
@@ -1606,6 +1616,7 @@ function discussionCandidateInventory(units = []) {
       kindHints,
       priority: (kindHints.includes('decision') ? 4 : 0)
         + (kindHints.includes('open_question') ? 3 : 0)
+        + (kindHints.includes('negative_position') || kindHints.includes('unresolved_position') ? 4 : 0)
         + (kindHints.includes('important_detail') ? 3 : 0)
         + (kindHints.includes('action_context') ? 2 : 0)
         + Math.min(2, Math.floor(words.length / 12)),
@@ -3431,7 +3442,7 @@ function decisionCheckPrompt(items = []) {
     'ACTION_CRITIC_DECISION',
     'You check which meeting-minutes rows record a decision. Each item gives a row and the transcript passage it was drawn from. The passage is the only authority.',
     `A decision is a choice the meeting settled: someone in the meeting chose a course of action, approved or rejected something, ruled something in or out, or the participants agreed what will be done. Examples: "I've made the decision we are covering it", "let's set up sessions on Wednesday, Thursday and Friday", "we'll go with option B", "that is approved".`,
-    'These are NOT decisions: status or progress updates, lists of next steps in an update, work already done, descriptions of how a process, tool or regulation works, facts, explanations, opinions, goals described as probable, an idea people liked without settling what will happen, a suggestion or proposal nobody accepted, a question, a routine task someone will do, and anything decided, scheduled or to be approved outside this meeting that is only being reported.',
+    'These are NOT decisions: status or progress updates, lists of next steps in an update, work already done, descriptions of how a process, tool or regulation works, facts, explanations, opinions, goals described as probable, an idea people liked without settling what will happen, a suggestion or proposal nobody accepted, a question, a routine task someone will do, a matter parked or deferred for later thought, a hedged possibility, and anything decided, scheduled or to be approved outside this meeting that is only being reported. A refusal may be material, but it is a decision only when the row accurately records the rejection rather than reversing it into agreement.',
     `The decisionQuote must be the words that make or accept the choice (for example "let's", "we'll", "I've decided", "agreed", "go ahead"), not words that merely mention the topic.`,
     'For each item give verdict "decision" or "not_decision". For "decision" give decisionQuote: the exact words in the passage where the choice is made or agreed, copied verbatim as one contiguous span of at most 25 words. Never paraphrase a quote. If you are unsure, choose "not_decision".',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","decisionQuote":"","reason":""}]}',
@@ -3458,11 +3469,37 @@ function decisionQuoteFound(quote, passage, maxWords = 120) {
   return decisionQuoteValidation(quote, passage, maxWords).valid;
 }
 
+function decisionPolarityIssue(row = '', passage = '') {
+  const wording = text(row, 1200);
+  const evidence = text(passage, 6000);
+  const explicitNegativeDecision = /^(?:decision\s+(?:is|to|that)\s+)?(?:do not|don['’]?t|not to|reject|decline|rule out|stop|cancel)\b/i.test(wording);
+  if (/\b(?:possibly|maybe|perhaps|might|could potentially|not sure)\b/i.test(wording)) return 'hedged_outcome';
+  if (/\b(?:park(?:ed|ing)?|defer(?:red|ring)?|revisit|reconvene|come back (?:to|on|next)|think about (?:it|this|the))\b/i.test(wording)) return 'deferred_outcome';
+  const unresolvedEvidence = /\b(?:no clear|no obvious)\s+answer\b|\b(?:not|hasn['’]?t|haven['’]?t)\s+(?:yet\s+)?(?:decided|agreed|resolved|confirmed)\b/i.test(evidence);
+  const settledEvidence = /\b(?:we|the (?:team|group|board|committee))\s+(?:decided|agreed|approved|accepted|selected|rejected|declined|ruled out)\b|\b(?:that|it)\s+(?:is|was)\s+(?:approved|agreed|decided|settled|rejected)\b/i.test(evidence);
+  if (unresolvedEvidence && !settledEvidence) return 'unresolved_evidence';
+  const refusal = /\b(?:will not|won['’]?t|not going to|do not agree|don['’]?t agree|cannot accept|can['’]?t accept|refus(?:e|ed)|declin(?:e|ed)|argu(?:e|ed) against)\b/i.test(evidence);
+  if (refusal && !explicitNegativeDecision) return 'polarity_mismatch';
+  return '';
+}
+
+function demotedDecisionRecord(record = {}) {
+  const wording = text(record?.text, 1200)
+    .replace(/^decision\s+(?:is\s+|to\s+|that\s+|:\s*)/i, '')
+    .trim();
+  return wording && wording !== record.text ? { ...record, text: wording.charAt(0).toUpperCase() + wording.slice(1) } : record;
+}
+
 // Items with no verdict (a failed call) keep their label.
 function applyDecisionCheckResults(discussion = [], items = [], results = []) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const demote = new Map();
   for (const item of items) {
+    if (decisionPolarityIssue(item.row, item.passage)) {
+      if (!demote.has(item.topicIndex)) demote.set(item.topicIndex, new Set());
+      demote.get(item.topicIndex).add(item.rowIndex);
+      continue;
+    }
     const row = verdicts.get(item.id);
     if (!row || !['decision', 'not_decision'].includes(row.verdict)) continue;
     if (row.verdict === 'decision' && decisionQuoteFound(row.decisionQuote, item.passage)) continue;
@@ -3473,7 +3510,7 @@ function applyDecisionCheckResults(discussion = [], items = [], results = []) {
   const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
     const rows = demote.get(topicIndex);
     if (!rows || !Array.isArray(topic?.decisions)) return topic;
-    const moved = topic.decisions.filter((_, rowIndex) => rows.has(rowIndex));
+    const moved = topic.decisions.filter((_, rowIndex) => rows.has(rowIndex)).map(demotedDecisionRecord);
     demoted += moved.length;
     return {
       ...topic,
@@ -4397,6 +4434,7 @@ module.exports = {
   decisionCheckPrompt,
   decisionQuoteFound,
   decisionQuoteValidation,
+  decisionPolarityIssue,
   applyDecisionCheckResults,
   discussionFidelityCheckItems,
   discussionFidelityCheckPrompt,

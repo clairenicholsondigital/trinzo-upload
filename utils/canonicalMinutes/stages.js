@@ -155,10 +155,16 @@ function contentStage(evidence, state) {
     if (/overrun|overran|crowd out.*questions/i.test(text)) return 'The session could overrun and crowd out questions';
     return text;
   };
+  const explicitNegativeDecision = (value) => /\b(?:we|the (?:team|group|board|committee))\s+(?:rejected|declined|ruled out|decided not to|agreed not to)\b|\b(?:was|is)\s+(?:rejected|declined|ruled out)\b/i.test(value);
+  const unresolvedOrDeferred = (value) => /\b(?:possibly|maybe|perhaps|might|could potentially|no clear answer|no obvious answer|park(?:ed|ing)?|defer(?:red|ring)?|revisit|reconvene)\b/i.test(value);
   for (let eventIndex = 0; eventIndex < evidence.events.length; eventIndex += 1) {
     const event = evidence.events[eventIndex];
     const text = event.text;
-    if (event.roles.includes('decision_candidate') && !event.roles.includes('completed_history')) {
+    if (event.roles.includes('decision_candidate')
+      && !event.roles.includes('completed_history')
+      && !event.roles.includes('hypothetical')
+      && !unresolvedOrDeferred(text)
+      && (!event.roles.includes('negative_or_superseding') || explicitNegativeDecision(text))) {
       let sourceEvent = event;
       let decision = text
         .replace(/^.*?\b(?:decision(?: is|:)|we(?:'re| are)? decid(?:e|ed|ing)|we go with|we approve|we accept|we confirm|we stay with|release stays on)\s+/i, '')

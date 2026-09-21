@@ -1560,7 +1560,7 @@ function contentStage(evidence, state, profile) {
   const topicCandidates = selectedTopics.map((topic, index) => ({
     topic,
     index,
-    explicitEvidence: topic.evidenceIds.some((id) => (byId.get(id)?.roles || []).some((role) => ['action_candidate', 'decision_candidate', 'risk_candidate'].includes(role)) || /\bwe need(?: to)?\b/i.test(byId.get(id)?.text || ''))
+    explicitEvidence: topic.evidenceIds.some((id) => (byId.get(id)?.roles || []).some((role) => ['action_candidate', 'decision_candidate', 'risk_candidate', 'negative_or_superseding'].includes(role)) || /\b(?:we need(?: to)?|(?:i|we)\s+(?:do not|don['’]?t)\s+know|(?:no clear|no obvious)\s+answer|not (?:yet )?(?:known|clear|decided|resolved))\b/i.test(byId.get(id)?.text || ''))
   }));
   if (!longTranscript) topicCandidates.sort((left, right) => Number(right.explicitEvidence) - Number(left.explicitEvidence) || left.index - right.index);
   const discussionLimit = longTranscript ? 16 : evidence.events.length >= 25 ? 10 : 8;
@@ -1685,7 +1685,12 @@ function contentStage(evidence, state, profile) {
       .some((candidate) => candidate.turnId === event.turnId && candidate.roles.includes('decision_candidate'));
     const policyClause = sameTurnDecision && /\bwe\s+(?:only\s+)?(?:pause|stop|proceed|continue|launch|release)\b/i.test(event.text);
     const classifierDecisionCandidate = (discourseAssertion >= 0.32 && Number(evidenceProbabilities.decision_agreement || 0) >= 0.25) || policyClause;
-    if ((event.roles.includes('decision_candidate') || classifierDecisionCandidate) && independentlyCanonical(profile, event) && (policyClause || (evidenceRank[0]?.[0] === 'decision_agreement' && evidenceRank[0][1] >= 0.22) || decisionSignal >= 0.72)) {
+    const explicitNegativeDecision = /\b(?:we|the (?:team|group|board|committee))\s+(?:rejected|declined|ruled out|decided not to|agreed not to)\b|\b(?:was|is)\s+(?:rejected|declined|ruled out)\b/i.test(event.text);
+    const unresolvedOrDeferred = /\b(?:possibly|maybe|perhaps|might|could potentially|no clear answer|no obvious answer|park(?:ed|ing)?|defer(?:red|ring)?|revisit|reconvene)\b/i.test(event.text);
+    const polarityAllowsDecision = !event.roles.includes('hypothetical')
+      && !unresolvedOrDeferred
+      && (!event.roles.includes('negative_or_superseding') || explicitNegativeDecision);
+    if ((event.roles.includes('decision_candidate') || classifierDecisionCandidate) && polarityAllowsDecision && independentlyCanonical(profile, event) && (policyClause || (evidenceRank[0]?.[0] === 'decision_agreement' && evidenceRank[0][1] >= 0.22) || decisionSignal >= 0.72)) {
       let text = clean(event.text).replace(/^(?:yeah|yes|okay|right|so)[,;:\s]+/i, '').replace(/[.]+$/, '');
       if (/\b(?:move|reschedule|change|replace)\s+it\s+to\s+/i.test(text)) {
         const eventIndex = evidence.events.findIndex((item) => item.id === event.id);

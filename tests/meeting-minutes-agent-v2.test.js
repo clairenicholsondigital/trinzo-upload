@@ -163,14 +163,14 @@ test('known transcription variants are unconditionally normalised throughout nes
     normaliseKnownTerms('Udimed, Udemed, udimed and UDEMED'),
     'EUDAMED, EUDAMED, EUDAMED and EUDAMED'
   );
-  assert.equal(normaliseKnownTerms('Deta Inc, DETA INC and T Inc.'), 'DITA, DITA and DITA.');
+  assert.equal(normaliseKnownTerms('Deta Inc, DETA INC, DD Inc and T Inc.'), 'DITA, DITA, DITA and DITA.');
   const result = normaliseKnownTermsDeep({
-    details: { meetingTitle: 'Udemed registration review for Deta Inc' },
+    details: { meetingTitle: 'Udemed registration review for DD Inc' },
     discussion: [{ topic: 'Udimed', points: [{ text: 'T Inc will review UDEMED registration.' }] }],
     actions: [{ action: 'Upload the udimed evidence for DETA INC.' }],
     reviewFlags: [{ message: 'Check UdiMed wording for t inc.' }]
   });
-  assert.doesNotMatch(JSON.stringify(result), /(?:udimed|udemed|deta\s+inc|t\s+inc)/i);
+  assert.doesNotMatch(JSON.stringify(result), /(?:udimed|udemed|deta\s+inc|dd\s+inc|t\s+inc)/i);
   assert.equal(result.details.meetingTitle, 'EUDAMED registration review for DITA');
   assert.equal(result.discussion[0].topic, 'EUDAMED');
   assert.equal(result.discussion[0].points[0].text, 'DITA will review EUDAMED registration.');
