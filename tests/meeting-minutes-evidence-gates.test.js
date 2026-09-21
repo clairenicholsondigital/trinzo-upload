@@ -33,6 +33,63 @@ test('quantified claims must bind their subject and quantity in one local passag
   assert.deepEqual(filtered.removed.map((row) => row.id), ['p1']);
 });
 
+test('a later coordinated clause cannot lend its subject to an earlier duration', () => {
+  const units = [
+    { id: 'T0032', speaker: 'Barbara', text: 'Right, the big one.' },
+    { id: 'T0033', speaker: 'Barbara', text: "We haven't put them up in six years, and the water bill alone has nearly doubled." },
+    { id: 'T0034', speaker: 'Barbara', text: "I don't think we can hold at twenty-five pounds a plot anymore." }
+  ];
+  assert.ok(V.quantifiedClaimGroundingIssue({
+    text: 'Water bills have nearly doubled in six years.', evidenceIds: ['T0032', 'T0033', 'T0034']
+  }, units));
+  assert.equal(V.quantifiedClaimGroundingIssue({
+    text: 'The water bill has nearly doubled.', evidenceIds: ['T0033']
+  }, units), null, 'a claim without an attached duration is outside the narrow gate');
+});
+
+test('explicit source assignments split a multi-owner compound action before owner validation', () => {
+  const units = [
+    { id: 'T0030', speaker: 'Jacqui Fox', text: 'The action is to split the SOUP list and write the exclusion rationale.' },
+    { id: 'T0032', speaker: 'Marcus Oyelaran', text: 'Ines to do the split, me to write the rationale.' }
+  ];
+  const result = V.splitExplicitMultiOwnerActions([{
+    id: 'A1', action: 'Split the SOUP list and write the exclusion rationale.',
+    owners: ['Ines Duarte', 'Marcus Oyelaran'], evidenceIds: ['T0030', 'T0032']
+  }], units);
+  assert.equal(result.split, 1);
+  assert.deepEqual(result.actions.map((action) => [action.action, action.owners]), [
+    ['Split the SOUP list.', ['Ines Duarte']],
+    ['Write the exclusion rationale.', ['Marcus Oyelaran']]
+  ]);
+  const checked = V.applyRequesterOwnerRule(result.actions, units);
+  assert.deepEqual(checked.actions.map((action) => action.owners), [['Ines Duarte'], ['Marcus Oyelaran']]);
+  assert.deepEqual(checked.flags, []);
+});
+
+test('multi-owner compounds remain intact when source assignments are ambiguous', () => {
+  const result = V.splitExplicitMultiOwnerActions([{
+    id: 'A1', action: 'Review the report and update the tracker.',
+    owners: ['Alex Stone', 'Priya Shah'], evidenceIds: ['T0001']
+  }], [{ id: 'T0001', speaker: 'Chair', text: 'Alex and Priya can review the report and update the tracker.' }]);
+  assert.equal(result.split, 0);
+  assert.equal(result.actions.length, 1);
+});
+
+test('owner validation recognises explicit self-assignment idioms', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Chair', text: 'Who traces the requirement?' },
+    { id: 'T0002', speaker: 'Marcus Oyelaran', text: "That'd be me, the requirements history is in the old system." },
+    { id: 'T0003', speaker: 'Marcus Oyelaran', text: 'Ines to do the split, me to write the rationale.' },
+    { id: 'T0004', speaker: 'Ines Duarte', text: 'I have access to the SOUP list.' }
+  ];
+  const result = V.applyRequesterOwnerRule([
+    { action: 'Trace the requirement history.', owners: ['Marcus Oyelaran'], evidenceIds: ['T0001', 'T0002'] },
+    { action: 'Write the exclusion rationale.', owners: ['Marcus Oyelaran'], evidenceIds: ['T0003'] }
+  ], units);
+  assert.deepEqual(result.actions.map((action) => action.owners), [['Marcus Oyelaran'], ['Marcus Oyelaran']]);
+  assert.deepEqual(result.flags, []);
+});
+
 test('confirmed person aliases are normalised through every nested minutes field', () => {
   const result = V.normaliseKnownTermsDeep({
     sourceUnits: [{ speaker: 'Rebecca Cuckoo', text: 'Rebecca Cuckoo will review it.' }],

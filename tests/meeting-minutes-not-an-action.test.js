@@ -46,3 +46,19 @@ test('an early commitment is never treated as an aside', () => {
   const units = closingMeeting();
   assert.equal(V.isSocialAside({ action: 'Book a holiday.', evidenceIds: ['T0002'] }, units), false);
 });
+
+test('a vague personal promise under AOB is an aside but operational AOB work is not', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Chair', text: 'Any other business?' },
+    { id: 'T0002', speaker: 'Chair', text: "Ken, how are your marrows, since we're here." },
+    { id: 'T0003', speaker: 'Ken', text: "I'll bring one to show you." },
+    { id: 'T0004', speaker: 'Priya', text: 'The broken gate still needs a repair quote.' },
+    { id: 'T0005', speaker: 'Ken', text: "I'll bring the repair quote to the next committee meeting." }
+  ];
+  assert.equal(V.isAobPersonalAside({
+    action: 'Bring a marrow to show to the committee.', evidenceIds: ['T0003']
+  }, units), true);
+  assert.equal(V.isAobPersonalAside({
+    action: 'Bring the gate repair quote to the next committee meeting.', evidenceIds: ['T0004', 'T0005']
+  }, units), false);
+});

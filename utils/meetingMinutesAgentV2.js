@@ -2751,6 +2751,68 @@ function mergeDuplicateCommitments(actions = []) {
   return { actions: kept, merged };
 }
 
+// ---- Explicit multi-owner compound commitments -----------------------------
+// Split only when the cited source maps each recognised verb clause uniquely
+// to a different named owner. Ambiguous compounds are left untouched.
+const ACTION_VERBS = new Set(ACTION_VERB_GROUPS.flat());
+
+function compoundActionClauses(value = '') {
+  const source = text(value, 1200).replace(/\s+/g, ' ').trim();
+  if (!source) return [];
+  const verbPattern = [...ACTION_VERBS].sort((left, right) => right.length - left.length)
+    .map((verb) => verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const clauses = source.split(new RegExp(`\\s+(?:and|then)\\s+(?=(?:${verbPattern})\\b)`, 'ig'))
+    .map((clause) => clause.trim().replace(/[.;]+$/, '')).filter(Boolean);
+  return clauses.length > 1 && clauses.every((clause) => ACTION_VERBS.has(contentTokens(clause)[0])) ? clauses : [];
+}
+
+function explicitOwnerAssignments(action = {}, units = []) {
+  const ownerRows = (action.owners || []).map((owner) => ({ owner, parts: nameParts(owner) }));
+  const cited = new Set((action.evidenceIds || []).map(String));
+  const assignments = [];
+  for (const unit of normaliseSourceUnits(units)) {
+    if (!cited.has(String(unit.id))) continue;
+    const parts = String(unit.text || '').split(/\s*[,;]\s*|\s+and\s+(?=(?:me|i|[A-Z][\p{L}'’.-]+)\s+(?:to|will|shall|can|am going to|'ll)\b)/iu);
+    for (const part of parts) {
+      const match = part.match(/^\s*(me|i|[A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,2})\s+(?:to|will|shall|can|am going to|'ll)\s+(.+?)\s*$/iu);
+      if (!match) continue;
+      const assignee = /^(?:me|i)$/i.test(match[1])
+        ? ownerRows.find((candidate) => nameParts(unit.speaker).some((partName) => candidate.parts.includes(partName)))
+        : ownerRows.find((candidate) => nameParts(match[1]).some((partName) => candidate.parts.includes(partName)));
+      if (!assignee || !text(match[2])) continue;
+      assignments.push({ owner: assignee.owner, wording: match[2], evidenceId: unit.id });
+    }
+  }
+  return assignments;
+}
+
+function splitExplicitMultiOwnerActions(actions = [], units = []) {
+  let split = 0;
+  const output = [];
+  for (const action of Array.isArray(actions) ? actions : []) {
+    const owners = [...new Set((action?.owners || []).filter(Boolean))];
+    if (owners.length < 2) { output.push(action); continue; }
+    const clauses = owners.length > 1 ? compoundActionClauses(action?.action) : [];
+    if (clauses.length !== owners.length) { output.push(action); continue; }
+    const assignments = explicitOwnerAssignments(action, units);
+    const matches = clauses.map((clause) => assignments.filter((assignment) =>
+      actionPredicateSupported(clause, assignment.wording)
+      && commitmentIsAboutAction(assignment.wording, clause)));
+    if (matches.some((items) => items.length !== 1)
+      || new Set(matches.map((items) => items[0].owner)).size !== clauses.length) {
+      output.push(action); continue;
+    }
+    split += 1;
+    clauses.forEach((clause, index) => output.push({
+      ...action,
+      id: action.id ? `${action.id}-part-${index + 1}` : action.id,
+      action: `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`,
+      owners: [matches[index][0].owner]
+    }));
+  }
+  return { actions: output, split };
+}
+
 // ---- Requester is not the owner ---------------------------------------------
 // "So if you're talking to Cody, could you just maybe mention it to him?" makes
 // the listener the owner, not the chair who asked. When every line the named
@@ -2759,6 +2821,7 @@ function mergeDuplicateCommitments(actions = []) {
 // them, the owner is removed and flagged. The right owner is not guessed.
 const OWNER_FIRST_PERSON = /\b(?:i|we)\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|we'll|i'd|we'd|i'm going to|we're going to|i'm gonna|we're gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
 const OWNER_ACCEPTS = /^\s*(?:yes|yeah|yep|okay|ok|sure|will do|absolutely|of course|perfect|no problem)\b/i;
+const OWNER_SELF_ASSIGNMENT = /\bme\s+to\s+[a-z]|\bthat(?:'d| would)\s+be\s+me\b/i;
 function nameParts(value) {
   return String(value || '').toLowerCase().split(/[^a-zà-öø-ÿ']+/).filter((word) => word.length >= 3);
 }
@@ -2816,7 +2879,7 @@ function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
     const value = String(line?.text || '');
     if (!isOwner(line?.speaker) && mentions(value)) return true;
     if (!isOwner(line?.speaker)) continue;
-    const firstPerson = OWNER_FIRST_PERSON.test(value);
+    const firstPerson = OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value);
     const accepts = OWNER_ACCEPTS.test(value);
     if (!firstPerson && !accepts) continue;
     // The preparer splits speech into sentences, so "That document, but I'm
@@ -3054,6 +3117,26 @@ function isSocialAside(action = {}, units = []) {
   const frequency = new Map();
   for (const row of rows) for (const word of new Set(contentTokens(row.text))) frequency.set(word, (frequency.get(word) || 0) + 1);
   return subject.every((word) => (frequency.get(word) || 0) <= 1);
+}
+
+// A personal aside can occur under an explicit AOB heading rather than in the
+// goodbye tail. Keep this narrower than a general AOB filter: real operational
+// work is often assigned there. Only a vague promise to bring/show something,
+// immediately after a personal-status question, is treated as an aside.
+function isAobPersonalAside(action = {}, units = []) {
+  if (!/^\s*(?:bring|take|show)\b[^.]{0,180}\b(?:show|bring|take)\b/i.test(text(action?.action, 600))) return false;
+  const context = evidenceContextFor(units);
+  const cited = [...new Set(action?.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  if (!cited.length) return false;
+  return cited.some((index) => {
+    const preceding = context.rows.slice(Math.max(0, index - 4), index);
+    const afterAob = preceding.some((row) => /\bany other business\b/i.test(row.text));
+    const personalQuestion = preceding.slice(-2).some((row) =>
+      /\b(?:how (?:is|are) your|have you got|did you bring|since we're here)\b/i.test(row.text));
+    const commitment = String(context.rows[index]?.text || '');
+    return afterAob && personalQuestion
+      && /\bi(?:'ll| will| can)\s+(?:bring|take|show)\s+(?:it|one|them|something)\b/i.test(commitment);
+  });
 }
 
 // A contact-only sentence in the closing pleasantries ("speak to you next
@@ -3443,14 +3526,14 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
   return { discussion: checked, flags, checked: items.length, corrected, uncertain, rejected };
 }
 
-// A generated negated-duration statement must bind its quantity to its subject
-// in one local source passage. This narrow high-confidence shape catches a
-// duration detached from one agenda item and attached to another without
-// second-guessing ordinary costs, counts and schedules.
+// A generated duration statement must bind its quantity to its subject in the
+// source clause which carries that duration. A pronoun may inherit a subject
+// from the preceding clause/turn, but a later coordinated clause must not lend
+// its subject backwards.
 const QUANTITY_WORD = '(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)';
 const QUANTITY_UNIT = '(?:%|percent|percentage|seconds?|minutes?|hours?|days?|weeks?|months?|years?|items?|documents?|files?|tests?|runs?|alarms?|devices?|products?|samples?|units?|batches?|sites?|languages?|pounds?|euros?|dollars?)';
 const QUANTIFIED_CLAIM = new RegExp(`\\b(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s*${QUANTITY_UNIT}\\b`, 'gi');
-const NEGATED_DURATION_CLAIM = new RegExp(`\\b(?:has|have|had)(?:\\s+\\w+){0,8}\\s+(?:not|never)(?:\\s+\\w+){0,12}\\s+(?:in|for)\\s+(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s+(?:days?|weeks?|months?|years?)\\b|\\b(?:hasn't|haven't|hadn't)(?:\\s+\\w+){0,12}\\s+(?:in|for)\\s+(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s+(?:days?|weeks?|months?|years?)\\b`, 'i');
+const DURATION_CLAIM = new RegExp(`\\b(?:in|for|over)\\s+(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s+(?:days?|weeks?|months?|years?)\\b`, 'i');
 const CLAIM_AUXILIARY = /\b(?:is|are|was|were|has|have|had|will|would|can|could|should|must|remains?|became|becomes?)\b/i;
 const CLAIM_SUBJECT_STOP = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'current', 'existing', 'annual', 'overall', 'approximately', 'about']);
 const SIMPLE_NUMBER_WORDS = new Map('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred'
@@ -3473,19 +3556,32 @@ function quantifiedClaimSubject(value = '') {
 }
 
 function quantifiedClaimGroundingIssue(record = {}, units = []) {
-  if (!NEGATED_DURATION_CLAIM.test(String(record?.text || ''))) return null;
+  if (!DURATION_CLAIM.test(String(record?.text || ''))) return null;
   const signatures = quantifiedClaimSignatures(record?.text);
   const subject = quantifiedClaimSubject(record?.text);
   if (!signatures.length || subject.length < 2 || !(record?.evidenceIds || []).length) return null;
   const rows = normaliseSourceUnits(units);
   const indexById = new Map(rows.map((unit, index) => [String(unit.id), index]));
-  const windows = [...new Set((record.evidenceIds || []).map((id) => indexById.get(String(id)))
-    .filter(Number.isInteger))].map((index) => rows.slice(Math.max(0, index - 1), Math.min(rows.length, index + 2))
-      .map((unit) => unit.text).join(' '));
-  const grounded = signatures.every((signature) => windows.some((passage) => {
-    if (!quantifiedClaimSignatures(passage).includes(signature)) return false;
-    const words = new Set(contentTokens(passage).map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
-    return subject.every((token) => words.has(token));
+  const citedIndexes = [...new Set((record.evidenceIds || []).map((id) => indexById.get(String(id)))
+    .filter(Number.isInteger))];
+  const clauses = [];
+  for (const index of citedIndexes) {
+    for (let rowIndex = Math.max(0, index - 1); rowIndex < Math.min(rows.length, index + 2); rowIndex += 1) {
+      const rowClauses = String(rows[rowIndex].text || '').split(/(?<=[.!?;])\s+|,\s+(?=(?:and|but|while|whereas)\b)/i);
+      rowClauses.forEach((clause, clauseIndex) => clauses.push({ rowIndex, clauseIndex, text: clause }));
+    }
+  }
+  const uniqueClauses = [...new Map(clauses.map((clause) => [`${clause.rowIndex}:${clause.clauseIndex}`, clause])).values()]
+    .sort((left, right) => left.rowIndex - right.rowIndex || left.clauseIndex - right.clauseIndex);
+  const normalisedWords = (value) => new Set(contentTokens(value)
+    .map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
+  const grounded = signatures.every((signature) => uniqueClauses.some((clause, clauseIndex) => {
+    if (!quantifiedClaimSignatures(clause.text).includes(signature)) return false;
+    const direct = normalisedWords(clause.text);
+    if (subject.every((token) => direct.has(token))) return true;
+    if (!/\b(?:it|its|they|them|their|those|these)\b/i.test(clause.text) || clauseIndex < 1) return false;
+    const preceding = normalisedWords(uniqueClauses[clauseIndex - 1].text);
+    return subject.every((token) => preceding.has(token));
   }));
   return grounded ? null : { signatures, subject };
 }
@@ -4181,6 +4277,7 @@ module.exports = {
   describesUsualPractice,
   isNotAnAction,
   isSocialAside,
+  isAobPersonalAside,
   isFarewellAction,
   softenBestEffortCompletion,
   demoteSupersededRows,
@@ -4192,6 +4289,7 @@ module.exports = {
   ownerTakesItOn,
   groundRowAttributions,
   mergeDuplicateCommitments,
+  splitExplicitMultiOwnerActions,
   applyChainedTimingRule,
   timingAttachedToEarlierStep,
   timingReportedForDifferentActor,

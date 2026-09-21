@@ -228,6 +228,7 @@ const {
   applyCompletedInMeetingCheckResults,
   applyChainedTimingRule,
   mergeDuplicateCommitments,
+  splitExplicitMultiOwnerActions,
   applyRequesterOwnerRule,
   groundRowAttributions,
   demoteSupersededRows,
@@ -236,6 +237,7 @@ const {
   describesUsualPractice,
   isNotAnAction,
   isSocialAside,
+  isAobPersonalAside,
   isFarewellAction,
   softenBestEffortCompletion,
   discussionActionCandidates,
@@ -11280,11 +11282,13 @@ function highConfidenceRefereedAction(action, candidates = [], sourceUnits = [])
 
 function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
   if (!action?.action || !Array.isArray(action.evidenceIds) || !action.evidenceIds.length) return false;
-  if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length) return false;
+  const explicitDocumentation = explicitFutureDocumentationCommitment(action, sourceUnits);
+  if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length && !explicitDocumentation) return false;
   const sourceInfo = hybridActionSourceInfo(action, candidates);
   const evidence = surroundingEvidence(sourceUnits, action.evidenceIds).filter((unit) => unit.cited)
     .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
   if (isIdeaOnlyContemplation(`${action.action} ${evidence}`)) return false;
+  if (explicitDocumentation) return true;
   const support = evidenceSupportScore(action.action, evidence);
   const disposition = actionEvidenceDisposition(action.action, evidence);
   if (!['committed', 'accepted_request', 'conditional_commitment'].includes(disposition)) return false;
@@ -11295,6 +11299,24 @@ function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
     || (sourceInfo.discoverySources.length >= 2 && support >= 0.24)
     || (sourceInfo.explicitDeterministic && support >= 0.3)
     || highConfidenceRefereedAction(action, candidates, sourceUnits);
+}
+
+// A concrete first-person promise to write the meeting record does not need a
+// second model pass. Keep this narrow: one named owner must speak the cited
+// future-tense words, and the public action must share their material subject.
+function explicitFutureDocumentationCommitment(action = {}, sourceUnits = []) {
+  if ((action.owners || []).length !== 1
+    || !/^\s*(?:write(?: down)?|document|record|note)\b/i.test(String(action.action || ''))) return false;
+  const owner = String(action.owners[0] || '').toLowerCase();
+  const ownerFirst = owner.split(/\s+/)[0];
+  const cited = new Set((action.evidenceIds || []).map(String));
+  return normaliseSourceUnits(sourceUnits).some((unit) => {
+    if (!cited.has(String(unit.id))) return false;
+    const speaker = String(unit.speaker || '').toLowerCase();
+    if (speaker !== owner && speaker.split(/\s+/)[0] !== ownerFirst) return false;
+    if (!/\bi(?:'m| am)\s+going\s+to\s+(?:write(?: down)?|document|record|note)\b|\bi(?:'ll| will)\s+(?:write(?: down)?|document|record|note)\b/i.test(unit.text)) return false;
+    return hybridContentTokenOverlap(action.action, unit.text) >= 0.24;
+  });
 }
 
 // A direct commitment which is repeated in the meeting's action recap is
@@ -12652,7 +12674,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         repairPrompt: callOptions.repairPrompt,
         combineResults: callOptions.combineResults,
         onAttempt: (attempt) => progress(pass,
-          attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — retry ${attempt.attempt} of ${attempt.maxAttempts}…` : baseMessage,
+          attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — still working (attempt ${attempt.attempt} of ${attempt.maxAttempts})…` : baseMessage,
           [{ ...attempt, ok: null }])
       });
       const resultCounts = meetingAgentResultCounts(response.result);
@@ -13655,11 +13677,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // review-gated solely according to which Agent response property carried it.
   const safeProposalPromotions = proposalCandidates.filter((record) =>
     !isVagueReconstructedAction(record.action)
+    && !isAobPersonalAside(record, draft.sourceUnits)
     && safeAgentProposalPromotion(record, ensemble, draft.sourceUnits));
   automatic.push(...safeProposalPromotions.filter((record) => !automatic.some((existing) =>
     hybridCandidateMatchesRecord({ recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record }, existing))));
   const remainingProposalCandidates = proposalCandidates.filter((record) =>
     !safeProposalPromotions.includes(record) && !isVagueReconstructedAction(record.action)
+    && !isAobPersonalAside(record, draft.sourceUnits)
     && isReviewableActionProposal(record, draft.sourceUnits));
   const finalPublishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
     .filter((record) => !isVagueReconstructedAction(record.action));
@@ -13749,7 +13773,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }
   if (correctnessChecksEnabled()) {
     const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits);
-    const deduped = mergeDuplicateCommitments(chained.actions);
+    const separated = splitExplicitMultiOwnerActions(chained.actions, draft.sourceUnits);
+    const deduped = mergeDuplicateCommitments(separated.actions);
     const ownersChecked = applyRequesterOwnerRule(deduped.actions, draft.sourceUnits);
     const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
     timingChecked = { actions: softened.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags, ...softened.flags] };
@@ -13853,7 +13878,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // discusses - "Book a holiday." - is offered, not published. The signal is
     // statistical, so a genuine late commitment costs the reviewer one click
     // rather than being lost.
-    const asides = timingChecked.actions.filter((action) => isSocialAside(action, draft.sourceUnits));
+    const asides = timingChecked.actions.filter((action) =>
+      isSocialAside(action, draft.sourceUnits) || isAobPersonalAside(action, draft.sourceUnits));
     if (asides.length) {
       timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !asides.includes(action)) };
       const at = timingChecked.actions.length;
@@ -15389,6 +15415,7 @@ router.stagedEvaluation = {
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
   safeAgentProposalPromotion,
+  explicitFutureDocumentationCommitment,
   repeatedOwnerCommitment,
   criticConfirmedActionPromotions,
   corroboratedOmittedDiscussionRecords,

@@ -298,8 +298,8 @@
     return new Promise(function (resolve) {
       var remaining = seconds;
       function tick() {
-        if (remaining <= 0) { setStatus('Retrying the agent now...', false, stage); resolve(); return; }
-        setStatus('Microsoft is temporarily busy. Retrying in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + ' (attempt ' + nextAttempt + ' of ' + totalAttempts + ')...', false, stage);
+        if (remaining <= 0) { setStatus('Continuing now...', false, stage); resolve(); return; }
+        setStatus('Microsoft is temporarily busy. Continuing in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + ' (attempt ' + nextAttempt + ' of ' + totalAttempts + ')...', false, stage);
         remaining -= 1;
         window.setTimeout(tick, 1000);
       }

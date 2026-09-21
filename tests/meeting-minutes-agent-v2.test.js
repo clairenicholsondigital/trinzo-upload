@@ -45,6 +45,7 @@ const {
   hybridCandidateLedgerFromResult,
   highConfidenceRefereedAction,
   safeAgentProposalPromotion,
+  explicitFutureDocumentationCommitment,
   dedupeHybridActionProposals
 } = require('../routes/api').stagedEvaluation;
 
@@ -640,6 +641,22 @@ test('safe Agent proposals require grounded commitments plus independent support
   assert.equal(safeAgentProposalPromotion({
     action: 'Think about parking options.', owners: ['Priya'], evidenceIds: ['T2301'], reviewFlagIds: []
   }, candidates.map((candidate) => ({ ...candidate, text: 'Think about parking options.', evidenceIds: ['T2301'] })), units), false);
+});
+
+test('a concrete first-person future documentation commitment is safe to promote', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T2400', speaker: 'Jacqui Fox', text: "I'm going to write down that the end of July release date is at risk so nobody is surprised." },
+    { id: 'T2401', speaker: 'Alex Stone', text: 'The release date is still under discussion.' }
+  ]);
+  const action = {
+    action: 'Write down that the end of July release date is at risk.',
+    owners: ['Jacqui Fox'], evidenceIds: ['T2400'], reviewFlagIds: ['proposal-review']
+  };
+  assert.equal(explicitFutureDocumentationCommitment(action, units), true);
+  assert.equal(safeAgentProposalPromotion(action, [], units), true);
+  assert.equal(explicitFutureDocumentationCommitment({
+    action: 'Write down the release risk.', owners: ['Alex Stone'], evidenceIds: ['T2400']
+  }, units), false, 'the cited speaker must be the owner');
 });
 
 test('discussion consolidation removes repeated records but preserves distinct decisions', () => {
