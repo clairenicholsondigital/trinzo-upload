@@ -161,6 +161,50 @@ test('a completed walkthrough is held back when its exact evidence quote exceeds
   assert.deepEqual(result.rejected, []);
 });
 
+test('cited live request triggers completion checking even when an action invents a written artefact', () => {
+  const units = [
+    { id: 'T0000', speaker: 'Morgan', text: 'The existing QMS manual is available in the shared folder.' },
+    { id: 'T0001', speaker: 'Morgan', text: 'If you could take us just through the customer order and information flow, that would be helpful.' },
+    { id: 'T0002', speaker: 'Alex', text: 'Customers submit orders through the portal and the service team checks the account.' },
+    { id: 'T0003', speaker: 'Alex', text: 'The warehouse then allocates, packs and dispatches the goods.' }
+  ];
+  const actions = [{
+    action: 'Provide a written summary of the customer order and information flow.',
+    owners: ['Alex'], evidenceIds: ['T0001', 'T0002']
+  }];
+  const items = V.completedInMeetingCheckItems(actions, units);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].evidenceTriggered, true);
+  assert.equal(items[0].unsupportedWrittenFormat, true);
+  assert.match(V.completedInMeetingCheckPrompt(items), /Action wording is an untrusted restatement/i);
+  const result = V.applyCompletedInMeetingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'completed',
+    completionQuote: 'Customers submit orders through the portal and the service team checks the account.'
+  }]);
+  assert.equal(result.actions.length, 0);
+  assert.equal(result.completed.length, 1);
+});
+
+test('explicit future written follow-up remains eligible as outstanding work', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Morgan', text: 'Could you take us through the customer order and information flow?' },
+    { id: 'T0002', speaker: 'Alex', text: 'Customers order through the portal and the warehouse dispatches the goods.' },
+    { id: 'T0003', speaker: 'Alex', text: "I'll send a written summary tomorrow with the full process." }
+  ];
+  const actions = [{
+    action: 'Send a written summary of the customer order and information flow tomorrow.',
+    owners: ['Alex'], evidenceIds: ['T0001', 'T0002', 'T0003']
+  }];
+  const items = V.completedInMeetingCheckItems(actions, units);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].unsupportedWrittenFormat, false);
+  const result = V.applyCompletedInMeetingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'outstanding', completionQuote: ''
+  }]);
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.completed.length, 0);
+});
+
 test('the final lifecycle gate withholds only quote-verified non-outstanding work', () => {
   const units = [
     { id: 'T0001', speaker: 'Alex', text: 'Could you explain the order process now?' },
@@ -192,6 +236,7 @@ test('the final lifecycle gate keeps an action when non-outstanding evidence is 
   assert.equal(result.actions.length, 1);
   assert.equal(result.withheld.length, 0);
   assert.equal(result.rejected[0].reason, 'quote_not_found');
+  assert.match(V.finalActionLifecycleCheckPrompt(items), /Action wording is an untrusted claim/i);
 });
 
 test('ordinary deliverables are never sent through the live-delivery gate', () => {

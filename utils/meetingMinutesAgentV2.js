@@ -2308,6 +2308,7 @@ function finalActionLifecycleCheckPrompt(items = []) {
   return [
     'ACTION_CRITIC_FINAL_LIFECYCLE',
     'Each item is an Action that would otherwise be published in final meeting minutes. The transcript passage is the only authority.',
+    'The Action wording is an untrusted claim to verify, not evidence. Never infer that work remains merely because the Action names a document, written output, recipient or follow-up which the passage does not establish.',
     'Decide whether it is genuine work still outstanding after the meeting.',
     '- "outstanding": someone committed to it, accepted it, or was assigned it as work to be done after the meeting.',
     '- "not_outstanding": it is only a question, discussion, suggestion nobody accepted, status update, description of normal practice, work already completed before or during the meeting, meeting housekeeping, or work belonging only to an outside organisation.',
@@ -2491,12 +2492,32 @@ function applyOpenQuestionCheckResults(discussion = [], items = [], results = []
 // only with a verbatim completion quote. The caller retains them as an optional
 // proposal, matching the answered-action safety pattern above.
 const LIVE_DELIVERY_ACTION = /^(?:explain|demonstrate|show|present|outline|describe|play|share (?:the )?(?:screen|presentation|slides)|walk (?:us|the team|everyone) through|take (?:us|the team|everyone) through|provide (?:an? )?(?:overview|walkthrough|explanation|demonstration))\b/i;
+const LIVE_DELIVERY_REQUEST = /\b(?:(?:could|can|would)\s+you|(?:if\s+)?you\s+(?:could|can|would)|please)\b[^.?!]{0,120}\b(?:explain|demonstrate|show|present|outline|describe|play|share\s+(?:the\s+)?(?:screen|presentation|slides)|walk\b[^.?!]{0,24}\bthrough|take\b[^.?!]{0,24}\bthrough|provide\b[^.?!]{0,24}\b(?:overview|walkthrough|explanation|demonstration))\b/i;
+const ARTEFACT_FORMATS = [
+  [/\b(?:write|written)\b/i, /\b(?:write|written|write[- ]?up)\b/i],
+  [/\bsummary\b/i, /\bsummary\b/i],
+  [/\breport\b/i, /\breport\b/i],
+  [/\b(?:document|documentation)\b/i, /\b(?:document|documentation)\b/i],
+  [/\bemail\b/i, /\bemail\b/i],
+  [/\b(?:memo|paper|spreadsheet|slide deck|presentation)\b/i, /\b(?:memo|paper|spreadsheet|slide deck|presentation)\b/i]
+];
+function unsupportedArtefactFormat(action = '', passage = '') {
+  const asserted = ARTEFACT_FORMATS.filter(([actionPattern]) => actionPattern.test(action));
+  return asserted.length > 0 && asserted.some(([, evidencePattern]) => !evidencePattern.test(passage));
+}
 function completedInMeetingCheckItems(actions = [], units = []) {
   return (Array.isArray(actions) ? actions : []).map((action, index) => {
-    if (!LIVE_DELIVERY_ACTION.test(text(action?.action))) return null;
     const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 2, 18).slice(0, 36)
       .map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n');
-    return passage ? { id: `done${index + 1}`, index, action: text(action.action, 600), passage } : null;
+    const actionText = text(action?.action);
+    const actionLooksLive = LIVE_DELIVERY_ACTION.test(actionText);
+    const evidenceRequestsLive = LIVE_DELIVERY_REQUEST.test(passage);
+    if (!passage || (!actionLooksLive && !evidenceRequestsLive)) return null;
+    return {
+      id: `done${index + 1}`, index, action: text(action.action, 600), passage,
+      evidenceTriggered: !actionLooksLive && evidenceRequestsLive,
+      unsupportedWrittenFormat: unsupportedArtefactFormat(actionText, passage)
+    };
   }).filter(Boolean).slice(0, 16);
 }
 
@@ -2504,12 +2525,14 @@ function completedInMeetingCheckPrompt(items = []) {
   return [
     'ACTION_CRITIC_COMPLETED_IN_MEETING',
     'Each item is a possible outstanding action and its transcript passage. The passage is the only authority.',
+    'The Action wording is an untrusted restatement, not evidence. It may incorrectly turn a live verbal request into a future written deliverable.',
     'Decide whether the requested explanation, demonstration, presentation or walkthrough was actually delivered during this meeting.',
     '- "completed": the passage shows the requested information being explained, demonstrated or walked through in the meeting, so it is not outstanding work.',
     '- "outstanding": it was deferred, only partly delivered, or still needs to happen after the meeting.',
+    'When unsupportedWrittenFormat is true, do not treat the absence of that invented written artefact as remaining work. Judge the underlying live request. A separate written deliverable remains outstanding only when the passage explicitly commits to writing, sending or providing it after the live delivery.',
     'For "completed", give completionQuote: an exact contiguous quote of at most 25 words showing the delivery itself, not merely the request. If unsure, choose "outstanding".',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","completionQuote":"","reason":""}]}',
-    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, passage: item.passage })))}`
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, evidenceTriggered: item.evidenceTriggered, unsupportedWrittenFormat: item.unsupportedWrittenFormat, passage: item.passage })))}`
   ].join('\n\n');
 }
 
