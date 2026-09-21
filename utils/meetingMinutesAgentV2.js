@@ -56,7 +56,7 @@ const KNOWN_INTERNAL_ATTENDEE_KEYS = new Set([
   'colm o’rourke', 'jacqui fox', 'david didsbury', 'conor flynn', 'claire nicholson',
   'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally'
 ].map((name) => name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`]/g, "'").toLowerCase()));
-const MDSAP_SPOKEN_FORM = /\bmeds[\s-]*app\b/i;
+const MDSAP_SPOKEN_FORM = /\b(?:medsap|meds[\s-]*app)\b/i;
 const HALF_HOUR_SPOKEN_FORM = /\bhalf(?:[\s-]+past)?[\s-]+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\b/i;
 const HOUR_VALUES = Object.freeze({
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,

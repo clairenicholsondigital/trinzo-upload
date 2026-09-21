@@ -22,6 +22,13 @@ const OVERT_SOCIAL_REPORTING = /\b(?:joked|quipped|chatted)\b/i;
 const INCIDENTAL_ACTIVITY_REPORTING = /\b(?:mentioned|remarked|recalled)\b.{0,90}\b(?:bringing|taking|wearing|eating|drinking|weather|holiday|weekend|hobb(?:y|ies))\b/i;
 const MATERIAL_CONTENT = /\b(?:agreed|decided|approved|rejected|confirmed|committed|assigned|action(?:ed)?|will|shall|must|required|needs?\s+to|follow[- ]?up|outstanding|unresolved|blocked|dependency|deadline|target|risk|issue|problem|impact|affect(?:s|ed|ing)?|because|therefore|cost|budget|invoice|order|client|customer|supplier|audit|compliance|test|report|document|evidence|plan|procedure|policy|requirement|design|specification|review|schedule|delivery)\b/i;
 
+// Routine checks that everyone can see or hear shared meeting material are
+// plumbing, not meeting content. Keep the pattern deliberately narrow: it
+// requires both a check/verification and a conferencing medium. A real fault,
+// contingency or operational requirement remains publishable.
+const MEETING_ADMIN_CHECK = /\b(?:checks?|asks?|verif(?:y|ies|ied)|tests?|makes? sure|confirms? whether|checks? (?:whether|if)|can (?:everyone|you|participants?|attendees?)|is (?:the )?)\b.{0,100}\b(?:shared? screen|screen shar(?:e|ed|ing)|slides?|display|camera|microphone|mic|audio|sound)\b|\b(?:shared? screen|screen shar(?:e|ed|ing)|slides?|display|camera|microphone|mic|audio|sound)\b.{0,100}\b(?:visible|readable|audible|working|can be (?:seen|heard)|checks?|verif(?:y|ies|ied))\b/i;
+const MATERIAL_MEETING_TECH = /\b(?:agreed|decided|required|requirement|fallback|contingency|backup|failed|failure|fault|issue|problem|risk|blocked|prevented|delayed|unavailable|not working|could not|couldn['’]?t)\b/i;
+
 function valueText(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
 }
@@ -40,24 +47,43 @@ function isPeripheralAside(value) {
   return !MATERIAL_CONTENT.test(wording);
 }
 
-function removePersonalAsides(topics = []) {
+function isRoutineMeetingAdministration(value) {
+  const wording = valueText(value);
+  return Boolean(wording && MEETING_ADMIN_CHECK.test(wording) && !MATERIAL_MEETING_TECH.test(wording));
+}
+
+function removeNonContentAsides(topics = []) {
   return (Array.isArray(topics) ? topics : []).map((topic) => {
     const cleaned = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
       cleaned[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : [])
-        .filter((record) => !isPersonalAside(record?.text) && !isPeripheralAside(record?.text))
+        .filter((record) => !isPersonalAside(record?.text)
+          && !isPeripheralAside(record?.text)
+          && !isRoutineMeetingAdministration(record?.text))
         .map((record) => ({
           ...record,
           supportingDetails: (Array.isArray(record?.supportingDetails) ? record.supportingDetails : [])
-            .filter((detail) => !isPersonalAside(detail?.text) && !isPeripheralAside(detail?.text))
+            .filter((detail) => !isPersonalAside(detail?.text)
+              && !isPeripheralAside(detail?.text)
+              && !isRoutineMeetingAdministration(detail?.text))
         }));
     }
     return cleaned;
   }).filter((topic) => ['points', 'decisions', 'openQuestions'].some((kind) => cleanedLength(topic, kind)));
 }
 
+// Backwards-compatible name retained for callers and tests. The policy has
+// always represented non-content hygiene rather than only personal asides.
+const removePersonalAsides = removeNonContentAsides;
+
 function cleanedLength(topic, kind) {
   return Array.isArray(topic?.[kind]) ? topic[kind].length : 0;
 }
 
-module.exports = { isPersonalAside, isPeripheralAside, removePersonalAsides };
+module.exports = {
+  isPersonalAside,
+  isPeripheralAside,
+  isRoutineMeetingAdministration,
+  removeNonContentAsides,
+  removePersonalAsides
+};

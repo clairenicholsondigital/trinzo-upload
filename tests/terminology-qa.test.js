@@ -22,7 +22,7 @@ test('terminology QA marks configured transcript corrections for automatic appli
       points: [
         'Udemed and Udimed evidence was reviewed for existing products.',
         'Deta Inc, DD Inc and T Inc were named in the generated minutes.',
-        'The Meds app audit scope included S-BOM and Kappa evidence.'
+        'The Meds app and Medsap audit scope included S-BOM and Kappa evidence.'
       ]
     }],
     scope: { type: 'project', key: 'T819' }
@@ -34,6 +34,7 @@ test('terminology QA marks configured transcript corrections for automatic appli
   assert.ok(automatic.includes('DD Inc->DITA'));
   assert.ok(automatic.includes('T Inc->DITA'));
   assert.ok(automatic.includes('Meds app->MDSAP'));
+  assert.ok(automatic.includes('Medsap->MDSAP'));
   assert.ok(automatic.includes('S-BOM->SBOM'));
   assert.ok(automatic.includes('Kappa->CAPA'));
 });

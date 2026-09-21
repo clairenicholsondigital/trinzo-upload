@@ -6,7 +6,9 @@ const {
   organiseDiscussionForReview, stripClosure, retypeRows, demoteUnreadyRows,
   consolidateTopics, rehomeSupportingDetails, sortByEvidence, unitIndex,
   removeAnsweredQuestionClauses, removeContradictoryResponsibilities,
-  isPersonalAside, isPeripheralAside, removePersonalAsides
+  isPersonalAside, isPeripheralAside, isRoutineMeetingAdministration,
+  removePersonalAsides, normaliseDecisionTopicHeadings,
+  dedupeAdjacentRestatements, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -73,6 +75,106 @@ test('brief social reporting is filtered without suppressing material updates', 
   assert.equal(isPeripheralAside('Sam joked about the weather before the meeting.'), true);
   assert.equal(isPeripheralAside('Morgan mentioned that the validation report remains blocked by supplier approval.'), false);
   assert.equal(isPeripheralAside('Sam mentioned the audit requirement and will send the evidence tomorrow.'), false);
+});
+
+test('routine meeting technology checks are filtered without suppressing substantive controls', () => {
+  for (const wording of [
+    'The presenter checks if the shared screen is visible and readable to participants.',
+    'Morgan asks whether everyone can hear the audio.',
+    'Priya verifies that the slides can be seen.'
+  ]) assert.equal(isRoutineMeetingAdministration(wording), true, wording);
+  for (const wording of [
+    'The team agreed a backup screen-sharing route if the primary link fails.',
+    'The microphone fault delayed the client interview.',
+    'Audio recording is required by the evidence procedure.'
+  ]) assert.equal(isRoutineMeetingAdministration(wording), false, wording);
+});
+
+test('routine meeting technology checks are removed from primary and supporting rows', () => {
+  const cleaned = removePersonalAsides([{
+    id: 'topic-1', topic: 'Demonstration',
+    points: [{
+      id: 'p1', text: 'The prototype workflow was demonstrated.', evidenceIds: ['T0001'],
+      supportingDetails: [
+        { id: 's1', text: 'Morgan checks if the screen shared is visible.', evidenceIds: ['T0002'] },
+        { id: 's2', text: 'The screen-sharing failure delayed the demonstration.', evidenceIds: ['T0003'] }
+      ]
+    }, { id: 'p2', text: 'Morgan checks if the screen shared is visible and readable.', evidenceIds: ['T0002'] }],
+    decisions: [], openQuestions: []
+  }]);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['p1']);
+  assert.deepEqual(cleaned[0].points[0].supportingDetails.map((row) => row.id), ['s2']);
+});
+
+test('stale decision wrappers are removed only from topics with no decisions', () => {
+  const cleaned = normaliseDecisionTopicHeadings([{
+    id: 't1', topic: 'Decision on opportunity follow-up actions',
+    points: [{ id: 'p1', text: 'The exact approach remains uncertain.' }], decisions: [], openQuestions: []
+  }, {
+    id: 't2', topic: 'Decision about release timing', points: [],
+    decisions: [{ id: 'd1', text: 'The release was approved for Monday.' }], openQuestions: []
+  }, {
+    id: 't3', topic: 'Decision to possibly use a password',
+    points: [{ id: 'p2', text: 'Password use remains a possibility.' }], decisions: [], openQuestions: []
+  }]);
+  assert.deepEqual(cleaned.map((topic) => topic.topic), [
+    'Opportunity follow-up actions', 'Decision about release timing', 'Possibly use a password'
+  ]);
+});
+
+test('adjacent same-kind restatements with shared evidence merge conservatively', async () => {
+  const discussion = [{
+    id: 't1', topic: 'Lead handling', decisions: [], openQuestions: [],
+    points: [{
+      id: 'p1', text: 'Information is brought to the leads to support reprioritisation and subsequent planning.',
+      evidenceIds: ['T0001', 'T0004'], reviewFlagIds: ['f1'], supportingDetails: []
+    }, {
+      id: 'p2', text: 'The information is brought to the leads for reprioritisation, planning and execution.',
+      evidenceIds: ['T0004', 'T0005'], reviewFlagIds: [], supportingDetails: [{ id: 's1', text: 'Results feed back into the process.' }]
+    }]
+  }];
+  const cleaned = await dedupeAdjacentRestatements(discussion, {
+    encode: (values) => values.map(() => [1, 0])
+  });
+  assert.equal(cleaned[0].points.length, 1);
+  assert.equal(cleaned[0].points[0].id, 'p2', 'the more informative row is retained');
+  assert.deepEqual(cleaned[0].points[0].evidenceIds, ['T0004', 'T0005', 'T0001']);
+  assert.deepEqual(cleaned[0].points[0].reviewFlagIds, ['f1']);
+  assert.deepEqual(cleaned[0].points[0].supportingDetails.map((row) => row.id), ['s1']);
+});
+
+test('restatement cleanup preserves rows with distinct figures, polarity or no shared evidence', async () => {
+  const discussion = [{
+    id: 't1', topic: 'Review', decisions: [], openQuestions: [],
+    points: [
+      { id: 'p1', text: 'The review covers 17 records.', evidenceIds: ['T0001'] },
+      { id: 'p2', text: 'The review covers 43 records.', evidenceIds: ['T0001'] },
+      { id: 'p3', text: 'The team will approve the plan.', evidenceIds: ['T0002'] },
+      { id: 'p4', text: 'The team will not approve the plan.', evidenceIds: ['T0002'] },
+      { id: 'p5', text: 'The report is ready for review.', evidenceIds: ['T0003'] },
+      { id: 'p6', text: 'The report is ready for review.', evidenceIds: ['T0004'] },
+      { id: 'p7', text: 'The supplier submitted the audit certificate.', evidenceIds: ['T0005'] },
+      { id: 'p8', text: 'The client requested a revised delivery schedule.', evidenceIds: ['T0005'] }
+    ]
+  }];
+  const cleaned = await dedupeAdjacentRestatements(discussion, {
+    encode: (values) => values.map(() => [1, 0])
+  });
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']);
+});
+
+test('the publication boundary applies content, heading and restatement safeguards together', async () => {
+  const cleaned = await finaliseDiscussionForPublication([{
+    id: 't1', topic: 'Decision on delivery approach', decisions: [], openQuestions: [],
+    points: [
+      { id: 'admin', text: 'Morgan checks whether the shared screen is readable.', evidenceIds: ['T0001'] },
+      { id: 'p1', text: 'The proposed delivery approach remains under review.', evidenceIds: ['T0002'] },
+      { id: 'p2', text: 'The delivery approach is still being reviewed.', evidenceIds: ['T0002'] }
+    ]
+  }], { encode: (values) => values.map(() => [1, 0]) });
+  assert.equal(cleaned[0].topic, 'Delivery approach');
+  assert.equal(cleaned[0].points.length, 1);
+  assert.equal(cleaned[0].points[0].id, 'p1');
 });
 
 test('peripheral reporting is removed from primary rows and supporting context', () => {

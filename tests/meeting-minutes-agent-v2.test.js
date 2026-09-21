@@ -96,11 +96,13 @@ test('discussion anchors are stable, ordered and carry tagged evidence windows',
 
 test('MDSAP spoken variants are corrected before generation and never become review flags', () => {
   const terminologyUnits = normaliseSourceUnits([
-    { id: 'T0100', speaker: 'Alex', timestamp: '00:04:00', text: 'The Meds app audit is next month.', classification: 'keep', confidence: 0.96 }
+    { id: 'T0100', speaker: 'Alex', timestamp: '00:04:00', text: 'The Meds app audit is next month.', classification: 'keep', confidence: 0.96 },
+    { id: 'T0101', speaker: 'Morgan', timestamp: '00:04:10', text: 'The Medsap evidence is ready.', classification: 'keep', confidence: 0.96 }
   ]);
   assert.equal(terminologyUnits[0].text, 'The MDSAP audit is next month.');
+  assert.equal(terminologyUnits[1].text, 'The MDSAP evidence is ready.');
   assert.match(preparedTranscriptFromUnits(terminologyUnits), /MDSAP audit/);
-  assert.doesNotMatch(preparedTranscriptFromUnits(terminologyUnits), /Meds app/i);
+  assert.doesNotMatch(preparedTranscriptFromUnits(terminologyUnits), /Meds(?:\s+app|ap)/i);
 
   const result = normaliseAgentResult({
     discussion: [{
@@ -117,12 +119,13 @@ test('MDSAP spoken variants are corrected before generation and never become rev
   assert.equal(result.discussion[0].topic, 'MDSAP programme');
   assert.equal(result.discussion[0].points[0].text, 'The MDSAP audit is next month.');
   assert.equal(result.reviewFlags.length, 0);
-  assert.equal(normaliseKnownTerms('medsapp and meds app'), 'MDSAP and MDSAP');
+  assert.equal(normaliseKnownTerms('Medsap, medsapp and meds app'), 'MDSAP, MDSAP and MDSAP');
   assert.deepEqual(normaliseKnownTermsDeep({ label: 'Meds-app' }), { label: 'MDSAP' });
   const savedAt = new Date('2026-09-08T12:34:00.000Z');
   assert.equal(normaliseKnownTermsDeep(savedAt), savedAt);
   assert.equal(JSON.stringify(normaliseKnownTermsDeep({ updatedAt: savedAt })), '{"updatedAt":"2026-09-08T12:34:00.000Z"}');
   assert.equal(isAutomaticTerminologyFlag({ message: 'Confirm Meds app.' }), true);
+  assert.equal(isAutomaticTerminologyFlag({ message: 'Confirm Medsap.' }), true);
 });
 
 test('generated timing rejects raw action sentences and task durations but keeps the action', () => {
@@ -163,18 +166,18 @@ test('known transcription variants are unconditionally normalised throughout nes
     normaliseKnownTerms('Udimed, Udemed, udimed and UDEMED'),
     'EUDAMED, EUDAMED, EUDAMED and EUDAMED'
   );
-  assert.equal(normaliseKnownTerms('Deta Inc, DETA INC, DD Inc and T Inc.'), 'DITA, DITA, DITA and DITA.');
+  assert.equal(normaliseKnownTerms('Deta Inc, DETA INC, DD Inc, T Inc and Medsap.'), 'DITA, DITA, DITA, DITA and MDSAP.');
   const result = normaliseKnownTermsDeep({
     details: { meetingTitle: 'Udemed registration review for DD Inc' },
     discussion: [{ topic: 'Udimed', points: [{ text: 'T Inc will review UDEMED registration.' }] }],
-    actions: [{ action: 'Upload the udimed evidence for DETA INC.' }],
+    actions: [{ action: 'Upload the udimed Medsap evidence for DETA INC.' }],
     reviewFlags: [{ message: 'Check UdiMed wording for t inc.' }]
   });
-  assert.doesNotMatch(JSON.stringify(result), /(?:udimed|udemed|deta\s+inc|dd\s+inc|t\s+inc)/i);
+  assert.doesNotMatch(JSON.stringify(result), /(?:udimed|udemed|deta\s+inc|dd\s+inc|t\s+inc|medsap)/i);
   assert.equal(result.details.meetingTitle, 'EUDAMED registration review for DITA');
   assert.equal(result.discussion[0].topic, 'EUDAMED');
   assert.equal(result.discussion[0].points[0].text, 'DITA will review EUDAMED registration.');
-  assert.equal(result.actions[0].action, 'Upload the EUDAMED evidence for DITA.');
+  assert.equal(result.actions[0].action, 'Upload the EUDAMED MDSAP evidence for DITA.');
   assert.equal(result.reviewFlags[0].message, 'Check EUDAMED wording for DITA.');
 });
 

@@ -55,7 +55,11 @@ const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semantic
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
-const { organiseDiscussionForReview, removePersonalAsides } = require('../utils/canonicalMinutes/discussionOrganiser');
+const {
+  organiseDiscussionForReview,
+  removePersonalAsides,
+  finaliseDiscussionForPublication
+} = require('../utils/canonicalMinutes/discussionOrganiser');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -13499,7 +13503,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // later question, attribution and fidelity checks. Flag reconciliation
     // below then drops any warning whose only target was removed here.
     const finalQuantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
-    finalDiscussion = removePersonalAsides(finalQuantifiedGrounding.discussion);
+    finalDiscussion = await finaliseDiscussionForPublication(finalQuantifiedGrounding.discussion);
     if (finalQuantifiedGrounding.removed.length) console.log(JSON.stringify({
       event: 'meeting_agent_final_quantified_claim_filter', journeyId: draft.draftId,
       removed: finalQuantifiedGrounding.removed.map((item) => ({ id: item.id, signatures: item.signatures, subject: item.subject }))

@@ -10,7 +10,13 @@
 // fallback. Record ids, evidence ids and review-flag links are preserved.
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
-const { isPersonalAside, isPeripheralAside, removePersonalAsides } = require('./discussionContentPolicy');
+const {
+  isPersonalAside,
+  isPeripheralAside,
+  isRoutineMeetingAdministration,
+  removeNonContentAsides,
+  removePersonalAsides
+} = require('./discussionContentPolicy');
 
 const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should', 'are', 'was', 'were', 'has', 'have', 'been']);
 const ROW_KINDS = ['points', 'decisions', 'openQuestions'];
@@ -583,6 +589,110 @@ function sortByEvidence(topics, index) {
 }
 
 // ---------------------------------------------------------------------------
+// 7. Final publication boundary
+// ---------------------------------------------------------------------------
+
+const DECISION_HEADING_PREFIX = /^decision\s*(?:(?:on|about|regarding|concerning|over|for|to|that)\b|[:\-–—])\s*/i;
+const ROW_NUMBER = /\b\d+(?:[.,]\d+)?%?\b/g;
+const ROW_NEGATION = /\b(?:no|not|never|cannot|can['’]?t|won['’]?t|wouldn['’]?t|declin(?:e|ed)|reject(?:ed)?|refus(?:e|ed))\b/i;
+const ROW_UNCERTAINTY = /\b(?:uncertain(?:ty)?|unsure|possibly|perhaps|maybe|might|could|not sure|not yet)\b/i;
+
+function normaliseDecisionTopicHeadings(topics = []) {
+  return (Array.isArray(topics) ? topics : []).map((topic) => {
+    if ((Array.isArray(topic?.decisions) ? topic.decisions : []).length) return topic;
+    const current = text(topic?.topic, 220);
+    const stripped = current.replace(DECISION_HEADING_PREFIX, '').trim();
+    if (!stripped || stripped === current) return topic;
+    return { ...topic, topic: stripped.charAt(0).toUpperCase() + stripped.slice(1) };
+  });
+}
+
+function valueSet(value, pattern) {
+  return new Set((String(value || '').match(pattern) || []).map((item) => item.toLowerCase()));
+}
+
+function sameSet(left, right) {
+  if (left.size !== right.size) return false;
+  for (const value of left) if (!right.has(value)) return false;
+  return true;
+}
+
+function rowsSafeToCompare(left, right) {
+  const leftNumbers = valueSet(left?.text, ROW_NUMBER);
+  const rightNumbers = valueSet(right?.text, ROW_NUMBER);
+  if ((leftNumbers.size || rightNumbers.size) && !sameSet(leftNumbers, rightNumbers)) return false;
+  if (ROW_NEGATION.test(text(left?.text)) !== ROW_NEGATION.test(text(right?.text))) return false;
+  if (ROW_UNCERTAINTY.test(text(left?.text)) !== ROW_UNCERTAINTY.test(text(right?.text))) return false;
+  const evidence = new Set(Array.isArray(left?.evidenceIds) ? left.evidenceIds : []);
+  return (Array.isArray(right?.evidenceIds) ? right.evidenceIds : []).some((id) => evidence.has(id));
+}
+
+function mergeRestatementRecords(left, right) {
+  const leftWeight = contentTokens(left?.text).size + (left?.supportingDetails || []).length;
+  const rightWeight = contentTokens(right?.text).size + (right?.supportingDetails || []).length;
+  // On equal information weight prefer the later formulation: adjacent
+  // restatements commonly refine the first wording, and transcript order is
+  // retained through the merged evidence either way.
+  const preferred = rightWeight >= leftWeight ? right : left;
+  const other = preferred === left ? right : left;
+  const details = [...(preferred.supportingDetails || []), ...(other.supportingDetails || [])];
+  return {
+    ...preferred,
+    evidenceIds: [...new Set([...(preferred.evidenceIds || []), ...(other.evidenceIds || [])])].slice(0, 12),
+    reviewFlagIds: [...new Set([...(preferred.reviewFlagIds || []), ...(other.reviewFlagIds || [])])],
+    supportingDetails: details.filter((detail, detailIndex) => details.findIndex((candidate) =>
+      text(candidate?.text).toLowerCase() === text(detail?.text).toLowerCase()) === detailIndex)
+  };
+}
+
+async function dedupeAdjacentRestatements(topics = [], options = {}) {
+  const cloned = (Array.isArray(topics) ? topics : []).map(cloneTopic);
+  const candidates = [];
+  for (const topic of cloned) {
+    for (const kind of ROW_KINDS) {
+      const rows = topic[kind] || [];
+      for (let index = 1; index < rows.length; index += 1) {
+        if (rowsSafeToCompare(rows[index - 1], rows[index])) {
+          candidates.push({ topic, kind, index, left: rows[index - 1], right: rows[index] });
+        }
+      }
+    }
+  }
+  if (!candidates.length) return cloned;
+  let vectors = null;
+  try {
+    const values = candidates.flatMap(({ left, right }) => [text(left.text), text(right.text)]);
+    const encode = typeof options.encode === 'function' ? options.encode : (input) => encodeViaWorker(input, {});
+    vectors = await encode(values);
+  } catch { vectors = null; }
+  // Work backwards so removing a later row cannot invalidate an earlier
+  // candidate's stored index. Shared evidence is already required. Semantic
+  // agreement must also carry a meaningful lexical core; this catches genuine
+  // paraphrases without collapsing two different facts drawn from one turn.
+  for (let candidateIndex = candidates.length - 1; candidateIndex >= 0; candidateIndex -= 1) {
+    const candidate = candidates[candidateIndex];
+    const rows = candidate.topic[candidate.kind];
+    if (rows[candidate.index - 1] !== candidate.left || rows[candidate.index] !== candidate.right) continue;
+    const semantic = vectors?.[candidateIndex * 2] && vectors?.[candidateIndex * 2 + 1]
+      ? cosine(vectors[candidateIndex * 2], vectors[candidateIndex * 2 + 1]) : 0;
+    const lexical = overlap(candidate.left.text, candidate.right.text);
+    const semanticMatch = semantic >= Number(options.semanticThreshold || 0.70)
+      && lexical >= Number(options.minimumLexicalOverlap || 0.35);
+    const lexicalMatch = lexical >= Number(options.lexicalThreshold || 0.82);
+    if (!semanticMatch && !lexicalMatch) continue;
+    rows.splice(candidate.index - 1, 2, mergeRestatementRecords(candidate.left, candidate.right));
+  }
+  return cloned;
+}
+
+async function finaliseDiscussionForPublication(discussion = [], options = {}) {
+  let topics = removeNonContentAsides(discussion);
+  topics = normaliseDecisionTopicHeadings(topics);
+  topics = await dedupeAdjacentRestatements(topics, options);
+  return topics;
+}
+
+// ---------------------------------------------------------------------------
 
 async function organiseDiscussionForReview(discussion = [], sourceUnits = [], options = {}) {
   const index = unitIndex(sourceUnits);
@@ -613,6 +723,8 @@ module.exports = {
   stripClosure,
   isPersonalAside,
   isPeripheralAside,
+  isRoutineMeetingAdministration,
+  removeNonContentAsides,
   removePersonalAsides,
   isVerbatimUnit,
   dropVerbatimSupporting,
@@ -628,5 +740,8 @@ module.exports = {
   consolidateTopics,
   rehomeSupportingDetails,
   sortByEvidence,
+  normaliseDecisionTopicHeadings,
+  dedupeAdjacentRestatements,
+  finaliseDiscussionForPublication,
   unitIndex
 };
