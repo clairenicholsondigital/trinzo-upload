@@ -158,19 +158,24 @@ test('generated timing trims dependency lead-ins and retains concise valid timin
   }
 });
 
-test('Udimed is unconditionally normalised to EUDAMED throughout nested minutes data', () => {
-  assert.equal(normaliseKnownTerms('Udimed, udimed and UDIMED'), 'EUDAMED, EUDAMED and EUDAMED');
+test('known transcription variants are unconditionally normalised throughout nested minutes data', () => {
+  assert.equal(
+    normaliseKnownTerms('Udimed, Udemed, udimed and UDEMED'),
+    'EUDAMED, EUDAMED, EUDAMED and EUDAMED'
+  );
+  assert.equal(normaliseKnownTerms('Deta Inc, DETA INC and T Inc.'), 'DITA, DITA and DITA.');
   const result = normaliseKnownTermsDeep({
-    details: { meetingTitle: 'Udimed registration review' },
-    discussion: [{ topic: 'Udimed', points: [{ text: 'Review UDIMED registration.' }] }],
-    actions: [{ action: 'Upload the udimed evidence.' }],
-    reviewFlags: [{ message: 'Check UdiMed wording.' }]
+    details: { meetingTitle: 'Udemed registration review for Deta Inc' },
+    discussion: [{ topic: 'Udimed', points: [{ text: 'T Inc will review UDEMED registration.' }] }],
+    actions: [{ action: 'Upload the udimed evidence for DETA INC.' }],
+    reviewFlags: [{ message: 'Check UdiMed wording for t inc.' }]
   });
-  assert.doesNotMatch(JSON.stringify(result), /udimed/i);
-  assert.equal(result.details.meetingTitle, 'EUDAMED registration review');
+  assert.doesNotMatch(JSON.stringify(result), /(?:udimed|udemed|deta\s+inc|t\s+inc)/i);
+  assert.equal(result.details.meetingTitle, 'EUDAMED registration review for DITA');
   assert.equal(result.discussion[0].topic, 'EUDAMED');
-  assert.equal(result.actions[0].action, 'Upload the EUDAMED evidence.');
-  assert.equal(result.reviewFlags[0].message, 'Check EUDAMED wording.');
+  assert.equal(result.discussion[0].points[0].text, 'DITA will review EUDAMED registration.');
+  assert.equal(result.actions[0].action, 'Upload the EUDAMED evidence for DITA.');
+  assert.equal(result.reviewFlags[0].message, 'Check EUDAMED wording for DITA.');
 });
 
 test('UK half-hour wording is parsed and does not create a false uncertainty flag', () => {

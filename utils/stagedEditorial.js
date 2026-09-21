@@ -1,5 +1,7 @@
 'use strict';
 
+const { normaliseDomainTerms } = require('./domainTerms');
+
 // Dependency-free editorial helpers for the staged meeting-minutes flow.
 //
 // These run AFTER extraction/generation, inside the existing stage, so the
@@ -515,8 +517,8 @@ function compactStagedDiscussionCards(cards, options = {}) {
 }
 
 function normaliseHumanDiscussionTerm(value) {
-  return String(value || '')
-    .replace(/\b(?:udimed|udamed|eudamed)\b/gi, 'EUDAMED')
+  return normaliseDomainTerms(String(value || ''))
+    .replace(/\budamed\b/gi, 'EUDAMED')
     .replace(/\bDoC's\b/g, 'DoCs')
     .replace(/\bWhse\b/g, 'Warehouse')
     .replace(/\bfront[- ]?end everything\b/ig, 'front-end work')

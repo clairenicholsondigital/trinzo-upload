@@ -63,7 +63,7 @@ const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
-const { normaliseUdimedDeep } = require('../utils/domainTerms');
+const { normaliseDomainTermsDeep } = require('../utils/domainTerms');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
@@ -1442,7 +1442,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     message: `The meeting type was set to "${suggestedType}" from the discussion itself - ${meetingTypeSuggestion.supportedHints.length} of that type's topic areas recur across ${meetingTypeSuggestion.totalMatchedEvents} moments in the transcript, while the title alone reads as a general project review. Change it if that is not what this meeting was.`
   }] : [];
 
-  return normaliseUdimedDeep({
+  return normaliseDomainTermsDeep({
     ok: true,
     staged: true,
     stagedStage: 'details',
@@ -5780,7 +5780,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       ]
     };
   }
-  return normaliseUdimedDeep({
+  return normaliseDomainTermsDeep({
     source: transcript.source,
     fileName: transcript.fileName || null,
     transcriptLength: transcript.text.length,
@@ -5962,7 +5962,7 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
 
     // Apply unconditional terminology corrections after current and prior screens have
     // been assembled, so queued results are clean both in storage and on retrieval.
-    payload = normaliseUdimedDeep(payload);
+    payload = normaliseDomainTermsDeep(payload);
 
     await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
     const resultPayload = {
@@ -6877,7 +6877,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         durationMs: Date.now() - startedAt
       }));
 
-      return res.json(normaliseUdimedDeep(detailsResponse));
+      return res.json(normaliseDomainTermsDeep(detailsResponse));
     }
 
     if (['summary', 'discussion', 'actions'].includes(requestedStage)) {
@@ -6903,7 +6903,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         humanConfirmedInputIsAuthoritative: true,
         durationMs: Date.now() - startedAt
       }));
-      return res.json(normaliseUdimedDeep(response));
+      return res.json(normaliseDomainTermsDeep(response));
     }
 
     const scriptArgs = [];

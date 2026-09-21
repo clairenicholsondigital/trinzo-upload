@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
-const { normaliseUdimed } = require('./domainTerms');
+const { normaliseDomainTerms } = require('./domainTerms');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -73,7 +73,7 @@ function normaliseColloquialTimes(value) {
 function normaliseKnownTerms(value) {
   // Deterministic domain correction: this transcription variant must never reach a
   // reviewer-facing field, flag, export or persisted minutes payload.
-  return normaliseUdimed(normaliseFixedPersonAliases(normaliseColloquialTimes(value)))
+  return normaliseDomainTerms(normaliseFixedPersonAliases(normaliseColloquialTimes(value)))
     .replace(/\bmeds[\s-]*app\b/gi, 'MDSAP');
 }
 

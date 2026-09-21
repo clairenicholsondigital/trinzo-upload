@@ -201,12 +201,13 @@ test('reshapeStagedDiscussionCardsForHumanMinutes replaces transcript-shaped top
   assert.deepEqual(cards.map((card) => card.topic), ['Scope and requirements', 'Language support and localisation', 'Cybersecurity and access controls']);
 });
 
-test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing DITA terminology', () => {
+test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing domain terminology', () => {
   const result = reshapeStagedDiscussionCardsForHumanMinutes([
     {
-      topic: 'UDI and Udimed Responsibilities',
+      topic: 'UDI and Udemed Responsibilities',
       points: [
-        'The discussion covered Udimed registration responsibilities for existing products.',
+        'The discussion covered Udemed registration responsibilities for Deta Inc existing products.',
+        'T Inc will review the registration evidence.',
         'John-Paul noted the DoC\'s for sunglasses need to include MDR and PPE compliance.'
       ]
     }
@@ -214,6 +215,8 @@ test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing DITA 
 
   assert.equal(result[0].topic, 'UDI and regulatory data');
   assert.ok(result[0].points.some((point) => point.includes('EUDAMED registration responsibilities')));
+  assert.ok(result[0].points.some((point) => point.includes('DITA existing products')));
+  assert.ok(result[0].points.some((point) => point.includes('DITA will review')));
   assert.ok(result[0].points.some((point) => point.includes('DoCs for sunglasses')));
 });
 

@@ -36,6 +36,8 @@ const DOMAIN_TERMS = [
 const AUTO_CORRECTIONS = [
   { original: 'Udemed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
   { original: 'Udimed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
+  { original: 'Deta Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
+  { original: 'T Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
   { original: 'Meds app', replacement: 'MDSAP', reason: 'Recognised terminology correction' },
   { original: 'S-BOM', replacement: 'SBOM', reason: 'Recognised terminology correction' },
   { original: 'Kappa', replacement: 'CAPA', reason: 'Recognised terminology correction' },
@@ -67,27 +69,36 @@ function mentionsDomainTerm(value) {
   return DOMAIN_TERM_PATTERN.test(String(value || ''));
 }
 
-function normaliseUdimed(value) {
-  return String(value == null ? '' : value).replace(/\budimed\b/gi, 'EUDAMED');
+function normaliseDomainTerms(value) {
+  return String(value == null ? '' : value)
+    .replace(/\b(?:udimed|udemed)\b/gi, 'EUDAMED')
+    .replace(/\b(?:deta|t)\s+inc\b/gi, 'DITA');
 }
 
-function normaliseUdimedDeep(value) {
-  if (typeof value === 'string') return normaliseUdimed(value);
-  if (Array.isArray(value)) return value.map(normaliseUdimedDeep);
+function normaliseDomainTermsDeep(value) {
+  if (typeof value === 'string') return normaliseDomainTerms(value);
+  if (Array.isArray(value)) return value.map(normaliseDomainTermsDeep);
   if (value && typeof value === 'object') {
     if (value instanceof Date) return value;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return value;
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseUdimedDeep(item)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseDomainTermsDeep(item)]));
   }
   return value;
 }
+
+// Backwards-compatible names for modules outside this repository that imported
+// the original single-term helper.
+const normaliseUdimed = normaliseDomainTerms;
+const normaliseUdimedDeep = normaliseDomainTermsDeep;
 
 module.exports = {
   DOMAIN_TERMS,
   AUTO_CORRECTIONS,
   DOMAIN_TERM_PATTERN,
   mentionsDomainTerm,
+  normaliseDomainTerms,
+  normaliseDomainTermsDeep,
   normaliseUdimed,
   normaliseUdimedDeep,
   escapeRegExp
