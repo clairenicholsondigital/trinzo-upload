@@ -1236,6 +1236,15 @@ function actionCandidateInventory(units = []) {
     const explicitAcceptedCommitment = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
       && (ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text));
     if (!directCue && !contextualAcceptance && !acceptedOfferAhead) continue;
+    // Bare acknowledgements inherit the nearby request's context, but adding each
+    // "Okay", "Yep" or "Will do" as a separate high-priority candidate crowds real
+    // commitments out of bounded referee prompts. The request/offer candidate already
+    // carries the acknowledgement in its evidence window.
+    const bareContextualAcceptance = contextualAcceptance
+      && !directCue
+      && !explicitAcceptedCommitment
+      && (/^(?:yes|yeah|yep|okay|ok|sure|agreed|fine|right|will do|can do|happy to)[.!? ]*$/i.test(unit.text));
+    if (bareContextualAcceptance) continue;
     const windowStart = Math.max(0, index - 2);
     const windowEnd = Math.min(rows.length, index + 3);
     const ids = rows.slice(windowStart, windowEnd).map((item) => item.id);
@@ -1264,6 +1273,8 @@ function actionCandidateInventory(units = []) {
         + (cueKinds.includes('commitment') ? 3 : 0)
         + (cueKinds.includes('decision_resolution') ? 3 : 0)
         + (cueKinds.includes('obligation') || cueKinds.includes('follow_up') ? 2 : 0)
+        + ((cueKinds.includes('commitment') || cueKinds.includes('scheduled'))
+          && /\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+(?:week|month)|this\s+(?:week|month)|by|before|within|after)\b|\b\d+\s+(?:additional\s+|extra\s+|more\s+)?[a-z][\w-]*/i.test(unit.text) ? 3 : 0)
         + 1,
       sequence: unit.sequence,
       focusText: text(unit.text, 500),
@@ -1714,7 +1725,12 @@ function candidateRepresented(candidate, records = []) {
   const focus = candidate?.focusEvidenceId;
   const candidateIds = new Set(candidate?.evidenceIds || []);
   const candidateEvidence = candidate?.context || candidate?.focusText || '';
+  const actionCandidate = ['action', 'action_chain', 'action_thread'].includes(candidate?.recordType)
+    || Array.isArray(candidate?.cueKinds);
   return (Array.isArray(records) ? records : []).some((record) => {
+    // A sentence may legitimately be both a decision and a future commitment.
+    // Discussion coverage therefore cannot discharge an action candidate.
+    if (actionCandidate && !record?.action) return false;
     const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
     const recordText = record?.action || record?.text || '';
     if (record?.action && candidate?.record?.action

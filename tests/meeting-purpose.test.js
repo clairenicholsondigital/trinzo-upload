@@ -21,11 +21,14 @@ test('purposePlan returns only a profile id and structural hints — never prose
   assert.equal(plan.profileId, 'webinar_rehearsal');
   // The only keys are the classifier id and the hint list.
   assert.deepEqual(Object.keys(plan).sort(), ['profileId', 'topicHints']);
-  // Every hint is a { intent, pattern } pair — no free-text topic/objective/summary.
+  // Hints contain only structural classifier fields — no free-text
+  // topic/objective/summary. A defining hint may additionally gate whether the
+  // profile can be suggested from body evidence.
   for (const hint of plan.topicHints) {
-    assert.deepEqual(Object.keys(hint).sort(), ['intent', 'pattern']);
+    assert.ok(Object.keys(hint).every((key) => ['intent', 'pattern', 'requiredForSuggestion'].includes(key)));
     assert.ok(VALID_INTENTS.has(hint.intent));
     assert.ok(hint.pattern instanceof RegExp);
+    if ('requiredForSuggestion' in hint) assert.equal(hint.requiredForSuggestion, true);
   }
 });
 

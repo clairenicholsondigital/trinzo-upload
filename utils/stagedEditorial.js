@@ -1042,8 +1042,11 @@ function stagedFinalActionQualityIssue(candidate = {}) {
   const attributed = /^(?:self_commitment|direct_request)$/i.test(String(candidate.ownerEvidenceType || ''));
   if (!attributed) {
     if (!openingVerbIsActionable(action)) return 'missing_actionable_verb';
-    if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
   }
+  // Attribution proves who accepted work, not that the presentation wording says
+  // what that work is. Never publish fragments such as "Have two ready." merely
+  // because their owner is known.
+  if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
   if (/\b(?:someone|somebody|they|we)\s+(?:will|should|need to|needs to)\b/i.test(action)) return 'unclear_actor';
   if (/(?<![\w-])(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything|go through|read around|have a (?:look|read|think)|work around|sort it|see how it goes)\b/i.test(action)) return 'vague_action';
   return null;

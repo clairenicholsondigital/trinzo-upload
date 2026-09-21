@@ -51,6 +51,26 @@ test('a meeting whose discussion recurs across several topic areas fires the sug
   assert.ok(suggestion.totalMatchedEvents >= MIN_TOTAL_EVENTS);
 });
 
+test('an in-person presentation rehearsal is not inferred to be a webinar', () => {
+  const venueRehearsal = [
+    'Shorten the opening slides and reduce the sector history to one line.',
+    'The handover between speakers needs another practice.',
+    'Keep the audience questions for the end of the talk.',
+    'The timings leave five minutes for questions.',
+    'Test the projector at the venue before the doors open.',
+    'Put the printed handouts beside the lectern.',
+    'Shorten the closing slide before the presentation.',
+    'Practise the speaker handover after lunch.',
+    'Reserve two audience questions in case nobody asks one.',
+    'The final run-through is scheduled for Friday.',
+    'Bring the clicker and connect it to the projector.',
+    'Print thirty more handouts for the venue.'
+  ];
+  const suggestion = suggestMeetingTypeFromEvidence(events(...venueRehearsal, ...venueRehearsal));
+  assert.equal(suggestion.profileId, 'webinar_rehearsal', JSON.stringify(suggestion));
+  assert.equal(suggestion.accepted, false, JSON.stringify(suggestion));
+});
+
 test('one phrase cannot move the type - the breadth gate', () => {
   // The exact failure the title-only rule was written for: a meeting that says "run
   // through" once, about something else entirely.

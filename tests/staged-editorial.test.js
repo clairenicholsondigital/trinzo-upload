@@ -483,6 +483,10 @@ test('stagedFinalActionQualityIssue rejects vague fragments while permitting an 
     stagedFinalActionQualityIssue({ owner: 'All', action: 'Update it' }),
     'missing_concrete_object'
   );
+  assert.equal(
+    stagedFinalActionQualityIssue({ owner: 'Nadia', ownerEvidenceType: 'self_commitment', action: 'Have two ready.' }),
+    'missing_concrete_object'
+  );
 });
 
 test('a bare coordinator opener is speech even when a comma rides with it', () => {

@@ -36,6 +36,23 @@ test('staged details recognise verbose Teams timestamp speaker turns', () => {
   assert.match(prepared.text, /Ciara Griffin:/);
 });
 
+test('unlabelled speakers are not invented as clients and an unstated venue stays blank', () => {
+  const transcript = [
+    'Presentation preparation',
+    'Morgan Reed 0:03 Please shorten the sector history before Friday.',
+    'Taylor Jones 0:10 I will do that tomorrow.'
+  ].join('\n');
+
+  const result = extractStagedDetailsFromTranscript(transcript, 'preparation.txt');
+  const details = result.screens.details;
+  assert.deepEqual(details.internalAttendees, []);
+  assert.deepEqual(details.clientAttendees, []);
+  assert.deepEqual(details.allAttendees, ['Morgan Reed', 'Taylor Jones']);
+  assert.equal(details.meetingLocation, '');
+  assert.ok(result.validationFlags.some((flag) => flag.type === 'attendee_affiliation_unconfirmed'));
+  assert.equal(result.telemetryPreview.attendeeExtraction.unresolvedAffiliationCount, 2);
+});
+
 test('indented Teams turns and prepared full-name turns produce the same canonical evidence', () => {
   const raw = [
     'Review Lean Generation Pipeline-Meeting Transcript',

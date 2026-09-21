@@ -383,6 +383,19 @@ test('an accepted request spanning adjacent turns is retained as one action cand
   assert.ok(actionCandidateInventory(units).some((candidate) => candidate.evidenceIds.includes('T0700') && candidate.evidenceIds.includes('T0701')));
 });
 
+test('bare acknowledgements do not crowd out timed and quantified commitments', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0710', speaker: 'Alex', text: 'Could you shorten the introduction?', classification: 'keep' },
+    { id: 'T0711', speaker: 'Priya', text: 'Okay.', classification: 'keep' },
+    { id: 'T0712', speaker: 'Nadia', text: "I'll print 30 more handouts tomorrow.", classification: 'keep' },
+    { id: 'T0713', speaker: 'Tom', text: 'I will remove the exercise before Friday.', classification: 'keep' }
+  ]);
+  const candidates = actionCandidateInventory(units);
+  assert.ok(!candidates.some((candidate) => candidate.focusEvidenceId === 'T0711'));
+  assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0712').priority >= 7);
+  assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0713').priority >= 7);
+});
+
 test('an availability constraint does not reject the planning commitment it explains', () => {
   const units = normaliseSourceUnits([
     { id: 'T0702', speaker: 'Stuart', text: "I won't be available because I'll be carrying out another audit.", classification: 'keep' },
@@ -560,6 +573,18 @@ test('the completeness audit candidate set excludes represented evidence and kee
   }]);
   assert.ok(!uncovered.some((candidate) => candidate.focusEvidenceId === 'T0760'));
   assert.ok(uncovered.some((candidate) => candidate.focusEvidenceId === 'T0761'));
+});
+
+test('a decision record does not discharge a future action from the same evidence', () => {
+  const candidates = actionCandidateInventory(normaliseSourceUnits([
+    { id: 'T0765', speaker: 'Nadia', text: "I'll print 30 more handouts tomorrow.", classification: 'keep' }
+  ]));
+  const uncovered = uncoveredCandidateInventory(candidates, [{
+    text: 'Thirty more handouts will be printed tomorrow.',
+    evidenceIds: ['T0765']
+  }]);
+  assert.equal(uncovered.length, 1);
+  assert.equal(uncovered[0].focusEvidenceId, 'T0765');
 });
 
 test('commitment chains reconnect a scoped assignment after unrelated intervening turns', () => {

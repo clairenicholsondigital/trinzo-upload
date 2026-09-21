@@ -1364,24 +1364,31 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   const teamsStructure = extractTeamsTranscriptStructure(text);
   const teamsHeader = teamsStructure.header || {};
   const teamsSpeakers = teamsStructure.speakers.length ? teamsStructure.speakers : extractTeamsSpeakerNames(text);
-  const explicitClientAttendees = extractNamesFromLine(clientLine || attendeesLine);
+  const explicitClientAttendees = extractNamesFromLine(clientLine);
   const explicitInternalAttendees = extractNamesFromLine(trinzoLine);
+  const unlabelledAttendees = extractNamesFromLine(attendeesLine);
   const explicitClientBuckets = bucketKnownStagedAttendees(explicitClientAttendees);
   const explicitInternalBuckets = bucketKnownStagedAttendees(explicitInternalAttendees);
+  const unlabelledBuckets = bucketKnownStagedAttendees(unlabelledAttendees);
   const speakerBuckets = bucketKnownStagedAttendees(teamsSpeakers);
   const internalAttendees = uniqueNames([
     ...explicitInternalBuckets.internal,
     ...explicitInternalBuckets.unknown,
     ...explicitClientBuckets.internal,
+    ...unlabelledBuckets.internal,
     ...speakerBuckets.internal
   ]);
   const clientAttendees = uniqueNames([
     ...explicitClientBuckets.client,
     ...explicitClientBuckets.unknown,
     ...explicitInternalBuckets.client,
-    ...speakerBuckets.client,
-    ...(explicitClientAttendees.length ? [] : speakerBuckets.unknown)
+    ...unlabelledBuckets.client,
+    ...speakerBuckets.client
   ]);
+  const unresolvedAttendees = uniqueNames([
+    ...unlabelledBuckets.unknown,
+    ...speakerBuckets.unknown
+  ]).filter((name) => !internalAttendees.includes(name) && !clientAttendees.includes(name));
   const headerDate = teamsHeader.meetingDate || '';
   const headerTitle = teamsHeader.meetingTitle || '';
   const attendeeNameWarnings = teamsSpeakers.flatMap((name) => {
@@ -1405,6 +1412,12 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     }
     return [{ type: 'possible_attendee_name_mismatch', severity: 'warning', blocking: false, message: `Check attendee name “${name}”. The first name matches known participant “${knownFirstName}”, but the transcript surname differs.` }];
   });
+  const attendeeAffiliationFlags = unresolvedAttendees.length ? [{
+    type: 'attendee_affiliation_unconfirmed',
+    severity: 'warning',
+    blocking: false,
+    message: `Internal or client affiliation was not stated for ${unresolvedAttendees.join(', ')}. Review the attendee lists before finalising.`
+  }] : [];
 
   // The title decides the type when it can. When it cannot - the title-only inference
   // returned the default - ask the discussion, gated on recurrence and dominance, and
@@ -1437,7 +1450,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
       details: {
         meetingTitle: (headerTitle || meetingTitle).slice(0, 180),
         meetingDate: headerDate || normaliseDateInput(rawDate),
-        meetingLocation: rawLocation || (/teams|microsoft teams/i.test(text) ? 'Microsoft Teams' : 'Microsoft Teams'),
+        meetingLocation: rawLocation || (/\b(?:microsoft\s+teams|teams meeting)\b/i.test(text) ? 'Microsoft Teams' : ''),
         organisation: rawOrganisation,
         meetingType: suggestedType || titleOnlyType,
         meetingTypeSuggestion,
@@ -1447,10 +1460,15 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         // bucketed lists reappeared here beside its broken twin: "Rebecca Gill" and
         // "Rebecca Cuckoo" both listed as attendees of the same meeting. Canonicalise
         // before the union so the dedupe can actually see they are one person.
-        allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers.map((name) => canonicalKnownStagedPersonName(name) || name)])
+        allAttendees: uniqueNames([
+          ...internalAttendees,
+          ...clientAttendees,
+          ...unresolvedAttendees,
+          ...teamsSpeakers.map((name) => canonicalKnownStagedPersonName(name) || name)
+        ])
       }
     },
-    validationFlags: [...attendeeNameWarnings, ...typeSuggestionFlags],
+    validationFlags: [...attendeeNameWarnings, ...attendeeAffiliationFlags, ...typeSuggestionFlags],
     telemetryPreview: {
       stage: 'details',
       transcriptLength: text.length,
@@ -1458,6 +1476,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
       attendeeExtraction: {
         source: teamsStructure.speakers.length ? 'microsoft_teams_speaker_turns' : 'explicit_or_fallback',
         speakerCount: teamsSpeakers.length,
+        unresolvedAffiliationCount: unresolvedAttendees.length,
         turnCount: teamsStructure.turnCount,
         eventSpeakerCount: teamsStructure.eventSpeakers.length,
         knownInternalAttendeeCount: internalAttendees.length,

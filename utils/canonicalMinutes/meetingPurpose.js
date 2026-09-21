@@ -30,7 +30,11 @@ const MEETING_PROFILES = [
       { intent: 'Confirm', pattern: /\b(?:hand(?:ing)? over|handover|pass back|host|present(?:er|ing)?|facilitat(?:e|or)|safety net|support)\b/i },
       { intent: 'Review', pattern: /\b(?:questions?|q\s*&\s*a|chat|audience|attendee|speech bubble|qr code|call to action)\b/i },
       { intent: 'Review', pattern: /\b(?:timings?|minutes?|seconds?|hard stop|overrun|dead air|gap|pace|clock)\b/i },
-      { intent: 'Review', pattern: /\b(?:screen shar(?:e|ing)|record(?:ing)?|red dot|connection|wi-?fi|broadband|animation|microphone|camera|technical|tech)\b/i }
+      { intent: 'Review', pattern: /\b(?:screen shar(?:e|ing)|record(?:ing)?|red dot|connection|wi-?fi|broadband|animation|microphone|camera|technical|tech)\b/i },
+      // Slides, timings, handovers and audience questions also describe an in-person
+      // presentation rehearsal. Do not infer the webinar subtype from the body unless
+      // online delivery itself recurs in the evidence.
+      { intent: 'Confirm', requiredForSuggestion: true, pattern: /\b(?:screen shar(?:e|ing)|chat(?: box)?|speech bubble|co-host|meeting link|online audience|camera(?:s)? (?:off|on)|microphone(?:s)? (?:muted|off|on)|mute(?:d)? (?:the )?microphone)\b/i }
     ]
   },
   {
