@@ -203,6 +203,7 @@ const {
   discussionFidelityCheckItems,
   discussionFidelityCheckPrompt,
   applyDiscussionFidelityResults,
+  filterUnsupportedQuantifiedDiscussion,
   actionCompletenessCheckItems,
   actionCompletenessCheckPrompt,
   applyActionCompletenessResults,
@@ -394,6 +395,7 @@ function normaliseMeetingAgentExecutionTelemetry(value = {}) {
     externalCallElapsedMs: number('externalCallElapsedMs'),
     candidateCount: number('candidateCount'),
     outputRecordCount: number('outputRecordCount'),
+    outputChars: number('outputChars'),
     materialContributionCount: number('materialContributionCount')
   };
 }
@@ -424,7 +426,8 @@ function meetingAgentResultCounts(result = {}) {
     proposalCount: proposals,
     dispositionCount: dispositions,
     reviewFlagCount: Array.isArray(result?.reviewFlags) ? result.reviewFlags.length : 0,
-    outputRecordCount: discussionRecords + actions + proposals
+    outputRecordCount: discussionRecords + actions + proposals,
+    outputChars: JSON.stringify(result && typeof result === 'object' ? result : {}).length
   };
 }
 
@@ -490,6 +493,7 @@ function meetingAgentCallPerformance(provenance = []) {
     failed: item?.failed === true,
     candidateCount: Math.max(0, Number(item?.candidateCount || 0)),
     outputRecordCount: Math.max(0, Number(item?.outputRecordCount || 0)),
+    outputChars: Math.max(0, Number(item?.outputChars || 0)),
     attemptCount: Array.isArray(item?.timings) ? item.timings.length : 0,
     elapsedMs: Math.max(0, Number(item?.elapsedMs || 0)),
     materialContributionCount: Math.max(0, Number(item?.materialContributionCount || 0)),
@@ -530,6 +534,7 @@ function meetingAgentExecutionTelemetry(provenance = []) {
     externalCallElapsedMs: timings.reduce((sum, item) => sum + Math.max(0, Number(item?.elapsedMs || 0)), 0),
     candidateCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.candidateCount || 0)), 0),
     outputRecordCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.outputRecordCount || 0)), 0),
+    outputChars: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.outputChars || 0)), 0),
     materialContributionCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.materialContributionCount || 0)), 0)
   };
 }
@@ -10880,10 +10885,14 @@ function hybridContentTokenOverlap(left, right) {
 function hybridActionType(value = '') {
   const verb = meetingMinutesAgentText(value, 300).toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:\s+out)?)/)?.[1] || '';
   if (['confirm', 'clarify', 'determine', 'decide', 'resolve', 'figure out', 'work out'].includes(verb)) return 'decision';
+  if (['trace', 'find', 'identify', 'investigate', 'source'].includes(verb)) return 'investigation';
+  if (['fix', 'repair', 'remediate', 'correct'].includes(verb)) return 'remediation';
+  if (['split', 'separate', 'divide', 'classify', 'categorise', 'categorize'].includes(verb)) return 'classification';
+  if (['automate', 'script'].includes(verb)) return 'automation';
   if (['send', 'share', 'provide', 'forward', 'circulate', 'email', 'issue', 'deliver', 'submit'].includes(verb)) return 'transmission';
   if (['review', 'check', 'assess', 'inspect', 'evaluate', 'analyse', 'audit'].includes(verb)) return 'review';
   if (['create', 'produce', 'prepare', 'draft', 'develop', 'build', 'write', 'compile'].includes(verb)) return 'creation';
-  if (['update', 'revise', 'amend', 'change', 'edit', 'correct'].includes(verb)) return 'update';
+  if (['update', 'revise', 'amend', 'change', 'edit'].includes(verb)) return 'update';
   if (['complete', 'finish', 'finalise', 'finalize', 'close', 'sign', 'attest'].includes(verb)) return 'completion';
   if (['test', 'verify', 'validate', 'run', 'rerun'].includes(verb)) return 'testing';
   if (['schedule', 'arrange', 'book', 'organise', 'coordinate', 'plan'].includes(verb)) return 'planning';
@@ -10892,7 +10901,7 @@ function hybridActionType(value = '') {
 
 function hybridActionTypes(value = '') {
   const source = meetingMinutesAgentText(value, 1600).toLowerCase();
-  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(ask|confirm|clarify|determine|decide|resolve|figure out|work out|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|update|revise|amend|change|edit|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
+  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(ask|confirm|clarify|determine|decide|resolve|figure out|work out|trace|find|identify|investigate|source|fix|repair|remediate|split|separate|divide|classify|categorise|categorize|automate|script|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|update|revise|amend|change|edit|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
   return new Set([...matches].map((match) => hybridActionType(match[1])).filter(Boolean));
 }
 
@@ -10901,6 +10910,52 @@ function hybridActionsEquivalent(left = '', right = '') {
   const rightTypes = hybridActionTypes(right);
   if (leftTypes.size && rightTypes.size && ![...leftTypes].some((type) => rightTypes.has(type))) return false;
   return hybridTokenOverlap(left, right) >= 0.55;
+}
+
+function strictActionDeliverableMatch(left = {}, right = {}) {
+  const leftOwners = (left.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
+  const rightOwners = (right.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
+  if (leftOwners.length && rightOwners.length && !leftOwners.some((owner) => rightOwners.includes(owner))) return false;
+  if (conflictingActionRecipients(left, right)) return false;
+  if (sameQuestionCommunicationDeliverable(left, right)) return true;
+  const leftText = meetingMinutesAgentText(left.action, 1600);
+  const rightText = meetingMinutesAgentText(right.action, 1600);
+  if (leftText.toLowerCase() === rightText.toLowerCase()) return true;
+  const leftTypes = hybridActionTypes(leftText);
+  const rightTypes = hybridActionTypes(rightText);
+  if (leftTypes.size && rightTypes.size
+    && ![...leftTypes].some((type) => rightTypes.has(type))) return false;
+  if (!leftTypes.size || !rightTypes.size) {
+    const openingVerb = (value) => String(value || '').toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:\s+out)?)/)?.[1] || '';
+    if (openingVerb(leftText) !== openingVerb(rightText)) return false;
+  }
+  const overlap = hybridContentTokenOverlap(leftText, rightText);
+  const sharedEvidence = (left.evidenceIds || []).some((id) => (right.evidenceIds || []).includes(id));
+  return overlap >= 0.62 || (sharedEvidence && overlap >= 0.48);
+}
+
+// A fully accepted, strongly grounded action must not silently disappear between
+// Referee acceptance and the editable Actions list. This is a reconciliation
+// invariant, not another extractor: it can only restore a named-owner row which
+// already passed the Referee and the existing high-confidence evidence gate.
+function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed = [], candidates = [], sourceUnits = []) {
+  const actions = [...(Array.isArray(published) ? published : [])];
+  const proposals = Array.isArray(proposed) ? proposed : [];
+  const restored = [];
+  let eligibleCount = 0;
+  for (const record of Array.isArray(accepted) ? accepted : []) {
+    if (!(record?.owners || []).length || !highConfidenceRefereedAction(record, candidates, sourceUnits)) continue;
+    eligibleCount += 1;
+    if (actions.some((existing) => strictActionDeliverableMatch(record, existing))
+      || proposals.some((existing) => strictActionDeliverableMatch(record, existing))) continue;
+    actions.push(record);
+    restored.push(record);
+  }
+  const firstEvidence = (record) => Math.min(...(record.evidenceIds || [])
+    .map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
+  actions.sort((left, right) => firstEvidence(left) - firstEvidence(right)
+    || String(left.action || '').localeCompare(String(right.action || '')));
+  return { actions, restored, eligibleCount };
 }
 
 function isVagueReconstructedAction(value = '') {
@@ -13246,7 +13301,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // Apply the policy before later checks so irrelevant asides do not consume
     // reviewer calls. This is deliberately unconditional when the optional
     // organiser is disabled or safely falls back after an internal error.
-    finalDiscussion = removePersonalAsides(finalDiscussion);
+    const quantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
+    finalDiscussion = removePersonalAsides(quantifiedGrounding.discussion);
+    if (quantifiedGrounding.removed.length) console.log(JSON.stringify({
+      event: 'meeting_agent_quantified_claim_filter', journeyId: draft.draftId,
+      removed: quantifiedGrounding.removed.map((item) => ({ id: item.id, signatures: item.signatures, subject: item.subject }))
+    }));
     if (meetingMinutesAnsweredCheckEnabled()) {
       // Open questions are checked against a bounded forward window rather
       // than only their cited lines. A verified answer becomes a normal point;
@@ -13342,7 +13402,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // A final publication-boundary pass also covers wording returned by the
     // later question, attribution and fidelity checks. Flag reconciliation
     // below then drops any warning whose only target was removed here.
-    finalDiscussion = removePersonalAsides(finalDiscussion);
+    const finalQuantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
+    finalDiscussion = removePersonalAsides(finalQuantifiedGrounding.discussion);
+    if (finalQuantifiedGrounding.removed.length) console.log(JSON.stringify({
+      event: 'meeting_agent_final_quantified_claim_filter', journeyId: draft.draftId,
+      removed: finalQuantifiedGrounding.removed.map((item) => ({ id: item.id, signatures: item.signatures, subject: item.subject }))
+    }));
     // Rows are rebuilt by several steps that keep the rows but not the flags
     // those steps raised; recover what the rows point at, drop dead references.
     const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
@@ -13598,12 +13663,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     && isReviewableActionProposal(record, draft.sourceUnits));
   const finalPublishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
     .filter((record) => !isVagueReconstructedAction(record.action));
+  const acceptedActionAccounting = reconcileAcceptedRefereeActions(
+    finalPublishedActions, refereeActions, remainingProposalCandidates, ensemble, draft.sourceUnits
+  );
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
-    actions: [...finalPublishedActions, ...remainingProposalCandidates]
+    actions: [...acceptedActionAccounting.actions, ...remainingProposalCandidates]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions,
   { sourceUnits: draft.sourceUnits });
   const reconciledPublishedActions = backfillActionCommitmentEvidence(
-    mergePublishedActionEvidence(finalPublishedActions, complete), draft.sourceUnits,
+    mergePublishedActionEvidence(acceptedActionAccounting.actions, complete), draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
   const builtProposal = removePublishedActionProposalDuplicates(
@@ -13908,6 +13976,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         finalLifecycleWithheldCount,
         finalLifecycleRejectedCount,
         actionScreenDuplicateCount,
+        acceptedActionEligibleCount: acceptedActionAccounting.eligibleCount,
+        acceptedActionRestoredCount: acceptedActionAccounting.restored.length,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
@@ -15307,6 +15377,8 @@ router.stagedEvaluation = {
   normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
+  strictActionDeliverableMatch,
+  reconcileAcceptedRefereeActions,
   dedupeHybridActionRecords,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,

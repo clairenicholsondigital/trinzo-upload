@@ -6,7 +6,7 @@ const {
   organiseDiscussionForReview, stripClosure, retypeRows, demoteUnreadyRows,
   consolidateTopics, rehomeSupportingDetails, sortByEvidence, unitIndex,
   removeAnsweredQuestionClauses, removeContradictoryResponsibilities,
-  isPersonalAside, removePersonalAsides
+  isPersonalAside, isPeripheralAside, removePersonalAsides
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -66,6 +66,29 @@ test('formal cover and safety arrangements are not mistaken for personal asides'
     'The team needs a break-even analysis before approving the plan.',
     'The warehouse break-in remains a security risk.'
   ]) assert.equal(isPersonalAside(wording), false, wording);
+});
+
+test('brief social reporting is filtered without suppressing material updates', () => {
+  assert.equal(isPeripheralAside('Morgan mentioned bringing produce to the community show.'), true);
+  assert.equal(isPeripheralAside('Sam joked about the weather before the meeting.'), true);
+  assert.equal(isPeripheralAside('Morgan mentioned that the validation report remains blocked by supplier approval.'), false);
+  assert.equal(isPeripheralAside('Sam mentioned the audit requirement and will send the evidence tomorrow.'), false);
+});
+
+test('peripheral reporting is removed from primary rows and supporting context', () => {
+  const cleaned = removePersonalAsides([{
+    id: 'topic-1', topic: 'Project update',
+    points: [{
+      id: 'p1', text: 'The validation report remains blocked by supplier approval.', evidenceIds: ['T0001'],
+      supportingDetails: [
+        { id: 's1', text: 'Morgan mentioned bringing produce to the community show.', evidenceIds: ['T0002'] },
+        { id: 's2', text: 'Morgan mentioned that the supplier review is outstanding.', evidenceIds: ['T0003'] }
+      ]
+    }, { id: 'p2', text: 'Sam joked about the weather.', evidenceIds: ['T0004'] }],
+    decisions: [], openQuestions: []
+  }]);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['p1']);
+  assert.deepEqual(cleaned[0].points[0].supportingDetails.map((row) => row.id), ['s2']);
 });
 
 test('personal asides are removed from primary rows and supporting context', () => {

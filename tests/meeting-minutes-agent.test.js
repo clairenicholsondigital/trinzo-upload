@@ -43,6 +43,8 @@ const {
   normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
+  strictActionDeliverableMatch,
+  reconcileAcceptedRefereeActions,
   dedupeHybridActionRecords,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,
@@ -160,6 +162,7 @@ test('execution telemetry distinguishes quality calls, retries, repairs and fail
     externalCallElapsedMs: 850,
     candidateCount: 12,
     outputRecordCount: 3,
+    outputChars: 0,
     materialContributionCount: 2
   });
 });
@@ -168,13 +171,45 @@ test('performance telemetry classifies failures and counts model records without
   assert.equal(meetingAgentFailureClass({ code: 'incomplete_candidate_dispositions' }), 'response_contract');
   assert.equal(meetingAgentFailureClass({ statusCode: 429 }), 'rate_limit');
   assert.equal(meetingAgentFailureClass({ upstreamStatus: 502 }), 'transport');
-  assert.deepEqual(meetingAgentResultCounts({
+  const result = {
     discussion: [{ points: [{}], decisions: [{}, {}], openQuestions: [] }],
     actions: [{}, {}], actionProposals: [{}], candidateDispositions: [{}, {}, {}], reviewFlags: [{}]
-  }), {
+  };
+  assert.deepEqual(meetingAgentResultCounts(result), {
     discussionRecordCount: 3, actionCount: 2, proposalCount: 1,
-    dispositionCount: 3, reviewFlagCount: 1, outputRecordCount: 6
+    dispositionCount: 3, reviewFlagCount: 1, outputRecordCount: 6,
+    outputChars: JSON.stringify(result).length
   });
+});
+
+test('strict action accounting does not merge different deliverables sharing evidence', () => {
+  const shared = ['T0010', 'T0011'];
+  assert.equal(strictActionDeliverableMatch(
+    { action: 'Split the software list into assessed and excluded items.', owners: ['Ines'], evidenceIds: shared },
+    { action: 'Write the exclusion rationale for the excluded software.', owners: ['Marcus'], evidenceIds: shared }
+  ), false);
+  assert.equal(strictActionDeliverableMatch(
+    { action: 'Fix the alarm drawing and rerun the tests.', owners: ['Marcus'], evidenceIds: shared },
+    { action: 'Trace the source of the three-second alarm requirement.', owners: ['Marcus'], evidenceIds: shared }
+  ), false);
+});
+
+test('accepted strongly grounded referee actions cannot silently disappear', () => {
+  const actions = [
+    { id: 'a1', action: 'Split the software list into assessed and excluded items.', owners: ['Ines'], evidenceIds: ['T0001'] },
+    { id: 'a2', action: 'Write the exclusion rationale for the excluded software.', owners: ['Marcus'], evidenceIds: ['T0002'] },
+    { id: 'a3', action: 'Trace the source of the three-second alarm requirement.', owners: ['Marcus'], evidenceIds: ['T0003'] }
+  ];
+  const units = [
+    { id: 'T0001', speaker: 'Ines', text: "I'll split the software list into assessed and excluded items." },
+    { id: 'T0002', speaker: 'Marcus', text: "I'll write the exclusion rationale for the excluded software." },
+    { id: 'T0003', speaker: 'Marcus', text: "I'll trace the source of the three-second alarm requirement." }
+  ];
+  const candidates = hybridCandidateLedgerFromResult({ actions }, 'primary');
+  const reconciled = reconcileAcceptedRefereeActions([actions[0]], actions, [], candidates, units);
+  assert.equal(reconciled.eligibleCount, 3);
+  assert.deepEqual(reconciled.restored.map((row) => row.id), ['a2', 'a3']);
+  assert.deepEqual(reconciled.actions.map((row) => row.id), ['a1', 'a2', 'a3']);
 });
 
 test('material pass impact attributes final contribution to the exact referee call', () => {

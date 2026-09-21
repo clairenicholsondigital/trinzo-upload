@@ -10,7 +10,7 @@
 // fallback. Record ids, evidence ids and review-flag links are preserved.
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
-const { isPersonalAside, removePersonalAsides } = require('./discussionContentPolicy');
+const { isPersonalAside, isPeripheralAside, removePersonalAsides } = require('./discussionContentPolicy');
 
 const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should', 'are', 'was', 'were', 'has', 'have', 'been']);
 const ROW_KINDS = ['points', 'decisions', 'openQuestions'];
@@ -612,6 +612,7 @@ module.exports = {
   organiseDiscussionForReview,
   stripClosure,
   isPersonalAside,
+  isPeripheralAside,
   removePersonalAsides,
   isVerbatimUnit,
   dropVerbatimSupporting,

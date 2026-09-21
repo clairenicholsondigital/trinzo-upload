@@ -324,8 +324,25 @@ const ACTION_VERB_GROUPS = [
   ['test', 'verify', 'validate', 'run', 'rerun'],
   ['contact', 'call', 'message', 'speak', 'follow', 'chase'],
   ['schedule', 'arrange', 'book', 'organise', 'coordinate'],
-  ['sign', 'attest', 'acknowledge', 'accept']
+  ['sign', 'attest', 'acknowledge', 'accept'],
+  ['trace', 'find', 'identify', 'investigate', 'source'],
+  ['fix', 'repair', 'remediate'],
+  ['split', 'separate', 'divide', 'classify', 'categorise', 'categorize'],
+  ['automate', 'script']
 ];
+
+function actionPredicateGroupIndexes(value = '') {
+  const words = contentTokens(value).slice(0, 10);
+  return new Set(ACTION_VERB_GROUPS.map((group, index) => words.some((word) => group.includes(word)) ? index : -1)
+    .filter((index) => index >= 0));
+}
+
+function actionPredicatesCompatible(left = '', right = '') {
+  const a = actionPredicateGroupIndexes(left);
+  const b = actionPredicateGroupIndexes(right);
+  if (!a.size || !b.size) return true;
+  return [...a].some((index) => b.has(index));
+}
 
 function actionPredicateSupported(action, evidence) {
   const actionTokens = contentTokens(action);
@@ -1659,6 +1676,12 @@ function candidateRepresented(candidate, records = []) {
   return (Array.isArray(records) ? records : []).some((record) => {
     const recordIds = Array.isArray(record?.evidenceIds) ? record.evidenceIds : [];
     const recordText = record?.action || record?.text || '';
+    if (record?.action && candidate?.record?.action
+      && !actionPredicatesCompatible(candidate.record.action, record.action)) return false;
+    const candidateOwners = candidate?.record?.owners || [];
+    const recordOwners = record?.owners || [];
+    if (record?.action && candidateOwners.length && recordOwners.length
+      && !candidateOwners.some((owner) => recordOwners.some((other) => String(other).toLowerCase() === String(owner).toLowerCase()))) return false;
     if (focus && recordIds.includes(focus)) {
       if (record?.action && !actionEvidenceFits(record.action, candidateEvidence)) return false;
       return evidenceSupportScore(recordText, candidateEvidence) >= 0.16;
@@ -3420,6 +3443,74 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
   return { discussion: checked, flags, checked: items.length, corrected, uncertain, rejected };
 }
 
+// A generated negated-duration statement must bind its quantity to its subject
+// in one local source passage. This narrow high-confidence shape catches a
+// duration detached from one agenda item and attached to another without
+// second-guessing ordinary costs, counts and schedules.
+const QUANTITY_WORD = '(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)';
+const QUANTITY_UNIT = '(?:%|percent|percentage|seconds?|minutes?|hours?|days?|weeks?|months?|years?|items?|documents?|files?|tests?|runs?|alarms?|devices?|products?|samples?|units?|batches?|sites?|languages?|pounds?|euros?|dollars?)';
+const QUANTIFIED_CLAIM = new RegExp(`\\b(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s*${QUANTITY_UNIT}\\b`, 'gi');
+const NEGATED_DURATION_CLAIM = new RegExp(`\\b(?:has|have|had)(?:\\s+\\w+){0,8}\\s+(?:not|never)(?:\\s+\\w+){0,12}\\s+(?:in|for)\\s+(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s+(?:days?|weeks?|months?|years?)\\b|\\b(?:hasn't|haven't|hadn't)(?:\\s+\\w+){0,12}\\s+(?:in|for)\\s+(?:\\d+(?:[.,]\\d+)?|${QUANTITY_WORD})(?:[- ](?:${QUANTITY_WORD}))*\\s+(?:days?|weeks?|months?|years?)\\b`, 'i');
+const CLAIM_AUXILIARY = /\b(?:is|are|was|were|has|have|had|will|would|can|could|should|must|remains?|became|becomes?)\b/i;
+const CLAIM_SUBJECT_STOP = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'current', 'existing', 'annual', 'overall', 'approximately', 'about']);
+const SIMPLE_NUMBER_WORDS = new Map('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred'
+  .split(' ').map((word, index) => [word, index <= 20 ? index : ({ thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 })[word]]));
+
+function quantifiedClaimSignatures(value = '') {
+  return [...String(value || '').matchAll(new RegExp(QUANTIFIED_CLAIM.source, 'gi'))]
+    .map((match) => match[0].toLowerCase().replace(/\b[a-z]+\b/g, (word) => SIMPLE_NUMBER_WORDS.has(word)
+      ? String(SIMPLE_NUMBER_WORDS.get(word)) : word).replace(/\s+/g, ' ').trim());
+}
+
+function quantifiedClaimSubject(value = '') {
+  const source = text(value, 1200);
+  const auxiliary = source.match(CLAIM_AUXILIARY);
+  if (!auxiliary || auxiliary.index == null || auxiliary.index > 140) return [];
+  return contentTokens(source.slice(0, auxiliary.index))
+    .filter((token) => !CLAIM_SUBJECT_STOP.has(token))
+    .map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token)
+    .slice(-5);
+}
+
+function quantifiedClaimGroundingIssue(record = {}, units = []) {
+  if (!NEGATED_DURATION_CLAIM.test(String(record?.text || ''))) return null;
+  const signatures = quantifiedClaimSignatures(record?.text);
+  const subject = quantifiedClaimSubject(record?.text);
+  if (!signatures.length || subject.length < 2 || !(record?.evidenceIds || []).length) return null;
+  const rows = normaliseSourceUnits(units);
+  const indexById = new Map(rows.map((unit, index) => [String(unit.id), index]));
+  const windows = [...new Set((record.evidenceIds || []).map((id) => indexById.get(String(id)))
+    .filter(Number.isInteger))].map((index) => rows.slice(Math.max(0, index - 1), Math.min(rows.length, index + 2))
+      .map((unit) => unit.text).join(' '));
+  const grounded = signatures.every((signature) => windows.some((passage) => {
+    if (!quantifiedClaimSignatures(passage).includes(signature)) return false;
+    const words = new Set(contentTokens(passage).map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
+    return subject.every((token) => words.has(token));
+  }));
+  return grounded ? null : { signatures, subject };
+}
+
+function filterUnsupportedQuantifiedDiscussion(discussion = [], units = []) {
+  const removed = [];
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).flatMap((record) => {
+        const issue = quantifiedClaimGroundingIssue(record, units);
+        if (issue) { removed.push({ id: record.id || '', text: record.text || '', ...issue }); return []; }
+        const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).filter((detail) => {
+          const detailIssue = quantifiedClaimGroundingIssue(detail, units);
+          if (detailIssue) removed.push({ id: detail.id || '', text: detail.text || '', ...detailIssue });
+          return !detailIssue;
+        });
+        return [{ ...record, supportingDetails }];
+      });
+    }
+    return next;
+  }).filter((topic) => ['points', 'decisions', 'openQuestions'].some((kind) => (topic?.[kind] || []).length));
+  return { discussion: topics, removed };
+}
+
 // ---- Action completeness --------------------------------------------------
 // A short administrative step can accidentally displace the outcome promised
 // in the very next sentence ("ring the engineer" / "get the chiller serviced").
@@ -4133,6 +4224,8 @@ module.exports = {
   discussionFidelityCheckItems,
   discussionFidelityCheckPrompt,
   applyDiscussionFidelityResults,
+  quantifiedClaimGroundingIssue,
+  filterUnsupportedQuantifiedDiscussion,
   actionCompletenessCheckItems,
   actionCompletenessCheckPrompt,
   applyActionCompletenessResults,

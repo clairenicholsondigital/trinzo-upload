@@ -4,6 +4,35 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
 
+test('quantified claims must bind their subject and quantity in one local passage', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Barbara', text: 'The taps on the storage tanks need replacing.' },
+    { id: 'T0002', speaker: 'Ken', text: 'The next item is maintenance access.' },
+    { id: 'T0003', speaker: 'Ken', text: 'The gate key is held in the office.' },
+    { id: 'T0004', speaker: 'Barbara', text: 'Turning to the plot fees, the annual charge remains unchanged.' },
+    { id: 'T0005', speaker: 'Barbara', text: "We haven't put them up in six years." },
+    { id: 'T0006', speaker: 'Morgan', text: 'The supplier agreements have not moved for three weeks.' }
+  ];
+  const invented = {
+    id: 'p1', text: 'The storage tanks have not been increased in six years.',
+    evidenceIds: ['T0001', 'T0005']
+  };
+  const grounded = {
+    id: 'p2', text: 'The plot fees have not been increased in six years.',
+    evidenceIds: ['T0004', 'T0005']
+  };
+  assert.ok(V.quantifiedClaimGroundingIssue(invented, units));
+  assert.equal(V.quantifiedClaimGroundingIssue(grounded, units), null);
+  assert.equal(V.quantifiedClaimGroundingIssue({
+    id: 'p3', text: 'The supplier agreements have not moved for three weeks.', evidenceIds: ['T0006']
+  }, units), null);
+  const filtered = V.filterUnsupportedQuantifiedDiscussion([{
+    id: 'topic-1', topic: 'Updates', points: [invented, grounded], decisions: [], openQuestions: []
+  }], units);
+  assert.deepEqual(filtered.discussion[0].points.map((row) => row.id), ['p2']);
+  assert.deepEqual(filtered.removed.map((row) => row.id), ['p1']);
+});
+
 test('confirmed person aliases are normalised through every nested minutes field', () => {
   const result = V.normaliseKnownTermsDeep({
     sourceUnits: [{ speaker: 'Rebecca Cuckoo', text: 'Rebecca Cuckoo will review it.' }],
