@@ -3902,6 +3902,11 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       _timingConflicts: []
     };
   }).filter(Boolean);
+  // A reviewer save is a persistence boundary, not another generation pass.
+  // Preserve the exact visible register (including two similar rows) so an
+  // autosave cannot silently remove an action or make a pending proposal's
+  // indexes stale. Generated candidates still use the normal deduper.
+  if (options.dedupeActions === false) return rows;
   const merged = [];
   for (const row of rows) {
     const duplicate = merged.find((existing) => actionSimilarity(existing, row) >= 0.78 && ownersCompatible(existing, row));
@@ -4385,16 +4390,54 @@ function buildProposal(stage, before = [], after = []) {
 function applyProposal(before = [], proposal = {}, acceptedIds = []) {
   const accepted = new Set(acceptedIds);
   const rows = Array.isArray(before) ? before : [];
+  const targetIdCounts = new Map();
+  for (const change of proposal.changes || []) {
+    if (change.type === 'add') continue;
+    const id = text(change.before?.id, 80);
+    if (id) targetIdCounts.set(id, (targetIdCounts.get(id) || 0) + 1);
+  }
   const originalIndex = (change) => (Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0);
+  const currentIndex = (change) => {
+    const beforeRecord = change?.before;
+    if (!beforeRecord || typeof beforeRecord !== 'object') return -1;
+    const id = text(beforeRecord.id, 80);
+    if (id) {
+      const candidates = rows.map((row, index) => text(row?.id, 80) === id ? index : -1).filter((index) => index >= 0);
+      if (targetIdCounts.get(id) > 1) {
+        // Generated lists have historically contained duplicate IDs. When a
+        // proposal addressed two such rows and autosave has already removed
+        // one, the surviving ID is not proof that the other target remains.
+        // Only its original occurrence is safe to edit or remove.
+        const expected = originalIndex(change);
+        return candidates.includes(expected) ? expected : -1;
+      }
+      return candidates.length === 1 ? candidates[0] : -1;
+    }
+    const serialised = JSON.stringify(beforeRecord);
+    return rows.findIndex((row) => JSON.stringify(row || null) === serialised);
+  };
   const modified = new Map();
   const removed = new Set();
   const inserted = new Map();
+  const claimedTargets = new Set();
   for (const change of proposal.changes || []) {
     if (!accepted.has(change.id)) continue;
-    const at = originalIndex(change);
+    if (change.type === 'add') {
+      const afterId = text(change.after?.id, 80);
+      if (afterId && rows.some((row) => text(row?.id, 80) === afterId)) continue;
+      const at = Math.max(0, Math.min(rows.length, originalIndex(change)));
+      inserted.set(at, [...(inserted.get(at) || []), change.after]);
+      continue;
+    }
+    // Never use an old numeric position for a destructive change. Autosave,
+    // regeneration or a prior accepted suggestion may have reordered or
+    // removed the original row; applying that stale index deleted unrelated
+    // actions in the finished minutes.
+    const at = currentIndex(change);
+    if (at < 0 || claimedTargets.has(at)) continue;
+    claimedTargets.add(at);
     if (change.type === 'remove') removed.add(at);
-    else if (change.type === 'add') inserted.set(at, [...(inserted.get(at) || []), change.after]);
-    else modified.set(at, change.after);
+    else if (change.type === 'modify') modified.set(at, change.after);
   }
   // Rebuild from the original rows rather than splicing, so each accepted change
   // is independent of which other changes were accepted.

@@ -900,6 +900,46 @@ test('an inserted row is one change, and any subset of changes applies correctly
   assert.deepEqual(applyProposal([first, second], legacy, ['L1']), [first, second, inserted]);
 });
 
+test('a stale proposal target can never remove or modify the row now occupying its old index', () => {
+  const clock = { id: 'clock', action: 'Check the real-time clock mitigation.' };
+  const cybersecurity = { id: 'cyber', action: 'Document the cybersecurity risks.' };
+  const stale = { id: 'old-risk', action: 'Remove an obsolete risk action.' };
+  const proposal = { stage: 'actions', changes: [
+    { id: 'remove-stale', type: 'remove', before: stale, after: null, beforeIndex: 0, index: 0 },
+    { id: 'modify-stale', type: 'modify', before: stale, after: { ...stale, action: 'Changed.' }, beforeIndex: 1, index: 1 }
+  ] };
+  assert.deepEqual(
+    applyProposal([clock, cybersecurity], proposal, ['remove-stale', 'modify-stale']),
+    [clock, cybersecurity]
+  );
+});
+
+test('a stale removal cannot consume the surviving row when generated action IDs were duplicated', () => {
+  const surviving = { id: 'A10', action: 'Send the code of conduct today.' };
+  const duplicate = { id: 'A10', action: 'Send the code of conduct today.' };
+  const revised = { ...surviving, action: 'Send the code of conduct to Niamh today.' };
+  const proposal = { changes: [
+    { id: 'modify-survivor', type: 'modify', before: surviving, after: revised, beforeIndex: 0, index: 0 },
+    { id: 'remove-old-duplicate', type: 'remove', before: duplicate, after: null, beforeIndex: 3, index: 3 }
+  ] };
+
+  assert.deepEqual(
+    applyProposal([surviving], proposal, ['modify-survivor', 'remove-old-duplicate']),
+    [revised]
+  );
+});
+
+test('a reviewer-visible action register is normalised without being deduplicated', () => {
+  const repeated = {
+    action: 'Send the code of conduct today.', owners: ['Jacqui Fox'],
+    timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: []
+  };
+  const saved = normaliseAgentResult({ actions: [
+    { ...repeated, id: 'a1' }, { ...repeated, id: 'a2' }
+  ] }, [], '', { enforceEvidence: false, dedupeActions: false });
+  assert.deepEqual(saved.actions.map((action) => action.id), ['a1', 'a2']);
+});
+
 test('a reviewer edit is flagged against the evidence but never stripped', () => {
   const supplied = {
     actions: [{

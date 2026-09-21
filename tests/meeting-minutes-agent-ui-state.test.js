@@ -86,6 +86,11 @@ function startStubServer() {
     message: 'Preparing the summary…', completedPasses: [], callTimings: [], degradedSources: [], error: ''
   };
   drafts.set('summary-running', summaryRunning);
+  const summaryEmpty = baseDraft('summary-empty', false);
+  summaryEmpty.currentStep = 4;
+  summaryEmpty.selectedStep = 4;
+  summaryEmpty.speculation = null;
+  drafts.set('summary-empty', summaryEmpty);
   const prewarming = baseDraft('prewarming', false);
   prewarming.currentStep = 2;
   prewarming.selectedStep = 2;
@@ -441,6 +446,26 @@ test('a prepared Discussion is adopted automatically from Focus', { timeout: 120
     });
     assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
     assert.match(await page.textContent('#generationProgressTitle'), /Preparing discussion/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('opening an empty Summary starts generation without requiring speculation', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'summary-empty');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForFunction(async () => {
+      const state = await (await fetch('/test-state/summary-empty')).json();
+      return state.draft.generation && state.draft.generation.stage === 'summary';
+    });
+    assert.equal(await page.locator('[data-screen="4"]').evaluate((node) => node.classList.contains('active')), true);
+    assert.match(await page.textContent('#generationProgressTitle'), /Preparing summary/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

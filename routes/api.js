@@ -10816,30 +10816,52 @@ function resolveMeetingAgentProposalFlags(flags = [], proposal = {}, acceptedIds
 // pending. Their indexes are rebased against the newly updated list so a later
 // review still edits the intended record rather than whichever row moved into
 // its former position.
-function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRows = [], completedIds = []) {
+function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRows = [], completedIds = [], options = {}) {
   const completed = new Set(completedIds || []);
   const original = Array.isArray(originalRows) ? originalRows : [];
   const current = Array.isArray(currentRows) ? currentRows : [];
-  const rowIndex = (row) => {
+  const targetIdCounts = new Map();
+  for (const change of proposal.changes || []) {
+    if (change.type === 'add') continue;
+    const id = meetingMinutesAgentText(change.before?.id, 80);
+    if (id) targetIdCounts.set(id, (targetIdCounts.get(id) || 0) + 1);
+  }
+  const rowIndex = (row, change = null) => {
     const id = meetingMinutesAgentText(row?.id, 80);
-    if (id) return current.findIndex((candidate) => meetingMinutesAgentText(candidate?.id, 80) === id);
+    if (id) {
+      const candidates = current.map((candidate, index) => meetingMinutesAgentText(candidate?.id, 80) === id ? index : -1)
+        .filter((index) => index >= 0);
+      if (change && targetIdCounts.get(id) > 1) {
+        const expected = Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0;
+        return candidates.includes(expected) ? expected : -1;
+      }
+      return candidates.length === 1 ? candidates[0] : -1;
+    }
     const serialised = JSON.stringify(row || null);
     return current.findIndex((candidate) => JSON.stringify(candidate || null) === serialised);
   };
-  const changes = (Array.isArray(proposal.changes) ? proposal.changes : []).filter((change) => !completed.has(change.id)).map((change) => {
+  const changes = (Array.isArray(proposal.changes) ? proposal.changes : []).filter((change) => !completed.has(change.id)).flatMap((change) => {
     let beforeIndex;
     if (change.type === 'add') {
       const originalIndex = Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0;
       beforeIndex = originalIndex >= original.length ? current.length : rowIndex(original[originalIndex]);
       if (beforeIndex < 0) beforeIndex = Math.min(originalIndex, current.length);
     } else {
-      beforeIndex = rowIndex(change.before);
-      if (beforeIndex < 0) beforeIndex = Math.min(Number(change.beforeIndex) || 0, Math.max(0, current.length - 1));
+      beforeIndex = rowIndex(change.before, change);
+      // A destructive/edit suggestion whose named target no longer exists is
+      // obsolete. Keeping it with a fallback numeric index lets it point at a
+      // completely unrelated action after an autosave or earlier review.
+      if (beforeIndex < 0) return [];
     }
     // These are precisely the suggestions the reviewer left unchecked when
     // applying a subset. Persist that choice so a refresh cannot silently
     // select them again.
-    return { ...change, beforeIndex, index: beforeIndex, selected: false };
+    return [{
+      ...change,
+      beforeIndex,
+      index: beforeIndex,
+      selected: options.preserveSelection === true ? change.selected : false
+    }];
   });
   return changes.length ? { ...proposal, changes } : null;
 }
@@ -14299,7 +14321,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       discussion: req.body?.discussion ?? draft.discussion,
       actions: req.body?.actions ?? draft.actions,
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
-    }, draft.sourceUnits, '', { enforceEvidence: false });
+    }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false });
+    const pendingProposal = draft.pendingProposal?.stage === 'actions'
+      ? rebaseMeetingAgentProposal(draft.pendingProposal, draft.actions || [], normalised.actions, [], { preserveSelection: true })
+      : draft.pendingProposal;
     // A tab loaded before the six-step deploy sends a currentStep that means a
     // different screen than it does now. Ignore it rather than storing the wrong
     // one; the client stamps payloadVersion to say it speaks the new numbering.
@@ -14319,7 +14344,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     const reconciledReviewFlags = reconcileMeetingAgentOrphanFlags(
       mergedReviewFlags,
       [...normalised.discussion, ...normalised.actions],
-      draft.pendingProposal,
+      pendingProposal,
       [...(draft.discussion || []), ...(draft.actions || [])]
     );
     const reviewDecisionLabel = meetingMinutesAgentText(req.body?.reviewDecisionLabel, 160);
@@ -14334,6 +14359,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
       reviewFlags: reconciledReviewFlags,
+      pendingProposal,
       staleStages: [...new Set([
         ...(draft.staleStages || []),
         ...meetingAgentDerivedStaleStages(draft, {
@@ -15298,13 +15324,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
       return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
     }
     const before = proposal.stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
-    const applied = applyProposal(before, proposal, [...acceptedIdSet]);
-    // AI action edits can add a narrower restatement of an action already in
-    // the editable register. Reconcile those generated changes at the point
-    // they are accepted, while leaving direct reviewer-authored rows alone.
-    const after = proposal.stage === 'actions'
-      ? dedupeHybridActionRecords(applied, { sourceUnits: draft.sourceUnits })
-      : applied;
+    // Applying suggestions is a literal review transaction. Do not run the
+    // complete editable register through generation-time deduplication here:
+    // it can remove an untouched action or even the addition just selected.
+    const after = applyProposal(before, proposal, [...acceptedIdSet]);
     const remainingProposal = rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
     const history = [...(draft.changeHistory || []), {
       id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,

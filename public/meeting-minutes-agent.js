@@ -650,19 +650,19 @@
     }, GENERATION_POLL_MS);
   }
 
-  // On the Summary screen with nothing written yet, the Summary the server
-  // has been preparing (or is preparing) is what the Generate button would
-  // produce, so start it without the click. Without the speculative pipeline
-  // there is no such notice and the button behaves as before.
+  // Reaching an empty Summary screen is itself the request to prepare the
+  // summary. Speculation can make that faster, but generation must not depend
+  // on a private speculative result existing: disabled, failed or expired
+  // speculation previously left the screen blank until a manual click.
   function maybeOpenPreparedSummary() {
     if (!state.draft || state.currentStep !== STAGE_STEP.summary || rendering) return;
-    if (generationRunning() || autoSummaryStarted) return;
+    var draftId = String(state.draft.draftId || '');
+    if (generationRunning() || autoSummaryStartedForDraft === draftId) return;
     if (String(state.draft.executiveSummary || '').trim()) return;
-    if (!speculationFor('summary')) return;
-    autoSummaryStarted = true;
+    autoSummaryStartedForDraft = draftId;
     startBackgroundStage('summary');
   }
-  var autoSummaryStarted = false;
+  var autoSummaryStartedForDraft = '';
 
   // Discussion is prepared while the reviewer checks Focus. Adopt that work
   // as soon as it is ready (or wait on the existing preparation) so a finished

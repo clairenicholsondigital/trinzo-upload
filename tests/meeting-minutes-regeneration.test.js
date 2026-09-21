@@ -108,6 +108,34 @@ test('applying selected suggestions leaves unchecked suggestions and warnings un
   assert.equal(resolved[1].status, 'open');
 });
 
+test('proposal rebasing drops obsolete destructive targets and preserves selection during autosave', () => {
+  const old = [{ id: 'gone', action: 'An action removed by an earlier normalisation.' }];
+  const current = [{ id: 'real', action: 'Send the code of conduct today.' }];
+  const proposal = { stage: 'actions', changes: [
+    { id: 'remove-gone', type: 'remove', before: old[0], after: null, beforeIndex: 0, index: 0 },
+    { id: 'add-new', type: 'add', before: null, after: { id: 'new', action: 'Check the audit folder.' }, beforeIndex: 1, index: 1, selected: true }
+  ] };
+  const rebased = rebaseMeetingAgentProposal(proposal, old, current, [], { preserveSelection: true });
+  assert.deepEqual(rebased.changes.map((change) => change.id), ['add-new']);
+  assert.equal(rebased.changes[0].selected, true);
+  assert.equal(rebased.changes[0].beforeIndex, 1);
+});
+
+test('proposal rebasing distinguishes duplicated generated IDs by their original occurrence', () => {
+  const first = { id: 'A10', action: 'Send the code of conduct today.' };
+  const duplicate = { ...first };
+  const filler = { id: 'other', action: 'Prepare the audit pack.' };
+  const proposal = { stage: 'actions', changes: [
+    { id: 'modify-first', type: 'modify', before: first, after: { ...first, action: 'Send the code of conduct to Niamh today.' }, beforeIndex: 0, index: 0, selected: true },
+    { id: 'remove-duplicate', type: 'remove', before: duplicate, after: null, beforeIndex: 2, index: 2, selected: true }
+  ] };
+
+  const rebased = rebaseMeetingAgentProposal(proposal, [first, filler, duplicate], [first, filler], [], { preserveSelection: true });
+  assert.deepEqual(rebased.changes.map((change) => change.id), ['modify-first']);
+  assert.equal(rebased.changes[0].beforeIndex, 0);
+  assert.equal(rebased.changes[0].selected, true);
+});
+
 test('warning cleanup survives persistence while genuine missing-content issues stay open', () => {
   const removed = { id: 'removed', action: 'Sign the training attestation.', owners: ['Sam'], timing: { kind: 'deadline', wording: 'Friday' }, evidenceIds: ['T0002'], reviewFlagIds: ['flag-removed'] };
   const surviving = { id: 'kept', action: 'Send the report.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001'], reviewFlagIds: ['flag-shared'] };
