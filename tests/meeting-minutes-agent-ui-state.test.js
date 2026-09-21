@@ -91,6 +91,14 @@ function startStubServer() {
   prewarming.selectedStep = 2;
   prewarming.actionsPrewarm = { status: 'preparing', startedAt: '2026-09-16T12:00:02.000Z', completedAt: '' };
   drafts.set('prewarming', prewarming);
+  const discussionReady = baseDraft('discussion-ready', false);
+  discussionReady.currentStep = 1;
+  discussionReady.selectedStep = 1;
+  discussionReady.discussion = [];
+  discussionReady.speculation = {
+    stage: 'discussion', status: 'ready', startedAt: '2026-09-16T12:00:02.000Z', completedAt: '2026-09-16T12:01:02.000Z'
+  };
+  drafts.set('discussion-ready', discussionReady);
   const proposals = baseDraft('proposals', false);
   proposals.pendingProposal = {
     stage: 'actions',
@@ -413,6 +421,26 @@ test('Discussion shows Actions prewarming while the reviewer works', { timeout: 
     assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
     assert.equal(await page.locator('#actionsPrewarmNotice').isVisible(), true);
     assert.match(await page.textContent('#actionsPrewarmNotice'), /Preparing Actions in the background/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a prepared Discussion is adopted automatically from Focus', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'discussion-ready');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForFunction(async () => {
+      const state = await (await fetch('/test-state/discussion-ready')).json();
+      return state.draft.generation && state.draft.generation.stage === 'discussion';
+    });
+    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
+    assert.match(await page.textContent('#generationProgressTitle'), /Preparing discussion/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

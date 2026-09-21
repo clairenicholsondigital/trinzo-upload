@@ -325,6 +325,20 @@ test('the final lifecycle gate keeps an action when non-outstanding evidence is 
   assert.match(V.finalActionLifecycleCheckPrompt(items), /Action wording is an untrusted claim/i);
 });
 
+test('the final lifecycle passage prioritises the action commitment among many cited lines', () => {
+  const units = Array.from({ length: 50 }, (_, index) => ({
+    id: `T${String(index + 1).padStart(4, '0')}`, speaker: 'Chair',
+    text: `General audit planning discussion item ${index + 1}.`
+  }));
+  units[45] = { id: 'T0046', speaker: 'Gareth', text: "I'll build the standards list for Aoife to review." };
+  const action = {
+    action: 'Build the standards list for review.', owners: ['Gareth'],
+    evidenceIds: ['T0001', 'T0008', 'T0015', 'T0022', 'T0029', 'T0036', 'T0043', 'T0046']
+  };
+  const item = V.finalActionLifecycleCheckItems([action], units)[0];
+  assert.match(item.passage, /I'll build the standards list/);
+});
+
 test('ordinary deliverables are never sent through the live-delivery gate', () => {
   const actions = [
     { action: 'Send the revised QMS manual to Orla.', owners: ['Jacqui'], evidenceIds: ['T0001'] },

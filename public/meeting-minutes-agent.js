@@ -421,7 +421,10 @@
     if (options && options.scroll) beginStepNavigationScroll();
     renderGenerationProgress();
     updateFinishingBar();
-    if (options && options.scroll) maybeOpenPreparedSummary();
+    if (options && options.scroll) {
+      maybeOpenPreparedDiscussion();
+      maybeOpenPreparedSummary();
+    }
   }
 
   function setFieldValue(id, value) {
@@ -638,6 +641,7 @@
         state.draft.actionsPrewarm = payload.actionsPrewarm || null;
         state.draft.speculation = payload.speculation || null;
         renderActionsPrewarm();
+        maybeOpenPreparedDiscussion();
         maybeOpenPreparedSummary();
         pollActionPrewarm();
       } catch (error) {
@@ -659,6 +663,19 @@
     startBackgroundStage('summary');
   }
   var autoSummaryStarted = false;
+
+  // Discussion is prepared while the reviewer checks Focus. Adopt that work
+  // as soon as it is ready (or wait on the existing preparation) so a finished
+  // private result cannot remain invisible until the user retries manually.
+  function maybeOpenPreparedDiscussion() {
+    if (!state.draft || state.currentStep !== STAGE_STEP.focus || rendering) return;
+    if (generationRunning() || autoDiscussionStarted) return;
+    if ((state.draft.discussion || []).length) return;
+    if (!speculationFor('discussion')) return;
+    autoDiscussionStarted = true;
+    startBackgroundStage('discussion');
+  }
+  var autoDiscussionStarted = false;
 
   function readSteer() {
     var field = document.getElementById('meetingSteer');
@@ -1363,6 +1380,8 @@
     renderGenerationProgress();
     rendering = false;
     restoreFocus(snapshot);
+    maybeOpenPreparedDiscussion();
+    maybeOpenPreparedSummary();
   }
 
   function adoptDraft(draft) {

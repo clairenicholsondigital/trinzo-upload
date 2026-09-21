@@ -85,6 +85,23 @@ test('an invented or paraphrased quote changes nothing', () => {
   assert.equal(flags.length, 0);
 });
 
+test('a verbatim replacement can repair timing when the critic copied the old wording imprecisely', () => {
+  const source = [
+    { id: 'T0400', speaker: 'Alex', text: 'The audit-week proposal is for next week.' },
+    { id: 'T0401', speaker: 'Alex', text: 'The standards list needs to be ready by the tenth.' }
+  ];
+  const actions = [{
+    id: 'a1', action: 'Prepare the audit-week proposal.', owners: ['Alex'],
+    timing: { kind: 'deadline', wording: 'by the tenth', exactDate: '' }, evidenceIds: ['T0400', 'T0401'], reviewFlagIds: []
+  }];
+  const items = V.timingCheckItems(actions, source);
+  const result = V.applyTimingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'misread', timingQuote: 'by 10th', correctTiming: 'next week'
+  }]);
+  assert.equal(result.actions[0].timing.wording, 'next week');
+  assert.equal(result.flags.length, 1);
+});
+
 test('an "other step" that is one of the steps the action names changes nothing', () => {
   const actions = [walkAndLoad];
   const items = V.timingCheckItems(actions, units);

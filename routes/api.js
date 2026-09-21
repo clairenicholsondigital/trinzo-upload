@@ -206,6 +206,7 @@ const {
   discussionFidelityCheckPrompt,
   applyDiscussionFidelityResults,
   filterUnsupportedQuantifiedDiscussion,
+  promoteMaterialObjectionDetails,
   actionCompletenessCheckItems,
   actionCompletenessCheckPrompt,
   applyActionCompletenessResults,
@@ -11176,8 +11177,15 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     const combinedOwners = ownersCompatible
       ? [...new Set([...duplicateOwners, ...recordOwners])].slice(0, 8)
       : evidenceOwner ? [evidenceOwner] : (preferred.owners || []);
-    const timing = Number(timingRank[record.timing?.kind] || 0) > Number(timingRank[duplicate.timing?.kind] || 0)
-      ? record.timing : duplicate.timing;
+    // Related or nested actions may legitimately dedupe, but a deadline may
+    // travel only between strict versions of the same deliverable. This stops
+    // a nearby task's date becoming authoritative on the retained wording.
+    const sameDeliverable = strictActionDeliverableMatch(record, duplicate)
+      && strictActionDeliverableMatch(duplicate, record);
+    const timing = sameDeliverable
+      ? (Number(timingRank[record.timing?.kind] || 0) > Number(timingRank[duplicate.timing?.kind] || 0)
+        ? record.timing : duplicate.timing)
+      : preferred.timing;
     Object.assign(duplicate, preferred, {
       evidenceIds: combinedEvidence,
       owners: combinedOwners,
@@ -11814,7 +11822,14 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     const compatibleTopic = String(left.topic || '').toLowerCase() === String(right.topic || '').toLowerCase()
       || hybridTokenOverlap(left.topic, right.topic) >= 0.55;
     const leftNumbers = numberTokens(left.record?.text); const rightNumbers = numberTokens(right.record?.text);
-    if (leftNumbers.size && rightNumbers.size && ![...leftNumbers].some((value) => rightNumbers.has(value)) && lexical < 0.7) return false;
+    const explicitAlternative = (value) => /\b\d+(?:st|nd|rd|th)?\s+(?:or|\/|either)\s+\d+(?:st|nd|rd|th)?\b/i.test(String(value || ''));
+    const sameNumbers = leftNumbers.size === rightNumbers.size
+      && [...leftNumbers].every((value) => rightNumbers.has(value));
+    if ((explicitAlternative(left.record?.text) || explicitAlternative(right.record?.text)) && !sameNumbers) return false;
+    // Distinct figures and dates are distinct claims even when the surrounding
+    // wording is very similar. A high lexical score previously collapsed a
+    // 9th/10th pair into one synthetic alternative.
+    if (leftNumbers.size && rightNumbers.size && ![...leftNumbers].some((value) => rightNumbers.has(value))) return false;
     // Topic labels are generated independently and vary more than the
     // propositions beneath them. Strong proposition equivalence or shared
     // evidence therefore joins records across labels, while weaker matches
@@ -11971,6 +11986,26 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
         record.supportingDetails = retained;
       }
     }
+  }
+  // Do not publish a generated "9th or 10th"-style alternative when the
+  // source never states that alternative and separate grounded rows already
+  // preserve each date/number. This is a general anti-synthesis rule: it does
+  // not choose between the values or rewrite either claim.
+  const allRows = topics.flatMap((topic) => ['points', 'decisions', 'openQuestions']
+    .flatMap((kind) => (topic[kind] || []).map((record) => ({ topic, kind, record }))));
+  const sourceUnitsById = new Map(normaliseSourceUnits(sourceUnits).map((unit) => [String(unit.id), unit]));
+  const syntheticAlternative = (record) => {
+    const match = String(record?.text || '').match(/\b(\d+(?:st|nd|rd|th)?)\s+(?:or|\/|either)\s+(\d+(?:st|nd|rd|th)?)\b/i);
+    if (!match) return false;
+    const source = (record.evidenceIds || []).map((id) => sourceUnitsById.get(String(id))?.text || '').join(' ');
+    if (new RegExp(`\\b${match[1]}\\s+(?:or|\\/|either)\\s+${match[2]}\\b`, 'i').test(source)) return false;
+    const plain = (value) => String(value).replace(/(?:st|nd|rd|th)$/i, '');
+    const hasSibling = (value) => allRows.some((row) => row.record !== record
+      && new RegExp(`\\b${plain(value)}(?:st|nd|rd|th)?\\b`, 'i').test(String(row.record?.text || '')));
+    return hasSibling(match[1]) && hasSibling(match[2]);
+  };
+  for (const topic of topics) for (const kind of ['points', 'decisions', 'openQuestions']) {
+    topic[kind] = (topic[kind] || []).filter((record) => !syntheticAlternative(record));
   }
   const clientReadyDiscussion = (record) => {
     const value = String(record?.text || '').trim();
@@ -13453,6 +13488,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         rejected: fidelityChecked.rejected
       }));
     }
+    if (correctnessChecksEnabled()) {
+      const objections = promoteMaterialObjectionDetails(finalDiscussion);
+      if (objections.promoted) {
+        finalDiscussion = objections.discussion;
+        console.log(JSON.stringify({ event: 'meeting_agent_promoted_objections', journeyId: draft.draftId, promoted: objections.promoted }));
+      }
+    }
     // A final publication-boundary pass also covers wording returned by the
     // later question, attribution and fidelity checks. Flag reconciliation
     // below then drops any warning whose only target was removed here.
@@ -13722,12 +13764,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const acceptedActionAccounting = reconcileAcceptedRefereeActions(
     finalPublishedActions, refereeActions, remainingProposalCandidates, ensemble, draft.sourceUnits
   );
+  // A named-owner commitment that passed the strict transcript gate in the
+  // primary extraction must not vanish solely because a later aggregation
+  // response omitted it. This uses the same narrow grounding test as Referee
+  // reconciliation and never promotes suggestion/status evidence.
+  const primaryActionAccounting = reconcileAcceptedRefereeActions(
+    acceptedActionAccounting.actions, primary.actions, remainingProposalCandidates, ensemble, draft.sourceUnits
+  );
   const complete = dedupeHybridActionRecords(normaliseAgentResult({
-    actions: [...acceptedActionAccounting.actions, ...remainingProposalCandidates]
+    actions: [...primaryActionAccounting.actions, ...remainingProposalCandidates]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions,
   { sourceUnits: draft.sourceUnits });
   const reconciledPublishedActions = backfillActionCommitmentEvidence(
-    mergePublishedActionEvidence(acceptedActionAccounting.actions, complete), draft.sourceUnits,
+    mergePublishedActionEvidence(primaryActionAccounting.actions, complete), draft.sourceUnits,
     { meetingDate: details.meetingDate }
   );
   const builtProposal = removePublishedActionProposalDuplicates(
@@ -14036,6 +14085,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         actionScreenDuplicateCount,
         acceptedActionEligibleCount: acceptedActionAccounting.eligibleCount,
         acceptedActionRestoredCount: acceptedActionAccounting.restored.length,
+        primaryActionEligibleCount: primaryActionAccounting.eligibleCount,
+        primaryActionRestoredCount: primaryActionAccounting.restored.length,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
@@ -15453,6 +15504,7 @@ router.stagedEvaluation = {
   corroboratedOmittedDiscussionRecords,
   mergeHybridDiscussionTopics,
   compactDiscussionPropositions,
+  promoteMaterialObjectionDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,

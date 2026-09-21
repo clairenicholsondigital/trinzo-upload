@@ -194,6 +194,21 @@ test('strict action accounting does not merge different deliverables sharing evi
   ), false);
 });
 
+test('discussion compaction keeps otherwise similar claims with different dates separate', () => {
+  const discussion = [{ topic: 'Travel documents', points: [
+    { id: 'p9', text: 'Passport details are required by 9 July.', evidenceIds: ['T0009'] },
+    { id: 'p10', text: 'Passport details are required by 10 July.', evidenceIds: ['T0010'] }
+  ], decisions: [
+    { id: 'synthetic', text: 'Passport details are required by 9th or 10th July.', evidenceIds: ['T0009', 'T0010'] }
+  ], openQuestions: [] }];
+  const compact = compactDiscussionPropositions(discussion, [], [
+    { id: 'T0009', speaker: 'Alex', text: 'Send the first passport details by 9 July.' },
+    { id: 'T0010', speaker: 'Sam', text: 'The remaining passport details are due by 10 July.' }
+  ]);
+  assert.equal(compact[0].points.length, 2);
+  assert.equal(compact[0].decisions.length, 0);
+});
+
 test('accepted strongly grounded referee actions cannot silently disappear', () => {
   const actions = [
     { id: 'a1', action: 'Split the software list into assessed and excluded items.', owners: ['Ines'], evidenceIds: ['T0001'] },
@@ -271,6 +286,19 @@ test('identical post-check actions merge before display and retain the stronger 
   assert.deepEqual(merged[0].evidenceIds, ['T0010', 'T0011']);
   assert.deepEqual(new Set(merged[0].reviewFlagIds), new Set(['flag-ownership', 'flag-timing']));
   assert.deepEqual(merged[0].timing, { kind: 'deadline', wording: 'by Friday', exactDate: '' });
+});
+
+test('a related but non-identical action cannot donate its deadline during dedupe', () => {
+  const rows = [
+    { id: 'purpose', action: 'Obtain the supplier implementation plan and task list from Morgan.', owners: ['Alex Green'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010', 'T0011'] },
+    { id: 'contact', action: 'Talk to Morgan.', owners: ['Alex Green'],
+      timing: { kind: 'deadline', wording: 'by the tenth', exactDate: '' }, evidenceIds: ['T0012'] }
+  ];
+  const merged = dedupeHybridActionRecords(rows);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].id, 'purpose');
+  assert.equal(merged[0].timing.kind, 'not_stated');
 });
 
 test('question delivery outcome and sending step merge as one deliverable', () => {

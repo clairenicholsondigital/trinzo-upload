@@ -236,6 +236,19 @@ test('a person who only asks someone else to do the work is not its owner', () =
   assert.deepEqual(out.actions[1].owners, ['Ciaran Ryan']);
 });
 
+test('a collective we statement or a mere name mention does not prove individual ownership', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const units = [
+    { id: 'T0200', speaker: 'Jacqui Fox', text: 'We will produce the report for Karl.' },
+    { id: 'T0201', speaker: 'Gareth Long', text: 'Jacqui raised the report while we reviewed the findings.' }
+  ];
+  const out = V.applyRequesterOwnerRule([{
+    action: 'Produce the report for Karl.', owners: ['Jacqui Fox'], evidenceIds: ['T0200', 'T0201']
+  }], units);
+  assert.deepEqual(out.actions[0].owners, []);
+  assert.equal(out.flags[0].kind, 'ownership');
+});
+
 test('a row restating a corrected assumption leaves the primary rows; one stating the correction stays', () => {
   const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
   process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
@@ -365,6 +378,21 @@ test('named or dated facts are promoted out of context; raw speech and repeats a
   assert.equal(out.promoted, 1);
   assert.equal(out.discussion[0].points[1].text, 'Hazard analysis needs updates for USB cybersecurity; Rebecca is managing it.');
   assert.deepEqual(out.discussion[0].points[0].supportingDetails.map((detail) => detail.id), ['s2', 's3']);
+});
+
+test('material refusals and objections are promoted out of collapsed context', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const discussion = [{ topic: 'Audit approach', points: [{
+    id: 'p1', text: 'The brochure wording was reviewed.', evidenceIds: ['T0001'], supportingDetails: [
+      { id: 's1', text: 'Gareth will not write findings to order.', evidenceIds: ['T0002'] },
+      { id: 's2', text: 'Recognition that the same plan was made last month but not acted upon.', evidenceIds: ['T0003'] },
+      { id: 's3', text: 'The team also discussed the bins.', evidenceIds: ['T0004'] }
+    ]
+  }] }];
+  const out = V.promoteMaterialObjectionDetails(discussion);
+  assert.equal(out.promoted, 2);
+  assert.deepEqual(out.discussion[0].points.map((row) => row.id), ['p1', 's1', 's2']);
+  assert.deepEqual(out.discussion[0].points[0].supportingDetails.map((row) => row.id), ['s3']);
 });
 
 test('a row naming someone absent from its citation is repaired when a nearby line supplies them', () => {

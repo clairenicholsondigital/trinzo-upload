@@ -732,6 +732,10 @@ function normalisePointList(values, units, prefix) {
 }
 
 function recordSimilarity(left, right) {
+  const numbers = (value) => new Set(String(value || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
+  const leftNumbers = numbers(left?.text); const rightNumbers = numbers(right?.text);
+  if (leftNumbers.size && rightNumbers.size
+    && ![...leftNumbers].some((value) => rightNumbers.has(value))) return 0;
   const lexical = tokenOverlap(comparisonText(left?.text || ''), comparisonText(right?.text || ''));
   const leftEvidence = new Set(left?.evidenceIds || []);
   const sharedEvidence = (right?.evidenceIds || []).some((id) => leftEvidence.has(id));
@@ -2206,7 +2210,10 @@ function timingCheckPrompt(items = [], meetingDate = '') {
   ].join('\n\n');
 }
 
-// Apply verified verdicts. Anything unverifiable leaves the timing as it is.
+// Apply verified verdicts. A quote-verified replacement is independently safe
+// even when the critic copied the old timing imprecisely: retaining a timing
+// the critic has identified as belonging elsewhere is the more dangerous
+// failure in that case.
 function applyTimingCheckResults(actions = [], items = [], results = [], options = {}) {
   const flags = [];
   const rejected = [];
@@ -2220,14 +2227,17 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     const item = byIndex.get(index);
     const row = item ? verdicts.get(item.id) : null;
     if (!row || !['belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
+    const replacement = text(row.correctTiming, 120);
+    const replacementIsVerbatim = replacement && quotedVerbatim(replacement, item.passage)
+      && quoteText(replacement) !== quoteText(wording);
     const timingQuoteCheck = quotedVerbatimValidation(row.timingQuote, item.passage);
-    if (!timingQuoteCheck.valid) {
+    if (!timingQuoteCheck.valid && !replacementIsVerbatim) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: `timing_${timingQuoteCheck.reason}` });
       return action;
     }
     // "Misread" means the passage does not say it. If the timing's own words
     // are right there, the verdict contradicts the transcript.
-    if (row.verdict === 'misread' && quotedVerbatim(wording, item.passage)) {
+    if (row.verdict === 'misread' && quotedVerbatim(wording, item.passage) && !replacementIsVerbatim) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: 'timing_is_verbatim_in_passage' });
       return action;
     }
@@ -2247,7 +2257,6 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
         return action;
       }
     }
-    const replacement = text(row.correctTiming, 120);
     // "by the end of the week" -> "by the end of the week, hopefully" is the
     // same timing with a hedge: no change, and no flag quoting another step.
     const sameTiming = (left, right) => quoteText(left).replace(/\b(?:hopefully|ideally|roughly|about|approximately|around|maybe|possibly)\b/g, '')
@@ -2255,12 +2264,14 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
       === quoteText(right).replace(/\b(?:hopefully|ideally|roughly|about|approximately|around|maybe|possibly)\b/g, '')
         .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (replacement && sameTiming(replacement, wording)) return action;
-    const usable = replacement && quotedVerbatim(replacement, item.passage) && quoteText(replacement) !== quoteText(wording);
+    const usable = replacementIsVerbatim;
     const timing = usable ? timingFrom({ timing: { wording: replacement } }, options) : { kind: 'not_stated', wording: '', exactDate: '' };
     const actionText = replaceEmbeddedTiming(action.action, wording, usable ? replacement : '');
-    const said = row.verdict === 'belongs_to_other_step'
-      ? `in the transcript it was said about "${text(row.stepQuote, 160)}"`
-      : row.verdict === 'past_event'
+    const said = !timingQuoteCheck.valid
+      ? 'the replacement is directly supported by the cited passage'
+      : row.verdict === 'belongs_to_other_step'
+        ? `in the transcript it was said about "${text(row.stepQuote, 160)}"`
+        : row.verdict === 'past_event'
         ? `it refers to something that has already happened ("${text(row.timingQuote, 160)}")`
         : `the transcript does not say this ("${text(row.timingQuote, 160)}")`;
     const flag = normaliseFlag({
@@ -2387,8 +2398,25 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
 // supplies an exact transcript quote proving that classification. Missing or
 // unverifiable results leave the action untouched.
 function finalActionLifecycleCheckItems(actions = [], units = []) {
+  const rowsById = new Map(evidenceContextFor(units).rows.map((unit) => [String(unit.id), unit]));
   return (Array.isArray(actions) ? actions : []).map((action, index) => {
-    const passage = evidenceWindowUnits(units, action?.evidenceIds || [], 3, 10).slice(0, 32)
+    const actionWords = new Set(actionSubjectWords(action?.action || ''));
+    const owners = (action?.owners || []).map((owner) => String(owner).toLowerCase());
+    const rankedIds = [...new Set(action?.evidenceIds || [])].sort((left, right) => {
+      const score = (id) => {
+        const unit = rowsById.get(String(id));
+        if (!unit) return -1;
+        const shared = contentTokens(unit.text).filter((word) => actionWords.has(word)).length;
+        const owner = owners.some((name) => name === String(unit.speaker || '').toLowerCase()) ? 3 : 0;
+        const commitment = /\b(?:i['’]?ll|i\s+will|i['’]?m\s+going\s+to|will\s+(?:prepare|produce|write|build|send|share|review|trace|split)|responsible\s+for|assigned)\b/i.test(unit.text || '') ? 4 : 0;
+        return shared * 2 + owner + commitment;
+      };
+      return score(right) - score(left);
+    }).slice(0, 6);
+    const seen = new Set();
+    const passageUnits = rankedIds.flatMap((id) => evidenceWindowUnits(units, [id], 2, 5))
+      .filter((unit) => !seen.has(unit.id) && seen.add(unit.id)).slice(0, 40);
+    const passage = passageUnits
       .map((unit) => `${unit.speaker}: ${unit.text}`).join('\n');
     if (!passage || !text(action?.action)) return null;
     return { id: `life${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], passage };
@@ -2887,7 +2915,11 @@ function splitExplicitMultiOwnerActions(actions = [], units = []) {
 // owner speaks in the passage is addressed to someone else ("could you...",
 // "you'd need to...") and they never commit themselves, and nobody else names
 // them, the owner is removed and flagged. The right owner is not guessed.
-const OWNER_FIRST_PERSON = /\b(?:i|we)\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|we'll|i'd|we'd|i'm going to|we're going to|i'm gonna|we're gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
+// Collective "we" describes the group and cannot, by itself, prove that one
+// named individual owns the work. Individual ownership needs singular speech,
+// acceptance of an addressed request, or an explicit assignment by somebody
+// else.
+const OWNER_FIRST_PERSON = /\bi\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|i'd|i'm going to|i'm gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
 const OWNER_ACCEPTS = /^\s*(?:yes|yeah|yep|okay|ok|sure|will do|absolutely|of course|perfect|no problem)\b/i;
 const OWNER_SELF_ASSIGNMENT = /\bme\s+to\s+[a-z]|\bthat(?:'d| would)\s+be\s+me\b/i;
 function nameParts(value) {
@@ -2941,11 +2973,16 @@ function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
   const contested = people.some((person) => !person.parts.some((part) => names.includes(part))
     && lines.some((line) => personIsNamedIn(person, line?.text)));
   const mentions = (value) => names.some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
+  const assigned = (value) => names.some((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,3}\\s+(?:to|will|shall|is\\s+(?:responsible\\s+)?to|is\\s+responsible\\s+for|owns?|leads?|takes?)\\b`, 'i').test(value)
+      || new RegExp(`\\b(?:assign(?:ed)?|leave|give|hand)\\b.{0,45}\\b${escaped}\\b`, 'i').test(value);
+  });
   const isOwner = (speaker) => nameParts(speaker).some((word) => names.includes(word));
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const value = String(line?.text || '');
-    if (!isOwner(line?.speaker) && mentions(value)) return true;
+    if (!isOwner(line?.speaker) && mentions(value) && assigned(value)) return true;
     if (!isOwner(line?.speaker)) continue;
     const firstPerson = OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value);
     const accepts = OWNER_ACCEPTS.test(value);
@@ -3404,6 +3441,44 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
             continue;
           }
           kept.push(detail);
+        }
+        return kept.length === details.length ? record : { ...record, supportingDetails: kept };
+      });
+    }
+    if (additions.length) next.points = [...(next.points || []), ...additions];
+    return next;
+  });
+  return { discussion: checked, promoted };
+}
+
+// Refusals and objections materially change the meaning of a meeting record.
+// They must not disappear merely because a publication pass classified them
+// as supporting context. Promote only already-written, evidence-linked minute
+// prose; never copy or manufacture transcript wording here.
+const MATERIAL_OBJECTION = /\b(?:will not|won't|would not|wouldn't|not going to|refus(?:e|ed|al)|declin(?:e|ed)|object(?:ed|ion)?|oppos(?:e|ed|ition)|did not agree|does not agree|cannot agree|can't agree|not accept(?:ed)?|would not accept|not acted (?:on|upon)|already (?:said|tried|agreed|decided)|same (?:issue|plan|proposal|promise).{0,30}(?:last|previous))\b/i;
+function promoteMaterialObjectionDetails(discussion = [], limit = 6) {
+  const visible = (Array.isArray(discussion) ? discussion : [])
+    .flatMap((topic) => ['points', 'decisions', 'openQuestions'].flatMap((kind) => topic?.[kind] || []));
+  const repeatsVisible = (value) => visible.some((record) => tokenOverlap(value, record?.text || '') >= 0.78);
+  const readable = (value) => !/^\s*(?:so|yeah|yes|okay|ok|well|and|but|i|we|you)\b/i.test(value)
+    && !/[a-z]\.[A-Z]/.test(value);
+  let promoted = 0;
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    const additions = [];
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      next[kind] = (topic?.[kind] || []).map((record) => {
+        const details = Array.isArray(record?.supportingDetails) ? record.supportingDetails : [];
+        const kept = [];
+        for (const detail of details) {
+          const value = text(detail?.text, 800);
+          if (promoted < limit && value && MATERIAL_OBJECTION.test(value)
+            && (detail.evidenceIds || []).length && readable(value) && !repeatsVisible(value)) {
+            additions.push({ id: detail.id || stableId('objection', value, promoted), text: value,
+              evidenceIds: [...detail.evidenceIds], reviewFlagIds: [...(detail.reviewFlagIds || [])], supportingDetails: [] });
+            visible.push(additions[additions.length - 1]);
+            promoted += 1;
+          } else kept.push(detail);
         }
         return kept.length === details.length ? record : { ...record, supportingDetails: kept };
       });
@@ -4399,6 +4474,7 @@ module.exports = {
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
+  promoteMaterialObjectionDetails,
   supersededCheckItems,
   supersededVerdicts,
   applyRequesterOwnerRule,
