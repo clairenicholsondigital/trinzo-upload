@@ -904,7 +904,12 @@
     if (generationRunning('actions')) {
       var generation = state.draft.generation || {};
       var preview = Array.isArray(generation.previewActions) ? generation.previewActions : [];
-      var prior = Array.isArray(state.draft.actions) ? state.draft.actions : [];
+      // The server filters this display copy against the preview with the same
+      // deliverable-aware rule used at final publication. Older in-flight
+      // generations do not carry it, so retain the previous fallback.
+      var prior = Array.isArray(generation.previewSavedActions)
+        ? generation.previewSavedActions
+        : Array.isArray(state.draft.actions) ? state.draft.actions : [];
       var intro = preview.length
         ? 'You can start reading these while the final quality checks continue. Editing unlocks when the final version is ready.'
         : prior.length

@@ -20,6 +20,7 @@ const {
   meetingAgentRefereeBatches,
   meetingAgentRefereeBatchPlan,
   meetingAgentExecutionTelemetry,
+  meetingAgentPreviewSavedActions,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
@@ -216,6 +217,27 @@ test('action dedupe deterministically keeps the strongest wording and combines m
   assert.equal(forward[0].timing.kind, 'deadline');
 });
 
+test('identical post-check actions merge before display and retain the stronger timing', () => {
+  const rows = [
+    {
+      id: 'untimed', action: 'Submit the permit application and confirm that the repaired access route has reopened.',
+      owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' },
+      evidenceIds: ['T0010'], reviewFlagIds: ['flag-ownership']
+    },
+    {
+      id: 'timed', action: 'Submit the permit application and confirm that the repaired access route has reopened.',
+      owners: ['Alex Green'], timing: { kind: 'deadline', wording: 'by Friday', exactDate: '' },
+      evidenceIds: ['T0011'], reviewFlagIds: ['flag-timing']
+    }
+  ];
+  const merged = dedupeHybridActionRecords(rows);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].id, 'timed');
+  assert.deepEqual(merged[0].evidenceIds, ['T0010', 'T0011']);
+  assert.deepEqual(new Set(merged[0].reviewFlagIds), new Set(['flag-ownership', 'flag-timing']));
+  assert.deepEqual(merged[0].timing, { kind: 'deadline', wording: 'by Friday', exactDate: '' });
+});
+
 test('question delivery outcome and sending step merge as one deliverable', () => {
   const records = [
     {
@@ -271,6 +293,30 @@ test('action dedupe recognises a partial deliverable inside its fuller action', 
   assert.deepEqual(forward.map((record) => record.id), ['contract-pack', 'road-and-towpath']);
   assert.deepEqual(forward[0].evidenceIds, ['T0010', 'T0011']);
   assert.deepEqual(forward[1].evidenceIds, ['T0020', 'T0021']);
+});
+
+test('action generation progress hides a saved nested duplicate but keeps distinct saved work', () => {
+  const preview = {
+    id: 'road-and-towpath',
+    action: 'Submit the road-closure application this week and confirm the towpath has reopened.',
+    owners: ['Alan Pryce'], timing: { kind: 'target', wording: 'this week', exactDate: '' },
+    evidenceIds: ['T0041', 'T0073']
+  };
+  const savedDuplicate = {
+    id: 'towpath-only', action: 'Confirm that the towpath has reopened.',
+    owners: ['Alan Pryce'], timing: { kind: 'not_stated', wording: '', exactDate: '' },
+    evidenceIds: ['T0041']
+  };
+  const savedDistinct = {
+    id: 'plan-b', action: 'Develop a Plan B route if the road closure is not approved.',
+    owners: ['Alan Pryce'], timing: { kind: 'dependency', wording: 'if the road closure is not approved', exactDate: '' },
+    evidenceIds: ['T0044']
+  };
+  const visible = meetingAgentPreviewSavedActions(
+    [preview], [savedDuplicate, savedDistinct]
+  );
+  assert.deepEqual(visible.previewActions.map((record) => record.id), ['road-and-towpath']);
+  assert.deepEqual(visible.savedActions.map((record) => record.id), ['plan-b']);
 });
 
 test('action dedupe preserves distinct predicates and recipients', () => {

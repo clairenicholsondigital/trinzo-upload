@@ -361,6 +361,18 @@ function normaliseMeetingAgentGeneration(generation) {
       evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
       reviewFlagIds: []
     })).filter((item) => item.action).slice(0, 60),
+    ...(Array.isArray(generation.previewSavedActions) ? { previewSavedActions: generation.previewSavedActions.map((item, index) => ({
+      id: meetingMinutesAgentText(item?.id, 80) || `saved-action-${index + 1}`,
+      action: meetingMinutesAgentText(item?.action, 1600),
+      owners: (Array.isArray(item?.owners) ? item.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 12),
+      timing: {
+        kind: ['deadline', 'target', 'dependency', 'not_stated'].includes(item?.timing?.kind) ? item.timing.kind : 'not_stated',
+        wording: meetingMinutesAgentText(item?.timing?.wording, 220),
+        exactDate: meetingMinutesAgentText(item?.timing?.exactDate, 20)
+      },
+      evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
+      reviewFlagIds: []
+    })).filter((item) => item.action).slice(0, 60) } : {}),
     previewUpdatedAt: meetingMinutesAgentText(generation.previewUpdatedAt, 40)
   };
 }
@@ -12422,12 +12434,45 @@ function meetingAgentSerialDraftWrite(draftId, task) {
   return tracked;
 }
 
+function meetingAgentPreviewSavedActions(preview = [], saved = [], sourceUnits = []) {
+  const cloneAction = (record = {}) => ({
+    ...record,
+    owners: [...(record.owners || [])],
+    timing: record.timing ? { ...record.timing } : record.timing,
+    evidenceIds: [...(record.evidenceIds || [])],
+    reviewFlagIds: [...(record.reviewFlagIds || [])]
+  });
+  const previewActions = dedupeHybridActionRecords(
+    (Array.isArray(preview) ? preview : []).map(cloneAction), { sourceUnits }
+  );
+  const dedupedSaved = dedupeHybridActionRecords(
+    (Array.isArray(saved) ? saved : []).map(cloneAction), { sourceUnits }
+  );
+  const savedActions = dedupedSaved.filter((record) =>
+    dedupeHybridActionRecords([
+      ...previewActions.map(cloneAction), cloneAction(record)
+    ], { sourceUnits }).length > previewActions.length);
+  return { previewActions, savedActions };
+}
+
 async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = {}) {
   return meetingAgentSerialDraftWrite(draftId, async () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
       const { passCache, ...generationPatch } = patch;
+      if (stage === 'actions' && Array.isArray(generationPatch.previewActions)) {
+        const visible = meetingAgentPreviewSavedActions(
+          generationPatch.previewActions, fresh.actions, fresh.sourceUnits
+        );
+        // During regeneration the Actions screen shows the checked preview and
+        // the saved register together. Filter only the saved display copy here:
+        // otherwise the same deliverable appears twice until the final result
+        // is persisted, even though the publication boundary later merges it.
+        // Distinct reviewer-authored actions remain visible and untouched.
+        generationPatch.previewActions = visible.previewActions;
+        generationPatch.previewSavedActions = visible.savedActions;
+      }
       const generation = normaliseMeetingAgentGeneration({
         ...(fresh.generation || {}), stage, status: 'running', bootId: MEETING_AGENT_BOOT_ID,
         startedAt: fresh.generation?.startedAt || new Date().toISOString(), ...generationPatch
@@ -13815,7 +13860,21 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       checked: finalLifecycleCheckedCount, withheld: finalLifecycleWithheldCount, rejected: lifecycle.rejected
     }));
   }
-  const actionFlagState = reconcileRecordFlags({ actions: timingChecked.actions }, mergeMeetingAgentFlags(refereeFlags, [
+  // Earlier dedupe passes run before timing, completeness and lifecycle checks,
+  // which can rewrite two variants into the same finished action. Reconcile the
+  // finished rows before they reach the editable Actions screen, carrying all
+  // evidence and flags forward and retaining the stronger timing.
+  const actionsBeforeDisplayDedupe = timingChecked.actions.length;
+  const actionScreenRows = dedupeHybridActionRecords(
+    timingChecked.actions, { sourceUnits: draft.sourceUnits }
+  );
+  const actionScreenDuplicateCount = actionsBeforeDisplayDedupe - actionScreenRows.length;
+  if (actionScreenDuplicateCount) console.log(JSON.stringify({
+    event: 'meeting_agent_action_screen_dedupe', journeyId: draft.draftId,
+    before: actionsBeforeDisplayDedupe, after: actionScreenRows.length,
+    merged: actionScreenDuplicateCount
+  }));
+  const actionFlagState = reconcileRecordFlags({ actions: actionScreenRows }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
     ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
@@ -13847,6 +13906,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         finalLifecycleCheckedCount,
         finalLifecycleWithheldCount,
         finalLifecycleRejectedCount,
+        actionScreenDuplicateCount,
         criticCandidateCount: criticCandidates.length,
         criticPromptChars: criticPrompt.length,
         salvageCandidateCount: salvageCandidates.length,
@@ -15054,7 +15114,13 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
       return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
     }
     const before = proposal.stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
-    const after = applyProposal(before, proposal, [...acceptedIdSet]);
+    const applied = applyProposal(before, proposal, [...acceptedIdSet]);
+    // AI action edits can add a narrower restatement of an action already in
+    // the editable register. Reconcile those generated changes at the point
+    // they are accepted, while leaving direct reviewer-authored rows alone.
+    const after = proposal.stage === 'actions'
+      ? dedupeHybridActionRecords(applied, { sourceUnits: draft.sourceUnits })
+      : applied;
     const remainingProposal = rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
     const history = [...(draft.changeHistory || []), {
       id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,
@@ -15212,6 +15278,7 @@ router.stagedEvaluation = {
   meetingAgentRefereeBatchPlan,
   meetingAgentRunOrderedConcurrent,
   meetingAgentExecutionTelemetry,
+  meetingAgentPreviewSavedActions,
   meetingAgentFailureClass,
   meetingAgentResultCounts,
   meetingAgentMaterialPassImpact,
