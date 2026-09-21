@@ -56,7 +56,7 @@ const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedD
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const { organiseDiscussionForReview, removePersonalAsides } = require('../utils/canonicalMinutes/discussionOrganiser');
-const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -11059,6 +11059,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       const conventional = hybridCandidateMatchesRecord(candidate, existing)
         && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
       if (conventional) return true;
+      if (sameContactPurposeDeliverable(record, existing)) return true;
       if (!sameOrNestedActionDeliverable(record, existing)) return false;
       const recordQuestionFrame = questionCommunicationFrame(record);
       const existingQuestionFrame = questionCommunicationFrame(existing);

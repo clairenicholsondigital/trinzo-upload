@@ -146,6 +146,32 @@ function evidenceDistance(left = {}, right = {}) {
   return closest;
 }
 
+// A short contact instruction is often emitted beside the concrete outcome of
+// that contact: "Talk to Morgan" and "Obtain the implementation plan from
+// Morgan" are one accountability item, not two. Keep this evidence-bounded so
+// separate conversations with the same person remain separate, and do not
+// collapse a contact row which already states a different purpose.
+function bareContactFrame(record = {}) {
+  const text = String(record.action || record.text || '').trim().replace(/[.?!]+$/, '');
+  const match = text.match(/^(?:(?:talk|speak|chat|liaise|meet|check in|follow up)\s+(?:to|with)|(?:contact|call|chase|message))\s+(?:the\s+)?(.+)$/i);
+  if (!match || /\b(?:about|regarding|concerning|for|so that|in order to|to (?:ask|check|confirm|discuss|obtain|request|review))\b/i.test(match[1])) return null;
+  const contact = contentTokens(match[1]);
+  if (!contact.length || contact.length > 5) return null;
+  return { contact: new Set(contact), words: new Set(contentTokens(text)) };
+}
+
+function sameContactPurposeDeliverable(left = {}, right = {}) {
+  if (!compatibleOwners(left, right) || evidenceDistance(left, right) > 6) return false;
+  const leftBare = bareContactFrame(left); const rightBare = bareContactFrame(right);
+  if (Boolean(leftBare) === Boolean(rightBare)) return false;
+  const bare = leftBare || rightBare;
+  const detailed = leftBare ? right : left;
+  const detailedWords = new Set(contentTokens(detailed.action || detailed.text));
+  if (![...bare.contact].every((word) => detailedWords.has(word))) return false;
+  const addedMeaning = [...detailedWords].filter((word) => !bare.words.has(word));
+  return addedMeaning.length >= 2;
+}
+
 function questionCommunicationFrame(record = {}) {
   const words = tokens(record.action);
   if (!words.length || !COMMUNICATION_VERBS.has(words[0])) return null;
@@ -185,6 +211,7 @@ module.exports = {
   questionCommunicationFrame,
   sameQuestionCommunicationDeliverable,
   sameOrNestedActionDeliverable,
+  sameContactPurposeDeliverable,
   circularMetaAction,
   actionClauses,
   conflictingActionRecipients

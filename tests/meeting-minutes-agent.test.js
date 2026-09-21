@@ -295,6 +295,40 @@ test('action dedupe recognises a partial deliverable inside its fuller action', 
   assert.deepEqual(forward[1].evidenceIds, ['T0020', 'T0021']);
 });
 
+test('bare contact action merges into its nearby concrete purpose without using transcript vocabulary', () => {
+  const base = (id, action, evidenceId, owner = 'Alex Green') => ({
+    id, action, owners: [owner], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [evidenceId]
+  });
+  const records = [
+    base('contact', 'Talk to Morgan.', 'T0010'),
+    base('purpose', 'Obtain the supplier implementation plan and task list from Morgan.', 'T0013')
+  ];
+  const forward = dedupeHybridActionRecords(structuredClone(records));
+  const reverse = dedupeHybridActionRecords(structuredClone(records).reverse());
+  assert.deepEqual(forward, reverse);
+  assert.equal(forward.length, 1);
+  assert.equal(forward[0].id, 'purpose');
+  assert.deepEqual(forward[0].evidenceIds, ['T0010', 'T0013']);
+});
+
+test('bare contact subsumption preserves different purposes, owners and distant exchanges', () => {
+  const base = (id, action, evidenceId, owner = 'Alex Green') => ({
+    id, action, owners: [owner], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [evidenceId]
+  });
+  const rows = dedupeHybridActionRecords([
+    base('purposeful-contact', 'Talk to Morgan about delivery dates.', 'T0010'),
+    base('different-purpose', 'Obtain the supplier implementation plan from Morgan.', 'T0012'),
+    base('different-owner-contact', 'Talk to Casey.', 'T0020'),
+    base('different-owner-purpose', 'Obtain the audit schedule from Casey.', 'T0021', 'Priya Shah'),
+    base('distant-contact', 'Follow up with Taylor.', 'T0030'),
+    base('distant-purpose', 'Request the validation report from Taylor.', 'T0040')
+  ]);
+  assert.deepEqual(rows.map((row) => row.id), [
+    'purposeful-contact', 'different-purpose', 'different-owner-contact',
+    'different-owner-purpose', 'distant-contact', 'distant-purpose'
+  ]);
+});
+
 test('action generation progress hides a saved nested duplicate but keeps distinct saved work', () => {
   const preview = {
     id: 'road-and-towpath',
