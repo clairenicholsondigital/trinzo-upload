@@ -76,3 +76,19 @@ test('a removal warning is cleared when a later merge puts that owner back', () 
   assert.deepEqual(state.content.actions[0].reviewFlagIds, []);
   assert.equal(state.flags.length, 0);
 });
+
+test("a chair reading an action back to someone is not a rival owner", () => {
+  const units = normaliseSourceUnits([
+    unit('T0001', 'Sam', 'I have been looking at supplier options for the backup generator.'),
+    unit('T0002', 'Chair', "And Sam, then you're just going to update the generator supplier shortlist once the quotes are in."),
+    unit('T0003', 'Chair', "I'll send round the minutes this afternoon.")
+  ]);
+  const action = { id: 'a1', action: 'Update the generator supplier shortlist once the quotes are in.', owners: ['Sam'], evidenceIds: ['T0002'], reviewFlagIds: [] };
+  const result = applyRequesterOwnerRule([action], units);
+  assert.deepEqual(result.actions[0].owners, ['Sam']);
+  assert.ok(!result.flags.some((flag) => /Owner changed/.test(flag.message)));
+});
+
+test('a declarative assignment to someone who is only talked about keeps them as owner', () => {
+  assert.ok(assignsWorkTo('Priya', "So Priya, and I think Tom, you're involved in that review as well next week."));
+});
