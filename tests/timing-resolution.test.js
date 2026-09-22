@@ -48,3 +48,13 @@ test('the answer is read from the rows after the question even past the cited wi
   const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001'], { meetingDate: TUESDAY });
   assert.equal(timing.exactDate, '2026-03-24');
 });
+
+test('"how long" asks for a duration and never becomes a deadline', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0001', speaker: 'Sam', text: "I'll fix the loader and re-run the full regression.", classification: 'keep' },
+    { id: 'T0002', speaker: 'Chair', text: 'How long is the full regression?', classification: 'keep' },
+    { id: 'T0003', speaker: 'Sam', text: 'About two days of test time.', classification: 'keep' }
+  ]);
+  const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001'], { meetingDate: TUESDAY });
+  assert.equal(timing.kind, 'not_stated');
+});

@@ -1934,11 +1934,13 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
 // commitment rather than narration ("we discussed today").
 const CITED_TIMING_PHRASE = /\b(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon))?|this\s+(?:morning|afternoon|evening|week)|next\s+week|end\s+of\s+(?:this\s+|next\s+)?week|(?:this\s+|next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?)\b(?!['’]s)/i;
 const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
+// "How long is it?" asks for a duration, not a due date, and is deliberately
+// not a when-question: "about two days of test time" is not a deadline.
 // "Who traces it?" "That'd be me." "By when?" "Two weeks." The answer to a
 // when-question sits in its own short turn, outside the cited commitment. When
 // an action has no timing, a when-question inside its exchange whose reply
 // (within the next two rows) names a time supplies it.
-const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would) (?:you|that|it|we)|what(?:'s| is) the (?:date|deadline|timescale|timeline)|how (?:long|soon)|when(?:'s| is) (?:that|it) (?:due|going to))\b/i;
+const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would) (?:you|that|it|we)|what(?:'s| is) the (?:date|deadline)|how soon|when(?:'s| is) (?:that|it) (?:due|going to))\b/i;
 const ANSWER_TIMING = /\b(?:today|tonight|tomorrow(?: morning| afternoon)?|this week|next week|end of (?:the |this |next )?week|(?:the )?(?:rest|remainder) of (?:the |this )?week|(?:this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|a fortnight|(?:in |within )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2}) (?:days?|weeks?|months?)|(?:by |on )?the (?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)|\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
 function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
