@@ -2431,11 +2431,25 @@ function finalActionLifecycleCheckPrompt(items = []) {
     'Decide whether it is genuine work still outstanding after the meeting.',
     '- "outstanding": someone committed to it, accepted it, or was assigned it as work to be done after the meeting.',
     '- "not_outstanding": it is only a question, discussion, suggestion nobody accepted, status update, description of normal practice, work already completed before or during the meeting, meeting housekeeping, or work belonging only to an outside organisation.',
+    'Explicit wording that matching work is still to be done, remains outstanding, is continuing, or was deferred to a future time always means some work remains.',
     'Do not reject an Action merely because its owner or date is unclear. If any genuine follow-up remains, or if you are unsure, choose "outstanding".',
     'For "not_outstanding", provide evidenceQuote: exact contiguous words from the passage that prove why no work remains. Quote the completion, answer, status, or lack-of-acceptance context—not merely the original request. Never paraphrase.',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"outstanding|not_outstanding","evidenceQuote":"","reason":""}]}',
     `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, passage: item.passage })))}`
   ].join('\n\n');
+}
+
+const EXPLICIT_OUTSTANDING_LIFECYCLE = /\b(?:still (?:needs? to be done|to be done|needs? (?:doing|reviewing|updating|completing)|outstanding|pending)|remain(?:s|ed|ing)? (?:to be done|outstanding|open|pending)|(?:has|have) (?:not yet|yet to)|not yet (?:done|complete|completed|reviewed|sent|shared|updated)|(?:(?:has|have|had|was|were) (?:been )?)?(?:pushed (?:out|back)|postponed|deferred) (?:until|to)|continue(?:s|d|ing)? (?:to |with )?(?:review|reviewing|update|updating|test|testing|complete|completing|prepare|preparing|develop|developing|document|documenting|resolve|resolving|progress|progressing)|work in progress|in progress)\b/i;
+
+function itemHasExplicitOutstandingEvidence(item = {}) {
+  const subject = aboutWords(item.action || '');
+  if (!subject.size) return false;
+  const clauses = String(item.passage || '').split(/\n|(?<=[.!?;])\s+/).map((value) => value.trim()).filter(Boolean);
+  return clauses.some((clause) => {
+    if (!EXPLICIT_OUTSTANDING_LIFECYCLE.test(clause)) return false;
+    const shared = [...aboutWords(clause)].filter((word) => subject.has(word)).length;
+    return shared >= 2;
+  });
 }
 
 function applyFinalActionLifecycleResults(actions = [], items = [], results = []) {
@@ -2445,6 +2459,14 @@ function applyFinalActionLifecycleResults(actions = [], items = [], results = []
   for (const item of items) {
     const row = verdicts.get(item.id);
     if (!row || row.verdict !== 'not_outstanding') continue;
+    // A probabilistic lifecycle verdict cannot reverse explicit source wording
+    // that this same deliverable remains open. This is deliberately scoped to
+    // clauses sharing at least two subject words with the action, so an open
+    // neighbouring task cannot keep an unrelated completed action alive.
+    if (itemHasExplicitOutstandingEvidence(item)) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'explicit_outstanding_evidence' });
+      continue;
+    }
     const quoteCheck = decisionQuoteValidation(row.evidenceQuote, item.passage);
     if (!quoteCheck.valid) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: quoteCheck.reason });

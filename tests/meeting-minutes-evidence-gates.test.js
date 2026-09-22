@@ -325,6 +325,45 @@ test('the final lifecycle gate keeps an action when non-outstanding evidence is 
   assert.match(V.finalActionLifecycleCheckPrompt(items), /Action wording is an untrusted claim/i);
 });
 
+test('explicit outstanding wording cannot be reversed into a completed lifecycle', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Chair', text: 'The accessibility review has been pushed out until next week.' },
+    { id: 'T0002', speaker: 'Chair', text: 'The document translation update still needs to be done.' }
+  ];
+  const actions = [
+    { action: 'Conduct the accessibility review.', owners: [], evidenceIds: ['T0001'] },
+    { action: 'Complete the document translation update.', owners: ['Alex'], evidenceIds: ['T0002'] }
+  ];
+  const items = V.finalActionLifecycleCheckItems(actions, units);
+  const result = V.applyFinalActionLifecycleResults(actions, items, [
+    { id: items[0].id, verdict: 'not_outstanding', evidenceQuote: 'has been pushed out until next week' },
+    { id: items[1].id, verdict: 'not_outstanding', evidenceQuote: 'still needs to be done' }
+  ]);
+  assert.deepEqual(result.actions, actions);
+  assert.equal(result.withheld.length, 0);
+  assert.deepEqual(result.rejected.map((item) => item.reason), [
+    'explicit_outstanding_evidence', 'explicit_outstanding_evidence'
+  ]);
+  assert.match(V.finalActionLifecycleCheckPrompt(items), /still to be done.*deferred/s);
+});
+
+test('outstanding wording for a neighbouring subject does not protect completed work', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Sam', text: 'I already walked through the complete order process during this meeting.' },
+    { id: 'T0002', speaker: 'Chair', text: 'The document translation update still needs to be done.' }
+  ];
+  const actions = [{ action: 'Explain the order process.', owners: ['Sam'], evidenceIds: ['T0001', 'T0002'] }];
+  const items = V.finalActionLifecycleCheckItems(actions, units);
+  const result = V.applyFinalActionLifecycleResults(actions, items, [{
+    id: items[0].id,
+    verdict: 'not_outstanding',
+    evidenceQuote: 'I already walked through the complete order process during this meeting.'
+  }]);
+  assert.equal(result.actions.length, 0);
+  assert.equal(result.withheld.length, 1);
+  assert.deepEqual(result.rejected, []);
+});
+
 test('the final lifecycle passage prioritises the action commitment among many cited lines', () => {
   const units = Array.from({ length: 50 }, (_, index) => ({
     id: `T${String(index + 1).padStart(4, '0')}`, speaker: 'Chair',

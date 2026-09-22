@@ -62,6 +62,7 @@ const {
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,
+  normaliseRefereeDeclaredProposals,
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
@@ -1307,6 +1308,36 @@ test('disposition-only action referee output reconstructs polished candidate rec
   assert.deepEqual(rebuilt.actions[0].owners, ['Carol']);
   assert.equal(rebuilt.actionProposals.length, 1);
   assert.equal(rebuilt.actionProposals[0].action, 'Redesign the dashboard.');
+});
+
+test('disposition-only referee proposals survive into the visible proposal pipeline', () => {
+  const units = [
+    { id: 'T0001', sequence: 1, speaker: 'Chair', text: 'The accessibility review has been pushed out until next week.', classification: 'keep' },
+    { id: 'T0002', sequence: 2, speaker: 'Chair', text: 'The document translation update still needs to be done.', classification: 'keep' }
+  ];
+  const candidates = [
+    {
+      candidateId: 'review', recordType: 'action', sourcePass: 'primary',
+      text: 'Conduct the accessibility review.', owners: [],
+      timing: { kind: 'target', wording: 'next week', exactDate: '' }, evidenceIds: ['T0001']
+    },
+    {
+      candidateId: 'translation', recordType: 'action', sourcePass: 'primary',
+      text: 'Complete the document translation update.', owners: ['Alex'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0002']
+    }
+  ];
+  const reconstructed = reconstructRefereeActions([
+    { candidateId: 'review', disposition: 'proposal', reason: 'Deferred but outstanding.', evidenceIds: ['T0001'] },
+    { candidateId: 'translation', disposition: 'proposal', reason: 'Explicitly outstanding.', evidenceIds: ['T0002'] }
+  ], candidates, units);
+
+  const proposals = normaliseRefereeDeclaredProposals({ actionProposals: [] }, reconstructed, units);
+  assert.deepEqual(proposals.map((item) => item.action), [
+    'Conduct the accessibility review.',
+    'Complete the document translation update.'
+  ]);
+  assert.deepEqual(proposals.map((item) => item.evidenceIds), [['T0001'], ['T0002']]);
 });
 
 test('a core disposition without a generated target reconstructs its discussion candidate', () => {

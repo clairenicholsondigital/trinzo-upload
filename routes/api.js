@@ -11718,6 +11718,21 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
   };
 }
 
+// The structured Referee normally returns dispositions rather than repeating
+// complete action objects. reconstructRefereeActions turns those dispositions
+// back into records; proposal rows must then enter the same proposal pipeline
+// as proposals written directly by an Agent response. Reading only the raw
+// response here silently discarded every disposition-only proposal.
+function normaliseRefereeDeclaredProposals(result = {}, reconstructed = {}, sourceUnits = [], options = {}) {
+  return normaliseAgentDeclaredProposals({
+    ...result,
+    actionProposals: dedupeHybridActionProposals([
+      ...(Array.isArray(result?.actionProposals) ? result.actionProposals : []),
+      ...(Array.isArray(reconstructed?.actionProposals) ? reconstructed.actionProposals : [])
+    ])
+  }, sourceUnits, options);
+}
+
 function refereeDiscussionContractDiagnostics(discussion = [], dispositions = [], candidates = []) {
   const returnedIds = new Set(flattenHybridDiscussion(discussion)
     .map((item) => String(item.record?.id || '')).filter(Boolean));
@@ -13303,7 +13318,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   };
   const referee = normaliseAgentResult(refereeInput, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
   if (stage === 'actions') {
-    agentDeclaredProposals.push(...normaliseAgentDeclaredProposals(refereeParsed, draft.sourceUnits, { meetingDate: details.meetingDate }));
+    agentDeclaredProposals.push(...normaliseRefereeDeclaredProposals(
+      refereeParsed, reconstructedRefereeActions, draft.sourceUnits, { meetingDate: details.meetingDate }
+    ));
     agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(refereeParsed, draft.sourceUnits));
   }
   const priorLedger = (draft.candidateLedger || []).filter((candidate) => stage === 'discussion'
@@ -15535,6 +15552,7 @@ router.stagedEvaluation = {
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,
+  normaliseRefereeDeclaredProposals,
   refereeDiscussionContractDiagnostics,
   discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
