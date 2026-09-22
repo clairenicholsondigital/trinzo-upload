@@ -11247,6 +11247,50 @@ function distinctActionDeliverables(left = {}, right = {}) {
   return hybridContentTokenOverlap(subject(a), subject(b)) < 0.34 && !sharesDistinctivePhrase(subject(a), subject(b));
 }
 
+// "Restore the animation on the pricing slide, build the closing slide, and
+// re-share the deck once it's done" is three pieces of work. Kept as one row,
+// a later merge can keep a wording that drops the first clause, and the
+// reader cannot tick off one part. A comma-separated series of instructions,
+// each starting with its own verb, becomes one action per instruction; each
+// keeps the owners and evidence, and the timing stays with the clause that
+// states it. "Build X and send it to Y" (no comma list) is left whole.
+const COMPOUND_ACTION_VERBS = 'add|agree|arrange|ask|book|brief|build|call|chase|check|circulate|clarify|collect|complete|confirm|contact|create|draft|email|ensure|find|finalise|finalize|fix|follow|forward|get|identify|investigate|let|message|monitor|move|order|organise|organize|prepare|print|produce|provide|put|raise|re-send|re-share|record|remove|replace|request|reschedule|resend|restore|review|revise|run|schedule|send|set|share|sort|speak|start|submit|talk|test|trace|update|upload|write';
+const COMPOUND_SPLIT = new RegExp(String.raw`,\s*(?:and\s+|then\s+|and\s+then\s+)?(?=(?:${COMPOUND_ACTION_VERBS})\b)`, 'i');
+function splitCompoundActionList(actions = [], journeyId = '') {
+  const out = [];
+  const splits = [];
+  for (const action of Array.isArray(actions) ? actions : []) {
+    const wording = meetingMinutesAgentText(action?.action, 1600).replace(/[.]+$/, '');
+    const firstVerb = new RegExp(String.raw`^(?:${COMPOUND_ACTION_VERBS})\b`, 'i').test(wording);
+    const parts = firstVerb ? wording.split(COMPOUND_SPLIT).map((part) => part.trim()).filter(Boolean) : [wording];
+    // A later clause that points back ("..., and send it to Jo") only makes
+    // sense attached to the one before it.
+    const pointsBack = parts.slice(1).some((part) => /^\S+\s+(?:it|them|this|that|these|those)\b/i.test(part));
+    if (parts.length < 2 || pointsBack || parts.some((part) => part.split(/\s+/).length < 3)) {
+      out.push(action);
+      continue;
+    }
+    const timingWording = String(action.timing?.wording || '').toLowerCase();
+    const timedIndex = timingWording
+      ? parts.findIndex((part) => part.toLowerCase().includes(timingWording)
+        || hybridContentTokenOverlap(part, timingWording) >= 0.5)
+      : -1;
+    parts.forEach((part, index) => {
+      const sentence = `${part.charAt(0).toUpperCase()}${part.slice(1)}.`;
+      const keepsTiming = timedIndex === -1 || timedIndex === index;
+      out.push({
+        ...action,
+        id: index === 0 ? action.id : `${action.id}-part${index + 1}`,
+        action: sentence,
+        timing: keepsTiming ? action.timing : { kind: 'not_stated', wording: '', exactDate: '' }
+      });
+    });
+    splits.push({ from: meetingMinutesAgentText(action.action, 200), parts: parts.length });
+  }
+  if (splits.length) console.log(JSON.stringify({ event: 'meeting_agent_compound_action_split', journeyId, splits }));
+  return out;
+}
+
 function dedupeHybridActionRecords(records = [], options = {}) {
   const merged = [];
   const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
@@ -14295,8 +14339,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // finished rows before they reach the editable Actions screen, carrying all
   // evidence and flags forward and retaining the stronger timing.
   const actionsBeforeDisplayDedupe = timingChecked.actions.length;
+  const splitRows = splitCompoundActionList(timingChecked.actions, draft.draftId);
   const actionScreenRows = dedupeHybridActionRecords(
-    timingChecked.actions, { sourceUnits: draft.sourceUnits }
+    splitRows, { sourceUnits: draft.sourceUnits }
   );
   const actionScreenDuplicateCount = actionsBeforeDisplayDedupe - actionScreenRows.length;
   if (actionScreenDuplicateCount) console.log(JSON.stringify({
@@ -15955,6 +16000,7 @@ router.stagedEvaluation = {
   reconcileAcceptedRefereeActions,
   dedupeHybridActionRecords,
   distinctActionDeliverables,
+  splitCompoundActionList,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,
   removePublishedActionProposalDuplicates,
