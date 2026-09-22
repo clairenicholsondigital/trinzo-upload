@@ -1306,6 +1306,25 @@ function discussionActionCandidates(discussion = [], units = [], people = []) {
   return candidates.slice(0, 24);
 }
 
+// "Hannah, will you get that in his diary?" "I'll do it now." A request put
+// to a named person and answered by that person's own first-person commitment
+// is accepted work, although the reply never says yes or okay. The reply must
+// come from the person addressed, within the next two rows, without refusing.
+const ADDRESSED_REQUEST_OPENING = /^\s*(?:(?:and|so|right|okay|ok|then|also)\s*,?\s+)?([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’-]{1,})\s*,\s*(?:(?:and|so|then|also|just)\s+)?(?:(?:can|could|would|will)\s+you\b|(?:please\s+)?(?:you(?:['’]re|\s+are)\s+(?:going\s+to|doing|on|taking))\b)/;
+const REPLY_FIRST_PERSON_COMMITMENT = /\b(?:i['’]ll|i\s+will|i\s+can|i['’]m\s+going\s+to|i\s+am\s+going\s+to|let\s+me|will\s+do|can\s+do|on\s+it)\b/i;
+const REPLY_REFUSAL = /\b(?:can['’]?t|cannot|won['’]?t|will\s+not|not\s+(?:able|going)\s+to|i['’]ll\s+not|no\s+(?:time|capacity))\b/i;
+function addressedRequestAcceptedAhead(unit = {}, following = []) {
+  const addressee = String(unit.text || '').match(ADDRESSED_REQUEST_OPENING)?.[1];
+  if (!addressee) return false;
+  const wanted = addressee.toLowerCase();
+  const reply = following.find((row) => row && row.speaker !== unit.speaker);
+  if (!reply) return false;
+  const replier = String(reply.speaker || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+  if (!replier.includes(wanted)) return false;
+  const value = String(reply.text || '');
+  return REPLY_FIRST_PERSON_COMMITMENT.test(value) && !REPLY_REFUSAL.test(value);
+}
+
 function actionCandidateInventory(units = []) {
   const rows = normaliseSourceUnits(units).filter(includedUnit);
   const candidates = [];
@@ -1327,7 +1346,9 @@ function actionCandidateInventory(units = []) {
     const contextualAcceptance = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
       && (ACTION_REQUEST_PATTERN.test(previous) || ACTION_COMMITMENT_PATTERN.test(previous) || NAMED_WILL_PATTERN.test(previous)
         || ACTION_PASSIVE_OBLIGATION_PATTERN.test(previous) || ACTION_FOLLOW_UP_PATTERN.test(previous));
-    const acceptedRequestAhead = ACTION_REQUEST_PATTERN.test(unit.text) && ACTION_ACCEPTANCE_PATTERN.test(following);
+    const addressedAccepted = addressedRequestAcceptedAhead(unit, rows.slice(index + 1, index + 3));
+    const acceptedRequestAhead = (ACTION_REQUEST_PATTERN.test(unit.text) && ACTION_ACCEPTANCE_PATTERN.test(following))
+      || addressedAccepted;
     const acceptedOfferAhead = ACTION_CONCRETE_OFFER_PATTERN.test(unit.text)
       && (ACTION_REQUEST_PATTERN.test(following) || ACTION_IMPERATIVE_PATTERN.test(following));
     const explicitAcceptedCommitment = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
@@ -1369,9 +1390,10 @@ function actionCandidateInventory(units = []) {
       candidateId: stableId('candidate', unit.id),
       focusEvidenceId: unit.id,
       evidenceIds: ids,
-      dispositionHint: acceptedOfferAhead ? 'accepted_request' : actionEvidenceDisposition(unit.text, context),
-      cueKinds,
+      dispositionHint: acceptedOfferAhead || addressedAccepted ? 'accepted_request' : actionEvidenceDisposition(unit.text, context),
+      cueKinds: addressedAccepted ? [...cueKinds, 'addressed'] : cueKinds,
       priority: (contextualAcceptance || acceptedRequestAhead || acceptedOfferAhead ? 4 : 0)
+        + (addressedAccepted ? 3 : 0)
         + (cueKinds.includes('commitment') ? 3 : 0)
         + (cueKinds.includes('decision_resolution') ? 3 : 0)
         + (cueKinds.includes('obligation') || cueKinds.includes('follow_up') ? 2 : 0)
@@ -4897,6 +4919,7 @@ module.exports = {
   normaliseActions,
   actionEvidenceDisposition,
   actionCandidateInventory,
+  addressedRequestAcceptedAhead,
   actionCommitmentThreadInventory,
   actionCommitmentChainInventory,
   discussionCandidateInventory,

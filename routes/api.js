@@ -11211,6 +11211,34 @@ function hybridCandidateDispositions(candidates = [], published = [], proposed =
   }).slice(0, 1200);
 }
 
+// Two finished actions can cite one shared line and still be separate work:
+// "Complete the standards list and provide it to Jacqui" and "Send Ingrid a
+// proposal for the audit week" share an exchange, not a deliverable. The
+// general matcher accepts a shared line plus incidental word overlap, so the
+// publication deduper also requires the work itself to overlap, and never
+// merges a step into the action that waits for it ("Re-share the deck once
+// the animation updates are complete" is not "Restore the animation").
+const ACTION_DEPENDENCY_CLAUSE = /\b(?:once|after|when|as soon as|following|until)\b(.+)$/i;
+function actionDependsOn(waiting = '', step = '') {
+  const clause = String(waiting || '').match(ACTION_DEPENDENCY_CLAUSE)?.[1] || '';
+  if (!clause) return false;
+  const leadVerb = (value) => String(value || '').toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:-[a-z]+)?)/)?.[1] || '';
+  if (leadVerb(waiting) === leadVerb(step)) return false;
+  // The step's own subject (everything after its verb) appears in the clause
+  // the other action is waiting on.
+  const stepSubject = String(step || '').replace(/^\s*(?:please\s+)?[a-z]+(?:-[a-z]+)?\s+/i, '');
+  return hybridContentTokenOverlap(stepSubject, clause) > 0
+    && hybridContentTokenOverlap(stepSubject, String(waiting).replace(ACTION_DEPENDENCY_CLAUSE, '')) === 0;
+}
+
+function distinctActionDeliverables(left = {}, right = {}) {
+  const a = meetingMinutesAgentText(left.action, 1600);
+  const b = meetingMinutesAgentText(right.action, 1600);
+  if (!a || !b) return false;
+  if (hybridContentTokenOverlap(a, b) === 0) return true;
+  return actionDependsOn(a, b) || actionDependsOn(b, a);
+}
+
 function dedupeHybridActionRecords(records = [], options = {}) {
   const merged = [];
   const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
@@ -11252,7 +11280,8 @@ function dedupeHybridActionRecords(records = [], options = {}) {
   for (const record of Array.isArray(records) ? records : []) {
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     const duplicate = merged.find((existing) => {
-      const conventional = hybridCandidateMatchesRecord(candidate, existing)
+      const conventional = !distinctActionDeliverables(record, existing)
+        && hybridCandidateMatchesRecord(candidate, existing)
         && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
       if (conventional) return true;
       if (sameContactPurposeDeliverable(record, existing)) return true;
@@ -15857,6 +15886,7 @@ router.stagedEvaluation = {
   strictActionDeliverableMatch,
   reconcileAcceptedRefereeActions,
   dedupeHybridActionRecords,
+  distinctActionDeliverables,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,
   removePublishedActionProposalDuplicates,
