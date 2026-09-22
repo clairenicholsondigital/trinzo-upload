@@ -1011,6 +1011,23 @@ function relativeExactDate(wording, meetingDate) {
     const count = spanWords[span[1]] || Number(span[1]);
     if (count) return isoDateOffset(meetingDate, count * (/^week/.test(span[2]) ? 7 : 1));
   }
+  // "the tenth of July", "tenth July": a spoken ordinal with its month. The
+  // day-of-month rule below deliberately skips these, so nothing dated them.
+  const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
+    'august', 'september', 'october', 'november', 'december'];
+  const ordinalMonth = value.match(new RegExp(String.raw`\b(?:the\s+)?((?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\s+(?:of\s+)?(${MONTHS.join('|')})\b`, 'i'));
+  if (ordinalMonth) {
+    const spelled = ordinalMonth[1].toLowerCase().replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
+    const day = ORDINAL_DAY_WORDS[spelled];
+    const month = MONTHS.indexOf(ordinalMonth[2].toLowerCase()) + 1;
+    if (day && day <= 31 && month) {
+      const year = Number(meetingDate.slice(0, 4));
+      const candidate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      // A month already past points at next year, not backwards.
+      return candidate >= meetingDate ? candidate
+        : `${year + 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
   // A day of the month on its own: "the seventh", "by the 17th", "on the 15th".
   // The next such day on or after the meeting; an earlier day means next month.
   // A numeric day ("the 17th") is a date wherever it sits; a spelled-out one

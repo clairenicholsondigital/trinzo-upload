@@ -78,7 +78,10 @@ test('a spelled-out ordinal mid-sentence, a duration or a month-named date is no
   assert.equal(relativeExactDate('on site on the 20th for five days', TUESDAY), '2026-03-20');
   assert.equal(relativeExactDate('for five days', TUESDAY), '');
   assert.equal(relativeExactDate('about two days of test time', TUESDAY), '');
-  assert.equal(relativeExactDate('the seventh of July', TUESDAY), '');
+  // A spoken day with its month IS dated here: statedCalendarDate only reads
+  // the numeric forms ("the 10th of July"), so nothing else would date it.
+  assert.equal(relativeExactDate('the seventh of July', TUESDAY), '2026-07-07');
+  assert.equal(relativeExactDate('the 10th of July', TUESDAY), '');
   assert.equal(relativeExactDate('by the tenth', TUESDAY), '2026-03-10');
 });
 
@@ -86,4 +89,13 @@ test('a span that counts from a condition has no fixed date', () => {
   const { relativeExactDate } = require('../utils/meetingMinutesAgentV2');
   assert.equal(relativeExactDate('once the draft arrives; a week to review it', '2026-06-17'), '');
   assert.equal(relativeExactDate('within two weeks', '2026-06-17'), '2026-07-01');
+});
+
+test('a spoken day with its month becomes a date', () => {
+  const { relativeExactDate } = require('../utils/meetingMinutesAgentV2');
+  assert.equal(relativeExactDate('for tenth of July', '2026-06-24'), '2026-07-10');
+  // Numeric forms are dated by statedCalendarDate, not here.
+  assert.equal(relativeExactDate('the 10th of July', '2026-06-24'), '');
+  assert.equal(relativeExactDate('the seventeenth of March', '2026-06-24'), '2027-03-17');
+  assert.equal(relativeExactDate('the thirty-second of July', '2026-06-24'), '');
 });

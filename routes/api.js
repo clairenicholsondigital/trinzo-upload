@@ -14955,6 +14955,7 @@ function foldSubjectWords(text) {
   return new Set((String(text || '').toLowerCase().match(/[a-z0-9][a-z0-9-]{3,}/g) || [])
     .filter((word) => !FOLD_STOP.has(word)).map((word) => word.replace(/(?:ing|ed|es|s)$/, '')));
 }
+const WAY_TO_ACTION = /^\s*(?:figure|work|find|sort)\s+(?:out\s+)?(?:a|some|the)\s+(?:\w+\s+)?way\b/i;
 function foldUnownedNearCopies(actions = [], journeyId = '') {
   const list = Array.isArray(actions) ? actions : [];
   const folded = [];
@@ -14974,7 +14975,12 @@ function foldUnownedNearCopies(actions = [], journeyId = '') {
         // "Arrange secure SharePoint access"). Substantial word overlap is
         // enough here, without a shared phrase.
         || (!distinctActionDeliverables(other, action)
-          && hybridContentTokenOverlap(other.action, action.action) >= 0.45)));
+          && hybridContentTokenOverlap(other.action, action.action) >= 0.45)
+        // "Figure out a way to get her access" beside "Arrange secure
+        // SharePoint access": a way-to paraphrase of work somebody owns.
+        || (WAY_TO_ACTION.test(action.action || '')
+          && !distinctActionDeliverables(other, action)
+          && hybridContentTokenOverlap(other.action, action.action) >= 0.2)));
     if (!partner) return true;
     partner.evidenceIds = [...new Set([...(partner.evidenceIds || []), ...(action.evidenceIds || [])])].slice(0, 12);
     folded.push({ removed: meetingMinutesAgentText(action.action, 160), into: meetingMinutesAgentText(partner.action, 160) });
@@ -15128,6 +15134,15 @@ function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
         return withSelection(change, false, {
           label: 'already in the list',
           reason: `This looks like "${meetingMinutesAgentText(echoed.action, 200)}", which is already an action. Tick it only if it is separate work.`,
+          evidenceIds: record.evidenceIds || []
+        });
+      }
+      // A 40-word "action" listing hotels, dates, travel and report writing is
+      // a summary of the meeting. Offer it, but never apply it unasked.
+      if (meetingMinutesAgentText(record.action, 1600).split(/\s+/).filter(Boolean).length > 40) {
+        return withSelection(change, false, {
+          label: 'reads as a summary',
+          reason: 'This is long enough to be a summary of several things rather than one deliverable. Tick it only if it is a single action.',
           evidenceIds: record.evidenceIds || []
         });
       }
