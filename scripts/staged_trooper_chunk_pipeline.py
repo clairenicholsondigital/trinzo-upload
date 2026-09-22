@@ -1732,7 +1732,25 @@ def representative_rank(action: dict[str, Any]) -> tuple[int, int, int, int]:
             len(action.get("evidenceIds", []) or []), action_word_count(action.get("action")))
 
 
-def assign_action_tiers(actions: list[dict[str, Any]], sample_count: int) -> list[dict[str, Any]]:
+EXPLICIT_OUTSTANDING_CUE = re.compile(
+    r"\b(?:still\s+(?:needs?\s+to|to\s+be\s+done|outstanding)|"
+    r"needs?\s+to\s+(?:happen|be\s+done|continue)|"
+    r"remains?\s+(?:to\s+be\s+done|outstanding)|"
+    r"pushed\s+(?:out\s+)?(?:until|to)\s+(?:next|this))\b", re.I,
+)
+
+
+def action_has_explicit_outstanding_evidence(action: dict[str, Any], turns: list[str]) -> bool:
+    if clean(action.get("status")).upper() not in {"COMMITTED", "ASSIGNED", "REQUIRED"}:
+        return False
+    if action_word_count(action.get("action")) < MINIMUM_ACTION_WORDS:
+        return False
+    evidence = " ".join(turns[number - 1] for number in evidence_turn_numbers(action, len(turns)))
+    return bool(EXPLICIT_OUTSTANDING_CUE.search(evidence))
+
+
+def assign_action_tiers(actions: list[dict[str, Any]], sample_count: int,
+                        turns: list[str] | None = None) -> list[dict[str, Any]]:
     """Tier 1 is the actions table: a row most samples agreed on. Tier 2 is the collapsed
     "raised" panel: a minority row whose extraction includes direct commitment or assignment
     evidence. A one-sample task fragment without that evidence is tier 3 and is not returned,
@@ -1743,7 +1761,7 @@ def assign_action_tiers(actions: list[dict[str, Any]], sample_count: int) -> lis
         support = int(action.get("support", 1) or 1)
         if sample_count <= 1 or support * 2 >= sample_count + 1:
             action["tier"] = 1
-        elif action.get("commitmentEvidenceIds"):
+        elif action.get("commitmentEvidenceIds") or action_has_explicit_outstanding_evidence(action, turns or []):
             action["tier"] = 2
         else:
             action["tier"] = 3
@@ -2371,7 +2389,7 @@ def run_actions_stage(turns: list[str], numbered: str, meeting_type: str) -> dic
         action.pop("_deliverable", None)
         action.pop("_deliverableVerb", None)
         action.pop("_deliverableRecipient", None)
-    actions = assign_action_tiers(actions, sample_count)
+    actions = assign_action_tiers(actions, sample_count, turns)
     record_stage("published", actions)
     diagnostics = []
     if diagnostics_enabled:

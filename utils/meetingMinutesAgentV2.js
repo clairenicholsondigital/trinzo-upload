@@ -1860,6 +1860,44 @@ function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {})
   return timing;
 }
 
+// Teams occasionally puts the timing in its own tiny turn after the commitment:
+// "I'll review the manual." / "Thank you." / "This week."  The ordinary timing
+// backfill intentionally never reads neighbouring turns, so recover this one narrow
+// continuation shape here.  A different substantive turn closes the continuation.
+const TIMING_FRAGMENT_FILLER = /\b(?:yeah|yes|yep|okay|ok|right|so|well|actually|definitely|certainly)\b/gi;
+const NON_SUBSTANTIVE_TIMING_BRIDGE = /^(?:thank(?:s| you)|okay|ok|yeah|yes|yep|right|perfect|great|fine|mhm|mm)[.!?, ]*$/i;
+function timingOnlyFragment(value = '') {
+  const source = String(value || '').trim();
+  const match = source.match(CITED_TIMING_PHRASE);
+  if (!match) return '';
+  const remainder = source
+    .replace(match[0], ' ')
+    .replace(TIMING_FRAGMENT_FILLER, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+  return remainder ? '' : match[0].toLowerCase().replace(/\s+/g, ' ');
+}
+
+function adjacentOwnerTiming(action = {}, units = [], evidenceIds = [], options = {}) {
+  if (!Array.isArray(action.owners) || !action.owners.length || !evidenceIds.length) return null;
+  const context = evidenceContextFor(units);
+  const citedIndexes = evidenceIds.map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  if (!citedIndexes.length) return null;
+  const start = Math.max(...citedIndexes);
+  for (let index = start + 1; index <= Math.min(start + 3, context.rows.length - 1); index += 1) {
+    const unit = context.rows[index];
+    const phrase = speakerIsOwner(unit.speaker, action.owners) ? timingOnlyFragment(unit.text) : '';
+    if (phrase) {
+      return {
+        evidenceIds: [...new Set([...evidenceIds, unit.id])],
+        timing: timingFrom({ timing: { wording: phrase } }, options)
+      };
+    }
+    if (!NON_SUBSTANTIVE_TIMING_BRIDGE.test(String(unit.text || '').trim())) break;
+  }
+  return null;
+}
+
 // Lexical evidence resolution favours the turn that names the deliverable
 // ("Six sacks of Maris Otter, thirty-two pounds a sack") over the turn where
 // the owner takes the job on ("leave that with me, I'll order six sacks
@@ -1919,10 +1957,58 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
 
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action) => {
-    const evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
-    const timing = backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options);
+    let evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
+    let timing = backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options);
+    if (timing.kind === 'not_stated') {
+      const adjacent = adjacentOwnerTiming(action, units, evidenceIds, options);
+      if (adjacent) ({ evidenceIds, timing } = adjacent);
+    }
     return { ...action, evidenceIds, timing };
   });
+}
+
+// A condition can be extracted as a weak ownerless follow-up even though the
+// transcript states it as the guard on a nearby review/approval action (for
+// example, review something before it is paid).  Attach only compact conditional
+// follow-ups to a single, named, review-shaped action in the same evidence window.
+// Ambiguous matches and already-timed target actions are left untouched.
+const CONDITION_RECEIVER_ACTION = /^(?:review|check|assess|approve|authorise|authorize|verify|validate|decide|determine|seek\b.*\bguidance)\b/i;
+const WEAK_CONDITIONAL_FOLLOW_UP = /^(?:follow[- ]?up|check|confirm|clarify|resolve)\b/i;
+function attachNearbyDependencyConditions(actions = [], units = []) {
+  const list = (Array.isArray(actions) ? actions : []).map((action) => ({ ...action }));
+  const context = evidenceContextFor(units);
+  const removed = new Set();
+  const indexesFor = (action) => (action.evidenceIds || [])
+    .map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  list.forEach((orphan, orphanIndex) => {
+    if (orphan?.timing?.kind !== 'dependency' || (orphan.owners || []).length
+      || !WEAK_CONDITIONAL_FOLLOW_UP.test(text(orphan.action))) return;
+    const orphanIndexes = indexesFor(orphan);
+    if (!orphanIndexes.length) return;
+    const conditionContext = evidenceWindowText(units, orphan.evidenceIds || [], 3);
+    const candidates = list.map((action, index) => {
+      if (index === orphanIndex || !(action.owners || []).length
+        || !CONDITION_RECEIVER_ACTION.test(text(action.action))
+        || (action.timing?.kind && action.timing.kind !== 'not_stated')) return null;
+      const targetIndexes = indexesFor(action);
+      if (!targetIndexes.length) return null;
+      const distance = Math.min(...orphanIndexes.flatMap((left) => targetIndexes.map((right) => Math.abs(left - right))));
+      if (distance > 10) return null;
+      const contextWords = new Set(materialTokens(conditionContext));
+      const shared = materialTokens(action.action).filter((word) => contextWords.has(word)).length;
+      if (shared < 2) return null;
+      return { index, distance, shared };
+    }).filter(Boolean).sort((left, right) => right.shared - left.shared || left.distance - right.distance);
+    if (!candidates.length || (candidates[1] && candidates[0].shared === candidates[1].shared)) return;
+    const target = list[candidates[0].index];
+    list[candidates[0].index] = {
+      ...target,
+      timing: orphan.timing,
+      evidenceIds: [...new Set([...(target.evidenceIds || []), ...(orphan.evidenceIds || [])])]
+    };
+    removed.add(orphanIndex);
+  });
+  return list.filter((_, index) => !removed.has(index));
 }
 
 // ---------------------------------------------------------------------------
@@ -4525,6 +4611,7 @@ module.exports = {
   timingClauseIssue,
   applyTimingClauseChecks,
   backfillActionCommitmentEvidence,
+  attachNearbyDependencyConditions,
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,

@@ -2187,6 +2187,8 @@ function recapActionWording(value) {
     .replace(/^(?:and\s+then\s+|and\s+|then\s+)/i, '')
     .replace(/^you(?:['’]re| are)\s+/i, '')
     .replace(/^to\s+/i, '')
+    .replace(/^i\s+(?:can't|cannot|couldn't|could\s+not)\s+(?:even\s+)?(?:quite\s+)?remember\s+(?:that\s+)?/i, '')
+    .replace(/^i\s+(?:think|suppose|guess)\s+(?:that\s+)?/i, '')
     .replace(/\b(?:presumably|probably)\b[,.]?/gi, '')
     // A self-repair marker: the speaker corrects themselves mid-phrase and the false
     // start before "or sorry" is the part they withdrew. This was a literal for one
@@ -2200,6 +2202,8 @@ function recapActionWording(value) {
   const named = text.match(/^([A-Z][A-Za-z'’.-]+)\s+to\s+(.+)/);
   if (named) text = named[2];
   text = text.replace(/^just\s+/i, '');
+  const outstanding = text.match(/^(.+?)\s+that\s+needs?\s+to\s+(?:happen|be\s+done)(.*)$/i);
+  if (outstanding) text = `Complete ${clean(outstanding[1])}${clean(outstanding[2]) ? ` ${clean(outstanding[2])}` : ''}`;
   const confirmation = text.match(/^confirm\s+in\s+terms\s+of\s+the\s+(.+?)\s+and\s+what\b.*?\bhappens\s+to\s+the\s+(.+?)\s+in\s+relation\s+to\s+that[.!?]*$/i);
   if (confirmation) text = `Confirm the ${clean(confirmation[1])} behaviour and its effect on the ${clean(confirmation[2])}`;
   text = text.replace(/^continuing\s+to\s+review\s+(.+?)\s+side\s+of\s+things[.!?]*$/i, 'Continue reviewing $1 controls');
@@ -2224,6 +2228,12 @@ function corroboratedClosingRecapActions(evidence) {
 
     const shaped = actionShape({ ...recapEvent, text: recapText }, evidence);
     let explicitOwner = clean(shaped?.owner);
+    // "I can't remember that review that needs to happen" is recap discourse,
+    // not the chair accepting ownership of the review.
+    if (explicitOwner === recapEvent.speaker
+      && /^i\s+(?:(?:can't|cannot|couldn't|could\s+not)\s+(?:even\s+)?(?:quite\s+)?remember|think|suppose|guess)\b/i.test(recapText)) {
+      explicitOwner = '';
+    }
     if (!explicitOwner || explicitOwner === 'Not stated') {
       const named = evidence.participants.filter((name) => {
         const first = name.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2253,12 +2263,33 @@ function corroboratedClosingRecapActions(evidence) {
         return !explicitOwner && item.anchors.length === 1 && item.anchors[0].length >= 7 && item.overlap >= 0.18;
       })
       .sort((left, right) => right.anchors.length - left.anchors.length || right.overlap - left.overlap);
+    // A closing recap can validly preserve concrete outstanding work whose owner
+    // was never assigned.  Require independent earlier corroboration, but keep the
+    // action as "Not stated" instead of deleting it or assigning the chair.
+    if (!ranked.length && !explicitOwner) {
+      const corroborated = earlierEvents.map((event, index) => {
+        const localText = earlierEvents.slice(Math.max(0, index - 1), Math.min(earlierEvents.length, index + 4))
+          .map((candidate) => candidate.text).join(' ');
+        return {
+          event, localText,
+          overlap: Math.max(tokenOverlap(recapText, event.text), tokenOverlap(recapText, localText)),
+          anchors: recapAnchorOverlap(recapText, localText)
+        };
+      }).filter((item) => item.anchors.length >= 2 && item.overlap >= 0.14)
+        .sort((left, right) => right.anchors.length - left.anchors.length || right.overlap - left.overlap);
+      if (corroborated.length) {
+        ranked.push(corroborated[0]);
+        explicitOwner = 'Not stated';
+      }
+    }
     if (!ranked.length) continue;
 
     let support = ranked[0];
-    if (explicitOwner) {
+    if (explicitOwner && explicitOwner !== 'Not stated') {
       support = ranked.find((item) => item.event.speaker === explicitOwner) || null;
       if (!support) continue;
+    } else if (explicitOwner === 'Not stated') {
+      support = ranked[0];
     } else {
       const bestByOwner = new Map();
       for (const item of ranked) {

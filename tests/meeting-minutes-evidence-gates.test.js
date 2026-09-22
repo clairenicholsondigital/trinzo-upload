@@ -151,6 +151,69 @@ test('final action evidence can recover a later anaphoric review commitment with
   assert.deepEqual(ownerChecked.flags, []);
 });
 
+test('a timing-only owner turn survives a short acknowledgement bridge', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Orla Skally', text: "No problem, I'll review the manual and raise any questions." },
+    { id: 'T0002', speaker: 'Mark Kelleher', text: 'Thank you.' },
+    { id: 'T0003', speaker: 'Orla Skally', text: 'This week.' },
+    { id: 'T0004', speaker: 'Jacqui Fox', text: 'Moving on to the warehouse process.' }
+  ];
+  const [action] = V.backfillActionCommitmentEvidence([{
+    action: 'Review the manual and raise any questions.', owners: ['Orla Skally'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
+  }], units, { meetingDate: '2026-06-17' });
+  assert.deepEqual(action.evidenceIds, ['T0001', 'T0003']);
+  assert.deepEqual(action.timing, { kind: 'target', wording: 'this week', exactDate: '' });
+});
+
+test('a timing fragment is not borrowed across a substantive intervening turn', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Orla Skally', text: "I'll review the manual." },
+    { id: 'T0002', speaker: 'Mark Kelleher', text: 'The supplier audit also needs a separate review.' },
+    { id: 'T0003', speaker: 'Orla Skally', text: 'This week.' }
+  ];
+  const [action] = V.backfillActionCommitmentEvidence([{
+    action: 'Review the manual.', owners: ['Orla Skally'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
+  }], units);
+  assert.equal(action.timing.kind, 'not_stated');
+  assert.deepEqual(action.evidenceIds, ['T0001']);
+});
+
+test('an orphaned nearby payment condition attaches to the named review action', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Orla Skally', text: 'I can send the annual-fee invoice and registration confirmation.' },
+    { id: 'T0002', speaker: 'Jacqui Fox', text: 'We can review the invoice and registration information and seek guidance from Liam.' },
+    { id: 'T0003', speaker: 'Orla Skally', text: 'Yes, just before we pay it.' }
+  ];
+  const actions = [{
+    action: 'Review the annual-fee invoice and registration information and seek guidance from Liam.',
+    owners: ['Jacqui Fox'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0002']
+  }, {
+    action: 'Follow up on the registration status before payment is made.', owners: [],
+    timing: { kind: 'dependency', wording: 'before payment', exactDate: '' }, evidenceIds: ['T0003']
+  }];
+  const out = V.attachNearbyDependencyConditions(actions, units);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].timing.kind, 'dependency');
+  assert.equal(out[0].timing.wording, 'before payment');
+  assert.deepEqual(out[0].evidenceIds, ['T0002', 'T0003']);
+});
+
+test('an ambiguous or distant ownerless dependency remains a separate action', () => {
+  const units = [
+    { id: 'T0001', speaker: 'A', text: 'Review the supplier invoice.' },
+    { id: 'T0002', speaker: 'B', text: 'Review the customer invoice.' },
+    { id: 'T0003', speaker: 'C', text: 'Follow up before payment.' }
+  ];
+  const actions = [
+    { action: 'Review the supplier invoice.', owners: ['A'], timing: { kind: 'not_stated', wording: '' }, evidenceIds: ['T0001'] },
+    { action: 'Review the customer invoice.', owners: ['B'], timing: { kind: 'not_stated', wording: '' }, evidenceIds: ['T0002'] },
+    { action: 'Follow up before payment.', owners: [], timing: { kind: 'dependency', wording: 'before payment' }, evidenceIds: ['T0003'] }
+  ];
+  assert.deepEqual(V.attachNearbyDependencyConditions(actions, units), actions);
+});
+
 test('meaningless timing is removed and clearly flagged on generated actions', () => {
   const prior = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
   process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
