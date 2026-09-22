@@ -261,8 +261,10 @@ const {
   discussionActionCandidates,
   supersededCheckItems,
   supersededVerdicts,
-  correctnessChecksEnabled
+  correctnessChecksEnabled,
+  mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
+const { shapeDiscussion } = require('../utils/discussionShape');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -13530,6 +13532,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // organiser is disabled or safely falls back after an internal error.
     const quantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
     finalDiscussion = removePersonalAsides(quantifiedGrounding.discussion);
+    // One deliverable, one entry: a named person's task tagged as a decision
+    // becomes an ordinary point, and a topic that only restates who is doing
+    // what (Actions are extracted separately) is folded away.
+    const shaped = shapeDiscussion(finalDiscussion, meetingAgentPeopleNames(draft.sourceUnits));
+    finalDiscussion = shaped.discussion;
+    if (shaped.demoted || shaped.droppedTopics.length) console.log(JSON.stringify({
+      event: 'meeting_agent_discussion_shape', journeyId: draft.draftId,
+      demotedAssignmentDecisions: shaped.demoted, droppedRecapTopics: shaped.droppedTopics
+    }));
     if (quantifiedGrounding.removed.length) console.log(JSON.stringify({
       event: 'meeting_agent_quantified_claim_filter', journeyId: draft.draftId,
       removed: quantifiedGrounding.removed.map((item) => ({ id: item.id, signatures: item.signatures, subject: item.subject }))
@@ -13980,7 +13991,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     : { actions: reconciledPublishedActions, flags: [] };
   timingChecked = {
     ...timingChecked,
-    actions: gateTranscriptShapedActions(timingChecked.actions, draft.sourceUnits, draft.draftId, 'published')
+    actions: foldUnownedNearCopies(
+      gateTranscriptShapedActions(timingChecked.actions, draft.sourceUnits, draft.draftId, 'published'), draft.draftId)
   };
   if (meetingMinutesTimingCheckEnabled()) {
     // The model says which step each timing was spoken for, quoting the
@@ -14772,6 +14784,40 @@ function meetingMinutesProposalRecheckEnabled() {
 // the conversation carried through unchanged (see utils/actionTextGate.js).
 // Applied only to generated rows: a reviewer's own saved wording is never
 // filtered here.
+function meetingAgentPeopleNames(sourceUnits = []) {
+  const speakers = normaliseSourceUnits(sourceUnits).map((unit) => String(unit.speaker || '').trim()).filter(Boolean);
+  let mentioned = [];
+  try { mentioned = meetingAgentMentionedPeople(sourceUnits) || []; } catch (error) { mentioned = []; }
+  return [...new Set([...speakers, ...mentioned].map((name) => String(name).trim()).filter(Boolean))];
+}
+
+// An unowned action that repeats an owned one (same opening verb, at least 80%
+// of its subject words) is folded into the owned version, keeping its evidence.
+const FOLD_STOP = new Set(['with', 'that', 'this', 'from', 'into', 'their', 'there', 'about', 'which', 'where', 'when', 'before', 'after', 'once', 'what', 'will', 'would', 'should', 'could', 'have', 'been', 'being', 'including', 'required', 'needed', 'relevant', 'related', 'whether']);
+function foldSubjectWords(text) {
+  return new Set((String(text || '').toLowerCase().match(/[a-z0-9][a-z0-9-]{3,}/g) || [])
+    .filter((word) => !FOLD_STOP.has(word)).map((word) => word.replace(/(?:ing|ed|es|s)$/, '')));
+}
+function foldUnownedNearCopies(actions = [], journeyId = '') {
+  const list = Array.isArray(actions) ? actions : [];
+  const folded = [];
+  const kept = list.filter((action) => {
+    if ((action.owners || []).length) return true;
+    const verb = String(action.action || '').trim().split(/\s+/)[0]?.toLowerCase();
+    const words = foldSubjectWords(String(action.action || '').split(/\s+/).slice(1).join(' '));
+    if (!verb || words.size < 3) return true;
+    const partner = list.find((other) => other !== action && (other.owners || []).length
+      && String(other.action || '').trim().split(/\s+/)[0]?.toLowerCase() === verb
+      && [...words].filter((word) => foldSubjectWords(other.action).has(word)).length / words.size >= 0.8);
+    if (!partner) return true;
+    partner.evidenceIds = [...new Set([...(partner.evidenceIds || []), ...(action.evidenceIds || [])])].slice(0, 12);
+    folded.push({ removed: meetingMinutesAgentText(action.action, 160), into: meetingMinutesAgentText(partner.action, 160) });
+    return false;
+  });
+  if (folded.length) console.log(JSON.stringify({ event: 'meeting_agent_unowned_copy_folded', journeyId, folded }));
+  return kept;
+}
+
 function gateTranscriptShapedActions(records = [], sourceUnits = [], journeyId = '', stage = '') {
   const { kept, rejected } = partitionTranscriptText(records, sourceUnits);
   if (rejected.length) {
@@ -15822,6 +15868,7 @@ router.stagedEvaluation = {
   safeAgentProposalPromotion,
   preselectActionProposal,
   preselectDiscussionProposal,
+  foldUnownedNearCopies,
   preselectRequestedProposal,
   explicitFutureDocumentationCommitment,
   repeatedOwnerCommitment,
