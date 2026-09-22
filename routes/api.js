@@ -12577,9 +12577,11 @@ function ownersOverlapOrOpen(left = {}, right = {}) {
 // compatible owner already names the same specific thing and neither waits on
 // the other.
 function publishedActionNamesSameThing(published = {}, proposal = {}) {
+  // "lot-numbering" and "lot numbering" are the same words.
+  const unhyphen = (value) => String(value || '').replace(/(\w)-(\w)/g, '$1 $2');
   return ownersOverlapOrOpen(published, proposal)
     && sharesDistinctivePhrase(published.action, proposal.action)
-    && hybridContentTokenOverlap(published.action, proposal.action) >= 0.34
+    && hybridContentTokenOverlap(unhyphen(published.action), unhyphen(proposal.action)) >= 0.3
     && !distinctActionDeliverables(published, proposal);
 }
 
@@ -14367,9 +14369,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   return {
     changes: {
       actions: actionFlagState.content.actions,
-      pendingProposal: proposal.changes.length
-        ? preselectActionProposal(proposal, actionFlagState.content.actions, draft.sourceUnits)
-        : null,
+      pendingProposal: (() => {
+        // Later checks (lifecycle, answered, completed) add their own
+        // suggestions after the proposal was first filtered, so the same-thing
+        // and personal-errand filters run once more on the final list.
+        const finalProposal = removePublishedActionProposalDuplicates(proposal, actionFlagState.content.actions);
+        return finalProposal.changes.length
+          ? preselectActionProposal(finalProposal, actionFlagState.content.actions, draft.sourceUnits)
+          : null;
+      })(),
       candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
@@ -15776,7 +15784,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     }, index));
     const saved = await saveMeetingAgentDraft(draft, req, {
       actions: reconciledActions,
-      pendingProposal: proposal.changes.length ? preselectActionProposal(proposal, reconciledActions, draft.sourceUnits) : null,
+      pendingProposal: (() => {
+        const finalProposal = removePublishedActionProposalDuplicates(proposal, reconciledActions);
+        return finalProposal.changes.length ? preselectActionProposal(finalProposal, reconciledActions, draft.sourceUnits) : null;
+      })(),
       reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...rescueFlags, ...missedFlags])
     });
     return res.json({ ok: true, proposal: proposal.changes.length ? proposal : null, draft: publicMeetingAgentDraft(saved) });
