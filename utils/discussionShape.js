@@ -38,7 +38,7 @@ function isSinglePersonAssignment(text, people = []) {
 
 // "Recap", "Summary of key actions", "Next steps for ...", "Job assignments",
 // "Decisions on ... updates": titles that announce a restatement of actions.
-const RECAP_TITLE = /\b(?:recap|summary of (?:the )?(?:key\s+)?(?:actions?|action items|next steps|decisions|responsibilities)|key (?:next steps|actions|action items)|action items?|actions? and responsibilities|job assignments|next steps|upcoming actions|decisions on .+ (?:updates|next steps))\b/i;
+const RECAP_TITLE = /\b(?:recap|summary of (?:the )?(?:key\s+)?(?:actions?|action items|next steps|decisions|responsibilities)|key (?:next steps|actions|action items)|action items?|actions? and responsibilities|job assignments|roles? (?:and responsibilities|confirmation|recap)|confirmation of (?:roles|responsibilities)|next steps|upcoming actions|decisions on .+ (?:updates|next steps))\b/i;
 
 // A line that assigns or lists work: "Ines to split ...", "Alan will ...",
 // "Action assigned: ...", "Key next steps include ...", "Plan to ...".

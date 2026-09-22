@@ -163,7 +163,9 @@ test('a timing-only owner turn survives a short acknowledgement bridge', () => {
     timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
   }], units, { meetingDate: '2026-06-17' });
   assert.deepEqual(action.evidenceIds, ['T0001', 'T0003']);
-  assert.deepEqual(action.timing, { kind: 'target', wording: 'this week', exactDate: '' });
+  // "This week" now resolves to the Friday of the meeting's week (Wed 17 Jun
+  // -> Fri 19 Jun); the spoken wording is kept alongside it.
+  assert.deepEqual(action.timing, { kind: 'target', wording: 'this week', exactDate: '2026-06-19' });
 });
 
 test('a timing fragment is not borrowed across a substantive intervening turn', () => {

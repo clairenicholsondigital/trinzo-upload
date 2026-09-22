@@ -935,13 +935,48 @@ function relativeExactDate(wording, meetingDate) {
     }
     return isoDateOffset(meetingDate, offset);
   }
-  if (/\bend of (?:this )?week\b/.test(value)) {
+  if (/\bend of (?:this |the )?week\b/.test(value)) {
     const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
     return isoDateOffset(meetingDate, (5 - current + 7) % 7);
   }
   if (/\bend of next week\b/.test(value)) {
     const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
     return isoDateOffset(meetingDate, ((5 - current + 7) % 7) + 7);
+  }
+  // "This week" / "the remainder of this week": the working week's Friday,
+  // or the meeting day itself when the meeting is already on a weekend.
+  if (/\b(?:(?:the )?(?:rest|remainder) of (?:the |this )?week|this week)\b/.test(value)) {
+    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
+    return current === 0 || current === 6 ? meetingDate : isoDateOffset(meetingDate, 5 - current);
+  }
+  if (/\bnext week\b/.test(value)) {
+    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
+    // From a weekend, the coming Friday already belongs to "next week".
+    if (current === 0 || current === 6) return isoDateOffset(meetingDate, current === 0 ? 5 : 6);
+    return isoDateOffset(meetingDate, 5 - current + 7);
+  }
+  // A span from the meeting: "two weeks", "a fortnight", "in ten days", "a month".
+  const spanWords = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+  if (/\ba fortnight\b|\bfortnight's time\b/.test(value)) return isoDateOffset(meetingDate, 14);
+  const span = value.match(/\b(?:in |within )?(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\s+(days?|weeks?)\b(?!\s+(?:ago|pilot|trial|test|review|programme|program|project|phase|study|period|cycle|sprint))/);
+  if (span) {
+    const count = spanWords[span[1]] || Number(span[1]);
+    if (count) return isoDateOffset(meetingDate, count * (/^week/.test(span[2]) ? 7 : 1));
+  }
+  // A day of the month on its own: "the seventh", "by the 17th", "on the 15th".
+  // The next such day on or after the meeting; an earlier day means next month.
+  const ordinal = value.match(/\b(?:on |by |for |before |until )?the (\d{1,2})(?:st|nd|rd|th)?\b(?!\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december))|\b(?:on |by |for |before |until )?the ((?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b(?!\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year|of\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)))/);
+  if (ordinal) {
+    const token = (ordinal[1] || ordinal[2] || '').replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
+    const day = Number(token) || ORDINAL_DAY_WORDS[token];
+    if (day && day <= 31) {
+      const [year, month, meetingDay] = meetingDate.split('-').map(Number);
+      let targetYear = year;
+      let targetMonth = month + (day < meetingDay ? 1 : 0);
+      if (targetMonth > 12) { targetMonth = 1; targetYear += 1; }
+      const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+      if (day <= lastDay) return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
   }
   return '';
 }
@@ -1899,6 +1934,26 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
 // commitment rather than narration ("we discussed today").
 const CITED_TIMING_PHRASE = /\b(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon))?|this\s+(?:morning|afternoon|evening|week)|next\s+week|end\s+of\s+(?:this\s+|next\s+)?week|(?:this\s+|next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?)\b(?!['’]s)/i;
 const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
+// "Who traces it?" "That'd be me." "By when?" "Two weeks." The answer to a
+// when-question sits in its own short turn, outside the cited commitment. When
+// an action has no timing, a when-question inside its exchange whose reply
+// (within the next two rows) names a time supplies it.
+const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would) (?:you|that|it|we)|what(?:'s| is) the (?:date|deadline|timescale|timeline)|how (?:long|soon)|when(?:'s| is) (?:that|it) (?:due|going to))\b/i;
+const ANSWER_TIMING = /\b(?:today|tonight|tomorrow(?: morning| afternoon)?|this week|next week|end of (?:the |this |next )?week|(?:the )?(?:rest|remainder) of (?:the |this )?week|(?:this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|a fortnight|(?:in |within )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2}) (?:days?|weeks?|months?)|(?:by |on )?the (?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)|\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
+function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {}) {
+  if (timing.kind !== 'not_stated') return timing;
+  const rows = evidenceWindowUnits(units, evidenceIds, 3);
+  for (let index = 0; index < rows.length; index += 1) {
+    if (!WHEN_QUESTION.test(String(rows[index]?.text || ''))) continue;
+    for (const reply of rows.slice(index + 1, index + 3)) {
+      if (reply?.speaker === rows[index]?.speaker) continue;
+      const phrase = String(reply?.text || '').match(ANSWER_TIMING);
+      if (phrase) return timingFrom({ timing: { wording: phrase[0].toLowerCase().replace(/\s+/g, ' ').trim() } }, options);
+    }
+  }
+  return timing;
+}
+
 function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
   for (const unit of evidenceWindowUnits(units, evidenceIds, 0)) {
@@ -2016,7 +2071,7 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action) => {
     let evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
-    let timing = backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options);
+    let timing = backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options), units, evidenceIds, options);
     if (timing.kind === 'not_stated') {
       const adjacent = adjacentOwnerTiming(action, units, evidenceIds, options);
       if (adjacent) ({ evidenceIds, timing } = adjacent);
@@ -4202,7 +4257,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     // so an empty timing there is deliberate and must stay empty.
     let timing = options.enforceEvidence === false
       ? timingFrom(item, options)
-      : backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options);
+      : backfillAskedTiming(backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options), units, evidenceIds, options);
     let timingShapeIssue = '';
     if (options.enforceEvidence !== false) {
       timing = normaliseTimingWording(timing);
@@ -4853,6 +4908,7 @@ module.exports = {
   supersededCheckItems,
   supersededVerdicts,
   applyRequesterOwnerRule,
+  backfillAskedTiming,
   ownerTakesItOn,
   ownerAssignedInMeeting,
   assignsWorkTo,
