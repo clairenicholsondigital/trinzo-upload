@@ -14967,7 +14967,14 @@ function foldUnownedNearCopies(actions = [], journeyId = '') {
       && ((String(other.action || '').trim().split(/\s+/)[0]?.toLowerCase() === verb
         && [...words].filter((word) => foldSubjectWords(other.action).has(word)).length / words.size >= 0.8)
         // Or the same specific thing under a different verb.
-        || publishedActionNamesSameThing(other, action)));
+        || publishedActionNamesSameThing(other, action)
+        // An unowned row is the weakest kind of duplicate: nobody is shown
+        // taking it on, and an owned action already describes the same work
+        // in different words ("Figure out a way to give her access" beside
+        // "Arrange secure SharePoint access"). Substantial word overlap is
+        // enough here, without a shared phrase.
+        || (!distinctActionDeliverables(other, action)
+          && hybridContentTokenOverlap(other.action, action.action) >= 0.45)));
     if (!partner) return true;
     partner.evidenceIds = [...new Set([...(partner.evidenceIds || []), ...(action.evidenceIds || [])])].slice(0, 12);
     folded.push({ removed: meetingMinutesAgentText(action.action, 160), into: meetingMinutesAgentText(partner.action, 160) });

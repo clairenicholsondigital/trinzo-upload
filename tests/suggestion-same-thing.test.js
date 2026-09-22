@@ -72,3 +72,15 @@ test('a quantified supporting detail reaches the minutes unless its figures are 
   assert.ok(!texts.some((value) => /steady at the level/.test(value)));
   assert.ok(!texts.some((value) => /in the warehouse/.test(value)));
 });
+
+test('an unowned row folds into an owned action that says the same thing differently', () => {
+  const { foldUnownedNearCopies } = require('../routes/api').stagedEvaluation;
+  const owned = { id: 'a', action: 'Arrange secure external file-share access for the visiting auditor during the audit.', owners: ['Sam Carter'], evidenceIds: ['T0010'], timing: { kind: 'not_stated' } };
+  const loose = { id: 'b', action: 'Figure out a way to provide the visiting auditor with access to the necessary documents, or share them securely.', owners: [], evidenceIds: ['T0031'], timing: { kind: 'not_stated' } };
+  const kept = foldUnownedNearCopies([owned, loose], 'test');
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].id, 'a');
+  // Unrelated unowned work is left alone.
+  const other = { id: 'c', action: 'Book the meeting room for the closing session.', owners: [], evidenceIds: ['T0040'], timing: { kind: 'not_stated' } };
+  assert.equal(foldUnownedNearCopies([{ ...owned, evidenceIds: ['T0010'] }, other], 'test').length, 2);
+});
