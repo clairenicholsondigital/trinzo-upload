@@ -92,3 +92,17 @@ test("a chair reading an action back to someone is not a rival owner", () => {
 test('a declarative assignment to someone who is only talked about keeps them as owner', () => {
   assert.ok(assignsWorkTo('Priya', "So Priya, and I think Tom, you're involved in that review as well next week."));
 });
+
+test("a rival's commitment that hands the next step to the owner is not counter-evidence", () => {
+  const units = normaliseSourceUnits([
+    unit('T0001', 'Priya', "I'll put the supplier risks into the risk register and circulate it with you, Tom, to review first."),
+    unit('T0002', 'Tom', 'Yeah.')
+  ]);
+  const action = { id: 'a1', action: "Review Priya's supplier risk register before it goes wider.", owners: ['Tom'], evidenceIds: ['T0001', 'T0002'], reviewFlagIds: [] };
+  const result = applyRequesterOwnerRule([action], units);
+  assert.ok(!result.flags.some((flag) => /Owner changed/.test(flag.message)), JSON.stringify(result.flags));
+});
+
+test("'Name, your main focus is ...' assigns the work", () => {
+  assert.ok(assignsWorkTo('Tom', 'And Tom, your main focus then really is to finish the venue risk assessment.'));
+});

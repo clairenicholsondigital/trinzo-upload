@@ -3152,6 +3152,7 @@ function assignsWorkTo(name, value) {
     || new RegExp(`\\b(?:assign(?:ed)?|leave|give|hand)\\b.{0,45}\\b${escaped}\\b`, 'i').test(text)
     || new RegExp(`\\b${escaped}(?:\\s+\\w+){0,2}\\s+(?:sends|writes|does|handles|drafts|prepares|books|checks|reviews|runs|updates|traces|orders|arranges|covers|chases|circulates|confirms|leads|owns)\\b`, 'i').test(text)
     || new RegExp(`\\b${escaped}(?:'s|’s)\\s+(?:\\w+\\s+){0,2}(?:priority|job|action|task|responsibility|area)\\b`, 'i').test(text)
+    || new RegExp(`\\b${escaped}\\b\\s*,\\s*(?:\\w+\\s+){0,2}your\\s+(?:\\w+\\s+){0,2}(?:focus|priority|job|action|task|responsibility)\\b`, 'i').test(text)
     || new RegExp(`\\b${escaped}\\b.{0,50}?\\byou(?:'re|’re|\\s+are)\\s+(?:(?:just\\s+)?going\\s+to|involved|responsible|leading|doing|handling|on\\s+(?:it|that|this))\\b`, 'i').test(text)
     || new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,2}\\s+(?:is|'s|’s|has\\s+been)\\s+(?:doing|handling|working\\s+(?:on|through)|looking\\s+(?:at|after)|on\\s+(?:it|that|this)|tracing|reviewing|writing|drafting|preparing|sorting|chasing|leading)\\b`, 'i').test(text);
 }
@@ -3330,9 +3331,13 @@ function applyRequesterOwnerRule(actions = [], units = []) {
     const rival = people.find((person) => !owners.some((owner) => nameParts(owner).some((part) => person.parts.includes(part)))
       && window.some((line) => {
         const value = String(line?.text || '');
+        // "I'll circulate it with you, Andrew, to review" hands the next step
+        // to the named owner; it is not the speaker taking that step over.
+        const namesOwner = owners.some((owner) => personIsNamedIn({ parts: nameParts(owner) }, value));
         return nameParts(line?.speaker).some((part) => person.parts.includes(part))
           && (OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value))
           && !OWNER_REQUESTS_OTHERS.test(value)
+          && !namesOwner
           && sharedSubjectWords(value, action?.action) >= 2;
       }));
     // A named person who is IN the cited exchange and still never commits
