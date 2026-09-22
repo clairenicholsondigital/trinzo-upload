@@ -14205,7 +14205,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   ]), isUsefulMeetingAgentReviewFlag);
   return {
     changes: {
-      actions: actionFlagState.content.actions, pendingProposal: proposal.changes.length ? proposal : null, candidateLedger,
+      actions: actionFlagState.content.actions,
+      pendingProposal: proposal.changes.length
+        ? preselectActionProposal(proposal, actionFlagState.content.actions, draft.sourceUnits)
+        : null,
+      candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
       qualityState: { ...(draft.qualityState || {}), actions: {
@@ -14796,6 +14800,142 @@ function gateTranscriptShapedActionChanges(changes = [], sourceUnits = [], journ
   return kept;
 }
 
+// Which suggested changes start ticked. The review screen used to tick every
+// change the server did not explicitly untick, so a removal that only existed
+// because two generated lists differed deleted a correct action when the
+// reviewer pressed Apply. Now a change starts ticked only when it has been
+// positively vetted, and every unticked change says why.
+const PRESELECTABLE_ADD_DISPOSITIONS = new Set(['committed', 'accepted_request', 'conditional_commitment']);
+
+function proposalEvidenceText(sourceUnits = [], evidenceIds = []) {
+  const byId = new Map(normaliseSourceUnits(sourceUnits).map((unit) => [unit.id, unit]));
+  return (Array.isArray(evidenceIds) ? evidenceIds : []).map((id) => byId.get(id)).filter(Boolean)
+    .map((unit) => `${unit.speaker || ''}: ${unit.text || ''}`).join(' ');
+}
+
+function proposalOwnersOf(record = {}) {
+  return (Array.isArray(record?.owners) ? record.owners : [])
+    .map((owner) => String(owner || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function proposalTimingStated(timing = {}) {
+  return Boolean(timing && timing.kind && timing.kind !== 'not_stated');
+}
+
+function withSelection(change, selected, context = null) {
+  const next = { ...change, selected };
+  if (context && !change.reviewContext) next.reviewContext = context;
+  return next;
+}
+
+// Returns the reason an action edit would lose information the reviewer
+// already has, or '' when it only adds or rewords.
+function destructiveActionEdit(before = {}, after = {}, sourceUnits = []) {
+  const beforeOwners = proposalOwnersOf(before);
+  const afterOwners = proposalOwnersOf(after);
+  if (beforeOwners.some((owner) => !afterOwners.includes(owner))) return 'it removes an owner';
+  if (proposalTimingStated(before.timing) && !proposalTimingStated(after.timing)) return 'it removes the timing';
+  if (before.timing?.exactDate && !after.timing?.exactDate) return 'it removes the date';
+  if (transcriptTextGateEnabled() && transcriptTextIssue(after.action, sourceUnits)) return 'the new wording reads as a line of the conversation';
+  return '';
+}
+
+// Actions: `resulting` is the list the proposal applies to (after this
+// generation's own clean-up), used to find the survivor a removal duplicates.
+function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
+  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
+  const removedTargets = new Set(proposal.changes.filter((change) => change.type === 'remove')
+    .map((change) => change.before).filter(Boolean));
+  const removedIds = new Set([...removedTargets].map((row) => row.id).filter(Boolean));
+  const survivors = [
+    ...(Array.isArray(resulting) ? resulting : []).filter((row) => !removedTargets.has(row) && !(row?.id && removedIds.has(row.id))),
+    ...proposal.changes.filter((change) => ['add', 'modify'].includes(change.type) && change.after).map((change) => change.after)
+  ];
+  const changes = proposal.changes.map((change) => {
+    // An earlier check deliberately left this for the reviewer (answered in
+    // the meeting, completed, a social aside...). Never re-tick it.
+    if (change.selected === false) return change;
+    if (change.type === 'remove') {
+      const removed = change.before || {};
+      const removedOwners = proposalOwnersOf(removed);
+      const partner = survivors.find((row) => row && row !== removed && (!row.id || row.id !== removed.id)
+        && hybridActionsEquivalent(removed.action || '', row.action || '')
+        && (!removedOwners.length || !proposalOwnersOf(row).length || proposalOwnersOf(row).some((owner) => removedOwners.includes(owner))));
+      if (partner) {
+        return withSelection(change, true, {
+          label: 'duplicate',
+          reason: `Duplicates "${meetingMinutesAgentText(partner.action, 200)}", which stays in the list.`,
+          evidenceIds: removed.evidenceIds || []
+        });
+      }
+      return withSelection(change, false, {
+        label: 'removal not confirmed',
+        reason: 'A later check did not reproduce this action, but nothing shows it is wrong or a duplicate. It stays unless you tick this.',
+        evidenceIds: removed.evidenceIds || []
+      });
+    }
+    if (change.type === 'modify') {
+      const lost = destructiveActionEdit(change.before || {}, change.after || {}, sourceUnits);
+      if (lost) {
+        return withSelection(change, false, {
+          label: 'edit loses detail',
+          reason: `Left unticked because ${lost}. Tick it only if the current version is wrong.`,
+          evidenceIds: change.after?.evidenceIds || change.before?.evidenceIds || []
+        });
+      }
+      return withSelection(change, true);
+    }
+    if (change.type === 'add') {
+      const record = change.after || {};
+      if (!proposalOwnersOf(record).length) {
+        return withSelection(change, false, {
+          label: 'no owner',
+          reason: 'Nobody is shown taking this on. Tick it and add an owner if it is a real commitment.',
+          evidenceIds: record.evidenceIds || []
+        });
+      }
+      const evidence = proposalEvidenceText(sourceUnits, record.evidenceIds);
+      const disposition = evidence ? actionEvidenceDisposition(record.action || '', evidence) : 'unclear';
+      if (!PRESELECTABLE_ADD_DISPOSITIONS.has(disposition)) {
+        return withSelection(change, false, {
+          label: 'commitment not clear',
+          reason: 'The cited lines do not clearly show this being agreed. Tick it if it was.',
+          evidenceIds: record.evidenceIds || []
+        });
+      }
+      return withSelection(change, true);
+    }
+    return withSelection(change, false);
+  });
+  return { ...proposal, changes };
+}
+
+// Discussion rows: additions and rewordings start ticked, removals never do.
+function preselectDiscussionProposal(proposal) {
+  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
+  return {
+    ...proposal,
+    changes: proposal.changes.map((change) => {
+      if (change.selected === false) return change;
+      if (change.type === 'remove') {
+        return withSelection(change, false, {
+          label: 'removal not confirmed',
+          reason: 'The regenerated discussion left this out. It stays unless you tick this.',
+          evidenceIds: change.before?.evidenceIds || []
+        });
+      }
+      return withSelection(change, true);
+    })
+  };
+}
+
+// A reviewer's own instruction ("Ask AI to edit") is a request for exactly
+// these changes, so they start ticked.
+function preselectRequestedProposal(proposal) {
+  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
+  return { ...proposal, changes: proposal.changes.map((change) => ({ ...change, selected: change.selected !== false })) };
+}
+
 function meetingAgentProposalChangeIsVisible(change = {}) {
   if (change?.type !== 'modify') return true;
   const visible = (record = {}) => JSON.stringify([
@@ -14950,7 +15090,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       }
     };
     if (reviewerEdited) {
-      const proposal = buildProposal('discussion', current, generated);
+      const proposal = preselectDiscussionProposal(buildProposal('discussion', current, generated));
       changes.pendingProposal = proposal.changes.length ? { ...proposal, source: 'regeneration' } : null;
       delete changes.discussion;
       const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
@@ -14996,7 +15136,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
         .map((change) => ({ ...change, beforeIndex: current.length, index: current.length, afterIndex: null }));
       const combined = [...diff.changes.filter(meetingAgentProposalChangeIsVisible), ...extraAdds].filter(respectsReviewer);
       changes.pendingProposal = combined.length
-        ? { ...diff, changes: combined, source: 'regeneration' }
+        ? preselectActionProposal({ ...diff, changes: combined, source: 'regeneration' }, current, fresh.sourceUnits || [])
         : null;
       delete changes.actions;
       // Flags raised on rows that were not applied would point at nothing.
@@ -15308,7 +15448,7 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
     if (instruction) {
       const before = stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
       const after = stage === 'discussion' ? result.normalised.discussion : result.normalised.actions;
-      const proposal = buildProposal(stage, before, after);
+      const proposal = preselectRequestedProposal(buildProposal(stage, before, after));
       const saved = await saveMeetingAgentDraft(draft, req, {
         pendingProposal: proposal,
         reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags)
@@ -15439,7 +15579,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     }, index));
     const saved = await saveMeetingAgentDraft(draft, req, {
       actions: reconciledActions,
-      pendingProposal: proposal.changes.length ? proposal : null,
+      pendingProposal: proposal.changes.length ? preselectActionProposal(proposal, reconciledActions, draft.sourceUnits) : null,
       reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...rescueFlags, ...missedFlags])
     });
     return res.json({ ok: true, proposal: proposal.changes.length ? proposal : null, draft: publicMeetingAgentDraft(saved) });
@@ -15680,6 +15820,9 @@ router.stagedEvaluation = {
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
   safeAgentProposalPromotion,
+  preselectActionProposal,
+  preselectDiscussionProposal,
+  preselectRequestedProposal,
   explicitFutureDocumentationCommitment,
   repeatedOwnerCommitment,
   criticConfirmedActionPromotions,

@@ -108,7 +108,8 @@ function startStubServer() {
   proposals.pendingProposal = {
     stage: 'actions',
     changes: [{
-      id: 'proposal-1', type: 'add', before: null,
+      // The server now states every selection explicitly; unset means unticked.
+      id: 'proposal-1', type: 'add', before: null, selected: true,
       after: { id: 'action-2', action: 'Confirm access to the audit folder.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' } },
       reviewContext: { reason: 'The owner still needs confirming.', label: 'agreed, then committed', evidenceIds: ['T0001'] }
     }]
@@ -123,11 +124,11 @@ function startStubServer() {
   partialProposals.pendingProposal = {
     stage: 'actions',
     changes: [{
-      id: 'partial-1', type: 'add', before: null,
+      id: 'partial-1', type: 'add', before: null, selected: true,
       after: { id: 'partial-action-1', action: 'Confirm folder access.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'] },
       beforeIndex: 1, index: 1
     }, {
-      id: 'partial-2', type: 'add', before: null,
+      id: 'partial-2', type: 'add', before: null, selected: true,
       after: { id: 'partial-action-2', action: 'Circulate the audit checklist.', owners: ['Alex Reed'], timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'] },
       beforeIndex: 1, index: 1
     }]
