@@ -652,10 +652,36 @@ function flagRecordsIn(value, out = []) {
 
 // Returns the flags the records point at (recovered where they were dropped)
 // and strips references that cannot be resolved. Mutates only copies.
+// Owners a removal/change warning says were taken off. Later merges can put an
+// owner back, which left "…so it was removed" beside the very name it named.
+function ownersNamedAsRemoved(message = '') {
+  const text = String(message || '');
+  const match = text.match(/does not show (.+?) taking this on, so it was removed/i)
+    || text.match(/\bnot (.+?)\. Confirm the owner\./i)
+    || text.match(/^Owner removed: (.+?) only asked/i);
+  return match ? match[1].split(/\s+or\s+/).map((name) => name.trim().toLowerCase()).filter(Boolean) : [];
+}
+
 function reconcileRecordFlags(content = {}, flags = [], isUseful = () => true) {
   const copy = JSON.parse(JSON.stringify(content || {}));
   const byId = new Map((Array.isArray(flags) ? flags : []).map((flag) => [flag.id, flag]));
   const recovered = [];
+  const contradicted = new Set();
+  for (const record of flagRecordsIn(copy)) {
+    const owners = (Array.isArray(record.owners) ? record.owners : []).map((owner) => String(owner).trim().toLowerCase());
+    if (!owners.length || !Array.isArray(record.reviewFlagIds)) continue;
+    record.reviewFlagIds = record.reviewFlagIds.filter((id) => {
+      const flag = byId.get(id) || FLAG_REGISTRY.get(id);
+      const named = flag && flag.kind === 'ownership' ? ownersNamedAsRemoved(flag.message) : [];
+      if (named.length && named.every((name) => owners.includes(name))) { contradicted.add(id); return false; }
+      return true;
+    });
+  }
+  for (const id of contradicted) {
+    const stillUsed = flagRecordsIn(copy).some((record) => (record.reviewFlagIds || []).includes(id));
+    if (!stillUsed) byId.delete(id);
+  }
+  flags = (Array.isArray(flags) ? flags : []).filter((flag) => byId.has(flag.id));
   for (const record of flagRecordsIn(copy)) {
     record.reviewFlagIds = [...new Set(record.reviewFlagIds)].filter((id) => {
       if (byId.has(id)) return true;
@@ -3089,6 +3115,11 @@ function actionSubjectWords(value) {
   return contentTokens(value).filter((word) => !MEETING_WORK_WORDS.has(word));
 }
 
+function sharedSubjectWords(line, actionText) {
+  const subject = new Set(actionSubjectWords(actionText));
+  return new Set(contentTokens(line).filter((word) => subject.has(word))).size;
+}
+
 // Run 9 published "Update the risk table ... USB ports ..." under Jacqui Fox on
 // the strength of "I'll update that table for the new set of minutes" - a
 // different table, one line before "So Rebecca is kind of managing that through
@@ -3098,6 +3129,113 @@ function commitmentIsAboutAction(line, actionText) {
   const subject = new Set(actionSubjectWords(actionText));
   if (!subject.size) return true;
   return contentTokens(line).some((word) => subject.has(word));
+}
+
+// Ways one speaker hands work to a named person, beyond "X to ..." and
+// "X will ...": the present tense of a plan being read back ("Jenny writes the
+// list, Bernard sends it"), work described as someone's ("his priority action",
+// "Sam's job") and ongoing ownership ("Sam is doing that", "Sam has been working
+// through it").
+function assignsWorkTo(name, value) {
+  const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const text = String(value || '');
+  return new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,3}\\s+(?:to|will|shall|is\\s+(?:responsible\\s+)?to|is\\s+responsible\\s+for|owns?|leads?|takes?)\\b`, 'i').test(text)
+    || new RegExp(`\\b(?:assign(?:ed)?|leave|give|hand)\\b.{0,45}\\b${escaped}\\b`, 'i').test(text)
+    || new RegExp(`\\b${escaped}(?:\\s+\\w+){0,2}\\s+(?:sends|writes|does|handles|drafts|prepares|books|checks|reviews|runs|updates|traces|orders|arranges|covers|chases|circulates|confirms|leads|owns)\\b`, 'i').test(text)
+    || new RegExp(`\\b${escaped}(?:'s|’s)\\s+(?:\\w+\\s+){0,2}(?:priority|job|action|task|responsibility|area)\\b`, 'i').test(text)
+    || new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,2}\\s+(?:is|'s|’s|has\\s+been)\\s+(?:doing|handling|working\\s+(?:on|through)|looking\\s+(?:at|after)|on\\s+(?:it|that|this)|tracing|reviewing|writing|drafting|preparing|sorting|chasing|leading)\\b`, 'i').test(text);
+}
+
+// A turn addressed to someone by name that asks them to do something:
+// "Sam, can you ...", "could you, Sam ...", "Sam, you're doing ...".
+function addressedRequestTo(name, value) {
+  const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const text = String(value || '');
+  const asks = String.raw`(?:(?:can|could|would|will)\s+you|you\s+(?:can|could)|you(?:'re|’re|\s+are)\s+(?:doing|on|taking|handling)|your\s+(?:job|action|task))`;
+  return new RegExp(String.raw`\b${escaped}\b.{0,60}?\b${asks}\b`, 'i').test(text)
+    || new RegExp(String.raw`\b${asks}\b.{0,40}?\b${escaped}\b`, 'i').test(text);
+}
+
+// Transcript rows arrive split into sentences, so a +-1 row window is usually
+// one side of an exchange. Evidence for ownership is read over whole speaker
+// turns instead: the cited turns plus `span` turns either side.
+function turnWindowRows(rows = [], citedIndexes = [], span = 2) {
+  const turnOf = [];
+  let turn = 0;
+  rows.forEach((row, index) => {
+    if (index && row?.speaker !== rows[index - 1]?.speaker) turn += 1;
+    turnOf[index] = turn;
+  });
+  const wanted = new Set();
+  for (const index of citedIndexes) {
+    const centre = turnOf[index];
+    if (centre == null) continue;
+    for (let t = centre - span; t <= centre + span; t += 1) wanted.add(t);
+  }
+  return rows.filter((row, index) => wanted.has(turnOf[index]));
+}
+
+// Anywhere in the meeting: a line that hands this work to this person, or the
+// person's own commitment to it, sharing at least two subject words with the
+// action. This finds recaps ("David's priority action for the rest of this week
+// is tracing the 17 changes") outside the cited passage.
+function ownerAssignedInMeeting(owner, actionText = '', units = []) {
+  const names = nameParts(owner);
+  const subject = new Set(actionSubjectWords(actionText));
+  if (!names.length || subject.size < 2) return false;
+  // Only a person who exists in this meeting, in full: "Stuart will ..." must
+  // not validate an invented "Stuart Jones".
+  const identities = [...speakerIdentities(units).map((person) => person.parts), ...mentionedPeople(units).map((name) => nameParts(name))];
+  const knownIdentity = identities.some((parts) => names.every((part) => parts.includes(part)))
+    // A single name ("Robin") only needs to be someone the meeting talks about.
+    || (names.length === 1 && evidenceContextFor(units).rows.some((row) => new RegExp(`\\b${names[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(`${row?.speaker || ''} ${row?.text || ''}`)));
+  if (!knownIdentity) return false;
+  const rows = evidenceContextFor(units).rows;
+  const shared = (value) => contentTokens(value).filter((word) => subject.has(word)).length;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const value = String(row?.text || '');
+    const context = [value, rows[index + 1]?.text || ''].join(' ');
+    const speaksAsOwner = nameParts(row?.speaker).some((part) => names.includes(part));
+    if (speaksAsOwner && (OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value))
+      && shared([rows[index - 1]?.text || '', context].join(' ')) >= 2) return true;
+    if (!speaksAsOwner && names.some((name) => assignsWorkTo(name, value)) && shared(context) >= 2) return true;
+    if (!speaksAsOwner && names.some((name) => addressedRequestTo(name, value)) && shared(context) >= 2) {
+      const reply = rows.slice(index + 1, index + 4).find((next) => nameParts(next?.speaker).some((part) => names.includes(part)));
+      if (reply && (OWNER_ACCEPTS.test(String(reply.text || '')) || OWNER_FIRST_PERSON.test(String(reply.text || '')))) return true;
+    }
+  }
+  return false;
+}
+
+// Inside the passage the action cites, a request addressed to someone by name
+// ("David, is that something you can write up?") answered by that person
+// without refusing ("It'll be Friday though") is an accepted request. The
+// citation already ties the request to this action, so no subject match is
+// needed; the preparer can also drop the bare "I can." between the two.
+const OWNER_REFUSES = /\b(?:no|nope|can't|cannot|can not|won't|not me|not able|unable|don't think i can|i couldn't)\b/i;
+function addressedRequestAccepted(owner, lines = []) {
+  const names = nameParts(owner);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (nameParts(line?.speaker).some((part) => names.includes(part))) continue;
+    if (!names.some((name) => addressedRequestTo(name, line?.text))) continue;
+    const reply = lines.slice(index + 1, index + 3).find((next) => nameParts(next?.speaker).some((part) => names.includes(part)));
+    if (reply && !OWNER_REFUSES.test(String(reply.text || ''))) return true;
+  }
+  return false;
+}
+
+// The chair asking someone else ("could you mention it to him?") is not the
+// chair taking the work on. True when the named person speaks in the passage
+// only to ask others, never committing themselves.
+const OWNER_REQUESTS_OTHERS = /\b(?:can|could|would|will)\s+you\b|\byou(?:'d|’d|\s+would|\s+need|\s+should|'re|’re|\s+are)\b/i;
+function ownerOnlyAsksOthers(owner, lines = []) {
+  const names = nameParts(owner);
+  const own = lines.filter((line) => nameParts(line?.speaker).some((part) => names.includes(part)));
+  if (!own.length) return false;
+  return own.every((line) => OWNER_REQUESTS_OTHERS.test(String(line.text || ''))
+    && !OWNER_FIRST_PERSON.test(String(line.text || '')) && !OWNER_SELF_ASSIGNMENT.test(String(line.text || '')));
 }
 
 function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
@@ -3113,11 +3251,7 @@ function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
   const contested = people.some((person) => !person.parts.some((part) => names.includes(part))
     && lines.some((line) => personIsNamedIn(person, line?.text)));
   const mentions = (value) => names.some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(value));
-  const assigned = (value) => names.some((name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,3}\\s+(?:to|will|shall|is\\s+(?:responsible\\s+)?to|is\\s+responsible\\s+for|owns?|leads?|takes?)\\b`, 'i').test(value)
-      || new RegExp(`\\b(?:assign(?:ed)?|leave|give|hand)\\b.{0,45}\\b${escaped}\\b`, 'i').test(value);
-  });
+  const assigned = (value) => names.some((name) => assignsWorkTo(name, value));
   const isOwner = (speaker) => nameParts(speaker).some((word) => names.includes(word));
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -3168,20 +3302,50 @@ function applyRequesterOwnerRule(actions = [], units = []) {
     if (!owners.length) return action;
     const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
     if (!cited.length) return action;
-    const window = [...new Set(cited.flatMap((index) => [index - 1, index, index + 1]))]
-      .filter((index) => index >= 0 && index < rows.length).sort((a, b) => a - b).map((index) => rows[index]);
-    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window, action?.action, people));
+    const window = turnWindowRows(rows, cited, 2);
+    const unsupported = owners.filter((owner) => !ownerTakesItOn(owner, window, action?.action, people)
+      && !addressedRequestAccepted(owner, window)
+      && !ownerAssignedInMeeting(owner, action?.action, units));
     if (!unsupported.length) return action;
-    const flag = normaliseFlag({
-      kind: 'ownership',
-      message: `Owner unclear: the cited evidence does not show ${unsupported.join(' or ')} taking this on, so it was removed. Add the person who is doing it.`,
-      evidenceIds: action.evidenceIds || []
-    }, flags.length);
-    flags.push(flag);
+    // Only positive evidence removes a named owner: somebody else is shown
+    // taking this work on, or the named person only asked others to do it.
+    // Absence of proof is not proof of absence - a plain "I'd rather ask
+    // them" or a chair's read-back can sit outside any window we choose.
+    // Counter-evidence must come from the same exchange: someone committing to
+    // other work elsewhere in the meeting says nothing about this action.
+    const rival = people.find((person) => !owners.some((owner) => nameParts(owner).some((part) => person.parts.includes(part)))
+      && window.some((line) => personIsNamedIn(person, line?.speaker, line?.text))
+      && ownerTakesItOn(person.label, window, action?.action, people)
+      && sharedSubjectWords(window.filter((line) => personIsNamedIn(person, line?.speaker)).map((line) => String(line.text || '')).join(' '), action?.action) >= 2);
+    // A named person who is IN the cited exchange and still never commits
+    // (only asks others, only speaks for "we", is only mentioned) is evidence
+    // against them. A person absent from it is not: the citation is simply
+    // incomplete, so they are kept and flagged for a human to confirm.
+    const inExchange = (owner) => window.some((line) => personIsNamedIn({ parts: nameParts(owner) }, line?.speaker, line?.text));
+    const removed = unsupported.filter((owner) => rival || ownerOnlyAsksOthers(owner, window) || inExchange(owner));
+    const unverified = unsupported.filter((owner) => !removed.includes(owner));
+    const actionFlags = [];
+    if (removed.length) {
+      actionFlags.push(normaliseFlag({
+        kind: 'ownership',
+        message: rival
+          ? `Owner changed for review: the transcript shows ${rival.label} taking this on, not ${removed.join(' or ')}. Confirm the owner.`
+          : `Owner unclear: the cited evidence does not show ${removed.join(' or ')} taking this on, so it was removed. Add the person who is doing it.`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length + actionFlags.length));
+    }
+    if (unverified.length) {
+      actionFlags.push(normaliseFlag({
+        kind: 'ownership',
+        message: `Owner to confirm: the cited lines do not clearly show ${unverified.join(' or ')} taking this on. Check the name.`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length + actionFlags.length));
+    }
+    flags.push(...actionFlags);
     return {
       ...action,
-      owners: owners.filter((owner) => !unsupported.includes(owner)),
-      reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])]
+      owners: owners.filter((owner) => !removed.includes(owner)),
+      reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), ...actionFlags.map((flag) => flag.id)])]
     };
   });
   return { actions: checked, flags };
@@ -4104,7 +4268,8 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   const unitById = new Map(evidenceContextFor(units).rows.map((unit) => [unit.id, unit]));
   for (const action of actions) {
     const evidenceText = evidenceWindowText(units, action.evidenceIds, 1);
-    const unsupportedOwners = action.owners.filter((owner) => !ownerSupportedByEvidence(owner, evidenceText, units));
+    const unsupportedOwners = action.owners.filter((owner) => !ownerSupportedByEvidence(owner, evidenceText, units)
+      && !ownerAssignedInMeeting(owner, action.action, units));
     if (unsupportedOwners.length) {
       if (enforceEvidence) action.owners = action.owners.filter((owner) => !unsupportedOwners.includes(owner));
       const flag = normaliseFlag({
@@ -4666,6 +4831,10 @@ module.exports = {
   supersededVerdicts,
   applyRequesterOwnerRule,
   ownerTakesItOn,
+  ownerAssignedInMeeting,
+  assignsWorkTo,
+  turnWindowRows,
+  addressedRequestAccepted,
   groundRowAttributions,
   mergeDuplicateCommitments,
   splitExplicitMultiOwnerActions,
