@@ -58,3 +58,10 @@ test('"how long" asks for a duration and never becomes a deadline', () => {
   const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001'], { meetingDate: TUESDAY });
   assert.equal(timing.kind, 'not_stated');
 });
+
+test('same-day wording resolves to the meeting date itself', () => {
+  for (const wording of ['this afternoon', 'this morning', 'tonight', 'later today', 'by end of day', 'close of play']) {
+    assert.equal(relativeExactDate(wording, TUESDAY), TUESDAY, wording);
+  }
+  assert.equal(relativeExactDate('tomorrow afternoon', TUESDAY), '2026-03-11');
+});

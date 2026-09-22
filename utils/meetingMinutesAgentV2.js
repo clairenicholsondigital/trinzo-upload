@@ -923,7 +923,9 @@ function isoDateOffset(meetingDate, days) {
 function relativeExactDate(wording, meetingDate) {
   const value = text(wording, 220).toLowerCase();
   if (!value || !meetingDate) return '';
-  if (/\btoday\b/.test(value)) return meetingDate;
+  // Same-day wording is the meeting's own date: "this afternoon", "tonight",
+  // "later today", "by end of day", "close of play".
+  if (/\b(?:today|tonight|this (?:morning|afternoon|evening|lunchtime)|later today|(?:by )?(?:the )?end of (?:the )?day|close of (?:play|business)|eod|cob)\b/.test(value)) return meetingDate;
   if (/\btomorrow\b/.test(value)) return isoDateOffset(meetingDate, 1);
   const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   // A weekday nested inside a relational phrase is context, not necessarily
