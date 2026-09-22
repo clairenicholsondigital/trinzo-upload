@@ -3,6 +3,10 @@
 const crypto = require('crypto');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
+const {
+  isRoutineMeetingAdministrationText,
+  removeRoutineMeetingAdministrationSentences
+} = require('./meetingAdministration');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -4369,14 +4373,17 @@ function mergeGroundedObjectiveRecords(groups = [], units = []) {
 
 function groundedExecutiveSummary(value, discussion = [], actions = []) {
   const source = JSON.stringify({ discussion, actions });
-  const supported = text(value, 3000).split(/(?<=[.!?])\s+/).filter(Boolean)
+  const supported = removeRoutineMeetingAdministrationSentences(text(value, 3000))
+    .split(/(?<=[.!?])\s+/).filter(Boolean)
     .filter((sentence) => evidenceSupportScore(sentence, source) >= 0.14)
     .join(' ');
   if (supported) return supported;
   const facts = (Array.isArray(discussion) ? discussion : []).flatMap((topic) => [
     ...(topic?.decisions || []), ...(topic?.points || [])
-  ]).map((item) => text(item?.text || item, 500)).filter(Boolean).slice(0, 3);
-  const next = (Array.isArray(actions) ? actions : []).map((item) => text(item?.action, 500)).filter(Boolean).slice(0, 2);
+  ]).map((item) => text(item?.text || item, 500))
+    .filter((item) => item && !isRoutineMeetingAdministrationText(item)).slice(0, 3);
+  const next = (Array.isArray(actions) ? actions : []).map((item) => text(item?.action, 500))
+    .filter((item) => item && !isRoutineMeetingAdministrationText(item)).slice(0, 2);
   return text([...facts, ...next].join(' '), 1500);
 }
 

@@ -12,6 +12,7 @@ const { extractMentionedPeople, damerauLevenshtein } = require('../entityNormali
 const { buildConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { joinConceptLabels } = require('./initialUnderstanding');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('./topicEditorial');
+const { isRoutineMeetingAdministrationText } = require('../meetingAdministration');
 
 function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
@@ -177,7 +178,8 @@ function composedSpineSentences(spine) {
 }
 
 function summaryScreen(proposal) {
-  const objectives = proposal.objectives.map((item) => item.text);
+  const objectives = proposal.objectives.map((item) => item.text)
+    .filter((item) => !isRoutineMeetingAdministrationText(item));
   // Deriving topics from objectives was a stopgap for meetings with no topics at all,
   // sized for the era of at most four objectives. Per-workstream derivation now produces
   // up to eight, and eight manufactured topics dilute the discussion stage's evidence
@@ -204,6 +206,7 @@ function summaryScreen(proposal) {
   // applied to the surface that was missed.
   const visibleTopicItems = rawTopicItems
     .filter((item) => clean(item?.text))
+    .filter((item) => !isRoutineMeetingAdministrationText(item.text))
     .filter((item) => !topicLooksLikeReportedSpeechFragment(item.text))
     // The two label-shaped gates only. canHeadlineTopic is deliberately not in this list:
     // it delegates to a four-word minimum written for transcript evidence, and applying it
@@ -212,8 +215,10 @@ function summaryScreen(proposal) {
     .filter((item) => isPublishableTopicLabel(clean(item.text)) && labelNamesAWorkstream(clean(item.text)));
   const overallTopics = visibleTopicItems.map((item) => clean(item.text)).filter(Boolean);
   const initialUnderstanding = proposal.initialUnderstanding || null;
-  const inferredPurpose = clean(initialUnderstanding?.meetingPurpose?.text);
-  const spineItems = composedSpineSentences(initialUnderstanding?.meetingSpine);
+  const rawPurpose = clean(initialUnderstanding?.meetingPurpose?.text);
+  const inferredPurpose = isRoutineMeetingAdministrationText(rawPurpose) ? '' : rawPurpose;
+  const spineItems = composedSpineSentences(initialUnderstanding?.meetingSpine)
+    .filter((item) => !isRoutineMeetingAdministrationText(item));
   // The floor: a summary of purpose-plus-nothing tells the reviewer nothing the title
   // field two rows up does not. When the spine is thin, one sentence naming the detected
   // workstreams - this meeting's own, evidence-gated labels - makes the summary say what
@@ -266,8 +271,12 @@ function summaryScreen(proposal) {
     initialUnderstanding: initialUnderstanding ? {
       provenance: initialUnderstanding.provenance,
       meetingMode: initialUnderstanding.meetingMode,
-      meetingPurpose: initialUnderstanding.meetingPurpose,
-      meetingSpine: initialUnderstanding.meetingSpine,
+      meetingPurpose: {
+        ...(initialUnderstanding.meetingPurpose || {}),
+        text: inferredPurpose
+      },
+      meetingSpine: (initialUnderstanding.meetingSpine || [])
+        .filter((item) => !isRoutineMeetingAdministrationText(item?.text)),
       primaryWorkstreams: initialUnderstanding.primaryWorkstreams,
       materialClarifications: initialUnderstanding.materialClarifications,
       unresolvedNeeds: initialUnderstanding.unresolvedNeeds,
@@ -399,12 +408,15 @@ function applyConfirmedOverlay(stage, screen, state) {
 }
 
 function discussionScreen(proposal) {
-  const cards = proposal.discussion.map((card) => ({
-    topic: card.topic,
-    points: card.points.map((point) => point.text).filter(Boolean),
-    pointRefs: card.points.map((point) => ({ evidenceIds: point.evidenceIds || [] })),
-    evidenceIds: card.evidenceIds || [],
-    topicId: card.topicId || null,
+  const cards = proposal.discussion.map((card) => {
+    const visiblePoints = card.points.filter((point) => point.text
+      && (card.confirmedTopic || !isRoutineMeetingAdministrationText(point.text)));
+    return {
+      topic: card.topic,
+      points: visiblePoints.map((point) => point.text),
+      pointRefs: visiblePoints.map((point) => ({ evidenceIds: point.evidenceIds || [] })),
+      evidenceIds: card.evidenceIds || [],
+      topicId: card.topicId || null,
     // Carried, not dropped. This rebuild lists its fields explicitly, and confirmedTopic
     // was not among them - so the flag the planner sets on a reviewer-confirmed
     // workstream (semanticStages: discussionCardsFromPlan, applyConfirmedTopicAgenda)
@@ -413,8 +425,9 @@ function discussionScreen(proposal) {
     // dedupe passes, the speech gate - was reading a field that was always undefined,
     // which is why a reviewer's fifteen confirmed themes shipped beside sixteen
     // generated mini-headings with nothing able to tell them apart.
-    ...(card.confirmedTopic ? { confirmedTopic: true } : {})
-  }));
+      ...(card.confirmedTopic ? { confirmedTopic: true } : {})
+    };
+  }).filter((card) => card.confirmedTopic || card.points.length);
   if (proposal.summaryTopicsAuthoritative) return cards;
   if (proposal.decisions.length) cards.push({ topic: 'Decisions', points: proposal.decisions.map((item) => item.text), evidenceIds: proposal.decisions.flatMap((item) => item.evidenceIds || []), topicId: 'canonical_decisions' });
   const riskEvidenceIds = proposal.risks.flatMap((item) => item.evidenceIds || []);
@@ -711,4 +724,11 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   return result;
 }
 
-module.exports = { runCanonicalLiveStage, buildConfirmedState, capitaliseInitial, lowerInitialUnlessInitialism };
+module.exports = {
+  runCanonicalLiveStage,
+  buildConfirmedState,
+  capitaliseInitial,
+  lowerInitialUnlessInitialism,
+  summaryScreen,
+  discussionScreen
+};
