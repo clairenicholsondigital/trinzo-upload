@@ -80,12 +80,17 @@ function evidenceAppendix(draft = {}) {
   return body;
 }
 
+// Display label only; the stored type still selects the meeting profile.
+function meetingTypeLabel(value = '') {
+  return /^\s*webinar rehearsal\s*$/i.test(String(value || '')) ? 'Presentation rehearsal' : value;
+}
+
 function documentBody(draft = {}, includeEvidence = false) {
   const details = draft.details || {};
   let body = paragraph(details.meetingTitle || draft.title || 'Meeting minutes', 'Title');
   body += paragraph(`Date: ${details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated'}`, 'Subtitle');
   body += paragraph(`Location: ${details.meetingLocation || 'Not stated'}`, 'Subtitle');
-  body += paragraph(`Meeting type: ${details.meetingType || 'Not stated'}`, 'Subtitle');
+  body += paragraph(`Meeting type: ${meetingTypeLabel(details.meetingType) || 'Not stated'}`, 'Subtitle');
   body += paragraph(`Internal attendees: ${(details.internalAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
   body += paragraph(`${details.clientAttendeeLabel === 'External' ? 'External' : 'Client'} attendees: ${(details.clientAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
   // Objectives and the executive summary lead the document when present, and are

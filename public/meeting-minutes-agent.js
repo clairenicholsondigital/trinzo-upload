@@ -427,6 +427,13 @@
     }
   }
 
+  // The stored meeting type stays 'Webinar rehearsal' (it selects the meeting
+  // profile); people see a label that fits online, in-person and hybrid
+  // rehearsals alike, and the stored value is written back on save.
+  var MEETING_TYPE_LABELS = {'webinar rehearsal':'Presentation rehearsal'};
+  var MEETING_TYPE_VALUES = {'presentation rehearsal':'Webinar rehearsal'};
+  function meetingTypeLabel(value) { var key=String(value||'').trim().toLowerCase(); return MEETING_TYPE_LABELS[key] || value || ''; }
+  function meetingTypeValue(label) { var key=String(label||'').trim().toLowerCase(); return MEETING_TYPE_VALUES[key] || String(label||'').trim(); }
   function setFieldValue(id, value) {
     var element = document.getElementById(id);
     if (!element || element === document.activeElement) return;
@@ -726,7 +733,7 @@
       meetingTitle: document.getElementById('meetingTitle').value.trim(),
       meetingDate: document.getElementById('meetingDate').value,
       meetingLocation: document.getElementById('meetingLocation').value.trim(),
-      meetingType: document.getElementById('meetingType').value.trim(),
+      meetingType: meetingTypeValue(document.getElementById('meetingType').value),
       clientAttendeeLabel: document.getElementById('clientAttendeeLabelSelect').value === 'External' ? 'External' : 'Client',
       internalAttendees: internalAttendees,
       clientAttendees: clientAttendees,
@@ -741,7 +748,7 @@
     setFieldValue('meetingTitle', details.meetingTitle || '');
     setFieldValue('meetingDate', details.meetingDate || '');
     setFieldValue('meetingLocation', details.meetingLocation || '');
-    setFieldValue('meetingType', details.meetingType || '');
+    setFieldValue('meetingType', meetingTypeLabel(details.meetingType || ''));
     renderAttendeeGroup('internal', details.internalAttendees || []);
     renderAttendeeGroup('client', details.clientAttendees || []);
     setFieldValue('clientAttendeeLabelSelect', details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
@@ -1334,7 +1341,7 @@
     var actionsHtml = (draft.actions || []).map(function (action) {
       return '<tr><td>' + finalTextEditor('action', action.id, 'action', action.action, {block:true,label:'Edit action'}) + '</td><td>' + finalTextEditor('action', action.id, 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated'}) + '</td><td>' + finalTimingEditor(action) + '</td></tr>';
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
-    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(details.meetingType || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p><p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '<br><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select');
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
   }

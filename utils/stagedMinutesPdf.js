@@ -163,7 +163,7 @@ function renderStagedMinutesPdfHtml(input = {}) {
 <section class="meta">
   <div><span class="label">Date</span>${escapeHtml(details.meetingDate)}</div>
   <div><span class="label">Location</span>${escapeHtml(details.meetingLocation)}</div>
-  <div><span class="label">Meeting type</span>${escapeHtml(details.meetingType)}</div>
+  <div><span class="label">Meeting type</span>${escapeHtml(/^\s*webinar rehearsal\s*$/i.test(String(details.meetingType || '')) ? 'Presentation rehearsal' : details.meetingType)}</div>
   <div><span class="label">Internal attendees</span>${escapeHtml(details.internalAttendees.join(', ') || 'Not stated')}</div>
   <div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', ') || 'Not stated')}</div>
 </section>
