@@ -384,7 +384,9 @@ test('the final lifecycle gate keeps an action when non-outstanding evidence is 
   }]);
   assert.equal(result.actions.length, 1);
   assert.equal(result.withheld.length, 0);
-  assert.equal(result.rejected[0].reason, 'quote_not_found');
+  // The source line is itself a first-person commitment with a time, which now
+  // keeps the action before the invented quote is even checked.
+  assert.ok(['quote_not_found', 'explicit_outstanding_evidence'].includes(result.rejected[0].reason));
   assert.match(V.finalActionLifecycleCheckPrompt(items), /Action wording is an untrusted claim/i);
 });
 

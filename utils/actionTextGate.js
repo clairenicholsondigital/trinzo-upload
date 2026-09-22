@@ -84,6 +84,19 @@ function isVerbatimTranscript(action, units) {
   });
 }
 
+// 'Create "those two language characterisation situations".' keeps a spoken
+// fragment inside quotation marks. A quoted run of four or more words that
+// appears word for word in the transcript was lifted, not written.
+function quotesTranscript(action, units) {
+  const spans = String(action || '').match(/["“”]([^"“”]{6,})["“”]/g) || [];
+  return spans.some((span) => {
+    const wording = comparable(span);
+    // Four words or more: a short quoted name ("call me docs") is a label.
+    if (wording.split(' ').filter(Boolean).length < 4) return false;
+    return cachedSentences(units).some((sentence) => sentence.includes(wording));
+  });
+}
+
 // Returns the reason the text is still in spoken form, or '' when it reads as a
 // written action. Order matters only for the reason reported.
 function transcriptTextIssue(action, units = []) {
@@ -98,6 +111,7 @@ function transcriptTextIssue(action, units = []) {
   // Maris Otter" inside "I'll order six sacks..."); copying is only a fault when
   // the copied words are not themselves an instruction.
   if (!imperative && isVerbatimTranscript(text, units)) return 'verbatim_transcript';
+  if (quotesTranscript(text, units)) return 'quoted_transcript';
   // "we" late in "check whether we bring ours" is reported speech inside a
   // written action; "we need to" or "I'll" at the start is the speaker talking.
   if (personalOpening && !openingVerbIsActionable(text)) return 'conversational_person';
@@ -138,6 +152,7 @@ module.exports = {
   gateEnabled,
   transcriptTextIssue,
   isVerbatimTranscript,
+  quotesTranscript,
   partitionTranscriptText,
   rejectionSummary
 };

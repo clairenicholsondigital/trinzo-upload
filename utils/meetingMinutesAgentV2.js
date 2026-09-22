@@ -2585,12 +2585,21 @@ function finalActionLifecycleCheckPrompt(items = []) {
 
 const EXPLICIT_OUTSTANDING_LIFECYCLE = /\b(?:still (?:needs? to be done|to be done|needs? (?:doing|reviewing|updating|completing)|outstanding|pending)|remain(?:s|ed|ing)? (?:to be done|outstanding|open|pending)|(?:has|have) (?:not yet|yet to)|not yet (?:done|complete|completed|reviewed|sent|shared|updated)|(?:(?:has|have|had|was|were) (?:been )?)?(?:pushed (?:out|back)|postponed|deferred) (?:until|to)|continue(?:s|d|ing)? (?:to |with )?(?:review|reviewing|update|updating|test|testing|complete|completing|prepare|preparing|develop|developing|document|documenting|resolve|resolving|progress|progressing)|work in progress|in progress)\b/i;
 
+// "I'll get that over to you today" is work that has not happened yet, however
+// confidently a lifecycle verdict reads the surrounding lines as done. A
+// first-person future commitment with a time or trigger for it counts as
+// explicit outstanding wording, under the same two-subject-word scope.
+const FIRST_PERSON_FUTURE_COMMITMENT = /\b(?:i'll|i’ll|i will|i'm going to|i’m going to|i am going to|i'm gonna|let me|i can)\b/i;
+const FUTURE_MARKER = /\b(?:today|tonight|tomorrow|this (?:morning|afternoon|evening|week)|next (?:week|month)|by (?:monday|tuesday|wednesday|thursday|friday|the end|end of|close of)|before|after|once|when|as soon as|later|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+
 function itemHasExplicitOutstandingEvidence(item = {}) {
   const subject = aboutWords(item.action || '');
   if (!subject.size) return false;
   const clauses = String(item.passage || '').split(/\n|(?<=[.!?;])\s+/).map((value) => value.trim()).filter(Boolean);
   return clauses.some((clause) => {
-    if (!EXPLICIT_OUTSTANDING_LIFECYCLE.test(clause)) return false;
+    const outstanding = EXPLICIT_OUTSTANDING_LIFECYCLE.test(clause)
+      || (FIRST_PERSON_FUTURE_COMMITMENT.test(clause) && FUTURE_MARKER.test(clause));
+    if (!outstanding) return false;
     const shared = [...aboutWords(clause)].filter((word) => subject.has(word)).length;
     return shared >= 2;
   });
@@ -4867,6 +4876,7 @@ module.exports = {
   finalActionLifecycleCheckItems,
   finalActionLifecycleCheckPrompt,
   applyFinalActionLifecycleResults,
+  itemHasExplicitOutstandingEvidence,
   commitmentQuoteTiesOwner,
   commitmentQuoteAboutAction,
   isMeetingAdminAction,

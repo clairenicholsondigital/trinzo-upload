@@ -97,3 +97,9 @@ test('grounding alone cannot promote a copied sentence', () => {
   const raw = { action: 'Round it down to ninety, realistically, after the no-shows.', owners: [], evidenceIds: ['T0005'] };
   assert.equal(safeAgentProposalPromotion(raw, [], units), false);
 });
+
+test('a quoted fragment lifted from the transcript is spoken text; an ordinary quoted name is not', () => {
+  const quotedUnits = [{ id: 'T0100', speaker: 'Chair', text: 'Then sort out those three awkward seating situations and finish the plan.' }];
+  assert.equal(transcriptTextIssue('Resolve "those three awkward seating situations".', quotedUnits), 'quoted_transcript');
+  assert.equal(transcriptTextIssue('Rename the shared folder to "Venue plans 2026".', quotedUnits), '');
+});
