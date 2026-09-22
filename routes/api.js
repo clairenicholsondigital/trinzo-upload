@@ -198,6 +198,7 @@ const {
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
   applyTimingClauseChecks,
   backfillActionCommitmentEvidence,
+  attachNearbyDependencyConditions,
   timingCheckEnabled: meetingMinutesTimingCheckEnabled,
   timingCheckItems,
   timingCheckPrompt,
@@ -13818,10 +13819,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     actions: [...primaryActionAccounting.actions, ...remainingProposalCandidates]
   }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions,
   { sourceUnits: draft.sourceUnits });
-  const reconciledPublishedActions = backfillActionCommitmentEvidence(
+  const reconciledPublishedActions = attachNearbyDependencyConditions(backfillActionCommitmentEvidence(
     mergePublishedActionEvidence(primaryActionAccounting.actions, complete), draft.sourceUnits,
     { meetingDate: details.meetingDate }
-  );
+  ), draft.sourceUnits);
   const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
   );

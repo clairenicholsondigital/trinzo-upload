@@ -786,16 +786,30 @@ class SampledActionSupportTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["support"], 2)
 
-    def test_single_sample_rows_need_commitment_evidence_to_be_raised(self):
+    def test_single_sample_rows_need_commitment_or_explicit_outstanding_evidence_to_be_raised(self):
         rows = [
             {"action": "a", "support": 1, "status": "PROPOSED"},
             {"action": "b", "support": 1, "status": "REQUIRED", "commitmentEvidenceIds": ["turn_2"]},
             {"action": "unsupported", "support": 1, "status": "REQUIRED"},
+            {"action": "Continue updating the translated language files", "support": 1, "status": "REQUIRED",
+             "evidenceIds": ["turn_1"]},
             {"action": "c", "support": 2, "status": "PROPOSED"},
             {"action": "d", "support": 3, "status": "PROPOSED"},
         ]
-        tiered = PIPELINE.assign_action_tiers(rows, 3)
-        self.assertEqual([(row["action"], row["tier"]) for row in tiered], [("b", 2), ("c", 1), ("d", 1)])
+        tiered = PIPELINE.assign_action_tiers(
+            rows, 3, ["Jacqui: Continue the language update; it is still to be done.", "Alex: Agreed."]
+        )
+        self.assertEqual([(row["action"], row["tier"]) for row in tiered], [
+            ("b", 2), ("Continue updating the translated language files", 2), ("c", 1), ("d", 1)
+        ])
+
+    def test_status_only_language_does_not_gain_outstanding_recall_protection(self):
+        rows = [{"action": "Review the current programme status", "support": 1, "status": "REQUIRED",
+                 "evidenceIds": ["turn_1"]}]
+        self.assertEqual(
+            PIPELINE.assign_action_tiers(rows, 3, ["Jacqui: The programme continues to operate normally."]),
+            [],
+        )
 
     def test_different_stated_owners_do_not_merge(self):
         vectors = {"Review the alarm code changes": [1.0, 0.0], "Review the alarm code changes again": [0.99, 0.1]}

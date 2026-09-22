@@ -189,14 +189,14 @@ test('closing recap promotes only an independently corroborated earlier commitme
   assert.equal(promoted.some((item) => /supplier pack/i.test(item.action)), false);
 });
 
-test('real T761 closing recap corroborates the concrete ongoing workstreams without promoting the unassigned clinical review', () => {
+test('real T761 closing recap preserves concrete ongoing workstreams including unassigned corroborated work', () => {
   const transcript = fs.readFileSync(path.join(__dirname, '../scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt'), 'utf8');
   const promoted = semanticStages.corroboratedClosingRecapActions(prepareEvidence(transcript));
   assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /mute button/i.test(item.action)));
   assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /additional languages/i.test(item.action)));
   assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /electrical compliance testing/i.test(item.action)));
   assert.ok(promoted.some((item) => item.owner === 'Rebecca Cuckoo' && /USB port/i.test(item.action)));
-  assert.equal(promoted.some((item) => /clinical review/i.test(item.action)), false);
+  assert.ok(promoted.some((item) => item.owner === 'Not stated' && /(?:clinical|clinician).*review|review.*clinician/i.test(item.action)));
   assert.equal(promoted.some((item) => /fan logic/i.test(item.action)), false);
 });
 

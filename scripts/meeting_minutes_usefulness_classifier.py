@@ -51,6 +51,23 @@ def compact(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def repair_missing_sentence_spaces(value: str) -> str:
+    """Restore boundaries commonly lost by Teams/ASR before unit classification.
+
+    Without this, several recap bullets can become one very long classifier unit and
+    one low-confidence judgement can remove all of them together.  Restrict repairs
+    to punctuation followed by a clear sentence starter so decimal numbers, product
+    versions and abbreviations remain untouched.
+    """
+    text = compact(value)
+    return re.sub(
+        r"(?<=[.!?])(?P<starter>And|But|So|Then|That|The|This|These|Those|I|We|You|He|She|They|It)\b",
+        lambda match: f" {match.group('starter')[0].upper()}{match.group('starter')[1:]}",
+        text,
+        flags=re.I,
+    )
+
+
 def read_transcript_file(path: Path) -> str:
     """Read plain text or the visible paragraphs from a Word DOCX transcript."""
     if path.suffix.lower() != ".docx":
@@ -101,7 +118,7 @@ def parse_transcript(text: str, source: str = "") -> list[dict]:
 
 
 def split_unit(turn: dict) -> list[dict]:
-    body = compact(turn.get("body", ""))
+    body = repair_missing_sentence_spaces(turn.get("body", ""))
     if not body:
         return []
     parts = [compact(item) for item in SENTENCE_SPLIT.split(body) if compact(item)]

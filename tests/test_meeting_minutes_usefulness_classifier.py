@@ -36,6 +36,30 @@ class UsefulnessClassifierTests(unittest.TestCase):
         rows = MODULE.parse_transcript("Jacqui Fox 0:03 We should review the plan.\nJacqui Fox stopped transcription\n")
         self.assertEqual(len(rows), 1)
 
+    def test_missing_sentence_spaces_do_not_collapse_a_multi_item_recap(self):
+        rows = MODULE.parse_transcript(
+            "Jacqui Fox 31:16The clinical review still needs to happen."
+            "and then continue the language update.that remains to be done."
+            "The electrical testing has started.\n",
+            "recap",
+        )
+        self.assertEqual(
+            [row["text"] for row in rows],
+            [
+                "The clinical review still needs to happen.",
+                "And then continue the language update.",
+                "That remains to be done.",
+                "The electrical testing has started.",
+            ],
+        )
+
+    def test_sentence_space_repair_leaves_versions_and_decimals_untouched(self):
+        rows = MODULE.parse_transcript(
+            "Alex Smith 1:02Version 1.02 remains current. The threshold is 6.5.\n",
+            "versions",
+        )
+        self.assertEqual([row["text"] for row in rows], ["Version 1.02 remains current.", "The threshold is 6.5."])
+
 
 if __name__ == "__main__":
     unittest.main()
