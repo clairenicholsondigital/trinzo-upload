@@ -179,7 +179,7 @@ function sameContactPurposeDeliverable(left = {}, right = {}) {
 // the caller must still prove which participant actually accepted the work.
 function directedContactFrame(record = {}) {
   const value = String(record.action || record.text || '').trim().replace(/[.?!]+$/, '');
-  const match = value.match(/^(?:touch base|check in|follow up|talk|speak|chat|liaise|meet|contact|call|chase|message)\s+(?:(?:with|to)\s+)?(?:the\s+)?(.+?)(?=\s+\b(?:about|regarding|concerning|to|for|on)\b|[.;]|$)/i);
+  const match = value.match(/^(?:touch base|check in|catch up|follow up|reach out|sync(?: up)?|have a (?:call|chat|catch-up) |talk|speak|chat|liaise|meet(?: up)?|contact|call|chase|message)\s+(?:(?:with|to)\s+)?(?:the\s+)?(.+?)(?=\s+\b(?:about|regarding|concerning|to|for|on)\b|[.;]|$)/i);
   if (!match) return null;
   const target = new Set(contentTokens(match[1]));
   return target.size && target.size <= 5 ? { target } : null;
@@ -193,8 +193,12 @@ function ownerMatchesTarget(record = {}, target = new Set()) {
   });
 }
 
+// The two sides of one agreed conversation are often cited from different
+// moments of the same exchange (the offer, then the read-back), so allow a
+// wider window than for ordinary duplicates; the reciprocal-owner test below
+// is what keeps this narrow.
 function sameReciprocalContactDeliverable(left = {}, right = {}) {
-  if (evidenceDistance(left, right) > 4) return false;
+  if (evidenceDistance(left, right) > 12) return false;
   const a = directedContactFrame(left); const b = directedContactFrame(right);
   if (!a || !b) return false;
   return ownerMatchesTarget(left, b.target) && ownerMatchesTarget(right, a.target);

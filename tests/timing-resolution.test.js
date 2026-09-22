@@ -81,3 +81,9 @@ test('a spelled-out ordinal mid-sentence, a duration or a month-named date is no
   assert.equal(relativeExactDate('the seventh of July', TUESDAY), '');
   assert.equal(relativeExactDate('by the tenth', TUESDAY), '2026-03-10');
 });
+
+test('a span that counts from a condition has no fixed date', () => {
+  const { relativeExactDate } = require('../utils/meetingMinutesAgentV2');
+  assert.equal(relativeExactDate('once the draft arrives; a week to review it', '2026-06-17'), '');
+  assert.equal(relativeExactDate('within two weeks', '2026-06-17'), '2026-07-01');
+});

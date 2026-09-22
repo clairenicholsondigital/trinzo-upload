@@ -11236,7 +11236,15 @@ function distinctActionDeliverables(left = {}, right = {}) {
   const b = meetingMinutesAgentText(right.action, 1600);
   if (!a || !b) return false;
   if (hybridContentTokenOverlap(a, b) === 0) return true;
-  return actionDependsOn(a, b) || actionDependsOn(b, a);
+  if (actionDependsOn(a, b) || actionDependsOn(b, a)) return true;
+  // "Ask Ravi whether the protocols are blocked" and "Ask Ravi about folder
+  // access" share a verb and a person, not a deliverable. Compare what is
+  // being done - the words after the lead verb, without people's names - and
+  // keep the two apart when that barely overlaps and no specific phrase
+  // ("standards list", "closing slide") is common to both.
+  const subject = (value) => value.replace(/^\s*(?:please\s+)?[A-Za-z]+(?:-[a-z]+)?\s+/, '')
+    .replace(/\b[A-Z][a-z'’]+(?:\s+[A-Z][a-z'’]+)*\b/g, ' ');
+  return hybridContentTokenOverlap(subject(a), subject(b)) < 0.34 && !sharesDistinctivePhrase(subject(a), subject(b));
 }
 
 function dedupeHybridActionRecords(records = [], options = {}) {
@@ -11285,8 +11293,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
       if (conventional) return true;
       if (sameContactPurposeDeliverable(record, existing)) return true;
-      if (sameReciprocalContactDeliverable(record, existing)
-        && supportedOwner(record, existing)) return true;
+      // One conversation, one action, whichever side each wording was
+      // written from. The owner is settled below.
+      if (sameReciprocalContactDeliverable(record, existing)) return true;
       if (!sameOrNestedActionDeliverable(record, existing)) return false;
       const recordQuestionFrame = questionCommunicationFrame(record);
       const existingQuestionFrame = questionCommunicationFrame(existing);
@@ -11311,7 +11320,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     const ownersCompatible = !duplicateOwners.length || !recordOwners.length
       || duplicateOwners.some((owner) => recordOwners.some((other) => other.toLowerCase() === owner.toLowerCase()));
     const evidenceOwner = ownersCompatible ? null : supportedOwner(record, duplicate);
-    const combinedOwners = ownersCompatible
+    // A reciprocal check-in that neither side clearly took on belongs to
+    // both participants.
+    const reciprocal = !ownersCompatible && !evidenceOwner && sameReciprocalContactDeliverable(record, duplicate);
+    const combinedOwners = ownersCompatible || reciprocal
       ? [...new Set([...duplicateOwners, ...recordOwners])].slice(0, 8)
       : evidenceOwner ? [evidenceOwner] : (preferred.owners || []);
     // Related or nested actions may legitimately dedupe, but a deadline may
@@ -12473,12 +12485,66 @@ function unresolvedOperationalGapProposals(discussion = [], records = [], source
   return normalised;
 }
 
+// Two adjacent content words that name a specific thing: "lot numbering",
+// "standards list", "closing slide". Generic pairs ("next week", "the team",
+// "further information") are not distinctive enough to identify a deliverable.
+const DISTINCTIVE_PHRASE_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these',
+  'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should', 'about', 'any', 'all', 'our', 'your', 'his',
+  'her', 'its', 'are', 'was', 'were', 'has', 'have', 'had', 'been', 'not', 'can', 'may', 'also', 'once', 'when',
+  'after', 'before', 'as', 'agreed', 'required', 'needed', 'relevant', 'related', 'including', 'regarding', 'whether']);
+const DISTINCTIVE_PHRASE_GENERIC = new Set(['next', 'week', 'weeks', 'month', 'today', 'tomorrow', 'team', 'call', 'calls',
+  'meeting', 'meetings', 'update', 'updates', 'information', 'details', 'plan', 'process', 'time', 'date', 'follow',
+  'up', 'further', 'new', 'other', 'another', 'same', 'first', 'final', 'any', 'more', 'item', 'items', 'issue',
+  'issues', 'point', 'points', 'thing', 'things', 'work', 'status', 'progress', 'questions', 'question', 'people',
+  'everyone', 'client', 'relevant', 'current', 'latest', 'full', 'high', 'level', 'end', 'start', 'way']);
+function distinctivePhrases(value = '') {
+  const tokens = String(value || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+    .map((token) => (token.length > 4 && token.endsWith('s') && !token.endsWith('ss') ? token.slice(0, -1) : token));
+  const phrases = new Set();
+  for (let index = 0; index + 1 < tokens.length; index += 1) {
+    const pair = [tokens[index], tokens[index + 1]];
+    if (pair.some((token) => token.length < 3 || DISTINCTIVE_PHRASE_STOP.has(token) || DISTINCTIVE_PHRASE_GENERIC.has(token)
+      || /^\d+$/.test(token))) continue;
+    phrases.add(pair.join(' '));
+  }
+  return phrases;
+}
+function sharesDistinctivePhrase(left = '', right = '') {
+  const other = distinctivePhrases(right);
+  return [...distinctivePhrases(left)].some((phrase) => other.has(phrase));
+}
+function ownersOverlapOrOpen(left = {}, right = {}) {
+  const a = (left.owners || []).map((owner) => String(owner).toLowerCase());
+  const b = (right.owners || []).map((owner) => String(owner).toLowerCase());
+  return !a.length || !b.length || a.some((owner) => b.includes(owner));
+}
+// The same thing already in Actions under a different verb: "Establish a
+// system to implement lot numbering" beside "Implement a lot-numbering
+// process". A suggestion adds nothing when a published action with a
+// compatible owner already names the same specific thing and neither waits on
+// the other.
+function publishedActionNamesSameThing(published = {}, proposal = {}) {
+  return ownersOverlapOrOpen(published, proposal)
+    && sharesDistinctivePhrase(published.action, proposal.action)
+    && hybridContentTokenOverlap(published.action, proposal.action) >= 0.34
+    && !distinctActionDeliverables(published, proposal);
+}
+
+// Personal errands mentioned in passing ("I need to book a holiday") are not
+// meeting actions and should never be offered as suggestions.
+const PERSONAL_ERRAND_ACTION = /^\s*(?:book|plan|take|go on|arrange|sort(?: out)?)\s+(?:a |an |my |the |some )?(?:holiday|vacation|annual leave|day off|dentist|doctor(?:['’]s)?(?: appointment)?|haircut|hair appointment|gym|birthday|anniversary|wedding|vet)\b|^\s*(?:walk|feed)\s+the\s+(?:dog|cat)\b|\bschool run\b/i;
+function isPersonalErrandAction(value = '') {
+  return PERSONAL_ERRAND_ACTION.test(meetingMinutesAgentText(value, 400));
+}
+
 function removePublishedActionProposalDuplicates(proposal = {}, published = []) {
   const publishedRows = Array.isArray(published) ? published : [];
   return {
     ...proposal,
     changes: (Array.isArray(proposal?.changes) ? proposal.changes : []).filter((change) => {
       if (change?.type !== 'add' || !change.after?.action) return true;
+      if (isPersonalErrandAction(change.after.action)) return false;
+      if (publishedRows.some((record) => publishedActionNamesSameThing(record, change.after))) return false;
       const candidate = {
         recordType: 'action', text: change.after.action,
         evidenceIds: change.after.evidenceIds, record: change.after
@@ -14836,8 +14902,10 @@ function foldUnownedNearCopies(actions = [], journeyId = '') {
     const words = foldSubjectWords(String(action.action || '').split(/\s+/).slice(1).join(' '));
     if (!verb || words.size < 3) return true;
     const partner = list.find((other) => other !== action && (other.owners || []).length
-      && String(other.action || '').trim().split(/\s+/)[0]?.toLowerCase() === verb
-      && [...words].filter((word) => foldSubjectWords(other.action).has(word)).length / words.size >= 0.8);
+      && ((String(other.action || '').trim().split(/\s+/)[0]?.toLowerCase() === verb
+        && [...words].filter((word) => foldSubjectWords(other.action).has(word)).length / words.size >= 0.8)
+        // Or the same specific thing under a different verb.
+        || publishedActionNamesSameThing(other, action)));
     if (!partner) return true;
     partner.evidenceIds = [...new Set([...(partner.evidenceIds || []), ...(action.evidenceIds || [])])].slice(0, 12);
     folded.push({ removed: meetingMinutesAgentText(action.action, 160), into: meetingMinutesAgentText(partner.action, 160) });
@@ -15899,6 +15967,8 @@ router.stagedEvaluation = {
   preselectActionProposal,
   preselectDiscussionProposal,
   foldUnownedNearCopies,
+  publishedActionNamesSameThing,
+  isPersonalErrandAction,
   preselectRequestedProposal,
   explicitFutureDocumentationCommitment,
   repeatedOwnerCommitment,

@@ -971,11 +971,14 @@ function relativeExactDate(wording, meetingDate) {
   }
   // A span from the meeting: "two weeks", "a fortnight", "in ten days", "a month".
   const spanWords = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
-  if (/\ba fortnight\b|\bfortnight's time\b/.test(value)) return isoDateOffset(meetingDate, 14);
+  // "Once the list arrives, a week to review it" counts from the list, not
+  // from the meeting, so a span after a condition has no fixed date.
+  const afterCondition = /\b(?:once|after|when|as soon as|following|from when)\b/.test(value);
+  if (!afterCondition && /\ba fortnight\b|\bfortnight's time\b/.test(value)) return isoDateOffset(meetingDate, 14);
   // "for five days" / "lasting two weeks" / "over three days" is how long
   // something takes, not when it is due.
   const span = value.match(/(?<!\b(?:for|lasting|over|takes?|taking|about|around|roughly)\s+)\b(?:in |within )?(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\s+(days?|weeks?)\b(?!\s+(?:ago|pilot|trial|test|review|programme|program|project|phase|study|period|cycle|sprint|of\s+(?:test|testing|work|effort)))/);
-  if (span) {
+  if (span && !afterCondition) {
     const count = spanWords[span[1]] || Number(span[1]);
     if (count) return isoDateOffset(meetingDate, count * (/^week/.test(span[2]) ? 7 : 1));
   }
@@ -3828,7 +3831,17 @@ function groundRowAttributions(discussion = [], units = []) {
 // or a date, which does not repeat a visible row, is promoted back - a few per
 // meeting, so the Discussion does not fill up with secondary detail.
 const FACT_DATE = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|next week|this week|end of (?:the )?(?:week|month)|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?[A-Z][a-z]+|\d{4}-\d{2}-\d{2})\b/i;
-function promoteNamedFactDetails(discussion = [], units = [], people = [], limit = 4) {
+// Counts and measurements are the facts readers look for and the first to be
+// left behind in supporting context: "81%, up from 79%", "11 of 90 runs",
+// "eighteen of twenty-two references", "thirty extra handouts".
+const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand';
+const QUANTIFIED_FACT = new RegExp(String.raw`[£$€]\s?\d|\b\d[\d,.]*\s*(?:%|per\s?cent|k\b|kg\b|mg\b|ml\b|g\b|m\b)|\b\d[\d,.]*\s+(?:of\s+\d|[a-z]+s\b|(?:hours?|days?|weeks?|months?|years?|minutes?|seconds?|litres?|metres?|units?|people|staff|kg|tonnes?)\b)|\b(?:${NUMBER_WORDS})(?:[- ](?:${NUMBER_WORDS}))?\s+(?:of\s+(?:the\s+)?(?:${NUMBER_WORDS}|\d)|(?:[a-z]+\s+)?[a-z]{3,}s\b)`, 'i');
+function quantityTokens(value = '') {
+  return new Set((String(value || '').toLowerCase().match(new RegExp(String.raw`\d[\d,.]*|\b(?:${NUMBER_WORDS})\b`, 'g')) || [])
+    .map((token) => token.replace(/[,.]$/, '')).filter((token) => token !== 'one'));
+}
+
+function promoteNamedFactDetails(discussion = [], units = [], people = [], limit = 4, quantityLimit = 6) {
   const names = [...new Set([...(Array.isArray(people) ? people : []), ...mentionedPeople(units)])]
     .map((person) => text(person, 180).split(/\s+/)[0]).filter((name) => name.length > 2);
   const visible = (Array.isArray(discussion) ? discussion : [])
@@ -3853,7 +3866,16 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
     if (!left.length || !right.length) return false;
     return left.filter((token) => right.includes(token)).length / Math.min(left.length, right.length) >= 0.8;
   });
+  // A quantified detail is new unless a visible row already carries all of
+  // its figures; a row that restates the topic without the numbers does not.
+  const visibleQuantities = new Set(visible.flatMap((record) => [...quantityTokens(record?.text || '')]));
+  const newQuantity = (value) => {
+    if (!QUANTIFIED_FACT.test(value)) return false;
+    const figures = [...quantityTokens(value)];
+    return figures.length > 0 && figures.some((figure) => !visibleQuantities.has(figure));
+  };
   let promoted = 0;
+  let quantitiesPromoted = 0;
   const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => {
     const next = { ...topic };
     const additions = [];
@@ -3865,12 +3887,17 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
         const kept = [];
         for (const detail of details) {
           const value = text(detail?.text, 800);
-          if (promoted < limit && value && !value.startsWith(SUPERSEDED_LABEL)
-            && (detail.evidenceIds || []).length && said(value) && !restates(value)
-            && readable(value) && !verbatim(value, detail.evidenceIds)) {
-            additions.push({ id: detail.id || stableId('promoted', value, promoted), text: value,
+          const eligible = value && !value.startsWith(SUPERSEDED_LABEL) && (detail.evidenceIds || []).length
+            && readable(value) && !verbatim(value, detail.evidenceIds);
+          const named = eligible && promoted < limit && said(value) && !restates(value);
+          const quantified = eligible && !named && quantitiesPromoted < quantityLimit && newQuantity(value);
+          if (named || quantified) {
+            additions.push({ id: detail.id || stableId('promoted', value, promoted + quantitiesPromoted), text: value,
               evidenceIds: [...(detail.evidenceIds || [])], reviewFlagIds: [...(detail.reviewFlagIds || [])], supportingDetails: [] });
-            promoted += 1;
+            if (quantified) {
+              quantitiesPromoted += 1;
+              quantityTokens(value).forEach((figure) => visibleQuantities.add(figure));
+            } else promoted += 1;
             continue;
           }
           kept.push(detail);
@@ -3881,7 +3908,7 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
     if (additions.length) next.points = [...(next.points || []), ...additions];
     return next;
   });
-  return { discussion: checked, promoted };
+  return { discussion: checked, promoted: promoted + quantitiesPromoted, quantitiesPromoted };
 }
 
 // Refusals and objections materially change the meaning of a meeting record.
@@ -4956,6 +4983,7 @@ module.exports = {
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
+  QUANTIFIED_FACT,
   promoteMaterialObjectionDetails,
   supersededCheckItems,
   supersededVerdicts,

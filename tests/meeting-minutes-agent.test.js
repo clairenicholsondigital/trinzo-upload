@@ -393,7 +393,7 @@ test('bare contact subsumption preserves different purposes, owners and distant 
   ]);
 });
 
-test('reciprocal descriptions of one check-in merge only when one owner explicitly accepts it', () => {
+test('reciprocal descriptions of one check-in merge, with the owner settled by who accepted it', () => {
   const rows = [
     { id: 'from-alex', action: 'Touch base with Morgan to establish the current audit position.', owners: ['Alex Green'],
       timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020'] },
@@ -409,8 +409,10 @@ test('reciprocal descriptions of one check-in merge only when one owner explicit
   assert.deepEqual(merged[0].owners, ['Morgan Lee']);
   assert.equal(merged[0].timing.kind, 'deadline');
   assert.deepEqual(merged[0].evidenceIds, ['T0020', 'T0022']);
-  assert.equal(dedupeHybridActionRecords(structuredClone(rows)).length, 2,
-    'without evidence of acceptance, conflicting owner rows remain visible');
+  const unproven = dedupeHybridActionRecords(structuredClone(rows));
+  assert.equal(unproven.length, 1, 'one conversation is one action');
+  assert.deepEqual([...unproven[0].owners].sort(), ['Alex Green', 'Morgan Lee'],
+    'without evidence of acceptance, both participants stay as owners');
 });
 
 test('action generation progress hides a saved nested duplicate but keeps distinct saved work', () => {

@@ -59,3 +59,15 @@ test('a named request answered by that person committing is accepted work', () =
   assert.ok(!addressedRequestAcceptedAhead(rows[1], [{ speaker: 'Lee Hart', text: "I'll do it." }]));
   assert.ok(!addressedRequestAcceptedAhead(rows[1], [{ speaker: 'Dana Moss', text: "I can't this week, I'm away." }]));
 });
+
+test('two questions for the same person, or two edits to different slides, stay separate', () => {
+  assert.ok(distinctActionDeliverables(
+    { action: 'Ask Morgan whether the two supplier audits are delayed by budget or by staffing.' },
+    { action: "Ask Morgan about Lee's access to the complaints folder." }));
+  assert.ok(distinctActionDeliverables(
+    { action: 'Restore the fade effect on the pricing slide.' },
+    { action: 'Build the closing slide with the signup link and a QR code.' }));
+  assert.ok(!distinctActionDeliverables(
+    { action: 'Email Jo the quarterly report.' },
+    { action: 'Send the quarterly report to Jo.' }));
+});
