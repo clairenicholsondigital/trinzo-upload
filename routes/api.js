@@ -9636,7 +9636,13 @@ const CLIENT_READY_ACTION_VERBS = new Set(('accept add address agree align analy
   + 're-run rerun reconcile record redo refine register reissue remove replace reply report request resend resolve respond restart retest return '
   + 'review revise rework run save schedule scope seek select send set share sign source speak specify split standardise standardize start '
   + 'store submit summarise summarize supply support switch talk test tidy trace track train transfer translate trial update upload '
-  + 'validate verify visit walk write').split(' '));
+  + 'validate verify visit walk write '
+  // Everyday imperatives the models also use for real, specific work: "Put the
+  // meeting in his diary", "Restore the animation", "Re-share the deck".
+  + 'allocate amend archive back bring cancel clean configure copy delete demo deploy edit extend give hand install '
+  + 'interview label message migrate move nominate phone pick post print proofread put quote rebook rebuild recheck '
+  + 'recruit rehearse reinstate remind rename repair reschedule reserve reshare re-send re-share re-check re-test '
+  + 'restore retrieve ring secure ship shortlist sort tell text upgrade').split(' '));
 function isClientReadyActionWording(value = '') {
   const source = meetingMinutesAgentText(value, 1600);
   if (!source || /^(?:and|but|so|yeah|yes|no|okay|ok|well|i(?:'ll| will| am|'m)|we(?:'ll| will| are|'re)|you(?:'ll| will| are|'re))\b/i.test(source)) return false;
