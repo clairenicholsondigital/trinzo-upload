@@ -15047,6 +15047,17 @@ function destructiveActionEdit(before = {}, after = {}, sourceUnits = []) {
 
 // Actions: `resulting` is the list the proposal applies to (after this
 // generation's own clean-up), used to find the survivor a removal duplicates.
+// Whether a proposed action covers work a published action already carries.
+// Owners are ignored on purpose: the same follow-up meeting can be proposed
+// under a different name, and applying it would publish it twice.
+function echoesPublishedAction(published = {}, proposal = {}) {
+  const a = meetingMinutesAgentText(published.action, 1600);
+  const b = meetingMinutesAgentText(proposal.action, 1600);
+  if (!a || !b || distinctActionDeliverables(published, proposal)) return false;
+  const unhyphen = (value) => String(value || '').replace(/(\w)-(\w)/g, '$1 $2');
+  return sharesDistinctivePhrase(a, b) || hybridContentTokenOverlap(unhyphen(a), unhyphen(b)) >= 0.45;
+}
+
 function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
   const removedTargets = new Set(proposal.changes.filter((change) => change.type === 'remove')
@@ -15096,6 +15107,20 @@ function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
         return withSelection(change, false, {
           label: 'no owner',
           reason: 'Nobody is shown taking this on. Tick it and add an owner if it is a real commitment.',
+          evidenceIds: record.evidenceIds || []
+        });
+      }
+      // Applying a suggestion that repeats an action already in the list
+      // creates the duplicate the deduper just avoided. The bar here is lower
+      // than the bar for dropping it: the owner may differ (the same follow-up
+      // meeting offered under a second name), and the reviewer can still tick
+      // it. See echoesPublishedAction.
+      const echoed = (Array.isArray(resulting) ? resulting : [])
+        .find((row) => row && row !== record && echoesPublishedAction(row, record));
+      if (echoed) {
+        return withSelection(change, false, {
+          label: 'already in the list',
+          reason: `This looks like "${meetingMinutesAgentText(echoed.action, 200)}", which is already an action. Tick it only if it is separate work.`,
           evidenceIds: record.evidenceIds || []
         });
       }
@@ -16031,6 +16056,7 @@ router.stagedEvaluation = {
   highConfidenceRefereedAction,
   safeAgentProposalPromotion,
   preselectActionProposal,
+  echoesPublishedAction,
   preselectDiscussionProposal,
   foldUnownedNearCopies,
   publishedActionNamesSameThing,

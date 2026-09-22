@@ -2037,6 +2037,30 @@ function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {})
   return timing;
 }
 
+// "Let's put the follow-up in for the ninth or the tenth." "The tenth suits
+// better." "Tenth." An offered choice of dates is not the timing; the one the
+// meeting settled on is. When a later turn in the same exchange names exactly
+// one of the offered days, that day becomes the wording.
+const OFFERED_DAY_CHOICE = /\b(?:the\s+)?(\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)\s+or\s+(?:the\s+)?(\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)\b/i;
+function resolveOfferedDateChoice(timing, units = [], evidenceIds = [], options = {}) {
+  const wording = String(timing?.wording || '');
+  const offered = wording.match(OFFERED_DAY_CHOICE);
+  if (!offered) return timing;
+  const [first, second] = [offered[1], offered[2]].map((day) => day.toLowerCase());
+  const rows = evidenceWindowUnits(units, evidenceIds, 3);
+  const says = (text, day) => new RegExp(String.raw`\b(?:the\s+)?${day.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\b`, 'i').test(text);
+  for (const row of rows) {
+    const value = String(row?.text || '');
+    if (OFFERED_DAY_CHOICE.test(value)) continue;
+    const picksFirst = says(value, first);
+    const picksSecond = says(value, second);
+    if (picksFirst === picksSecond) continue;
+    const chosen = picksFirst ? first : second;
+    return timingFrom({ timing: { wording: wording.replace(OFFERED_DAY_CHOICE, chosen) } }, options);
+  }
+  return timing;
+}
+
 function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
   for (const unit of evidenceWindowUnits(units, evidenceIds, 0)) {
@@ -2154,7 +2178,7 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action) => {
     let evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
-    let timing = backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options), units, evidenceIds, options);
+    let timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options), units, evidenceIds, options), units, evidenceIds, options);
     if (timing.kind === 'not_stated') {
       const adjacent = adjacentOwnerTiming(action, units, evidenceIds, options);
       if (adjacent) ({ evidenceIds, timing } = adjacent);
@@ -3676,9 +3700,14 @@ function demoteSupersededRows(discussion = [], units = [], outdated = null) {
 // mind rather than work, so neither is a task.
 const NOT_A_DELIVERABLE = /^\s*(?:possibly\s+|maybe\s+|perhaps\s+|potentially\s+)?(?:have|raise)\s+(?:some\s+|any\s+)?(?:questions|queries|thoughts|concerns|a look)\b/i;
 const SPECULATIVE_ACTION = /^\s*(?:possibly|maybe|perhaps|potentially)\b/i;
+// "Always ask about dietary requirements", "Never share the tracker": a
+// standing rule for how things are done, with nobody doing anything by a
+// date. It belongs in the minutes, not the action list.
+const STANDING_POLICY_ACTION = /^\s*(?:always|never)\b/i;
 function isNotAnAction(value = '') {
   const wording = text(value, 600);
-  return NOT_A_DELIVERABLE.test(wording) || SPECULATIVE_ACTION.test(wording);
+  return NOT_A_DELIVERABLE.test(wording) || SPECULATIVE_ACTION.test(wording)
+    || STANDING_POLICY_ACTION.test(wording);
 }
 
 // ---- Social asides in the goodbyes --------------------------------------------
@@ -4379,7 +4408,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     // so an empty timing there is deliberate and must stay empty.
     let timing = options.enforceEvidence === false
       ? timingFrom(item, options)
-      : backfillAskedTiming(backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options), units, evidenceIds, options);
+      : resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options), units, evidenceIds, options), units, evidenceIds, options);
     let timingShapeIssue = '';
     if (options.enforceEvidence !== false) {
       timing = normaliseTimingWording(timing);
@@ -5034,6 +5063,7 @@ module.exports = {
   supersededVerdicts,
   applyRequesterOwnerRule,
   backfillAskedTiming,
+  resolveOfferedDateChoice,
   ownerTakesItOn,
   ownerAssignedInMeeting,
   assignsWorkTo,
