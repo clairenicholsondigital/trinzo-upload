@@ -11248,7 +11248,10 @@ function distinctActionDeliverables(left = {}, right = {}) {
   // being done - the words after the lead verb, without people's names - and
   // keep the two apart when that barely overlaps and no specific phrase
   // ("standards list", "closing slide") is common to both.
+  // The condition it waits on ("once it's done", "after the edits") is
+  // timing, not the thing being done.
   const subject = (value) => value.replace(/^\s*(?:please\s+)?[A-Za-z]+(?:-[a-z]+)?\s+/, '')
+    .replace(ACTION_DEPENDENCY_CLAUSE, '')
     .replace(/\b[A-Z][a-z'’]+(?:\s+[A-Z][a-z'’]+)*\b/g, ' ');
   return hybridContentTokenOverlap(subject(a), subject(b)) < 0.34 && !sharesDistinctivePhrase(subject(a), subject(b));
 }

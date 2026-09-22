@@ -71,3 +71,9 @@ test('two questions for the same person, or two edits to different slides, stay 
     { action: 'Email Jo the quarterly report.' },
     { action: 'Send the quarterly report to Jo.' }));
 });
+
+test('two wordings of one step that differ only in the condition they wait on are the same work', () => {
+  assert.ok(!distinctActionDeliverables(
+    { action: "Re-send the deck once it's done." },
+    { action: 'Re-send the deck after finishing the chart and cover-page edits.' }));
+});
