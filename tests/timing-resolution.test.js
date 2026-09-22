@@ -65,3 +65,10 @@ test('same-day wording resolves to the meeting date itself', () => {
   }
   assert.equal(relativeExactDate('tomorrow afternoon', TUESDAY), '2026-03-11');
 });
+
+test('"the second last week of July" is not the second of the month', () => {
+  assert.equal(relativeExactDate('by the second last week of July', TUESDAY), '');
+  assert.equal(relativeExactDate('the second-last week', TUESDAY), '');
+  assert.equal(relativeExactDate('the 2nd last week', TUESDAY), '');
+  assert.equal(relativeExactDate('the seventh', TUESDAY), '2026-04-07');
+});
