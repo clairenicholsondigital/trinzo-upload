@@ -72,6 +72,10 @@ const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
+const {
+  isRoutineMeetingAdministrationText,
+  removeRoutineMeetingAdministrationSentences
+} = require('../utils/meetingAdministration');
 const { generateMiniLmTrooperStage, generatePreparedTrooperStage, prepareMiniLmTranscript } = require('../utils/stagedMiniLmTrooper');
 const { filterActionsForPresentation } = require('../utils/stagedActionPresentation');
 const {
@@ -5575,6 +5579,25 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       }
     }
   }
+  // Routine mechanics of running the call are neither discussion content nor a
+  // meeting outcome.  Model prompts already say this, but a grounded rewrite can
+  // still paraphrase "wait for an attendee" and pass a lexical evidence check.
+  // Apply the deterministic publication rule after rewriting; reviewer-authored
+  // cards remain authoritative.
+  if (stage === 'discussion' && Array.isArray(result?.screens?.discussion)) {
+    const removed = [];
+    const cards = result.screens.discussion.map((card) => {
+      if (isReviewerAuthored(card)) return card;
+      const points = (card.points || []).filter((point) => {
+        const pointText = typeof point === 'string' ? point : String(point?.text || '');
+        if (isRoutineMeetingAdministrationText(pointText)) removed.push(pointText);
+        return !isRoutineMeetingAdministrationText(pointText);
+      });
+      return points.length === (card.points || []).length ? card : { ...card, points };
+    }).filter((card) => (card.points || []).length || isReviewerAuthored(card) || card.confirmedTopic);
+    if (removed.length) console.info(JSON.stringify({ event: 'staged_meeting_admin_removed', stage, removed }));
+    result = { ...result, screens: { ...result.screens, discussion: cards } };
+  }
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
   const presentationInitialSummary = result?.screens?.summary;
   if (stage === 'summary' && presentationInitialSummary) {
@@ -5729,6 +5752,49 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         };
       }
     }
+  }
+  // Run after every optional summary rewrite.  The guard is field-specific so
+  // text the reviewer confirmed is never silently removed.
+  if (stage === 'summary' && result?.screens?.summary) {
+    const summary = result.screens.summary;
+    const purposeConfirmed = Boolean(stagedAnalyticsText(confirmed.summary?.meetingPurpose));
+    const objectivesConfirmed = Boolean(stagedAnalyticsText(confirmed.summary?.objectives));
+    const topicsConfirmed = Boolean(stagedAnalyticsText(confirmed.summary?.overallTopics));
+    const generatedPurpose = purposeConfirmed || !isRoutineMeetingAdministrationText(summary.meetingPurpose)
+      ? summary.meetingPurpose : '';
+    const generatedObjectives = objectivesConfirmed ? summary.objectives : (summary.objectives || [])
+      .filter((item) => !isRoutineMeetingAdministrationText(item));
+    const generatedTopics = topicsConfirmed ? summary.overallTopics : (summary.overallTopics || [])
+      .filter((item) => !isRoutineMeetingAdministrationText(item));
+    const visibleTopicKeys = new Set(generatedTopics.map((item) => stagedAnalyticsText(item).toLowerCase()));
+    const executiveSummary = executiveSummaryIsConfirmed
+      ? summary.executiveSummary
+      : removeRoutineMeetingAdministrationSentences(summary.executiveSummary);
+    result = {
+      ...result,
+      screens: {
+        ...result.screens,
+        summary: {
+          ...summary,
+          meetingPurpose: generatedPurpose,
+          objectives: generatedObjectives,
+          overallTopics: generatedTopics,
+          topicRefs: topicsConfirmed ? summary.topicRefs : (summary.topicRefs || [])
+            .filter((item) => visibleTopicKeys.has(stagedAnalyticsText(item?.text).toLowerCase())),
+          executiveSummary,
+          ...(summary.initialUnderstanding ? {
+            initialUnderstanding: {
+              ...summary.initialUnderstanding,
+              meetingPurpose: purposeConfirmed || !isRoutineMeetingAdministrationText(summary.initialUnderstanding?.meetingPurpose?.text)
+                ? summary.initialUnderstanding.meetingPurpose
+                : { ...summary.initialUnderstanding.meetingPurpose, text: '' },
+              meetingSpine: (summary.initialUnderstanding.meetingSpine || [])
+                .filter((item) => !isRoutineMeetingAdministrationText(item?.text))
+            }
+          } : {})
+        }
+      }
+    };
   }
   if (stage === 'actions' && Array.isArray(result?.screens?.actions)) {
     const presentedActions = filterActionsForPresentation(result.screens.actions);
