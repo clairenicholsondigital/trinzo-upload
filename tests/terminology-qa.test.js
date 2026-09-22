@@ -139,7 +139,7 @@ test('attendee-name transcript variants are auto-corrected only in person-shaped
   assert.equal(medicalSuggestions.some((item) => item.original.toLowerCase() === 'oral' && item.replacement === 'Orla'), false);
 });
 
-test('terminology QA auto-corrects Teams\' "call me docs" mishearing of Cognidox', () => {
+test('terminology QA auto-corrects Teams\' "call me docs" mishearing of Cognidocs', () => {
   const suggestions = reviewGeneratedContent({
     stage: 'discussion',
     content: [{
@@ -152,8 +152,8 @@ test('terminology QA auto-corrects Teams\' "call me docs" mishearing of Cognidox
     scope: { type: 'project', key: 'T761' }
   });
   const automatic = suggestions.filter((item) => item.autoApply).map((item) => `${item.original}->${item.replacement}`);
-  assert.ok(automatic.includes('call me docs->Cognidox'));
-  assert.ok(automatic.includes('call-me-doc->Cognidox'));
+  assert.ok(automatic.includes('call me docs->Cognidocs'));
+  assert.ok(automatic.includes('call-me-doc->Cognidocs'));
 });
 
 test('terminology QA auto-corrects American labeling/labeled to British spelling', () => {
@@ -183,4 +183,14 @@ test('accepted project mapping is reusable without altering source evidence', ()
   assert.equal(suggestions[0].replacement, 'MedEnvoy');
   assert.equal(suggestions[0].autoApply, true);
   assert.equal(JSON.stringify(content), before);
+});
+
+test('"call me docs" in any case or spacing becomes Cognidocs everywhere the agent normalises terms', () => {
+  const { normaliseDomainTerms } = require('../utils/domainTerms');
+  const { normaliseKnownTerms } = require('../utils/meetingMinutesAgentV2');
+  for (const heard of ['call me docs', 'Call Me Docs', 'CALL ME DOC', 'call-me-docs', 'callmedocs', 'Call me  docs']) {
+    assert.equal(normaliseDomainTerms(`Upload it to ${heard} today.`), 'Upload it to Cognidocs today.', heard);
+    assert.equal(normaliseKnownTerms(`It's in ${heard}.`), "It's in Cognidocs.", heard);
+  }
+  assert.equal(normaliseDomainTerms('Call me on Friday about the docs.'), 'Call me on Friday about the docs.');
 });

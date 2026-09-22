@@ -44,9 +44,9 @@ const AUTO_CORRECTIONS = [
   { original: 'S-BOM', replacement: 'SBOM', reason: 'Recognised terminology correction' },
   { original: 'Kappa', replacement: 'CAPA', reason: 'Recognised terminology correction' },
   { original: 'Kappas', replacement: 'CAPAs', reason: 'Recognised terminology correction' },
-  // Teams' transcription of "Cognidox" (the document-control system) - confirmed on T761.
-  { original: 'call me docs', replacement: 'Cognidox', reason: 'Recognised terminology correction' },
-  { original: 'call me doc', replacement: 'Cognidox', reason: 'Recognised terminology correction' },
+  // Teams' transcription of "Cognidocs" (the document-control system) - confirmed on T761.
+  { original: 'call me docs', replacement: 'Cognidocs', reason: 'Recognised terminology correction' },
+  { original: 'call me doc', replacement: 'Cognidocs', reason: 'Recognised terminology correction' },
   // British spelling throughout published minutes, regardless of which the transcript used.
   { original: 'labeling', replacement: 'labelling', reason: 'British spelling' },
   { original: 'labeled', replacement: 'labelled', reason: 'British spelling' }
@@ -74,6 +74,9 @@ function mentionsDomainTerm(value) {
 function normaliseDomainTerms(value) {
   return String(value == null ? '' : value)
     .replace(/\b(?:udimed|udemed)\b/gi, 'EUDAMED')
+    // "call me docs" / "Call Me Doc" / "call-me-docs" / "callmedocs" is Teams
+    // mishearing Cognidocs, the document-control system.
+    .replace(/\bcall[\s-]*me[\s-]*docs?\b/gi, 'Cognidocs')
     .replace(/\b(?:deta|dd|t)\s+inc\b/gi, 'DITA')
     .replace(/\b(?:medsap|meds[\s-]*app)\b/gi, 'MDSAP');
 }
