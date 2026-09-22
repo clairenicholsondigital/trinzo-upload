@@ -72,3 +72,12 @@ test('"the second last week of July" is not the second of the month', () => {
   assert.equal(relativeExactDate('the 2nd last week', TUESDAY), '');
   assert.equal(relativeExactDate('the seventh', TUESDAY), '2026-04-07');
 });
+
+test('a spelled-out ordinal mid-sentence, a duration or a month-named date is not read as a day of this month', () => {
+  assert.equal(relativeExactDate('the second the chair starts talking I press record', TUESDAY), '');
+  assert.equal(relativeExactDate('on site on the 20th for five days', TUESDAY), '2026-03-20');
+  assert.equal(relativeExactDate('for five days', TUESDAY), '');
+  assert.equal(relativeExactDate('about two days of test time', TUESDAY), '');
+  assert.equal(relativeExactDate('the seventh of July', TUESDAY), '');
+  assert.equal(relativeExactDate('by the tenth', TUESDAY), '2026-03-10');
+});

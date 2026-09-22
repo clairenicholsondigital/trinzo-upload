@@ -972,16 +972,25 @@ function relativeExactDate(wording, meetingDate) {
   // A span from the meeting: "two weeks", "a fortnight", "in ten days", "a month".
   const spanWords = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
   if (/\ba fortnight\b|\bfortnight's time\b/.test(value)) return isoDateOffset(meetingDate, 14);
-  const span = value.match(/\b(?:in |within )?(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\s+(days?|weeks?)\b(?!\s+(?:ago|pilot|trial|test|review|programme|program|project|phase|study|period|cycle|sprint))/);
+  // "for five days" / "lasting two weeks" / "over three days" is how long
+  // something takes, not when it is due.
+  const span = value.match(/(?<!\b(?:for|lasting|over|takes?|taking|about|around|roughly)\s+)\b(?:in |within )?(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\s+(days?|weeks?)\b(?!\s+(?:ago|pilot|trial|test|review|programme|program|project|phase|study|period|cycle|sprint|of\s+(?:test|testing|work|effort)))/);
   if (span) {
     const count = spanWords[span[1]] || Number(span[1]);
     if (count) return isoDateOffset(meetingDate, count * (/^week/.test(span[2]) ? 7 : 1));
   }
   // A day of the month on its own: "the seventh", "by the 17th", "on the 15th".
   // The next such day on or after the meeting; an earlier day means next month.
-  const ordinal = value.match(/\b(?:on |by |for |before |until )?the (\d{1,2})(?:st|nd|rd|th)?\b(?!\s*-?\s*last\b|\s+(?:week|month|of\s+(?:the\s+)?(?:week|month)))(?!\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december))|\b(?:on |by |for |before |until )?the ((?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b(?!\s*-?\s*(?:last|to\s+last|from\s+last)\b|\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year|of\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)))/);
+  // A numeric day ("the 17th") is a date wherever it sits; a spelled-out one
+  // ("the second", "the seventh") only when it closes the phrase, is followed
+  // by punctuation or "of <month>", or follows by/on/before/until. Otherwise
+  // "the second Priya starts talking" would read as the 2nd.
+  const WORD_ORDINAL = '(?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth';
+  const ordinal = value.match(/\b(?:on |by |for |before |until )?the (\d{1,2})(?:st|nd|rd|th)?\b(?!\s*-?\s*last\b|\s+(?:week|month|of\s+(?:the\s+)?(?:week|month)))(?!\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december))/)
+    || value.match(new RegExp(String.raw`\b(?:on|by|before|until|no later than)\s+the\s+(${WORD_ORDINAL})\b(?!\s+of\s+[a-z]|\s*-?\s*last\b|\s+(?:week|month|time|round|batch|half|quarter|phase|stage|step|item|point|question|draft|version|session|meeting|call|day|attempt))`))
+    || value.match(new RegExp(String.raw`\bthe\s+(${WORD_ORDINAL})(?=\s*(?:$|[.,;:!?)"'’]))`));
   if (ordinal) {
-    const token = (ordinal[1] || ordinal[2] || '').replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
+    const token = (ordinal[1] || '').replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
     const day = Number(token) || ORDINAL_DAY_WORDS[token];
     if (day && day <= 31) {
       const [year, month, meetingDay] = meetingDate.split('-').map(Number);
