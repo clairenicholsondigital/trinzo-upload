@@ -2743,6 +2743,13 @@ function itemHasExplicitOutstandingEvidence(item = {}) {
   });
 }
 
+const PROMISE_QUOTE = /\b(?:i['’]ll|i\s+will|i['’]m\s+going\s+to|i\s+am\s+going\s+to|i['’]m\s+gonna|let\s+me|i\s+can)\b/i;
+const COMPLETION_QUOTE = /\b(?:done|sent|finished|completed|already|just\s+(?:did|sent|done|booked|added|put)|have\s+(?:sent|done|booked|added|put)|i['’]ve|it['’]s\s+in|that['’]s\s+(?:in|done|sent|booked))\b/i;
+function quoteIsOnlyAPromise(quote = '') {
+  const value = String(quote || '');
+  return PROMISE_QUOTE.test(value) && !COMPLETION_QUOTE.test(value);
+}
+
 function applyFinalActionLifecycleResults(actions = [], items = [], results = []) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const withheld = new Map();
@@ -2761,6 +2768,14 @@ function applyFinalActionLifecycleResults(actions = [], items = [], results = []
     const quoteCheck = decisionQuoteValidation(row.evidenceQuote, item.passage);
     if (!quoteCheck.valid) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: quoteCheck.reason });
+      continue;
+    }
+    // "I'll do it now while I'm thinking about it" is a promise, not a record
+    // that the work was done. A verdict whose own quote is a first-person
+    // future commitment, with nothing saying it was completed, is not proof
+    // the action is closed.
+    if (quoteIsOnlyAPromise(row.evidenceQuote)) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'quote_is_a_promise' });
       continue;
     }
     withheld.set(item.index, { evidenceQuote: text(row.evidenceQuote, 500), reason: text(row.reason, 500) });
@@ -5047,6 +5062,7 @@ module.exports = {
   finalActionLifecycleCheckItems,
   finalActionLifecycleCheckPrompt,
   applyFinalActionLifecycleResults,
+  quoteIsOnlyAPromise,
   itemHasExplicitOutstandingEvidence,
   commitmentQuoteTiesOwner,
   commitmentQuoteAboutAction,
