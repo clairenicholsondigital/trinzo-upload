@@ -13612,7 +13612,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // later question, attribution and fidelity checks. Flag reconciliation
     // below then drops any warning whose only target was removed here.
     const finalQuantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
-    finalDiscussion = await finaliseDiscussionForPublication(finalQuantifiedGrounding.discussion);
+    finalDiscussion = await finaliseDiscussionForPublication(finalQuantifiedGrounding.discussion, {
+      sourceUnits: draft.sourceUnits
+    });
     if (finalQuantifiedGrounding.removed.length) console.log(JSON.stringify({
       event: 'meeting_agent_final_quantified_claim_filter', journeyId: draft.draftId,
       removed: finalQuantifiedGrounding.removed.map((item) => ({ id: item.id, signatures: item.signatures, subject: item.subject }))

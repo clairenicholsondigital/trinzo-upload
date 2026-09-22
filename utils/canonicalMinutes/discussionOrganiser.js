@@ -593,7 +593,7 @@ function sortByEvidence(topics, index) {
 // ---------------------------------------------------------------------------
 
 const DECISION_HEADING_PREFIX = /^decision\s*(?:(?:on|about|regarding|concerning|over|for|to|that)\b|[:\-–—])\s*/i;
-const ROW_NUMBER = /\b\d+(?:[.,]\d+)?%?\b/g;
+const ROW_NUMBER = /\b(?:\d+(?:[.,]\d+)?%?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million)\b/gi;
 const ROW_NEGATION = /\b(?:no|not|never|cannot|can['’]?t|won['’]?t|wouldn['’]?t|declin(?:e|ed)|reject(?:ed)?|refus(?:e|ed))\b/i;
 const ROW_UNCERTAINTY = /\b(?:uncertain(?:ty)?|unsure|possibly|perhaps|maybe|might|could|not sure|not yet)\b/i;
 
@@ -636,10 +636,16 @@ function mergeRestatementRecords(left, right) {
   const preferred = rightWeight >= leftWeight ? right : left;
   const other = preferred === left ? right : left;
   const details = [...(preferred.supportingDetails || []), ...(other.supportingDetails || [])];
+  const mergedFromIds = [...new Set([
+    ...(preferred.mergedFromIds || []),
+    ...(other.mergedFromIds || []),
+    other.id
+  ].filter(Boolean))].filter((id) => id !== preferred.id);
   return {
     ...preferred,
     evidenceIds: [...new Set([...(preferred.evidenceIds || []), ...(other.evidenceIds || [])])].slice(0, 12),
     reviewFlagIds: [...new Set([...(preferred.reviewFlagIds || []), ...(other.reviewFlagIds || [])])],
+    ...(mergedFromIds.length ? { mergedFromIds } : {}),
     supportingDetails: details.filter((detail, detailIndex) => details.findIndex((candidate) =>
       text(candidate?.text).toLowerCase() === text(detail?.text).toLowerCase()) === detailIndex)
   };
@@ -660,7 +666,14 @@ async function dedupeAdjacentRestatements(topics = [], options = {}) {
   }
   if (!candidates.length) return cloned;
   let vectors = null;
-  try {
+  if (options.restatementVectorsPrepared === true) {
+    vectors = options.restatementVectorByText
+      ? candidates.flatMap(({ left, right }) => [
+        options.restatementVectorByText.get(text(left.text)),
+        options.restatementVectorByText.get(text(right.text))
+      ])
+      : null;
+  } else try {
     const values = candidates.flatMap(({ left, right }) => [text(left.text), text(right.text)]);
     const encode = typeof options.encode === 'function' ? options.encode : (input) => encodeViaWorker(input, {});
     vectors = await encode(values);
@@ -685,10 +698,164 @@ async function dedupeAdjacentRestatements(topics = [], options = {}) {
   return cloned;
 }
 
+function normalisedRestatementText(value) {
+  return text(value).toLowerCase().replace(/[’]/g, "'")
+    .replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function rowEvidenceOverlap(left, right) {
+  const evidence = new Set(Array.isArray(left?.evidenceIds) ? left.evidenceIds : []);
+  return (Array.isArray(right?.evidenceIds) ? right.evidenceIds : []).some((id) => evidence.has(id));
+}
+
+function rowEvidenceGap(left, right, index) {
+  const sequences = (record) => {
+    const indexed = recordSequences(record, index);
+    if (indexed.length) return indexed;
+    return (record?.evidenceIds || []).map((id) => Number(String(id).match(/\d+/)?.[0])).filter(Number.isFinite);
+  };
+  const a = sequences(left); const b = sequences(right);
+  if (!a.length || !b.length) return Number.POSITIVE_INFINITY;
+  return Math.min(...a.flatMap((leftSequence) => b.map((rightSequence) => Math.abs(leftSequence - rightSequence))));
+}
+
+function rowsClaimCompatible(left, right) {
+  const leftNumbers = valueSet(left?.text, ROW_NUMBER);
+  const rightNumbers = valueSet(right?.text, ROW_NUMBER);
+  if ((leftNumbers.size || rightNumbers.size) && !sameSet(leftNumbers, rightNumbers)) return false;
+  if (ROW_NEGATION.test(text(left?.text)) !== ROW_NEGATION.test(text(right?.text))) return false;
+  if (ROW_UNCERTAINTY.test(text(left?.text)) !== ROW_UNCERTAINTY.test(text(right?.text))) return false;
+  return true;
+}
+
+function rowContainment(left, right) {
+  const a = contentTokens(left?.text); const b = contentTokens(right?.text);
+  if (Math.min(a.size, b.size) < 5) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  const smaller = Math.min(a.size, b.size); const larger = Math.max(a.size, b.size);
+  if (smaller / larger < 0.45) return 0;
+  return shared / smaller;
+}
+
+const ROW_PREDICATE_FAMILIES = [
+  /\b(?:captur(?:e|ed|ing)|record(?:ed|ing)?|log(?:ged|ging)?)\b/i,
+  /\b(?:clean(?:ed|ing)?|filter(?:ed|ing)?|triag(?:e|ed|ing))\b/i,
+  /\b(?:match(?:ed|ing)?|compar(?:e|ed|ing)|cross-check(?:ed|ing)?)\b/i,
+  /\b(?:generat(?:e|ed|ing)|creat(?:e|ed|ing)|produc(?:e|ed|ing))\b/i,
+  /\b(?:test(?:ed|ing)?|validat(?:e|ed|ing)|pilot(?:ed|ing)?)\b/i,
+  /\b(?:send|sent|email(?:ed|ing)?|shar(?:e|ed|ing)|circulat(?:e|ed|ing))\b/i,
+  /\b(?:review(?:ed|ing)?|assess(?:ed|ing)?|evaluat(?:e|ed|ing)|inspect(?:ed|ing)?)\b/i,
+  /\b(?:approv(?:e|ed|ing)|reject(?:ed|ing)?|decid(?:e|ed|ing))\b/i
+];
+
+function rowPredicatesCompatible(left, right) {
+  const primaryFamily = (value) => {
+    const prefix = text(value).split(/\s+/).slice(0, 7).join(' ');
+    let best = null;
+    ROW_PREDICATE_FAMILIES.forEach((pattern, family) => {
+      const match = prefix.match(pattern);
+      if (match && (!best || match.index < best.at)) best = { family, at: match.index };
+    });
+    return best?.family;
+  };
+  const a = primaryFamily(left?.text); const b = primaryFamily(right?.text);
+  // A leading process verb is a strong facet boundary: "clean the data" and
+  // "match the data" are consecutive steps even when embeddings read alike.
+  // Descriptive paraphrases often put the verb later or omit it, so absence on
+  // either side is not treated as a contradiction.
+  return a === undefined || b === undefined || a === b;
+}
+
+// The local pass above is intentionally strict, but generated paraphrases can
+// cite neighbouring turns or land under adjacent generated headings. Apply one
+// final, provenance-preserving comparison across the draft. Exact duplicates are
+// always safe. Paraphrases still require compatible claim shape plus shared or
+// immediately neighbouring evidence and deliberately high semantic/lexical bars.
+async function dedupeGlobalRestatements(topics = [], options = {}) {
+  const cloned = (Array.isArray(topics) ? topics : []).map(cloneTopic);
+  const rows = [];
+  cloned.forEach((topic, topicIndex) => ROW_KINDS.forEach((kind) => {
+    (topic[kind] || []).forEach((record, rowIndex) => rows.push({ topic, topicIndex, kind, rowIndex, record, removed: false }));
+  }));
+  if (rows.length < 2) return cloned;
+  let vectors = null;
+  if (options.restatementVectorsPrepared === true) {
+    vectors = options.restatementVectorByText
+      ? rows.map((row) => options.restatementVectorByText.get(text(row.record.text)))
+      : null;
+  } else try {
+    const encode = typeof options.encode === 'function' ? options.encode : (input) => encodeViaWorker(input, {});
+    vectors = await encode(rows.map((row) => text(row.record.text)));
+  } catch { vectors = null; }
+  const index = unitIndex(options.sourceUnits || []);
+  for (let leftIndex = 0; leftIndex < rows.length; leftIndex += 1) {
+    const left = rows[leftIndex];
+    if (left.removed) continue;
+    for (let rightIndex = leftIndex + 1; rightIndex < rows.length; rightIndex += 1) {
+      const right = rows[rightIndex];
+      if (right.removed || left.kind !== right.kind
+        || left.record.reviewerAuthored || right.record.reviewerAuthored
+        || !rowsClaimCompatible(left.record, right.record)) continue;
+      const exact = normalisedRestatementText(left.record.text) === normalisedRestatementText(right.record.text);
+      const sharedEvidence = rowEvidenceOverlap(left.record, right.record);
+      const sameTopic = left.topicIndex === right.topicIndex;
+      const adjacentTopics = Math.abs(left.topicIndex - right.topicIndex) <= 1;
+      const evidenceGap = rowEvidenceGap(left.record, right.record, index);
+      const lexical = overlap(left.record.text, right.record.text);
+      const containment = rowContainment(left.record, right.record);
+      const compatiblePredicates = rowPredicatesCompatible(left.record, right.record);
+      const semantic = vectors?.[leftIndex] && vectors?.[rightIndex]
+        ? cosine(vectors[leftIndex], vectors[rightIndex]) : 0;
+      const sameTopicShared = compatiblePredicates && sameTopic && sharedEvidence && semantic >= 0.86 && lexical >= 0.35;
+      const sameTopicNearby = compatiblePredicates && sameTopic && evidenceGap <= 2 && semantic >= 0.86 && lexical >= 0.45;
+      const crossTopicShared = compatiblePredicates && !sameTopic && adjacentTopics && sharedEvidence && semantic >= 0.88 && lexical >= 0.45;
+      const crossTopicNearby = !sameTopic && adjacentTopics && evidenceGap <= 2
+        && compatiblePredicates && semantic >= 0.92 && lexical >= 0.55 && containment >= 0.8;
+      const evidenceContainment = compatiblePredicates && sharedEvidence && containment >= 0.84;
+      if (!exact && !evidenceContainment && !sameTopicShared && !sameTopicNearby
+        && !crossTopicShared && !crossTopicNearby) continue;
+      const merged = mergeRestatementRecords(left.record, right.record);
+      left.record = merged;
+      left.topic[left.kind][left.rowIndex] = merged;
+      right.removed = true;
+    }
+  }
+  // A merge can put the preferred later record in the earlier array slot, so
+  // remove duplicates by their original coordinates rather than object identity.
+  cloned.forEach((topic, topicIndex) => ROW_KINDS.forEach((kind) => {
+    const removedIndexes = new Set(rows.filter((row) => row.topicIndex === topicIndex && row.kind === kind && row.removed)
+      .map((row) => row.rowIndex));
+    topic[kind] = (topic[kind] || []).filter((record, rowIndex) => !removedIndexes.has(rowIndex));
+  }));
+  return cloned.filter((topic) => topicRows(topic).length || topic.reviewerAuthored || topic.confirmedTopic);
+}
+
+async function prepareRestatementVectors(topics = [], options = {}) {
+  const values = [...new Set((Array.isArray(topics) ? topics : [])
+    .flatMap((topic) => topicRows(topic).map(({ record }) => text(record?.text)))
+    .filter(Boolean))];
+  if (values.length < 2) return { ...options, restatementVectorsPrepared: true, restatementVectorByText: null };
+  try {
+    const encode = typeof options.encode === 'function' ? options.encode : (input) => encodeViaWorker(input, {});
+    const vectors = await encode(values);
+    const restatementVectorByText = Array.isArray(vectors)
+      ? new Map(values.map((value, index) => [value, vectors[index]]))
+      : null;
+    return { ...options, restatementVectorsPrepared: true, restatementVectorByText };
+  } catch {
+    // A failed optional semantic lookup must not be retried by each cleanup
+    // pass. Both retain their deterministic exact/lexical fallbacks.
+    return { ...options, restatementVectorsPrepared: true, restatementVectorByText: null };
+  }
+}
+
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   let topics = removeNonContentAsides(discussion);
   topics = normaliseDecisionTopicHeadings(topics);
-  topics = await dedupeAdjacentRestatements(topics, options);
+  const preparedOptions = await prepareRestatementVectors(topics, options);
+  topics = await dedupeAdjacentRestatements(topics, preparedOptions);
+  topics = await dedupeGlobalRestatements(topics, preparedOptions);
   return topics;
 }
 
@@ -742,6 +909,7 @@ module.exports = {
   sortByEvidence,
   normaliseDecisionTopicHeadings,
   dedupeAdjacentRestatements,
+  dedupeGlobalRestatements,
   finaliseDiscussionForPublication,
   unitIndex
 };

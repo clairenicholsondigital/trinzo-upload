@@ -8,7 +8,7 @@ const {
   removeAnsweredQuestionClauses, removeContradictoryResponsibilities,
   isPersonalAside, isPeripheralAside, isRoutineMeetingAdministration,
   removePersonalAsides, normaliseDecisionTopicHeadings,
-  dedupeAdjacentRestatements, finaliseDiscussionForPublication
+  dedupeAdjacentRestatements, dedupeGlobalRestatements, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -163,7 +163,117 @@ test('restatement cleanup preserves rows with distinct figures, polarity or no s
   assert.deepEqual(cleaned[0].points.map((row) => row.id), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']);
 });
 
+test('global cleanup collapses exact repetitions across topics and preserves provenance', async () => {
+  const cleaned = await dedupeGlobalRestatements([{
+    topic: 'Client delivery', points: [{
+      id: 'p1', text: 'Client delivery feedback varies by project.', evidenceIds: ['T0010'], reviewFlagIds: ['f1']
+    }], decisions: [], openQuestions: []
+  }, {
+    topic: 'Feedback capture', points: [{
+      id: 'p2', text: 'Client delivery feedback varies by project.', evidenceIds: ['T0060'], reviewFlagIds: ['f2']
+    }], decisions: [], openQuestions: []
+  }], { sourceUnits: units, encode: () => null });
+  const rows = cleaned.flatMap((topic) => topic.points);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].evidenceIds, ['T0060', 'T0010']);
+  assert.deepEqual(rows[0].reviewFlagIds, ['f2', 'f1']);
+  assert.deepEqual(rows[0].mergedFromIds, ['p1']);
+});
+
+test('global cleanup merges same-topic paraphrases grounded in one client-feedback passage', async () => {
+  const discussion = [{ topic: 'Client delivery feedback', points: [
+    {
+      id: 'p1', text: 'Client delivery feedback is currently captured differently by project.',
+      evidenceIds: ['T0020']
+    },
+    {
+      id: 'p2', text: 'Kathryn Cullen explains that client delivery feedback depends on the project and may be emailed or recorded in Salesforce.',
+      evidenceIds: ['T0020']
+    }
+  ], decisions: [], openQuestions: [] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, {
+    encode: (values) => values.map(() => [1, 0])
+  });
+  assert.equal(cleaned[0].points.length, 1);
+  assert.equal(cleaned[0].points[0].id, 'p2', 'the fuller formulation survives');
+  assert.deepEqual(cleaned[0].points[0].mergedFromIds, ['p1']);
+});
+
+test('global cleanup joins a manual-slice paraphrase from immediately neighbouring evidence', async () => {
+  const sourceUnits = [
+    { id: 'T0016', sequence: 16, speaker: 'Conor', text: 'Test a small manual slice before the pilot.' },
+    { id: 'T0017', sequence: 17, speaker: 'Jack', text: 'The small manual slice validates the process before a four-week pilot.' }
+  ];
+  const discussion = [{ topic: 'Pilot approach', points: [
+    {
+      id: 'p1', text: 'Conor and Jack propose testing a small manual slice of the lead generation process before a four-week pilot.',
+      evidenceIds: ['T0016']
+    },
+    {
+      id: 'p2', text: 'Testing the small manual slice of the lead generation process would validate it before the four-week pilot.',
+      evidenceIds: ['T0017']
+    }
+  ], decisions: [], openQuestions: [] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, {
+    sourceUnits, encode: (values) => values.map(() => [1, 0])
+  });
+  assert.equal(cleaned[0].points.length, 1);
+  assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['T0016', 'T0017']));
+});
+
+test('global cleanup removes a repeated workflow statement under adjacent topics without merging the topics', async () => {
+  const sourceUnits = [
+    { id: 'T0039', sequence: 39, speaker: 'Conor', text: 'Clean up the noise manually.' },
+    { id: 'T0040', sequence: 40, speaker: 'Conor', text: 'Then match and check what is already in Salesforce.' }
+  ];
+  const cleaned = await dedupeGlobalRestatements([{
+    topic: 'Signal triage', points: [{
+      id: 'p1', text: 'The aggregated signal output requires manual noise clean-up and matching against Salesforce.',
+      evidenceIds: ['T0039', 'T0040']
+    }], decisions: [], openQuestions: []
+  }, {
+    topic: 'Salesforce checking', points: [{
+      id: 'p2', text: 'A human must manually clean noise from the aggregated signal output and match it against Salesforce.',
+      evidenceIds: ['T0039', 'T0040']
+    }], decisions: [], openQuestions: []
+  }], { sourceUnits, encode: (values) => values.map(() => [1, 0]) });
+  assert.equal(cleaned.length, 1, 'the empty duplicate topic is removed, not merged into the survivor');
+  assert.equal(cleaned[0].topic, 'Signal triage');
+  assert.equal(cleaned[0].points.length, 1);
+  assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['T0039', 'T0040']));
+});
+
+test('global cleanup preserves separate workflow stages, claim types, figures and polarity', async () => {
+  const sourceUnits = [
+    { id: 'T0100', sequence: 100, speaker: 'Conor', text: 'Clean the noisy signals.' },
+    { id: 'T0101', sequence: 101, speaker: 'Conor', text: 'Match the cleaned signals against Salesforce.' }
+  ];
+  const cleaned = await dedupeGlobalRestatements([{
+    topic: 'Pipeline', points: [
+      { id: 'clean', text: 'Manually clean noisy signal data.', evidenceIds: ['T0100'] },
+      { id: 'match', text: 'Match cleaned signal data against Salesforce.', evidenceIds: ['T0101'] },
+      { id: 'three', text: 'Three opportunities remain.', evidenceIds: ['T0100'] },
+      { id: 'five', text: 'Five opportunities remain.', evidenceIds: ['T0100'] },
+      { id: 'positive', text: 'The opportunity plan must be approved.', evidenceIds: ['T0100'] },
+      { id: 'negative', text: 'The opportunity plan must not be approved.', evidenceIds: ['T0100'] }
+    ], decisions: [{ id: 'decision', text: 'Manually clean noisy signal data.', evidenceIds: ['T0100'] }], openQuestions: []
+  }], { sourceUnits, encode: (values) => values.map(() => [1, 0]) });
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['clean', 'match', 'three', 'five', 'positive', 'negative']);
+  assert.deepEqual(cleaned[0].decisions.map((row) => row.id), ['decision']);
+});
+
+test('global cleanup is idempotent', async () => {
+  const discussion = [{ topic: 'Feedback', points: [
+    { id: 'p1', text: 'Client feedback varies by project.', evidenceIds: ['T0001'] },
+    { id: 'p2', text: 'Client feedback varies by project.', evidenceIds: ['T0002'] }
+  ], decisions: [], openQuestions: [] }];
+  const once = await dedupeGlobalRestatements(discussion, { encode: () => null });
+  const twice = await dedupeGlobalRestatements(once, { encode: () => null });
+  assert.deepEqual(twice, once);
+});
+
 test('the publication boundary applies content, heading and restatement safeguards together', async () => {
+  let encodeCalls = 0;
   const cleaned = await finaliseDiscussionForPublication([{
     id: 't1', topic: 'Decision on delivery approach', decisions: [], openQuestions: [],
     points: [
@@ -171,10 +281,24 @@ test('the publication boundary applies content, heading and restatement safeguar
       { id: 'p1', text: 'The proposed delivery approach remains under review.', evidenceIds: ['T0002'] },
       { id: 'p2', text: 'The delivery approach is still being reviewed.', evidenceIds: ['T0002'] }
     ]
-  }], { encode: (values) => values.map(() => [1, 0]) });
+  }], { encode: (values) => {
+    encodeCalls += 1;
+    return values.map(() => [1, 0]);
+  } });
   assert.equal(cleaned[0].topic, 'Delivery approach');
   assert.equal(cleaned[0].points.length, 1);
   assert.equal(cleaned[0].points[0].id, 'p1');
+  assert.equal(encodeCalls, 1, 'publication shares one semantic lookup across both cleanup passes');
+});
+
+test('global cleanup never removes reviewer-authored rows', async () => {
+  const cleaned = await dedupeGlobalRestatements([{
+    topic: 'Feedback', points: [
+      { id: 'generated', text: 'Client feedback varies by project.', evidenceIds: ['T0001'] },
+      { id: 'reviewer', text: 'Client feedback varies by project.', evidenceIds: ['T0001'], reviewerAuthored: true }
+    ], decisions: [], openQuestions: []
+  }], { encode: (values) => values.map(() => [1, 0]) });
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['generated', 'reviewer']);
 });
 
 test('peripheral reporting is removed from primary rows and supporting context', () => {
