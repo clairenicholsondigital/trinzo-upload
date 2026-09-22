@@ -1942,11 +1942,15 @@ const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would) (?:you
 const ANSWER_TIMING = /\b(?:today|tonight|tomorrow(?: morning| afternoon)?|this week|next week|end of (?:the |this |next )?week|(?:the )?(?:rest|remainder) of (?:the |this )?week|(?:this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|a fortnight|(?:in |within )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2}) (?:days?|weeks?|months?)|(?:by |on )?the (?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)|\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
 function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
-  const rows = evidenceWindowUnits(units, evidenceIds, 3);
-  for (let index = 0; index < rows.length; index += 1) {
-    if (!WHEN_QUESTION.test(String(rows[index]?.text || ''))) continue;
-    for (const reply of rows.slice(index + 1, index + 3)) {
-      if (reply?.speaker === rows[index]?.speaker) continue;
+  const window = evidenceWindowUnits(units, evidenceIds, 3);
+  // The question must sit in the action's exchange; its answer is read from
+  // the transcript rows that follow it, which may lie past that window.
+  const all = evidenceContextFor(units).rows;
+  for (const question of window) {
+    if (!WHEN_QUESTION.test(String(question?.text || ''))) continue;
+    const at = all.indexOf(question);
+    for (const reply of all.slice(at + 1, at + 3)) {
+      if (reply?.speaker === question?.speaker) continue;
       const phrase = String(reply?.text || '').match(ANSWER_TIMING);
       if (phrase) return timingFrom({ timing: { wording: phrase[0].toLowerCase().replace(/\s+/g, ' ').trim() } }, options);
     }

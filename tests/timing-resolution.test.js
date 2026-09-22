@@ -36,3 +36,15 @@ test('the answer to "by when?" supplies an action its timing', () => {
   assert.equal(timing.wording, 'ten days');
   assert.equal(timing.exactDate, '2026-03-20');
 });
+
+test('the answer is read from the rows after the question even past the cited window', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0001', speaker: 'Robin', text: "That'd be me, I have the old contracts.", classification: 'keep' },
+    { id: 'T0002', speaker: 'Chair', text: 'Good.', classification: 'keep' },
+    { id: 'T0003', speaker: 'Robin', text: 'Ha, yes.', classification: 'keep' },
+    { id: 'T0004', speaker: 'Chair', text: 'By when?', classification: 'keep' },
+    { id: 'T0005', speaker: 'Robin', text: 'A fortnight.', classification: 'keep' }
+  ]);
+  const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001'], { meetingDate: TUESDAY });
+  assert.equal(timing.exactDate, '2026-03-24');
+});
