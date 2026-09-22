@@ -116,12 +116,24 @@ function sanitiseDetails(candidate = {}) {
   const suppliedAll = names(candidate.allAttendees || candidate.participants);
   let internalAttendees = names(candidate.internalAttendees);
   let clientAttendees = names(candidate.clientAttendees);
+  // Calling someone a client asserts a relationship. With no participant
+  // recognised as internal, nobody in the meeting is known to be hosting a
+  // client (a team's own rehearsal, a committee, a supplier call), so the
+  // attendees are listed as the meeting's own rather than defaulting to Client.
+  // Where an internal participant is recognised, unrecognised people are still
+  // placed on the client side, for the reviewer to move.
   if (!internalAttendees.length && !clientAttendees.length) {
     internalAttendees = suppliedAll.filter((name) => KNOWN_INTERNAL_ATTENDEE_KEYS.has(attendeeKey(name)));
-    clientAttendees = suppliedAll.filter((name) => !KNOWN_INTERNAL_ATTENDEE_KEYS.has(attendeeKey(name)));
+    clientAttendees = internalAttendees.length
+      ? suppliedAll.filter((name) => !KNOWN_INTERNAL_ATTENDEE_KEYS.has(attendeeKey(name)))
+      : [];
+    if (!internalAttendees.length) internalAttendees = [...suppliedAll];
   } else {
     const assigned = new Set([...internalAttendees, ...clientAttendees].map(attendeeKey));
-    clientAttendees.push(...suppliedAll.filter((name) => !assigned.has(attendeeKey(name))));
+    const unassigned = suppliedAll.filter((name) => !assigned.has(attendeeKey(name)));
+    if (internalAttendees.length) clientAttendees.push(...unassigned);
+    else if (!clientAttendees.length) internalAttendees.push(...unassigned);
+    else clientAttendees.push(...unassigned);
   }
   const internalKeys = new Set(internalAttendees.map(attendeeKey));
   clientAttendees = clientAttendees.filter((name) => !internalKeys.has(attendeeKey(name)));

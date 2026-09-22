@@ -64,7 +64,8 @@ test('agent details omit organisation and prepared transcript has stable source 
     meetingDate: '2026-06-23', allAttendees: ['Alex', 'Alex', 'Priya']
   }), {
     meetingTitle: 'Review', meetingDate: '2026-06-23', meetingLocation: '', meetingType: '',
-    clientAttendeeLabel: 'Client', internalAttendees: [], clientAttendees: ['Alex', 'Priya'], allAttendees: ['Alex', 'Priya']
+    // Nobody is recognised as internal, so nobody is defaulted to Client.
+    clientAttendeeLabel: 'Client', internalAttendees: ['Alex', 'Priya'], clientAttendees: [], allAttendees: ['Alex', 'Priya']
   });
   const prepared = preparedTranscriptFromUnits(sourceUnits);
   assert.match(prepared, /^\[T0001\] Alex 00:01:02:/);
