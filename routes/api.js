@@ -43,6 +43,12 @@ const {
   normaliseFinalStagedActionCandidate,
   normaliseAndValidateActionOwner
 } = require('../utils/stagedEditorial');
+const {
+  gateEnabled: transcriptTextGateEnabled,
+  transcriptTextIssue,
+  partitionTranscriptText,
+  rejectionSummary: transcriptTextRejectionSummary
+} = require('../utils/actionTextGate');
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
@@ -8898,6 +8904,11 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
     const evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
     const evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
     if (!evidenceIds.length || evidenceSupportScore(action.action, evidence) < 0.22) return null;
+    // Still screened for what is never an action at all: running the meeting
+    // ("No bother Dermot, we'll come to you in a minute") and wording that is
+    // a line of the conversation rather than a written instruction.
+    if (isMeetingAdminAction(action.action) || actionEvidenceDisposition(action.action, evidence) === 'meeting_admin') return null;
+    if (transcriptTextGateEnabled() && transcriptTextIssue(action.action, sourceUnits)) return null;
     return { ...action, evidenceIds };
   }).filter(Boolean));
 }
@@ -11418,6 +11429,7 @@ function highConfidenceRefereedAction(action, candidates = [], sourceUnits = [])
 
 function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
   if (!action?.action || !Array.isArray(action.evidenceIds) || !action.evidenceIds.length) return false;
+  if (transcriptTextGateEnabled() && transcriptTextIssue(action.action, sourceUnits)) return false;
   const explicitDocumentation = explicitFutureDocumentationCommitment(action, sourceUnits);
   if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length && !explicitDocumentation) return false;
   const sourceInfo = hybridActionSourceInfo(action, candidates);
@@ -11769,6 +11781,19 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
       }
     });
   }
+  const writtenRows = rows.filter((item) => !(transcriptTextGateEnabled()
+    && transcriptTextIssue(item.record.action, sourceUnits)));
+  if (writtenRows.length !== rows.length) {
+    console.log(JSON.stringify({
+      event: 'meeting_agent_transcript_text_gate', stage: 'referee_reconstruction',
+      removed: rows.length - writtenRows.length,
+      items: rows.filter((item) => !writtenRows.includes(item)).map((item) => ({
+        reason: transcriptTextIssue(item.record.action, sourceUnits),
+        action: meetingMinutesAgentText(item.record.action, 160)
+      }))
+    }));
+  }
+  rows.splice(0, rows.length, ...writtenRows);
   const withMergedEvidence = rows.map((item) => ({
     ...item.record,
     evidenceIds: [...new Set([
@@ -13897,7 +13922,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
   );
-  builtProposal.changes = (builtProposal.changes || []).filter(meetingAgentProposalChangeIsVisible);
+  builtProposal.changes = gateTranscriptShapedActionChanges(
+    (builtProposal.changes || []).filter(meetingAgentProposalChangeIsVisible),
+    draft.sourceUnits, draft.draftId, 'proposal'
+  );
   const proposal = annotateActionProposalChains(builtProposal, actionChains);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
@@ -13950,6 +13978,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   let timingChecked = meetingMinutesTimingClauseChecksEnabled()
     ? applyTimingClauseChecks(reconciledPublishedActions, draft.sourceUnits, { meetingDate: details.meetingDate })
     : { actions: reconciledPublishedActions, flags: [] };
+  timingChecked = {
+    ...timingChecked,
+    actions: gateTranscriptShapedActions(timingChecked.actions, draft.sourceUnits, draft.draftId, 'published')
+  };
   if (meetingMinutesTimingCheckEnabled()) {
     // The model says which step each timing was spoken for, quoting the
     // passage; applyTimingCheckResults verifies every quote before changing
@@ -14732,6 +14764,38 @@ function meetingMinutesProposalRecheckEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PROPOSAL_RECHECK_V1 || '0'));
 }
 
+// Actions and action suggestions must be written instructions, never a line of
+// the conversation carried through unchanged (see utils/actionTextGate.js).
+// Applied only to generated rows: a reviewer's own saved wording is never
+// filtered here.
+function gateTranscriptShapedActions(records = [], sourceUnits = [], journeyId = '', stage = '') {
+  const { kept, rejected } = partitionTranscriptText(records, sourceUnits);
+  if (rejected.length) {
+    console.log(JSON.stringify({
+      event: 'meeting_agent_transcript_text_gate', journeyId, stage,
+      removed: rejected.length, items: transcriptTextRejectionSummary(rejected)
+    }));
+  }
+  return kept;
+}
+
+function gateTranscriptShapedActionChanges(changes = [], sourceUnits = [], journeyId = '', stage = '') {
+  const rejected = [];
+  const kept = (Array.isArray(changes) ? changes : []).filter((change) => {
+    if (!['add', 'modify'].includes(change?.type) || !change.after) return true;
+    const reason = transcriptTextGateEnabled() ? transcriptTextIssue(change.after.action, sourceUnits) : '';
+    if (reason) rejected.push({ record: change.after, reason });
+    return !reason;
+  });
+  if (rejected.length) {
+    console.log(JSON.stringify({
+      event: 'meeting_agent_transcript_text_gate', journeyId, stage,
+      removed: rejected.length, items: transcriptTextRejectionSummary(rejected)
+    }));
+  }
+  return kept;
+}
+
 function meetingAgentProposalChangeIsVisible(change = {}) {
   if (change?.type !== 'modify') return true;
   const visible = (record = {}) => JSON.stringify([
@@ -15351,9 +15415,11 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     }
     // audited rows were already enforced above; the existing register holds the
     // reviewer's edits and must not be re-stripped when the two are merged.
+    rescuedActions = gateTranscriptShapedActions(rescuedActions, draft.sourceUnits, draft.draftId, 'audit_published');
+    const auditedActions = gateTranscriptShapedActions(audited.actions, draft.sourceUnits, draft.draftId, 'audit_found');
     const publishedBase = [...(draft.actions || []), ...rescuedActions];
     const combined = normaliseAgentResult({
-      actions: [...publishedBase, ...audited.actions, ...declaredProposals]
+      actions: [...publishedBase, ...auditedActions, ...declaredProposals]
     }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
     const reconciledActions = mergePublishedActionEvidence(publishedBase, combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
