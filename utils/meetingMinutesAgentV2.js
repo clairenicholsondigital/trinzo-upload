@@ -575,14 +575,15 @@ function salientExcerpt(value, pattern) {
 
 function salientDetailInventory(units = []) {
   const patterns = [
-    ['quantity', /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:languages?|alarms?|devices?|products?|tests?|documents?|weeks?|days?|items?|versions?|samples?|units?|batches|sites?)\b/i],
+    ['quantity', /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:additional|extra|more|not[- ]started|outstanding|remaining|completed?)\s+)?(?:languages?|alarms?|bands?|levels?|categories|devices?|products?|tests?|documents?|weeks?|days?|items?|versions?|samples?|units?|batches|sites?)\b/i],
+    ['progress_change', /\b(?:mov(?:e|ed|ing)|progress(?:ed|ion)?|reduc(?:e|ed|tion)|increas(?:e|ed)|fell|rose|down|up|from)\b[^.!?]{0,100}\b(?:to|by|from)\s+(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b/i],
     // A number is a standards reference because something says so in front of it.
     // The prefix used to be optional, which made this "any bare 3-5 digit number"
     // and turned "a hard stop at 1130" into a reference for the reviewer to check.
     ['standard_reference', /\b(?:BS\s+EN|EN|IEC|ISO|ASTM|standards?)\s+\d{3,5}(?:[-–]\d+)*(?::\d{4})?\b/i],
     ['alarm_behaviour', /\b(?:alarm|audible|mute|silenc|beep)\b/i],
     ['approval_status', /\b(?:approved?|accepted?|signed?\s*off|pending approval|not approved|rejected?)\b/i],
-    ['blocker_dependency', /\b(?:block(?:ed|er|ing)?|depend(?:s|ent|ency)?|waiting for|subject to|before .* can|once .* (?:is|has been)|cannot .* until|pending)\b/i]
+    ['blocker_dependency', /\b(?:block(?:ed|er|ing)?|depend(?:s|ent|ency)?|waiting for|held up|holding (?:it|this|that|them) up|stalled|delayed by|subject to|before .* can|once .* (?:is|has been)|cannot .* until|pending)\b/i]
   ];
   const result = [];
   for (const unit of normaliseSourceUnits(units).filter(includedUnit)) {
@@ -591,6 +592,7 @@ function salientDetailInventory(units = []) {
       if (!pattern.test(unit.text)) continue;
       if (kind === 'alarm_behaviour' && /\bno alarm bells?\b/i.test(unit.text)) continue;
       if (kind === 'blocker_dependency' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+      if (kind === 'progress_change' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
       if (kind === 'quantity' && /\b(?:weeks?|days?|sites?)\b/i.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
       result.push({ id: stableId('detail', `${kind}|${unit.id}`), kind, text: salientExcerpt(unit.text, pattern), evidenceIds: [unit.id] });
     }
@@ -1279,7 +1281,7 @@ function actionCandidateInventory(units = []) {
       isDecisionResolutionCommitment(unit.text) ? 'decision_resolution' : '',
       ACTION_IMPERATIVE_PATTERN.test(unit.text) ? 'imperative' : ''
     ].filter(Boolean);
-    candidates.push({
+    const candidate = {
       candidateId: stableId('candidate', unit.id),
       focusEvidenceId: unit.id,
       evidenceIds: ids,
@@ -1295,7 +1297,33 @@ function actionCandidateInventory(units = []) {
       sequence: unit.sequence,
       focusText: text(unit.text, 500),
       context: text(context, 900)
-    });
+    };
+    candidates.push(candidate);
+    // One speaking turn can contain several separately accountable promises.
+    // Keeping only the whole turn gives a bounded model one compound candidate
+    // and makes it easy for the first or last deliverable to disappear. Add a
+    // focused candidate for each repeated first-person future clause; later
+    // deliverable-aware accounting still decides whether two clauses are the
+    // same work. A single promise is left unchanged to avoid ledger inflation.
+    const promiseMarker = /\b(?:I|we)\s*(?:['’]ll|will|shall|am going to|are going to)\s+/ig;
+    const promiseStarts = [...String(unit.text || '').matchAll(promiseMarker)];
+    if (promiseStarts.length > 1) {
+      promiseStarts.forEach((match, clauseIndex) => {
+        const start = Number(match.index || 0) + match[0].length;
+        const end = clauseIndex + 1 < promiseStarts.length
+          ? Number(promiseStarts[clauseIndex + 1].index) : String(unit.text || '').length;
+        const focusText = text(String(unit.text || '').slice(start, end)
+          .replace(/^\s*[,;:.–—-]+\s*/, '').replace(/\s*(?:,|;|\band)\s*$/i, ''), 500);
+        if (contentTokens(focusText).length < 2) return;
+        candidates.push({
+          ...candidate,
+          candidateId: stableId('candidate-clause', `${unit.id}|${clauseIndex + 1}|${focusText}`),
+          focusText,
+          cueKinds: [...new Set([...candidate.cueKinds, 'commitment'])],
+          priority: candidate.priority + 1
+        });
+      });
+    }
   }
   // This is the full server-side ledger. Prompt-size control happens separately
   // so a candidate omitted from the first request remains available to the

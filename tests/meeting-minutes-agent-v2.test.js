@@ -404,6 +404,16 @@ test('bare acknowledgements do not crowd out timed and quantified commitments', 
   assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0713').priority >= 7);
 });
 
+test('multiple explicit promises in one turn receive separate discovery candidates', () => {
+  const candidates = actionCandidateInventory(normaliseSourceUnits([
+    { id: 'T0450', speaker: 'Alex', text: "I'll reorder the badges for the event, and I'll run the promotion campaign through launch.", classification: 'keep' }
+  ]));
+  assert.ok(candidates.some((item) => /reorder the badges/i.test(item.focusText)));
+  assert.ok(candidates.some((item) => /run the promotion campaign/i.test(item.focusText)));
+  assert.equal(new Set(candidates.filter((item) => item.candidateId.startsWith('candidate-clause-'))
+    .map((item) => item.focusText)).size, 2);
+});
+
 test('an availability constraint does not reject the planning commitment it explains', () => {
   const units = normaliseSourceUnits([
     { id: 'T0702', speaker: 'Stuart', text: "I won't be available because I'll be carrying out another audit.", classification: 'keep' },
@@ -767,6 +777,18 @@ test('one source passage can contribute several salient detail categories', () =
   assert.ok(inventory.some((item) => item.kind === 'alarm_behaviour'));
   assert.ok(inventory.some((item) => item.kind === 'approval_status'));
   assert.ok(inventory.some((item) => item.kind === 'blocker_dependency'));
+});
+
+test('salient inventory catches hyphenated status counts, scale sizes, progress changes and blockers', () => {
+  const inventory = salientDetailInventory(normaliseSourceUnits([
+    { id: 'T0910', speaker: 'Alex', text: 'The tracker moved from 41 not-started documents to 33; eight moved this week.', classification: 'keep' },
+    { id: 'T0911', speaker: 'Priya', text: 'The risk scale has five bands.', classification: 'keep' },
+    { id: 'T0912', speaker: 'Morgan', text: 'The supplier agreements are still held up by legal review.', classification: 'keep' }
+  ]));
+  assert.ok(inventory.some((item) => item.kind === 'quantity' && item.evidenceIds.includes('T0910')));
+  assert.ok(inventory.some((item) => item.kind === 'progress_change' && item.evidenceIds.includes('T0910')));
+  assert.ok(inventory.some((item) => item.kind === 'quantity' && item.evidenceIds.includes('T0911')));
+  assert.ok(inventory.some((item) => item.kind === 'blocker_dependency' && item.evidenceIds.includes('T0912')));
 });
 
 test('supporting discussion details retain only valid source evidence', () => {

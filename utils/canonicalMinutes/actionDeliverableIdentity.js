@@ -172,6 +172,34 @@ function sameContactPurposeDeliverable(left = {}, right = {}) {
   return addedMeaning.length >= 2;
 }
 
+// The two participants in one agreed check-in can be rendered from opposite
+// sides: "check in with Morgan about the audit" (owned by Alex) and "speak to
+// Alex about anything missing" (owned by Morgan).  Those are one conversation,
+// not two deliverables.  This predicate only identifies the reciprocal frame;
+// the caller must still prove which participant actually accepted the work.
+function directedContactFrame(record = {}) {
+  const value = String(record.action || record.text || '').trim().replace(/[.?!]+$/, '');
+  const match = value.match(/^(?:touch base|check in|follow up|talk|speak|chat|liaise|meet|contact|call|chase|message)\s+(?:(?:with|to)\s+)?(?:the\s+)?(.+?)(?=\s+\b(?:about|regarding|concerning|to|for|on)\b|[.;]|$)/i);
+  if (!match) return null;
+  const target = new Set(contentTokens(match[1]));
+  return target.size && target.size <= 5 ? { target } : null;
+}
+
+function ownerMatchesTarget(record = {}, target = new Set()) {
+  return [...ownerSet(record)].some((owner) => {
+    const ownerWords = contentTokens(owner);
+    return ownerWords.length && (ownerWords.every((word) => target.has(word))
+      || [...target].every((word) => ownerWords.includes(word)));
+  });
+}
+
+function sameReciprocalContactDeliverable(left = {}, right = {}) {
+  if (evidenceDistance(left, right) > 4) return false;
+  const a = directedContactFrame(left); const b = directedContactFrame(right);
+  if (!a || !b) return false;
+  return ownerMatchesTarget(left, b.target) && ownerMatchesTarget(right, a.target);
+}
+
 function questionCommunicationFrame(record = {}) {
   const words = tokens(record.action);
   if (!words.length || !COMMUNICATION_VERBS.has(words[0])) return null;
@@ -212,6 +240,7 @@ module.exports = {
   sameQuestionCommunicationDeliverable,
   sameOrNestedActionDeliverable,
   sameContactPurposeDeliverable,
+  sameReciprocalContactDeliverable,
   circularMetaAction,
   actionClauses,
   conflictingActionRecipients

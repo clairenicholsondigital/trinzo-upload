@@ -393,6 +393,26 @@ test('bare contact subsumption preserves different purposes, owners and distant 
   ]);
 });
 
+test('reciprocal descriptions of one check-in merge only when one owner explicitly accepts it', () => {
+  const rows = [
+    { id: 'from-alex', action: 'Touch base with Morgan to establish the current audit position.', owners: ['Alex Green'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020'] },
+    { id: 'from-morgan', action: 'Check in with Alex about anything else that may be missing.', owners: ['Morgan Lee'],
+      timing: { kind: 'deadline', wording: 'by Friday', exactDate: '' }, evidenceIds: ['T0022'] }
+  ];
+  const sourceUnits = [
+    { id: 'T0020', speaker: 'Chair', text: 'Alex was going to touch base with Morgan about the current audit position.' },
+    { id: 'T0022', speaker: 'Morgan Lee', text: "I'll check in with Alex by Friday about anything else that may be missing." }
+  ];
+  const merged = dedupeHybridActionRecords(structuredClone(rows), { sourceUnits });
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].owners, ['Morgan Lee']);
+  assert.equal(merged[0].timing.kind, 'deadline');
+  assert.deepEqual(merged[0].evidenceIds, ['T0020', 'T0022']);
+  assert.equal(dedupeHybridActionRecords(structuredClone(rows)).length, 2,
+    'without evidence of acceptance, conflicting owner rows remain visible');
+});
+
 test('action generation progress hides a saved nested duplicate but keeps distinct saved work', () => {
   const preview = {
     id: 'road-and-towpath',

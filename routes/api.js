@@ -60,7 +60,7 @@ const {
   removePersonalAsides,
   finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
-const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -11243,6 +11243,8 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
       if (conventional) return true;
       if (sameContactPurposeDeliverable(record, existing)) return true;
+      if (sameReciprocalContactDeliverable(record, existing)
+        && supportedOwner(record, existing)) return true;
       if (!sameOrNestedActionDeliverable(record, existing)) return false;
       const recordQuestionFrame = questionCommunicationFrame(record);
       const existingQuestionFrame = questionCommunicationFrame(existing);
@@ -11273,8 +11275,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     // Related or nested actions may legitimately dedupe, but a deadline may
     // travel only between strict versions of the same deliverable. This stops
     // a nearby task's date becoming authoritative on the retained wording.
-    const sameDeliverable = strictActionDeliverableMatch(record, duplicate)
-      && strictActionDeliverableMatch(duplicate, record);
+    const sameDeliverable = (strictActionDeliverableMatch(record, duplicate)
+      && strictActionDeliverableMatch(duplicate, record))
+      || sameReciprocalContactDeliverable(record, duplicate);
     const timing = sameDeliverable
       ? (Number(timingRank[record.timing?.kind] || 0) > Number(timingRank[duplicate.timing?.kind] || 0)
         ? record.timing : duplicate.timing)
