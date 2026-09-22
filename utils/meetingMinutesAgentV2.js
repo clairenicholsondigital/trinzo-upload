@@ -202,7 +202,7 @@ function evidenceScoreProfile(source) {
 
 function evidenceSupportScoreFromProfiles(claim, evidence) {
   if (!claim.value || !evidence.value) return 0;
-  if (claim.values.some((value) => !evidence.lower.includes(value))) return 0;
+  if (claim.values.some((value) => !explicitValuePresent(value, evidence.lower))) return 0;
   const materialCoverage = claim.material.length
     ? claim.material.filter((token) => evidence.tokenSet.has(token)).length / claim.material.length
     : 0;
@@ -298,6 +298,35 @@ function explicitValues(value) {
   return [...new Set(String(value || '').toLowerCase().match(/\b\d+(?:\.\d+)?%?(?:[-–]\d+)*(?::\d{4})?\b/g) || [])];
 }
 
+// Transcripts spell numbers the way they were said: "Tuesday at two",
+// "thirty seconds", "eighteen of twenty-two". A written figure is present in
+// the evidence when either its digits or its spoken form are there; the
+// minutes of a clock time ("2:00") are not a separate claim.
+const SPOKEN_UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const SPOKEN_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+function spokenNumberForms(number) {
+  if (!Number.isInteger(number) || number < 0 || number > 999) return [];
+  if (number < 20) return [SPOKEN_UNITS[number]];
+  if (number < 100) {
+    const tens = SPOKEN_TENS[Math.floor(number / 10)];
+    const unit = number % 10;
+    return unit ? [`${tens}-${SPOKEN_UNITS[unit]}`, `${tens} ${SPOKEN_UNITS[unit]}`, `${tens}${SPOKEN_UNITS[unit]}`] : [tens];
+  }
+  const hundreds = `${SPOKEN_UNITS[Math.floor(number / 100)]} hundred`;
+  const rest = number % 100;
+  return rest ? spokenNumberForms(rest).flatMap((form) => [`${hundreds} and ${form}`, `${hundreds} ${form}`]) : [hundreds];
+}
+function explicitValuePresent(value, evidenceLower) {
+  if (evidenceLower.includes(value)) return true;
+  if (value === '00') return true;
+  const plain = value.replace(/%$/, '');
+  if (!/^\d{1,3}$/.test(plain)) return false;
+  const forms = spokenNumberForms(Number(plain));
+  const spoken = forms.some((form) => new RegExp(`\\b${form}\\b`).test(evidenceLower));
+  return spoken && (!value.endsWith('%') || /\bper ?cent\b|%/.test(evidenceLower));
+}
+
 function polarity(value) {
   return /\b(?:no|not|never|cannot|can't|won't|isn't|aren't|wasn't|weren't|without)\b/i.test(String(value || '')) ? 'negative' : 'positive';
 }
@@ -307,7 +336,7 @@ function evidenceSupportScore(claim, evidence) {
   const evidenceText = text(evidence, 15000);
   if (!claimText || !evidenceText) return 0;
   const values = explicitValues(claimText);
-  if (values.some((value) => !evidenceText.toLowerCase().includes(value))) return 0;
+  if (values.some((value) => !explicitValuePresent(value, evidenceText.toLowerCase()))) return 0;
   const claimMaterial = materialTokens(claimText);
   const evidenceWords = new Set(contentTokens(evidenceText));
   const materialCoverage = claimMaterial.length
@@ -4925,6 +4954,7 @@ module.exports = {
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
+  explicitValuePresent,
   normaliseExecutiveSummary,
   normaliseFlag,
   coverageFlags,
