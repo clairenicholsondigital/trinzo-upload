@@ -14494,6 +14494,15 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     const transcript = await readTestTranscript(req);
     const transcriptReadMs = Date.now() - readStartedAt;
     validateTranscriptText(transcript.text);
+    // Confirmed phrase corrections are applied to the transcript itself, so
+    // the denoiser, every model pass and the evidence panel all read the same
+    // corrected words. The raw upload is still stored unchanged on the draft.
+    const corrected = applyTranscriptPhraseCorrections(transcript.text);
+    if (corrected.applied.length) console.log(JSON.stringify({
+      event: 'meeting_agent_transcript_phrase_corrections',
+      fileName: transcript.fileName || '', corrections: corrected.applied
+    }));
+    transcript.text = corrected.text;
     const preparationStartedAt = Date.now();
     const prepared = await prepareMiniLmTranscript(transcript.text, {
       // Measured twice on the six real meetings (3 runs each): keeping short
