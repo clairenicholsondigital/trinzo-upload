@@ -3936,7 +3936,11 @@ const NUMBER_WORD_VALUE = {
 // one must not count as new when the minutes already carry the other. Each
 // run of number words contributes its composed value ("four hundred" -> 400,
 // "twenty-two" -> 22) as well as its parts, so either spelling matches.
-function quantityTokens(value = '') {
+// `parts` controls whether the pieces of a spoken number count on their own.
+// Matching what the minutes already say is generous (twenty-two matches 22,
+// 20 and 2); deciding whether a detail is NEW uses composed values only, or
+// "twenty-two" would look new beside "22" purely because 20 is not there.
+function quantityTokens(value = '', parts = true) {
   const words = String(value || '').toLowerCase().replace(/[-–]/g, ' ');
   const found = new Set();
   const digits = words.match(/\d[\d,]*(?:\.\d+)?/g) || [];
@@ -3957,7 +3961,7 @@ function quantityTokens(value = '') {
   for (const token of tokens) {
     if (NUMBER_WORD_VALUE[token] != null) {
       current += NUMBER_WORD_VALUE[token];
-      if (NUMBER_WORD_VALUE[token] !== 1) found.add(String(NUMBER_WORD_VALUE[token]));
+      if (parts && NUMBER_WORD_VALUE[token] !== 1) found.add(String(NUMBER_WORD_VALUE[token]));
       open = true;
     } else if (token === 'hundred' && open) {
       current = (current || 1) * 100;
@@ -4003,7 +4007,7 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
   const visibleQuantities = new Set(visible.flatMap((record) => [...quantityTokens(record?.text || '')]));
   const newQuantity = (value) => {
     if (!QUANTIFIED_FACT.test(value)) return false;
-    const figures = [...quantityTokens(value)];
+    const figures = [...quantityTokens(value, false)];
     return figures.length > 0 && figures.some((figure) => !visibleQuantities.has(figure));
   };
   let promoted = 0;

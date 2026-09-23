@@ -130,3 +130,24 @@ test('spelled and numeric forms of the same figure match', () => {
   assert.ok(quantityTokens('twenty-two references').has('22'));
   assert.ok(quantityTokens('£1,200 a year').has('1200'));
 });
+
+test('a spelled figure does not look new because of its parts', () => {
+  const { promoteNamedFactDetails, quantityTokens } = require('../utils/meetingMinutesAgentV2');
+  // Matching is generous, novelty is not.
+  assert.ok(quantityTokens('twenty-two kegs').has('20'));
+  assert.ok(!quantityTokens('twenty-two kegs', false).has('20'));
+  const discussion = [{
+    topic: 'Yield',
+    points: [
+      { id: 'p1', text: '1200 litres yields about 22 clean 50-litre kegs after losses.', evidenceIds: ['T0001'],
+        supportingDetails: [
+          { id: 'd1', text: 'The batch yields approximately twenty-two clean kegs at fifty litres each after losses.', evidenceIds: ['T0002'] },
+          { id: 'd2', text: 'The new fermenter would add another 400 litres of capacity.', evidenceIds: ['T0003'] }
+        ] }
+    ],
+    decisions: [], openQuestions: []
+  }];
+  const texts = promoteNamedFactDetails(discussion, [], []).discussion[0].points.map((point) => point.text);
+  assert.ok(!texts.some((value) => /twenty-two clean kegs/.test(value)), 'the same yield spelled out is not added again');
+  assert.ok(texts.some((value) => /400 litres/.test(value)), 'a genuinely new figure still is');
+});
