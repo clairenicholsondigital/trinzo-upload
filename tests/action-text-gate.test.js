@@ -111,6 +111,11 @@ test('a copied instruction that talks to someone is still spoken text', () => {
     { id: 'T0002', speaker: 'Sam Carter', text: 'Send the risk register to the auditor before Friday.', classification: 'keep' }
   ];
   assert.equal(transcriptTextIssue("Hand over to Lee now, and that's your cue.", units), 'verbatim_transcript');
+  // First person marks speech just as clearly as second.
+  assert.equal(transcriptTextIssue('Ring round and get us up to fourteen.',
+    [{ id: 'T0003', speaker: 'Dana Moss', text: 'Ring round and get us up to fourteen.', classification: 'keep' }]), 'verbatim_transcript');
+  assert.equal(transcriptTextIssue('Ring the refrigeration engineer and book the service.',
+    [{ id: 'T0004', speaker: 'Dana Moss', text: 'Ring the refrigeration engineer and book the service.', classification: 'keep' }]), '');
   // A written instruction copied word for word is still a usable action.
   assert.equal(transcriptTextIssue('Send the risk register to the auditor before Friday.', units), '');
 });

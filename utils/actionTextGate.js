@@ -99,7 +99,10 @@ function quotesTranscript(action, units) {
 
 // Returns the reason the text is still in spoken form, or '' when it reads as a
 // written action. Order matters only for the reason reported.
-const SECOND_PERSON_REFERENCE = /\b(?:you|your|yours|you're|you'll|you've)\b/i;
+// A published action is written about people, not spoken to or among them:
+// "hand over to Tom now, and that's your cue", "ring round and get us up to
+// fourteen". Either person marks the words as speech.
+const SECOND_PERSON_REFERENCE = /\b(?:you|your|yours|you're|you'll|you've|us|our|ours|me|my|mine|we're|we'll|we've)\b/i;
 
 function transcriptTextIssue(action, units = []) {
   const text = clean(action);
