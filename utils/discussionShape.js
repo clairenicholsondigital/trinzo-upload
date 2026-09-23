@@ -203,6 +203,16 @@ function recapsSeveralRows(value, keptTexts, people) {
   return echoed >= 2 ? 'recaps rows already minuted' : '';
 }
 
+// "Action assigned to split the list and write the rationale before the next
+// meeting", "Next steps: ...", "Actions: ..." - a line that announces what
+// went on the actions list rather than recording what was discussed. The
+// actions are extracted separately and shown in their own table, so this is
+// minutes about the minutes.
+const ANNOUNCES_ACTIONS = /^\s*(?:decision\s*:?\s*)?(?:actions?\s+(?:assigned|agreed|arising|identified|allocated)|next\s+steps?\s*(?:agreed|identified)?\s*[:\-]|actions?\s*[:\-]|action\s+points?\s*[:\-]|key\s+actions?\s*[:\-])/i;
+function announcesActions(value) {
+  return ANNOUNCES_ACTIONS.test(clean(value));
+}
+
 // Returns { discussion, dropped } without mutating the input. Open questions
 // are never dropped: an unresolved question is not a restatement.
 function dedupeDiscussionBody(discussion = [], people = []) {
@@ -216,6 +226,10 @@ function dedupeDiscussionBody(discussion = [], people = []) {
       for (const row of Array.isArray(topic?.[kind]) ? topic[kind] : []) {
         const value = clean(row?.text);
         if (!value) { next[kind].push(row); continue; }
+        if (announcesActions(value)) {
+          dropped.push({ text: value.slice(0, 200), because: 'announces the actions list', kept: '' });
+          continue;
+        }
         const match = kept.find((entry) => repeatsRow(value, entry.text));
         const because = match ? repeatsRow(value, match.text)
           : recapsSeveralRows(value, kept.map((entry) => entry.text), people);
@@ -240,5 +254,6 @@ module.exports = {
   isAssignmentLine,
   shapeDiscussion,
   dedupeDiscussionBody,
+  announcesActions,
   RECAP_TITLE
 };

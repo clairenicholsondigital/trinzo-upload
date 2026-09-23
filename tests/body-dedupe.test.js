@@ -74,3 +74,20 @@ test('open questions and genuinely different rows are left alone', () => {
   assert.equal(texts(result).length, 3);
   assert.equal(result.dropped.length, 0);
 });
+
+test('a line announcing the actions list is not meeting content', () => {
+  const { dedupeDiscussionBody, announcesActions } = require('../utils/discussionShape');
+  assert.ok(announcesActions('Action assigned to split the list and write the rationale before the next meeting.'));
+  assert.ok(announcesActions('Next steps: Dana to split the list.'));
+  assert.ok(!announcesActions('The team agreed to split the list before the next meeting.'));
+  const result = dedupeDiscussionBody([{
+    topic: 'List',
+    points: [
+      row('a', 'Action assigned to split the list into shipped and not shipped items.'),
+      row('b', 'The list was generated from the lock file and includes dev dependencies.')
+    ],
+    decisions: [], openQuestions: []
+  }], []);
+  assert.equal(texts(result).length, 1);
+  assert.match(result.dropped[0].because, /announces the actions list/);
+});
