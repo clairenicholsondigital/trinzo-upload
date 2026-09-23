@@ -151,3 +151,21 @@ test('a spelled figure does not look new because of its parts', () => {
   assert.ok(!texts.some((value) => /twenty-two clean kegs/.test(value)), 'the same yield spelled out is not added again');
   assert.ok(texts.some((value) => /400 litres/.test(value)), 'a genuinely new figure still is');
 });
+
+test('a detail restating visible figures in other words is not promoted', () => {
+  const { promoteNamedFactDetails } = require('../utils/meetingMinutesAgentV2');
+  const discussion = [{
+    topic: 'Festival',
+    points: [{
+      id: 'p1', text: 'The festival originally requested 40 kegs; it was negotiated down to 15 casks due to capacity.', evidenceIds: ['T0001'],
+      supportingDetails: [
+        { id: 'd1', text: 'The initial request was for forty kegs, but this was reduced to fifteen casks (nine-gallon firkins) due to capacity.', evidenceIds: ['T0002'] },
+        { id: 'd2', text: 'The bar also asked for a further 6 polypins for the Sunday session.', evidenceIds: ['T0003'] }
+      ]
+    }],
+    decisions: [], openQuestions: []
+  }];
+  const texts = promoteNamedFactDetails(discussion, [], []).discussion[0].points.map((point) => point.text);
+  assert.ok(!texts.some((value) => /forty kegs/.test(value)), 'the same reduction in other words is not added again');
+  assert.ok(texts.some((value) => /6 polypins/.test(value)), 'an unrelated new figure still is');
+});

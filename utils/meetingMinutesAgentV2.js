@@ -4010,6 +4010,24 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
     const figures = [...quantityTokens(value, false)];
     return figures.length > 0 && figures.some((figure) => !visibleQuantities.has(figure));
   };
+  // A visible row that already states these figures in substantially the same
+  // words. Looser on wording than `restates` because the two versions differ
+  // by notation ("forty kegs ... fifteen casks" against "40 kegs ... 15
+  // casks"), and tightened by requiring a figure in common.
+  const repeatsVisibleFigures = (value) => {
+    const figures = quantityTokens(value, false);
+    if (!figures.size) return false;
+    const left = contentTokens(comparisonText(value));
+    if (!left.length) return false;
+    return visible.some((record) => {
+      const rowFigures = quantityTokens(record?.text || '');
+      if (![...figures].some((figure) => rowFigures.has(figure))) return false;
+      const right = contentTokens(comparisonText(record?.text || ''));
+      if (!right.length) return false;
+      const shared = left.filter((token) => right.includes(token)).length;
+      return shared / Math.min(left.length, right.length) >= 0.38;
+    });
+  };
   let promoted = 0;
   let quantitiesPromoted = 0;
   const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => {
@@ -4026,7 +4044,13 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
           const eligible = value && !value.startsWith(SUPERSEDED_LABEL) && (detail.evidenceIds || []).length
             && readable(value) && !verbatim(value, detail.evidenceIds);
           const named = eligible && promoted < limit && said(value) && !restates(value);
-          const quantified = eligible && !named && quantitiesPromoted < quantityLimit && newQuantity(value);
+          // One new figure inside a line that otherwise repeats a visible row is
+          // not worth a second row: "the initial request was for forty kegs,
+          // reduced to fifteen casks (nine-gallon firkins)" beside "originally
+          // requested 40 kegs; negotiated down to 15 casks". The named path has
+          // always applied this test; the quantified path now does too.
+          const quantified = eligible && !named && quantitiesPromoted < quantityLimit
+            && newQuantity(value) && !repeatsVisibleFigures(value);
           if (named || quantified) {
             additions.push({ id: detail.id || stableId('promoted', value, promoted + quantitiesPromoted), text: value,
               evidenceIds: [...(detail.evidenceIds || [])], reviewFlagIds: [...(detail.reviewFlagIds || [])], supportingDetails: [] });
