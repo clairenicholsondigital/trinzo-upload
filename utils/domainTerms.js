@@ -52,6 +52,42 @@ const AUTO_CORRECTIONS = [
   { original: 'labeled', replacement: 'labelled', reason: 'British spelling' }
 ];
 
+// ---- Corrections applied to the TRANSCRIPT, before any model sees it ------
+//
+// AUTO_CORRECTIONS above rewrite what is printed. These rewrite what the
+// models read, which is the only way to fix a phrase the transcript states
+// correctly but a reader can misunderstand.
+//
+// "It's under his name because it's from Abbott rate's point of view" is the
+// hotel booked on Abbott's corporate rate. Teams heard it right; the capital
+// R made it look like a company, and the minutes then said the booking was
+// "for Abbott Rate's audit" - a room rate owning an audit. Rewriting the
+// phrase before extraction fixes the meaning rather than the spelling.
+//
+// Keep this list to phrases the client has confirmed: a wrong entry silently
+// rewrites the source of truth, and the evidence panel shows this text.
+const TRANSCRIPT_PHRASE_CORRECTIONS = [
+  {
+    pattern: /\bAbbott\s+rate\b/gi,
+    replacement: 'Abbott corporate rate',
+    reason: 'Abbott’s negotiated hotel rate, not an organisation'
+  }
+];
+
+// Returns { text, applied } so a caller can log what it changed. Idempotent:
+// each replacement no longer matches its own pattern.
+function applyTranscriptPhraseCorrections(value) {
+  let text = String(value == null ? '' : value);
+  const applied = [];
+  for (const rule of TRANSCRIPT_PHRASE_CORRECTIONS) {
+    const matches = text.match(rule.pattern);
+    if (!matches || !matches.length) continue;
+    text = text.replace(rule.pattern, rule.replacement);
+    applied.push({ from: matches[0], to: rule.replacement, count: matches.length, reason: rule.reason });
+  }
+  return { text, applied };
+}
+
 function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -101,6 +137,8 @@ const normaliseUdimedDeep = normaliseDomainTermsDeep;
 module.exports = {
   DOMAIN_TERMS,
   AUTO_CORRECTIONS,
+  TRANSCRIPT_PHRASE_CORRECTIONS,
+  applyTranscriptPhraseCorrections,
   DOMAIN_TERM_PATTERN,
   mentionsDomainTerm,
   normaliseDomainTerms,

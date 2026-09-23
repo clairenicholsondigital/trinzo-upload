@@ -73,7 +73,7 @@ const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
-const { normaliseDomainTermsDeep } = require('../utils/domainTerms');
+const { normaliseDomainTermsDeep, applyTranscriptPhraseCorrections } = require('../utils/domainTerms');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
@@ -1135,7 +1135,11 @@ function canonicalStagedAttendeeAlias(value) {
 }
 
 function normaliseStagedKnownAttendeeAliasesInText(value) {
-  return String(value || '').replace(/\bSmith,\s*Stuart\s+M\b/g, 'Stuart Smith');
+  // Every transcript entry point runs through here, so confirmed phrase
+  // corrections reach the models, the denoiser and the evidence panel alike.
+  return applyTranscriptPhraseCorrections(
+    String(value || '').replace(/\bSmith,\s*Stuart\s+M\b/g, 'Stuart Smith')
+  ).text;
 }
 
 function canonicalKnownStagedPersonName(value) {
@@ -1269,6 +1273,10 @@ function extractTeamsTranscriptStructure(text) {
 }
 
 function buildPreparedTranscriptForStagedAI(text) {
+  const phraseCorrections = applyTranscriptPhraseCorrections(text).applied;
+  if (phraseCorrections.length) console.log(JSON.stringify({
+    event: 'meeting_agent_transcript_phrase_corrections', corrections: phraseCorrections
+  }));
   const raw = normaliseStagedKnownAttendeeAliasesInText(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = raw.split('\n');
   const prepared = [];
