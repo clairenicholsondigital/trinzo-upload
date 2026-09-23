@@ -113,9 +113,132 @@ function shapeDiscussion(discussion = [], people = []) {
   return { discussion: result, demoted, droppedTopics };
 }
 
+// ---- One fact, one line -----------------------------------------------------
+//
+// The body is assembled from several sources - the model's own rows, recovered
+// candidates, promoted supporting details - and each stage checks itself
+// against what it can see at the time. The result is the same fact arriving
+// twice in different words, most visibly as a figure spelled out beside its
+// digits ("over a thousand pints" and "over 1000 pints"), or one assignment
+// stated as a point, again in a recap line and again as a decision.
+//
+// This runs last, on the finished body, which is the only place every row is
+// visible at once. It removes rows, never rewrites them.
+
+const BODY_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then',
+  'than', 'their', 'there', 'will', 'would', 'could', 'should', 'have', 'has', 'been', 'was', 'were', 'are',
+  'not', 'but', 'its', 'his', 'her', 'our', 'your', 'about', 'also', 'more', 'some', 'any', 'all', 'they',
+  'them', 'who', 'what', 'when', 'which', 'while', 'per', 'via', 'out', 'off', 'onto', 'over', 'under']);
+
+const BODY_NUMBER_WORD = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
+  twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90
+};
+
+function bodyTokens(value) {
+  return (clean(value).toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || [])
+    .filter((token) => !BODY_STOP.has(token))
+    .map((token) => token.replace(/(?:ing|ed|es|s)$/, ''));
+}
+
+// Figures as values, so "twelve hundred" matches 1200 and "a thousand" 1000.
+function bodyFigures(value) {
+  const words = clean(value).toLowerCase().replace(/[-–]/g, ' ');
+  const found = new Set();
+  for (const digit of words.match(/\d[\d,]*(?:\.\d+)?/g) || []) {
+    const number = Number(digit.replace(/,/g, ''));
+    if (Number.isFinite(number)) found.add(String(number));
+  }
+  let current = 0;
+  let running = 0;
+  const flush = () => {
+    const total = running + current;
+    if (total) found.add(String(total));
+    current = 0; running = 0;
+  };
+  for (const token of words.match(/[a-z]+/g) || []) {
+    if (BODY_NUMBER_WORD[token] != null) current += BODY_NUMBER_WORD[token];
+    else if (token === 'hundred') current = (current || 1) * 100;
+    else if (token === 'thousand') { running += (current || 1) * 1000; current = 0; }
+    else flush();
+  }
+  flush();
+  found.delete('1');
+  return found;
+}
+
+function bodyOverlap(left, right) {
+  const a = bodyTokens(left);
+  const b = new Set(bodyTokens(right));
+  if (!a.length || !b.size) return 0;
+  return a.filter((token) => b.has(token)).length / Math.min(a.length, b.size);
+}
+
+function sharesFigure(left, right) {
+  const other = bodyFigures(right);
+  return [...bodyFigures(left)].some((figure) => other.has(figure));
+}
+
+// Why a row repeats one that is already in the minutes, or '' when it does not.
+function repeatsRow(value, kept) {
+  const overlap = bodyOverlap(value, kept);
+  if (overlap >= 0.6) return 'same wording';
+  if (overlap >= 0.4 && sharesFigure(value, kept)) return 'same figures, different words';
+  return '';
+}
+
+// "Alan to submit the application and check the towpath; Deepa to reorder the
+// medals and manage social media" - a run-through of several people's jobs,
+// each already minuted on its own line.
+function recapsSeveralRows(value, keptTexts, people) {
+  const named = (Array.isArray(people) ? people : []).filter((name) => {
+    const parts = clean(name).split(/\s+/).filter((part) => part.length >= 2);
+    if (!parts.length) return false;
+    return [parts.join(' '), parts[0]].map(escapeName)
+      .some((form) => new RegExp(String.raw`\b${form}\b`, 'i').test(value));
+  });
+  if (named.length < 2 || !namesSomeoneWithWork(value, people)) return '';
+  const echoed = keptTexts.filter((kept) => bodyOverlap(value, kept) >= 0.3).length;
+  return echoed >= 2 ? 'recaps rows already minuted' : '';
+}
+
+// Returns { discussion, dropped } without mutating the input. Open questions
+// are never dropped: an unresolved question is not a restatement.
+function dedupeDiscussionBody(discussion = [], people = []) {
+  const dropped = [];
+  const kept = [];
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic, points: [], decisions: [], openQuestions: [...(topic.openQuestions || [])] };
+    // Decisions are settled first, so a point restating a decision is the row
+    // that goes, not the other way round.
+    for (const kind of ['decisions', 'points']) {
+      for (const row of Array.isArray(topic?.[kind]) ? topic[kind] : []) {
+        const value = clean(row?.text);
+        if (!value) { next[kind].push(row); continue; }
+        const match = kept.find((entry) => repeatsRow(value, entry.text));
+        const because = match ? repeatsRow(value, match.text)
+          : recapsSeveralRows(value, kept.map((entry) => entry.text), people);
+        if (because) {
+          dropped.push({ text: value.slice(0, 200), because, kept: (match?.text || '').slice(0, 120) });
+          continue;
+        }
+        kept.push({ text: value });
+        next[kind].push(row);
+      }
+    }
+    return next;
+  });
+  return {
+    discussion: topics.filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length),
+    dropped
+  };
+}
+
 module.exports = {
   isSinglePersonAssignment,
   isAssignmentLine,
   shapeDiscussion,
+  dedupeDiscussionBody,
   RECAP_TITLE
 };

@@ -264,7 +264,7 @@ const {
   correctnessChecksEnabled,
   mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
-const { shapeDiscussion } = require('../utils/discussionShape');
+const { shapeDiscussion, dedupeDiscussionBody } = require('../utils/discussionShape');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -13848,6 +13848,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     }));
     // Rows are rebuilt by several steps that keep the rows but not the flags
     // those steps raised; recover what the rows point at, drop dead references.
+    // Last, on the finished body: the only point where every row is visible at
+    // once, so a fact that arrived twice from two stages can be seen as one.
+    const bodyDedupe = dedupeDiscussionBody(finalDiscussion, meetingAgentPeopleNames(draft.sourceUnits));
+    if (bodyDedupe.dropped.length) {
+      finalDiscussion = bodyDedupe.discussion;
+      console.log(JSON.stringify({
+        event: 'meeting_agent_body_dedupe', journeyId: draft.draftId,
+        dropped: bodyDedupe.dropped.slice(0, 20)
+      }));
+    }
     const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
