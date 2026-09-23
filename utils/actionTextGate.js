@@ -99,6 +99,8 @@ function quotesTranscript(action, units) {
 
 // Returns the reason the text is still in spoken form, or '' when it reads as a
 // written action. Order matters only for the reason reported.
+const SECOND_PERSON_REFERENCE = /\b(?:you|your|yours|you're|you'll|you've)\b/i;
+
 function transcriptTextIssue(action, units = []) {
   const text = clean(action);
   if (!text) return '';
@@ -110,7 +112,11 @@ function transcriptTextIssue(action, units = []) {
   // A spoken instruction can already be in written form ("Order six sacks of
   // Maris Otter" inside "I'll order six sacks..."); copying is only a fault when
   // the copied words are not themselves an instruction.
-  if (!imperative && isVerbatimTranscript(text, units)) return 'verbatim_transcript';
+  // ... unless the copied words talk to somebody. "Hand over to Tom now, and
+  // that's your cue" opens with a verb, so it reads as an instruction, but a
+  // published action never addresses the reader as "you": owners go in their
+  // own column.
+  if ((!imperative || SECOND_PERSON_REFERENCE.test(text)) && isVerbatimTranscript(text, units)) return 'verbatim_transcript';
   if (quotesTranscript(text, units)) return 'quoted_transcript';
   // "we" late in "check whether we bring ours" is reported speech inside a
   // written action; "we need to" or "I'll" at the start is the speaker talking.

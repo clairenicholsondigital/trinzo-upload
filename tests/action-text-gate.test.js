@@ -103,3 +103,14 @@ test('a quoted fragment lifted from the transcript is spoken text; an ordinary q
   assert.equal(transcriptTextIssue('Resolve "those three awkward seating situations".', quotedUnits), 'quoted_transcript');
   assert.equal(transcriptTextIssue('Rename the shared folder to "Venue plans 2026".', quotedUnits), '');
 });
+
+test('a copied instruction that talks to someone is still spoken text', () => {
+  const { transcriptTextIssue } = require('../utils/actionTextGate');
+  const units = [
+    { id: 'T0001', speaker: 'Dana Moss', text: "Hand over to Lee now, and that's your cue.", classification: 'keep' },
+    { id: 'T0002', speaker: 'Sam Carter', text: 'Send the risk register to the auditor before Friday.', classification: 'keep' }
+  ];
+  assert.equal(transcriptTextIssue("Hand over to Lee now, and that's your cue.", units), 'verbatim_transcript');
+  // A written instruction copied word for word is still a usable action.
+  assert.equal(transcriptTextIssue('Send the risk register to the auditor before Friday.', units), '');
+});
