@@ -94,3 +94,13 @@ test('an unowned way-to paraphrase folds into the owned action it restates', () 
   const unrelated = { id: 'c', action: 'Figure out a way to cover the reception desk during the audit week.', owners: [], evidenceIds: ['T0040'], timing: { kind: 'not_stated' } };
   assert.equal(foldUnownedNearCopies([owned, unrelated], 'test').length, 2);
 });
+
+test('an owned way-to paraphrase merges into the concrete action and loses the vague wording', () => {
+  const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
+  const rows = dedupeHybridActionRecords([
+    { id: 'a', action: 'Arrange secure document sharing and external file-share access for the auditor.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001'] },
+    { id: 'b', action: 'Figure out a way to either get the auditor access to the necessary documents or share them another way.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0090'] }
+  ], {});
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].action, /^Arrange secure document sharing/);
+});

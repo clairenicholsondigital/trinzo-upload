@@ -11300,6 +11300,14 @@ function splitCompoundActionList(actions = [], journeyId = '') {
   return out;
 }
 
+// A "figure out a way to ..." row against a concrete action for the same work.
+function wayToParaphraseOf(loose = {}, concrete = {}) {
+  return WAY_TO_ACTION.test(String(loose.action || ''))
+    && !WAY_TO_ACTION.test(String(concrete.action || ''))
+    && ownersOverlapOrOpen(loose, concrete)
+    && hybridContentTokenOverlap(loose.action, concrete.action) >= 0.25;
+}
+
 // Same kind of work: the same opening verb, or action types that overlap.
 function sameActionApproach(left = {}, right = {}) {
   const verb = (value) => String(value || '').toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:-[a-z]+)?)/)?.[1] || '';
@@ -11362,6 +11370,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       // work - so "send the standards list" never merges with "review the
       // standards list".
       if (publishedActionNamesSameThing(record, existing) && sameActionApproach(record, existing)) return true;
+      // "Figure out a way to get her access" beside "Arrange secure
+      // SharePoint access for her": the way-to row names no deliverable of
+      // its own, so it is the same work however it is owned.
+      if (wayToParaphraseOf(record, existing) || wayToParaphraseOf(existing, record)) return true;
       if (sameContactPurposeDeliverable(record, existing)) return true;
       // One conversation, one action, whichever side each wording was
       // written from. The owner is settled below.
@@ -11381,10 +11393,14 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       merged.push(record);
       continue;
     }
-    const preferred = preference(record) > preference(duplicate)
+    let preferred = preference(record) > preference(duplicate)
       || (preference(record) === preference(duplicate)
         && String(record.action || '').localeCompare(String(duplicate.action || '')) < 0)
       ? record : duplicate;
+    // Never let the vaguer "figure out a way to ..." wording win.
+    if (wayToParaphraseOf(preferred, preferred === record ? duplicate : record)) {
+      preferred = preferred === record ? duplicate : record;
+    }
     const combinedEvidence = stableEvidence([duplicate, record]);
     const duplicateOwners = duplicate.owners || []; const recordOwners = record.owners || [];
     const ownersCompatible = !duplicateOwners.length || !recordOwners.length
