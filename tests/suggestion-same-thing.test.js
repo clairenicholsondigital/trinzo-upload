@@ -84,3 +84,13 @@ test('an unowned row folds into an owned action that says the same thing differe
   const other = { id: 'c', action: 'Book the meeting room for the closing session.', owners: [], evidenceIds: ['T0040'], timing: { kind: 'not_stated' } };
   assert.equal(foldUnownedNearCopies([{ ...owned, evidenceIds: ['T0010'] }, other], 'test').length, 2);
 });
+
+test('an unowned way-to paraphrase folds into the owned action it restates', () => {
+  const { foldUnownedNearCopies } = require('../routes/api').stagedEvaluation;
+  const owned = { id: 'a', action: 'Work out secure transmission of the audit information and provide the auditor with the necessary external file-share access.', owners: ['Sam Carter'], evidenceIds: ['T0010'], timing: { kind: 'not_stated' } };
+  const paraphrase = { id: 'b', action: 'Figure out a way to either get the auditor access to the necessary documents or share them with her.', owners: [], evidenceIds: ['T0031'], timing: { kind: 'not_stated' } };
+  assert.equal(foldUnownedNearCopies([owned, paraphrase], 'test').length, 1);
+  // A way-to row about different work stays.
+  const unrelated = { id: 'c', action: 'Figure out a way to cover the reception desk during the audit week.', owners: [], evidenceIds: ['T0040'], timing: { kind: 'not_stated' } };
+  assert.equal(foldUnownedNearCopies([owned, unrelated], 'test').length, 2);
+});

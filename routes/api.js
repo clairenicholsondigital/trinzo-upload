@@ -14976,11 +14976,13 @@ function foldUnownedNearCopies(actions = [], journeyId = '') {
         // enough here, without a shared phrase.
         || (!distinctActionDeliverables(other, action)
           && hybridContentTokenOverlap(other.action, action.action) >= 0.45)
-        // "Figure out a way to get her access" beside "Arrange secure
-        // SharePoint access": a way-to paraphrase of work somebody owns.
+        // "Figure out a way to get her access" beside "Work out secure
+        // transmission ... and provide her with SharePoint access": a way-to
+        // paraphrase of work somebody owns. The distinct-deliverable test is
+        // deliberately not applied - such a row names no deliverable of its
+        // own, which is what makes it a paraphrase.
         || (WAY_TO_ACTION.test(action.action || '')
-          && !distinctActionDeliverables(other, action)
-          && hybridContentTokenOverlap(other.action, action.action) >= 0.2)));
+          && hybridContentTokenOverlap(other.action, action.action) >= 0.25)));
     if (!partner) return true;
     partner.evidenceIds = [...new Set([...(partner.evidenceIds || []), ...(action.evidenceIds || [])])].slice(0, 12);
     folded.push({ removed: meetingMinutesAgentText(action.action, 160), into: meetingMinutesAgentText(partner.action, 160) });
