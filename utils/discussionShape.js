@@ -175,9 +175,14 @@ function bodyOverlap(left, right) {
   return a.filter((token) => b.has(token)).length / Math.min(a.length, b.size);
 }
 
+// Sharing one small number is weak evidence: "the source of the three-second
+// requirement" appears in a question and in advice about the same thing, and
+// they are different rows. Two figures in common, or one distinctive one,
+// marks the pair as the same statement.
 function sharesFigure(left, right) {
   const other = bodyFigures(right);
-  return [...bodyFigures(left)].some((figure) => other.has(figure));
+  const shared = [...bodyFigures(left)].filter((figure) => other.has(figure));
+  return shared.length >= 2 || shared.some((figure) => Number(figure) >= 10);
 }
 
 // Why a row repeats one that is already in the minutes, or '' when it does not.

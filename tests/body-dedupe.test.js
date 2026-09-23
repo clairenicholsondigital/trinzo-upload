@@ -91,3 +91,15 @@ test('a line announcing the actions list is not meeting content', () => {
   assert.equal(texts(result).length, 1);
   assert.match(result.dropped[0].because, /announces the actions list/);
 });
+
+test('one small number in common is not enough to call two rows the same', () => {
+  const result = dedupeDiscussionBody([{
+    topic: 'Requirement',
+    points: [
+      row('a', 'Dana questions the source of the three-second alarm requirement, whether standard, clinical or arbitrary.'),
+      row('b', 'Lee advises finding the source of the three-second requirement before any test or requirement changes.')
+    ],
+    decisions: [], openQuestions: []
+  }], []);
+  assert.equal(texts(result).length, 2, 'a question and advice about the same thing are different rows');
+});
