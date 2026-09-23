@@ -11316,6 +11316,25 @@ function wayToParaphraseOf(loose = {}, concrete = {}) {
     && hybridContentTokenOverlap(loose.action, concrete.action) >= 0.25;
 }
 
+// Is `part`'s work wholly contained in `whole`? Every content word of the
+// shorter action appears in the longer one, the shorter is genuinely a part
+// (well under the longer's length), and the same person owns both. Two
+// actions of similar length are never nested, however much they overlap.
+const NESTED_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'then', 'than',
+  'their', 'there', 'will', 'would', 'could', 'should', 'have', 'has', 'been', 'was', 'were', 'are', 'any',
+  'all', 'its', 'his', 'her', 'our', 'your', 'about', 'also', 'once', 'when', 'after', 'before', 'them']);
+function nestedActionWork(part = {}, whole = {}) {
+  if (!ownersOverlapOrOpen(part, whole)) return false;
+  const words = (value) => new Set((meetingMinutesAgentText(value, 1600).toLowerCase()
+    .match(/[a-z0-9][a-z0-9'’-]{2,}/g) || [])
+    .filter((token) => !NESTED_STOP.has(token))
+    .map((token) => token.replace(/(?:ing|ed|es|s)$/, '')));
+  const shortWords = words(part.action);
+  const longWords = words(whole.action);
+  if (shortWords.size < 3 || longWords.size < shortWords.size * 1.6) return false;
+  return [...shortWords].every((word) => longWords.has(word));
+}
+
 // Same kind of work: the same opening verb, or action types that overlap.
 function sameActionApproach(left = {}, right = {}) {
   const verb = (value) => String(value || '').toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:-[a-z]+)?)/)?.[1] || '';
@@ -11378,6 +11397,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       // work - so "send the standards list" never merges with "review the
       // standards list".
       if (publishedActionNamesSameThing(record, existing) && sameActionApproach(record, existing)) return true;
+      // One action's whole job sits inside another's: "Re-share the updated
+      // deck" beside "Build the closing slide with the QR code and booking
+      // link and re-share the updated deck". The longer row already commits
+      // its owner to the shorter one's work.
+      if (nestedActionWork(record, existing) || nestedActionWork(existing, record)) return true;
       // "Figure out a way to get her access" beside "Arrange secure
       // SharePoint access for her": the way-to row names no deliverable of
       // its own, so it is the same work however it is owned.
@@ -16133,6 +16157,7 @@ router.stagedEvaluation = {
   dedupeHybridActionRecords,
   distinctActionDeliverables,
   sameActionApproach,
+  nestedActionWork,
   splitCompoundActionList,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,

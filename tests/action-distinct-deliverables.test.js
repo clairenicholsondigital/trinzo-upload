@@ -92,3 +92,25 @@ test('the same meeting described twice merges; different work with a shared noun
   ], {}).length, 2);
   assert.ok(!sameActionApproach({ action: 'Send the report.' }, { action: 'Review the report.' }));
 });
+
+test('an action whose whole job sits inside another merges into it', () => {
+  const { dedupeHybridActionRecords, nestedActionWork } = require('../routes/api').stagedEvaluation;
+  const row = (id, text, owners) => ({ id, action: text, owners, timing: { kind: 'not_stated' }, evidenceIds: [id] });
+  const rows = dedupeHybridActionRecords([
+    row('a', 'Build the closing slide with the QR code and booking link and re-share the updated deck.', ['Sam Carter']),
+    row('b', 'Re-share the updated deck.', ['Sam Carter'])
+  ], {});
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].action, /closing slide/, 'the fuller action is what stays');
+  // Similar length, or a different owner, is never nesting.
+  assert.ok(!nestedActionWork(
+    { action: 'Review the test results with the team.', owners: ['Sam Carter'] },
+    { action: 'Review the risk plan and the matrix with Dana.', owners: ['Sam Carter'] }));
+  assert.ok(!nestedActionWork(
+    { action: 'Re-share the updated deck.', owners: ['Lee Hart'] },
+    { action: 'Build the closing slide with the QR code and re-share the updated deck.', owners: ['Sam Carter'] }));
+  assert.equal(dedupeHybridActionRecords([
+    row('a', 'Ask Morgan whether the protocols are blocked.', ['Dana Moss']),
+    row('b', 'Ask Morgan about the folder permissions.', ['Dana Moss'])
+  ], {}).length, 2);
+});
