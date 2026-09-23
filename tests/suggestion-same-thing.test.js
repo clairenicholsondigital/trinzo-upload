@@ -104,3 +104,29 @@ test('an owned way-to paraphrase merges into the concrete action and loses the v
   assert.equal(rows.length, 1);
   assert.match(rows[0].action, /^Arrange secure document sharing/);
 });
+
+test('a figure already in the minutes in words is not promoted again in digits', () => {
+  const { promoteNamedFactDetails } = require('../utils/meetingMinutesAgentV2');
+  const discussion = [{
+    topic: 'Funds',
+    points: [{
+      id: 'p1', text: 'A barrier would cost thousands, and there were four hundred pounds in the account.', evidenceIds: ['T0001'],
+      supportingDetails: [
+        { id: 'd1', text: 'Concerns about the cost of a barrier (£400 in the account was mentioned).', evidenceIds: ['T0002'] },
+        { id: 'd2', text: 'The quote for the gate came to 3,200 pounds plus fitting.', evidenceIds: ['T0003'] }
+      ]
+    }],
+    decisions: [], openQuestions: []
+  }];
+  const texts = promoteNamedFactDetails(discussion, [], []).discussion[0].points.map((point) => point.text);
+  assert.ok(!texts.some((value) => /£400/.test(value)), 'the same figure in digits is not added again');
+  assert.ok(texts.some((value) => /3,200/.test(value)), 'a new figure is still added');
+});
+
+test('spelled and numeric forms of the same figure match', () => {
+  const { quantityTokens } = require('../utils/meetingMinutesAgentV2');
+  if (!quantityTokens) return;
+  assert.ok(quantityTokens('four hundred pounds').has('400'));
+  assert.ok(quantityTokens('twenty-two references').has('22'));
+  assert.ok(quantityTokens('£1,200 a year').has('1200'));
+});

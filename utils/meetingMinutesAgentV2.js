@@ -3926,9 +3926,51 @@ const FACT_DATE = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday
 // "eighteen of twenty-two references", "thirty extra handouts".
 const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand';
 const QUANTIFIED_FACT = new RegExp(String.raw`[£$€]\s?\d|\b\d[\d,.]*\s*(?:%|per\s?cent|k\b|kg\b|mg\b|ml\b|g\b|m\b)|\b\d[\d,.]*\s+(?:of\s+\d|[a-z]+s\b|(?:hours?|days?|weeks?|months?|years?|minutes?|seconds?|litres?|metres?|units?|people|staff|kg|tonnes?)\b)|\b(?:${NUMBER_WORDS})(?:[- ](?:${NUMBER_WORDS}))?\s+(?:of\s+(?:the\s+)?(?:${NUMBER_WORDS}|\d)|(?:[a-z]+\s+)?[a-z]{3,}s\b)`, 'i');
+const NUMBER_WORD_VALUE = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+  eighty: 80, ninety: 90
+};
+// "four hundred pounds" and "£400" are the same figure, so a detail holding
+// one must not count as new when the minutes already carry the other. Each
+// run of number words contributes its composed value ("four hundred" -> 400,
+// "twenty-two" -> 22) as well as its parts, so either spelling matches.
 function quantityTokens(value = '') {
-  return new Set((String(value || '').toLowerCase().match(new RegExp(String.raw`\d[\d,.]*|\b(?:${NUMBER_WORDS})\b`, 'g')) || [])
-    .map((token) => token.replace(/[,.]$/, '')).filter((token) => token !== 'one'));
+  const words = String(value || '').toLowerCase().replace(/[-–]/g, ' ');
+  const found = new Set();
+  const digits = words.match(/\d[\d,]*(?:\.\d+)?/g) || [];
+  for (const digit of digits) {
+    const number = Number(digit.replace(/,/g, ''));
+    if (Number.isFinite(number)) found.add(String(number));
+  }
+  const tokens = words.match(/[a-z]+/g) || [];
+  let current = 0;
+  let running = 0;
+  let open = false;
+  const flush = () => {
+    if (!open) return;
+    const total = running + current;
+    if (total) found.add(String(total));
+    current = 0; running = 0; open = false;
+  };
+  for (const token of tokens) {
+    if (NUMBER_WORD_VALUE[token] != null) {
+      current += NUMBER_WORD_VALUE[token];
+      if (NUMBER_WORD_VALUE[token] !== 1) found.add(String(NUMBER_WORD_VALUE[token]));
+      open = true;
+    } else if (token === 'hundred' && open) {
+      current = (current || 1) * 100;
+      found.add(String(running + current));
+    } else if (token === 'thousand' && open) {
+      running += (current || 1) * 1000;
+      current = 0;
+      found.add(String(running));
+    } else flush();
+  }
+  flush();
+  found.delete('1');
+  return found;
 }
 
 function promoteNamedFactDetails(discussion = [], units = [], people = [], limit = 4, quantityLimit = 6) {
@@ -5074,6 +5116,7 @@ module.exports = {
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
+  quantityTokens,
   QUANTIFIED_FACT,
   promoteMaterialObjectionDetails,
   supersededCheckItems,
