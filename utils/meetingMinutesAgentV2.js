@@ -3963,12 +3963,16 @@ function quantityTokens(value = '', parts = true) {
       current += NUMBER_WORD_VALUE[token];
       if (parts && NUMBER_WORD_VALUE[token] !== 1) found.add(String(NUMBER_WORD_VALUE[token]));
       open = true;
-    } else if (token === 'hundred' && open) {
+    } else if (token === 'hundred') {
+      // "a thousand pints" and "over a hundred" carry a figure of their own,
+      // with no number word in front of them.
       current = (current || 1) * 100;
+      open = true;
       found.add(String(running + current));
-    } else if (token === 'thousand' && open) {
+    } else if (token === 'thousand') {
       running += (current || 1) * 1000;
       current = 0;
+      open = true;
       found.add(String(running));
     } else flush();
   }

@@ -169,3 +169,10 @@ test('a detail restating visible figures in other words is not promoted', () => 
   assert.ok(!texts.some((value) => /forty kegs/.test(value)), 'the same reduction in other words is not added again');
   assert.ok(texts.some((value) => /6 polypins/.test(value)), 'an unrelated new figure still is');
 });
+
+test('"a thousand" carries a figure of its own', () => {
+  const { quantityTokens } = require('../utils/meetingMinutesAgentV2');
+  assert.ok(quantityTokens('over a thousand pints', false).has('1000'));
+  assert.ok(quantityTokens('a hundred cases', false).has('100'));
+  assert.ok(quantityTokens('two thousand pounds of beer', false).has('2000'));
+});
