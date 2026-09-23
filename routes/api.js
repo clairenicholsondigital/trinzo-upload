@@ -14351,9 +14351,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // evidence and flags forward and retaining the stronger timing.
   const actionsBeforeDisplayDedupe = timingChecked.actions.length;
   const splitRows = splitCompoundActionList(timingChecked.actions, draft.draftId);
-  const actionScreenRows = dedupeHybridActionRecords(
+  // The completeness, answered and lifecycle checks rewrite wording after the
+  // earlier fold ran, which can leave an unowned paraphrase beside the owned
+  // action it restates. Fold once more on what the reviewer will actually see.
+  const actionScreenRows = foldUnownedNearCopies(dedupeHybridActionRecords(
     splitRows, { sourceUnits: draft.sourceUnits }
-  );
+  ), draft.draftId);
   const actionScreenDuplicateCount = actionsBeforeDisplayDedupe - actionScreenRows.length;
   if (actionScreenDuplicateCount) console.log(JSON.stringify({
     event: 'meeting_agent_action_screen_dedupe', journeyId: draft.draftId,
