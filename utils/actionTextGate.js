@@ -102,7 +102,21 @@ function quotesTranscript(action, units) {
 // A published action is written about people, not spoken to or among them:
 // "hand over to Tom now, and that's your cue", "ring round and get us up to
 // fourteen". Either person marks the words as speech.
-const SECOND_PERSON_REFERENCE = /\b(?:you|your|yours|you're|you'll|you've|us|our|ours|me|my|mine|we're|we'll|we've)\b/i;
+const SECOND_PERSON_REFERENCE = /\b(?:you|your|yours|you're|you'll|you've|us|our|ours|me|my|mine|we|we're|we'll|we've|i|i'm|i'll|i've|i'd)\b/i;
+
+// The deliberate 95% rule above lets a rewritten clause through, which is
+// right for "We will work out a secure way..." -> "Work out a secure way...".
+// It also lets through a clause lifted unchanged from the middle of a turn:
+// "I'll sort the marshals, I've got the list from last year, I'll just ring
+// round and get us up to fourteen" yields the action "ring round and get us up
+// to fourteen". What separates the two is the speaking: a rewritten clause
+// drops the speaker, a lifted one keeps them talking.
+function isSpokenFragment(action, units) {
+  const wording = comparable(action);
+  const words = wording.split(' ').filter(Boolean);
+  if (words.length < 4 || !SECOND_PERSON_REFERENCE.test(action)) return false;
+  return cachedSentences(units).some((sentence) => sentence.includes(wording));
+}
 
 function transcriptTextIssue(action, units = []) {
   const text = clean(action);
@@ -120,6 +134,7 @@ function transcriptTextIssue(action, units = []) {
   // published action never addresses the reader as "you": owners go in their
   // own column.
   if ((!imperative || SECOND_PERSON_REFERENCE.test(text)) && isVerbatimTranscript(text, units)) return 'verbatim_transcript';
+  if (isSpokenFragment(text, units)) return 'verbatim_transcript';
   if (quotesTranscript(text, units)) return 'quoted_transcript';
   // "we" late in "check whether we bring ours" is reported speech inside a
   // written action; "we need to" or "I'll" at the start is the speaker talking.

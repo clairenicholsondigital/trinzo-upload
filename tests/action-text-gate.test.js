@@ -119,3 +119,16 @@ test('a copied instruction that talks to someone is still spoken text', () => {
   // A written instruction copied word for word is still a usable action.
   assert.equal(transcriptTextIssue('Send the risk register to the auditor before Friday.', units), '');
 });
+
+test('a clause lifted from the middle of a turn, still speaking, is spoken text', () => {
+  const { transcriptTextIssue } = require('../utils/actionTextGate');
+  const units = [
+    { id: 'T0001', speaker: 'Dana Moss', text: "Right, I'll sort the rota, I've got the list from last year, I'll just ring round and get us up to fourteen.", classification: 'keep' },
+    { id: 'T0002', speaker: 'Sam Carter', text: "I'll order six sacks of malt today and get them in before Thursday.", classification: 'keep' }
+  ];
+  assert.equal(transcriptTextIssue('ring round and get us up to fourteen.', units), 'verbatim_transcript');
+  assert.equal(transcriptTextIssue("sort the rota, I've got the list from last year", units), 'verbatim_transcript');
+  // A clause rewritten into an action drops the speaker, and still passes.
+  assert.equal(transcriptTextIssue('Order six sacks of malt today.', units), '');
+  assert.equal(transcriptTextIssue('Recruit enough marshals to reach fourteen.', units), '');
+});
