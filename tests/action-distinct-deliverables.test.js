@@ -77,3 +77,18 @@ test('two wordings of one step that differ only in the condition they wait on ar
     { action: "Re-send the deck once it's done." },
     { action: 'Re-send the deck after finishing the chart and cover-page edits.' }));
 });
+
+test('the same meeting described twice merges; different work with a shared noun does not', () => {
+  const { dedupeHybridActionRecords, sameActionApproach } = require('../routes/api').stagedEvaluation;
+  const row = (id, text, owners, evidenceIds) => ({ id, action: text, owners, timing: { kind: 'not_stated' }, evidenceIds });
+  const merged = dedupeHybridActionRecords([
+    row('a', 'Hold a pre-audit preparation session to review the information before the audit begins.', ['Sam Carter', 'Lee Hart'], ['T0001']),
+    row('b', 'Hold a pre-audit preparation session face to face at the hotel on the weekend before the Monday start.', ['Sam Carter', 'Lee Hart'], ['T0099'])
+  ], {});
+  assert.equal(merged.length, 1);
+  assert.equal(dedupeHybridActionRecords([
+    row('a', 'Send the standards list to the reviewer.', ['Sam Carter'], ['T0001']),
+    row('b', 'Review the standards list and come back with questions.', ['Sam Carter'], ['T0002'])
+  ], {}).length, 2);
+  assert.ok(!sameActionApproach({ action: 'Send the report.' }, { action: 'Review the report.' }));
+});

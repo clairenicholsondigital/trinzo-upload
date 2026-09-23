@@ -11300,6 +11300,16 @@ function splitCompoundActionList(actions = [], journeyId = '') {
   return out;
 }
 
+// Same kind of work: the same opening verb, or action types that overlap.
+function sameActionApproach(left = {}, right = {}) {
+  const verb = (value) => String(value || '').toLowerCase().match(/^\s*(?:please\s+)?([a-z]+(?:-[a-z]+)?)/)?.[1] || '';
+  if (verb(left.action) && verb(left.action) === verb(right.action)) return true;
+  const leftTypes = hybridActionTypes(left.action);
+  const rightTypes = hybridActionTypes(right.action);
+  if (!leftTypes.size || !rightTypes.size) return false;
+  return [...leftTypes].some((type) => rightTypes.has(type));
+}
+
 function dedupeHybridActionRecords(records = [], options = {}) {
   const merged = [];
   const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
@@ -11345,6 +11355,13 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         && hybridCandidateMatchesRecord(candidate, existing)
         && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
       if (conventional) return true;
+      // The same thing said twice with no shared citation: "Hold a pre-audit
+      // preparation meeting to review information" and "Hold a pre-audit
+      // preparation meeting face to face at the hotel". Both must name the
+      // same specific thing, have compatible owners, and do the same kind of
+      // work - so "send the standards list" never merges with "review the
+      // standards list".
+      if (publishedActionNamesSameThing(record, existing) && sameActionApproach(record, existing)) return true;
       if (sameContactPurposeDeliverable(record, existing)) return true;
       // One conversation, one action, whichever side each wording was
       // written from. The owner is settled below.
@@ -16072,6 +16089,7 @@ router.stagedEvaluation = {
   reconcileAcceptedRefereeActions,
   dedupeHybridActionRecords,
   distinctActionDeliverables,
+  sameActionApproach,
   splitCompoundActionList,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,
