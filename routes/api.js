@@ -265,6 +265,7 @@ const {
   mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
 const { shapeDiscussion, dedupeDiscussionBody } = require('../utils/discussionShape');
+const { applyPresenterAidGate } = require('../utils/presenterAidGate');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -14438,7 +14439,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     before: actionsBeforeDisplayDedupe, after: actionScreenRows.length,
     merged: actionScreenDuplicateCount
   }));
-  const actionFlagState = reconcileRecordFlags({ actions: actionScreenRows }, mergeMeetingAgentFlags(refereeFlags, [
+  // On a rehearsal, delivery advice reads as work: "Find and use the clock at
+  // the top right while presenting", "Keep your phone next to you". Nothing is
+  // produced and nobody receives anything. Applied here, last, because the
+  // completeness, answered and lifecycle checks rewrite wording after the
+  // earlier filters have run, so only this list is the finished one.
+  const presenterAidGate = applyPresenterAidGate(actionScreenRows, details.meetingType);
+  if (presenterAidGate.dropped.length) console.log(JSON.stringify({
+    event: 'meeting_agent_presenter_aid_gate', journeyId: draft.draftId,
+    meetingType: details.meetingType, dropped: presenterAidGate.dropped
+  }));
+  const actionFlagState = reconcileRecordFlags({ actions: presenterAidGate.actions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
     ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
