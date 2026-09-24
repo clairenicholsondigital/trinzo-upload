@@ -212,16 +212,23 @@
 .meeting-agent-page .generation-phases{
   display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;
   margin:.8rem 0 0;padding:0;list-style:none}
+/* Stage chips carry the brand pair: teal fill once a stage is done, white
+   while it is still to come, with the same dark navy text throughout so the
+   label never drops in contrast as the state changes. */
 .meeting-agent-page .generation-phase{
   display:flex;align-items:center;gap:.45rem;padding:.5rem .6rem;
-  border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:var(--fs-sm)}
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:#fff;color:#01173B;font-size:var(--fs-sm)}
 .meeting-agent-page .generation-phase::before{
   content:"";width:.65rem;height:.65rem;flex:none;border-radius:50%;background:var(--border-strong)}
-.meeting-agent-page .generation-phase.active{border-color:var(--accent);color:var(--heading)}
+/* In progress keeps the accent border as its signal and inherits the same
+   navy, so the label does not change colour as a stage moves along. */
+.meeting-agent-page .generation-phase.active{border-color:var(--accent)}
 .meeting-agent-page .generation-phase.active::before{
   background:transparent;border:2px solid var(--brand-200);border-top-color:var(--accent);animation:agent-spin .75s linear infinite}
-.meeting-agent-page .generation-phase.done{color:var(--ok-text)}
-.meeting-agent-page .generation-phase.done::before{content:"\2713";display:grid;place-items:center;background:var(--ok-bg);font-size:.55rem}
+.meeting-agent-page .generation-phase.done{background:#17D0C4;border-color:#17D0C4;color:#01173B}
+.meeting-agent-page .generation-phase.done::before{
+  content:"\2713";display:grid;place-items:center;background:transparent;color:#01173B;font-size:.7rem;font-weight:700}
 .meeting-agent-page .generation-progress-actions{display:flex;align-items:center;gap:.65rem;margin-top:.75rem}
 .meeting-agent-page .generation-preview-note{margin:.65rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
 .meeting-agent-page .prewarm-notice{margin:.75rem 0;padding:.65rem .75rem;border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);font-size:var(--fs-sm)}
