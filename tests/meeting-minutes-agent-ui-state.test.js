@@ -414,6 +414,42 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
   }
 });
 
+test('actions can be reordered from the keyboard, and the order is saved', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    await page.click('#addAction');
+    await page.fill('#actionsBody [data-action-row="1"] [data-action]', 'Second action text.');
+    const first = await page.inputValue('#actionsBody [data-action-row="0"] [data-action]');
+
+    // A drag-only handle cannot be operated without a mouse, so it takes arrows.
+    await page.focus('#actionsBody [data-action-row="0"] [data-action-grip]');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.inputValue('#actionsBody [data-action-row="1"] [data-action]'), first);
+    assert.equal(await page.inputValue('#actionsBody [data-action-row="0"] [data-action]'), 'Second action text.');
+
+    // Focus follows the row that moved, so the keys can be pressed repeatedly.
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.actionGrip), '1');
+
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await page.inputValue('#actionsBody [data-action-row="0"] [data-action]'), first);
+
+    // The top row cannot move above itself.
+    await page.focus('#actionsBody [data-action-row="0"] [data-action-grip]');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await page.inputValue('#actionsBody [data-action-row="0"] [data-action]'), first);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('action generation has an honest waiting state and stage-scoped status', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;

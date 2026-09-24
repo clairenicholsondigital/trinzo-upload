@@ -173,7 +173,11 @@
    * while they are typing.
    * ------------------------------------------------------------------ */
   function controlSelector(element) {
-    if (!element || !element.matches || !element.matches('input,textarea,select')) return '';
+    if (!element || !element.matches) return '';
+    // The reorder handle is a button, but focus has to survive a re-render on it
+    // too or the arrow keys only work once.
+    if (element.matches('[data-action-grip]')) return '[data-action-grip="' + element.dataset.actionGrip + '"]';
+    if (!element.matches('input,textarea,select')) return '';
     if (element.id) return '#' + element.id;
     var parts = Object.keys(element.dataset).map(function (key) {
       var attribute = key.replace(/[A-Z]/g, function (char) { return '-' + char.toLowerCase(); });
@@ -959,7 +963,12 @@
         + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Keep') + '</button>'
         + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Reject</button>'
         + '</div>';
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main"><textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
+      // Reordering: the handle is the drag source and also takes arrow keys, so
+      // the order can be changed without a mouse.
+      var grip = '<button type="button" class="action-grip" data-action-grip="' + index + '" draggable="true"'
+        + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
+        + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions have been generated.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     renderActionReview();
@@ -2012,6 +2021,76 @@
       evidenceIds: back.evidenceIds || [], reviewFlagIds: []
     });
     rerenderActions(); queueReviewDecision('Action put back');
+  });
+
+  /* ------------------------------------------------------------------ *
+   * Reordering actions.
+   * The register comes out in the order the passes produced it, which is not
+   * always the order the work happens in. Dragging is the obvious gesture, so
+   * the handle is the drag source; it also takes ArrowUp/ArrowDown, because a
+   * drag-only control cannot be operated from the keyboard at all.
+   * ------------------------------------------------------------------ */
+  var dragFromIndex = null;
+
+  function moveAction(from, to) {
+    if (!state.draft) return false;
+    var rows = state.draft.actions || [];
+    if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return false;
+    readActions();
+    rows.splice(to, 0, rows.splice(from, 1)[0]);
+    rerenderActions();
+    scheduleSave();
+    return true;
+  }
+
+  function focusGrip(index) {
+    var grip = document.querySelector('[data-action-grip="' + index + '"]');
+    if (grip) grip.focus();
+  }
+
+  document.getElementById('actionsBody').addEventListener('dragstart', function (event) {
+    var grip = event.target.closest('[data-action-grip]');
+    if (!grip) return;
+    dragFromIndex = Number(grip.dataset.actionGrip);
+    var row = grip.closest('[data-action-row]');
+    if (row) row.classList.add('is-dragging');
+    // Firefox will not start a drag without data on the transfer.
+    if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(dragFromIndex)); }
+  });
+
+  document.getElementById('actionsBody').addEventListener('dragover', function (event) {
+    if (dragFromIndex === null) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    var row = event.target.closest('[data-action-row]');
+    document.querySelectorAll('.action-row.drop-target').forEach(function (node) { node.classList.remove('drop-target'); });
+    if (row && Number(row.dataset.actionRow) !== dragFromIndex) row.classList.add('drop-target');
+  });
+
+  document.getElementById('actionsBody').addEventListener('drop', function (event) {
+    if (dragFromIndex === null) return;
+    event.preventDefault();
+    var row = event.target.closest('[data-action-row]');
+    var to = row ? Number(row.dataset.actionRow) : null;
+    var from = dragFromIndex;
+    dragFromIndex = null;
+    document.querySelectorAll('.action-row.drop-target,.action-row.is-dragging').forEach(function (node) { node.classList.remove('drop-target', 'is-dragging'); });
+    if (to !== null) moveAction(from, to);
+  });
+
+  document.getElementById('actionsBody').addEventListener('dragend', function () {
+    dragFromIndex = null;
+    document.querySelectorAll('.action-row.drop-target,.action-row.is-dragging').forEach(function (node) { node.classList.remove('drop-target', 'is-dragging'); });
+  });
+
+  document.getElementById('actionsBody').addEventListener('keydown', function (event) {
+    var grip = event.target.closest('[data-action-grip]');
+    if (!grip) return;
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    var from = Number(grip.dataset.actionGrip);
+    var to = from + (event.key === 'ArrowUp' ? -1 : 1);
+    if (moveAction(from, to)) focusGrip(to);
   });
 
   document.getElementById('actionsBody').addEventListener('click', function (event) {
