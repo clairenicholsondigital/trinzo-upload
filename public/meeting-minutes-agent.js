@@ -306,7 +306,7 @@
       var remaining = seconds;
       function tick() {
         if (remaining <= 0) { setStatus('Continuing now...', false, stage); resolve(); return; }
-        setStatus('Microsoft is temporarily busy. Continuing in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + ' (attempt ' + nextAttempt + ' of ' + totalAttempts + ')...', false, stage);
+        setStatus('Microsoft is temporarily busy. Continuing in ' + remaining + ' second' + (remaining === 1 ? '' : 's') + '...', false, stage);
         remaining -= 1;
         window.setTimeout(tick, 1000);
       }
@@ -600,7 +600,7 @@
     },
     summary: {
       preparing: 'Preparing the Summary in the background while you review Actions…',
-      ready: 'The Summary is ready. It opens with the next step.'
+      ready: ''
     }
   };
 
@@ -619,9 +619,12 @@
       if (!element.hidden) element.textContent = RUNNING_NOTICE_TEXT[stage] || element.textContent;
       return;
     }
-    element.hidden = !info;
+    var noticeText = info ? SPECULATION_NOTICE_TEXT[stage][info.status === 'ready' ? 'ready' : 'preparing'] : '';
+    // A stage with nothing useful to announce hides its box rather than
+    // showing an empty one.
+    element.hidden = !noticeText;
     if (element.hidden) return;
-    element.textContent = SPECULATION_NOTICE_TEXT[stage][info.status === 'ready' ? 'ready' : 'preparing'];
+    element.textContent = noticeText;
   }
 
   function renderActionsPrewarm() {
@@ -803,7 +806,11 @@
       var label = labels[row.field];
       var targetId = recordDomId('discussion', row.item.id, topicIndex + '-' + row.field + '-' + row.itemIndex);
       var actions = (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="secondary quiet" data-move-record-new-topic="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to new topic</button><button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button>';
-      return '<div id="' + escapeHtml(targetId) + '" class="record-row proposition-row"><div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea rows="1" data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + recordMenu(row.item, actions) + '</div>';
+      var grip = '<button type="button" class="record-grip" draggable="true"'
+        + ' data-record-grip="' + topicIndex + '" data-grip-field="' + row.field + '" data-grip-index="' + row.itemIndex + '"'
+        + ' aria-label="Reorder this ' + escapeHtml(label.toLowerCase()) + '. Drag, or use the arrow keys."'
+        + ' title="Drag to reorder or move to another topic"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
+      return '<div id="' + escapeHtml(targetId) + '" class="record-row proposition-row" data-record-row data-row-topic="' + topicIndex + '" data-row-field="' + escapeHtml(row.field) + '" data-row-index="' + row.itemIndex + '">' + grip + '<div class="proposition-kind ' + escapeHtml(row.field) + '">' + escapeHtml(label) + '</div><textarea rows="1" data-record-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="' + escapeHtml(label) + '">' + escapeHtml(row.item.text || '') + '</textarea>' + recordMenu(row.item, actions) + '</div>';
     }).join('') || '<p class="muted record-empty">No meeting content recorded.</p>') + '</div>' + topicSupportingDetails(topic, topicIndex) + '</div>';
   }
 
@@ -1702,7 +1709,7 @@
           var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
           setStatus(keptEdits
             ? 'Your edited Actions were kept. The regenerated Actions are shown as proposed changes: accept the ones you want.'
-            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : 'Summary generated from the confirmed minutes.'), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
+            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : ''), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
@@ -1909,6 +1916,108 @@
     setSaveStatus('New topic is kept in this tab until you add meeting content.', 'local-only');
     var field = document.querySelector('[data-topic-index="' + (state.draft.discussion.length - 1) + '"][data-topic]');
     if (field) field.focus({ preventScroll:true });
+  });
+
+  /* ------------------------------------------------------------------ *
+   * Reordering discussion records, including between topics.
+   * A record keeps its kind when it moves: a decision dropped into another
+   * topic is still a decision. Changing kind is what "Move to context" and
+   * the add menu are for, and silently converting one on a drop would be a
+   * surprise the reviewer did not ask for.
+   * ------------------------------------------------------------------ */
+  var recordDragFrom = null;
+
+  function clearRecordDropMarks() {
+    document.querySelectorAll('.record-row.drop-target,.record-row.is-dragging,.discussion-card.drop-target')
+      .forEach(function (node) { node.classList.remove('drop-target', 'is-dragging'); });
+  }
+
+  function moveDiscussionRecord(from, to) {
+    if (!state.draft || !from || !to) return false;
+    var topics = state.draft.discussion || [];
+    var source = topics[from.topic] && topics[from.topic][from.field];
+    var targetTopic = topics[to.topic];
+    if (!source || !targetTopic || !source[from.index]) return false;
+    if (from.topic === to.topic && from.field === to.field && to.index === from.index) return false;
+    readDiscussion();
+    var moved = source.splice(from.index, 1)[0];
+    if (!Array.isArray(targetTopic[from.field])) targetTopic[from.field] = [];
+    var destination = targetTopic[from.field];
+    // Removing the row first, then inserting at the target index, leaves the
+    // record exactly at that index. Adjusting for the shift double-counts it.
+    var at = to.field === from.field && typeof to.index === 'number' ? to.index : destination.length;
+    destination.splice(Math.min(at, destination.length), 0, moved);
+    renderDiscussion();
+    scheduleSave();
+    return true;
+  }
+
+  function gripTarget(grip) {
+    return { topic: Number(grip.dataset.recordGrip), field: grip.dataset.gripField, index: Number(grip.dataset.gripIndex) };
+  }
+
+  function rowTarget(row) {
+    return { topic: Number(row.dataset.rowTopic), field: row.dataset.rowField, index: Number(row.dataset.rowIndex) };
+  }
+
+  document.getElementById('discussionList').addEventListener('dragstart', function (event) {
+    var grip = event.target.closest('[data-record-grip]');
+    if (!grip) return;
+    recordDragFrom = gripTarget(grip);
+    var row = grip.closest('[data-record-row]');
+    if (row) row.classList.add('is-dragging');
+    if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', 'record'); }
+  });
+
+  document.getElementById('discussionList').addEventListener('dragover', function (event) {
+    if (!recordDragFrom) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    var row = event.target.closest('[data-record-row]');
+    var card = event.target.closest('[data-topic-card]');
+    document.querySelectorAll('.record-row.drop-target,.discussion-card.drop-target')
+      .forEach(function (node) { node.classList.remove('drop-target'); });
+    // A row marks the exact position; anywhere else on a card means the end of
+    // that topic, which is how a record gets into an empty one.
+    if (row) row.classList.add('drop-target');
+    else if (card) card.classList.add('drop-target');
+  });
+
+  document.getElementById('discussionList').addEventListener('drop', function (event) {
+    if (!recordDragFrom) return;
+    event.preventDefault();
+    var row = event.target.closest('[data-record-row]');
+    var card = event.target.closest('[data-topic-card]');
+    var from = recordDragFrom;
+    recordDragFrom = null;
+    clearRecordDropMarks();
+    if (row) moveDiscussionRecord(from, rowTarget(row));
+    else if (card) {
+      var topicIndex = Array.prototype.indexOf.call(document.querySelectorAll('[data-topic-card]'), card);
+      if (topicIndex >= 0) moveDiscussionRecord(from, { topic: topicIndex, field: null, index: null });
+    }
+  });
+
+  document.getElementById('discussionList').addEventListener('dragend', function () {
+    recordDragFrom = null;
+    clearRecordDropMarks();
+  });
+
+  document.getElementById('discussionList').addEventListener('keydown', function (event) {
+    var grip = event.target.closest('[data-record-grip]');
+    if (!grip) return;
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    // Arrows move a record within its own kind in its own topic; crossing
+    // topics without a mouse is what "Move to new topic" already does.
+    var from = gripTarget(grip);
+    var to = { topic: from.topic, field: from.field, index: from.index + (event.key === 'ArrowUp' ? -1 : 1) };
+    var rows = ((state.draft.discussion || [])[from.topic] || {})[from.field] || [];
+    if (to.index < 0 || to.index >= rows.length) return;
+    if (moveDiscussionRecord(from, to)) {
+      var next = document.querySelector('[data-record-grip="' + to.topic + '"][data-grip-field="' + to.field + '"][data-grip-index="' + to.index + '"]');
+      if (next) next.focus();
+    }
   });
 
   document.getElementById('discussionList').addEventListener('click', function (event) {

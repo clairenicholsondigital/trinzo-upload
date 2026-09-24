@@ -450,6 +450,43 @@ test('actions can be reordered from the keyboard, and the order is saved', { tim
   }
 });
 
+test('a discussion record moves within its topic and across topics', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'topic-cleanup');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+
+    const firstText = await page.inputValue('.discussion-card:nth-child(1) [data-record-field]');
+    const secondCardCount = await page.locator('.discussion-card:nth-child(2) [data-record-field]').count();
+
+    // Arrows move a record within its own kind; the first row cannot rise.
+    await page.focus('.discussion-card:nth-child(1) [data-record-grip]');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await page.inputValue('.discussion-card:nth-child(1) [data-record-field]'), firstText);
+
+    // Dropping onto a row in another topic moves it there, keeping its kind.
+    await page.evaluate(() => {
+      const grip = document.querySelector('.discussion-card:nth-child(1) [data-record-grip]');
+      const target = document.querySelector('.discussion-card:nth-child(2) [data-record-row]');
+      const data = new DataTransfer();
+      grip.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }));
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: data }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: data }));
+    });
+    assert.equal(await page.locator('.discussion-card:nth-child(2) [data-record-field]').count(), secondCardCount + 1);
+    const movedKind = await page.locator('.discussion-card:nth-child(2) [data-record-field]').first().getAttribute('data-record-field');
+    assert.equal(movedKind, 'points', 'a discussion point stays a discussion point when it moves');
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('action generation has an honest waiting state and stage-scoped status', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -1123,7 +1160,10 @@ test('dense layouts give writing space to content rather than repeated controls'
 
     await page.click('[data-step="2"]');
     assert.equal(await page.locator('.discussion-card .card-head .record-add-menu').count(), 1);
-    assert.ok(await page.locator('.proposition-row').first().evaluate((node) => node.getBoundingClientRect().height < 60));
+    const propHeight = await page.locator('.proposition-row').first().evaluate((node) => node.getBoundingClientRect().height);
+    // The reorder handle floats in the gutter precisely so it does not push
+    // this back over the line.
+    assert.ok(propHeight < 60, 'proposition row height ' + propHeight);
     assert.ok(await page.locator('.review-flags-summary').evaluate((node) => node.getBoundingClientRect().width < 260));
     assert.deepEqual(errors, []);
   } finally {

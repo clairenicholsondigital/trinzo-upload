@@ -391,7 +391,7 @@
   min-width:170px;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);box-shadow:var(--shadow-lg)}
 .meeting-agent-page .record-add-options .secondary{justify-content:flex-start;width:100%}
-.meeting-agent-page .proposition-row{grid-template-columns:auto minmax(0,1fr) auto;padding:.25rem .4rem;border-left:3px solid var(--accent);background:var(--surface)}
+.meeting-agent-page .proposition-row{position:relative;grid-template-columns:auto minmax(0,1fr) auto;padding:.25rem .4rem;border-left:3px solid var(--accent);background:var(--surface)}
 .meeting-agent-page .proposition-row+.proposition-row{padding-top:.4rem}
 .meeting-agent-page .proposition-kind,.meeting-agent-page .final-kind{
   display:inline-flex;width:max-content;padding:.18rem .5rem;border-radius:999px;
@@ -477,14 +477,27 @@
 .meeting-agent-page .action-main{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.35rem;align-items:start}
 /* Deliberately quiet: the handle only resolves on hover or keyboard focus, so
    it does not compete with the action text on a list of fifteen rows. */
+.meeting-agent-page .record-grip,
 .meeting-agent-page .action-grip{
-  display:grid;place-items:center;width:1.4rem;min-height:1.9rem;padding:0;margin:0;
+  display:grid;place-items:center;width:1.1rem;min-height:1.6rem;padding:0;margin:0;
   border:0;background:transparent;color:var(--border-strong);cursor:grab;opacity:.45;
   transition:opacity .12s ease,color .12s ease}
 .meeting-agent-page .action-row:hover .action-grip,
+.meeting-agent-page .record-row:hover .record-grip,
+.meeting-agent-page .record-grip:focus-visible,
 .meeting-agent-page .action-grip:focus-visible{opacity:1;color:var(--muted)}
+.meeting-agent-page .record-grip .ic{width:.85rem;height:.85rem}
+/* The discussion row is dense, and an extra grid column pushed its text onto
+   another line. The handle sits in the row's left gutter instead, costing the
+   text no width. */
+.meeting-agent-page .record-grip{
+  position:absolute;left:-1.05rem;top:.3rem;width:1rem;min-height:1.3rem}
+.meeting-agent-page .record-grip:active,
 .meeting-agent-page .action-grip:active{cursor:grabbing}
-.meeting-agent-page .action-row.is-dragging{opacity:.5}
+.meeting-agent-page .action-row.is-dragging,
+.meeting-agent-page .record-row.is-dragging{opacity:.5}
+.meeting-agent-page .record-row.drop-target{box-shadow:inset 0 2px 0 var(--accent)}
+.meeting-agent-page .discussion-card.drop-target{outline:2px dashed var(--accent);outline-offset:2px}
 .meeting-agent-page .action-row.drop-target td{box-shadow:inset 0 2px 0 var(--accent)}
 /* Review decisions on each action row, and the count bar above the table. */
 .meeting-agent-page .row-decisions{display:flex;gap:.35rem;margin-top:.2rem}
@@ -824,7 +837,7 @@
 <main class="container">
   <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a><a href="/meeting-minutes-final">Meeting transcript to minutes</a><a href="/meeting-minutes-agent" aria-current="page">Meeting Minutes Agent</a><a href="/jobs">Library</a></nav>
 
-  <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p><p class="tool-note"><strong>Which minutes tool?</strong> This guided tool supports source evidence, review flags and agent-assisted editing. <a href="/meeting-minutes-final">Meeting transcript to minutes</a> is the quicker single-pass option.</p></section>
+  <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p></section>
 
   <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="1" data-num="2" type="button" disabled aria-label="Step 2, what matters most from this meeting">Focus</button><button class="step" data-step="2" data-num="3" type="button" disabled aria-label="Step 3, discussion">Discussion</button><button class="step" data-step="3" data-num="4" type="button" disabled aria-label="Step 4, actions">Actions</button><button class="step" data-step="4" data-num="5" type="button" disabled aria-label="Step 5, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="6" type="button" disabled aria-label="Step 6, final review">Review</button></div>
 
@@ -850,7 +863,6 @@
 
     <div id="detailsEditor" hidden>
       <div class="toolbar"><h2>Meeting details</h2></div>
-      <p class="muted">The prepared transcript removes likely noise while retaining source references for review.</p>
       <div class="form-grid">
         <label class="field full"><span>Meeting title</span><input id="meetingTitle"></label>
         <label class="field"><span>Date</span><input id="meetingDate" type="date"></label>

@@ -13100,7 +13100,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         repairPrompt: callOptions.repairPrompt,
         combineResults: callOptions.combineResults,
         onAttempt: (attempt) => progress(pass,
-          attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — still working (attempt ${attempt.attempt} of ${attempt.maxAttempts})…` : baseMessage,
+          // Retry counts are our plumbing, not the reviewer's business: they
+          // only need to know it is still going.
+          attempt.attempt > 1 ? `${baseMessage.replace(/…$/, '')} — still working…` : baseMessage,
           [{ ...attempt, ok: null }])
       });
       const resultCounts = meetingAgentResultCounts(response.result);
