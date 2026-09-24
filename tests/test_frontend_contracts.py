@@ -109,6 +109,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('min-height:36px;padding:.3rem .4rem;border-color:transparent', page)
         self.assertIn('<details class="supporting-context">', client)
         self.assertIn('<details class="record-add-menu">', client)
+        # The add control is an icon rather than the words "Add item", so its
+        # accessible name and tooltip are the only thing naming it.
+        self.assertIn('aria-label="Add item" title="Add item"', client)
+        self.assertIn('#i-plus', client)
+        self.assertIn('<symbol id="i-plus"', page)
         # Page-wide, not just .notice: .save-strip and the button classes set
         # display, which silently defeats the attribute without this guard.
         self.assertIn('.meeting-agent-page [hidden]{display:none!important}', page)

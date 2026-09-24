@@ -809,7 +809,7 @@
   }
 
   function recordAddMenu(topicIndex) {
-    return '<details class="record-add-menu"><summary class="secondary compact">Add item</summary><div class="record-add-options"><button class="secondary compact" data-add-record="points" data-topic-index="' + topicIndex + '" type="button">Add discussion</button><button class="secondary compact" data-add-record="decisions" data-topic-index="' + topicIndex + '" type="button">Add decision</button><button class="secondary compact" data-add-record="openQuestions" data-topic-index="' + topicIndex + '" type="button">Add open question</button></div></details>';
+    return '<details class="record-add-menu"><summary class="secondary compact record-add-toggle" aria-label="Add item" title="Add item"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="record-add-options"><button class="secondary compact" data-add-record="points" data-topic-index="' + topicIndex + '" type="button">Add discussion</button><button class="secondary compact" data-add-record="decisions" data-topic-index="' + topicIndex + '" type="button">Add decision</button><button class="secondary compact" data-add-record="openQuestions" data-topic-index="' + topicIndex + '" type="button">Add open question</button></div></details>';
   }
 
   function renderDiscussion() {
