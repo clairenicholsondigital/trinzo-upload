@@ -107,6 +107,10 @@
       if (wide) wide.textContent = label;
       if (narrow) narrow.textContent = state.currentStep === MAX_STEP ? 'Back' : 'Preview';
       preview.setAttribute('aria-label', label);
+      // The same button previews the document and returns from it, so the icon
+      // has to follow the label rather than stay an eye on the way back.
+      var previewIcon = preview.querySelector('.ic use');
+      if (previewIcon) previewIcon.setAttribute('href', state.currentStep === MAX_STEP ? '#i-arrow-left' : '#i-eye');
     }
   }
 
@@ -786,7 +790,7 @@
       });
     });
     if (!rows.length) return '';
-    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Supporting context <small>Not included in main minutes</small></span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
+    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Supporting context</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
       return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
     }).join('') + '</div></div></details>';
   }
@@ -997,11 +1001,14 @@
       ? proposal.changes.filter(function (change) { return change && change.type === 'add'; }).length
       : 0;
     bar.hidden = !actions.length && !removed.length;
+    // "Still to check" could be read as work that blocks publication. It does
+    // not: only rejection takes a row out, so the note says what silence means.
     bar.innerHTML = '<span class="review-count review-count-open"><strong>' + undecided + '</strong> still to check</span>'
       + '<span class="review-count"><strong>' + checked + '</strong> checked</span>'
       + '<span class="review-count"><strong>' + actions.length + '</strong> in the register</span>'
       + (removed.length ? '<span class="review-count"><strong>' + removed.length + '</strong> removed</span>' : '')
-      + (proposed ? '<span class="review-count"><strong>' + proposed + '</strong> suggested</span>' : '');
+      + (proposed ? '<span class="review-count"><strong>' + proposed + '</strong> suggested</span>' : '')
+      + '<span class="review-note">Everything in the register goes into the final minutes. Keep is only your own check-off; Reject is what takes a row out.</span>';
 
     panel.hidden = !removed.length;
     var summary = document.getElementById('removedActionsSummary');

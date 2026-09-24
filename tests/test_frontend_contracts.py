@@ -158,7 +158,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("openQuestions: 'Open question'", client)
         self.assertIn('aria-label="' + "' + escapeHtml(label", client)
         self.assertIn('Supporting context', client)
-        self.assertIn('Not included in main minutes', client)
+        # Changed 24 Sep: the "review-only" caveat used to be printed on every
+        # collapsed supporting-context row, which put it on screen many times
+        # per page. It is now stated once in the Discussion intro, and the
+        # fuller explanation still sits inside the expanded panel.
+        self.assertNotIn('Not included in main minutes', client)
+        self.assertIn('is review-only and stays out of the main minutes', page)
+        self.assertIn('These details are review context only', client)
         self.assertIn('Include in minutes', client)
         self.assertIn('Move to context', client)
         self.assertIn('.record-row+.record-row', page)
@@ -178,7 +184,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('#i-save', page)
         self.assertIn('id="printMinutes" class="secondary"', page)
         self.assertIn('#i-printer', page)
-        self.assertEqual(page.count('#i-download'), 3)
+        # Three export controls, plus the save-strip's Download draft button,
+        # which gained the icon on 24 Sep alongside Preview document.
+        self.assertEqual(page.count('#i-download'), 4)
+        self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview document', page)
         self.assertIn('id="downloadPdf" class="secondary"', page)
         self.assertIn('id="downloadWord" class="secondary"', page)
         self.assertIn('class="export-menu"', page)

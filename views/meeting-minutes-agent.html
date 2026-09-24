@@ -428,11 +428,20 @@
 .meeting-agent-page .evidence-panel{
   margin-top:.45rem;padding:.6rem;border-radius:var(--radius-sm);background:var(--soft-2)}
 .meeting-agent-page .evidence-row{
-  padding:.5rem .6rem;margin:.35rem 0;border:1px solid var(--border);
+  padding:.35rem .5rem;margin:.2rem 0;border:1px solid var(--border);
   border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
 .meeting-agent-page .evidence-row.cited{border-left:var(--rail) solid var(--accent)}
+/* Surrounding context is there to be glanced at, not read. Giving it a card of
+   its own made a five-line passage taller than the screen, so it drops the
+   border and runs its speaker label inline with the words. */
+.meeting-agent-page .evidence-row:not(.cited){
+  padding:.15rem .5rem;margin:.1rem 0;border:0;background:transparent;
+  color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .evidence-row:not(.cited) .source-meta{display:inline;margin:0}
+.meeting-agent-page .evidence-row:not(.cited) .source-meta::after{content:" - "}
+.meeting-agent-page .evidence-row:not(.cited)>div:last-child{display:inline}
 .meeting-agent-page .source-meta{
-  margin-bottom:.25rem;font-size:var(--fs-cap);color:var(--muted)}
+  margin-bottom:.15rem;font-size:var(--fs-cap);color:var(--muted)}
 
 /* ------------------------------------------------------- actions table -- */
 .meeting-agent-page .actions-wrap{width:100%;overflow-x:auto}
@@ -457,6 +466,7 @@
 .meeting-agent-page .action-review-bar{display:flex;flex-wrap:wrap;gap:1rem;margin:0 0 .6rem;padding:.5rem .75rem;border:1px solid var(--line,#d5d8dd);border-radius:.5rem;font-size:.88rem}
 .meeting-agent-page .action-review-bar .review-count strong{font-variant-numeric:tabular-nums}
 .meeting-agent-page .action-review-bar .review-count-open strong{color:var(--accent,#6b3fa0)}
+.meeting-agent-page .action-review-bar .review-note{flex-basis:100%;color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .removed-actions{margin-top:.75rem;border:1px solid var(--line,#d5d8dd);border-radius:.5rem;padding:.5rem .75rem}
 .meeting-agent-page .removed-actions summary{cursor:pointer;font-size:.9rem}
 .meeting-agent-page .removed-action{display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;padding:.4rem 0;border-top:1px solid var(--line,#eceef1)}
@@ -759,11 +769,13 @@
 
 <svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
   <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
   <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
 </svg>
 
 <main class="container">
@@ -776,7 +788,7 @@
   <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 6</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="1" disabled>Focus</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
   <div class="workflow-utilities">
-    <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved draft</span><button id="checksRemaining" class="secondary quiet" type="button" hidden>Checks complete</button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo last</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview document"><span class="wide-label">Preview document</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
+    <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved draft</span><button id="checksRemaining" class="secondary quiet" type="button" hidden>Checks complete</button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo last</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview document"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview document</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
     <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
   </div>
 
@@ -831,7 +843,7 @@
   <section class="panel screen" data-screen="2">
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. You will preview them before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button></div></div>
-      <p class="muted">Edit the minutes directly. Sources are available from each item's menu when you need them.</p>
+      <p class="muted">Edit the minutes directly. Sources are available from each item's menu when you need them. Anything under <strong>Supporting context</strong> is review-only and stays out of the main minutes.</p>
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>
