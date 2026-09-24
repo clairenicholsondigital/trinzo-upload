@@ -103,3 +103,33 @@ test('one small number in common is not enough to call two rows the same', () =>
   }], []);
   assert.equal(texts(result).length, 2, 'a question and advice about the same thing are different rows');
 });
+
+// A line narrating that somebody summarised the actions is minutes about the
+// minutes: the actions are extracted separately and shown in their own table.
+// Reported from a live transcript as "Gemma summarizes actions:" appearing as
+// a discussion step.
+test('a line narrating who summarised the actions is dropped', () => {
+  const result = dedupeDiscussionBody([{
+    id: 'topic-1', topic: 'Close', decisions: [], openQuestions: [],
+    points: [
+      row('p1', 'Gemma summarizes actions:'),
+      row('p2', 'The chair recaps the next steps before closing.'),
+      row('p3', 'Tom runs through the action list.'),
+      row('p4', 'The tender deadline moved to the end of the month.')
+    ]
+  }], ['Gemma Hall', 'Tom Whitfield']);
+  assert.deepEqual(texts(result), ['The tender deadline moved to the end of the month.']);
+  assert.equal(result.dropped.length, 3);
+});
+
+test('a commitment to summarise the actions later is not a narration', () => {
+  // "will summarise" is work somebody took on, not a description of the
+  // meeting's own closing ritual, so it has to survive.
+  const kept = [
+    row('p1', 'Gemma will summarise the actions and send them round after the call.'),
+    row('p2', 'Tom agreed to run through the actions at the next meeting.'),
+    row('p3', 'The group discussed the actions needed on the tender.')
+  ];
+  const result = dedupeDiscussionBody([{ id: 'topic-1', topic: 'Close', points: kept, decisions: [], openQuestions: [] }], ['Gemma Hall', 'Tom Whitfield']);
+  assert.equal(texts(result).length, 3, 'nothing dropped: ' + JSON.stringify(result.dropped));
+});

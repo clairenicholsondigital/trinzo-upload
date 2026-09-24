@@ -214,8 +214,22 @@ function recapsSeveralRows(value, keptTexts, people) {
 // actions are extracted separately and shown in their own table, so this is
 // minutes about the minutes.
 const ANNOUNCES_ACTIONS = /^\s*(?:decision\s*:?\s*)?(?:actions?\s+(?:assigned|agreed|arising|identified|allocated)|next\s+steps?\s*(?:agreed|identified)?\s*[:\-]|actions?\s*[:\-]|action\s+points?\s*[:\-]|key\s+actions?\s*[:\-])/i;
+
+// "Gemma summarises actions:", "The chair recaps the next steps", "Tom runs
+// through the action list" - the same minutes-about-the-minutes shape, but
+// narrated through whoever did the summarising rather than announced as a
+// heading. Present tense only: "Gemma will summarise the actions and send them
+// round" is a real commitment and has to survive.
+const NARRATES_ACTION_RECAP = /\b(?:summaris|summariz|recap|reiterat|restat)\w*\s+(?:the\s+|her\s+|his\s+|their\s+|our\s+)?(?:actions?|next\s+steps?|action\s+(?:list|points?|items?))\b|\b(?:runs?|goes?|walks?|reads?)\s+(?:through|over|out)\s+(?:the\s+|her\s+|his\s+|their\s+|our\s+)?(?:actions?|next\s+steps?|action\s+(?:list|points?|items?))\b/i;
+
+// Wording that makes it a commitment rather than a narration of what happened.
+const FUTURE_RECAP_COMMITMENT = /\b(?:will|shall|to|going\s+to|agreed\s+to|is\s+to|would)\s+(?:\w+\s+){0,2}(?:summaris|summariz|recap|reiterat|restat|run|go|walk|read)/i;
+
 function announcesActions(value) {
-  return ANNOUNCES_ACTIONS.test(clean(value));
+  const text = clean(value);
+  if (ANNOUNCES_ACTIONS.test(text)) return true;
+  if (FUTURE_RECAP_COMMITMENT.test(text)) return false;
+  return NARRATES_ACTION_RECAP.test(text);
 }
 
 // Returns { discussion, dropped } without mutating the input. Open questions
