@@ -192,7 +192,11 @@ class FrontendContractTest(unittest.TestCase):
         # Three export controls, plus the save-strip's Download draft button,
         # which gained the icon on 24 Sep alongside Preview document.
         self.assertEqual(page.count('#i-download'), 4)
-        self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview document', page)
+        self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview final minutes', page)
+        # Every back control carries the same left arrow, so none reads as
+        # half-finished next to its neighbours.
+        # Five back buttons in the markup; Preview swaps to this icon at runtime.
+        self.assertEqual(page.count('<use href="#i-arrow-left"/>'), 5)
         self.assertIn('id="downloadPdf" class="secondary"', page)
         self.assertIn('id="downloadWord" class="secondary"', page)
         self.assertIn('class="export-menu"', page)

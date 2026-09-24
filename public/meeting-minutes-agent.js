@@ -100,7 +100,7 @@
     }
     var preview = document.getElementById('previewDocument');
     if (preview) {
-      var label = state.currentStep === MAX_STEP ? 'Back to editing' : 'Preview document';
+      var label = state.currentStep === MAX_STEP ? 'Back to editing' : 'Preview final minutes';
       var wide = preview.querySelector('.wide-label');
       var narrow = preview.querySelector('.narrow-label');
       if (wide) wide.textContent = label;
