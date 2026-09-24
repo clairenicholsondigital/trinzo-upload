@@ -1271,7 +1271,12 @@
       body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
       // One primary: "Looks correct" is the answer a reviewer gives most often.
       var actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Looks correct</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save correction</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>';
-      var evidence = '<aside class="review-evidence"><strong>Source passage</strong>' + evidenceHtml(flag.evidenceIds) + '</aside>';
+      // Collapsed by default: the passage is often longer than the warning it
+      // supports, and a reviewer who trusts the quoted line never opens it.
+      var evidenceLines = evidenceContext(flag.evidenceIds).length;
+      var evidence = '<details class="review-evidence"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
+        + (evidenceLines ? evidenceLines + ' line' + (evidenceLines === 1 ? '' : 's') : 'none linked')
+        + '</span></summary><div class="review-evidence-body">' + evidenceHtml(flag.evidenceIds) + '</div></details>';
       return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + '<div class="flag-actions">' + actions + '</div></div>' + evidence + '</div></div>';
     }).join('');
     updateReviewQueueSummary();
@@ -1335,7 +1340,11 @@
     }).join('');
     updateProposalSelection();
     updateReviewQueueSummary();
-    if (wasHidden) document.getElementById('reviewFlags').open = true;
+    // The queue stays collapsed when it first gains items, matching renderFlags
+    // above: this runs after it, so opening here quietly overrode that and the
+    // panel was expanded on arrival whenever there were suggestions. The count
+    // chip and the "checks remaining" button are how the reviewer opens it.
+    if (wasHidden) document.getElementById('reviewFlags').open = false;
   }
 
   function updateProposalSelection() {

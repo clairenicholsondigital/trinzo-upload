@@ -814,6 +814,7 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     const launched = await launchPage(port, 'proposals');
     browser = launched.browser;
     const { page, errors } = launched;
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
     assert.equal(await page.locator('.proposal-detail').isVisible(), true);
     assert.equal(await page.locator('.proposal-content').isHidden(), true);
     assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
@@ -862,6 +863,7 @@ test('applying one proposal preserves the unchecked proposal and warning after r
     const launched = await launchPage(port, 'partial-proposals');
     browser = launched.browser;
     const { page, errors } = launched;
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
     const boxes = page.locator('[data-proposal-change]');
     await boxes.nth(1).uncheck();
     const applied = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/partial-proposals/proposal'));

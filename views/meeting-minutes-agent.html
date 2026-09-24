@@ -557,7 +557,14 @@
 .meeting-agent-page .review-item-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,38%);gap:.8rem;align-items:start}
 .meeting-agent-page .review-item-main{min-width:0}
 .meeting-agent-page .review-evidence{min-width:0;padding:.55rem;border-radius:var(--radius-sm);background:var(--soft-2)}
-.meeting-agent-page .review-evidence>strong{display:block;margin-bottom:.25rem;font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .review-evidence-head{
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem;
+  cursor:pointer;list-style:none;font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .review-evidence-head::-webkit-details-marker{display:none}
+.meeting-agent-page .review-evidence-head::after{content:"›";color:var(--muted);font-size:var(--fs-md);line-height:1}
+.meeting-agent-page .review-evidence[open] .review-evidence-head::after{transform:rotate(90deg)}
+.meeting-agent-page .review-evidence-head strong{font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .review-evidence-body{margin-top:.35rem}
 .meeting-agent-page .review-evidence .evidence-row{margin:.25rem 0}
 .meeting-agent-page .review-route-missing{margin:.5rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
 
