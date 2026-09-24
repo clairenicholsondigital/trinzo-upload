@@ -330,9 +330,13 @@
 .meeting-agent-page .discussion-card{
   margin-top:.6rem;border:1px solid var(--border);border-radius:var(--radius);
   background:var(--surface);overflow:visible}
+/* The topic header is the only banded row in the card, so it carries a tint of
+   the brand teal and a firmer rule beneath it. Before this it shared a grey
+   with the rows below and the hierarchy read flat. */
 .meeting-agent-page .card-head{
-  display:flex;align-items:center;gap:.55rem;padding:.45rem .65rem;
-  border-bottom:1px solid var(--border);background:var(--soft)}
+  display:flex;align-items:center;gap:.55rem;padding:.5rem .65rem;
+  border-bottom:2px solid #9FE3DD;background:#EEFAF9}
+.meeting-agent-page .card-head .topic-collapse{color:#0E8C84}
 .meeting-agent-page .topic-collapse{
   display:grid;place-items:center;flex:none;width:2rem;height:2rem;padding:0;
   border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
@@ -344,7 +348,7 @@
 .meeting-agent-page .topic-field{flex:1;min-width:0;display:flex;align-items:baseline;gap:.5rem}
 .meeting-agent-page .topic-field textarea{
   flex:1;min-width:0;
-  font-size:var(--fs-md);font-weight:var(--fw-bold);color:var(--heading);
+  font-size:var(--fs-md);font-weight:var(--fw-bold);color:#01173B;letter-spacing:.01em;
   min-height:36px;border-color:transparent;background:transparent;padding:.25rem .35rem;resize:none}
 .meeting-agent-page .topic-field textarea:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .topic-field textarea:focus{border-color:var(--accent);background:var(--surface)}
@@ -391,7 +395,13 @@
   min-width:170px;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);box-shadow:var(--shadow-lg)}
 .meeting-agent-page .record-add-options .secondary{justify-content:flex-start;width:100%}
-.meeting-agent-page .proposition-row{position:relative;grid-template-columns:auto minmax(0,1fr) auto;padding:.25rem .4rem;border-left:3px solid var(--accent);background:var(--surface)}
+/* The rail now means something. Every row used to carry the accent, including
+   plain points whose kind chip is hidden, so colour said nothing and competed
+   with the header. It is kept transparent on points to hold the alignment, and
+   coloured only where the kind matters, matching that kind's chip. */
+.meeting-agent-page .proposition-row{position:relative;grid-template-columns:auto minmax(0,1fr) auto;padding:.25rem .4rem;border-left:3px solid transparent;background:var(--surface)}
+.meeting-agent-page .proposition-row:has(.proposition-kind.decisions){border-left-color:#5cbf90}
+.meeting-agent-page .proposition-row:has(.proposition-kind.openQuestions){border-left-color:#e8b53d}
 .meeting-agent-page .proposition-row+.proposition-row{padding-top:.4rem}
 .meeting-agent-page .proposition-kind,.meeting-agent-page .final-kind{
   display:inline-flex;width:max-content;padding:.18rem .5rem;border-radius:999px;
