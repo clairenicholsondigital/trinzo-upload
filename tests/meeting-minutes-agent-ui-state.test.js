@@ -449,7 +449,9 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     await page.click('[data-step="0"]');
     await page.fill('#meetingTitle', 'Edited while actions run');
     assert.match(await page.textContent('#saveStatus'), /Unsaved edits are waiting to save.*Keep this tab open/i);
-    assert.match(await page.textContent('#generationLeaveMessage'), /Keep this tab open/i);
+    // The generation panel used to repeat this sentence; the save strip is now
+    // the only place that says whether the tab is safe to close.
+    assert.equal(await page.locator('#generationLeaveMessage').count(), 0);
     assert.equal(await page.locator('#resumeLaterLink').isHidden(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);
     assert.deepEqual(errors, []);
@@ -902,7 +904,10 @@ test('an unlinked timing warning routes to its Action field and resolves when th
     assert.match(await page.textContent('.flag-target'), /Complete and sign the training attestation/i);
     await page.click('[data-view-flag-target]');
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
-    assert.equal(await page.locator('#minutes-action-training-action [data-timing-wording]').evaluate((node) => node === document.activeElement), true);
+    // The original-wording field is hidden on the Actions table now, and a
+    // hidden field cannot take focus, so a timing warning routes to the
+    // interpreted date instead - the visible control the warning is about.
+    assert.equal(await page.locator('#minutes-action-training-action [data-timing-date]').evaluate((node) => node === document.activeElement), true);
 
     const savedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/unlinked-warning')
       && response.request().method() === 'PATCH');
@@ -1032,10 +1037,11 @@ test('save and generation panels always show the same leave-safety state', { tim
     await page.click('[data-delete-topic="1"]');
     const messages = await page.evaluate(() => ({
       save: document.getElementById('saveStatus').textContent,
-      generation: document.getElementById('generationLeaveMessage').textContent
+      generation: document.getElementById('generationLeaveMessage')
     }));
     assert.match(messages.save, /Keep this tab open/i);
-    assert.equal(messages.generation, messages.save);
+    // One message, in one place: there is nothing left that could disagree.
+    assert.equal(messages.generation, null);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

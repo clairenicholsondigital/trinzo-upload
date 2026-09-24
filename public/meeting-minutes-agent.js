@@ -67,10 +67,9 @@
     var keepOpen = mustKeepTabOpen(element ? element.dataset.state : '');
     var resumeLink = document.getElementById('resumeLaterLink');
     if (resumeLink) resumeLink.hidden = keepOpen;
-    // There is one save/leave message. The generation panel mirrors it rather
-    // than independently guessing whether the tab is safe to close.
-    var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage) leaveMessage.textContent = element ? element.textContent : '';
+    // The save strip is the one place that says whether the tab is safe to
+    // close. The generation panel used to mirror it, which put the same
+    // sentence on screen twice while a stage was running.
   }
 
   function setSaveStatus(message, kind) {
@@ -533,8 +532,6 @@
       ? friendlyGenerationMessage(generation.message, stage)
       : (notice.message || 'The completed draft is ready to review.');
     if (generation && STAGE_STEP[stage] === state.currentStep) status.hidden = true;
-    var leaveMessage = document.getElementById('generationLeaveMessage');
-    if (leaveMessage) leaveMessage.textContent = generationSaveText(Boolean(generation));
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
@@ -757,8 +754,6 @@
     renderAttendeeGroup('client', details.clientAttendees || []);
     setFieldValue('clientAttendeeLabelSelect', details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
     document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
-    var denoise = draft.denoise || {};
-    document.getElementById('denoiseSummary').textContent = denoise.totalUnitCount ? denoise.keptUnitCount + ' of ' + denoise.totalUnitCount + ' passages retained' : '';
   }
 
   async function prepareFile(file) {
@@ -925,7 +920,7 @@
     var options = kinds.map(function (pair) {
       return '<option value="' + pair[0] + '"' + (timing.kind === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
     }).join('');
-    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label><span>Original wording</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label><span>Interpreted date</span><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Interpreted exact date"></label></div>';
+    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label hidden><span>Original wording</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label><span>Interpreted date</span><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Interpreted exact date"></label></div>';
   }
 
   function renderActions() {
@@ -1264,7 +1259,7 @@
       var body = '<span class="flag-kind">Warning · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
       var target = flagTarget(flag);
       if (target) {
-        var selector = target.field === 'timing' ? '[data-timing-wording]' : target.field === 'owners' ? '[data-add-owner]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
+        var selector = target.field === 'timing' ? '[data-timing-date]' : target.field === 'owners' ? '[data-add-owner]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += '<div class="flag-target"><span>' + (target.proposal ? 'Related suggestion' : 'Affected ' + escapeHtml(target.label.toLowerCase())) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review suggestion' : 'View and edit') + '</button></div>';
       } else body += '<p class="review-route-missing"><strong>No saved item or pending suggestion matches this warning.</strong> If the issue still matters, add or correct the relevant item and then resolve the warning. If its content was removed, dismiss it.</p>';
