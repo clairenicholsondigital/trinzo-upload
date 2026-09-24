@@ -372,6 +372,48 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
   }
 });
 
+test('keeping, rejecting and putting back an action, with live counts', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    const bar = page.locator('#actionReviewBar');
+    assert.match(await bar.textContent(), /1 still to check/, 'everything starts undecided');
+
+    // Keep marks a row as checked without changing the minutes.
+    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    assert.match(await bar.textContent(), /0 still to check/);
+    assert.match(await bar.textContent(), /1 checked/);
+    assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1, 'keeping removes nothing');
+
+    // Rejecting moves the row out of the register and into Removed.
+    await page.click('#actionsBody [data-action-row="0"] [data-reject-action]');
+    assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
+    assert.equal(await page.locator('#removedActionsPanel').isHidden(), false);
+    assert.match(await page.textContent('#removedActionsSummary'), /1 removed action/);
+    assert.match(await bar.textContent(), /1 removed/);
+
+    // And it can be put back rather than retyped. The section stays collapsed
+    // by default so it does not crowd the register; opening it is one click.
+    await page.click('#removedActionsSummary');
+    await page.click('#removedActionsList [data-restore-action]');
+    assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1);
+    assert.equal(await page.locator('#removedActionsPanel').isHidden(), true);
+    const restored = await page.inputValue('#actionsBody [data-action-row="0"] [data-action]');
+    assert.ok(restored.length > 0, 'the wording comes back with the row');
+    // A row put back is no longer counted as checked: it needs deciding again.
+    assert.match(await bar.textContent(), /1 still to check/);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('action generation has an honest waiting state and stage-scoped status', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;

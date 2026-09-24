@@ -448,6 +448,20 @@
 .meeting-agent-page .actions-table textarea{min-height:36px;padding:.3rem .4rem;border-color:transparent;background:transparent;resize:none}
 .meeting-agent-page .actions-table textarea:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .action-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem;align-items:start}
+/* Review decisions on each action row, and the count bar above the table. */
+.meeting-agent-page .row-decisions{display:flex;gap:.35rem;margin-top:.2rem}
+.meeting-agent-page .row-decisions button{font-size:.8rem;line-height:1.25;padding:.1rem .45rem;border-radius:999px;border:1px solid var(--line,#d5d8dd);background:transparent;cursor:pointer;color:inherit}
+.meeting-agent-page .row-decisions button:hover{border-color:var(--ink,#1d2430)}
+.meeting-agent-page .row-decisions .row-keep.is-kept{border-color:var(--ok,#2f7a4d);color:var(--ok,#2f7a4d);font-weight:600}
+.meeting-agent-page .action-row.action-kept td{background:color-mix(in srgb, var(--ok,#2f7a4d) 5%, transparent)}
+.meeting-agent-page .action-review-bar{display:flex;flex-wrap:wrap;gap:1rem;margin:0 0 .6rem;padding:.5rem .75rem;border:1px solid var(--line,#d5d8dd);border-radius:.5rem;font-size:.88rem}
+.meeting-agent-page .action-review-bar .review-count strong{font-variant-numeric:tabular-nums}
+.meeting-agent-page .action-review-bar .review-count-open strong{color:var(--accent,#6b3fa0)}
+.meeting-agent-page .removed-actions{margin-top:.75rem;border:1px solid var(--line,#d5d8dd);border-radius:.5rem;padding:.5rem .75rem}
+.meeting-agent-page .removed-actions summary{cursor:pointer;font-size:.9rem}
+.meeting-agent-page .removed-action{display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;padding:.4rem 0;border-top:1px solid var(--line,#eceef1)}
+.meeting-agent-page .removed-action:first-child{border-top:0}
+.meeting-agent-page .removed-action-text{flex:1;min-width:0;font-size:.9rem}
 .meeting-agent-page .action-main .record-menu{margin-top:.15rem}
 .meeting-agent-page .action-tools{margin-top:.4rem}
 .meeting-agent-page .preview-action-row{background:var(--soft)}
@@ -829,7 +843,9 @@
     <div class="paper">
       <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. You will preview them before anything is applied.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button></div></div>
       <p class="muted">Edit an Action, its owners or timing directly. Open Sources only when you need to check the transcript.</p>
+      <div id="actionReviewBar" class="action-review-bar" role="status" aria-live="polite" hidden></div>
       <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
+      <details id="removedActionsPanel" class="removed-actions" hidden><summary id="removedActionsSummary">Removed actions</summary><div id="removedActionsList"></div></details>
     </div>
     <p class="prewarm-notice" data-speculation-notice="summary" role="status" hidden></p>
     <div class="screen-actions"><button class="secondary" data-back="2" type="button">Back to discussion</button><button id="auditActions" class="secondary" type="button" title="Review the transcript again for additional actions.">Check transcript for more actions</button><button id="toSummary" class="button" type="button">Summary &amp; objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>

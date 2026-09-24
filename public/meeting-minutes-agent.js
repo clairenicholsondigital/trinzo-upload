@@ -953,9 +953,66 @@
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
       var targetId = recordDomId('action', item.id, index);
       var menu = recordMenu(item, '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove action</button>');
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main"><textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div></td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
+      var kept = isActionKept(item.id);
+      // The textarea is always editable, so a separate Edit control would do
+      // nothing a click in the field does not already do.
+      var decisions = '<div class="row-decisions">'
+        + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Keep') + '</button>'
+        + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Reject</button>'
+        + '</div>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main"><textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions have been generated.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
+    renderActionReview();
+  }
+
+  function keptActionIds() {
+    if (!state.draft) return [];
+    if (!Array.isArray(state.draft.keptActionIds)) state.draft.keptActionIds = [];
+    return state.draft.keptActionIds;
+  }
+
+  function removedActions() {
+    if (!state.draft) return [];
+    if (!Array.isArray(state.draft.removedActions)) state.draft.removedActions = [];
+    return state.draft.removedActions;
+  }
+
+  function isActionKept(id) {
+    return Boolean(id) && keptActionIds().indexOf(id) !== -1;
+  }
+
+  // The counts a reviewer needs are the ones that say how much is left, so
+  // "still to check" is the one given prominence.
+  function renderActionReview() {
+    var bar = document.getElementById('actionReviewBar');
+    var panel = document.getElementById('removedActionsPanel');
+    if (!bar || !panel || !state.draft) return;
+    var actions = state.draft.actions || [];
+    var removed = removedActions();
+    var checked = actions.filter(function (item) { return isActionKept(item.id); }).length;
+    var undecided = Math.max(0, actions.length - checked);
+    var proposal = state.draft.pendingProposal;
+    var proposed = proposal && Array.isArray(proposal.changes)
+      ? proposal.changes.filter(function (change) { return change && change.type === 'add'; }).length
+      : 0;
+    bar.hidden = !actions.length && !removed.length;
+    bar.innerHTML = '<span class="review-count review-count-open"><strong>' + undecided + '</strong> still to check</span>'
+      + '<span class="review-count"><strong>' + checked + '</strong> checked</span>'
+      + '<span class="review-count"><strong>' + actions.length + '</strong> in the register</span>'
+      + (removed.length ? '<span class="review-count"><strong>' + removed.length + '</strong> removed</span>' : '')
+      + (proposed ? '<span class="review-count"><strong>' + proposed + '</strong> suggested</span>' : '');
+
+    panel.hidden = !removed.length;
+    var summary = document.getElementById('removedActionsSummary');
+    if (summary) summary.textContent = removed.length === 1 ? '1 removed action' : removed.length + ' removed actions';
+    var list = document.getElementById('removedActionsList');
+    if (list) list.innerHTML = removed.map(function (item, index) {
+      var owners = (item.owners || []).join(', ');
+      return '<div class="removed-action"><div class="removed-action-text">' + escapeHtml(item.action || '')
+        + (owners ? '<span class="muted"> - ' + escapeHtml(owners) + '</span>' : '')
+        + '</div><button type="button" class="secondary" data-restore-action="' + index + '">Put back</button></div>';
+    }).join('');
   }
 
   function rerenderActions() {
@@ -1441,7 +1498,9 @@
       reviewFlags: state.draft.reviewFlags,
       staleStages: state.draft.staleStages || [],
       currentStep: Math.max(Number(state.draft.currentStep || 0), state.currentStep),
-      selectedStep: state.currentStep
+      selectedStep: state.currentStep,
+      keptActionIds: state.draft.keptActionIds || [],
+      removedActions: state.draft.removedActions || []
     };
     if (statusValue) body.status = statusValue;
     if (reviewDecisionLabel) body.reviewDecisionLabel = reviewDecisionLabel;
@@ -1929,6 +1988,21 @@
     else scheduleSave();
   });
 
+  // The Removed section sits outside the actions table, so it needs its own
+  // listener; a click there is the one-step undo for a rejection.
+  document.getElementById('removedActionsList').addEventListener('click', function (event) {
+    var restoreButton = event.target.closest('[data-restore-action]');
+    if (!restoreButton || !state.draft) return;
+    readActions();
+    var back = removedActions().splice(Number(restoreButton.dataset.restoreAction), 1)[0];
+    if (back) state.draft.actions.push({
+      id: back.id, action: back.action, owners: back.owners || [],
+      timing: back.timing || {kind:'not_stated',wording:'',exactDate:''},
+      evidenceIds: back.evidenceIds || [], reviewFlagIds: []
+    });
+    rerenderActions(); queueReviewDecision('Action put back');
+  });
+
   document.getElementById('actionsBody').addEventListener('click', function (event) {
     var removeOwner = event.target.closest('[data-remove-owner]');
     if (removeOwner) {
@@ -1938,15 +2012,36 @@
       rerenderActions(); scheduleSave();
       return;
     }
-    var button = event.target.closest('[data-delete-action]');
+    var keepButton = event.target.closest('[data-keep-action]');
+    if (keepButton) {
+      readActions();
+      var keptRow = state.draft.actions[Number(keepButton.dataset.keepAction)];
+      if (keptRow && keptRow.id) {
+        var ids = keptActionIds();
+        var at = ids.indexOf(keptRow.id);
+        if (at === -1) ids.push(keptRow.id); else ids.splice(at, 1);
+      }
+      rerenderActions(); scheduleSave();
+      return;
+    }
+    var button = event.target.closest('[data-delete-action]') || event.target.closest('[data-reject-action]');
     if (!button) return;
     readActions();
-    var removedIndex = Number(button.dataset.deleteAction);
+    var removedIndex = Number(button.dataset.deleteAction != null ? button.dataset.deleteAction : button.dataset.rejectAction);
     var actionToRemove = state.draft.actions[removedIndex];
     var inferredFlagIds = flagsTargetingAction(actionToRemove, removedIndex);
     var removedAction = state.draft.actions.splice(removedIndex,1)[0];
     resolveDeletedTargetFlags(linkedReviewFlagIds(removedAction).concat(inferredFlagIds));
+    // Keep the row so it can be put back from the Removed section rather than
+    // retyped. Newest first, because the last rejection is the likely undo.
+    if (removedAction) removedActions().unshift({
+      id: removedAction.id || '', action: removedAction.action || '',
+      owners: removedAction.owners || [], timing: removedAction.timing || {kind:'not_stated',wording:'',exactDate:''},
+      evidenceIds: removedAction.evidenceIds || [], removedAt: new Date().toISOString()
+    });
     if (removedAction && removedAction.id) {
+      var keptAt = keptActionIds().indexOf(removedAction.id);
+      if (keptAt !== -1) keptActionIds().splice(keptAt, 1);
       delete actionEditorState.pendingRows[removedAction.id];
       delete actionEditorState.customOwners[removedAction.id];
     }

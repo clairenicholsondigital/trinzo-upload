@@ -266,6 +266,7 @@ const {
 } = require('../utils/meetingMinutesAgentV2');
 const { shapeDiscussion, dedupeDiscussionBody } = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
+const { normaliseKeptActionIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -10764,7 +10765,11 @@ function meetingAgentDraftPayload(draft = {}) {
     generation: normaliseMeetingAgentGeneration(draft.generation),
     currentStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(draft.currentStep || 0))),
     selectedStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP,
-      Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0))
+      Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0)),
+    // The reviewer's own decisions about the register: which rows they have
+    // checked off, and which they rejected and could still put back.
+    keptActionIds: normaliseKeptActionIds(draft.keptActionIds, draft.actions),
+    removedActions: normaliseMeetingAgentKnownTermsDeep(normaliseRemovedActions(draft.removedActions))
   };
 }
 
@@ -14761,6 +14766,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       currentStep: furthestStep,
       selectedStep: requestedSelectedStep,
       changeHistory,
+      // Kept ids are filtered against the actions being saved, so a row the
+      // reviewer ticked and then removed in the same save does not linger.
+      keptActionIds: normaliseKeptActionIds(req.body?.keptActionIds ?? draft.keptActionIds, normalised.actions),
+      removedActions: normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions),
       status: req.body?.status
     });
     // Edits settle for a while before the next stage is run ahead of the
