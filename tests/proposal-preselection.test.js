@@ -58,7 +58,12 @@ test('an edit that drops an owner or a date starts unticked; a rewording starts 
   assert.match(result[1].reviewContext.reason, /removes the timing/);
 });
 
-test('an addition starts ticked only when owned and clearly committed', () => {
+// Changed deliberately on 24 Sep: additions used to start ticked when they
+// were owned and clearly committed. They no longer start ticked at all. The
+// rows that reached that branch were the plausible-looking ones a reviewer
+// waves through, and applying an action by default is how DITA's duplicate
+// Cody follow-up reached the register. Adding work is now always a decision.
+test('an addition is always offered unticked, with the reason it was offered', () => {
   const proposal = {
     stage: 'actions',
     changes: [
@@ -68,7 +73,14 @@ test('an addition starts ticked only when owned and clearly committed', () => {
     ]
   };
   const result = preselectActionProposal(proposal, [floorPlan], units).changes;
-  assert.deepEqual(result.map((change) => [change.id, change.selected]), [['owned', true], ['unowned', false], ['floated', false]]);
+  assert.deepEqual(result.map((change) => [change.id, change.selected]), [['owned', false], ['unowned', false], ['floated', false]]);
+  // Unticked is not the same as unexplained: each row says why it is offered,
+  // so the reviewer can tell a strong suggestion from a doubtful one at a glance.
+  assert.match(result[0].reviewContext.reason, /clear, owned commitment/);
+  assert.equal(result[0].reviewContext.label, 'ready to add');
+  assert.match(result[1].reviewContext.reason, /Nobody is shown taking this on/);
+  assert.ok(result[2].reviewContext.reason, 'a doubtful addition still carries its reason');
+  assert.notEqual(result[0].reviewContext.label, result[1].reviewContext.label);
 });
 
 test('an explicit untick from an earlier check is never re-ticked', () => {

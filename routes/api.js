@@ -15255,7 +15255,17 @@ function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
           evidenceIds: record.evidenceIds || []
         });
       }
-      return withSelection(change, true);
+      // Everything above has been ruled out: this addition is owned, distinct,
+      // short enough to be one deliverable and clearly evidenced. It is still
+      // offered unticked. A pre-ticked suggestion is applied by default, and
+      // the ones that survive to here are exactly the plausible-looking rows a
+      // reviewer waves through - DITA's duplicate Cody follow-up arrived that
+      // way. Adding an action is the change a reviewer should make on purpose.
+      return withSelection(change, false, {
+        label: 'ready to add',
+        reason: 'This reads as a clear, owned commitment in the cited lines. Tick it to add it.',
+        evidenceIds: record.evidenceIds || []
+      });
     }
     return withSelection(change, false);
   });
