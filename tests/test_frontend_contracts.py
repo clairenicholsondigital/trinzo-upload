@@ -112,7 +112,9 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.attendee-chip .secondary{padding:.4rem .6rem;font-size:var(--fs-cap)}', page)
         self.assertIn("clientAttendeeLabel", client)
         self.assertIn('min-height:36px;padding:.3rem .4rem;border-color:transparent', page)
-        self.assertIn('<details class="supporting-context">', client)
+        # Carries a data-keep-open key so an opened panel survives a re-render.
+        self.assertIn('<details class="supporting-context" data-keep-open="supporting:', client)
+        self.assertIn('function restoreDisclosures', client)
         self.assertIn('<details class="record-add-menu">', client)
         # The add control is an icon rather than the words "Add item", so its
         # accessible name and tooltip are the only thing naming it.

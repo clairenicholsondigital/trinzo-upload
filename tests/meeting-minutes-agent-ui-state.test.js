@@ -515,6 +515,46 @@ test('the workflow has five steps and Details leads straight to generating', { t
   }
 });
 
+test('an opened transcript panel survives a re-render, and each step remembers its place', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'topic-cleanup');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    await page.waitForSelector('#discussionList .discussion-card');
+
+    // Open a transcript panel, then force the list to be rebuilt.
+    const panel = page.locator('#discussionList [data-keep-open]').first();
+    await panel.evaluate((node) => { node.open = true; });
+    const key = await panel.getAttribute('data-keep-open');
+    await page.evaluate(() => { const t = document.querySelector('[data-topic]'); if (t) { t.value = t.value + ' edited'; t.dispatchEvent(new Event('input', { bubbles: true })); } });
+    await page.waitForTimeout(600);
+    assert.equal(
+      await page.locator('#discussionList [data-keep-open="' + key + '"]').evaluate((node) => node.open),
+      true,
+      'the panel a reviewer opened to read a passage stays open across a re-render'
+    );
+
+    // Leaving a screen and coming back returns to the same place.
+    await page.evaluate(() => window.scrollTo(0, 220));
+    await page.waitForTimeout(150);
+    const before = await page.evaluate(() => window.scrollY);
+    await page.click('[data-step="0"]');
+    await page.waitForTimeout(300);
+    await page.click('[data-step="2"]');
+    await page.waitForTimeout(600);
+    const after = await page.evaluate(() => window.scrollY);
+    assert.ok(Math.abs(after - before) < 60, 'returned to ' + after + ' after leaving from ' + before);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('action generation has an honest waiting state and stage-scoped status', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;

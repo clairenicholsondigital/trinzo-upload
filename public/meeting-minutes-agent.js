@@ -262,7 +262,11 @@
         if (token !== navigationScrollToken || navigationScrollStep !== state.currentStep) return;
         var screen = document.querySelector('[data-screen="' + state.currentStep + '"]');
         if (!screen) return;
-        screen.scrollIntoView({ block: 'start', behavior: 'auto' });
+        // Returning to a screen puts the reviewer back where they were; a
+        // screen they have not visited still opens at the top.
+        var remembered = stepScrollMemory[state.currentStep];
+        if (typeof remembered === 'number') window.scrollTo({ top: remembered, behavior: 'auto' });
+        else screen.scrollIntoView({ block: 'start', behavior: 'auto' });
         if (!focusHeading) return;
         var heading = screen.querySelector('h2') || screen;
         if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
@@ -370,9 +374,35 @@
     }).join('');
   }
 
-  function evidenceBlock(ids) {
+  /* ------------------------------------------------------------------ *
+   * Keeping the reviewer's place.
+   * Every list is rebuilt with innerHTML on each render, so a panel opened to
+   * read a passage closed again on the next autosave. Panels that are worth
+   * reopening carry a stable key; the ones that are transient by nature, like
+   * the row menus, deliberately do not.
+   * ------------------------------------------------------------------ */
+  var openDisclosures = Object.create(null);
+
+  function disclosureKey(ids, prefix) {
+    return prefix + ':' + (ids || []).join(',');
+  }
+
+  function restoreDisclosures(root) {
+    (root || document).querySelectorAll('[data-keep-open]').forEach(function (node) {
+      if (openDisclosures[node.dataset.keepOpen]) node.open = true;
+    });
+  }
+
+  document.addEventListener('toggle', function (event) {
+    var node = event.target;
+    if (!node || !node.dataset || !node.dataset.keepOpen) return;
+    if (node.open) openDisclosures[node.dataset.keepOpen] = true;
+    else delete openDisclosures[node.dataset.keepOpen];
+  }, true);
+
+  function evidenceBlock(ids, ownerKey) {
     var count = (ids || []).length;
-    return '<details><summary class="evidence-toggle">View transcript &middot; ' + count + '</summary><div class="evidence-panel">' + evidenceHtml(ids) + '</div></details>';
+    return '<details data-keep-open="' + escapeHtml(disclosureKey(ids, 'evidence:' + (ownerKey || 'shared'))) + '"><summary class="evidence-toggle">View transcript &middot; ' + count + '</summary><div class="evidence-panel">' + evidenceHtml(ids) + '</div></details>';
   }
 
   function recordNeedsReview(record) {
@@ -384,7 +414,8 @@
 
   function recordMenu(record, actions) {
     var sourceLabel = recordNeedsReview(record) ? 'Check transcript' : 'View transcript';
-    return '<details class="record-menu"><summary class="secondary quiet" aria-label="Item options">•••</summary><div class="record-menu-popover"><span class="record-menu-label">' + sourceLabel + '</span>' + evidenceBlock(record.evidenceIds) + actions + '</div></details>';
+    var ownerKey = String((record && record.id) || '');
+    return '<details class="record-menu"><summary class="secondary quiet" aria-label="Item options">•••</summary><div class="record-menu-popover"><span class="record-menu-label">' + sourceLabel + '</span>' + evidenceBlock(record.evidenceIds, ownerKey) + actions + '</div></details>';
   }
 
   function autoGrow(root) {
@@ -395,8 +426,14 @@
     });
   }
 
+  // Where the reviewer was on each screen. Stepping out to the preview and
+  // back used to land them at the top of a list they were halfway down.
+  var stepScrollMemory = Object.create(null);
+
   function showStep(index, options) {
+    var leavingStep = state.currentStep;
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
+    if (leavingStep !== state.currentStep) stepScrollMemory[leavingStep] = window.scrollY;
     // A draft saved on the retired Focus step has nowhere to land; send it on
     // to Discussion rather than showing an empty screen.
     if (state.currentStep === 1) state.currentStep = 2;
@@ -810,7 +847,7 @@
     });
     if (!rows.length) return '';
     var lastSupportingParent = '';
-    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Other details &middot; not included in minutes</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
+    return '<details class="supporting-context" data-keep-open="supporting:' + escapeHtml(String(topic.id || topicIndex)) + '"><summary class="supporting-context-head"><span class="supporting-context-title">Other details &middot; not included in minutes</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
       // The parent sentence is repeated on every detail belonging to it, which
       // on a busy topic prints the same line five times. Show it when the
       // parent changes and let the rest sit under it.
@@ -818,7 +855,7 @@
       var parentHeading = parentKey === lastSupportingParent ? '' :
         '<div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div>';
       lastSupportingParent = parentKey;
-      return '<div class="supporting-detail' + (parentHeading ? '' : ' supporting-detail-continued') + '" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '">' + parentHeading + '<p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
+      return '<div class="supporting-detail' + (parentHeading ? '' : ' supporting-detail-continued') + '" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '">' + parentHeading + '<p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds, String(row.detail.id || '')) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
     }).join('') + '</div></div></details>';
   }
 
@@ -859,6 +896,7 @@
       return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
+    restoreDisclosures(document.getElementById('discussionList'));
   }
 
   function readDiscussion() {
@@ -1003,6 +1041,7 @@
       return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions returned. Check the transcript for commitments.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
+    restoreDisclosures(document.getElementById('actionsBody'));
     renderActionReview();
   }
 
@@ -1310,11 +1349,12 @@
       // Collapsed by default: the passage is often longer than the warning it
       // supports, and a reviewer who trusts the quoted line never opens it.
       var evidenceLines = evidenceContext(flag.evidenceIds).length;
-      var evidence = '<details class="review-evidence"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
+      var evidence = '<details class="review-evidence" data-keep-open="' + escapeHtml(disclosureKey(flag.evidenceIds, 'flag-' + flag.id)) + '"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
         + (evidenceLines ? evidenceLines + ' line' + (evidenceLines === 1 ? '' : 's') : 'none linked')
         + '</span></summary><div class="review-evidence-body">' + evidenceHtml(flag.evidenceIds) + '</div></details>';
       return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + '<div class="flag-actions">' + actions + '</div></div>' + evidence + '</div></div>';
     }).join('');
+    restoreDisclosures(document.getElementById('flagList'));
     updateReviewQueueSummary();
   }
 
@@ -1366,7 +1406,7 @@
       if (change.reviewContext) {
         content += '<div class="proposal-rationale"><div><strong>Why this needs review:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
           + (change.reviewContext.label ? '<div class="commitment-chain"><span>In the transcript</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
-          + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds) : '') + '</div>';
+          + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds, String(change.id || '')) : '') + '</div>';
       }
       var target = proposalTarget(change, proposal.stage);
       if (target) content += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
