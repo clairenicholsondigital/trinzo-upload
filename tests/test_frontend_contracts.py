@@ -193,6 +193,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.record-row+.record-row', page)
         self.assertIn('outline:2px solid var(--accent)', page)
         self.assertIn('.actions-table td{', page)
+        self.assertIn('.actions-table .generation-row .generating{', page)
         self.assertNotIn("Excluded transcript passages", page)
         self.assertNotIn('id="excludedList"', page)
         self.assertNotIn("function renderExcluded", client)

@@ -785,6 +785,14 @@
     margin:.75rem 0;padding:.6rem;border:1px solid var(--border);
     border-radius:var(--radius-sm)}
   .meeting-agent-page .actions-table td{border:0;padding:.35rem}
+  /* A generation message spans the action table. Once the table becomes a
+     block layout, keep that spanning cell full-width instead of letting the
+     desktop column geometry leave the message squeezed on the left. */
+  .meeting-agent-page .actions-table .generation-row,
+  .meeting-agent-page .actions-table .generation-row td,
+  .meeting-agent-page .actions-table .generation-row .generating{
+    display:block;width:100%;
+  }
   .meeting-agent-page .actions-table td[data-label]::before{
     content:attr(data-label);display:block;margin-bottom:.25rem;
     font-size:var(--fs-cap);font-weight:var(--fw-bold);letter-spacing:.06em;
