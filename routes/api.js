@@ -10755,6 +10755,7 @@ function meetingAgentDraftPayload(draft = {}) {
     reviewFlags: normaliseMeetingAgentKnownTermsDeep(payloadFlags),
     pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
     changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
+    redoHistory: Array.isArray(draft.redoHistory) ? draft.redoHistory.slice(-30) : [],
     staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
     steer: meetingAgentSteerText(draft.steer),
     executiveSummary: normaliseMeetingAgentKnownTerms(normaliseExecutiveSummary(draft.executiveSummary)),
@@ -10815,7 +10816,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
-  const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, ...publicFields } = draft;
+  const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
     [...(publicFields.discussion || []), ...(publicFields.actions || [])],
@@ -10843,6 +10844,9 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   // The client only needs to know whether an undo exists. Shipping up to 30
   // full before/after snapshots on every save was pure weight.
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
+  // The client only needs to know a redo exists and what it is called.
+  const latestRedo = Array.isArray(redoHistory) ? redoHistory[redoHistory.length - 1] : null;
+  safe.lastRedo = latestRedo ? { id: latestRedo.id, label: latestRedo.label, createdAt: latestRedo.createdAt } : null;
   const latestUndo = Array.isArray(changeHistory) ? changeHistory[changeHistory.length - 1] : null;
   safe.lastUndo = latestUndo ? {
     id: meetingMinutesAgentText(latestUndo.id, 80),
@@ -10971,7 +10975,11 @@ function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRow
 const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
   'details', 'steer', 'discussion', 'actions', 'executiveSummary',
   'meetingObjectives', 'reviewFlags', 'pendingProposal', 'staleStages',
-  'currentStep', 'selectedStep', 'status'
+  'currentStep', 'selectedStep', 'status',
+  // Undoing a change has to restore what it did to the reviewer's own state
+  // too: which sections they included, what they checked off, what they
+  // rejected. Without these, undo puts the text back and loses the rest.
+  'includeSections', 'keptActionIds', 'removedActions'
 ];
 
 function meetingAgentReviewSnapshot(draft = {}) {
@@ -14798,6 +14806,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       changeHistory,
       // Kept ids are filtered against the actions being saved, so a row the
       // reviewer ticked and then removed in the same save does not linger.
+      redoHistory: reviewDecisionLabel ? [] : draft.redoHistory,
       includeSections: includedSections({ includeSections: req.body?.includeSections ?? draft.includeSections }),
       keptActionIds: normaliseKeptActionIds(req.body?.keptActionIds ?? draft.keptActionIds, normalised.actions),
       removedActions: normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions),
@@ -16047,6 +16056,37 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
   }
 });
 
+router.post('/meeting-minutes-agent/drafts/:draftId/redo', requireAuth, async (req, res) => {
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    if (Number(req.body?.revision) !== draft.revision) {
+      const error = new Error('This draft was updated elsewhere. Reload it before redoing.');
+      error.statusCode = 409;
+      error.currentDraft = draft;
+      throw error;
+    }
+    const redoHistory = [...(draft.redoHistory || [])];
+    const latest = redoHistory.pop();
+    if (!latest || !latest.beforeState) return res.status(409).json({ ok: false, error: 'There is nothing to redo.' });
+    const restored = Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS
+      .filter((key) => Object.prototype.hasOwnProperty.call(latest.beforeState, key))
+      .map((key) => [key, latest.beforeState[key]]));
+    // Redoing is itself undoable: the state it replaces goes back on the undo
+    // stack, so the reviewer can step either way rather than into a dead end.
+    const changeHistory = [...(draft.changeHistory || []), {
+      id: crypto.randomUUID(),
+      type: latest.type || 'review_decision',
+      label: latest.label,
+      createdAt: new Date().toISOString(),
+      beforeState: meetingAgentReviewSnapshot(draft)
+    }].slice(-30);
+    const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory, redoHistory });
+    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
+  } catch (error) {
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
 router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
@@ -16058,7 +16098,15 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
     }
     const history = [...(draft.changeHistory || [])];
     const latest = history.pop();
-    if (!latest) return res.status(409).json({ ok: false, error: 'There is no review decision to undo.' });
+    if (!latest) return res.status(409).json({ ok: false, error: 'There is nothing to undo.' });
+    // What undo is about to replace becomes the redo entry.
+    const redoHistory = [...(draft.redoHistory || []), {
+      id: crypto.randomUUID(),
+      type: latest.type || 'review_decision',
+      label: latest.label,
+      createdAt: new Date().toISOString(),
+      beforeState: meetingAgentReviewSnapshot(draft)
+    }].slice(-30);
     const restored = latest.beforeState && typeof latest.beforeState === 'object'
       ? Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS
         .filter((key) => Object.prototype.hasOwnProperty.call(latest.beforeState, key))
@@ -16067,7 +16115,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
           ...(latest.stage === 'discussion' ? { discussion: latest.before || [] } : { actions: latest.before || [] }),
           pendingProposal: null
         };
-    const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory: history });
+    const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory: history, redoHistory });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);

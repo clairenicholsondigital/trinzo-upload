@@ -95,10 +95,19 @@
       checks.textContent = counts.total ? counts.total + ' check' + (counts.total === 1 ? '' : 's') + ' remaining' : 'No automated warnings';
       checks.classList.toggle('quiet', counts.total === 0);
     }
+    // Both controls name the change they act on, so the reviewer can tell what
+    // is about to happen before pressing them.
     var undo = document.getElementById('undoLastDecision');
     if (undo) {
       undo.hidden = !state.draft.lastUndo;
+      undo.textContent = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : 'Undo';
       undo.title = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : '';
+    }
+    var redo = document.getElementById('redoLastDecision');
+    if (redo) {
+      redo.hidden = !state.draft.lastRedo;
+      redo.textContent = state.draft.lastRedo ? 'Redo: ' + state.draft.lastRedo.label : 'Redo';
+      redo.title = state.draft.lastRedo ? 'Redo: ' + state.draft.lastRedo.label : '';
     }
     var preview = document.getElementById('previewDocument');
     if (preview) {
@@ -125,7 +134,57 @@
     undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 10000);
   }
 
+  /* ------------------------------------------------------------------ *
+   * What counts as one undoable step.
+   * A continuous edit to one field is one step. Moving to another field,
+   * pausing, or doing something else starts the next one. Autosaves are not
+   * boundaries: the group survives them, or a long paragraph would undo a
+   * second at a time.
+   * ------------------------------------------------------------------ */
+  var UNDO_GROUP_MS = 2000;
+  var undoGroup = { key: '', at: 0 };
+
+  // One field is one group. A blank identity would merge two different fields
+  // into a single step, so anything unidentifiable gets its own group.
+  function undoGroupKeyForField(field) {
+    if (!field) return '';
+    if (field.id) return 'id:' + field.id;
+    var data = field.dataset || {};
+    var parts = Object.keys(data).sort().map(function (key) { return key + '=' + data[key]; });
+    return parts.length ? 'data:' + parts.join('|') : 'tag:' + field.tagName + ':' + Math.random();
+  }
+
+  function undoLabelForField(field) {
+    if (!field) return 'edit';
+    if (field.matches('[data-action]')) return 'edit action';
+    if (field.matches('[data-record-field]')) return 'edit discussion item';
+    if (field.matches('[data-topic]')) return 'edit topic';
+    if (field.matches('[data-objective-index]')) return 'edit objective';
+    if (field.id === 'executiveSummary') return 'edit summary';
+    if (field.id === 'meetingSteer') return 'edit focus note';
+    if (field.matches('[data-timing-kind],[data-timing-date],[data-timing-wording]')) return 'change timing';
+    if (field.closest('#detailsEditor')) return 'edit meeting details';
+    return 'edit';
+  }
+
+  function markUndoStep(label, groupKey) {
+    var now = Date.now();
+    if (groupKey && undoGroup.key === groupKey && (now - undoGroup.at) < UNDO_GROUP_MS) {
+      undoGroup.at = now;
+      return;
+    }
+    undoGroup = { key: groupKey || '', at: now };
+    pendingReviewDecisionLabel = String(label || 'Change').slice(0, 160);
+  }
+
+  // Anything that is not typing closes the current group, so the next
+  // keystroke starts a fresh step rather than joining the previous one.
+  function endUndoGroup() {
+    undoGroup = { key: '', at: 0 };
+  }
+
   function queueReviewDecision(label) {
+    endUndoGroup();
     pendingReviewDecisionLabel = String(label || 'Review decision').slice(0, 160);
     editVersion += 1;
     setSaveStatus('Saving review decision...', 'saving');
@@ -1872,6 +1931,20 @@
     finally { setBusy(false); }
   }
 
+  async function redoLastReviewDecision() {
+    if (!state.draft || !state.draft.lastRedo) return;
+    try {
+      if (saveTimer || saveInFlight || pendingReviewDecisionLabel) await saveDraftNow();
+      setBusy(true, 'Redoing...', currentStageName());
+      var payload = await jsonRequest(draftUrl('/redo'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
+      activeFinalEdit = null;
+      endUndoGroup();
+      adoptDraft(payload.draft);
+      setStatus('Change redone.', false, currentStageName());
+    } catch (error) { setStatus(error.message, true, currentStageName()); }
+    finally { setBusy(false); }
+  }
+
   async function undoLastReviewDecision() {
     if (!state.draft || !state.draft.lastUndo) return;
     try {
@@ -1879,6 +1952,7 @@
       setBusy(true, 'Undoing the last review decision...', currentStageName());
       var payload = await jsonRequest(draftUrl('/undo'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
       activeFinalEdit = null;
+      endUndoGroup();
       adoptDraft(payload.draft);
       document.getElementById('undoToast').hidden = true;
       setStatus('Last review decision undone.', false, currentStageName());
@@ -1970,6 +2044,7 @@
       var include = includedSectionState();
       include[id === 'includeObjectives' ? 'meetingObjectives' : 'executiveSummary'] = box.checked;
       state.draft.includeSections = include;
+      markUndoStep(box.checked ? 'include section' : 'exclude section', '');
       renderIncludedSections();
       // Turning a section off drops what is already there: leaving the text in
       // place would export a section the reviewer has said they do not want.
@@ -2327,6 +2402,7 @@
         var ids = keptActionIds();
         var at = ids.indexOf(keptRow.id);
         if (at === -1) ids.push(keptRow.id); else ids.splice(at, 1);
+        markUndoStep(at === -1 ? 'mark action checked' : 'clear action check', '');
       }
       rerenderActions(); scheduleSave();
       return;
@@ -2556,6 +2632,7 @@
   });
   document.getElementById('downloadDraft').addEventListener('click', function () { downloadExport('docx'); });
   document.getElementById('undoLastDecision').addEventListener('click', undoLastReviewDecision);
+  document.getElementById('redoLastDecision').addEventListener('click', redoLastReviewDecision);
   document.getElementById('undoToastButton').addEventListener('click', undoLastReviewDecision);
   document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Final minutes saved to the Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });
   document.getElementById('reloadDraft').addEventListener('click', function () {
@@ -2586,6 +2663,7 @@
       return;
     }
     if (event.target.matches('textarea,input,select') && !event.target.closest('[data-final-editor]') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
+      markUndoStep(undoLabelForField(event.target), undoGroupKeyForField(event.target));
       readEditors();
       rememberPendingActions();
       rememberPendingDiscussion();

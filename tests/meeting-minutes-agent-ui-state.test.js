@@ -173,6 +173,7 @@ function startStubServer() {
   const patchCounts = new Map();
   const patchBodies = new Map();
   const reviewHistory = new Map();
+  const redoHistory = new Map();
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
@@ -196,9 +197,11 @@ function startStubServer() {
       snapshot: JSON.parse(JSON.stringify(prior))
     });
     reviewHistory.set(req.params.id, history);
+    if (req.body.reviewDecisionLabel) redoHistory.set(req.params.id, []);
     const next = {
       ...prior,
       ...req.body,
+      lastRedo: req.body.reviewDecisionLabel ? null : (prior.lastRedo || null),
       revision: prior.revision + 1,
       updatedAt: new Date().toISOString(),
       currentStep: Math.max(Number(prior.currentStep || 0), Number(req.body.currentStep || 0)),
@@ -262,17 +265,41 @@ function startStubServer() {
     drafts.set(req.params.id, next);
     res.json({ ok: true, draft: next });
   });
-  app.post('/api/meeting-minutes-agent/drafts/:id/undo', (req, res) => {
+  app.post('/api/meeting-minutes-agent/drafts/:id/redo', (req, res) => {
     const prior = drafts.get(req.params.id);
+    const redo = redoHistory.get(req.params.id) || [];
+    const latest = redo.pop();
+    if (!latest) return res.status(409).json({ ok: false, error: 'There is nothing to redo.' });
+    redoHistory.set(req.params.id, redo);
     const history = reviewHistory.get(req.params.id) || [];
-    const latest = history.pop();
-    if (!latest) return res.status(409).json({ ok: false, error: 'There is no review decision to undo.' });
+    history.push({ label: latest.label, snapshot: JSON.parse(JSON.stringify(prior)) });
     reviewHistory.set(req.params.id, history);
     const next = {
       ...latest.snapshot,
       revision: prior.revision + 1,
       updatedAt: new Date().toISOString(),
-      lastUndo: history.length ? { id: `undo-${history.length}`, label: history[history.length - 1].label } : null
+      lastUndo: { id: `undo-${history.length}`, label: latest.label },
+      lastRedo: redo.length ? { id: `redo-${redo.length}`, label: redo[redo.length - 1].label } : null
+    };
+    drafts.set(req.params.id, next);
+    res.json({ ok: true, draft: next });
+  });
+
+  app.post('/api/meeting-minutes-agent/drafts/:id/undo', (req, res) => {
+    const prior = drafts.get(req.params.id);
+    const history = reviewHistory.get(req.params.id) || [];
+    const latest = history.pop();
+    if (!latest) return res.status(409).json({ ok: false, error: 'There is nothing to undo.' });
+    reviewHistory.set(req.params.id, history);
+    const redo = redoHistory.get(req.params.id) || [];
+    redo.push({ label: latest.label, snapshot: JSON.parse(JSON.stringify(prior)) });
+    redoHistory.set(req.params.id, redo);
+    const next = {
+      ...latest.snapshot,
+      revision: prior.revision + 1,
+      updatedAt: new Date().toISOString(),
+      lastUndo: history.length ? { id: `undo-${history.length}`, label: history[history.length - 1].label } : null,
+      lastRedo: { id: `redo-${redo.length}`, label: latest.label }
     };
     drafts.set(req.params.id, next);
     res.json({ ok: true, draft: next });
@@ -303,6 +330,7 @@ function startStubServer() {
   });
   app.get('/test-state/:id', (req, res) => res.json({
     patches: patchCounts.get(req.params.id) || 0,
+    undoLabels: (reviewHistory.get(req.params.id) || []).map((entry) => entry.label),
     draft: drafts.get(req.params.id),
     lastPatch: patchBodies.get(req.params.id) || null
   }));
@@ -592,6 +620,56 @@ test('excluding a section hides it, clears it and stops it being generated', { t
     await page.uncheck('#includeObjectives');
     await page.click('[data-step="4"]');
     assert.equal(await page.locator('#summaryAllExcluded').isHidden(), false);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
+test('a typing burst is one undo step, and a second field starts another', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    const historyCount = async () => page.evaluate(async () =>
+      (await (await fetch('/test-state/editor')).json()).undoLabels.length);
+    const before = await historyCount();
+
+    // A continuous edit to one field: several autosaves, one step.
+    const field = page.locator('#actionsBody [data-action-row="0"] [data-action]');
+    await field.click();
+    for (const word of ['Send ', 'the ', 'revised ', 'report ', 'today.']) {
+      await page.keyboard.type(word, { delay: 15 });
+      await page.waitForTimeout(120);
+    }
+    await page.waitForTimeout(900);
+    const afterFirst = await historyCount();
+    assert.equal(afterFirst - before, 1, 'one burst is one step, not one per autosave');
+    assert.match(await page.textContent('#undoLastDecision'), /Undo: edit action/i);
+
+    // Moving to a different field starts a new step.
+    await page.click('#actionsBody [data-action-row="0"] [data-timing-date]');
+    await page.fill('#actionsBody [data-action-row="0"] [data-timing-date]', '2026-10-01');
+    await page.waitForTimeout(900);
+    assert.equal(await historyCount() - afterFirst, 1, 'another field is another step');
+    assert.match(await page.textContent('#undoLastDecision'), /Undo: change timing/i);
+
+    // Undo puts the date back and offers a redo.
+    await page.click('#undoLastDecision');
+    await page.waitForTimeout(900);
+    assert.equal(await page.inputValue('#actionsBody [data-action-row="0"] [data-timing-date]'), '');
+    assert.equal(await page.locator('#redoLastDecision').isHidden(), false);
+    assert.match(await page.textContent('#redoLastDecision'), /Redo: change timing/i);
+
+    // Redo reapplies it.
+    await page.click('#redoLastDecision');
+    await page.waitForTimeout(900);
+    assert.equal(await page.inputValue('#actionsBody [data-action-row="0"] [data-timing-date]'), '2026-10-01');
 
     assert.deepEqual(errors, []);
   } finally {
