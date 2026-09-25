@@ -21,7 +21,7 @@
   var navigationScrollStep = null;
   var navigationScrollToken = 0;
   var navigationScrollTimer = null;
-  var actionEditorState = { pendingRows: {}, customOwners: {} };
+  var actionEditorState = { pendingRows: {}, customOwners: {}, editingOwners: {}, editingTiming: {} };
   var discussionEditorState = { pendingTopics: {}, pendingRecords: {}, collapsedTopics: {} };
   var pendingReviewDecisionLabel = '';
   var undoToastTimer = null;
@@ -92,7 +92,9 @@
     var checks = document.getElementById('checksRemaining');
     if (checks) {
       checks.hidden = false;
-      checks.textContent = counts.total ? counts.total + ' check' + (counts.total === 1 ? '' : 's') + ' remaining' : 'No automated warnings';
+      checks.textContent = counts.flags
+        ? counts.flags + ' warning' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
+        : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'No automated warnings';
       checks.classList.toggle('quiet', counts.total === 0);
     }
     // Both controls name the change they act on, so the reviewer can tell what
@@ -684,6 +686,21 @@
     });
   }
 
+  function renderStaleNotice() {
+    var notice = document.getElementById('staleNotice');
+    if (!notice || !state.draft) return;
+    var stale = state.draft.staleStages || [];
+    notice.hidden = !stale.length;
+    var stages = document.getElementById('staleStages');
+    if (stages) stages.textContent = stale.join(' and ');
+    var actions = document.getElementById('staleStageActions');
+    if (!actions) return;
+    var labels = { discussion:'Discussion', actions:'Actions', summary:'Summary' };
+    actions.innerHTML = stale.map(function (stage) {
+      return '<button type="button" class="secondary compact" data-update-stale-stage="' + escapeHtml(stage) + '">Update ' + escapeHtml(labels[stage] || stage) + '</button>';
+    }).join('');
+  }
+
   function markDownstreamStale() {
     if (!state.draft) return;
     var stale = new Set(state.draft.staleStages || []);
@@ -692,9 +709,7 @@
     if (generationRunning('actions')) actionsInvalidatedDuringGeneration = true;
     if (!stale.size) return;
     state.draft.staleStages = Array.from(stale);
-    var notice = document.getElementById('staleNotice');
-    notice.hidden = false;
-    document.getElementById('staleStages').textContent = state.draft.staleStages.join(' and ');
+    renderStaleNotice();
   }
 
   function speculationFor(stage) {
@@ -1056,6 +1071,11 @@
 
   function ownerEditor(action, index) {
     var owners = action.owners || [];
+    var actionId = String(action.id || ('action-' + index));
+    var editing = Boolean(actionEditorState.editingOwners[actionId]);
+    if (!editing) {
+      return '<button type="button" class="field-display owner-summary" data-edit-owners data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit owners">' + escapeHtml(owners.join(', ') || 'No owner assigned') + '</button>';
+    }
     var taken = owners.map(function (owner) { return owner.toLowerCase(); });
     var available = participantNames().filter(function (name) { return taken.indexOf(name.toLowerCase()) < 0; });
     var chips = owners.map(function (owner) {
@@ -1064,17 +1084,26 @@
     var options = available.map(function (name) {
       return '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
     }).join('');
-    var actionId = String(action.id || ('action-' + index));
     var ownerDraft = actionEditorState.customOwners[actionId] || {};
-    return '<div class="owner-chips">' + chips + '</div><div class="owner-add"><select data-add-owner data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Add an attendee as owner"><option value="">Add owner...</option>' + options + '<option value="__other">Someone else...</option></select><input data-owner-other data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" value="' + escapeHtml(ownerDraft.value || '') + '" placeholder="Name" aria-label="Add another owner by name"' + (ownerDraft.visible ? '' : ' hidden') + '></div>';
+    return '<div class="owner-editor"><div class="owner-chips">' + chips + '</div><div class="owner-add"><select data-add-owner data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Add an attendee as owner"><option value="">Choose owner...</option>' + options + '<option value="__other">Someone else...</option></select><input data-owner-other data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" value="' + escapeHtml(ownerDraft.value || '') + '" placeholder="Name" aria-label="Add another owner by name"' + (ownerDraft.visible ? '' : ' hidden') + '><button type="button" class="secondary quiet compact" data-finish-owner-edit data-action-id="' + escapeHtml(actionId) + '">Done</button></div></div>';
   }
 
-  function timingEditor(timing, index) {
+  function timingSummary(timing) {
+    var value = timingText(timing);
+    if (timing && timing.exactDate && timing.wording) value += ' (from “' + timing.wording + '”)';
+    return value;
+  }
+
+  function timingEditor(timing, index, actionId) {
+    actionId = String(actionId || ('action-' + index));
+    if (!actionEditorState.editingTiming[actionId]) {
+      return '<button type="button" class="field-display timing-summary" data-edit-timing data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit timing">' + escapeHtml(timingSummary(timing)) + '</button>';
+    }
     var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline'], ['dependency', 'Dependency']];
     var options = kinds.map(function (pair) {
       return '<option value="' + pair[0] + '"' + (timing.kind === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
     }).join('');
-    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label hidden><span>Original wording</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label><span>Interpreted date</span><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Interpreted exact date"></label></div>';
+    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label hidden><span>Original wording</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label class="timing-date-field"><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label><button type="button" class="secondary quiet compact" data-finish-timing-edit data-action-id="' + escapeHtml(actionId) + '">Done</button></div>';
   }
 
   function renderActions() {
@@ -1105,20 +1134,21 @@
     document.getElementById('actionsBody').innerHTML = actions.map(function (item, index) {
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
       var targetId = recordDomId('action', item.id, index);
-      var menu = recordMenu(item, '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove action</button>');
+      var menu = recordMenu(item, '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove from minutes</button>');
       var kept = isActionKept(item.id);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
       var decisions = '<div class="row-decisions">'
-        + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Keep') + '</button>'
-        + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Reject</button>'
+        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '">View transcript</button>'
+        + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Mark checked') + '</button>'
+        + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Remove from minutes</button>'
         + '</div>';
       // Reordering: the handle is the drag source and also takes arrow keys, so
       // the order can be changed without a mouse.
       var grip = '<button type="button" class="action-grip" data-action-grip="' + index + '" draggable="true"'
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions returned. Check the transcript for commitments.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
@@ -1141,8 +1171,6 @@
     return Boolean(id) && keptActionIds().indexOf(id) !== -1;
   }
 
-  // The counts a reviewer needs are the ones that say how much is left, so
-  // "still to check" is the one given prominence.
   function renderActionReview() {
     var bar = document.getElementById('actionReviewBar');
     var panel = document.getElementById('removedActionsPanel');
@@ -1156,14 +1184,7 @@
       ? proposal.changes.filter(function (change) { return change && change.type === 'add'; }).length
       : 0;
     bar.hidden = !actions.length && !removed.length;
-    // "Still to check" could be read as work that blocks publication. It does
-    // not: only rejection takes a row out, so the note says what silence means.
-    bar.innerHTML = '<span class="review-count review-count-open"><strong>' + undecided + '</strong> still to check</span>'
-      + '<span class="review-count"><strong>' + checked + '</strong> checked</span>'
-      + '<span class="review-count"><strong>' + actions.length + '</strong> in the register</span>'
-      + (removed.length ? '<span class="review-count"><strong>' + removed.length + '</strong> removed</span>' : '')
-      + (proposed ? '<span class="review-count"><strong>' + proposed + '</strong> suggested</span>' : '')
-      + '<span class="review-note">Everything in the register goes into the final minutes. Keep is only your own check-off; Reject is what takes a row out.</span>';
+    bar.innerHTML = '<span class="review-count review-count-open"><strong>' + actions.length + '</strong> action' + (actions.length === 1 ? '' : 's') + ' · <strong>' + undecided + '</strong> unchecked · <strong>' + proposed + '</strong> suggestion' + (proposed === 1 ? '' : 's') + '</span>';
 
     panel.hidden = !removed.length;
     var summary = document.getElementById('removedActionsSummary');
@@ -1192,11 +1213,12 @@
       if (!action) return;
       var area = row.querySelector('[data-action]');
       if (area) action.action = area.value.trim();
-      action.owners = Array.from(row.querySelectorAll('[data-owner-chip]')).map(function (chip) { return chip.dataset.owner; }).filter(Boolean);
+      var ownerChips = row.querySelectorAll('[data-owner-chip]');
+      if (ownerChips.length) action.owners = Array.from(ownerChips).map(function (chip) { return chip.dataset.owner; }).filter(Boolean);
       var kind = row.querySelector('[data-timing-kind]');
       var wording = row.querySelector('[data-timing-wording]');
       var date = row.querySelector('[data-timing-date]');
-      action.timing = { kind: kind ? kind.value : 'not_stated', wording: wording ? wording.value.trim() : '', exactDate: date ? date.value : '' };
+      if (kind) action.timing = { kind: kind.value, wording: wording ? wording.value.trim() : '', exactDate: date ? date.value : '' };
     });
     return state.draft.actions;
   }
@@ -1396,9 +1418,9 @@
     var counts = reviewQueueCounts();
     var panel = document.getElementById('reviewFlags');
     panel.hidden = counts.total === 0;
-    document.getElementById('flagCount').textContent = counts.total
-      ? counts.total + ' item' + (counts.total === 1 ? '' : 's') + ' to review'
-      : 'Review complete';
+    document.getElementById('flagCount').textContent = counts.flags
+      ? counts.flags + ' warning' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
+      : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'Review complete';
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) intro.textContent = counts.suggestions
       ? 'Warnings and suggested changes are kept together here. Open an item to review its source and make a decision.'
@@ -1419,7 +1441,7 @@
       var body = '<span class="flag-kind">Warning · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
       var target = flagTarget(flag);
       if (target) {
-        var selector = target.field === 'timing' ? '[data-timing-date]' : target.field === 'owners' ? '[data-add-owner]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
+        var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += '<div class="flag-target"><span>' + (target.proposal ? 'Related suggestion' : 'Affected ' + escapeHtml(target.label.toLowerCase())) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review suggestion' : 'View and edit') + '</button></div>';
       } else body += '<p class="review-route-missing"><strong>No saved item or pending suggestion matches this warning.</strong> If the issue still matters, add or correct the relevant item and then resolve the warning. If its content was removed, dismiss it.</p>';
@@ -1498,8 +1520,7 @@
     updateReviewQueueSummary();
     // The queue stays collapsed when it first gains items, matching renderFlags
     // above: this runs after it, so opening here quietly overrode that and the
-    // panel was expanded on arrival whenever there were suggestions. The count
-    // chip and the "checks remaining" button are how the reviewer opens it.
+    // The panel stays closed until the reviewer opens the warnings or suggestions.
     if (wasHidden) document.getElementById('reviewFlags').open = false;
   }
 
@@ -1519,13 +1540,13 @@
 
   function timingText(timing) {
     timing = timing || {};
-    if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'Not stated';
+    if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'No date agreed';
     var prefix = timing.kind === 'target' ? 'Target: ' : (timing.kind === 'dependency' ? 'Dependent on: ' : 'Deadline: ');
     return prefix + (timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording);
   }
 
   function timingDisplayText(timing) {
-    return timingText(timing) === 'Not stated' ? '—' : timingText(timing);
+    return timingText(timing);
   }
 
   function finalEditMatches(kind, id, field) {
@@ -1605,9 +1626,7 @@
       var actionsInstruction = document.getElementById('actionsInstruction');
       if (discussionInstruction) discussionInstruction.disabled = generationRunning('discussion');
       if (actionsInstruction) actionsInstruction.disabled = generationRunning('actions');
-      var stale = state.draft.staleStages || [];
-      document.getElementById('staleNotice').hidden = !stale.length;
-      document.getElementById('staleStages').textContent = stale.join(' and ');
+      renderStaleNotice();
     } else document.getElementById('staleNotice').hidden = true;
     // The Review page's document is built on entry; a draft resumed on Review
     // (or re-rendered while it is open) must build it too.
@@ -2386,6 +2405,49 @@
   });
 
   document.getElementById('actionsBody').addEventListener('click', function (event) {
+    var transcriptButton = event.target.closest('[data-open-action-transcript]');
+    if (transcriptButton) {
+      var transcriptRow = transcriptButton.closest('[data-action-row]');
+      var transcriptMenu = transcriptRow && transcriptRow.querySelector('.record-menu');
+      if (transcriptMenu) {
+        transcriptMenu.open = true;
+        var evidence = transcriptMenu.querySelector('details');
+        if (evidence) evidence.open = true;
+      }
+      return;
+    }
+    var editOwners = event.target.closest('[data-edit-owners]');
+    if (editOwners) {
+      readActions();
+      actionEditorState.editingOwners[editOwners.dataset.actionId] = true;
+      rerenderActions();
+      var ownerSelect = document.querySelector('#actionsBody [data-action-row="' + editOwners.dataset.actionIndex + '"] [data-add-owner]');
+      if (ownerSelect) ownerSelect.focus({ preventScroll: true });
+      return;
+    }
+    var editTiming = event.target.closest('[data-edit-timing]');
+    if (editTiming) {
+      readActions();
+      actionEditorState.editingTiming[editTiming.dataset.actionId] = true;
+      rerenderActions();
+      var timingSelect = document.querySelector('#actionsBody [data-action-row="' + editTiming.dataset.actionIndex + '"] [data-timing-kind]');
+      if (timingSelect) timingSelect.focus({ preventScroll: true });
+      return;
+    }
+    var finishOwners = event.target.closest('[data-finish-owner-edit]');
+    if (finishOwners) {
+      readActions();
+      delete actionEditorState.editingOwners[finishOwners.dataset.actionId];
+      renderActions(); scheduleSave();
+      return;
+    }
+    var finishTiming = event.target.closest('[data-finish-timing-edit]');
+    if (finishTiming) {
+      readActions();
+      delete actionEditorState.editingTiming[finishTiming.dataset.actionId];
+      renderActions(); scheduleSave();
+      return;
+    }
     var removeOwner = event.target.closest('[data-remove-owner]');
     if (removeOwner) {
       readActions();
@@ -2427,6 +2489,8 @@
       if (keptAt !== -1) keptActionIds().splice(keptAt, 1);
       delete actionEditorState.pendingRows[removedAction.id];
       delete actionEditorState.customOwners[removedAction.id];
+      delete actionEditorState.editingOwners[removedAction.id];
+      delete actionEditorState.editingTiming[removedAction.id];
     }
     renderActions(); queueReviewDecision('Action removed');
   });
@@ -2484,6 +2548,11 @@
     // focused field. Committing from that synthetic blur would recursively
     // replace the same DOM subtree and can both throw and lose unfinished text.
     if (input && !rendering) commitOtherOwner(input);
+  });
+
+  document.getElementById('staleStageActions').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-update-stale-stage]');
+    if (button) requestBackgroundStage(button.dataset.updateStaleStage);
   });
 
   document.getElementById('addAction').addEventListener('click', function () {
@@ -2597,6 +2666,16 @@
         var detail = target.querySelector('.proposal-detail');
         if (detail) detail.open = true;
         var editor = target.querySelector(targetButton.dataset.targetSelector || 'textarea,input');
+        if (editor && targetButton.dataset.targetSelector === '[data-edit-timing]') {
+          editor.click();
+          target = document.getElementById(target.id);
+          editor = target.querySelector('[data-timing-date]');
+        }
+        if (editor && targetButton.dataset.targetSelector === '[data-edit-owners]') {
+          editor.click();
+          target = document.getElementById(target.id);
+          editor = target.querySelector('[data-add-owner]');
+        }
         if (editor) editor.focus({preventScroll:true});
         window.setTimeout(function () { target.classList.remove('flag-target-highlight'); }, 2400);
     }, 0);

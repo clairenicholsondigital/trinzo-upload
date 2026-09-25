@@ -374,6 +374,8 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
     assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'resume link stays hidden after an autosave while an unfinished row exists');
 
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-owners]');
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const customOwner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
     await customOwner.fill('Jordan Lee');
@@ -409,12 +411,11 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     const { page, errors } = launched;
 
     const bar = page.locator('#actionReviewBar');
-    assert.match(await bar.textContent(), /1 still to check/, 'everything starts undecided');
+    assert.match(await bar.textContent(), /1 action · 1 unchecked · 0 suggestions/, 'everything starts unchecked');
 
     // Keep marks a row as checked without changing the minutes.
     await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
-    assert.match(await bar.textContent(), /0 still to check/);
-    assert.match(await bar.textContent(), /1 checked/);
+    assert.match(await bar.textContent(), /1 action · 0 unchecked · 0 suggestions/);
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1, 'keeping removes nothing');
 
     // Rejecting moves the row out of the register and into Removed.
@@ -422,7 +423,6 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     assert.equal(await page.locator('#removedActionsPanel').isHidden(), false);
     assert.match(await page.textContent('#removedActionsSummary'), /1 removed action/);
-    assert.match(await bar.textContent(), /1 removed/);
 
     // And it can be put back rather than retyped. The section stays collapsed
     // by default so it does not crowd the register; opening it is one click.
@@ -433,7 +433,7 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     const restored = await page.inputValue('#actionsBody [data-action-row="0"] [data-action]');
     assert.ok(restored.length > 0, 'the wording comes back with the row');
     // A row put back is no longer counted as checked: it needs deciding again.
-    assert.match(await bar.textContent(), /1 still to check/);
+    assert.match(await bar.textContent(), /1 action · 1 unchecked · 0 suggestions/);
 
     assert.deepEqual(errors, []);
   } finally {
@@ -653,6 +653,7 @@ test('a typing burst is one undo step, and a second field starts another', { tim
     assert.match(await page.textContent('#undoLastDecision'), /Undo: edit action/i);
 
     // Moving to a different field starts a new step.
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
     await page.click('#actionsBody [data-action-row="0"] [data-timing-date]');
     await page.fill('#actionsBody [data-action-row="0"] [data-timing-date]', '2026-10-01');
     await page.waitForTimeout(900);
@@ -1010,6 +1011,7 @@ test('unfinished owner text survives a background completion', { timeout: 120000
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=summary-running`);
     await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
     assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true);
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-owners]');
     await page.selectOption('#actionsBody [data-action-row="0"] [data-add-owner]', '__other');
     const owner = page.locator('#actionsBody [data-action-row="0"] [data-owner-other]');
     await owner.fill('Jordan Lee');
@@ -1238,7 +1240,7 @@ test('final minutes edit source records in place and the finishing bar remains a
     browser = launched.browser;
     const { page, errors } = launched;
     assert.equal(await page.locator('#saveStrip').evaluate((node) => getComputedStyle(node).position), 'fixed');
-    assert.match(await page.textContent('#checksRemaining'), /2 checks remaining/i);
+    assert.match(await page.textContent('#checksRemaining'), /2 warnings/i);
     await page.click('#previewDocument');
     await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
     assert.match(await page.getAttribute('#previewDocument', 'aria-label'), /Back to editing/i);
@@ -1341,14 +1343,14 @@ test('dense layouts give writing space to content rather than repeated controls'
       const row = document.querySelector('[data-action-row="0"]');
       return {
         headers,
-        timingType: row.querySelector('[data-timing-kind]').value,
-        directOwnerControl: Boolean(row.querySelector('[data-add-owner]')),
-        directTimingControl: Boolean(row.querySelector('[data-timing-wording]'))
+        timingType: row.querySelector('[data-timing-kind]') && row.querySelector('[data-timing-kind]').value,
+        directOwnerControl: Boolean(row.querySelector('[data-edit-owners]')),
+        directTimingControl: Boolean(row.querySelector('[data-edit-timing]'))
       };
     });
     assert.ok(actionLayout.headers[0] > actionLayout.headers[1] * 3, JSON.stringify(actionLayout));
     assert.equal(actionLayout.headers.length, 3, JSON.stringify(actionLayout));
-    assert.equal(actionLayout.timingType, 'not_stated');
+    assert.equal(actionLayout.timingType, null);
     assert.equal(actionLayout.directOwnerControl, true);
     assert.equal(actionLayout.directTimingControl, true);
     assert.equal(await page.locator('[data-screen="3"] .toolbar .agent-edit-inline').count(), 1);

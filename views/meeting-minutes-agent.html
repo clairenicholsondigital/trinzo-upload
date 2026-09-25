@@ -180,7 +180,8 @@
   padding:.7rem .85rem;border:1px solid var(--border-strong);border-radius:var(--radius-sm);
   background:var(--heading);color:#fff;box-shadow:var(--shadow-lg);font-size:var(--fs-sm)}
 .meeting-agent-page .undo-toast span{flex:1}
-.meeting-agent-page .undo-toast button{color:#fff;border-color:rgba(255,255,255,.55);background:transparent}
+.meeting-agent-page .undo-toast button,
+.meeting-agent-page .undo-toast #undoToastButton{color:#fff;border-color:rgba(255,255,255,.55);background:transparent}
 
 /* ------------------------------------------------------ status / notice -- */
 .meeting-agent-page .notice{
@@ -191,6 +192,8 @@
 /* The stale notice is running text with an inline stage name; as a flex row
    its text nodes became three separate columns. */
 .meeting-agent-page #staleNotice{display:block}
+.meeting-agent-page #staleNotice.notice{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.meeting-agent-page .notice-actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-left:auto}
 .meeting-agent-page #workflowStatus::before{
   content:"";flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--accent)}
 .meeting-agent-page.busy #workflowStatus::before{
@@ -504,7 +507,7 @@
 .meeting-agent-page .editable-actions-table th:nth-child(1){width:66%}
 .meeting-agent-page .editable-actions-table th:nth-child(2){width:16%}
 .meeting-agent-page .editable-actions-table th:nth-child(3){width:18%}
-.meeting-agent-page .actions-table textarea{min-height:36px;padding:.3rem .4rem;border-color:transparent;background:transparent;resize:none}
+.meeting-agent-page .actions-table textarea{min-height:36px;padding:.3rem .4rem;border-color:transparent;background:transparent;resize:none;overflow:hidden;box-sizing:border-box}
 .meeting-agent-page .actions-table textarea:hover{border-color:var(--border-strong);background:var(--surface)}
 .meeting-agent-page .action-main{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.35rem;align-items:start}
 /* Deliberately quiet: the handle only resolves on hover or keyboard focus, so
@@ -537,10 +540,11 @@
 .meeting-agent-page .row-decisions button:hover{border-color:var(--ink,#1d2430)}
 .meeting-agent-page .row-decisions .row-keep.is-kept{border-color:var(--ok,#2f7a4d);color:var(--ok,#2f7a4d);font-weight:600}
 .meeting-agent-page .action-row.action-kept td{background:color-mix(in srgb, var(--ok,#2f7a4d) 5%, transparent)}
-.meeting-agent-page .action-review-bar{display:flex;flex-wrap:wrap;gap:1rem;margin:0 0 .6rem;padding:.5rem .75rem;border:1px solid var(--line,#d5d8dd);border-radius:.5rem;font-size:.88rem}
+.meeting-agent-page .action-review-bar{display:flex;align-items:center;gap:.35rem;margin:0 0 .6rem;padding:.1rem 0;font-size:.88rem;color:var(--muted)}
+.meeting-agent-page .action-review-bar .review-count{font-variant-numeric:tabular-nums}
+.meeting-agent-page .action-review-bar .review-count-open{color:var(--heading)}
 .meeting-agent-page .action-review-bar .review-count strong{font-variant-numeric:tabular-nums}
 .meeting-agent-page .action-review-bar .review-count-open strong{color:var(--accent,#6b3fa0)}
-.meeting-agent-page .action-review-bar .review-note{flex-basis:100%;color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .removed-actions{margin-top:.75rem;border:1px solid var(--line,#d5d8dd);border-radius:.5rem;padding:.5rem .75rem}
 .meeting-agent-page .removed-actions summary{cursor:pointer;font-size:.9rem}
 .meeting-agent-page .removed-action{display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;padding:.4rem 0;border-top:1px solid var(--line,#eceef1)}
@@ -587,6 +591,14 @@
 .meeting-agent-page .seg input:checked+span{background:var(--brand-100);color:var(--accent-700)}
 .meeting-agent-page .seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:-2px}
 .meeting-agent-page .timing-editor input{font-size:var(--fs-sm);padding:.4rem .5rem}
+.meeting-agent-page .field-display{
+  display:block;width:100%;padding:.2rem .3rem;border:1px solid transparent;border-radius:var(--radius-sm);
+  background:transparent;color:var(--heading);font:inherit;text-align:left;cursor:pointer}
+.meeting-agent-page .field-display:hover{border-color:var(--border-strong);background:var(--surface)}
+.meeting-agent-page .owner-editor{display:grid;gap:.25rem}
+.meeting-agent-page .owner-editor .owner-add{align-items:start}
+.meeting-agent-page .timing-summary{min-height:1.8rem}
+.meeting-agent-page .timing-date-field{display:block}
 
 /* -------------------------------------------------------- review flags -- */
 .meeting-agent-page .review-flags{padding:0}
@@ -887,7 +899,7 @@
     <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
     <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button></div>
   </section>
-  <p id="staleNotice" class="notice" hidden>Earlier meeting content changed, so <strong id="staleStages"></strong> may be out of date. Regenerate when ready. Edited Discussion and Actions stay in place and refreshed differences arrive as suggestions; a refreshed Summary replaces the current Summary only after you confirm regeneration.</p>
+  <p id="staleNotice" class="notice" hidden><span>Discussion changed. Actions may need updating.</span><span id="staleStages" class="visually-hidden"></span><span id="staleStageActions" class="notice-actions"></span></p>
 
   <!-- ============================================ 0 - upload and details -->
   <section class="panel screen active" data-screen="0">

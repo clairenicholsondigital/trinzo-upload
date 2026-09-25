@@ -234,7 +234,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("generationRunning('actions')", client)
         self.assertIn("function flagTarget", client)
         self.assertIn('data-view-flag-target', client)
-        self.assertIn("actionEditorState = { pendingRows: {}, customOwners: {} }", client)
+        self.assertIn("actionEditorState = { pendingRows: {}, customOwners: {}, editingOwners: {}, editingTiming: {} }", client)
         self.assertIn("function rememberPendingActions", client)
         self.assertIn("function restorePendingActions", client)
         self.assertIn('id="downloadPdf"', page)
