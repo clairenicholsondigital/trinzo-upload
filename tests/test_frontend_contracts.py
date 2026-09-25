@@ -85,6 +85,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="executiveSummary"', page)
         self.assertIn('id="objectivesList"', page)
         self.assertIn('.meeting-agent-page #executiveSummary{min-height:96px}', page)
+        self.assertIn('overflow-y:hidden;resize:none', page)
+        self.assertIn("autoGrow(document.getElementById('summaryFields'))", client)
+        self.assertIn('function includedSectionState()', client)
+        self.assertIn('applyIncludedSections(draft', api)
+        self.assertIn('data-action-transcript-panel', client)
+        self.assertIn("scrollIntoView({ behavior: 'smooth', block: 'center' })", client)
         self.assertIn('id="executiveSummary" rows="3"', page)
         self.assertNotIn('.meeting-agent-page .summary-field textarea{min-height:170px}', page)
         # Background generation: start, poll, and the stale-run detector.

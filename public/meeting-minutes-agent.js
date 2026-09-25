@@ -476,6 +476,10 @@
     });
   }
 
+  function actionTranscriptId(actionId, index) {
+    return recordDomId('action-transcript', actionId, index);
+  }
+
   // Where the reviewer was on each screen. Stepping out to the preview and
   // back used to land them at the top of a list they were halfway down.
   var stepScrollMemory = Object.create(null);
@@ -875,7 +879,7 @@
     var generate = document.getElementById('generateSummary');
     generate.hidden = summaryRunning;
     generate.textContent = (draft.executiveSummary || objectives.length) ? 'Regenerate summary' : 'Create summary';
-    autoGrow(document.getElementById('objectivesList'));
+    autoGrow(document.getElementById('summaryFields'));
   }
 
   function renderPageHeading() {
@@ -1138,21 +1142,24 @@
     document.getElementById('actionsBody').innerHTML = actions.map(function (item, index) {
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
       var targetId = recordDomId('action', item.id, index);
+      var transcriptId = actionTranscriptId(item.id, index);
+      var transcriptKey = disclosureKey(item.evidenceIds, 'action-transcript:' + (item.id || index));
       var menu = recordMenu(item, '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove from minutes</button>');
       var kept = isActionKept(item.id);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
       var decisions = '<div class="row-decisions">'
-        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '">View transcript</button>'
+        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="false">View transcript</button>'
         + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Mark checked') + '</button>'
         + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Remove from minutes</button>'
         + '</div>';
+      var transcriptPanel = '<details id="' + escapeHtml(transcriptId) + '" class="action-transcript-panel" data-action-transcript-panel data-keep-open="' + escapeHtml(transcriptKey) + '"><summary class="visually-hidden">Transcript passage</summary><div class="evidence-panel">' + evidenceHtml(item.evidenceIds) + '</div></details>';
       // Reordering: the handle is the drag source and also takes arrow keys, so
       // the order can be changed without a mouse.
       var grip = '<button type="button" class="action-grip" data-action-grip="' + index + '" draggable="true"'
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions returned. Check the transcript for commitments.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
@@ -1583,9 +1590,10 @@
 
   function renderFinal() {
     var draft = state.draft || {}; var details = draft.details || {};
-    var objectives = (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;});
+    var include = includedSectionState();
+    var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;}) : [];
     var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
-      + (draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+      + (include.executiveSummary && draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
       var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
@@ -2070,10 +2078,6 @@
       state.draft.includeSections = include;
       markUndoStep(box.checked ? 'include section' : 'exclude section', '');
       renderIncludedSections();
-      // Turning a section off drops what is already there: leaving the text in
-      // place would export a section the reviewer has said they do not want.
-      if (!include.meetingObjectives) state.draft.meetingObjectives = [];
-      if (!include.executiveSummary) state.draft.executiveSummary = '';
       renderSummary();
       scheduleSave();
     });
@@ -2085,6 +2089,7 @@
   document.getElementById('addObjective').addEventListener('click', function () {
     readSummary();
     state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat({id:'objective-'+Date.now(),text:'',evidenceIds:[]});
+    markUndoStep('add objective', '');
     renderSummary();
     var fields = document.querySelectorAll('[data-objective-index]');
     if (fields.length) fields[fields.length - 1].focus();
@@ -2094,10 +2099,9 @@
     if (!button) return;
     readSummary();
     state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1);
+    markUndoStep('remove objective', '');
     renderSummary();
-    if (remove) queueReviewDecision('Discussion item removed');
-    else if (topicButton) queueReviewDecision('Discussion topic removed');
-    else scheduleSave();
+    scheduleSave();
   });
   document.getElementById('generateActions').addEventListener('click', function () { requestBackgroundStage('actions'); });
   document.getElementById('regenerationDialog').addEventListener('close', function (event) {
@@ -2119,6 +2123,7 @@
     var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]};
     state.draft.discussion.push(topic);
     discussionEditorState.pendingTopics[topic.id] = cloneEditorValue(topic);
+    markUndoStep('add discussion topic', '');
     renderDiscussion();
     setSaveStatus('New topic is kept in this tab until you add meeting content.', 'local-only');
     var field = document.querySelector('[data-topic-index="' + (state.draft.discussion.length - 1) + '"][data-topic]');
@@ -2307,6 +2312,10 @@
       resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
     }
     if(material) markDownstreamStale();
+    if (add) markUndoStep('add discussion item', '');
+    else if (demote) markUndoStep('move discussion to context', '');
+    else if (promote) markUndoStep('include supporting detail', '');
+    else if (moveNew) markUndoStep('move discussion to new topic', '');
     renderDiscussion();
     if(movedTopicIndex>=0){
       var movedTopicField=document.querySelector('[data-topic-index="'+movedTopicIndex+'"][data-topic]');
@@ -2321,7 +2330,7 @@
     }
     if (remove && removedReviewContent) queueReviewDecision('Discussion item removed');
     else if (topicButton && removedReviewContent) queueReviewDecision('Discussion topic removed');
-    else scheduleSave();
+    else { if (remove || topicButton) markUndoStep(remove ? 'remove discussion item' : 'remove discussion topic', ''); scheduleSave(); }
   });
 
   // The Removed section sits outside the actions table, so it needs its own
@@ -2354,6 +2363,7 @@
     if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return false;
     readActions();
     rows.splice(to, 0, rows.splice(from, 1)[0]);
+    markUndoStep('reorder actions', '');
     rerenderActions();
     scheduleSave();
     return true;
@@ -2413,11 +2423,15 @@
     var transcriptButton = event.target.closest('[data-open-action-transcript]');
     if (transcriptButton) {
       var transcriptRow = transcriptButton.closest('[data-action-row]');
-      var transcriptMenu = transcriptRow && transcriptRow.querySelector('.record-menu');
-      if (transcriptMenu) {
-        transcriptMenu.open = true;
-        var evidence = transcriptMenu.querySelector('details');
-        if (evidence) evidence.open = true;
+      var transcriptPanel = transcriptRow && transcriptRow.querySelector('[data-action-transcript-panel]');
+      if (transcriptPanel) {
+        transcriptPanel.open = true;
+        transcriptButton.setAttribute('aria-expanded', 'true');
+        window.setTimeout(function () {
+          transcriptPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          var summary = transcriptPanel.querySelector('summary');
+          if (summary) summary.focus({ preventScroll: true });
+        }, 0);
       }
       return;
     }
@@ -2458,6 +2472,7 @@
       readActions();
       var owned = state.draft.actions[Number(removeOwner.dataset.actionIndex)];
       if (owned) owned.owners = (owned.owners || []).filter(function (name) { return name !== removeOwner.dataset.owner; });
+      markUndoStep('remove owner', '');
       rerenderActions(); scheduleSave();
       return;
     }
@@ -2512,7 +2527,7 @@
       setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
       return;
     }
-    if (addOwner(index, select.value)) { rerenderActions(); scheduleSave(); }
+    if (addOwner(index, select.value)) { markUndoStep('add owner', ''); rerenderActions(); scheduleSave(); }
     else select.value = '';
   });
 
@@ -2538,6 +2553,7 @@
     // order restarts at the top of the page.
     var select = document.querySelector('#actionsBody [data-action-row="' + index + '"] [data-add-owner]');
     if (select) select.focus({ preventScroll: true });
+    markUndoStep('add owner', '');
     scheduleSave();
   }
   document.getElementById('actionsBody').addEventListener('keydown', function (event) {
@@ -2565,6 +2581,7 @@
     var action = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[]};
     state.draft.actions.push(action);
     actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
+    markUndoStep('add action', '');
     renderActions();
     setSaveStatus('New action row is kept in this tab until you enter the action.', 'local-only');
     var field = document.querySelector('#' + recordDomId('action', action.id) + ' [data-action]');

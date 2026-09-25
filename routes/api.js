@@ -10778,8 +10778,9 @@ function meetingAgentDraftPayload(draft = {}) {
 
 function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const details = sanitiseMeetingAgentDetails(draft.details);
-  const executiveSummary = normaliseExecutiveSummary(draft.executiveSummary);
-  const meetingObjectives = meetingAgentObjectives(draft.meetingObjectives);
+  const include = includedSections(draft);
+  const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
+  const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
   const discussion = (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
     topic: topic?.topic || 'Discussion',
     points: [
@@ -16127,6 +16128,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, a
     const draft = await loadOwnedMeetingAgentDraft(req);
     const exportDraft = normaliseMeetingAgentKnownTermsDeep({
       ...draft,
+      ...applyIncludedSections(draft, { executiveSummary: draft.executiveSummary, meetingObjectives: draft.meetingObjectives }),
       details: sanitiseMeetingAgentDetails(draft.details),
       reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
     });

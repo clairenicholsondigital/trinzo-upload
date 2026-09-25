@@ -583,7 +583,39 @@ test('an opened transcript panel survives a re-render, and each step remembers i
   }
 });
 
-test('excluding a section hides it, clears it and stops it being generated', { timeout: 120000 }, async () => {
+test('action View transcript opens the relevant passage by mouse and keyboard', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="3"]');
+    const button = page.locator('[data-action-row="0"] [data-open-action-transcript]');
+    const panel = page.locator('[data-action-row="0"] [data-action-transcript-panel]');
+    await button.click();
+    assert.equal(await panel.evaluate((node) => node.open), true);
+    assert.equal(await button.getAttribute('aria-expanded'), 'true');
+    assert.ok(await panel.locator('.source-speaker').count() > 0, 'speaker is visible');
+    assert.ok(await panel.locator('.source-time').count() > 0, 'timestamp is visible');
+
+    await page.evaluate(() => {
+      const node = document.querySelector('[data-action-row="0"] [data-action-transcript-panel]');
+      node.open = false;
+      node.querySelector('summary').blur();
+    });
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(50);
+    assert.equal(await panel.evaluate((node) => node.open), true, 'keyboard activation opens the same passage');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
+test('independent section switches hide output without deleting saved content', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -598,6 +630,17 @@ test('excluding a section hides it, clears it and stops it being generated', { t
 
     await page.click('[data-step="4"]');
     assert.equal(await page.locator('[data-section="executiveSummary"]').isHidden(), false);
+    const longSummary = 'A long reviewer-written summary sentence that must remain readable without an internal scrollbar. '.repeat(24);
+    await page.fill('#executiveSummary', longSummary);
+    await page.waitForTimeout(100);
+    const summaryBox = await page.locator('#executiveSummary').evaluate((node) => ({
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+      overflowY: getComputedStyle(node).overflowY
+    }));
+    assert.ok(summaryBox.clientHeight >= summaryBox.scrollHeight, JSON.stringify(summaryBox));
+    assert.equal(summaryBox.overflowY, 'hidden');
+    await page.waitForTimeout(1000);
 
     // Turn the executive summary off.
     await page.click('[data-step="0"]');
@@ -613,7 +656,26 @@ test('excluding a section hides it, clears it and stops it being generated', { t
       const state = await (await fetch('/test-state/layout')).json();
       return state.draft.includeSections && state.draft.includeSections.executiveSummary === false;
     });
-    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.executiveSummary), '');
+    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.executiveSummary), longSummary.trim());
+
+    // All four combinations remain possible and the final review honours the
+    // choice without changing the underlying text.
+    const combinations = [
+      [true, true, true, true],
+      [true, false, true, false],
+      [false, true, false, true],
+      [false, false, false, false]
+    ];
+    for (const [objectives, summary, expectObjectives, expectSummary] of combinations) {
+      await page.click('[data-step="0"]');
+      const objectiveBox = page.locator('#includeObjectives');
+      const summaryBox = page.locator('#includeSummary');
+      if ((await objectiveBox.isChecked()) !== objectives) await objectiveBox.click();
+      if ((await summaryBox.isChecked()) !== summary) await summaryBox.click();
+      await page.click('[data-step="5"]');
+      assert.equal(await page.locator('#finalDocument h3').filter({ hasText: 'Meeting objectives' }).count() > 0, expectObjectives);
+      assert.equal(await page.locator('#finalDocument h3').filter({ hasText: 'Executive summary' }).count() > 0, expectSummary);
+    }
 
     // Turning both off leaves an explanation rather than an empty screen.
     await page.click('[data-step="0"]');
