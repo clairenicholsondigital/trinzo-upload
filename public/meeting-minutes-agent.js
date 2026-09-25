@@ -88,15 +88,6 @@
 
   function updateFinishingBar() {
     if (!state.draft) return;
-    var counts = typeof reviewQueueCounts === 'function' ? reviewQueueCounts() : { total: 0 };
-    var checks = document.getElementById('checksRemaining');
-    if (checks) {
-      checks.hidden = false;
-      checks.textContent = counts.flags
-        ? counts.flags + ' warning' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
-        : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'No automated warnings';
-      checks.classList.toggle('quiet', counts.total === 0);
-    }
     // Both controls name the change they act on, so the reviewer can tell what
     // is about to happen before pressing them.
     var undo = document.getElementById('undoLastDecision');
@@ -194,9 +185,7 @@
   }
 
   function savedStatusText(value) {
-    var savedAt = value ? new Date(value) : new Date();
-    if (Number.isNaN(savedAt.getTime())) return 'Saved';
-    return 'Saved at ' + savedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return 'Saved';
   }
 
   function hasTransientActionState() {
@@ -609,7 +598,7 @@
       {key:'referee',label:'Verify against transcript'},
       {key:'final',label:'Finish the draft'}
     ];
-    return [{key:'summary',label:'Draft and ground the summary'}];
+    return [];
   }
 
   function friendlyGenerationMessage(message, stage) {
@@ -645,10 +634,10 @@
     var stage = generation ? generation.stage : notice.stage;
     var preview = generation && Array.isArray(generation.previewActions) ? generation.previewActions : [];
     document.getElementById('generationProgressTitle').textContent = generation
-      ? (stage === 'actions' ? 'Preparing actions' : stage === 'discussion' ? 'Preparing discussion' : 'Preparing summary')
+      ? (stage === 'actions' ? 'Preparing actions' : stage === 'discussion' ? 'Preparing discussion' : 'Preparing summary…')
       : (stage === 'actions' ? 'Actions are ready' : 'Generation complete');
     document.getElementById('generationProgressMessage').textContent = generation
-      ? friendlyGenerationMessage(generation.message, stage)
+      ? stage === 'summary' ? '' : friendlyGenerationMessage(generation.message, stage)
       : (notice.message || 'The completed draft is ready to review.');
     if (generation && STAGE_STEP[stage] === state.currentStep) status.hidden = true;
     var started = generation && new Date(generation.startedAt).getTime();
@@ -868,6 +857,11 @@
   function renderSummary() {
     renderIncludedSections();
     var draft = state.draft || {};
+    var summaryRunning = generationRunning('summary');
+    var summaryHasContent = Boolean(String(draft.executiveSummary || '').trim()
+      || (draft.meetingObjectives || []).some(function (item) { return String(typeof item === 'string' ? item : item && item.text || '').trim(); }));
+    var fields = document.getElementById('summaryFields');
+    if (fields) fields.hidden = summaryRunning && !summaryHasContent;
     var summary = document.getElementById('executiveSummary');
     if (summary && summary !== document.activeElement) {
       var value = draft.executiveSummary || '';
@@ -878,8 +872,18 @@
       var objectiveText = typeof item === 'string' ? item : item.text;
       return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
-    document.getElementById('generateSummary').textContent = (draft.executiveSummary || objectives.length) ? 'Regenerate summary' : 'Create summary';
+    var generate = document.getElementById('generateSummary');
+    generate.hidden = summaryRunning;
+    generate.textContent = (draft.executiveSummary || objectives.length) ? 'Regenerate summary' : 'Create summary';
     autoGrow(document.getElementById('objectivesList'));
+  }
+
+  function renderPageHeading() {
+    var title = document.getElementById('pageTitle');
+    if (!title) return;
+    var details = state.draft && state.draft.details;
+    title.textContent = state.draft && details && String(details.meetingTitle || '').trim()
+      ? details.meetingTitle.trim() : 'Meeting Minutes Agent';
   }
 
   function readDetails() {
@@ -1600,6 +1604,7 @@
     var snapshot = captureFocus();
     rendering = true;
     document.body.classList.toggle('has-draft', Boolean(state.draft));
+    renderPageHeading();
     uploadZone.hidden = Boolean(state.draft);
     detailsEditor.hidden = !state.draft;
     document.getElementById('saveStrip').hidden = !state.draft;
@@ -2700,11 +2705,6 @@
     if (targetButton) openReviewTarget(targetButton);
   });
   document.getElementById('openFinalReview').addEventListener('click', function () { readEditors(); activeFinalEdit=null; renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Click any sentence, owner or date to edit it here.',false,'review'); });
-  document.getElementById('checksRemaining').addEventListener('click', function () {
-    var panel=document.getElementById('reviewFlags');
-    if(panel.hidden)return;
-    panel.open=true;panel.scrollIntoView({behavior:'smooth',block:'start'});
-  });
   document.getElementById('previewDocument').addEventListener('click', function () {
     if(state.currentStep===MAX_STEP){showStep(previewReturnStep,{scroll:true});return;}
     readEditors();previewReturnStep=state.currentStep;activeFinalEdit=null;renderFinal();showStep(MAX_STEP,{scroll:true});

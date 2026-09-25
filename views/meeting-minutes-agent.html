@@ -54,6 +54,9 @@
 .meeting-agent-page .hero{padding:1.1rem 1.25rem;margin-bottom:.75rem}
 .meeting-agent-page .hero h1{margin:0 0 .35rem}
 .meeting-agent-page .hero p{margin:.25rem 0;color:var(--muted);line-height:1.5}
+.meeting-agent-page.has-draft .hero{padding:.7rem 1rem;margin-bottom:.55rem}
+.meeting-agent-page.has-draft .hero h1{margin:0;font-size:var(--fs-lg)}
+.meeting-agent-page.has-draft .hero p{display:none}
 .meeting-agent-page .tool-note{font-size:var(--fs-sm)}
 
 /* ---------------------------------------------------------- typography -- */
@@ -126,11 +129,14 @@
 /* --------------------------------------------------------------- steps -- */
 .meeting-agent-page .steps{
   display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
+.meeting-agent-page.has-draft .steps{gap:.25rem;margin:.4rem 0}
 .meeting-agent-page .step{
   display:flex;align-items:center;gap:.5rem;padding:.6rem .7rem;cursor:pointer;
   border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--muted);text-align:left;
   font-family:inherit;font-size:var(--fs-sm);font-weight:var(--fw-bold)}
+.meeting-agent-page.has-draft .step{gap:.35rem;padding:.42rem .5rem}
+.meeting-agent-page.has-draft .step::before{width:1.15rem;height:1.15rem}
 .meeting-agent-page .step::before{
   content:attr(data-num);display:grid;place-items:center;flex:none;
   width:1.4rem;height:1.4rem;border-radius:50%;
@@ -315,10 +321,13 @@
 .meeting-agent-page .steer-field{max-width:76ch}
 .meeting-agent-page .steer-field textarea{min-height:150px}
 .meeting-agent-page .steer-hint{margin-top:.5rem;font-size:var(--fs-cap);color:var(--muted)}
-.meeting-agent-page .summary-fields{display:grid;gap:1rem;margin-top:1rem}
+.meeting-agent-page .summary-fields{display:grid;gap:1.35rem;margin-top:.8rem}
 .meeting-agent-page .summary-field{
-  padding:.85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
-.meeting-agent-page .summary-field>.lbl{display:block;margin-bottom:.5rem}
+  padding:0;border:0;border-radius:0;background:transparent}
+.meeting-agent-page .summary-field>.lbl{display:block;margin-bottom:.45rem;font-size:var(--fs-cap);font-weight:var(--fw-bold);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.meeting-agent-page .summary-field .add-record{padding:.35rem .6rem;font-size:var(--fs-cap)}
+.meeting-agent-page .summary-field #executiveSummary{display:block;width:100%;min-height:120px}
+.meeting-agent-page .summary-fields[hidden]{display:none!important}
 .meeting-agent-page #executiveSummary{min-height:96px}
 .meeting-agent-page .generating{
   display:flex;align-items:center;gap:.7rem;padding:1.1rem;margin-top:.85rem;
@@ -881,14 +890,14 @@
 <main class="container">
   <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a><a href="/meeting-minutes-final">Meeting transcript to minutes</a><a href="/meeting-minutes-agent" aria-current="page">Meeting Minutes Agent</a><a href="/jobs">Library</a></nav>
 
-  <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p></section>
+  <section class="panel hero"><h1 id="pageTitle">Meeting Minutes Agent</h1><p id="pageIntro">Upload a Word transcript and work through an evidence-backed, editable draft.</p></section>
 
   <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="2" data-num="2" type="button" disabled aria-label="Step 2, discussion">Discussion</button><button class="step" data-step="3" data-num="3" type="button" disabled aria-label="Step 3, actions">Actions</button><button class="step" data-step="4" data-num="4" type="button" disabled aria-label="Step 4, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="5" type="button" disabled aria-label="Step 5, final review">Review</button></div>
 
   <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 5</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
   <div class="workflow-utilities">
-    <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved draft</span><button id="checksRemaining" class="secondary quiet" type="button" hidden>No automated warnings</button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
+    <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
     <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
   </div>
 
@@ -963,9 +972,8 @@
 
   <!-- ======================================= 4 - summary and objectives -->
   <section class="panel screen" data-screen="4">
-    <div class="toolbar"><h2>Executive summary &amp; objectives</h2><button id="generateSummary" class="secondary" type="button">Create summary</button></div>
-    <p class="muted">Written from the discussion and actions you have confirmed. Edit either directly.</p>
-    <div class="summary-fields">
+    <div class="toolbar"><h2>Meeting summary</h2><button id="generateSummary" class="secondary" type="button">Create summary</button></div>
+    <div id="summaryFields" class="summary-fields">
       <div class="summary-field" data-section="meetingObjectives">
         <span class="lbl">Meeting objectives</span>
         <div id="objectivesList" class="record-list"></div>
@@ -975,8 +983,8 @@
         <span class="lbl">Executive summary</span>
         <textarea id="executiveSummary" rows="3" aria-label="Executive summary"></textarea>
       </div>
-      <p id="summaryAllExcluded" class="muted" hidden>Neither an executive summary nor objectives are included in these minutes. Turn either back on in Meeting details.</p>
     </div>
+    <p id="summaryAllExcluded" class="muted" hidden>Neither an executive summary nor objectives are included in these minutes. Turn either back on in Meeting details.</p>
     <div class="screen-actions"><button class="secondary" data-back="3" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to actions</button><button id="openFinalReview" class="button" type="button">Review complete minutes<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 

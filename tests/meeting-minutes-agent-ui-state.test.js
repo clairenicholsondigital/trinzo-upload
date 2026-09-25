@@ -780,7 +780,9 @@ test('opening an empty Summary starts generation without requiring speculation',
       return state.draft.generation && state.draft.generation.stage === 'summary';
     });
     assert.equal(await page.locator('[data-screen="4"]').evaluate((node) => node.classList.contains('active')), true);
-    assert.match(await page.textContent('#generationProgressTitle'), /Preparing summary/i);
+    assert.match(await page.textContent('#generationProgressTitle'), /Preparing summary…/i);
+    assert.equal(await page.locator('#summaryFields').isHidden(), true);
+    assert.equal(await page.locator('#generateSummary').isHidden(), true);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -1240,7 +1242,7 @@ test('final minutes edit source records in place and the finishing bar remains a
     browser = launched.browser;
     const { page, errors } = launched;
     assert.equal(await page.locator('#saveStrip').evaluate((node) => getComputedStyle(node).position), 'fixed');
-    assert.match(await page.textContent('#checksRemaining'), /2 warnings/i);
+    assert.match(await page.textContent('#flagCount'), /2 warnings/i);
     await page.click('#previewDocument');
     await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
     assert.match(await page.getAttribute('#previewDocument', 'aria-label'), /Back to editing/i);
