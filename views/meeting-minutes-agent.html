@@ -278,6 +278,10 @@
 .meeting-agent-page .screen-actions{margin-top:1rem}
 .meeting-agent-page .form-grid{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-top:1rem}
+.meeting-agent-page .details-meta-grid{
+  grid-template-columns:minmax(180px,200px) minmax(0,1fr) minmax(200px,220px);
+  gap:.55rem .85rem;margin-top:.7rem
+}
 .meeting-agent-page .include-sections{
   display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1.25rem;
   margin:.75rem 0 0;padding:.6rem .75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft)}
@@ -286,6 +290,12 @@
 .meeting-agent-page .include-option input{width:1rem;height:1rem;margin:0}
 .meeting-agent-page .include-hint{flex-basis:100%;margin:0;font-size:var(--fs-cap)}
 .meeting-agent-page .field{display:grid;gap:.3rem}
+.meeting-agent-page #detailsEditor .field>span{
+  font-size:var(--fs-sm);font-weight:var(--fw);letter-spacing:normal;
+  text-transform:none;color:var(--heading)
+}
+.meeting-agent-page #detailsEditor .field input,
+.meeting-agent-page #detailsEditor .field select{padding:.45rem .6rem}
 /* Compact by content: a date field stretched across half the screen reads as
    though something is missing from it. */
 .meeting-agent-page .field input[type="date"]{max-width:12rem}
@@ -921,11 +931,11 @@
 
     <div id="detailsEditor" hidden>
       <div class="toolbar"><h2>Meeting details</h2></div>
-      <div class="form-grid">
+      <div class="form-grid details-meta-grid">
         <label class="field full"><span>Meeting title</span><input id="meetingTitle"></label>
         <label class="field"><span>Date</span><input id="meetingDate" type="date"></label>
-        <label class="field"><span>Location</span><input id="meetingLocation"></label>
-        <label class="field"><span>Meeting type</span><input id="meetingType"></label>
+        <label class="field"><span>Location</span><input id="meetingLocation" placeholder="e.g. Microsoft Teams"></label>
+        <label class="field"><span>Meeting type</span><select id="meetingType"><option value="">Select meeting type</option><option>General</option><option>Audit kick-off / planning</option><option>Decision meeting</option><option>Webinar rehearsal</option><option>Technical file review</option><option>Technical file consultancy review</option><option>Software weekly review</option><option>Software and technical-file weekly review</option><option>Importer obligations review</option></select></label>
         <div class="field full attendee-classifier">
           <div class="attendee-groups">
             <section class="attendee-group"><div class="attendee-group-head"><strong>Internal attendees</strong><button class="secondary" data-add-attendee="internal" type="button">Add person</button></div><div id="internalAttendees" class="attendee-list"></div></section>

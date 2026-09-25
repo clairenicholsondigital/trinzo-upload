@@ -549,6 +549,17 @@
   var MEETING_TYPE_VALUES = {'presentation rehearsal':'Webinar rehearsal'};
   function meetingTypeLabel(value) { var key=String(value||'').trim().toLowerCase(); return MEETING_TYPE_LABELS[key] || value || ''; }
   function meetingTypeValue(label) { var key=String(label||'').trim().toLowerCase(); return MEETING_TYPE_VALUES[key] || String(label||'').trim(); }
+  function setMeetingTypeField(value) {
+    var element = document.getElementById('meetingType');
+    if (!element || element === document.activeElement) return;
+    var label = meetingTypeLabel(value || '');
+    if (label && !Array.from(element.options).some(function (option) { return option.value === label; })) {
+      // Preserve older or model-generated meeting types without turning the
+      // control back into free text.
+      element.add(new Option(label, label));
+    }
+    element.value = label;
+  }
   function setFieldValue(id, value) {
     var element = document.getElementById(id);
     if (!element || element === document.activeElement) return;
@@ -913,7 +924,7 @@
     setFieldValue('meetingTitle', details.meetingTitle || '');
     setFieldValue('meetingDate', details.meetingDate || '');
     setFieldValue('meetingLocation', details.meetingLocation || '');
-    setFieldValue('meetingType', meetingTypeLabel(details.meetingType || ''));
+    setMeetingTypeField(details.meetingType || '');
     renderAttendeeGroup('internal', details.internalAttendees || []);
     renderAttendeeGroup('client', details.clientAttendees || []);
     setFieldValue('clientAttendeeLabelSelect', details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
