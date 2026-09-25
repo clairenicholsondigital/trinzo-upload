@@ -487,6 +487,34 @@ test('a discussion record moves within its topic and across topics', { timeout: 
   }
 });
 
+test('the workflow has five steps and Details leads straight to generating', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    assert.equal(await page.locator('.steps .step').count(), 5, 'Focus is gone from the stepper');
+    assert.equal(await page.locator('.steps .step[data-step="1"]').count(), 0);
+    // A draft saved on the retired index landing on Discussion rather than on
+    // Actions is covered by 'a prepared Discussion is adopted automatically
+    // after Details', whose fixture is saved on step 1.
+
+    // The steer control survives the screen it used to live on.
+    await page.click('[data-step="0"]');
+    assert.equal(await page.locator('#meetingSteer').count(), 1);
+    assert.equal(await page.locator('#meetingSteer').isHidden(), true, 'optional, so it starts collapsed');
+    await page.click('.steer-optional>summary');
+    assert.equal(await page.locator('#meetingSteer').isVisible(), true);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('action generation has an honest waiting state and stage-scoped status', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -551,7 +579,9 @@ test('Discussion shows Actions prewarming while the reviewer works', { timeout: 
   }
 });
 
-test('a prepared Discussion is adopted automatically from Focus', { timeout: 120000 }, async () => {
+// Renamed with the Focus step: the adoption it protects still happens, it just
+// happens on the way out of Details now.
+test('a prepared Discussion is adopted automatically after Details', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -563,7 +593,10 @@ test('a prepared Discussion is adopted automatically from Focus', { timeout: 120
       return state.draft.generation && state.draft.generation.stage === 'discussion';
     });
     assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
-    assert.match(await page.textContent('#generationProgressTitle'), /Preparing discussion/i);
+    // Neither the progress title nor the panel is asserted: with Focus gone the
+    // reviewer lands here immediately, so which stage is mid-flight is a race.
+    // The adoption itself is what this test is for, and the wait above plus the
+    // active screen prove it happened.
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -788,7 +821,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
   }
 });
 
-test('details status clears on Focus and unfinished owner text survives a background completion', { timeout: 120000 }, async () => {
+test('unfinished owner text survives a background completion', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -804,8 +837,10 @@ test('details status clears on Focus and unfinished owner text survives a backgr
       buffer: Buffer.from('stub')
     });
     await page.waitForFunction(() => /Check the meeting details/i.test(document.getElementById('workflowStatus').textContent));
-    await page.click('#toSteer');
-    assert.equal(await page.locator('#workflowStatus').isHidden(), true);
+    // The Focus step used to sit here, and this test stepped through it to check
+    // the details prompt cleared. With Focus retired the only way forward is to
+    // generate, which is a different subject; what this test protects is the
+    // unfinished owner text below surviving a background completion.
 
     const completionResponse = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/summary-running/generation'));
@@ -1187,7 +1222,9 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(await page.locator('.hero').isHidden(), true);
     assert.equal(await page.locator('.steps').isHidden(), true);
     assert.equal(await page.locator('.mobile-step-picker').isVisible(), true);
-    assert.equal(await page.locator('#mobileStepCount').textContent(), 'Step 5 of 6');
+    // Five steps now that Focus is retired: details 1, discussion 2, actions 3,
+    // summary 4, review 5. This fixture opens on Summary.
+    assert.equal(await page.locator('#mobileStepCount').textContent(), 'Step 4 of 5');
     assert.ok(await page.locator('.nav a').first().evaluate((node) => node.getBoundingClientRect().height >= 40));
     await page.click('.review-flags-summary');
     assert.ok(await page.locator('.review-flags-body').evaluate((node) => node.getBoundingClientRect().width > 330));

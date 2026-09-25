@@ -864,9 +864,9 @@
 
   <section class="panel hero"><h1>Meeting Minutes Agent</h1><p>Upload a Word transcript and work through an evidence-backed, editable draft.</p></section>
 
-  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="1" data-num="2" type="button" disabled aria-label="Step 2, what matters most from this meeting">Focus</button><button class="step" data-step="2" data-num="3" type="button" disabled aria-label="Step 3, discussion">Discussion</button><button class="step" data-step="3" data-num="4" type="button" disabled aria-label="Step 4, actions">Actions</button><button class="step" data-step="4" data-num="5" type="button" disabled aria-label="Step 5, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="6" type="button" disabled aria-label="Step 6, final review">Review</button></div>
+  <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="2" data-num="2" type="button" disabled aria-label="Step 2, discussion">Discussion</button><button class="step" data-step="3" data-num="3" type="button" disabled aria-label="Step 3, actions">Actions</button><button class="step" data-step="4" data-num="4" type="button" disabled aria-label="Step 4, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="5" type="button" disabled aria-label="Step 5, final review">Review</button></div>
 
-  <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 6</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="1" disabled>Focus</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
+  <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 5</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
   <div class="workflow-utilities">
     <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved draft</span><button id="checksRemaining" class="secondary quiet" type="button" hidden>No automated warnings</button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo last</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
@@ -903,20 +903,13 @@
         </div>
       </div>
       <p class="prewarm-notice" data-speculation-notice="discussion" role="status" hidden></p>
-      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="toSteer" class="button" type="button">Continue<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+      <details class="steer-optional"><summary class="secondary">What matters most from this meeting? (optional)</summary><div class="steer-field">
+        <p class="muted">Tell the agent what you need out of these minutes &mdash; the decision you were chasing, a workstream to keep together, whose commitments matter. It shapes what leads and how much detail each item gets.</p>
+        <textarea id="meetingSteer" rows="4" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
+        <p class="steer-hint">It never lets the agent state something the transcript does not support, and nothing supported is dropped just because you did not mention it. Leave it blank to work from the transcript alone.</p>
+      </div></details>
+      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="toSteer" class="button" type="button" hidden>Continue</button><button id="startDiscussion" class="button" type="button">Generate discussion<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
     </div>
-  </section>
-
-  <!-- ============================================ 1 - what matters most -->
-  <section class="panel screen" data-screen="1">
-    <div class="toolbar"><h2>What matters most from this meeting?</h2><span class="muted">Optional</span></div>
-    <p class="muted">Tell the agent what you need out of these minutes &mdash; the decision you were chasing, a workstream to keep together, whose commitments matter. It shapes what leads and how much detail each item gets.</p>
-    <div class="steer-field">
-      <textarea id="meetingSteer" rows="6" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
-      <p class="steer-hint">It never lets the agent state something the transcript does not support, and nothing supported is dropped just because you did not mention it. Leave it blank to work from the transcript alone.</p>
-    </div>
-    <p class="prewarm-notice" data-speculation-notice="discussion" role="status" hidden></p>
-    <div class="screen-actions"><button class="secondary" data-back="0" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to details</button><button id="startDiscussion" class="button" type="button">Continue<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ================================================== 2 - discussion -->

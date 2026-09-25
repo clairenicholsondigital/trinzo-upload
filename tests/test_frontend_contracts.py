@@ -71,8 +71,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('data-denoised-transcript', page)
         self.assertIn('data-label="Owners"', client)
         # Six screens: 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review.
-        self.assertEqual(page.count('class="panel screen'), 6)
-        self.assertIn('data-step="5" data-num="6"', page)
+        # Five screens since Focus was retired; its step index stays reserved
+        # so drafts saved under the six-step numbering still resolve correctly.
+        self.assertEqual(page.count('class="panel screen'), 5)
+        # Review is the fifth visible step but keeps index 5: the retired Focus
+        # index is left reserved rather than renumbering stored drafts.
+        self.assertIn('data-step="5" data-num="5"', page)
+        self.assertNotIn('>Focus</button>', page)
         self.assertIn('grid-template-columns:repeat(6,minmax(0,1fr))', page)
         self.assertIn('.meeting-agent-page .screen[data-screen="5"]{display:block}', page)
         self.assertIn('What matters most from this meeting?', page)
@@ -200,8 +205,9 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview draft', page)
         # Every back control carries the same left arrow, so none reads as
         # half-finished next to its neighbours.
-        # Five back buttons in the markup; Preview swaps to this icon at runtime.
-        self.assertEqual(page.count('<use href="#i-arrow-left"/>'), 5)
+        # Four back buttons since the Focus screen went; Preview swaps to this
+        # icon at runtime, so it is not in the markup.
+        self.assertEqual(page.count('<use href="#i-arrow-left"/>'), 4)
         self.assertIn('id="downloadPdf" class="secondary"', page)
         self.assertIn('id="downloadWord" class="secondary"', page)
         self.assertIn('class="export-menu"', page)

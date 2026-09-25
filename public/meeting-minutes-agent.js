@@ -3,7 +3,9 @@
 
   var state = { draft: null, currentStep: 0 };
   var agentRetryDelaysSeconds = [5, 15, 30];
-  // 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review
+  // 0 details, 1 (retired: focus), 2 discussion, 3 actions, 4 summary, 5 review
+  // Index 1 is left reserved so drafts saved under the six-step numbering still
+  // resolve to the right screen.
   var MAX_STEP = 5;
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
   var GENERATION_POLL_MS = 1000;
@@ -395,6 +397,9 @@
 
   function showStep(index, options) {
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
+    // A draft saved on the retired Focus step has nowhere to land; send it on
+    // to Discussion rather than showing an empty screen.
+    if (state.currentStep === 1) state.currentStep = 2;
     if (completedGenerationNotice && STAGE_STEP[completedGenerationNotice.stage] === state.currentStep) {
       completedGenerationNotice = null;
     }
@@ -418,7 +423,10 @@
       Array.from(mobileStep.options).forEach(function (option) {
         option.disabled = Number(option.value) > furthestStep;
       });
-      document.getElementById('mobileStepCount').textContent = 'Step ' + (state.currentStep + 1) + ' of ' + (MAX_STEP + 1);
+      // Five visible steps: index 1 is retired, so the label counts screens the
+      // reviewer can actually reach rather than raw indices.
+      var visibleStep = state.currentStep === 0 ? 1 : state.currentStep;
+      document.getElementById('mobileStepCount').textContent = 'Step ' + visibleStep + ' of ' + MAX_STEP;
     }
     if (state.draft) {
       state.draft.currentStep = Math.max(Number(state.draft.currentStep || 0), state.currentStep);
@@ -1883,7 +1891,10 @@
   document.getElementById('clientAttendeeLabelSelect').addEventListener('change', function (event) {
     document.getElementById('clientAttendeeHeading').textContent = event.target.value === 'External' ? 'External' : 'Client';
   });
-  document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(1, { scroll: true }); });
+  // Kept for drafts saved before the Focus step was removed: the button is
+  // hidden, and its index is skipped rather than renumbered so a stored
+  // currentStep still points at the screen it meant.
+  document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(2, { scroll: true }); });
   document.getElementById('mobileStepSelect').addEventListener('change', function (event) {
     var step = Number(event.target.value);
     if (step === MAX_STEP) { readEditors(); activeFinalEdit=null; renderFinal(); }
