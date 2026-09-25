@@ -118,8 +118,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.attendee-chip .secondary{padding:.4rem .6rem;font-size:var(--fs-cap)}', page)
         self.assertIn("clientAttendeeLabel", client)
         self.assertIn('min-height:36px;padding:.3rem .4rem;border-color:transparent', page)
-        # Carries a data-keep-open key so an opened panel survives a re-render.
-        self.assertIn('<details class="supporting-context" data-keep-open="supporting:', client)
+        # The omitted-details review is one shared panel, and its open state
+        # survives the same re-render path as the other evidence disclosures.
+        self.assertIn('id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"', client)
+        self.assertIn('Review omitted details (', client)
+        self.assertIn('Add to minutes', client)
         self.assertIn('function restoreDisclosures', client)
         self.assertIn('<details class="record-add-menu">', client)
         # The add control is an icon rather than the words "Add item", so its
@@ -181,14 +184,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("openQuestions: 'Open question'", client)
         self.assertIn('aria-label="' + "' + escapeHtml(label", client)
         self.assertIn('Supporting context', client)
-        # Changed 24 Sep: the "review-only" caveat used to be printed on every
-        # collapsed supporting-context row, which put it on screen many times
-        # per page. It is now stated once in the Discussion intro, and the
-        # fuller explanation still sits inside the expanded panel.
+        # Omitted details are now stated once in one shared review panel above
+        # the topic cards rather than repeated below every topic.
         self.assertNotIn('Not included in main minutes', client)
-        self.assertIn('is review-only and stays out of the main minutes', page)
-        self.assertIn('These details are review context only', client)
-        self.assertIn('Include in minutes', client)
+        self.assertIn('These details were left out of the draft. Check whether anything should be included.', client)
+        self.assertIn('Add to minutes', client)
         self.assertIn('Move to context', client)
         self.assertIn('.record-row+.record-row', page)
         self.assertIn('outline:2px solid var(--accent)', page)

@@ -457,25 +457,24 @@
 .meeting-agent-page .record-menu-label{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--muted)}
 .meeting-agent-page .record-menu-popover>.secondary,.meeting-agent-page .record-menu-popover>.delete{width:100%;justify-content:flex-start}
 .meeting-agent-page .record-menu-popover>details{min-width:0}
-.meeting-agent-page .supporting-context{margin:.4rem 0 0;border-top:1px solid var(--border);background:var(--soft)}
-.meeting-agent-page .supporting-context-head{
-  display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.55rem .65rem;
-  cursor:pointer;list-style:none}
-.meeting-agent-page .supporting-context-head::-webkit-details-marker{display:none}
-.meeting-agent-page .supporting-context-head::before{content:"›";color:var(--muted);font-size:var(--fs-lg);line-height:1;transition:transform .15s ease}
-.meeting-agent-page .supporting-context[open]>.supporting-context-head::before{transform:rotate(90deg)}
-.meeting-agent-page .supporting-context-title{margin-right:auto;font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
-.meeting-agent-page .supporting-context-title small{display:inline;margin-left:.35rem;color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw)}
-.meeting-agent-page .supporting-context-head>span:last-child{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .supporting-context-body{padding:0 .65rem .65rem}
-.meeting-agent-page .supporting-context-body>.muted{margin:0 0 .45rem;font-size:var(--fs-cap)}
-.meeting-agent-page .supporting-detail-list{display:grid;gap:.35rem}
-.meeting-agent-page .supporting-detail{padding:.5rem;border-left:3px solid var(--border-strong);background:var(--surface)}
-.meeting-agent-page .supporting-detail-continued{margin-top:-.25rem;border-top:1px dashed var(--border)}
-.meeting-agent-page .supporting-detail p{margin:0 0 .35rem}
-.meeting-agent-page .supporting-parent{display:grid;gap:.2rem;margin-bottom:.35rem;font-size:var(--fs-sm)}
-.meeting-agent-page .supporting-parent strong{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-.meeting-agent-page .supporting-parent span{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold);text-transform:uppercase;letter-spacing:.03em}
+.meeting-agent-page .omitted-details-panel{margin:0 0 .8rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft)}
+.meeting-agent-page .omitted-details-summary{padding:.65rem .75rem;cursor:pointer;list-style:none;font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
+.meeting-agent-page .omitted-details-summary::-webkit-details-marker{display:none}
+.meeting-agent-page .omitted-details-summary::before{content:"›";display:inline-block;margin-right:.4rem;color:var(--muted);font-size:var(--fs-lg);line-height:1;transition:transform .15s ease}
+.meeting-agent-page .omitted-details-panel[open]>.omitted-details-summary::before{transform:rotate(90deg)}
+.meeting-agent-page .omitted-details-body{padding:0 .75rem .75rem}
+.meeting-agent-page .omitted-details-intro{margin:0 0 .7rem}
+.meeting-agent-page .omitted-topic-list{display:grid;gap:.7rem}
+.meeting-agent-page .omitted-topic{padding-top:.65rem;border-top:1px solid var(--border)}
+.meeting-agent-page .omitted-topic:first-child{padding-top:0;border-top:0}
+.meeting-agent-page .omitted-topic h3{margin:0 0 .4rem;font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .omitted-detail-list{display:grid;gap:.35rem}
+.meeting-agent-page .omitted-detail{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;padding:.55rem .6rem;border-left:3px solid var(--border-strong);background:var(--surface)}
+.meeting-agent-page .omitted-detail-copy{min-width:0}
+.meeting-agent-page .omitted-detail-copy p{margin:.18rem 0 0}
+.meeting-agent-page .omitted-detail-kind{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .omitted-detail-actions{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;flex-wrap:wrap;flex:none}
+.meeting-agent-page .omitted-detail-actions>details{min-width:0}
 .meeting-agent-page .generation-row td{padding:0;border:0}
 .meeting-agent-page .generation-row .generating{margin:0}
 .meeting-agent-page .secondary.compact{min-height:34px;padding:.35rem .6rem;font-size:var(--fs-sm)}
@@ -962,10 +961,10 @@
   </section>
 
   <!-- ================================================== 2 - discussion -->
-  <section class="panel screen" data-screen="2">
+  <section id="discussionScreen" class="panel screen" data-screen="2">
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. You will preview them before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button></div></div>
-      <p class="muted">Anything under <strong>Other details</strong> is review-only and stays out of the main minutes.</p>
+      <div id="omittedDetailsReview"></div>
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>

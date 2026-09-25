@@ -394,7 +394,16 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     await page.click('[data-view-flag-target]');
     await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
     assert.equal(await page.locator('#minutes-discussion-discussion-1').count(), 1);
-    assert.match(await page.textContent('.supporting-context'), /report incorporates the final comments/i);
+    assert.match(await page.textContent('#omittedDetailsPanel'), /These details were left out of the draft/i);
+    assert.match(await page.textContent('#omittedDetailsPanel'), /report incorporates the final comments/i);
+    assert.equal(await page.locator('.supporting-context').count(), 0, 'omitted details use one shared review panel');
+    assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').count(), 1);
+    assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').textContent(), 'Add to minutes');
+    await page.click('#omittedDetailsPanel summary');
+    await page.click('#omittedDetailsPanel [data-promote-supporting]');
+    assert.equal(await page.locator('#omittedDetailsPanel').count(), 0, 'adding an omitted detail removes it from the review panel');
+    assert.equal(await page.locator('#minutes-discussion-support-1').count(), 1);
+    assert.equal(await page.locator('#minutes-discussion-support-1 textarea').inputValue(), 'The report incorporates the final comments.');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

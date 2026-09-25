@@ -951,25 +951,28 @@
   }
 
   function topicSupportingDetails(topic, topicIndex) {
+    return '';
+  }
+
+  function omittedDetailsPanel(discussion) {
     var labels = { points: 'Discussion', decisions: 'Decision', openQuestions: 'Open question' };
-    var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
-      return (topic[field] || []).flatMap(function (item, itemIndex) {
-        return (item.supportingDetails || []).map(function (detail, detailIndex) {
-          return { field:field, item:item, itemIndex:itemIndex, detail:detail, detailIndex:detailIndex };
+    var grouped = (discussion || []).map(function (topic, topicIndex) {
+      var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
+        return (topic[field] || []).flatMap(function (item, itemIndex) {
+          return (item.supportingDetails || []).map(function (detail, detailIndex) {
+            return { field:field, item:item, itemIndex:itemIndex, detail:detail, detailIndex:detailIndex };
+          });
         });
       });
-    });
-    if (!rows.length) return '';
-    var lastSupportingParent = '';
-    return '<details class="supporting-context" data-keep-open="supporting:' + escapeHtml(String(topic.id || topicIndex)) + '"><summary class="supporting-context-head"><span class="supporting-context-title">Other details &middot; not included in minutes</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
-      // The parent sentence is repeated on every detail belonging to it, which
-      // on a busy topic prints the same line five times. Show it when the
-      // parent changes and let the rest sit under it.
-      var parentKey = row.field + ':' + row.itemIndex;
-      var parentHeading = parentKey === lastSupportingParent ? '' :
-        '<div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div>';
-      lastSupportingParent = parentKey;
-      return '<div class="supporting-detail' + (parentHeading ? '' : ' supporting-detail-continued') + '" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '">' + parentHeading + '<p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds, String(row.detail.id || '')) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
+      return { topic:topic, topicIndex:topicIndex, rows:rows };
+    }).filter(function (group) { return group.rows.length; });
+    var count = grouped.reduce(function (total, group) { return total + group.rows.length; }, 0);
+    if (!count) return '';
+    return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Review omitted details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details were left out of the draft. Check whether anything should be included.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
+      return '<section class="omitted-topic"><h3>' + escapeHtml(group.topic.topic || 'Untitled topic') + '</h3><div class="omitted-detail-list">' + group.rows.map(function (row) {
+        var detailId = row.detail.id || (group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex);
+        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><span class="omitted-detail-kind">' + escapeHtml(labels[row.field]) + '</span><p>' + escapeHtml(row.detail.text || '') + '</p></div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
+      }).join('') + '</div></section>';
     }).join('') + '</div></div></details>';
   }
 
@@ -996,10 +999,12 @@
 
   function renderDiscussion() {
     if (generationRunning('discussion')) {
+      document.getElementById('omittedDetailsReview').innerHTML = '';
       document.getElementById('discussionList').innerHTML = '<div class="generation-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>';
       return;
     }
     var discussion = (state.draft && state.draft.discussion) || [];
+    document.getElementById('omittedDetailsReview').innerHTML = omittedDetailsPanel(discussion);
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
       var topicId = String(topic.id || ('topic-' + index));
       var collapsed = Boolean(discussionEditorState.collapsedTopics[topicId]);
@@ -1010,6 +1015,7 @@
       return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
+    restoreDisclosures(document.getElementById('omittedDetailsReview'));
     restoreDisclosures(document.getElementById('discussionList'));
   }
 
@@ -2243,7 +2249,7 @@
     }
   });
 
-  document.getElementById('discussionList').addEventListener('click', function (event) {
+  document.getElementById('discussionScreen').addEventListener('click', function (event) {
     var toggle=event.target.closest('[data-toggle-topic]');
     if(toggle){
       var toggleId=toggle.dataset.toggleTopic;
