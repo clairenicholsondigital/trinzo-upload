@@ -151,6 +151,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('Suggested changes', page)
         self.assertIn('Unchecked suggestions stay in this review queue', page)
         self.assertNotIn('<div class="screen-actions"><button id="acceptSelectedProposal"', page)
+        self.assertIn('id="generateActions" class="button stage-next-action"', page)
+        self.assertIn('.stage-next-action{', page)
         self.assertIn('class="proposal-comparison"', client)
         self.assertIn('class="proposal-content"', client)
         self.assertIn('Why this needs review:', client)

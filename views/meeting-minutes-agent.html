@@ -110,6 +110,12 @@
 .meeting-agent-page .button{
   border:1px solid var(--accent);background:var(--accent);color:#fff}
 .meeting-agent-page .button:hover{background:var(--accent-600);border-color:var(--accent-600)}
+/* The forward action closes this review stage, so give it a little more
+   visual weight without changing the shared button treatment. */
+.meeting-agent-page .stage-next-action{
+  min-height:2.75rem;padding:.7rem 1rem;font-size:var(--fs-md);
+  box-shadow:0 3px 8px rgba(14,140,132,.16)}
+.meeting-agent-page .stage-next-action .ic{width:1.2rem;height:1.2rem}
 .meeting-agent-page .secondary{
   border:1px solid var(--border-strong);background:var(--surface);color:var(--heading)}
 .meeting-agent-page .secondary:hover{background:var(--soft)}
@@ -976,7 +982,7 @@
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>
-    <div class="screen-actions"><button class="secondary" data-back="1" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to focus</button><button id="generateActions" class="button" type="button">Generate actions<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+    <div class="screen-actions"><button class="secondary" data-back="1" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to focus</button><button id="generateActions" class="button stage-next-action" type="button">Generate actions<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ===================================================== 2 - actions -->
