@@ -359,7 +359,12 @@
     var context = evidenceContext(ids);
     if (!context.length) return '<p class="muted">No source passage is linked. A review flag has been added.</p>';
     return context.map(function (unit) {
-      return '<div class="evidence-row' + (unit.cited ? ' cited' : '') + '"><div class="source-meta">' + escapeHtml(unit.id + ' - ' + unit.speaker + (unit.timestamp ? ' - ' + unit.timestamp : '') + (unit.cited ? ' - cited' : ' - surrounding context')) + '</div><div>' + escapeHtml(unit.text) + '</div></div>';
+      return '<div class="evidence-row' + (unit.cited ? ' cited' : '') + '"><div class="source-meta">'
+        + '<span class="source-speaker">' + escapeHtml(unit.speaker || 'Unknown speaker') + '</span>'
+        + (unit.timestamp ? '<span class="source-time">' + escapeHtml(unit.timestamp) + '</span>' : '')
+        + '<span class="source-id">' + escapeHtml(unit.id) + '</span>'
+        + (unit.cited ? '' : '<span class="source-kind">surrounding context</span>')
+        + '</div><div>' + escapeHtml(unit.text) + '</div></div>';
     }).join('');
   }
 
@@ -796,8 +801,16 @@
       });
     });
     if (!rows.length) return '';
+    var lastSupportingParent = '';
     return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Other details &middot; not included in minutes</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
-      return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
+      // The parent sentence is repeated on every detail belonging to it, which
+      // on a busy topic prints the same line five times. Show it when the
+      // parent changes and let the rest sit under it.
+      var parentKey = row.field + ':' + row.itemIndex;
+      var parentHeading = parentKey === lastSupportingParent ? '' :
+        '<div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div>';
+      lastSupportingParent = parentKey;
+      return '<div class="supporting-detail' + (parentHeading ? '' : ' supporting-detail-continued') + '" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '">' + parentHeading + '<p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
     }).join('') + '</div></div></details>';
   }
 
@@ -835,7 +848,7 @@
       var flagIds = new Set(linkedReviewFlagIds(topic));
       var checks = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status === 'open' && flagIds.has(flag.id); }).length;
       var meta = rows + ' item' + (rows === 1 ? '' : 's') + (checks ? ' · ' + checks + ' to review' : '');
-      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><span class="visually-hidden">Discussion topic</span><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
+      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
   }

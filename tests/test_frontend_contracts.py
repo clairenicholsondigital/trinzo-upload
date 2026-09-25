@@ -154,10 +154,15 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.agent-edit-inline[open]>summary', page)
         self.assertIn('class="screen-toolbar-actions"', page)
         self.assertIn('class="actions-table editable-actions-table"', page)
-        self.assertIn('.editable-actions-table th:nth-child(1){width:62%}', page)
+        # Action wording gets the room; owner and timing are short by nature.
+        self.assertIn('.editable-actions-table th:nth-child(1){width:66%}', page)
         self.assertIn('.topic-field textarea', page)
         self.assertIn('font-weight:var(--fw-bold)', page.split('.topic-field textarea', 1)[1].split('}', 1)[0])
-        self.assertIn('<span class="visually-hidden">Discussion topic</span>', client)
+        # The topic textarea names itself with aria-label, which wins over the
+        # wrapping label, so a visually-hidden span saying the same thing named
+        # it twice to nobody. The accessible name still has to be there.
+        self.assertNotIn('<span class="visually-hidden">Discussion topic</span>', client)
+        self.assertIn('aria-label="Discussion topic"', client)
         self.assertIn("points: 'Discussion'", client)
         self.assertIn("decisions: 'Decision'", client)
         self.assertIn("openQuestions: 'Open question'", client)
