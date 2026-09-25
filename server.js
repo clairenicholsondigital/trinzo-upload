@@ -42,7 +42,7 @@ function setMeetingAgentSecurityHeaders(res) {
 }
 
 app.get('/', (req, res) => {
-  sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
+  res.redirect(302, '/meeting-minutes-agent');
 });
 
 app.get('/dashboard', (req, res) => {

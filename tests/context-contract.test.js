@@ -179,7 +179,7 @@ test('project update roadmap page keeps deferred lifecycle ideas visible', () =>
   assert.ok(roadmapPageSource.includes('Project update roadmap'));
   assert.ok(roadmapPageSource.includes('Knowledge lifecycle'));
   assert.ok(roadmapPageSource.includes('Never automatically archiving official or manually curated knowledge'));
-  assert.ok(contextPageSource.includes('/project-update-test/roadmap'));
+  assert.ok(!contextPageSource.includes('href="/project-update-test/roadmap"'));
 });
 
 test('project report lifecycle archives instead of hard deleting reports', () => {

@@ -401,6 +401,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("target.origin !== window.location.origin", login)
         self.assertIn("window.location.href = safeReturnTo() ||", login)
 
+    def test_site_root_redirects_to_meeting_minutes_agent(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        self.assertIn("app.get('/', (req, res) => {", server)
+        self.assertIn("res.redirect(302, '/meeting-minutes-agent');", server)
+        self.assertIn("app.get('/dashboard'", server)
+
     def test_auth_users_have_admin_and_client_roles(self):
         auth = (REPO_DIR / "routes" / "auth.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
@@ -416,17 +422,16 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("role: user.role", auth)
         self.assertIn("role: session.role", auth)
 
-    def test_client_role_redirects_to_staged_minutes_and_gets_reduced_nav(self):
+    def test_all_roles_get_the_two_link_primary_navigation(self):
         login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
         shared_nav = (REPO_DIR / "public" / "trinzo.js").read_text(encoding="utf-8")
 
         self.assertIn("data.user && data.user.role === 'client' ? '/staged-meeting-minutes/' : '/dashboard'", login)
-        self.assertIn("var clientHomeUrl = '/staged-meeting-minutes/';", shared_nav)
-        self.assertIn("{ href: clientHomeUrl, label: 'Staged minutes' }", shared_nav)
+        self.assertIn("var primaryHomeUrl = '/meeting-minutes-agent';", shared_nav)
+        self.assertIn("{ href: primaryHomeUrl, label: 'Meeting Minutes Agent' }", shared_nav)
         self.assertIn("{ href: '/jobs', label: 'Library' }", shared_nav)
-        self.assertIn("if (user && user.role === 'client')", shared_nav)
-        self.assertIn("reduceClientNavigation(nav);", shared_nav)
-        self.assertIn("addBrand(nav, clientHomeUrl);", shared_nav)
+        self.assertIn("reducePrimaryNavigation(nav);", shared_nav)
+        self.assertIn("addBrand(nav, primaryHomeUrl);", shared_nav)
         self.assertIn("nav.innerHTML = '';", shared_nav)
 
     def test_dashboard_only_links_to_feedback_listing_and_matches_final_style(self):
@@ -439,9 +444,8 @@ class FrontendContractTest(unittest.TestCase):
             self.assertIn(token, dashboard)
             self.assertIn(token, meeting_minutes_final)
 
-        self.assertIn("Project Updates", shared_nav)
-        self.assertIn("Choose project", shared_nav)
-        self.assertNotIn("Choose a project", shared_nav)
+        self.assertIn("primaryHomeUrl", shared_nav)
+        self.assertNotIn("Choose project", shared_nav)
         self.assertIn('href="/meeting-minutes-feedback"', dashboard)
         self.assertIn("Open feedback listing", dashboard)
         self.assertNotIn('href="/"', dashboard)
@@ -558,8 +562,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("renderRequiredEditChart", page)
         self.assertIn("Benchmark pairs", page)
         self.assertIn('href="/staged-meeting-minutes/pre-testing"', dashboard)
-        self.assertIn('href="/staged-meeting-minutes/pre-testing"', staged)
-        self.assertIn('href="/staged-meeting-minutes/pre-testing"', analytics)
+        self.assertNotIn('href="/staged-meeting-minutes/pre-testing"', staged.split('<nav', 1)[1].split('</nav>', 1)[0])
+        self.assertNotIn('href="/staged-meeting-minutes/pre-testing"', analytics.split('<nav', 1)[1].split('</nav>', 1)[0])
 
     def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
