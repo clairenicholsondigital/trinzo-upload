@@ -153,9 +153,13 @@
     return hasTransientActionState() || hasTransientDiscussionState();
   }
 
+  // An empty row is a placeholder, not unsaved work: it is worth saying it
+  // lives only in this tab, but not in three different sentences.
+  var EMPTY_ROW_NOTICE = 'Empty rows stay in this tab until you type into them.';
+
   function generationSaveText(running) {
     if (pendingGenerationEdits) return 'Saving draft. Keep this tab open.';
-    if (hasTransientEditorState()) return 'New unfinished entries are kept in this tab until their text is entered. Keep this tab open.';
+    if (hasTransientEditorState()) return EMPTY_ROW_NOTICE + ' Keep this tab open.';
     return 'Everything is saved. You can leave and resume later' + (running === false ? '.' : ' while generation continues.');
   }
 
@@ -1496,7 +1500,7 @@
     if (generationRunning()) {
       setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
     } else if (hasTransientEditorState()) {
-      setSaveStatus('New unfinished entries are kept in this tab until their text is entered.', 'local-only');
+      setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
     } else {
       setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
     }
@@ -1562,7 +1566,7 @@
       if (!editingInside('actionsBody')) renderActions();
       return;
     }
-    setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
+    setSaveStatus('Saving draft...', 'dirty');
     saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
   }
 
@@ -1583,7 +1587,7 @@
         state.draft.updatedAt = payload.draft.updatedAt;
         state.draft.lastUndo = payload.draft.lastUndo;
         if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
-        setSaveStatus('Unsaved changes - saving shortly...', 'dirty');
+        setSaveStatus('Saving draft...', 'dirty');
         return state.draft;
       }
       pendingGenerationEdits = false;
@@ -1713,7 +1717,7 @@
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
-        else if (hasTransientEditorState()) setSaveStatus('Unfinished entries are not saved yet. Keep this tab open.', 'local-only');
+        else if (hasTransientEditorState()) setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
         else setSaveStatus(savedStatusText(state.draft.updatedAt), 'saved');
       } catch (error) { setStatus(error.message, true, expectedGeneration.stage); }
     }, GENERATION_POLL_MS);
