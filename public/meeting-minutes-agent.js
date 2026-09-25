@@ -90,7 +90,7 @@
     var checks = document.getElementById('checksRemaining');
     if (checks) {
       checks.hidden = false;
-      checks.textContent = counts.total ? counts.total + ' check' + (counts.total === 1 ? '' : 's') + ' remaining' : 'Checks complete';
+      checks.textContent = counts.total ? counts.total + ' check' + (counts.total === 1 ? '' : 's') + ' remaining' : 'No automated warnings';
       checks.classList.toggle('quiet', counts.total === 0);
     }
     var undo = document.getElementById('undoLastDecision');
@@ -100,7 +100,7 @@
     }
     var preview = document.getElementById('previewDocument');
     if (preview) {
-      var label = state.currentStep === MAX_STEP ? 'Back to editing' : 'Preview final minutes';
+      var label = state.currentStep === MAX_STEP ? 'Back to editing' : 'Preview draft';
       var wide = preview.querySelector('.wide-label');
       var narrow = preview.querySelector('.narrow-label');
       if (wide) wide.textContent = label;
@@ -154,7 +154,7 @@
   }
 
   function generationSaveText(running) {
-    if (pendingGenerationEdits) return 'Unsaved edits are waiting to save. Keep this tab open.';
+    if (pendingGenerationEdits) return 'Saving draft. Keep this tab open.';
     if (hasTransientEditorState()) return 'New unfinished entries are kept in this tab until their text is entered. Keep this tab open.';
     return 'Everything is saved. You can leave and resume later' + (running === false ? '.' : ' while generation continues.');
   }
@@ -361,7 +361,7 @@
 
   function evidenceBlock(ids) {
     var count = (ids || []).length;
-    return '<details><summary class="evidence-toggle">Evidence &middot; ' + count + '</summary><div class="evidence-panel">' + evidenceHtml(ids) + '</div></details>';
+    return '<details><summary class="evidence-toggle">View transcript &middot; ' + count + '</summary><div class="evidence-panel">' + evidenceHtml(ids) + '</div></details>';
   }
 
   function recordNeedsReview(record) {
@@ -372,7 +372,7 @@
   }
 
   function recordMenu(record, actions) {
-    var sourceLabel = recordNeedsReview(record) ? 'Check source' : 'Sources';
+    var sourceLabel = recordNeedsReview(record) ? 'Check transcript' : 'View transcript';
     return '<details class="record-menu"><summary class="secondary quiet" aria-label="Item options">•••</summary><div class="record-menu-popover"><span class="record-menu-label">' + sourceLabel + '</span>' + evidenceBlock(record.evidenceIds) + actions + '</div></details>';
   }
 
@@ -484,13 +484,13 @@
   function generationPhases(generation) {
     if (generation.stage === 'actions') return [
       {key:'primary',label:'Find possible actions'},
-      {key:'recovery',label:'Expand coverage'},
+      {key:'recovery',label:'Checking for missing details'},
       {key:'referee',label:'Verify against transcript'},
       {key:'final',label:'Finish the draft'}
     ];
     if (generation.stage === 'discussion') return [
       {key:'primary',label:'Find meeting content'},
-      {key:'recovery',label:'Expand coverage'},
+      {key:'recovery',label:'Checking for missing details'},
       {key:'referee',label:'Verify against transcript'},
       {key:'final',label:'Finish the draft'}
     ];
@@ -792,7 +792,7 @@
       });
     });
     if (!rows.length) return '';
-    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Supporting context</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
+    return '<details class="supporting-context"><summary class="supporting-context-head"><span class="supporting-context-title">Other details &middot; not included in minutes</span><span>' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + '</span></summary><div class="supporting-context-body"><p class="muted">These details are review context only. They appear in the optional evidence appendix, or you can include an item in the main minutes.</p><div class="supporting-detail-list">' + rows.map(function (row) {
       return '<div class="supporting-detail" id="' + escapeHtml(recordDomId('supporting', row.detail.id, topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex)) + '"><div class="supporting-parent"><span>' + escapeHtml(labels[row.field]) + '</span><strong>' + escapeHtml(row.item.text || '') + '</strong></div><p>' + escapeHtml(row.detail.text || '') + '</p><div class="record-tools">' + evidenceBlock(row.detail.evidenceIds) + '<button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Include in minutes</button></div></div>';
     }).join('') + '</div></div></details>';
   }
@@ -976,7 +976,7 @@
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
       return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index) + '</td></tr>';
-    }).join('') || '<tr><td colspan="3" class="muted">No actions have been generated.</td></tr>';
+    }).join('') || '<tr><td colspan="3" class="muted">No actions returned. Check the transcript for commitments.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     renderActionReview();
   }
@@ -1268,7 +1268,7 @@
     var panel = document.getElementById('reviewFlags');
     var wasHidden = panel.hidden;
     if (open.length && wasHidden) panel.open = false;
-    var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Source evidence needed', possible_missed_follow_up:'Possible missed follow-up' };
+    var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Check this against the transcript', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
       if (flag.status !== 'open') return '';
       var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
@@ -1280,8 +1280,8 @@
         body += '<div class="flag-target"><span>' + (target.proposal ? 'Related suggestion' : 'Affected ' + escapeHtml(target.label.toLowerCase())) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review suggestion' : 'View and edit') + '</button></div>';
       } else body += '<p class="review-route-missing"><strong>No saved item or pending suggestion matches this warning.</strong> If the issue still matters, add or correct the relevant item and then resolve the warning. If its content was removed, dismiss it.</p>';
       body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
-      // One primary: "Looks correct" is the answer a reviewer gives most often.
-      var actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Looks correct</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save correction</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss</button>';
+      // One primary: "Mark as checked" is the answer a reviewer gives most often.
+      var actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Mark as checked</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save review note</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss warning</button>';
       // Collapsed by default: the passage is often longer than the warning it
       // supports, and a reviewer who trusts the quoted line never opens it.
       var evidenceLines = evidenceContext(flag.evidenceIds).length;
@@ -1709,7 +1709,7 @@
           var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
           setStatus(keptEdits
             ? 'Your edited Actions were kept. The regenerated Actions are shown as proposed changes: accept the ones you want.'
-            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : activeStage === 'actions' ? 'Action draft generated and independently checked. Review any proposed additions.' : ''), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
+            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review the draft and highlighted items.' : activeStage === 'actions' ? 'Action draft ready for your review. Check any proposed additions.' : ''), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
@@ -1738,7 +1738,7 @@
       if (instruction) { renderProposal(); setStatus('Review the proposed changes. Nothing has been applied yet.', false, stage); }
       else {
         showStep(STAGE_STEP[stage] || 2, { scroll: true });
-        setStatus(stage === 'discussion' ? 'Discussion draft generated. Review its evidence and flags.' : 'Action draft generated. Running the separate missed-action check next.', false, stage);
+        setStatus(stage === 'discussion' ? 'Discussion draft generated. Review the draft and highlighted items.' : 'Action draft generated. Running the separate missed-action check next.', false, stage);
         if (stage === 'actions') await auditActions(true);
       }
       return true;

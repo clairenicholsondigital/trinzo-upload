@@ -13017,7 +13017,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   };
   const call = async (pass, prompt, callOptions = {}) => {
     const isRefereeCall = callOptions.responseKind === 'referee' || pass === 'referee' || pass.startsWith('referee-');
-    const baseMessage = pass === 'primary' ? 'Building a coverage map…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
+    const baseMessage = pass === 'primary' ? 'Finding the main points…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
     const promptSha256 = meetingAgentPassCacheKey(prompt);
     const requestId = meetingMinutesAgentText(callOptions.requestId, 160)
       || `${stage}:${pass}:${promptSha256.slice(0, 16)}`;

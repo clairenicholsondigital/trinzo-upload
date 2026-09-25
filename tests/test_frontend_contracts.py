@@ -192,7 +192,7 @@ class FrontendContractTest(unittest.TestCase):
         # Three export controls, plus the save-strip's Download draft button,
         # which gained the icon on 24 Sep alongside Preview document.
         self.assertEqual(page.count('#i-download'), 4)
-        self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview final minutes', page)
+        self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview draft', page)
         # Every back control carries the same left arrow, so none reads as
         # half-finished next to its neighbours.
         # Five back buttons in the markup; Preview swaps to this icon at runtime.
@@ -216,7 +216,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Number.isNaN(savedAt.getTime())", client)
         self.assertIn("setSaveStatus(savedStatusText(draft.updatedAt), 'saved')", client)
         self.assertIn("function generationSaveText", client)
-        self.assertIn("Unsaved edits are waiting to save. Keep this tab open.", client)
+        self.assertIn("Saving draft. Keep this tab open.", client)
         self.assertIn("Everything is saved. You can leave and resume later", client)
         self.assertIn("generationRunning('actions')", client)
         self.assertIn("function flagTarget", client)

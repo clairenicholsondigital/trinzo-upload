@@ -521,7 +521,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
 
     await page.click('[data-step="0"]');
     await page.fill('#meetingTitle', 'Edited while actions run');
-    assert.match(await page.textContent('#saveStatus'), /Unsaved edits are waiting to save.*Keep this tab open/i);
+    assert.match(await page.textContent('#saveStatus'), /Saving draft.*Keep this tab open/i);
     // The generation panel used to repeat this sentence; the save strip is now
     // the only place that says whether the tab is safe to close.
     assert.equal(await page.locator('#generationLeaveMessage').count(), 0);
@@ -1011,7 +1011,7 @@ test('every warning decision exposes a durable Undo that survives refresh', { ti
     const warning = page.locator('.flag').filter({ hasText: 'Check the owner of this action.' });
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Warning confirmed');
-    await warning.getByRole('button', { name: 'Looks correct' }).click();
+    await warning.getByRole('button', { name: 'Mark as checked' }).click();
     await saved;
     assert.equal(await page.locator('#undoToast').isVisible(), true);
     assert.match(await page.textContent('#undoToastMessage'), /Warning confirmed/i);
