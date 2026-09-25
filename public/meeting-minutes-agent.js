@@ -2750,7 +2750,11 @@
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
-    if (event.target.closest('#discussionList') || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer') {
+    // Inclusion is a document-output choice. It does not alter the meeting
+    // evidence or discussion content, so it must not mark downstream Actions
+    // as stale merely because the checkboxes live inside Details.
+    if (!event.target.matches('#includeObjectives,#includeSummary')
+      && (event.target.closest('#discussionList') || event.target.closest('#detailsEditor') || event.target.id === 'meetingSteer')) {
       markDownstreamStale();
     }
     if (event.target.matches('[data-owner-other]')) {

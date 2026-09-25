@@ -627,6 +627,7 @@ test('independent section switches hide output without deleting saved content', 
     await page.click('[data-step="0"]');
     assert.equal(await page.locator('#includeObjectives').isChecked(), true, 'both are on by default');
     assert.equal(await page.locator('#includeSummary').isChecked(), true);
+    const staleBeforeInclusion = await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.staleStages || []);
 
     await page.click('[data-step="4"]');
     assert.equal(await page.locator('[data-section="executiveSummary"]').isHidden(), false);
@@ -645,6 +646,8 @@ test('independent section switches hide output without deleting saved content', 
     // Turn the executive summary off.
     await page.click('[data-step="0"]');
     await page.uncheck('#includeSummary');
+    const staleAfterSummaryToggle = await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.staleStages || []);
+    assert.deepEqual(staleAfterSummaryToggle, staleBeforeInclusion, 'summary inclusion does not change downstream freshness');
     await page.click('[data-step="4"]');
     assert.equal(await page.locator('[data-section="executiveSummary"]').isHidden(), true,
       'an excluded section leaves the screen rather than sitting there empty');
