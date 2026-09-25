@@ -555,6 +555,51 @@ test('an opened transcript panel survives a re-render, and each step remembers i
   }
 });
 
+test('excluding a section hides it, clears it and stops it being generated', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    // A fixture that has reached Summary, so that step is unlocked.
+    const launched = await launchPage(port, 'layout');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    await page.click('[data-step="0"]');
+    assert.equal(await page.locator('#includeObjectives').isChecked(), true, 'both are on by default');
+    assert.equal(await page.locator('#includeSummary').isChecked(), true);
+
+    await page.click('[data-step="4"]');
+    assert.equal(await page.locator('[data-section="executiveSummary"]').isHidden(), false);
+
+    // Turn the executive summary off.
+    await page.click('[data-step="0"]');
+    await page.uncheck('#includeSummary');
+    await page.click('[data-step="4"]');
+    assert.equal(await page.locator('[data-section="executiveSummary"]').isHidden(), true,
+      'an excluded section leaves the screen rather than sitting there empty');
+    assert.equal(await page.locator('[data-section="meetingObjectives"]').isHidden(), false,
+      'the other section is untouched');
+
+    // The choice reaches the server, and the text goes with it.
+    await page.waitForFunction(async () => {
+      const state = await (await fetch('/test-state/layout')).json();
+      return state.draft.includeSections && state.draft.includeSections.executiveSummary === false;
+    });
+    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.executiveSummary), '');
+
+    // Turning both off leaves an explanation rather than an empty screen.
+    await page.click('[data-step="0"]');
+    await page.uncheck('#includeObjectives');
+    await page.click('[data-step="4"]');
+    assert.equal(await page.locator('#summaryAllExcluded').isHidden(), false);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('action generation has an honest waiting state and stage-scoped status', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;

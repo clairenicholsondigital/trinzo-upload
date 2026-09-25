@@ -269,6 +269,13 @@
 .meeting-agent-page .screen-actions{margin-top:1rem}
 .meeting-agent-page .form-grid{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-top:1rem}
+.meeting-agent-page .include-sections{
+  display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1.25rem;
+  margin:.75rem 0 0;padding:.6rem .75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft)}
+.meeting-agent-page .include-sections legend{padding:0 .3rem;font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--heading);text-transform:uppercase;letter-spacing:.03em}
+.meeting-agent-page .include-option{display:flex;align-items:center;gap:.4rem;font-size:var(--fs-sm)}
+.meeting-agent-page .include-option input{width:1rem;height:1rem;margin:0}
+.meeting-agent-page .include-hint{flex-basis:100%;margin:0;font-size:var(--fs-cap)}
 .meeting-agent-page .field{display:grid;gap:.3rem}
 /* Compact by content: a date field stretched across half the screen reads as
    though something is missing from it. */
@@ -903,6 +910,12 @@
         </div>
       </div>
       <p class="prewarm-notice" data-speculation-notice="discussion" role="status" hidden></p>
+      <fieldset class="include-sections">
+        <legend>Include in these minutes</legend>
+        <label class="include-option"><input type="checkbox" id="includeObjectives" checked><span>Meeting objectives</span></label>
+        <label class="include-option"><input type="checkbox" id="includeSummary" checked><span>Executive summary</span></label>
+        <p class="muted include-hint">Unticked sections are not generated and do not appear in the minutes or the exports.</p>
+      </fieldset>
       <details class="steer-optional"><summary class="secondary">What matters most from this meeting? (optional)</summary><div class="steer-field">
         <p class="muted">Tell the agent what you need out of these minutes &mdash; the decision you were chasing, a workstream to keep together, whose commitments matter. It shapes what leads and how much detail each item gets.</p>
         <textarea id="meetingSteer" rows="4" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
@@ -941,15 +954,16 @@
     <div class="toolbar"><h2>Executive summary &amp; objectives</h2><button id="generateSummary" class="secondary" type="button">Create summary</button></div>
     <p class="muted">Written from the discussion and actions you have confirmed. Edit either directly.</p>
     <div class="summary-fields">
-      <div class="summary-field">
+      <div class="summary-field" data-section="meetingObjectives">
         <span class="lbl">Meeting objectives</span>
         <div id="objectivesList" class="record-list"></div>
         <button id="addObjective" class="secondary add-record" type="button">Add objective</button>
       </div>
-      <div class="summary-field">
+      <div class="summary-field" data-section="executiveSummary">
         <span class="lbl">Executive summary</span>
         <textarea id="executiveSummary" rows="3" aria-label="Executive summary"></textarea>
       </div>
+      <p id="summaryAllExcluded" class="muted" hidden>Neither an executive summary nor objectives are included in these minutes. Turn either back on in Meeting details.</p>
     </div>
     <div class="screen-actions"><button class="secondary" data-back="3" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to actions</button><button id="openFinalReview" class="button" type="button">Review complete minutes<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>

@@ -771,7 +771,28 @@
       }).filter(Boolean);
   }
 
+  function includedSectionState() {
+    var raw = (state.draft && state.draft.includeSections) || {};
+    return { meetingObjectives: raw.meetingObjectives !== false, executiveSummary: raw.executiveSummary !== false };
+  }
+
+  function renderIncludedSections() {
+    var include = includedSectionState();
+    var objectives = document.getElementById('includeObjectives');
+    var summary = document.getElementById('includeSummary');
+    if (objectives) objectives.checked = include.meetingObjectives;
+    if (summary) summary.checked = include.executiveSummary;
+    // An excluded section leaves the Summary screen entirely, rather than
+    // sitting there empty and looking like generation failed.
+    document.querySelectorAll('[data-section]').forEach(function (node) {
+      node.hidden = include[node.dataset.section] === false;
+    });
+    var empty = document.getElementById('summaryAllExcluded');
+    if (empty) empty.hidden = include.meetingObjectives || include.executiveSummary;
+  }
+
   function renderSummary() {
+    renderIncludedSections();
     var draft = state.draft || {};
     var summary = document.getElementById('executiveSummary');
     if (summary && summary !== document.activeElement) {
@@ -1591,6 +1612,7 @@
       staleStages: state.draft.staleStages || [],
       currentStep: Math.max(Number(state.draft.currentStep || 0), state.currentStep),
       selectedStep: state.currentStep,
+      includeSections: state.draft.includeSections || { meetingObjectives: true, executiveSummary: true },
       keptActionIds: state.draft.keptActionIds || [],
       removedActions: state.draft.removedActions || []
     };
@@ -1940,6 +1962,24 @@
     if (step === MAX_STEP) { readEditors(); activeFinalEdit=null; renderFinal(); }
     showStep(step, { scroll: true });
   });
+  ['includeObjectives', 'includeSummary'].forEach(function (id) {
+    var box = document.getElementById(id);
+    if (!box) return;
+    box.addEventListener('change', function () {
+      if (!state.draft) return;
+      var include = includedSectionState();
+      include[id === 'includeObjectives' ? 'meetingObjectives' : 'executiveSummary'] = box.checked;
+      state.draft.includeSections = include;
+      renderIncludedSections();
+      // Turning a section off drops what is already there: leaving the text in
+      // place would export a section the reviewer has said they do not want.
+      if (!include.meetingObjectives) state.draft.meetingObjectives = [];
+      if (!include.executiveSummary) state.draft.executiveSummary = '';
+      renderSummary();
+      scheduleSave();
+    });
+  });
+
   document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); requestBackgroundStage('discussion'); });
   document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
   document.getElementById('generateSummary').addEventListener('click', function () { requestBackgroundStage('summary'); });

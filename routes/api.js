@@ -267,6 +267,7 @@ const {
 const { shapeDiscussion, dedupeDiscussionBody } = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
 const { normaliseKeptActionIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
+const { includedSections, summaryStageIsEmpty, applyIncludedSections } = require('../utils/includedSections');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -10768,6 +10769,7 @@ function meetingAgentDraftPayload(draft = {}) {
       Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0)),
     // The reviewer's own decisions about the register: which rows they have
     // checked off, and which they rejected and could still put back.
+    includeSections: includedSections(draft),
     keptActionIds: normaliseKeptActionIds(draft.keptActionIds, draft.actions),
     removedActions: normaliseMeetingAgentKnownTermsDeep(normaliseRemovedActions(draft.removedActions))
   };
@@ -13158,15 +13160,41 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   };
 
   if (stage === 'summary') {
+    // Nothing to ask for: the reviewer wants neither an executive summary nor
+    // objectives, so the stage completes without calling the model at all.
+    if (summaryStageIsEmpty(draft)) {
+      console.log(JSON.stringify({
+        event: 'meeting_agent_summary_stage_skipped', journeyId: draft.draftId,
+        reason: 'both optional sections excluded'
+      }));
+      return {
+        changes: {
+          executiveSummary: '', meetingObjectives: [],
+          qualityState: { ...(draft.qualityState || {}), summary: {
+            completedPasses: [], degradedSources: [],
+            stageElapsedMs: Date.now() - stageStartedAt,
+            completedAt: new Date().toISOString(),
+            skipped: true
+          } }
+        }
+      };
+    }
     const parsed = await call('summary', meetingMinutesAgentPrompt({
       stage, transcript, details, current: { discussion: draft.discussion || [], actions: draft.actions || [] }, steer: draft.steer
     }), {
       candidateCount: flattenHybridDiscussion(draft.discussion || []).length + (draft.actions || []).length
     });
-    const executiveSummary = groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []);
-    const meetingObjectives = mergeGroundedObjectiveRecords([
-      draft.meetingObjectives || [], parsed.meetingObjectives || parsed.objectives || []
-    ], draft.sourceUnits);
+    // One call covers both sections, so excluding one does not save a request;
+    // what it does guarantee is that the excluded section never reaches the
+    // minutes, whichever pass produced it.
+    const summaryValues = applyIncludedSections(draft, {
+      executiveSummary: groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []),
+      meetingObjectives: mergeGroundedObjectiveRecords([
+        draft.meetingObjectives || [], parsed.meetingObjectives || parsed.objectives || []
+      ], draft.sourceUnits)
+    });
+    const executiveSummary = summaryValues.executiveSummary;
+    const meetingObjectives = summaryValues.meetingObjectives;
     const passImpact = meetingAgentMaterialPassImpact([], { summary: {
       materialContributionCount: Number(Boolean(executiveSummary)) + meetingObjectives.length
     } });
@@ -14770,6 +14798,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       changeHistory,
       // Kept ids are filtered against the actions being saved, so a row the
       // reviewer ticked and then removed in the same save does not linger.
+      includeSections: includedSections({ includeSections: req.body?.includeSections ?? draft.includeSections }),
       keptActionIds: normaliseKeptActionIds(req.body?.keptActionIds ?? draft.keptActionIds, normalised.actions),
       removedActions: normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions),
       status: req.body?.status
