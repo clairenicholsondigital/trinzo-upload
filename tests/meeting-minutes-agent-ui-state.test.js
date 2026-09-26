@@ -444,7 +444,7 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.equal(await customOwner.isVisible(), true);
     assert.equal(await customOwner.inputValue(), 'Jordan Lee');
 
-    await page.click('#reviewFlags summary');
+    await page.click('#reviewQueueToggle');
     assert.match(await page.textContent('.flag-target blockquote'), /revised report is ready/i);
     await page.click('[data-view-flag-target]');
     await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
@@ -1220,7 +1220,7 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     const launched = await launchPage(port, 'proposals');
     browser = launched.browser;
     const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
     assert.equal(await page.locator('.proposal-detail').isVisible(), true);
     assert.equal(await page.locator('.proposal-content').isHidden(), true);
     assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
@@ -1245,7 +1245,7 @@ test('a missing-content warning opens and highlights its exact pending suggestio
     const launched = await launchPage(port, 'proposals');
     browser = launched.browser;
     const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
     const warning = page.locator('.flag').filter({ hasText: 'Possible missed action: Confirm access to the audit folder.' });
     assert.match(await warning.textContent(), /Related suggestion/i);
     assert.equal(await warning.locator('text=No saved item or pending suggestion matches').count(), 0);
@@ -1269,7 +1269,7 @@ test('applying one proposal preserves the unchecked proposal and warning after r
     const launched = await launchPage(port, 'partial-proposals');
     browser = launched.browser;
     const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
     const boxes = page.locator('[data-proposal-change]');
     await boxes.nth(1).uncheck();
     const applied = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/partial-proposals/proposal'));
@@ -1304,7 +1304,7 @@ test('an unlinked timing warning routes to its Action field and resolves when th
     const launched = await launchPage(port, 'unlinked-warning');
     browser = launched.browser;
     const { page, errors } = launched;
-    await page.click('#reviewFlags>summary');
+    await page.click('#reviewQueueToggle');
     assert.match(await page.textContent('.flag-target'), /Complete and sign the training attestation/i);
     await page.click('[data-view-flag-target]');
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
@@ -1338,7 +1338,7 @@ test('every warning decision exposes a durable Undo that survives refresh', { ti
     const launched = await launchPage(port, 'editor');
     browser = launched.browser;
     const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewFlags>summary');
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
     const warning = page.locator('.flag').filter({ hasText: 'Check the owner of this action.' });
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Warning confirmed');
@@ -1522,9 +1522,10 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     // summary 4, review 5. This fixture opens on Summary.
     assert.equal(await page.locator('#mobileStepCount').textContent(), 'Step 4 of 5');
     assert.ok(await page.locator('.nav a').first().evaluate((node) => node.getBoundingClientRect().height >= 40));
-    await page.click('.review-flags-summary');
+    await page.click('#reviewQueueToggle');
     assert.ok(await page.locator('.review-flags-body').evaluate((node) => node.getBoundingClientRect().width > 330));
-    await page.click('.review-flags-summary');
+    await page.click('#reviewQueueToggle');
+    assert.equal(await page.locator('.review-flags-body').isHidden(), true, 'the queue closes again from the status bar');
 
     await page.selectOption('#mobileStepSelect', '2');
     const discussionLayout = await page.evaluate(() => {

@@ -181,11 +181,21 @@
 .meeting-agent-page .save-strip-actions{display:flex;align-items:center;gap:.4rem}
 .meeting-agent-page .save-strip-actions button{padding:.35rem .65rem;font-size:var(--fs-cap)}
 .meeting-agent-page .narrow-label{display:none}
-.meeting-agent-page .workflow-utilities{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem}
-.meeting-agent-page .workflow-utilities .save-strip{flex:1;margin:0}
-.meeting-agent-page .workflow-utilities .review-flags{flex:none;margin:0}
-.meeting-agent-page .workflow-utilities .review-flags[open]{flex:1 0 100%}
-.meeting-agent-page .workflow-utilities .review-flags[open] .review-flags-body{width:100%}
+.meeting-agent-page .workflow-utilities{display:none}
+.meeting-agent-page .workflow-utilities.is-open{display:block;margin-bottom:.75rem}
+.meeting-agent-page .workflow-utilities .review-flags{margin:0}
+.meeting-agent-page .workflow-utilities .review-flags-body{width:100%}
+/* The chip opens the queue from the status bar; the panel's own summary is
+   redundant once it does, but stays for the toggle target. */
+.meeting-agent-page .review-flags-summary{display:none}
+.meeting-agent-page .review-queue-toggle{
+  display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;
+  border:1px solid var(--warn-border,var(--border-strong));border-radius:999px;
+  background:var(--warn-bg);color:var(--warn-text);font-size:var(--fs-cap);cursor:pointer}
+.meeting-agent-page .review-queue-toggle::after{content:"\203A";opacity:.7}
+.meeting-agent-page .review-queue-toggle[aria-expanded="true"]::after{content:"\2039"}
+.meeting-agent-page .review-queue-toggle[data-state="clear"]{
+  border-color:var(--border-strong);background:var(--surface);color:var(--muted)}
 .meeting-agent-page .undo-toast{
   position:fixed;z-index:21;left:50%;bottom:4.55rem;transform:translateX(-50%);
   display:flex;align-items:center;gap:.75rem;width:min(calc(100% - 2rem),540px);
@@ -818,8 +828,7 @@
   .meeting-agent-page .mobile-step-picker span{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--muted);white-space:nowrap}
   .meeting-agent-page .mobile-step-picker select{padding:.35rem .5rem;border-color:transparent;font-weight:var(--fw-bold)}
   .meeting-agent-page:not(.has-draft) .workflow-utilities{display:none}
-  .meeting-agent-page .workflow-utilities{margin-bottom:.55rem}
-  .meeting-agent-page .workflow-utilities .review-flags{margin-left:auto}
+  .meeting-agent-page .workflow-utilities.is-open{margin-bottom:.55rem}
   .meeting-agent-page .review-flags-summary{min-height:40px}
   .meeting-agent-page .form-grid,
   .meeting-agent-page .attendee-groups{grid-template-columns:1fr}
@@ -925,9 +934,10 @@
 
   <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 5</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
+  <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
+
   <div class="workflow-utilities">
-    <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button></span></div>
-    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"><span id="flagCount" class="flag-count"></span></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
+    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
   </div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>

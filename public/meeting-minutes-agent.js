@@ -1468,11 +1468,27 @@
     document.getElementById('flagCount').textContent = counts.flags
       ? counts.flags + ' warning' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
       : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'Review complete';
+    updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) intro.textContent = counts.suggestions
       ? 'Warnings and suggested changes are kept together here. Open an item to review its source and make a decision.'
       : 'Check or correct each item before sharing. Open items do not prevent export.';
     updateFinishingBar();
+  }
+
+  // The review queue opens from the status bar rather than from a chip of its
+  // own: the chip used to hold a whole row by itself, because the strip it was
+  // meant to sit beside is fixed to the bottom of the screen.
+  function updateReviewQueueToggle(counts) {
+    var toggle = document.getElementById('reviewQueueToggle');
+    var panel = document.getElementById('reviewFlags');
+    if (!toggle || !panel) return;
+    var open = Boolean(panel.open && !panel.hidden);
+    toggle.hidden = counts.total === 0;
+    toggle.dataset.state = counts.flags ? 'warning' : 'clear';
+    toggle.setAttribute('aria-expanded', String(open));
+    var row = panel.closest('.workflow-utilities');
+    if (row) row.classList.toggle('is-open', open);
   }
 
   function renderFlags() {
@@ -1841,6 +1857,9 @@
     }
     savePending = true;
     setSaveStatus('Saving draft...', 'dirty');
+    // Held until the operation finishes, then sent against the revision it
+    // produced rather than the one it replaced.
+    if (draftWritesInFlight) return;
     saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
   }
 
@@ -1853,6 +1872,18 @@
   // Undo and redo deliberately do not use this: they restore a snapshot taken
   // before the background work existed, so silently folding it in first would
   // change what undo means.
+  // Every draft write is revision-guarded, so two must never be in flight
+  // against the same revision. An autosave scheduled while an operation runs
+  // waits for it instead of racing it into a conflict the reviewer then has to
+  // read about - the same rule already applied to generation, which is just the
+  // longest-running case of it.
+  var draftWritesInFlight = 0;
+
+  function endDraftWrite() {
+    draftWritesInFlight = Math.max(0, draftWritesInFlight - 1);
+    if (!draftWritesInFlight && savePending) { savePending = false; saveDraftNow(); }
+  }
+
   async function withBackgroundMerge(send) {
     try {
       return await send();
@@ -1934,6 +1965,7 @@
   async function startBackgroundStage(stage) {
     if (!state.draft) return;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
+    draftWritesInFlight += 1;
     try {
       var selectedStep = stage === 'actions' ? state.currentStep : STAGE_STEP[stage];
       var payload = await withBackgroundMerge(function () {
@@ -1951,6 +1983,7 @@
       setStatus((payload.generation && payload.generation.message) || 'Preparing independent quality checks…', false, stage);
       pollGeneration();
     } catch (error) { setStatus(error.message, true, stage); }
+    finally { endDraftWrite(); }
   }
 
   function pollGeneration() {
@@ -2030,6 +2063,7 @@
     if (!state.draft) return false;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return false; }
     setBusy(true, instruction ? 'The agent is preparing a change preview...' : 'The agent is reviewing the prepared transcript...', stage);
+    draftWritesInFlight += 1;
     try {
       var payload; var totalAttempts = agentRetryDelaysSeconds.length + 1;
       for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
@@ -2052,13 +2086,14 @@
       }
       return true;
     } catch (error) { setStatus(error.message, true, stage); return false; }
-    finally { setBusy(false); }
+    finally { setBusy(false); endDraftWrite(); }
   }
 
   async function auditActions(automatic) {
     if (!state.draft) return;
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
     setBusy(true, 'Checking the transcript for missed follow-up actions...', 'actions');
+    draftWritesInFlight += 1;
     try {
       var payload; var totalAttempts = agentRetryDelaysSeconds.length + 1;
       for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
@@ -2075,7 +2110,7 @@
       adoptDraft(payload.draft);
       setStatus(payload.proposal ? 'The completeness check found proposed actions. Review them before applying.' : 'The completeness check found no additional supported actions.', false, 'actions');
     } catch (error) { setStatus((automatic ? 'The action draft is available, but the completeness check failed: ' : '') + error.message, true, 'actions'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); endDraftWrite(); }
   }
 
   async function reviewProposal(decision, acceptAll) {
@@ -2084,6 +2119,7 @@
     var ids = Array.from(document.querySelectorAll('[data-proposal-change]:checked')).map(function (input) { return input.dataset.proposalChange; });
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
     setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...', proposalStage);
+    draftWritesInFlight += 1;
     try {
       var payload = await withBackgroundMerge(function () {
         return jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
@@ -2095,28 +2131,34 @@
         : remaining ? 'Selected changes applied. ' + remaining + ' unchecked suggestion' + (remaining === 1 ? ' remains' : 's remain') + ' in the review queue.'
           : 'Selected agent changes applied.', false, proposalStage);
     } catch (error) { setStatus(error.message, true, proposalStage); }
-    finally { setBusy(false); }
+    finally { setBusy(false); endDraftWrite(); }
   }
 
   async function redoLastReviewDecision() {
     if (!state.draft || !state.draft.lastRedo) return;
     try {
       if (saveTimer || saveInFlight || pendingReviewDecisionLabel) await saveDraftNow();
-      setBusy(true, 'Redoing...', currentStageName());
+    } catch (error) { return setStatus(error.message, true, currentStageName()); }
+    setBusy(true, 'Redoing...', currentStageName());
+    draftWritesInFlight += 1;
+    try {
       var payload = await jsonRequest(draftUrl('/redo'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
       activeFinalEdit = null;
       endUndoGroup();
       adoptDraft(payload.draft);
       setStatus('Change redone.', false, currentStageName());
     } catch (error) { setStatus(error.message, true, currentStageName()); }
-    finally { setBusy(false); }
+    finally { setBusy(false); endDraftWrite(); }
   }
 
   async function undoLastReviewDecision() {
     if (!state.draft || !state.draft.lastUndo) return;
     try {
       if (saveTimer || saveInFlight || pendingReviewDecisionLabel) await saveDraftNow();
-      setBusy(true, 'Undoing the last review decision...', currentStageName());
+    } catch (error) { return setStatus(error.message, true, currentStageName()); }
+    setBusy(true, 'Undoing the last review decision...', currentStageName());
+    draftWritesInFlight += 1;
+    try {
       var payload = await jsonRequest(draftUrl('/undo'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
       activeFinalEdit = null;
       endUndoGroup();
@@ -2124,7 +2166,7 @@
       document.getElementById('undoToast').hidden = true;
       setStatus('Last review decision undone.', false, currentStageName());
     } catch (error) { setStatus(error.message, true, currentStageName()); }
-    finally { setBusy(false); }
+    finally { setBusy(false); endDraftWrite(); }
   }
 
   async function downloadExport(kind) {
@@ -2857,6 +2899,13 @@
     if (targetButton) openReviewTarget(targetButton);
   });
   document.getElementById('openFinalReview').addEventListener('click', function () { readEditors(); activeFinalEdit=null; renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Click any sentence, owner or date to edit it here.',false,'review'); });
+  document.getElementById('reviewQueueToggle').addEventListener('click', function () {
+    var panel = document.getElementById('reviewFlags');
+    panel.open = !panel.open;
+    updateReviewQueueSummary();
+    if (panel.open) panel.scrollIntoView({ block: 'nearest' });
+  });
+
   document.getElementById('previewDocument').addEventListener('click', function () {
     if(state.currentStep===MAX_STEP){showStep(previewReturnStep,{scroll:true});return;}
     readEditors();previewReturnStep=state.currentStep;activeFinalEdit=null;renderFinal();showStep(MAX_STEP,{scroll:true});
