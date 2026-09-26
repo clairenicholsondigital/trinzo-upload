@@ -13,6 +13,11 @@ const GRAPH_AUDIENCES = new Set([
 ]);
 const GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName';
 const COPILOT_CONVERSATIONS_URL = 'https://graph.microsoft.com/beta/copilot/conversations';
+// Copilot answers a document summary in ten seconds or so, and a cold one takes
+// longer; 20s is right for opening a conversation and too short for a turn.
+const COPILOT_CHAT_TIMEOUT_MS = 120000;
+const COPILOT_MESSAGE_LIMIT = 16000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const GRAPH_SUBSCRIPTIONS_URL = 'https://graph.microsoft.com/v1.0/subscriptions';
 const COPILOT_SCOPES = [
   'User.Read',
@@ -198,6 +203,52 @@ async function graphJson(fetchImpl, url, options, timeoutMs = 20000) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// The conversation id is interpolated into a Graph URL, so it is checked
+// against the shape Graph issues rather than escaped and hoped for.
+function copilotConversationUrl(conversationId) {
+  const id = String(conversationId || '').trim();
+  if (!UUID_PATTERN.test(id)) return '';
+  return `${COPILOT_CONVERSATIONS_URL}/${id}/chat`;
+}
+
+// The request body Graph expects. locationHint is required by the API, so it is
+// defaulted rather than left for the caller to discover through a 400.
+function copilotChatBody(payload = {}) {
+  const text = String(payload.message ?? payload.text ?? '');
+  if (!text.trim()) return { error: 'Send a message to ask Copilot.' };
+  if (text.length > COPILOT_MESSAGE_LIMIT) {
+    return { error: `A message must be ${COPILOT_MESSAGE_LIMIT} characters or fewer.` };
+  }
+  const body = {
+    message: { text },
+    locationHint: { timeZone: String(payload.timeZone || 'Europe/London') }
+  };
+  if (Array.isArray(payload.additionalContext) && payload.additionalContext.length) {
+    body.additionalContext = payload.additionalContext
+      .map((item) => ({ text: String(item?.text ?? item ?? '') }))
+      .filter((item) => item.text.trim())
+      .slice(0, 20);
+  }
+  if (payload.contextualResources && typeof payload.contextualResources === 'object') {
+    body.contextualResources = payload.contextualResources;
+  } else if (payload.webSearch === false) {
+    body.contextualResources = { webContext: { isWebEnabled: false } };
+  }
+  return { body };
+}
+
+// Graph returns the whole turn: the prompt echoed back, then the answer. The
+// reply is the last message, and pulling it out is the difference between a
+// usable test harness and one that makes every caller re-derive it.
+function copilotReplyText(conversation = {}) {
+  const messages = Array.isArray(conversation.messages) ? conversation.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const text = String(messages[index]?.text || '').trim();
+    if (text) return text;
+  }
+  return '';
 }
 
 function createMeetingAgentRouter(options = {}) {
@@ -413,6 +464,111 @@ function createMeetingAgentRouter(options = {}) {
     } catch (error) {
       if (error.name === 'AbortError') {
         return res.status(503).json({ ok: false, error: 'Microsoft 365 Copilot timed out. Please try again.' });
+      }
+      return next(error);
+    }
+  });
+
+  // Shared by both shapes below: send one turn into a conversation.
+  async function sendCopilotChat(accessToken, conversationId, payload) {
+    const url = copilotConversationUrl(conversationId);
+    if (!url) return { status: 400, error: 'That conversation id is not valid.' };
+    const built = copilotChatBody(payload);
+    if (built.error) return { status: 400, error: built.error };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), COPILOT_CHAT_TIMEOUT_MS);
+    let graphResponse;
+    try {
+      graphResponse = await fetchImpl(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(built.body),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const conversation = await readJson(graphResponse);
+    if (!graphResponse.ok) {
+      return {
+        status: graphResponse.status >= 400 && graphResponse.status < 500 ? graphResponse.status : 502,
+        error: conversation?.error?.message || 'Microsoft 365 Copilot could not answer.'
+      };
+    }
+    return { status: 200, conversation };
+  }
+
+  // Continue an existing conversation. The whole Graph turn is returned as well
+  // as the reply, because the point of this endpoint is looking at what came
+  // back - attributions, sensitivity labels and all.
+  router.post('/conversation/:conversationId/chat', requireMicrosoftUser, express.json({ limit: '256kb' }), async (req, res, next) => {
+    try {
+      const result = await sendCopilotChat(req.microsoftAccessToken, req.params.conversationId, req.body || {});
+      if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
+      return res.json({
+        ok: true,
+        conversationId: String(result.conversation.id || req.params.conversationId),
+        turnCount: Number(result.conversation.turnCount || 0),
+        reply: copilotReplyText(result.conversation),
+        conversation: result.conversation
+      });
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return res.status(504).json({ ok: false, error: 'Microsoft 365 Copilot timed out. Please try again.' });
+      }
+      return next(error);
+    }
+  });
+
+  // One call for a single-shot question: open a conversation and take one turn
+  // in it. A test harness should not need two round trips to ask one thing.
+  router.post('/ask', requireMicrosoftUser, express.json({ limit: '256kb' }), async (req, res, next) => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      let createResponse;
+      try {
+        createResponse = await fetchImpl(COPILOT_CONVERSATIONS_URL, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${req.microsoftAccessToken}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: '{}',
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const created = await readJson(createResponse);
+      if (createResponse.status !== 201 || !created?.id) {
+        return res.status(createResponse.status >= 400 && createResponse.status < 500 ? createResponse.status : 502)
+          .json({ ok: false, error: created?.error?.message || 'Microsoft 365 Copilot could not create a conversation.' });
+      }
+
+      const result = await sendCopilotChat(req.microsoftAccessToken, created.id, req.body || {});
+      if (result.error) {
+        // The conversation exists even though the turn failed; hand its id back
+        // so the caller can retry into it rather than orphaning it.
+        return res.status(result.status).json({ ok: false, error: result.error, conversationId: String(created.id) });
+      }
+      return res.json({
+        ok: true,
+        conversationId: String(result.conversation.id || created.id),
+        turnCount: Number(result.conversation.turnCount || 0),
+        reply: copilotReplyText(result.conversation),
+        conversation: result.conversation
+      });
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return res.status(504).json({ ok: false, error: 'Microsoft 365 Copilot timed out. Please try again.' });
       }
       return next(error);
     }
