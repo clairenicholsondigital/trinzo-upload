@@ -1131,16 +1131,15 @@
     return '<div class="owner-editor"><div class="owner-chips">' + chips + '</div><div class="owner-add"><select data-add-owner data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Add an attendee as owner"><option value="">Choose owner...</option>' + options + '<option value="__other">Someone else...</option></select><input data-owner-other data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" value="' + escapeHtml(ownerDraft.value || '') + '" placeholder="Name" aria-label="Add another owner by name"' + (ownerDraft.visible ? '' : ' hidden') + '><button type="button" class="secondary quiet compact" data-finish-owner-edit data-action-id="' + escapeHtml(actionId) + '">Done</button></div></div>';
   }
 
-  function timingSummary(timing) {
-    var value = timingText(timing);
-    if (timing && timing.exactDate && timing.wording) value += ' (from “' + timing.wording + '”)';
-    return value;
+  function timingSourceTitle(timing) {
+    if (!timing || !timing.exactDate || !timing.wording) return '';
+    return ' title="From “' + escapeHtml(timing.wording) + '”"';
   }
 
   function timingEditor(timing, index, actionId) {
     actionId = String(actionId || ('action-' + index));
     if (!actionEditorState.editingTiming[actionId]) {
-      return '<button type="button" class="field-display timing-summary" data-edit-timing data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit timing">' + escapeHtml(timingSummary(timing)) + '</button>';
+      return '<button type="button" class="field-display timing-summary" data-edit-timing data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit timing"' + timingSourceTitle(timing) + '>' + escapeHtml(timingText(timing)) + '</button>';
     }
     var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline'], ['dependency', 'Dependency']];
     var options = kinds.map(function (pair) {
