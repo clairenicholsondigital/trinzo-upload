@@ -500,8 +500,7 @@
     document.querySelectorAll('[data-screen]').forEach(function (screen) { screen.classList.toggle('active', Number(screen.dataset.screen) === state.currentStep); });
     document.querySelectorAll('[data-step]').forEach(function (button) {
       var step = Number(button.dataset.step);
-      var draft = state.draft || {};
-      var furthestStep = Math.max(Number(draft.currentStep || 0), state.currentStep);
+      var furthestStep = furthestUnlockedStep();
       var unlocked = step <= furthestStep;
       button.disabled = !unlocked;
       button.classList.toggle('active', step === state.currentStep);
@@ -509,8 +508,7 @@
     });
     var mobileStep = document.getElementById('mobileStepSelect');
     if (mobileStep) {
-      var draft = state.draft || {};
-      var furthestStep = Math.max(Number(draft.currentStep || 0), state.currentStep);
+      var furthestStep = furthestUnlockedStep();
       mobileStep.value = String(state.currentStep);
       Array.from(mobileStep.options).forEach(function (option) {
         option.disabled = Number(option.value) > furthestStep;
@@ -526,6 +524,7 @@
     }
     autoGrow();
     var statusStage = status.dataset.stage;
+    if (stepChanged && !statusStage) setStatus('');
     status.hidden = !status.textContent || Boolean(statusStage && STAGE_STEP[statusStage] !== state.currentStep);
     // Deliberate navigation is persisted independently from the furthest unlocked
     // step. During generation scheduleSave holds it until the background write is
@@ -725,11 +724,11 @@
   var SPECULATION_NOTICE_TEXT = {
     discussion: {
       preparing: 'Preparing the Discussion in the background while you check the details…',
-      ready: 'The Discussion is ready. Continue to open it.'
+      ready: ''
     },
     actions: {
       preparing: 'Preparing Actions in the background while you review Discussion…',
-      ready: 'Actions preparation is ready. Starting Actions will reuse this work.'
+      ready: ''
     },
     summary: {
       preparing: 'Preparing the Summary in the background while you review Actions…',
@@ -1693,6 +1692,8 @@
         applyDiscussionEdit: Boolean(activeGenerationStage),
         generateSummary: Boolean(activeGenerationStage),
         addAction: activeGenerationStage === 'actions',
+        regenerateDiscussion: Boolean(activeGenerationStage),
+        regenerateActions: Boolean(activeGenerationStage),
         applyActionsEdit: Boolean(activeGenerationStage),
         auditActions: Boolean(activeGenerationStage),
         toSummary: activeGenerationStage === 'actions'
@@ -1963,8 +1964,8 @@
   // itself; one that reads "Review actions" and then generates is worse. The
   // label follows whether the stage is already there.
   function updateStageAdvanceLabels() {
-    [['startDiscussion', 'discussion', 'Generate discussion', 'Review discussion'],
-      ['generateActions', 'actions', 'Generate actions', 'Review actions']
+    [['startDiscussion', 'discussion', 'Generate discussion', 'Continue to Discussion'],
+      ['generateActions', 'actions', 'Generate actions', 'Continue to Actions']
     ].forEach(function (entry) {
       var button = document.getElementById(entry[0]);
       var label = button && button.querySelector('[data-stage-advance-label]');
@@ -1972,6 +1973,35 @@
       var text = stageHasContent(entry[1]) ? entry[3] : entry[2];
       if (label.textContent !== text) label.textContent = text;
     });
+  }
+
+  // The furthest step the reviewer may open. Content that exists is reachable,
+  // however it got there: a stage finished in the background advances no step
+  // counter, and a tab greyed out over work that is sitting right there is the
+  // flow appearing broken on the first click.
+  function furthestUnlockedStep() {
+    var draft = state.draft || {};
+    var furthest = Math.max(Number(draft.currentStep || 0), state.currentStep);
+    ['discussion', 'actions', 'summary'].forEach(function (stage) {
+      if (stageHasContent(stage)) furthest = Math.max(furthest, STAGE_STEP[stage]);
+    });
+    // Reaching Summary means the minutes exist, so Review is reachable too.
+    if (furthest >= STAGE_STEP.summary && stageHasContent('summary')) furthest = MAX_STEP;
+    return Math.min(MAX_STEP, furthest);
+  }
+
+  // What a finished stage has to say for itself. Only mentions suggestions when
+  // there are suggestions: a prompt to "check any proposed additions" above a
+  // count of zero reads as a tool describing someone else's draft.
+  function stageReadyText(stage) {
+    var proposal = state.draft && state.draft.pendingProposal;
+    var suggestions = proposal && Array.isArray(proposal.changes) ? proposal.changes.length : 0;
+    var suffix = suggestions
+      ? ' ' + suggestions + ' suggestion' + (suggestions === 1 ? '' : 's') + ' to check.'
+      : '';
+    if (stage === 'discussion') return 'Discussion ready.' + suffix;
+    if (stage === 'actions') return 'Actions ready.' + suffix;
+    return '';
   }
 
   function stageHasContent(stage) {
@@ -2087,7 +2117,7 @@
           var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
           setStatus(keptEdits
             ? 'Your edited Actions were kept. The regenerated Actions are shown as proposed changes: accept the ones you want.'
-            : state.draft.qualityNotice || (activeStage === 'discussion' ? 'Discussion draft generated. Review the draft and highlighted items.' : activeStage === 'actions' ? 'Action draft ready for your review. Check any proposed additions.' : ''), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
+            : state.draft.qualityNotice || stageReadyText(activeStage), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
         if (pendingGenerationEdits) scheduleSave();
@@ -2119,7 +2149,7 @@
       if (instruction) { renderProposal(); setStatus('Review the proposed changes. Nothing has been applied yet.', false, stage); }
       else {
         showStep(STAGE_STEP[stage] || 2, { scroll: true });
-        setStatus(stage === 'discussion' ? 'Discussion draft generated. Review the draft and highlighted items.' : 'Action draft generated. Running the separate missed-action check next.', false, stage);
+        setStatus(stage === 'discussion' ? stageReadyText('discussion') : 'Action draft generated. Running the separate missed-action check next.', false, stage);
         if (stage === 'actions') await auditActions(true);
       }
       return true;
@@ -2301,6 +2331,10 @@
   document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); requestBackgroundStage('discussion'); });
   document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
   document.getElementById('generateSummary').addEventListener('click', function () { requestBackgroundStage('summary', { regenerate: true }); });
+  // Redoing a stage is still available, as the secondary thing it is, now that
+  // the forward button no longer stops to ask.
+  document.getElementById('regenerateDiscussion').addEventListener('click', function () { requestBackgroundStage('discussion', { regenerate: true }); });
+  document.getElementById('regenerateActions').addEventListener('click', function () { requestBackgroundStage('actions', { regenerate: true }); });
   document.getElementById('addObjective').addEventListener('click', function () {
     readSummary();
     state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat({id:'objective-'+Date.now(),text:'',evidenceIds:[]});

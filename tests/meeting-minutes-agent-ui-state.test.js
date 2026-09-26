@@ -1740,7 +1740,7 @@ test('the forward button moves to a stage that is already there rather than offe
 
     await page.click('[data-step="0"]');
     // This fixture already has a discussion, so the button says so.
-    assert.equal(await page.textContent('#startDiscussion [data-stage-advance-label]'), 'Review discussion');
+    assert.equal(await page.textContent('#startDiscussion [data-stage-advance-label]'), 'Continue to Discussion');
     await page.click('#startDiscussion');
 
     await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
@@ -1748,7 +1748,7 @@ test('the forward button moves to a stage that is already there rather than offe
     assert.deepEqual(generateRequests, [], 'and nothing regenerated behind it');
 
     // Same rule one screen along.
-    assert.equal(await page.textContent('#generateActions [data-stage-advance-label]'), 'Review actions');
+    assert.equal(await page.textContent('#generateActions [data-stage-advance-label]'), 'Continue to Actions');
     await page.click('#generateActions');
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
     assert.equal(await page.locator('#regenerationDialog').isVisible(), false);
