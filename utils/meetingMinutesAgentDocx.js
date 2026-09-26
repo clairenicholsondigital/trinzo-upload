@@ -92,7 +92,13 @@ function documentBody(draft = {}, includeEvidence = false) {
   body += paragraph(`Location: ${details.meetingLocation || 'Not stated'}`, 'Subtitle');
   body += paragraph(`Meeting type: ${meetingTypeLabel(details.meetingType) || 'Not stated'}`, 'Subtitle');
   body += paragraph(`Internal attendees: ${(details.internalAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
-  body += paragraph(`${details.clientAttendeeLabel === 'External' ? 'External' : 'Client'} attendees: ${(details.clientAttendees || []).join(', ') || 'Not stated'}`, 'Subtitle');
+  // A meeting nobody from the client side attended is an internal meeting, not
+  // one with an empty guest list, so the line is left out rather than published
+  // as "Not stated".
+  const clientAttendees = (details.clientAttendees || []).filter((name) => String(name || '').trim());
+  if (clientAttendees.length) {
+    body += paragraph(`${details.clientAttendeeLabel === 'External' ? 'External' : 'Client'} attendees: ${clientAttendees.join(', ')}`, 'Subtitle');
+  }
   // Objectives and the executive summary lead the document when present, and are
   // omitted entirely when absent so an older draft exports exactly as it did before.
   const objectives = (Array.isArray(draft.meetingObjectives) ? draft.meetingObjectives : [])

@@ -593,12 +593,15 @@ test('the workflow has five steps and Details leads straight to generating', { t
     // Actions is covered by 'a prepared Discussion is adopted automatically
     // after Details', whose fixture is saved on step 1.
 
-    // The steer control survives the screen it used to live on.
+    // The steer was hidden on 2026-09-26 after being used on 1 of 348 drafts.
+    // It is hidden rather than removed, so it is still in the page and still
+    // wired - and putting it back is a matter of dropping one attribute.
     await page.click('[data-step="0"]');
-    assert.equal(await page.locator('#meetingSteer').count(), 1);
-    assert.equal(await page.locator('#meetingSteer').isHidden(), true, 'optional, so it starts collapsed');
+    assert.equal(await page.locator('#meetingSteer').count(), 1, 'still in the page');
+    assert.equal(await page.locator('.steer-optional').isHidden(), true, 'but not offered');
+    await page.evaluate(() => { document.querySelector('.steer-optional').hidden = false; });
     await page.click('.steer-optional>summary');
-    assert.equal(await page.locator('#meetingSteer').isVisible(), true);
+    assert.equal(await page.locator('#meetingSteer').isVisible(), true, 'one attribute reinstates it');
 
     assert.deepEqual(errors, []);
   } finally {

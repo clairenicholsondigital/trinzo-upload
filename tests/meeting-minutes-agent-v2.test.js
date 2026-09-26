@@ -882,7 +882,10 @@ test('Word export uses UK dates, timing labels and contains no organisation fiel
   const documentXml = await zip.file('word/document.xml').async('string');
   assert.match(documentXml, /23 Jun 2026/);
   assert.match(documentXml, /Internal attendees:/);
-  assert.match(documentXml, /Client attendees:/);
+  // This draft names nobody from the client side, so that line is left out
+  // entirely rather than exported as "Not stated". Covered properly in
+  // tests/minutes-attendees.test.js.
+  assert.doesNotMatch(documentXml, /Client attendees:/);
   assert.doesNotMatch(documentXml, /Organisation|Hidden/);
   assert.match(documentXml, /Evidence appendix/);
   assert.match(documentXml, /Supporting context/);

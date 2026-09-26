@@ -165,7 +165,7 @@ function renderStagedMinutesPdfHtml(input = {}) {
   <div><span class="label">Location</span>${escapeHtml(details.meetingLocation)}</div>
   <div><span class="label">Meeting type</span>${escapeHtml(/^\s*webinar rehearsal\s*$/i.test(String(details.meetingType || '')) ? 'Presentation rehearsal' : details.meetingType)}</div>
   <div><span class="label">Internal attendees</span>${escapeHtml(details.internalAttendees.join(', ') || 'Not stated')}</div>
-  <div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', ') || 'Not stated')}</div>
+  ${details.clientAttendees.length ? `<div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', '))}</div>` : ''}
 </section>
 ${meetingObjectives.length ? `<h2>Meeting objectives</h2>${renderList(meetingObjectives)}` : ''}
 ${executiveSummary ? `<h2>Executive summary</h2><p>${escapeHtml(executiveSummary)}</p>` : ''}

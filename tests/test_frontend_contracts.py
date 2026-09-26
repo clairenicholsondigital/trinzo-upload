@@ -908,6 +908,49 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('<button class="secondary" type="button" disabled>Save draft</button>', staged_page)
         self.assertNotIn("Copy, Email and Save draft are not available yet.", staged_page)
 
+    def test_reviewer_steer_is_hidden_from_the_ui_but_still_wired_end_to_end(self):
+        """The steer was hidden on 2026-09-26 after being used on 1 of 348 drafts.
+
+        Hidden, not removed: reinstating it should be a matter of deleting one
+        attribute. That only stays true while the field, its read/write pair and
+        the prompt injection all survive, so this pins the pieces someone would
+        otherwise tidy away as dead code.
+        """
+        page = (REPO_DIR / "views" / "meeting-minutes-agent.html").read_text(encoding="utf-8")
+        client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        # Hidden in the page, and hidden by the attribute rather than deleted.
+        self.assertIn('<details class="steer-optional" hidden>', page)
+        self.assertIn('id="meetingSteer"', page)
+
+        # Still round-trips, so a draft that already has a steer keeps it.
+        self.assertIn("function readSteer", client)
+        self.assertIn("function renderSteer", client)
+        self.assertIn("state.draft.steer = field.value", client)
+        self.assertIn("steer: state.draft.steer || ''", client)
+
+        # Still reaches the model, and still invalidates speculative work when
+        # it changes - the two things that make it worth keeping at all.
+        self.assertIn("REVIEWER EMPHASIS - prioritisation only. It is not evidence.", api)
+        self.assertIn("steer: meetingMinutesAgentText(draft.steer, 4000)", api)
+
+    def test_minutes_omit_the_client_attendee_line_when_nobody_attended(self):
+        """"Client attendees: Not stated" asserts something untrue of an
+        internal meeting. The line is left out instead - in both exports and on
+        screen. Behaviour is covered in tests/minutes-attendees.test.js.
+        """
+        client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
+        docx = (REPO_DIR / "utils" / "meetingMinutesAgentDocx.js").read_text(encoding="utf-8")
+        pdf = (REPO_DIR / "utils" / "stagedMinutesPdf.js").read_text(encoding="utf-8")
+
+        self.assertIn("function finalAttendeesHtml", client)
+        self.assertIn("finalAttendeesHtml(details)", client)
+        self.assertIn("if (clientAttendees.length) {", docx)
+        self.assertIn("${details.clientAttendees.length ?", pdf)
+        # The fallback must not come back with it.
+        self.assertNotIn("Client'} attendees: ${(details.clientAttendees || []).join(', ') || 'Not stated'}", docx)
+
     def test_staged_actions_review_copy_and_manual_rows_are_first_user_friendly(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

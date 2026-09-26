@@ -976,7 +976,12 @@
         <label class="include-option"><input type="checkbox" id="includeSummary" checked><span>Executive summary</span></label>
         <p class="muted include-hint">Unticked sections are not generated and do not appear in the minutes or the exports.</p>
       </fieldset>
-      <details class="steer-optional"><summary class="secondary">What matters most from this meeting? (optional)</summary><div class="steer-field">
+      <!-- Hidden 2026-09-26, not removed: the steer is wired through the whole
+     pipeline (REVIEWER EMPHASIS in the prompts, and part of the stage input
+     fingerprint) and was used on 1 of 348 drafts. Delete this hidden
+     attribute to put it back; the field still round-trips its value, so an
+     existing draft keeps the steer it was given. -->
+      <details class="steer-optional" hidden><summary class="secondary">What matters most from this meeting? (optional)</summary><div class="steer-field">
         <p class="muted">Tell the agent what you need out of these minutes &mdash; the decision you were chasing, a workstream to keep together, whose commitments matter. It shapes what leads and how much detail each item gets.</p>
         <textarea id="meetingSteer" rows="4" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
         <p class="steer-hint">It never lets the agent state something the transcript does not support, and nothing supported is dropped just because you did not mention it. Leave it blank to work from the transcript alone.</p>
