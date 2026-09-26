@@ -8436,6 +8436,8 @@ function normaliseAgentActions(candidate) {
     .filter((item) => item.action);
 }
 
+const MEETING_AGENT_OBJECTIVE_STYLE = 'Write each objective as one plain aim with one leading verb and the concrete subject the meeting named - "Agree the site audit travel arrangements", "Confirm who completes the auditor training". Never pair near-synonymous verbs ("plan and prepare", "review and assess"), never repeat the verb as a noun ("prepare ... preparation activities"), and never pad with generic tails such as "including various activities", "and related matters" or "as needed". If two aims are genuinely separate, write two objectives.';
+
 function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const taskMarker = isEdit
@@ -8468,6 +8470,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     // terms it will later be verified against.
     shared.push(`A decision is a choice the meeting settled: someone chose a course of action, approved or rejected something, ruled something in or out, or the participants agreed what will be done - "we'll go with option B", "that is approved", "we determined we can do it in house". These are NOT decisions: status or progress updates, work already done, facts, explanations, opinions, an idea nobody settled, a suggestion nobody accepted, a question, a routine task someone will do, a matter parked or deferred for later thought, or a possibility that remains hedged or opposed. Preserve a refusal as a point and preserve an honest unknown as an open question or point; never rewrite either as positive agreement or a confident action. Put a row in decisions only when the cited evidence contains the words that make or accept the choice; otherwise it is a point. An open question is one the meeting raised and left unresolved; a question answered and accepted during the meeting is not open.`);
     shared.push('Populate meetingObjectives as [{"id":"string","text":"string","evidenceIds":["T0001"]}] using distinct aims supported by explicit purpose, planning, scope or role-framing evidence anywhere in the meeting. The opening is common but is not an allowlist. Preserve separate evidenced aims such as scope, logistics, responsibilities and preparation instead of collapsing them into one broad sentence. Do not turn a topic that merely happened to be discussed into an objective.');
+    shared.push(MEETING_AGENT_OBJECTIVE_STYLE);
     shared.push('Discovery must be comprehensive, but the eventual reviewer-facing draft must be concise. Identify decisions and unresolved questions separately for the referee, keep distinct workstreams separate, and do not turn proposals or completed work into new actions.');
     shared.push('The discussion evidence windows below are recall aids, not an allowlist and not finished minutes. Find material propositions rather than producing one point per source window. Preserve quantities, blockers and dependencies so the referee can choose what is core and what is supporting context.');
   } else if (stage === 'summary') {
@@ -8475,6 +8478,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
     shared.push('Use CONFIRMED DISCUSSION AND ACTIONS as the sole factual source for the executive summary. Do not introduce a fact just because it appears elsewhere in the transcript.');
     shared.push('Populate meetingObjectives as [{"id":"string","text":"string","evidenceIds":["T0001"]}] - at most four short, distinct aims supported by explicit purpose, planning, scope or role-framing evidence anywhere in the meeting. Do not infer objectives from topics that merely happened to be discussed; scope or logistics are separate aims only when explicitly framed that way.');
+    shared.push(MEETING_AGENT_OBJECTIVE_STYLE);
     shared.push('Return discussion and actions as empty arrays.');
     shared.push('Return reviewFlags as an empty array. Review issues have already been assessed against the detailed discussion and action records.');
     shared.push(`CONFIRMED DISCUSSION AND ACTIONS:\n${JSON.stringify(current || {})}`);
