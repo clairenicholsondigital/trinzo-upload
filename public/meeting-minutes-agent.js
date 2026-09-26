@@ -949,6 +949,8 @@
     document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
   }
 
+  var DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
+
   async function prepareFile(file) {
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) return setStatus('Choose a Word .docx transcript.', true);
@@ -957,6 +959,12 @@
     try {
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
+      // Trinzo meetings are held on Teams, so a fresh upload starts there. Only
+      // on upload: a location the reviewer later clears stays cleared.
+      if (!String((state.draft.details || {}).meetingLocation || '').trim()) {
+        document.getElementById('meetingLocation').value = DEFAULT_MEETING_LOCATION;
+        readDetails(); scheduleSave();
+      }
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');
     } catch (error) { setStatus(error.message, true); }
