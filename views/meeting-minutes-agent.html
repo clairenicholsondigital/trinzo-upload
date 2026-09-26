@@ -415,6 +415,18 @@
   position:absolute;z-index:5;top:calc(100% + .3rem);right:0;min-width:140px;padding:.4rem;
   border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--shadow-lg)}
 .meeting-agent-page .topic-menu-popover .delete{width:100%}
+.meeting-agent-page .merge-topic{display:grid;gap:.25rem;margin-bottom:.4rem}
+.meeting-agent-page .merge-topic span{color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .merge-topic select{width:100%;max-width:15rem}
+/* A topic holding one line is one line. Given the same heading band, collapse
+   control and rule as an eight-item topic, it asks for the same attention to
+   skim past - and roughly half of all topics are this. Drawn quietly, the
+   reviewer merges the ones that bother them and ignores the rest for free. */
+.meeting-agent-page .discussion-card.is-single{background:transparent;border-color:var(--border)}
+.meeting-agent-page .discussion-card.is-single .card-head{
+  border-bottom:1px solid var(--border);background:transparent}
+.meeting-agent-page .discussion-card.is-single .card-head .topic-collapse{color:var(--muted)}
+.meeting-agent-page .discussion-card.is-single .topic-field textarea{color:var(--muted)}
 .meeting-agent-page .record-section{padding:.55rem .65rem .65rem}
 .meeting-agent-page .record-section+.record-section{border-top:1px solid var(--border)}
 .meeting-agent-page .record-list{display:grid;gap:.35rem}

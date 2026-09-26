@@ -1005,6 +1005,20 @@
     }).join('') + '</div></div></details>';
   }
 
+  // Offered only when there is somewhere to merge to.
+  function mergeTopicControl(discussion, index) {
+    var others = discussion.map(function (other, otherIndex) {
+      return otherIndex === index ? null : { index: otherIndex, topic: other.topic || 'Untitled topic' };
+    }).filter(Boolean);
+    if (!others.length) return '';
+    return '<label class="merge-topic"><span>Merge into</span><select data-merge-topic="' + index + '" aria-label="Merge this topic into another">'
+      + '<option value="">Choose a topic…</option>'
+      + others.map(function (other) {
+        return '<option value="' + other.index + '">' + escapeHtml(other.topic.slice(0, 60)) + '</option>';
+      }).join('')
+      + '</select></label>';
+  }
+
   function discussionPropositions(topic, topicIndex) {
     var labels = { points: 'Discussion', decisions: 'Decision', openQuestions: 'Open question' };
     var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
@@ -1041,7 +1055,7 @@
       var flagIds = new Set(linkedReviewFlagIds(topic));
       var checks = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status === 'open' && flagIds.has(flag.id); }).length;
       var meta = rows + ' item' + (rows === 1 ? '' : 's') + (checks ? ' · ' + checks + ' to review' : '');
-      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover"><button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
+      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic" placeholder="Topic">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + '</small></label>' + recordAddMenu(index) + '<details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover">' + mergeTopicControl(discussion, index) + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
     restoreDisclosures(document.getElementById('omittedDetailsReview'));
@@ -2772,6 +2786,42 @@
       delete actionEditorState.editingTiming[removedAction.id];
     }
     renderActions(); queueReviewDecision('Action removed');
+  });
+
+  // Merging is mechanical: every row moves, in its own kind, and the emptied
+  // topic goes. Nothing is inferred, so nothing can be inferred wrongly.
+  document.getElementById('discussionList').addEventListener('change', function (event) {
+    var select = event.target.closest('[data-merge-topic]');
+    if (!select || !select.value) return;
+    var from = Number(select.dataset.mergeTopic);
+    var into = Number(select.value);
+    if (from === into) return;
+    // Read the editors first: readDiscussion can replace the array, so every
+    // reference has to be taken after it, not before.
+    readDiscussion();
+    var discussion = (state.draft && state.draft.discussion) || [];
+    var source = discussion[from];
+    var target = discussion[into];
+    if (!source || !target || source === target) return;
+    ['points', 'decisions', 'openQuestions'].forEach(function (field) {
+      // A row the reviewer is still typing into is held against its topic id.
+      // Re-home those rather than forgetting them, or the merge would take an
+      // unfinished line with it.
+      (source[field] || []).forEach(function (record) {
+        var pending = record && record.id && discussionEditorState.pendingRecords[record.id];
+        if (pending) pending.topicId = target.id;
+      });
+      target[field] = (target[field] || []).concat(source[field] || []);
+    });
+    // The emptied topic must stop being pending, or the next save response
+    // restores it and the merge silently undoes itself.
+    if (source.id) delete discussionEditorState.pendingTopics[source.id];
+    discussion.splice(from, 1);
+    renderDiscussion();
+    // Same path as any other reviewer decision that changes content: it saves,
+    // and it is one undoable step.
+    queueReviewDecision('Topics merged');
+    setStatus('Merged into "' + (target.topic || 'Untitled topic') + '".', false, 'discussion');
   });
 
   document.getElementById('actionsBody').addEventListener('change', function (event) {

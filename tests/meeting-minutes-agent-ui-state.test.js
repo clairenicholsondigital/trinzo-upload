@@ -1813,3 +1813,63 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+// Roughly half of all generated topics hold a single line. Nothing here tries
+// to guess which of them belong together - transcript position does not
+// separate topics, so any automatic merge would be inference dressed as
+// structure. The reviewer decides; these make deciding cheap.
+
+test('a topic can be merged into another in one action, and the rows all come with it', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'topic-cleanup');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+
+    assert.equal(await page.locator('#discussionList .discussion-card').count(), 2);
+    // Both hold one line, so both are drawn as the single lines they are.
+    assert.equal(await page.locator('#discussionList .discussion-card.is-single').count(), 2);
+
+    await page.click('#discussionList .discussion-card >> nth=0 >> .topic-menu > summary');
+    await page.selectOption('#discussionList [data-merge-topic="0"]', '1');
+
+    await page.waitForFunction(() => document.querySelectorAll('#discussionList .discussion-card').length === 1);
+    const card = page.locator('#discussionList .discussion-card');
+    assert.equal(await card.locator('[data-record-field]').count(), 2, 'both lines survived the merge');
+    // Two lines is no longer a single line.
+    assert.equal(await page.locator('#discussionList .discussion-card.is-single').count(), 0);
+
+    await page.waitForFunction(async () => {
+      const draft = (await (await fetch('/test-state/topic-cleanup')).json()).draft;
+      return draft.discussion.length === 1;
+    });
+    const saved = await page.evaluate(async () => (await (await fetch('/test-state/topic-cleanup')).json()).draft);
+    const kept = saved.discussion[0];
+    const texts = [...(kept.points || []), ...(kept.decisions || []), ...(kept.openQuestions || [])].map((r) => r.text);
+    assert.equal(texts.length, 2, JSON.stringify(texts));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('merging is offered only when there is somewhere to merge to', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    // This fixture has one topic, so the control would have nothing to offer.
+    assert.equal(await page.locator('#discussionList .discussion-card').count(), 1);
+    assert.equal(await page.locator('#discussionList [data-merge-topic]').count(), 0);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
