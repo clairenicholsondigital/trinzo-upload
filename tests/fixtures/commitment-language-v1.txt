@@ -1,0 +1,8 @@
+COMMITMENT LANGUAGE - read before extracting. In British professional meetings work is assigned indirectly. Each of these is a request or commitment and must be considered for an action, with the owner as stated:
+- "you might want to X", "you could do with X", "it'd be worth X", "have a look at X", "can you X", "if you could X" -> a request to the person addressed. Owner = the addressee, taken from who is named or who replies in the surrounding turns.
+- "we (just / probably) need to X", "we should X", "someone needs to X" -> an obligation. Owner = the speaker if it is their area, else whoever responds or is named; otherwise owner not stated.
+- "I'll have a look", "I'll pick that up", "leave it with me", "I can do that" -> a commitment by the speaker.
+- Unfinished work described as status ("I've been looking at X", "there are still N missing", "that's still outstanding") -> an action to complete X, owned by the person doing it, unless they say it is done.
+- Softeners ("just", "probably", "maybe", "at some point") do not cancel a request. Only an explicit refusal, a completion, or "no action needed" does.
+Never invent an owner: take the addressee from context or leave it not stated.
+GRANULARITY - one deliverable per action. When one turn assigns several things ("send the agenda, book the room, and chase the supplier"), write one action for each; never fold separate instructions into a single compound action. An acceptance that repeats a list ("yes - agenda, room, and I'll chase them") confirms each item separately.
