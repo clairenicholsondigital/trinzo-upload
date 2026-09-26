@@ -76,7 +76,7 @@
 
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
-    if (mustKeepTabOpen(kind) && message && !/Keep this tab open/i.test(message)) message += ' Keep this tab open.';
+    if (mustKeepTabOpen(kind) && message && !/tab open/i.test(message)) message += ' Keep this tab open until it saves.';
     var strip = document.getElementById('saveStrip');
     strip.hidden = !state.draft;
     strip.dataset.state = kind || '';
@@ -210,9 +210,9 @@
   var EMPTY_ROW_NOTICE = 'Empty rows stay in this tab until you type into them.';
 
   function generationSaveText(running) {
-    if (pendingGenerationEdits) return 'Saving draft. Keep this tab open.';
-    if (hasTransientEditorState()) return EMPTY_ROW_NOTICE + ' Keep this tab open.';
-    return 'Everything is saved. You can leave and resume later' + (running === false ? '.' : ' while generation continues.');
+    if (pendingGenerationEdits) return 'Your edits save as soon as generation finishes. Keep this tab open until then.';
+    if (hasTransientEditorState()) return EMPTY_ROW_NOTICE;
+    return 'Everything is saved. You can close the tab' + (running === false ? '.' : ' - generation carries on without it.');
   }
 
   function setBusy(busy, message, stage) {

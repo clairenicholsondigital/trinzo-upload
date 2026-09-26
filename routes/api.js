@@ -10633,6 +10633,50 @@ function runningStageSpeculationCount() {
   return count;
 }
 
+// Does this stage already hold something the reviewer could be looking at?
+function meetingAgentStageHasContent(draft = {}, stage = '') {
+  if (stage === 'discussion') return Array.isArray(draft.discussion) && draft.discussion.length > 0;
+  if (stage === 'actions') return Array.isArray(draft.actions) && draft.actions.length > 0;
+  if (stage === 'summary') return Boolean(meetingMinutesAgentText(draft.executiveSummary, 20));
+  return true;
+}
+
+// Write a speculative result into the draft, but only into a stage that is
+// still empty and whose inputs have not moved.
+//
+// Speculation used to be held in memory until the reviewer arrived at the
+// stage, which made arriving instant but left the draft looking untouched: a
+// reviewer who uploaded and came back later saw nothing, and a restart threw
+// the work away. Filling an empty stage is safe because there is nothing of
+// theirs to overwrite; anything else still waits to be adopted.
+async function persistUntouchedSpeculation(draftId, userId, stage, result, fingerprint) {
+  if (!result || !result.changes) return false;
+  try {
+    return await meetingAgentSerialDraftWrite(draftId, async () => {
+      const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
+      if (!fresh) return false;
+      const generation = meetingAgentGenerationState(fresh.generation);
+      // The reviewer has asked for this stage themselves; that run owns it.
+      if (generation && generation.status === 'running') return false;
+      if (meetingAgentStageHasContent(fresh, stage)) return false;
+      if (meetingAgentStageInputFingerprint(fresh, stage) !== fingerprint) return false;
+      // Never move the reviewer: the stage they are on is their business.
+      const { currentStep: _step, selectedStep: _selected, ...changes } = result.changes || {};
+      const saved = await saveMeetingAgentDraft(fresh, { authUser: { userId } }, changes);
+      console.info(JSON.stringify({
+        event: 'meeting_agent_speculation_persisted', journeyId: draftId, stage,
+        revision: saved?.revision || null
+      }));
+      return Boolean(saved);
+    });
+  } catch (error) {
+    // A draft that cannot be filled in silently is not a failure the reviewer
+    // needs to see: the result stays in memory and is adopted on arrival.
+    safeLogError('[meeting-minutes-agent] speculation persist failed', error);
+    return false;
+  }
+}
+
 function startStageSpeculation(draft = {}, userId = '', options = {}) {
   if (!meetingMinutesAgentSpeculativePipelineEnabled() || !meetingMinutesAgentHybridEnabled()) return null;
   const draftId = String(draft.draftId || '');
@@ -10676,9 +10720,17 @@ function startStageSpeculation(draft = {}, userId = '', options = {}) {
       event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: true,
       elapsedMs: Date.now() - new Date(entry.startedAt).getTime(), superseded: entry.superseded
     }));
-    // Carry on down the pipeline from the result the reviewer has not yet
-    // asked for; every later adoption is protected by its own fingerprint.
     if (!entry.superseded) {
+      // Fill the stage in if it is still empty, so a reviewer who uploaded and
+      // walked away comes back to finished work rather than an untouched draft.
+      // Queued before the chain so the next stage sees this one on disk, and
+      // skipped rather than forced if it does not.
+      setImmediate(() => {
+        persistUntouchedSpeculation(draftId, userId, stage, result, fingerprint)
+          .catch((error) => safeLogError('[meeting-minutes-agent] speculation persist failed', error));
+      });
+      // Carry on down the pipeline from the result the reviewer has not yet
+      // asked for; every later adoption is protected by its own fingerprint.
       setImmediate(() => {
         try { startStageSpeculation(applyStageResultVirtually(speculativeDraft, stage, result), userId); } catch (error) {
           safeLogError('[meeting-minutes-agent] speculation chain failed', error);
@@ -16344,6 +16396,7 @@ router.stagedEvaluation = {
   normaliseAgentDiscussion,
   normaliseAgentActions,
   meetingAgentStageInputFingerprint,
+  meetingAgentStageHasContent,
   meetingAgentNextSpeculativeStage,
   meetingAgentSpeculationState,
   startStageSpeculation,

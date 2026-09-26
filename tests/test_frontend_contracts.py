@@ -238,8 +238,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("return 'Saved';", client)
         self.assertIn("setSaveStatus(savedStatusText(draft.updatedAt), 'saved')", client)
         self.assertIn("function generationSaveText", client)
-        self.assertIn("Saving draft. Keep this tab open.", client)
-        self.assertIn("Everything is saved. You can leave and resume later", client)
+        # The tab is only needed for edits that live nowhere else; generation
+        # itself is detached, and the copy now says so rather than implying
+        # the opposite.
+        self.assertIn("Your edits save as soon as generation finishes. Keep this tab open until then.", client)
+        self.assertIn("Everything is saved. You can close the tab", client)
+        self.assertIn("generation carries on without it", client)
         self.assertIn("generationRunning('actions')", client)
         self.assertIn("function flagTarget", client)
         self.assertIn('data-view-flag-target', client)

@@ -773,7 +773,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
       assert.equal((await control.isHidden()) || (await control.isDisabled()), true, `${selector} is unavailable while actions run`);
     }
     assert.equal(await page.locator('#addDiscussion').isDisabled(), false, 'safe Discussion additions remain available');
-    assert.match(await page.textContent('#saveStatus'), /Everything is saved.*leave and resume later/i);
+    assert.match(await page.textContent('#saveStatus'), /Everything is saved.*close the tab/i);
     assert.doesNotMatch(await page.textContent('#saveStatus'), /Unsaved changes/i);
     assert.match(await page.textContent('#actionsBody'), /Previously saved actions/i);
     assert.match(await page.textContent('#actionsBody'), /Send the revised report/i);
@@ -787,7 +787,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
 
     await page.click('[data-step="0"]');
     await page.fill('#meetingTitle', 'Edited while actions run');
-    assert.match(await page.textContent('#saveStatus'), /Saving draft.*Keep this tab open/i);
+    assert.match(await page.textContent('#saveStatus'), /edits save as soon as generation finishes.*Keep this tab open until then/i);
     // The generation panel used to repeat this sentence; the save strip is now
     // the only place that says whether the tab is safe to close.
     assert.equal(await page.locator('#generationLeaveMessage').count(), 0);

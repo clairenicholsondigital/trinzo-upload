@@ -248,7 +248,8 @@
 .meeting-agent-page .generation-phase.done{background:#17D0C4;border-color:#17D0C4;color:#01173B}
 .meeting-agent-page .generation-phase.done::before{
   content:"\2713";display:grid;place-items:center;background:transparent;color:#01173B;font-size:.7rem;font-weight:700}
-.meeting-agent-page .generation-progress-actions{display:flex;align-items:center;gap:.65rem;margin-top:.75rem}
+.meeting-agent-page .generation-progress-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.65rem;margin-top:.75rem}
+.meeting-agent-page .generation-detach-note{color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .generation-preview-note{margin:.65rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
 .meeting-agent-page .prewarm-notice{margin:.75rem 0;padding:.65rem .75rem;border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text);font-size:var(--fs-sm)}
 .meeting-agent-page .generation-skeleton{display:grid;gap:.55rem;padding:.75rem 0}
@@ -934,7 +935,7 @@
     <div class="generation-progress-head"><div><h2 id="generationProgressTitle">Preparing actions</h2><p id="generationProgressMessage" aria-live="polite"></p></div><span id="generationElapsed" class="generation-elapsed"></span></div>
     <ol id="generationPhases" class="generation-phases"></ol>
     <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
-    <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button></div>
+    <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span class="generation-detach-note">This carries on if you close the tab. Come back whenever and it will be here.</span></div>
   </section>
   <p id="staleNotice" class="notice" hidden><span>Discussion changed. Actions may need updating.</span><span id="staleStages" class="visually-hidden"></span><span id="staleStageActions" class="notice-actions"></span></p>
 
