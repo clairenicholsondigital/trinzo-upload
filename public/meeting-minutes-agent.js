@@ -22,6 +22,7 @@
   var navigationScrollStep = null;
   var navigationScrollToken = 0;
   var navigationScrollTimer = null;
+  var navigationScrollRestore = false;
   var actionEditorState = { pendingRows: {}, customOwners: {}, editingOwners: {}, editingTiming: {} };
   var discussionEditorState = { pendingTopics: {}, pendingRecords: {}, collapsedTopics: {} };
   var pendingReviewDecisionLabel = '';
@@ -313,11 +314,12 @@
         if (token !== navigationScrollToken || navigationScrollStep !== state.currentStep) return;
         var screen = document.querySelector('[data-screen="' + state.currentStep + '"]');
         if (!screen) return;
-        // Returning to a screen puts the reviewer back where they were; a
-        // screen they have not visited still opens at the top.
-        var remembered = stepScrollMemory[state.currentStep];
-        if (typeof remembered === 'number') window.scrollTo({ top: remembered, behavior: 'auto' });
-        else screen.scrollIntoView({ block: 'start', behavior: 'auto' });
+        // Going back (a tab, the step picker or a Back button) returns the
+        // reviewer to where they were on that screen. Moving forward, or
+        // landing on freshly generated content, opens at the top of the page
+        // so the steps and any notices above the screen are in view.
+        var remembered = navigationScrollRestore ? stepScrollMemory[state.currentStep] : null;
+        window.scrollTo({ top: typeof remembered === 'number' ? remembered : 0, behavior: 'auto' });
         if (!focusHeading) return;
         var heading = screen.querySelector('h2') || screen;
         if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
@@ -326,7 +328,8 @@
     });
   }
 
-  function beginStepNavigationScroll() {
+  function beginStepNavigationScroll(restore) {
+    navigationScrollRestore = Boolean(restore);
     navigationScrollToken += 1;
     navigationScrollStep = state.currentStep;
     clearTimeout(navigationScrollTimer);
@@ -533,7 +536,7 @@
     // Deliberate navigation goes to the beginning of the newly opened section.
     // Autosave normally preserves the reader's position, but while this move is
     // settling it must not restore the position from the previous section.
-    if (options && options.scroll) beginStepNavigationScroll();
+    if (options && options.scroll) beginStepNavigationScroll(options.restore);
     renderGenerationProgress();
     updateFinishingBar();
     if (options && options.scroll) {
@@ -949,6 +952,8 @@
     document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
   }
 
+  var DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
+
   async function prepareFile(file) {
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) return setStatus('Choose a Word .docx transcript.', true);
@@ -957,6 +962,12 @@
     try {
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
+      // Trinzo meetings are held on Teams, so a fresh upload starts there. Only
+      // on upload: a location the reviewer later clears stays cleared.
+      if (!String((state.draft.details || {}).meetingLocation || '').trim()) {
+        document.getElementById('meetingLocation').value = DEFAULT_MEETING_LOCATION;
+        readDetails(); scheduleSave();
+      }
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');
     } catch (error) { setStatus(error.message, true); }
@@ -1131,16 +1142,15 @@
     return '<div class="owner-editor"><div class="owner-chips">' + chips + '</div><div class="owner-add"><select data-add-owner data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Add an attendee as owner"><option value="">Choose owner...</option>' + options + '<option value="__other">Someone else...</option></select><input data-owner-other data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" value="' + escapeHtml(ownerDraft.value || '') + '" placeholder="Name" aria-label="Add another owner by name"' + (ownerDraft.visible ? '' : ' hidden') + '><button type="button" class="secondary quiet compact" data-finish-owner-edit data-action-id="' + escapeHtml(actionId) + '">Done</button></div></div>';
   }
 
-  function timingSummary(timing) {
-    var value = timingText(timing);
-    if (timing && timing.exactDate && timing.wording) value += ' (from “' + timing.wording + '”)';
-    return value;
+  function timingSourceTitle(timing) {
+    if (!timing || !timing.exactDate || !timing.wording) return '';
+    return ' title="From “' + escapeHtml(timing.wording) + '”"';
   }
 
   function timingEditor(timing, index, actionId) {
     actionId = String(actionId || ('action-' + index));
     if (!actionEditorState.editingTiming[actionId]) {
-      return '<button type="button" class="field-display timing-summary" data-edit-timing data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit timing">' + escapeHtml(timingSummary(timing)) + '</button>';
+      return '<button type="button" class="field-display timing-summary" data-edit-timing data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit timing"' + timingSourceTitle(timing) + '>' + escapeHtml(timingText(timing)) + '</button>';
     }
     var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline'], ['dependency', 'Dependency']];
     var options = kinds.map(function (pair) {
@@ -2311,7 +2321,7 @@
   document.getElementById('mobileStepSelect').addEventListener('change', function (event) {
     var step = Number(event.target.value);
     if (step === MAX_STEP) { readEditors(); activeFinalEdit=null; renderFinal(); }
-    showStep(step, { scroll: true });
+    showStep(step, { scroll: true, restore: true });
   });
   ['includeObjectives', 'includeSummary'].forEach(function (id) {
     var box = document.getElementById(id);
@@ -2932,6 +2942,9 @@
           target = document.getElementById(targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget);
           if (!target) return;
         }
+        // The jump to the item replaces the step's own landing position; without
+        // this the autosave that follows the step change scrolls back to the top.
+        clearStepNavigationScroll();
         target.scrollIntoView({behavior:'smooth',block:'center'});
         target.classList.add('flag-target-highlight');
         var detail = target.querySelector('.proposal-detail');
@@ -2994,8 +3007,21 @@
   document.getElementById('downloadPdf').addEventListener('click', function () { downloadExport('pdf'); });
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
   document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
-  document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back, { scroll: true });});});
-  document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP){readEditors();activeFinalEdit=null;renderFinal();}showStep(button.dataset.step, { scroll: true });}});});
+  document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back, { scroll: true, restore: true });});});
+  document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP){readEditors();activeFinalEdit=null;renderFinal();}showStep(button.dataset.step, { scroll: true, restore: true });}});});
+
+  // Once the reviewer scrolls on their own, the step's landing position is no
+  // longer theirs to be returned to: an autosave re-render in the next few
+  // seconds must keep them where they have scrolled to.
+  function releaseNavigationScrollOnUserScroll(event) {
+    if (navigationScrollStep === null) return;
+    if (event.type === 'keydown' && (!/^(PageUp|PageDown|Home|End|ArrowUp|ArrowDown| )$/.test(event.key)
+      || event.target.matches('input,textarea,select,[contenteditable="true"]'))) return;
+    clearStepNavigationScroll();
+  }
+  ['wheel', 'touchmove', 'keydown'].forEach(function (type) {
+    document.addEventListener(type, releaseNavigationScrollOnUserScroll, { passive: true });
+  });
 
   document.addEventListener('focusin', function (event) {
     if (navigationScrollStep !== state.currentStep) return;

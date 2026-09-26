@@ -232,7 +232,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("function savedStatusText", client)
         self.assertIn("function beginStepNavigationScroll", client)
         self.assertIn("function settleStepNavigationScroll", client)
-        self.assertIn("screen.scrollIntoView({ block: 'start', behavior: 'auto' })", client)
+        # Forward moves open at the top of the page; tabs and Back buttons
+        # return to the remembered place on that screen.
+        self.assertIn("window.scrollTo({ top: typeof remembered === 'number' ? remembered : 0, behavior: 'auto' })", client)
+        self.assertIn("showStep(button.dataset.back, { scroll: true, restore: true })", client)
+        self.assertIn("function releaseNavigationScrollOnUserScroll", client)
         self.assertIn("settleStepNavigationScroll();", client)
         self.assertNotIn("window.scrollTo({ top: 0, behavior: 'smooth' })", client)
         self.assertIn("return 'Saved';", client)
