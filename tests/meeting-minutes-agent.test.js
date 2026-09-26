@@ -1494,9 +1494,15 @@ test('schema-v4 Agent proposals remain review-only and dispositions retain only 
   assert.equal(proposals.length, 1);
   assert.match(proposals[0].action, /proposed label/i);
   const dispositions = normaliseAgentCandidateDispositions(result, units);
-  assert.equal(dispositions.length, 1);
   assert.deepEqual(dispositions[0].evidenceIds, ['T0001']);
   assert.equal(dispositions[0].disposition, 'proposal');
+  // An unrecognised disposition used to be dropped here without a trace, which
+  // silently muted the critic. It is kept and labelled now - but it is still
+  // not a proposal, so nothing the reviewer sees changes because of it.
+  assert.equal(dispositions.length, 2);
+  assert.equal(dispositions[1].disposition, 'unclassified');
+  assert.equal(dispositions[1].rawDisposition, 'invented-state');
+  assert.equal(proposals.length, 1);
 });
 
 test('salvage adjudication is bounded to strong unresolved evidence and cannot invent ownership', () => {

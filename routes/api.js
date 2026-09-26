@@ -8926,22 +8926,49 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
   }).filter(Boolean));
 }
 
+// Labels the models return that mean one of ours beyond doubt. Kept small on
+// purpose: a guess here would misreport a pass's judgement rather than record
+// it, which is the thing this is meant to stop.
+const MEETING_AGENT_DISPOSITION_ALIASES = {
+  core: 'publish', keep: 'publish', complete: 'completed', rejected: 'reject'
+};
+const MEETING_AGENT_DISPOSITIONS = new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
+
+// An unrecognised disposition used to be filtered out here without a trace.
+// Across the stored corpus that discarded 1038 records under 116 invented
+// labels - 714 of them from the critic, which answered on 724 candidates and
+// was heard on 10. The pass looked mute when it was talking the whole time.
+//
+// Anything we cannot map is now kept as 'unclassified', carrying the label the
+// model actually used, so it lands in qualityState and can be read back. It
+// counts towards no published or proposed total, so what the reviewer sees is
+// unchanged - this records the judgement, it does not act on it.
 function normaliseAgentCandidateDispositions(result = {}, sourceUnits = []) {
   const validIds = new Set(normaliseSourceUnits(sourceUnits).map((unit) => unit.id));
-  const allowed = new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
-  return (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [])
-    .map((item) => ({
-      ...item,
-      disposition: ({ core: 'publish', keep: 'publish' }[item?.disposition] || item?.disposition)
-    }))
-    .filter((item) => item?.candidateId && allowed.has(item?.disposition))
-    .map((item) => ({
-      candidateId: meetingMinutesAgentText(item.candidateId, 120),
-      disposition: item.disposition,
-      reason: meetingMinutesAgentText(item.reason, 500),
-      evidenceIds: [...new Set((Array.isArray(item.evidenceIds) ? item.evidenceIds : []).filter((id) => validIds.has(id)))].slice(0, 12),
-      uncertainties: (Array.isArray(item.uncertainties) ? item.uncertainties : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(0, 8)
-    })).slice(0, 320);
+  const unclassified = new Map();
+  const normalised = (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [])
+    .filter((item) => item?.candidateId)
+    .map((item) => {
+      const raw = meetingMinutesAgentText(item?.disposition, 80);
+      const mapped = MEETING_AGENT_DISPOSITION_ALIASES[raw] || raw;
+      const known = MEETING_AGENT_DISPOSITIONS.has(mapped);
+      if (!known && raw) unclassified.set(raw, (unclassified.get(raw) || 0) + 1);
+      return {
+        candidateId: meetingMinutesAgentText(item.candidateId, 120),
+        disposition: known ? mapped : 'unclassified',
+        rawDisposition: known && mapped === raw ? '' : raw,
+        reason: meetingMinutesAgentText(item.reason, 500),
+        evidenceIds: [...new Set((Array.isArray(item.evidenceIds) ? item.evidenceIds : []).filter((id) => validIds.has(id)))].slice(0, 12),
+        uncertainties: (Array.isArray(item.uncertainties) ? item.uncertainties : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(0, 8)
+      };
+    }).slice(0, 320);
+  if (unclassified.size) {
+    console.info(JSON.stringify({
+      event: 'meeting_agent_disposition_unclassified',
+      labels: [...unclassified.entries()].map(([label, count]) => ({ label, count }))
+    }));
+  }
+  return normalised;
 }
 
 function deterministicHybridLedger(draft, stage) {
