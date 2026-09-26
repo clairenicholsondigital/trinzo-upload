@@ -13,6 +13,7 @@
   var prewarmTimer = null;
   var completedGenerationNotice = null;
   var saveTimer = null;
+  var savePending = false;
   var saveInFlight = null;
   var saveQueued = false;
   var pendingGenerationEdits = false;
@@ -778,16 +779,34 @@
     return Boolean((speculation && speculation.status === 'preparing') || (prewarm && prewarm.status === 'preparing'));
   }
 
+  // A stage reports ready a moment before it is written into the draft, so
+  // stopping the poll the instant it turns ready would miss that write and
+  // leave this tab a revision behind. Keep polling for a short while after -
+  // bounded, because a superseded result never lands at all.
+  var backgroundSettlePolls = 0;
+  var BACKGROUND_SETTLE_POLLS = 10;
+
   function pollActionPrewarm() {
     clearTimeout(prewarmTimer);
-    if (!backgroundWorkPreparing() || generationRunning()) return;
+    if (!state.draft || generationRunning()) return;
+    if (backgroundWorkPreparing()) backgroundSettlePolls = BACKGROUND_SETTLE_POLLS;
+    else if (backgroundSettlePolls > 0) backgroundSettlePolls -= 1;
+    else return;
     prewarmTimer = window.setTimeout(async function () {
       if (!state.draft || generationRunning()) return;
       try {
         var payload = await jsonRequest(draftUrl('/generation'));
         state.draft.actionsPrewarm = payload.actionsPrewarm || null;
         state.draft.speculation = payload.speculation || null;
-        renderActionsPrewarm();
+        // Background work that has already been written into the draft: show it
+        // now rather than leaving the screen empty until the reviewer arrives,
+        // and keep this tab's revision level with the server's.
+        var backgroundStages = editorsSettled() ? backgroundStagesToAdopt(payload.draft) : null;
+        if (backgroundStages) {
+          backgroundSettlePolls = 0;
+          adoptBackgroundStages(payload.draft, backgroundStages);
+          renderAll();
+        } else renderActionsPrewarm();
         maybeOpenPreparedDiscussion();
         maybeOpenPreparedSummary();
         pollActionPrewarm();
@@ -1669,6 +1688,69 @@
     maybeOpenPreparedSummary();
   }
 
+  // Stages the server can finish on its own, and the fields each one owns.
+  var BACKGROUND_STAGES = {
+    discussion: ['discussion'],
+    actions: ['actions'],
+    summary: ['executiveSummary', 'meetingObjectives']
+  };
+
+  function stageContentKey(draft, stage) {
+    return BACKGROUND_STAGES[stage].map(function (field) {
+      return JSON.stringify(draft && draft[field] != null ? draft[field] : null);
+    }).join('|');
+  }
+
+  function stageIsEmpty(draft, stage) {
+    if (stage === 'summary') {
+      return !String((draft && draft.executiveSummary) || '').trim()
+        && !(((draft && draft.meetingObjectives) || []).length);
+    }
+    return !(((draft && draft[stage]) || []).length);
+  }
+
+  // The server finishes stages the reviewer has not reached yet and writes them
+  // into the draft, so the work survives a closed tab. That advances the
+  // revision underneath an open tab, whose next save would otherwise fail the
+  // revision check and warn about a change the reviewer never made.
+  //
+  // Take the newer revision only when the whole difference is background work
+  // arriving in stages this tab has nothing in. Anything else - an edit from
+  // another tab, a stage that lost content, a renamed meeting - is a real
+  // conflict, and the reviewer decides that one rather than us.
+  function backgroundStagesToAdopt(serverDraft) {
+    if (!state.draft || !serverDraft) return null;
+    if (String(serverDraft.draftId || '') !== String(state.draft.draftId || '')) return null;
+    if (!(Number(serverDraft.revision) > Number(state.draft.revision))) return null;
+    var adopt = [];
+    var stages = Object.keys(BACKGROUND_STAGES);
+    for (var i = 0; i < stages.length; i += 1) {
+      var stage = stages[i];
+      if (stageContentKey(serverDraft, stage) === stageContentKey(state.draft, stage)) continue;
+      if (!stageIsEmpty(state.draft, stage)) return null;
+      if (stageIsEmpty(serverDraft, stage)) return null;
+      adopt.push(stage);
+    }
+    return adopt.length ? adopt : null;
+  }
+
+  function adoptBackgroundStages(serverDraft, stages) {
+    stages.forEach(function (stage) {
+      BACKGROUND_STAGES[stage].forEach(function (field) { state.draft[field] = serverDraft[field]; });
+    });
+    state.draft.revision = serverDraft.revision;
+    state.draft.updatedAt = serverDraft.updatedAt;
+    if (serverDraft.staleStages) state.draft.staleStages = serverDraft.staleStages;
+    if (serverDraft.reviewFlags) state.draft.reviewFlags = serverDraft.reviewFlags;
+  }
+
+  // True when nothing is typed, queued or in flight, so what is on screen is
+  // exactly the saved revision and adopting a newer one cannot lose an edit.
+  function editorsSettled() {
+    return Boolean(state.draft) && !generationRunning() && !saveInFlight && !savePending
+      && !pendingGenerationEdits && !hasTransientEditorState();
+  }
+
   function adoptDraft(draft) {
     if (!draft) return;
     var replacingExistingDraft = Boolean(state.draft);
@@ -1757,19 +1839,47 @@
       if (!editingInside('actionsBody')) renderActions();
       return;
     }
+    savePending = true;
     setSaveStatus('Saving draft...', 'dirty');
     saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
+  }
+
+  // Absorb the one revision conflict the reviewer should never be asked about:
+  // a stage the server finished in the background while this tab held nothing
+  // in it. Take that work, then send again with the revision it produced.
+  // Exactly one retry - a second conflict is a real one and gets the banner.
+  //
+  // `send` must build its own body, so the retry carries the new revision.
+  // Undo and redo deliberately do not use this: they restore a snapshot taken
+  // before the background work existed, so silently folding it in first would
+  // change what undo means.
+  async function withBackgroundMerge(send) {
+    try {
+      return await send();
+    } catch (error) {
+      var stages = error.currentDraft ? backgroundStagesToAdopt(error.currentDraft) : null;
+      if (!stages) throw error;
+      adoptBackgroundStages(error.currentDraft, stages);
+      return await send();
+    }
   }
 
   async function saveDraftNow(statusValue) {
     if (!state.draft) return null;
     clearTimeout(saveTimer);
+    savePending = false;
     if (saveInFlight) { saveQueued = true; await saveInFlight; if (!saveQueued) return state.draft; saveQueued = false; }
     readEditors();
     var requestEditVersion = editVersion;
     var reviewDecisionLabel = pendingReviewDecisionLabel;
     setSaveStatus('Saving...', 'saving');
-    saveInFlight = jsonRequest(draftUrl(), {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftPatchBody(statusValue, reviewDecisionLabel))}).then(function (payload) {
+    saveInFlight = withBackgroundMerge(function () {
+      return jsonRequest(draftUrl(), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draftPatchBody(statusValue, reviewDecisionLabel))
+      });
+    }).then(function (payload) {
       if (reviewDecisionLabel && pendingReviewDecisionLabel === reviewDecisionLabel) pendingReviewDecisionLabel = '';
       if (editVersion !== requestEditVersion) {
         // A newer keystroke landed while this request was in flight. Advance the
@@ -1826,7 +1936,9 @@
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
     try {
       var selectedStep = stage === 'actions' ? state.currentStep : STAGE_STEP[stage];
-      var payload = await jsonRequest(draftUrl('/generate-background'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,revision:state.draft.revision,selectedStep:selectedStep})});
+      var payload = await withBackgroundMerge(function () {
+        return jsonRequest(draftUrl('/generate-background'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,revision:state.draft.revision,selectedStep:selectedStep})});
+      });
       adoptDraft(payload.draft);
       state.draft.generation = payload.generation;
       completedGenerationNotice = null;
@@ -1923,7 +2035,9 @@
       for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
         if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts, stage);
         try {
-          payload = await jsonRequest('/api/meeting-minutes-agent/generate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,draftId:state.draft.draftId,revision:state.draft.revision,instruction:instruction || ''})});
+          payload = await withBackgroundMerge(function () {
+            return jsonRequest('/api/meeting-minutes-agent/generate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stage:stage,draftId:state.draft.draftId,revision:state.draft.revision,instruction:instruction || ''})});
+          });
           break;
         } catch (error) {
           if (!(error.code === 'M365_AGENT_USAGE_LIMIT' && error.retryable) || attempt === totalAttempts - 1) throw error;
@@ -1950,7 +2064,9 @@
       for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
         if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts, 'actions');
         try {
-          payload = await jsonRequest(draftUrl('/audit-actions'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
+          payload = await withBackgroundMerge(function () {
+            return jsonRequest(draftUrl('/audit-actions'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
+          });
           break;
         } catch (error) {
           if (!(error.code === 'M365_AGENT_USAGE_LIMIT' && error.retryable) || attempt === totalAttempts - 1) throw error;
@@ -1969,7 +2085,9 @@
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
     setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...', proposalStage);
     try {
-      var payload = await jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
+      var payload = await withBackgroundMerge(function () {
+        return jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
+      });
       adoptDraft(payload.draft);
       if (payload.draft && payload.draft.lastUndo) showUndoToast(payload.draft.lastUndo.label);
       var remaining = payload.draft && payload.draft.pendingProposal && (payload.draft.pendingProposal.changes || []).length;

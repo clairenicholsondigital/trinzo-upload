@@ -78,6 +78,44 @@ function startStubServer() {
     evidenceIds: ['T0001'], status: 'open', correctionNote: ''
   });
   drafts.set('topic-cleanup', topicCleanup);
+
+  // The server finishes a stage on its own and writes it into the draft, which
+  // advances the revision under an open tab. 'background-conflict' never polls
+  // (no speculation), so the tab only learns about the write when it saves.
+  ['background-conflict', 'background-poll'].forEach((id) => {
+    const draft = baseDraft(id, false);
+    draft.actions = [];
+    draft.currentStep = 2;
+    draft.selectedStep = 2;
+    if (id === 'background-poll') draft.speculation = { stage: 'actions', status: 'preparing' };
+    drafts.set(id, draft);
+  });
+  const backgroundActions = [{
+    id: 'action-background', action: 'Circulate the checked report.', owners: ['Alex Reed'],
+    timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+  }];
+  function fillActionsInBackground(id) {
+    const prior = drafts.get(id);
+    const next = {
+      ...prior, revision: prior.revision + 1, updatedAt: new Date().toISOString(),
+      actions: backgroundActions, speculation: { stage: 'actions', status: 'ready' }
+    };
+    drafts.set(id, next);
+    return next;
+  }
+  // Stands in for persistUntouchedSpeculation landing while the tab is open.
+  app.post('/test-fill/:id', (req, res) => res.json({ ok: true, draft: fillActionsInBackground(req.params.id) }));
+  // A change the reviewer must arbitrate: another writer edited a stage this
+  // tab already has content in.
+  app.post('/test-elsewhere/:id', (req, res) => {
+    const prior = drafts.get(req.params.id);
+    const next = {
+      ...prior, revision: prior.revision + 1, updatedAt: new Date().toISOString(),
+      discussion: [{ ...prior.discussion[0], topic: 'Renamed by another tab' }]
+    };
+    drafts.set(req.params.id, next);
+    res.json({ ok: true, draft: next });
+  });
   const summaryRunning = baseDraft('summary-running', false);
   summaryRunning.currentStep = 4;
   summaryRunning.selectedStep = 3;
@@ -189,8 +227,15 @@ function startStubServer() {
   app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: drafts.get(req.params.id) }));
   app.patch('/api/meeting-minutes-agent/drafts/:id', async (req, res) => {
     if (req.params.id === 'navigation') await new Promise((resolve) => setTimeout(resolve, 250));
-    patchBodies.set(req.params.id, req.body);
     const prior = drafts.get(req.params.id);
+    if (Number(req.body.revision) !== Number(prior.revision)) {
+      return res.status(409).json({
+        ok: false, code: 'DRAFT_REVISION_CONFLICT',
+        error: 'This draft was updated elsewhere. Reload it before saving again.',
+        currentDraft: prior
+      });
+    }
+    patchBodies.set(req.params.id, req.body);
     const history = reviewHistory.get(req.params.id) || [];
     if (req.body.reviewDecisionLabel) history.push({
       label: req.body.reviewDecisionLabel,
@@ -326,7 +371,17 @@ function startStubServer() {
       drafts.set(req.params.id, draft);
       return res.json({ ok: true, generation: null, draft });
     }
-    res.json({ ok: true, generation: draft.generation, actionsPrewarm: draft.actionsPrewarm || null });
+    if (req.params.id === 'background-poll') {
+      const filled = (draft.actions || []).length ? draft : fillActionsInBackground(req.params.id);
+      return res.json({
+        ok: true, generation: null, actionsPrewarm: null,
+        speculation: filled.speculation, draft: filled
+      });
+    }
+    res.json({
+      ok: true, generation: draft.generation, actionsPrewarm: draft.actionsPrewarm || null,
+      speculation: draft.speculation || null, draft: draft.generation ? undefined : draft
+    });
   });
   app.get('/test-state/:id', (req, res) => res.json({
     patches: patchCounts.get(req.params.id) || 0,
@@ -1552,6 +1607,107 @@ test('step navigation wins over an in-flight autosave scroll restore', { timeout
     assert.equal(position.activeInsideScreen, true, JSON.stringify(position));
     assert.equal(position.activeTag, 'H2');
     assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// The server finishes stages the reviewer has not reached and writes them into
+// the draft, so the work survives a closed tab. That advances the revision
+// under an open tab. These cover what the tab does about it: absorb the
+// background write silently, and still hand a real conflict to the reviewer.
+
+async function launchOnDiscussion(port, draftId) {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(30000);
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=${draftId}`);
+  await page.waitForFunction(() => document.querySelector('#discussionList [data-record-field]'));
+  return { browser, page, errors };
+}
+
+test('a stage finished in the background is absorbed instead of warning the reviewer', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchOnDiscussion(port, 'background-conflict');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    // The background stage lands while the reviewer is reading Discussion. This
+    // draft never polls, so the tab is a revision behind and does not know it.
+    await page.evaluate(() => fetch('/test-fill/background-conflict', { method: 'POST' }));
+
+    await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation today.');
+    await page.waitForFunction(async () => {
+      const draft = (await (await fetch('/test-state/background-conflict')).json()).draft;
+      return /circulation today/.test(draft.discussion[0].points[0].text || '');
+    });
+
+    const saved = await page.evaluate(async () => (await (await fetch('/test-state/background-conflict')).json()).draft);
+    // The background actions were not wiped by a tab that thought the stage was
+    // still empty.
+    assert.equal(saved.actions.length, 1);
+    assert.equal(saved.actions[0].action, 'Circulate the checked report.');
+    assert.equal(await page.locator('#reloadDraft').isHidden(), true, 'no reload banner for work the reviewer never made');
+    assert.doesNotMatch(await page.textContent('#saveStatus'), /Changed elsewhere/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('background work already written into the draft appears without being asked for', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchOnDiscussion(port, 'background-poll');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    // Nothing is typed, so the poll can take the newer revision and show the
+    // stage it carries.
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action-row]').length === 1);
+    assert.match(await page.textContent('#actionsBody'), /Circulate the checked report/);
+
+    // Having taken the revision as well as the content, the next save goes
+    // through first time rather than conflicting and retrying.
+    const conflicts = [];
+    page.on('response', (response) => { if (response.status() === 409) conflicts.push(response.url()); });
+    await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation today.');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/background-poll')).json()).patches >= 1);
+    assert.deepEqual(conflicts, [], 'the tab was already level with the revision it adopted');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('an edit made elsewhere is still handed to the reviewer rather than merged', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchOnDiscussion(port, 'background-conflict');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    // Not background work: another writer changed a topic this tab already has
+    // content in. Merging that silently is what loses people's work.
+    await page.evaluate(() => fetch('/test-elsewhere/background-conflict', { method: 'POST' }));
+
+    await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation today.');
+    await page.waitForFunction(() => /Changed elsewhere/i.test(document.getElementById('saveStatus').textContent));
+    assert.equal(await page.locator('#reloadDraft').isHidden(), false, 'the reviewer is offered the saved version');
+    // Their typing stays on screen: the warning must not cost them the edit.
+    assert.match(await page.inputValue('#discussionList [data-record-field]'), /circulation today/);
+    // The rejected save surfaces as an unhandled rejection, as it did before
+    // this path existed. Named rather than ignored, so a new one would show up.
+    assert.deepEqual(errors, ['Error: This draft was updated elsewhere. Reload it before saving again.']);
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
