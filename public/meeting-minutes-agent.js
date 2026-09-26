@@ -1706,6 +1706,7 @@
       if (discussionInstruction) discussionInstruction.disabled = generationRunning('discussion');
       if (actionsInstruction) actionsInstruction.disabled = generationRunning('actions');
       renderStaleNotice();
+      updateStageAdvanceLabels();
     } else document.getElementById('staleNotice').hidden = true;
     // The Review page's document is built on entry; a draft resumed on Review
     // (or re-rendered while it is open) must build it too.
@@ -1958,6 +1959,21 @@
   // read while it runs. The server keeps going even if this tab closes.
   var pendingRegenerationStage = '';
 
+  // A button that reads "Generate actions" and then navigates is lying about
+  // itself; one that reads "Review actions" and then generates is worse. The
+  // label follows whether the stage is already there.
+  function updateStageAdvanceLabels() {
+    [['startDiscussion', 'discussion', 'Generate discussion', 'Review discussion'],
+      ['generateActions', 'actions', 'Generate actions', 'Review actions']
+    ].forEach(function (entry) {
+      var button = document.getElementById(entry[0]);
+      var label = button && button.querySelector('[data-stage-advance-label]');
+      if (!label) return;
+      var text = stageHasContent(entry[1]) ? entry[3] : entry[2];
+      if (label.textContent !== text) label.textContent = text;
+    });
+  }
+
   function stageHasContent(stage) {
     if (!state.draft) return false;
     if (stage === 'discussion') return (state.draft.discussion || []).length > 0;
@@ -1966,8 +1982,16 @@
     return false;
   }
 
-  function requestBackgroundStage(stage) {
+  // "Generate discussion" and "Generate actions" are the forward buttons of
+  // their screens. Since stages are now finished in the background before the
+  // reviewer reaches them, the work is usually already there by the time one is
+  // pressed - and being asked whether to regenerate it, instead of being taken
+  // to it, is not what the button says it does. Only an explicit regenerate
+  // (the stale-stage Update, or Create summary from the summary screen itself)
+  // asks the question.
+  function requestBackgroundStage(stage, options) {
     if (!stageHasContent(stage)) { startBackgroundStage(stage); return; }
+    if (!(options && options.regenerate)) { showStep(STAGE_STEP[stage], { scroll: true }); return; }
     pendingRegenerationStage = stage;
     var dialog = document.getElementById('regenerationDialog');
     document.getElementById('regenerationMessage').textContent = stage === 'summary'
@@ -2276,7 +2300,7 @@
 
   document.getElementById('startDiscussion').addEventListener('click', function () { readSteer(); requestBackgroundStage('discussion'); });
   document.getElementById('toSummary').addEventListener('click', function () { readActions(); showStep(4, { scroll: true }); });
-  document.getElementById('generateSummary').addEventListener('click', function () { requestBackgroundStage('summary'); });
+  document.getElementById('generateSummary').addEventListener('click', function () { requestBackgroundStage('summary', { regenerate: true }); });
   document.getElementById('addObjective').addEventListener('click', function () {
     readSummary();
     state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat({id:'objective-'+Date.now(),text:'',evidenceIds:[]});
@@ -2764,7 +2788,7 @@
 
   document.getElementById('staleStageActions').addEventListener('click', function (event) {
     var button = event.target.closest('[data-update-stale-stage]');
-    if (button) requestBackgroundStage(button.dataset.updateStaleStage);
+    if (button) requestBackgroundStage(button.dataset.updateStaleStage, { regenerate: true });
   });
 
   document.getElementById('addAction').addEventListener('click', function () {

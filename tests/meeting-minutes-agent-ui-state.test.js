@@ -78,6 +78,11 @@ function startStubServer() {
     evidenceIds: ['T0001'], status: 'open', correctionNote: ''
   });
   drafts.set('topic-cleanup', topicCleanup);
+  const staleActions = baseDraft('stale-actions', false);
+  staleActions.staleStages = ['actions'];
+  staleActions.currentStep = 2;
+  staleActions.selectedStep = 2;
+  drafts.set('stale-actions', staleActions);
 
   // The server finishes a stage on its own and writes it into the draft, which
   // advances the revision under an open tab. 'background-conflict' never polls
@@ -948,14 +953,12 @@ test('starting Actions keeps the reviewer on Discussion and exposes background p
   const { server, port } = await startStubServer();
   let browser;
   try {
-    const launched = await launchPage(port, 'editor');
+    const launched = await launchOnDiscussion(port, 'background-conflict');
     browser = launched.browser;
     const { page, errors } = launched;
-    await page.click('[data-step="2"]');
     const started = page.waitForResponse((response) =>
-      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor/generate-background'));
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/background-conflict/generate-background'));
     await page.click('#generateActions');
-    await page.click('#confirmRegeneration');
     const response = await started;
     assert.equal(response.request().postDataJSON().selectedStep, 2);
     assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
@@ -1712,6 +1715,99 @@ test('an edit made elsewhere is still handed to the reviewer rather than merged'
     // The rejected save surfaces as an unhandled rejection, as it did before
     // this path existed. Named rather than ignored, so a new one would show up.
     assert.deepEqual(errors, ['Error: This draft was updated elsewhere. Reload it before saving again.']);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// Stages are finished in the background before the reviewer reaches them, so
+// the forward button on a screen usually has nothing left to generate. It
+// should take them to the work, not ask whether to redo it.
+
+test('the forward button moves to a stage that is already there rather than offering to redo it', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    const generateRequests = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/generate-background')) generateRequests.push(request.url());
+    });
+
+    await page.click('[data-step="0"]');
+    // This fixture already has a discussion, so the button says so.
+    assert.equal(await page.textContent('#startDiscussion [data-stage-advance-label]'), 'Review discussion');
+    await page.click('#startDiscussion');
+
+    await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
+    assert.equal(await page.locator('#regenerationDialog').isVisible(), false, 'no question to answer');
+    assert.deepEqual(generateRequests, [], 'and nothing regenerated behind it');
+
+    // Same rule one screen along.
+    assert.equal(await page.textContent('#generateActions [data-stage-advance-label]'), 'Review actions');
+    await page.click('#generateActions');
+    await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
+    assert.equal(await page.locator('#regenerationDialog').isVisible(), false);
+    assert.deepEqual(generateRequests, []);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('the forward button still generates, and says so, when the stage is empty', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchOnDiscussion(port, 'background-conflict');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    // This fixture's Actions stage has not run.
+    assert.equal(await page.textContent('#generateActions [data-stage-advance-label]'), 'Generate actions');
+    const generated = page.waitForRequest((request) => request.url().includes('/generate-background'));
+    await page.click('#generateActions');
+    await generated;
+    assert.equal(await page.locator('#regenerationDialog').isVisible(), false, 'nothing to overwrite, so nothing to ask');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('redoing an out-of-date stage still asks first, and still keeps the reviewer in place', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchOnDiscussion(port, 'stale-actions');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    // The forward button takes them to the actions, out of date or not - the
+    // notice on that screen is where the offer to redo them lives.
+    await page.click('#generateActions');
+    await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
+    assert.equal(await page.locator('#regenerationDialog').isVisible(), false);
+
+    await page.click('[data-step="2"]');
+    const started = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/stale-actions/generate-background'));
+    await page.click('[data-update-stale-stage="actions"]');
+    // Asking before replacing work the reviewer may have edited is the point of
+    // the dialog, and it is still asked on the path that means "redo this".
+    assert.equal(await page.locator('#regenerationDialog').isVisible(), true);
+    await page.click('#confirmRegeneration');
+    const response = await started;
+    assert.equal(response.request().postDataJSON().selectedStep, 2);
+    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true,
+      'an Actions run does not drag them off the discussion they were reading');
+    assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
