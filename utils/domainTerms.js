@@ -71,7 +71,44 @@ const TRANSCRIPT_PHRASE_CORRECTIONS = [
     pattern: /\bAbbott\s+rate\b/gi,
     replacement: 'Abbott corporate rate',
     reason: 'Abbott’s negotiated hotel rate, not an organisation'
-  }
+  },
+  // Mis-transcriptions found across the twenty benchmark transcripts on
+  // 2026-09-27, each confirmed by the sentence around it. Standards first:
+  // "IEC, AC, cricky... IEC AC1001" beside 62304 and the lifecycle is
+  // 81001-5-1; "IEC 6061-1" and a bare "IEC 6060" beside MDD and electrical
+  // testing are 60601-1.
+  { pattern: /\bIEC,?\s*(?:AC,?\s*)?AC\s?1001\b/gi, replacement: 'IEC 81001-5-1', reason: 'Standard number misheard' },
+  { pattern: /\bAC\s?1001\b/g, replacement: '81001-5-1', reason: 'Standard number misheard' },
+  { pattern: /\bIEC\s*6061(?:-1)?\b/gi, replacement: 'IEC 60601-1', reason: 'Standard number misheard' },
+  { pattern: /\bIEC\s*6060\b(?![\d-])/gi, replacement: 'IEC 60601-1', reason: 'Standard number misheard' },
+  { pattern: /\bEUMDR\b/g, replacement: 'EU MDR', reason: 'Regulation name run together' },
+  // Organisations and systems. DITA is heard as Data/Deta/DJ/DT/DD/T Inc.;
+  // MedEnvoy (the EU authorised representative) as two words with either
+  // spelling; EUDAMED as "you to med" and Udimed/Udemed/Udamed; Cognidocs as
+  // "call me docs" and "Cogni Docs".
+  { pattern: /\b(?:Data|Deta|DJ|DT|DD|T)\s+Inc\b\.?/g, replacement: 'DITA', reason: 'Organisation name misheard' },
+  { pattern: /\bDeta\b(?=\s+(?:here|in|at|is|are|do|does|has|have|will|would|and))/g, replacement: 'DITA', reason: 'Organisation name misheard' },
+  { pattern: /\bme[dt]\s+envoy\b/gi, replacement: 'MedEnvoy', reason: 'Organisation name split' },
+  { pattern: /\byou\s+to\s+med\b/gi, replacement: 'EUDAMED', reason: 'EUDAMED misheard' },
+  { pattern: /\bud[aei]med\b/gi, replacement: 'EUDAMED', reason: 'EUDAMED misheard' },
+  { pattern: /\bcall[\s-]*me[\s-]*docs?\b/gi, replacement: 'Cognidocs', reason: 'Cognidocs misheard' },
+  { pattern: /\bcogni\s+docs?\b/gi, replacement: 'Cognidocs', reason: 'Cognidocs split' },
+  { pattern: /\bKappa(s?)\b/g, replacement: 'CAPA$1', reason: 'CAPA misheard' },
+  { pattern: /\bS-BOM\b/gi, replacement: 'SBOM', reason: 'SBOM hyphenated' },
+  { pattern: /\bOReilly\b/g, replacement: "O'Reilly", reason: 'Apostrophe dropped' },
+  // Codes: the letter O for a zero in a technical-file number; UDI-DI run
+  // together; "A1 in 100" is "a 1 in 100".
+  { pattern: /\bTFO(\d)\b/g, replacement: 'TF0$1', reason: 'Letter O for zero' },
+  { pattern: /\bUDIDI\b/g, replacement: 'UDI-DI', reason: 'UDI-DI run together' },
+  { pattern: /\bA1 in (\d+)\b/g, replacement: 'a 1 in $1', reason: 'Probability phrase misheard' },
+  // Homophones in regulatory talk: "cheque" is "check" when it is a verb
+  // ("just to cheque through", "cheque in with", "do a cheque that"). A
+  // cheque somebody pays with ("by cheque", "a cheque for") is left alone.
+  { pattern: /\b(to|just|double|quick|cross|do a|I'll|we'll|I will|we will|and)\s+cheque\b/gi, replacement: '$1 check', reason: 'Homophone' },
+  { pattern: /\bcheque\s+(through|in with|that|with|if|whether|on|the|it|this|these|those|what|how|when)\b/gi, replacement: 'check $1', reason: 'Homophone' },
+  { pattern: /\bport\s+luck\b/gi, replacement: 'port lock', reason: 'Homophone' },
+  { pattern: /\blabeling\b/g, replacement: 'labelling', reason: 'British spelling' },
+  { pattern: /\blabeled\b/g, replacement: 'labelled', reason: 'British spelling' }
 ];
 
 // Returns { text, applied } so a caller can log what it changed. Idempotent:
@@ -82,8 +119,20 @@ function applyTranscriptPhraseCorrections(value) {
   for (const rule of TRANSCRIPT_PHRASE_CORRECTIONS) {
     const matches = text.match(rule.pattern);
     if (!matches || !matches.length) continue;
-    text = text.replace(rule.pattern, rule.replacement);
-    applied.push({ from: matches[0], to: rule.replacement, count: matches.length, reason: rule.reason });
+    let firstTo = '';
+    text = text.replace(rule.pattern, (...args) => {
+      const match = args[0];
+      const offset = args[args.length - 2];
+      const groups = args.slice(1, args.length - 2).map((value) => (typeof value === 'string' ? value : ''));
+      let out = rule.replacement.replace(/\$(\d)/g, (_, n) => groups[Number(n) - 1] || '');
+      // A correction that opens a sentence keeps its capital ("Port luck." ->
+      // "Port lock."); one inside a sentence does not gain one.
+      const opensSentence = offset === 0 || /(?:^|[.!?])\s*$/.test(text.slice(0, offset));
+      if (opensSentence && /^[A-Z]/.test(match) && /^[a-z]/.test(out)) out = out[0].toUpperCase() + out.slice(1);
+      if (!firstTo) firstTo = out;
+      return out;
+    });
+    applied.push({ from: matches[0], to: firstTo, count: matches.length, reason: rule.reason });
   }
   return { text, applied };
 }
