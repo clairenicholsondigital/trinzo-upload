@@ -8759,13 +8759,29 @@ function meetingAgentCorrectionRuleEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_CORRECTION_RULE_V1 || '0'));
 }
 
+// What a topic label is. Discovery returns one record per anchor and, left to
+// itself, one freshly written label per record ("Clarification on probability
+// bands context"): 32 anchors, 32 labels, every topic a singleton until the
+// organiser guesses which captions describe one subject. Sent as data with the
+// anchored discovery request; the text must stay byte-identical to
+// tests/fixtures/topic-label-rule-v1.txt. Off unless
+// MEETING_MINUTES_AGENT_TOPIC_LABEL_RULE_V1 is on.
+const MEETING_AGENT_TOPIC_LABEL_RULE = 'TOPIC LABELS. The topic field names the agenda subject a record belongs to, not the record itself. A subject label is a short noun phrase of two to five words with no verb: "Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking". It never describes what happened to the subject, so not "Clarification on probability bands", "Confirmation of lack of procedure", "Painting lines without enforcement is ineffective". A meeting usually has four to eight subjects and several anchors belong to each: when an anchor continues a subject an earlier anchor already has, reuse that earlier label word for word. Give a new label only where the transcript moves to a different subject.';
+function meetingAgentTopicLabelRuleEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TOPIC_LABEL_RULE_V1 || '0'));
+}
+
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
+  const writingRules = [
+    ...(meetingAgentCorrectionRuleEnabled() ? [MEETING_AGENT_CORRECTION_RULE] : []),
+    ...(meetingAgentTopicLabelRuleEnabled() ? [MEETING_AGENT_TOPIC_LABEL_RULE] : [])
+  ];
   const payload = {
     requestId: crypto.randomUUID(),
     stage: 'DISCUSSION_ANCHORED_DISCOVERY',
     details: details || {},
     reviewerEmphasis: meetingAgentSteerText(steer),
-    ...(meetingAgentCorrectionRuleEnabled() ? { writingRules: [MEETING_AGENT_CORRECTION_RULE] } : {}),
+    ...(writingRules.length ? { writingRules } : {}),
     preparedTranscript: String(transcript || '').trim(),
     anchors: (Array.isArray(anchors) ? anchors : []).map((anchor) => ({
       anchorId: meetingMinutesAgentText(anchor?.anchorId, 180),
@@ -16497,6 +16513,8 @@ router.stagedEvaluation = {
   meetingMinutesAgentPrompt,
   meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAnchoredDiscussionPrompt,
+  MEETING_AGENT_TOPIC_LABEL_RULE,
+  meetingAgentTopicLabelRuleEnabled,
   normaliseAnchoredDiscussionDiscovery,
   meetingMinutesAgentAnchoredActionPrompt,
   normaliseAnchoredActionDiscovery,
