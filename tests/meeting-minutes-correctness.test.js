@@ -232,11 +232,12 @@ test('a person who only asks someone else to do the work is not its owner', () =
     { action: 'Complete TF03.', owners: ['Ciaran Ryan'], evidenceIds: ['T0010'] }
   ], units);
   assert.deepEqual(out.actions[0].owners, []);
-  assert.match(out.flags[0].message, /Owner unclear: the cited evidence does not show Jacqui Fox taking this on/);
+  // Jacqui asked and Orla accepted: the flag names who the work went to.
+  assert.match(out.flags[0].message, /Owner changed for review: the transcript shows Orla Skally taking this on, not Jacqui Fox/);
   assert.deepEqual(out.actions[1].owners, ['Ciaran Ryan']);
 });
 
-test('a collective we statement or a mere name mention does not prove individual ownership', () => {
+test('a collective we statement or a mere name mention keeps the owner but asks for confirmation', () => {
   const V = require('../utils/meetingMinutesAgentV2');
   const units = [
     { id: 'T0200', speaker: 'Jacqui Fox', text: 'We will produce the report for Karl.' },
@@ -245,8 +246,13 @@ test('a collective we statement or a mere name mention does not prove individual
   const out = V.applyRequesterOwnerRule([{
     action: 'Produce the report for Karl.', owners: ['Jacqui Fox'], evidenceIds: ['T0200', 'T0201']
   }], units);
-  assert.deepEqual(out.actions[0].owners, []);
+  // Nobody else is shown taking the work on, so "we will" from the named
+  // person is not grounds to publish the action ownerless. Traced runs on
+  // 2026-09-27 lost Rebecca Gill's "we'll schedule a call for as soon as
+  // Christina's back" exactly this way. The name stays with a confirm flag.
+  assert.deepEqual(out.actions[0].owners, ['Jacqui Fox']);
   assert.equal(out.flags[0].kind, 'ownership');
+  assert.match(out.flags[0].message, /^Owner to confirm/);
 });
 
 test('a row restating a corrected assumption leaves the primary rows; one stating the correction stays', () => {

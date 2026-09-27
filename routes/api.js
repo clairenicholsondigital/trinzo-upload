@@ -254,6 +254,7 @@ const {
   promoteNamedFactDetails,
   describesUsualPractice,
   isNotAnAction,
+  isMinuteInstruction,
   isSocialAside,
   isAobPersonalAside,
   isFarewellAction,
@@ -8632,6 +8633,11 @@ function meetingMinutesAgentPrimaryUnionEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PRIMARY_UNION_V1 || '0'));
 }
 
+// Deterministic rule, on unless MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1=0.
+function meetingMinutesMinuteInstructionRuleEnabled() {
+  return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1 || '1'));
+}
+
 // Union of two action-discovery replies. The first reply keeps every field it
 // owns; the second only contributes actions, proposals, dispositions and flags,
 // each deduplicated the way the pipeline already dedupes across passes. A
@@ -12059,10 +12065,68 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
   };
 }
 
+// The candidate the referee publishes is not always the one that carried the
+// owner. Discovery finds "Andrew will complete the MDD review" with Andrew
+// named; recovery, citing only the line where Jacqui says "your review",
+// finds the same deliverable with nobody; the referee is shown the second and
+// publishes it. Across twenty live drafts 20 of 23 unowned published actions
+// had an owned twin somewhere in the ensemble. When the published candidate
+// names nobody, take the owner - and the lines that name them - from a twin
+// that does; the evidence guard downstream still decides whether it stands.
+function candidateOwnersOf(candidate = {}) {
+  const owners = Array.isArray(candidate?.record?.owners) && candidate.record.owners.length ? candidate.record.owners
+    : Array.isArray(candidate?.owners) ? candidate.owners : [];
+  return owners.map((owner) => meetingMinutesAgentText(owner, 120)).filter(Boolean);
+}
+
+function borrowOwnersFromTwin(selected = {}, pool = []) {
+  const action = meetingMinutesAgentText(selected?.record?.action || selected?.text, 1200);
+  if (!action) return null;
+  const evidence = new Set([...(selected.evidenceIds || []), ...(selected.record?.evidenceIds || [])]);
+  const twins = (Array.isArray(pool) ? pool : []).filter((candidate) => candidate && candidate !== selected
+    && candidate.candidateId !== selected.candidateId
+    && ['action', 'action_chain', 'action_thread'].includes(String(candidate.recordType || ''))
+    && candidateOwnersOf(candidate).length);
+  const rank = { primary: 4, 'primary-2': 4, recovery: 3, salvage: 2, staged: 1 };
+  const scored = twins.map((candidate) => {
+    const text = meetingMinutesAgentText(candidate.record?.action || candidate.text, 1200);
+    const overlap = hybridContentTokenOverlap(action, text);
+    const shared = [...(candidate.evidenceIds || []), ...(candidate.record?.evidenceIds || [])].some((id) => evidence.has(id));
+    const match = overlap >= 0.62 || (shared && overlap >= 0.48);
+    return match ? { candidate, score: overlap + (shared ? 0.25 : 0) + (rank[candidate.sourcePass] || 0) * 0.01 } : null;
+  }).filter(Boolean).sort((left, right) => right.score - left.score);
+  if (!scored.length) return null;
+  const twin = scored[0].candidate;
+  return {
+    owners: candidateOwnersOf(twin),
+    evidenceIds: [...new Set([...(twin.evidenceIds || []), ...(twin.record?.evidenceIds || [])])]
+  };
+}
+
+function traceOwners(step, actions = [], journeyId = '') {
+  if (!/^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS || ''))) return;
+  const list = Array.isArray(actions) ? actions : [];
+  const probe = String(process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_PROBE || '').toLowerCase();
+  const hit = probe ? list.find((a) => String(a?.action || '').toLowerCase().includes(probe)) : null;
+  console.info(JSON.stringify({ event: 'owner_trace', journeyId, step, total: list.length,
+    owned: list.filter((a) => (a?.owners || []).length).length,
+    probe: probe ? (hit ? { owners: hit.owners || [], evidence: hit.evidenceIds || [] } : 'absent') : undefined }));
+  const file = String(process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_FILE || '');
+  if (file) {
+    try {
+      require('fs').appendFileSync(file, `${JSON.stringify({ journeyId, step, actions: list.map((a) => ({
+        id: a?.id, action: a?.action, owners: a?.owners || [], evidenceIds: a?.evidenceIds || [], reviewFlagIds: a?.reviewFlagIds || []
+      })) })}\n`);
+    } catch { /* tracing only */ }
+  }
+}
+
 function reconstructRefereeActions(dispositions = [], candidates = [], sourceUnits = [], options = {}) {
   const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
     .filter((candidate) => candidate?.candidateId)
     .map((candidate) => [String(candidate.candidateId), candidate]));
+  const ownerPool = [...(Array.isArray(candidates) ? candidates : []), ...(Array.isArray(options.ownerPool) ? options.ownerPool : [])];
+  let borrowedOwners = 0;
   const evidenceByTarget = new Map();
   const rows = [];
   const dispositionKind = (value) => ({ core: 'publish', keep: 'publish' }[value] || value);
@@ -12085,19 +12149,28 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     if (!['publish', 'proposal'].includes(kind) || !selected || selected.recordType !== 'action') continue;
     const action = meetingMinutesAgentText(selected.record?.action || selected.text, 1200);
     if (!action) continue;
+    let owners = candidateOwnersOf(selected);
+    if (!owners.length && Array.isArray(disposition?.owners)) {
+      owners = disposition.owners.map((owner) => meetingMinutesAgentText(owner, 120)).filter(Boolean);
+    }
+    let borrowedEvidence = [];
+    if (!owners.length && kind === 'publish') {
+      const borrowed = borrowOwnersFromTwin(selected, ownerPool);
+      if (borrowed) { owners = borrowed.owners; borrowedEvidence = borrowed.evidenceIds; borrowedOwners += 1; }
+    }
     rows.push({
       kind,
       targetId: targetId || candidateId,
       record: {
         id: meetingMinutesAgentText(selected.record?.id || targetId || candidateId, 160),
         action,
-        owners: Array.isArray(selected.record?.owners) ? selected.record.owners
-          : Array.isArray(selected.owners) ? selected.owners : [],
+        owners,
         timing: selected.record?.timing || selected.timing
           || { kind: 'not_stated', wording: '', exactDate: '' },
         evidenceIds: [...new Set([
           ...(selected.evidenceIds || selected.record?.evidenceIds || []),
-          ...(Array.isArray(disposition?.evidenceIds) ? disposition.evidenceIds : [])
+          ...(Array.isArray(disposition?.evidenceIds) ? disposition.evidenceIds : []),
+          ...borrowedEvidence
         ])],
         reviewFlagIds: []
       }
@@ -12125,6 +12198,9 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
   }));
   const published = withMergedEvidence.filter((record, index) => rows[index].kind === 'publish');
   const proposed = withMergedEvidence.filter((record, index) => rows[index].kind === 'proposal');
+  if (borrowedOwners) {
+    console.info(JSON.stringify({ event: 'meeting_agent_owner_borrowed', journeyId: options.journeyId || '', borrowed: borrowedOwners, published: published.length }));
+  }
   return {
     actions: dedupeHybridActionRecords(normaliseAgentResult(
       { actions: published }, sourceUnits, 'actions', { meetingDate: options.meetingDate }
@@ -13816,7 +13892,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       refereeParsed?.candidateDispositions,
       suppliedRefereeCandidates,
       draft.sourceUnits,
-      { meetingDate: details.meetingDate }
+      { meetingDate: details.meetingDate, ownerPool: ensemble, journeyId: draft.draftId || '' }
     )
     : { actions: [], actionProposals: [] };
   const refereeInput = stage === 'discussion' ? {
@@ -14421,14 +14497,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const measuredProvenance = annotateMeetingAgentPassImpact(passProvenance, passImpact);
   // Timing ownership is corrected once, on what the reviewer will see, so
   // every change carries its flag.
+  traceOwners('reconciledPublished', reconciledPublishedActions, draft.draftId);
   let timingChecked = meetingMinutesTimingClauseChecksEnabled()
     ? applyTimingClauseChecks(reconciledPublishedActions, draft.sourceUnits, { meetingDate: details.meetingDate })
     : { actions: reconciledPublishedActions, flags: [] };
+  traceOwners('timingClause', timingChecked.actions, draft.draftId);
   timingChecked = {
     ...timingChecked,
     actions: foldUnownedNearCopies(
       gateTranscriptShapedActions(timingChecked.actions, draft.sourceUnits, draft.draftId, 'published'), draft.draftId)
   };
+  traceOwners('gate+foldUnowned', timingChecked.actions, draft.draftId);
   if (meetingMinutesTimingCheckEnabled()) {
     // The model says which step each timing was spoken for, quoting the
     // passage; applyTimingCheckResults verifies every quote before changing
@@ -14445,13 +14524,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       event: 'meeting_agent_timing_check_rejected', journeyId: draft.draftId, rejected: reviewed.rejected
     }));
     timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
+    traceOwners('timingCheck', timingChecked.actions, draft.draftId);
   }
   if (correctnessChecksEnabled()) {
     const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits);
+    traceOwners('chained', chained.actions, draft.draftId);
     const separated = splitExplicitMultiOwnerActions(chained.actions, draft.sourceUnits);
+    traceOwners('separated', separated.actions, draft.draftId);
     const deduped = mergeDuplicateCommitments(separated.actions);
+    traceOwners('mergeDuplicateCommitments', deduped.actions, draft.draftId);
     const ownersChecked = applyRequesterOwnerRule(deduped.actions, draft.sourceUnits);
+    traceOwners('applyRequesterOwnerRule', ownersChecked.actions, draft.draftId);
     const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
+    traceOwners('softened', softened.actions, draft.draftId);
     timingChecked = { actions: softened.actions, flags: [...timingChecked.flags, ...chained.flags, ...ownersChecked.flags, ...softened.flags] };
   }
   let actionCompletenessCheckedCount = 0;
@@ -14466,6 +14551,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
     const completeness = applyActionCompletenessResults(timingChecked.actions, completenessItems, completenessResults);
     timingChecked = { ...timingChecked, actions: completeness.actions };
+    traceOwners('completeness', timingChecked.actions, draft.draftId);
     actionCompletenessCheckedCount = completeness.checked;
     actionCompletenessCorrectedCount = completeness.corrected;
     if (completeness.checked || completeness.rejected.length) console.log(JSON.stringify({
@@ -14573,6 +14659,29 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }
       console.log(JSON.stringify({ event: 'meeting_agent_social_asides', journeyId: draft.draftId, offered: asides.length }));
     }
+    // "Write down that the July date is at risk" is an instruction to the
+    // note-taker, and the tool is the note-taker. Offered rather than published
+    // so the fact is not lost if the reviewer wants it as an action after all.
+    const minuteNotes = meetingMinutesMinuteInstructionRuleEnabled()
+      ? timingChecked.actions.filter((action) => isMinuteInstruction(action?.action)) : [];
+    if (minuteNotes.length) {
+      timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !minuteNotes.includes(action)) };
+      const at = timingChecked.actions.length;
+      for (const action of minuteNotes) {
+        proposal.changes.push({
+          id: `change-minute-note-${crypto.createHash('sha1').update(action.action || '').digest('hex').slice(0, 10)}`,
+          selected: false,
+          type: 'add', before: null, after: { ...action, reviewFlagIds: [] },
+          beforeIndex: at, afterIndex: null, index: at,
+          reviewContext: {
+            label: 'a note for the minutes',
+            reason: 'This is someone asking for a point to be recorded, not a piece of work for a named person. Add it only if it is really an action.',
+            evidenceIds: action.evidenceIds || []
+          }
+        });
+      }
+      console.log(JSON.stringify({ event: 'meeting_agent_minute_instructions', journeyId: draft.draftId, offered: minuteNotes.length }));
+    }
     // A description of how someone usually works is offered, not published.
     const practice = timingChecked.actions.filter((action) => describesUsualPractice(action, draft.sourceUnits));
     if (practice.length) {
@@ -14658,6 +14767,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     event: 'meeting_agent_presenter_aid_gate', journeyId: draft.draftId,
     meetingType: details.meetingType, dropped: presenterAidGate.dropped
   }));
+  traceOwners('presenterAidGate(final)', presenterAidGate.actions, draft.draftId);
   const actionFlagState = reconcileRecordFlags({ actions: presenterAidGate.actions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
@@ -16476,6 +16586,7 @@ router.stagedEvaluation = {
   buildPrivateStagedCandidateLedger,
   prewarmPrivateStagedCandidateLedgers,
   meetingAgentActionPrimaryPromptForDraft,
+  borrowOwnersFromTwin,
   MEETING_AGENT_COMMITMENT_LANGUAGE,
   unionActionDiscoveryResults,
   meetingMinutesAgentPrimaryUnionEnabled,

@@ -3288,7 +3288,13 @@ function splitExplicitMultiOwnerActions(actions = [], units = []) {
 // named individual owns the work. Individual ownership needs singular speech,
 // acceptance of an addressed request, or an explicit assignment by somebody
 // else.
-const OWNER_FIRST_PERSON = /\bi\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|i'd|i'm going to|i'm gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/i;
+// Work already under way is owned by the person narrating it: "I've added five
+// of those languages", "I've just been simulating real faults", "I'm trying to
+// get access to that", "I'm reviewing or rewriting the documents". Four traced
+// runs on 2026-09-27 lost owners exactly here - the speaker was mid-task and
+// never used a future tense, so nothing below matched and the name was removed.
+const OWNER_ONGOING_WORK = /\bi(?:'m|’m|\s+am)\s+(?:currently\s+|still\s+|just\s+|now\s+|also\s+)?(?:trying|working|looking|going\s+through|doing|chasing|sorting|reviewing|rewriting|drafting|writing|preparing|checking|testing|simulating|updating|pulling|putting\s+together|waiting\s+on|in\s+the\s+middle\s+of)\b|\bi(?:'ve|’ve|\s+have)\s+(?:just\s+|also\s+|only\s+|actually\s+)?been\s+\w+ing\b|\bi(?:'ve|’ve|\s+have)\s+(?:already\s+|just\s+|now\s+)?(?:added|started|begun|drafted|made\s+a\s+start)\b/i;
+const OWNER_FIRST_PERSON = new RegExp(`${/\bi\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|i'd|i'm going to|i'm gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/.source}|${OWNER_ONGOING_WORK.source}`, 'i');
 const OWNER_ACCEPTS = /^\s*(?:yes|yeah|yep|okay|ok|sure|will do|absolutely|of course|perfect|no problem)\b/i;
 const OWNER_SELF_ASSIGNMENT = /\bme\s+to\s+[a-z]|\bthat(?:'d| would)\s+be\s+me\b/i;
 function nameParts(value) {
@@ -3339,10 +3345,25 @@ function commitmentIsAboutAction(line, actionText) {
 // list, Bernard sends it"), work described as someone's ("his priority action",
 // "Sam's job") and ongoing ownership ("Sam is doing that", "Sam has been working
 // through it").
+// Someone else describing work as already in a named person's hands: "Sam is
+// doing that", "Rebecca is kind of managing that through with Andrew", "Sam has
+// been working through it". Used both to support a named owner and, spoken
+// about somebody else inside the cited exchange, as the positive evidence that
+// the named owner is narrating another person's work.
+function narratesOwnership(name, value) {
+  const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,2}\\s+(?:is|'s|’s|has\\s+been)\\s+(?:kind\\s+of\\s+|sort\\s+of\\s+|just\\s+|currently\\s+|still\\s+|now\\s+)?(?:doing|handling|managing|running|progressing|driving|coordinating|working\\s+(?:on|through)|looking\\s+(?:at|after|into)|dealing\\s+with|taking\\s+care\\s+of|sorting|picking\\s+(?:that|this|it)\\s+up|on\\s+(?:it|that|this)|tracing|reviewing|writing|drafting|preparing|chasing|leading)\\b`, 'i').test(String(value || ''));
+}
+
 function assignsWorkTo(name, value) {
   const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const text = String(value || '');
+  // "David and Colm can review the standard again": a modal handed to one or
+  // two named people, with the verb that follows. "can't" does not match.
+  const modalVerb = String.raw`(?:can|could|should|would|will|to|need\s+to|needs\s+to)\s+(?:just\s+|then\s+|also\s+|maybe\s+|both\s+)?(?:review|check|look|send|share|update|confirm|write|draft|prepare|book|chase|circulate|trace|order|arrange|cover|run|upload|sort|resolve|complete|finish|go|put|pull|follow|take|do|have|make|get|speak|talk|reach|test|set|add|create|document|schedule|contact|email|liaise|feed)\b`;
   return new RegExp(`\\b${escaped}\\b(?:\\s+\\w+){0,3}\\s+(?:to|will|shall|is\\s+(?:responsible\\s+)?to|is\\s+responsible\\s+for|owns?|leads?|takes?)\\b`, 'i').test(text)
+    || new RegExp(String.raw`\b${escaped}\b(?:\s*(?:,|and|&)\s*[A-Za-zÀ-ÿ']+(?:\s+[A-Za-zÀ-ÿ']+)?){0,2}\s+${modalVerb}`, 'i').test(text)
+    || narratesOwnership(name, text)
     || new RegExp(`\\b(?:assign(?:ed)?|leave|give|hand)\\b.{0,45}\\b${escaped}\\b`, 'i').test(text)
     || new RegExp(`\\b${escaped}(?:\\s+\\w+){0,2}\\s+(?:sends|writes|does|handles|drafts|prepares|books|checks|reviews|runs|updates|traces|orders|arranges|covers|chases|circulates|confirms|leads|owns)\\b`, 'i').test(text)
     || new RegExp(`\\b${escaped}(?:'s|’s)\\s+(?:\\w+\\s+){0,2}(?:priority|job|action|task|responsibility|area)\\b`, 'i').test(text)
@@ -3443,6 +3464,26 @@ function ownerOnlyAsksOthers(owner, lines = []) {
     && !OWNER_FIRST_PERSON.test(String(line.text || '')) && !OWNER_SELF_ASSIGNMENT.test(String(line.text || '')));
 }
 
+// The named owner asks somebody else in the exchange ("could you just maybe
+// mention it to him?") and that person accepts or commits within the next two
+// lines: the work went to the person who answered. Returns that person.
+function handedOffTo(owner, lines = [], people = []) {
+  const names = nameParts(owner);
+  const isOwner = (speaker) => nameParts(speaker).some((part) => names.includes(part));
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const value = String(line?.text || '');
+    if (!isOwner(line?.speaker) || !OWNER_REQUESTS_OTHERS.test(value)) continue;
+    if (OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value)) continue;
+    const reply = lines.slice(index + 1, index + 3).find((next) => next?.speaker && !isOwner(next.speaker)
+      && (OWNER_ACCEPTS.test(String(next.text || '')) || OWNER_FIRST_PERSON.test(String(next.text || ''))));
+    if (!reply || OWNER_REFUSES.test(String(reply.text || ''))) continue;
+    const person = people.find((candidate) => nameParts(reply.speaker).some((part) => candidate.parts.includes(part)));
+    if (person) return person;
+  }
+  return null;
+}
+
 function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
   const names = nameParts(owner);
   if (!names.length) return true;
@@ -3534,19 +3575,35 @@ function applyRequesterOwnerRule(actions = [], units = []) {
           && !namesOwner
           && sharedSubjectWords(value, action?.action) >= 2;
       }));
-    // A named person who is IN the cited exchange and still never commits
-    // (only asks others, only speaks for "we", is only mentioned) is evidence
-    // against them. A person absent from it is not: the citation is simply
-    // incomplete, so they are kept and flagged for a human to confirm.
-    const inExchange = (owner) => window.some((line) => personIsNamedIn({ parts: nameParts(owner) }, line?.speaker, line?.text));
-    const removed = unsupported.filter((owner) => rival || ownerOnlyAsksOthers(owner, window) || inExchange(owner));
+    // Two more positive signs that the work sits with somebody else, both from
+    // the cited exchange itself: a line placing it in another person's hands
+    // ("So Rebecca is kind of managing that through with Andrew"), or the named
+    // owner asking someone who then accepts ("could you just maybe mention it
+    // to him?" / "Yes, I can do that.").
+    // Read within two rows of a cited line, not across a whole long turn: a
+    // chair's round-up names many people's work in one breath, and "Andrew is
+    // working on that as well" fifteen rows on says nothing about this action.
+    const nearCited = [...new Set(cited.flatMap((index) => [index - 2, index - 1, index, index + 1, index + 2]))]
+      .map((index) => rows[index]).filter(Boolean);
+    const narratedRival = rival ? null : people.find((person) => !owners.some((owner) => nameParts(owner).some((part) => person.parts.includes(part)))
+      && nearCited.some((line) => narratesOwnership(person.label, line?.text)
+        || person.parts.some((part) => part.length >= 4 && narratesOwnership(part, line?.text))));
+    const handedOff = rival || narratedRival ? null : owners.map((owner) => handedOffTo(owner, window, people)).find(Boolean);
+    const shownElsewhere = rival || narratedRival || handedOff || null;
+    // Being in the cited exchange without a parsed commitment is not evidence
+    // against a named owner. Four traced runs on 2026-09-27 removed ten owners
+    // on that ground and every one was wrong: people mid-task ("I've added five
+    // of those languages"), a plan spoken as "we'll schedule a call", a
+    // chair's "David and Colm can review the standard again". Without positive
+    // counter-evidence the name stays and the reviewer is asked to confirm it.
+    const removed = unsupported.filter((owner) => shownElsewhere || ownerOnlyAsksOthers(owner, window));
     const unverified = unsupported.filter((owner) => !removed.includes(owner));
     const actionFlags = [];
     if (removed.length) {
       actionFlags.push(normaliseFlag({
         kind: 'ownership',
-        message: rival
-          ? `Owner changed for review: the transcript shows ${rival.label} taking this on, not ${removed.join(' or ')}. Confirm the owner.`
+        message: shownElsewhere
+          ? `Owner changed for review: the transcript shows ${shownElsewhere.label} taking this on, not ${removed.join(' or ')}. Confirm the owner.`
           : `Owner unclear: the cited evidence does not show ${removed.join(' or ')} taking this on, so it was removed. Add the person who is doing it.`,
         evidenceIds: action.evidenceIds || []
       }, flags.length + actionFlags.length));
@@ -3725,6 +3782,20 @@ function isNotAnAction(value = '') {
   const wording = text(value, 600);
   return NOT_A_DELIVERABLE.test(wording) || SPECULATIVE_ACTION.test(wording)
     || STANDING_POLICY_ACTION.test(wording);
+}
+
+// ---- Instructions to whoever writes the minutes ------------------------------
+// "Write down that the end of July release date is at risk so that nobody is
+// surprised in a fortnight." (Calderhaven, draft 1037) is a speaker telling the
+// note-taker what to record. The tool is the note-taker; the fact belongs in
+// the discussion, not in the action list under somebody's name. Likewise a
+// bare "Send the meeting minutes." is the minute-taker's own routine, but
+// "Send the minutes to the client by Friday" names a recipient and stays.
+const MINUTE_INSTRUCTION = /^\s*(?:please\s+|just\s+)?(?:write|note|jot|put|record|capture|log|minute|mark|make\s+a\s+note)\s+(?:it\s+|that\s+|this\s+)?(?:down\s+)?(?:that\b|this\b|in\s+the\s+(?:minutes|notes)\b|as\s+(?:a\s+)?(?:note|risk)\b)/i;
+const MINUTES_ROUTINE = /^\s*(?:send|circulate|distribute|share|issue|type\s+up|write\s+up|prepare|finalise|finalize|draft)\s+(?:out\s+|round\s+|around\s+)?(?:the\s+|these\s+|this\s+|today's\s+|this\s+week's\s+)?(?:meeting\s+)?(?:minutes|notes|meeting\s+notes)\s*(?:out|round|around)?\s*\.?\s*$/i;
+function isMinuteInstruction(value = '') {
+  const wording = text(value, 600);
+  return MINUTE_INSTRUCTION.test(wording) || MINUTES_ROUTINE.test(wording);
 }
 
 // ---- Social asides in the goodbyes --------------------------------------------
@@ -5141,6 +5212,7 @@ module.exports = {
   mentionedPeople,
   describesUsualPractice,
   isNotAnAction,
+  isMinuteInstruction,
   isSocialAside,
   isAobPersonalAside,
   isFarewellAction,
@@ -5159,6 +5231,7 @@ module.exports = {
   ownerTakesItOn,
   ownerAssignedInMeeting,
   assignsWorkTo,
+  narratesOwnership,
   turnWindowRows,
   addressedRequestAccepted,
   groundRowAttributions,
