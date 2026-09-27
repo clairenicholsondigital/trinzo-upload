@@ -8619,6 +8619,36 @@ const MEETING_AGENT_COMMITMENT_LANGUAGE = [
   "GRANULARITY - one deliverable per action. When one turn assigns several things (\"send the agenda, book the room, and chase the supplier\"), write one action for each; never fold separate instructions into a single compound action. An acceptance that repeats a list (\"yes - agenda, room, and I'll chase them\") confirms each item separately."
 ].join('\n');
 
+// Run action discovery twice and take the union. Measured 2026-09-27 from the
+// same direct-to-flow study as the commitment-language block, 12 transcripts
+// with answer keys, 10 runs each: with that block on, one run finds 91.1% of
+// the answer-key actions, the union of two finds 97.5%, three 98.3%, while
+// surplus moves from 0.12 to 0.18 actions per run. What one run misses another
+// mostly catches: the variance between runs is complementary, not noise on top
+// of a fixed ceiling. The union is taken before the referee, which then judges
+// every candidate on evidence as it always did. Costs one extra call per
+// actions stage, made in parallel, so no extra wall time.
+function meetingMinutesAgentPrimaryUnionEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_PRIMARY_UNION_V1 || '0'));
+}
+
+// Union of two action-discovery replies. The first reply keeps every field it
+// owns; the second only contributes actions, proposals, dispositions and flags,
+// each deduplicated the way the pipeline already dedupes across passes. A
+// missing leg (an optional call that failed) leaves the other untouched.
+function unionActionDiscoveryResults(first, second) {
+  if (!first || typeof first !== 'object') return second || null;
+  if (!second || typeof second !== 'object') return first;
+  const list = (value) => (Array.isArray(value) ? value : []);
+  return {
+    ...first,
+    actions: dedupeHybridActionRecords([...list(first.actions), ...list(second.actions)]),
+    actionProposals: dedupeHybridActionProposals([...list(first.actionProposals), ...list(second.actionProposals)]),
+    candidateDispositions: [...list(first.candidateDispositions), ...list(second.candidateDispositions)],
+    reviewFlags: mergeMeetingAgentFlags(list(first.reviewFlags), list(second.reviewFlags))
+  };
+}
+
 function meetingMinutesAgentCommitmentLanguageEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_COMMITMENT_LANGUAGE_V1 || '0'));
 }
@@ -13142,7 +13172,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   };
   const call = async (pass, prompt, callOptions = {}) => {
     const isRefereeCall = callOptions.responseKind === 'referee' || pass === 'referee' || pass.startsWith('referee-');
-    const baseMessage = pass === 'primary' ? 'Finding the main points…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
+    const baseMessage = pass === 'primary' || pass === 'primary-2' ? 'Finding the main points…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
     const promptSha256 = meetingAgentPassCacheKey(prompt);
     const requestId = meetingMinutesAgentText(callOptions.requestId, 160)
       || `${stage}:${pass}:${promptSha256.slice(0, 16)}`;
@@ -13399,7 +13429,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       stage, transcript, details, steer: draft.steer, salientDetails
     });
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
-  let [primaryResult, stagedAll] = await Promise.all([call('primary', primaryPrompt, {
+  // The second discovery leg runs beside the first, never instead of it: it
+  // is optional, so a failure here costs nothing but the union.
+  const secondPrimaryPromise = stage === 'actions' && meetingMinutesAgentPrimaryUnionEnabled()
+    ? call('primary-2', primaryPrompt, {
+      optional: true, maxAttempts: 2,
+      candidateCount: primaryValidationCandidates.length,
+      repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt,
+      validateResult: (result) => meetingAgentEmptyDiscoveryError(
+        result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
+      )
+    })
+    : Promise.resolve(null);
+  let [primaryResult, stagedAll, primarySecondResult] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
     candidateCount: primaryValidationCandidates.length,
     ...(stage === 'actions' ? { repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt } : {}),
@@ -13424,7 +13466,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
       )
     })
-  }), stagedPromise]);
+  }), stagedPromise, secondPrimaryPromise]);
+  if (primarySecondResult) {
+    const before = Array.isArray(primaryResult?.actions) ? primaryResult.actions.length : 0;
+    primaryResult = unionActionDiscoveryResults(primaryResult, primarySecondResult);
+    console.info(JSON.stringify({
+      event: 'meeting_agent_primary_union', journeyId: draft.draftId || '', stage,
+      firstLeg: before, secondLeg: (primarySecondResult.actions || []).length,
+      union: (primaryResult.actions || []).length
+    }));
+  }
   if (stage === 'discussion' && !cachedStaged.length && stagedJoinPending && !stagedAll.length) {
     // Discussion completeness benefits from the private staged comparison.
     // Recheck the same cached job once discovery has returned: in the common
@@ -16426,6 +16477,8 @@ router.stagedEvaluation = {
   prewarmPrivateStagedCandidateLedgers,
   meetingAgentActionPrimaryPromptForDraft,
   MEETING_AGENT_COMMITMENT_LANGUAGE,
+  unionActionDiscoveryResults,
+  meetingMinutesAgentPrimaryUnionEnabled,
   publicMeetingAgentDraft,
   normaliseMeetingAgentGeneration,
   meetingAgentSerialDraftWrite,
