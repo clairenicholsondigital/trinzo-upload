@@ -861,6 +861,70 @@ async function finaliseDiscussionForPublication(discussion = [], options = {}) {
 
 // ---------------------------------------------------------------------------
 
+// The same fact stated twice under one subject: "Five languages were added
+// to the code without issues; four others have characters not in current
+// drivers" beside "Andrew reports partial resolution of language character
+// restrictions with five languages added; some characters missing in drivers".
+// Discovery, recovery and the referee each write their own sentence for a
+// passage, and once records are filed by subject the restatements sit next to
+// each other. Two rows of the same kind (a question and its answer, or a
+// proposal and the decision on it, are not restatements) whose meaning
+// matches strongly and which either cite a common line or share most of
+// their content words become one row: the fuller wording, all the evidence.
+// Off unless options.mergeRestatements is true; the caller decides.
+const RESTATEMENT_SIMILARITY = 0.74;
+function rowContentTokens(value) {
+  return new Set((text(value).toLowerCase().replace(/(\w)-(\w)/g, '$1 $2').match(/[a-z0-9][a-z0-9']{2,}/g) || [])
+    .filter((token) => !STOP.has(token)).map(stem));
+}
+async function mergeRestatedRows(topics, index, options = {}) {
+  if (options.mergeRestatements !== true) return topics;
+  const rows = topics.flatMap((topic, t) => ROW_KINDS.flatMap((kind) => (topic[kind] || []).map((record, i) => ({ t, kind, i, record, text: text(record.text, 1200) }))));
+  if (rows.length < 2) return topics;
+  let vectors = null;
+  try {
+    const encode = typeof options.encode === 'function' ? options.encode : (values) => encodeViaWorker(values, {});
+    vectors = await encode(rows.map((row) => row.text));
+  } catch { vectors = null; }
+  if (!vectors) return topics;
+  const removed = new Set();
+  const merges = [];
+  for (let a = 0; a < rows.length; a += 1) {
+    if (removed.has(a) || !vectors[a]) continue;
+    for (let b = a + 1; b < rows.length; b += 1) {
+      if (removed.has(b) || !vectors[b]) continue;
+      const x = rows[a], y = rows[b];
+      if (x.t !== y.t || x.kind !== y.kind) continue;
+      const similarity = cosine(vectors[a], vectors[b]);
+      if (similarity < RESTATEMENT_SIMILARITY) continue;
+      const sharedLine = (x.record.evidenceIds || []).some((id) => (y.record.evidenceIds || []).includes(id));
+      const ta = rowContentTokens(x.text), tb = rowContentTokens(y.text);
+      let shared = 0; for (const token of ta) if (tb.has(token)) shared += 1;
+      const wordOverlap = shared / Math.max(1, Math.min(ta.size, tb.size));
+      if (!sharedLine && wordOverlap < 0.5) continue;
+      // Keep the fuller row; give it the other's evidence, details and flags.
+      const [keep, drop] = x.text.length >= y.text.length ? [x, y] : [y, x];
+      keep.record.evidenceIds = [...new Set([...(keep.record.evidenceIds || []), ...(drop.record.evidenceIds || [])])].slice(0, 12);
+      keep.record.supportingDetails = [...(keep.record.supportingDetails || []), ...(drop.record.supportingDetails || [])];
+      keep.record.reviewFlagIds = [...new Set([...(keep.record.reviewFlagIds || []), ...(drop.record.reviewFlagIds || [])])];
+      removed.add(drop === x ? a : b);
+      merges.push({ topic: topics[x.t].topic, kept: keep.text.slice(0, 120), dropped: drop.text.slice(0, 120), similarity: Number(similarity.toFixed(2)), sharedLine });
+      if (drop === x) break;
+    }
+  }
+  if (!merges.length) return topics;
+  const dropByTopic = new Map();
+  for (const idx of removed) { const row = rows[idx]; if (!dropByTopic.has(row.t)) dropByTopic.set(row.t, new Set()); dropByTopic.get(row.t).add(`${row.kind}:${row.i}`); }
+  const out = topics.map((topic, t) => {
+    const drops = dropByTopic.get(t); if (!drops) return topic;
+    const copy = { ...topic };
+    for (const kind of ROW_KINDS) copy[kind] = (topic[kind] || []).filter((_, i) => !drops.has(`${kind}:${i}`));
+    return copy;
+  });
+  if (typeof options.onRestatements === 'function') options.onRestatements(merges);
+  return out;
+}
+
 async function organiseDiscussionForReview(discussion = [], sourceUnits = [], options = {}) {
   const index = unitIndex(sourceUnits);
   let topics = (Array.isArray(discussion) ? discussion : []).map(cloneTopic);
@@ -878,6 +942,7 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
   topics = removePersonalAsides(topics);
   topics = demoteUnreadyRows(topics, index);
   topics = await consolidateTopics(topics, index, options);
+  topics = await mergeRestatedRows(topics, index, options);
   topics = dropVerbatimSupporting(topics, index);
   topics = rehomeSupportingDetails(topics, index);
   topics = sortByEvidence(topics, index);
@@ -887,6 +952,7 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
 
 module.exports = {
   organiseDiscussionForReview,
+  mergeRestatedRows,
   stripClosure,
   isPersonalAside,
   isPeripheralAside,

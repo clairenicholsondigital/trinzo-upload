@@ -67,6 +67,7 @@ const {
   finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
+const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -8635,6 +8636,42 @@ function meetingMinutesAgentPrimaryUnionEnabled() {
 }
 
 // Deterministic rule, on unless MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1=0.
+// One commitment written twice, merged by reading the pair the way a
+// minute-taker does (utils/canonicalMinutes/commitmentDuplicates.js). On
+// unless MEETING_MINUTES_AGENT_COMMITMENT_DEDUPE_V1=0. Measured 2026-09-27:
+// on 101 union pairs from the flow, 11.2 -> 9.7 actions per run with gold
+// recall 96.5% -> 96.3% (both lost hits were 0.30-threshold artefacts); on the
+// 21 live drafts the four hand-labelled duplicates and nothing else.
+function meetingMinutesCommitmentDedupeEnabled() {
+  return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_COMMITMENT_DEDUPE_V1 || '1'));
+}
+async function dedupeCommitmentsSemantically(actions = [], journeyId = '', step = '') {
+  const list = Array.isArray(actions) ? actions : [];
+  if (!meetingMinutesCommitmentDedupeEnabled() || list.length < 2) return list;
+  const texts = list.map((action) => meetingMinutesAgentText(action?.action, 1600));
+  let cosines = null;
+  try {
+    const vectors = await encodeViaWorker(texts, { timeoutMs: 6000 });
+    if (vectors) {
+      cosines = new Map();
+      for (let i = 0; i < texts.length; i += 1) for (let j = i + 1; j < texts.length; j += 1) {
+        if (vectors[i] && vectors[j]) cosines.set(`${i}|${j}`, cosine(vectors[i], vectors[j]));
+      }
+    }
+  } catch (error) { cosines = null; /* the lexical levers still apply */ }
+  const merged = mergeCommitmentDuplicates(list, { cosines: cosines || undefined });
+  if (merged.merged.length) console.log(JSON.stringify({
+    event: 'meeting_agent_commitment_duplicates', journeyId, step, semantic: Boolean(cosines), merged: merged.merged
+  }));
+  return merged.actions;
+}
+
+// Same fact twice under one discussion subject. On unless
+// MEETING_MINUTES_AGENT_DISCUSSION_RESTATEMENTS_V1=0.
+function meetingMinutesDiscussionRestatementsEnabled() {
+  return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_RESTATEMENTS_V1 || '1'));
+}
+
 function meetingMinutesMinuteInstructionRuleEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1 || '1'));
 }
@@ -14115,8 +14152,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         // Measured 2026-09-27 on stored replies for five transcripts: this
         // setting gave 7.6 topics / 0.6 singletons per run against 14.3 / 7.2
         // without segments, and kept every row.
-        const organiserOptions = topicLabels.some(Boolean)
-          ? { mergeSimilarity: 0.85, adjacentSimilarity: 0.92, labelSimilarity: 0.6 } : {};
+        const organiserOptions = {
+          ...(topicLabels.some(Boolean) ? { mergeSimilarity: 0.85, adjacentSimilarity: 0.92, labelSimilarity: 0.6 } : {}),
+          // The same fact stated twice under one subject becomes one row.
+          // Measured 2026-09-27 on the 21 live drafts: 3 of 377 rows, all
+          // restatements, gold discussion recall unchanged (263/270).
+          mergeRestatements: meetingMinutesDiscussionRestatementsEnabled(),
+          onRestatements: (merges) => console.log(JSON.stringify({ event: 'meeting_agent_discussion_restatements', journeyId: draft.draftId, merges }))
+        };
         const organised = await organiseDiscussionForReview(finalDiscussion, draft.sourceUnits, organiserOptions);
         console.log(JSON.stringify({ event: 'meeting_agent_discussion_organised', journeyId: draft.draftId, ...organised.before, afterTopics: organised.after.topics, afterRows: organised.after.rows }));
         finalDiscussion = organised.discussion;
@@ -14629,7 +14672,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     traceOwners('separated', separated.actions, draft.draftId);
     const deduped = mergeDuplicateCommitments(separated.actions);
     traceOwners('mergeDuplicateCommitments', deduped.actions, draft.draftId);
-    const ownersChecked = applyRequesterOwnerRule(deduped.actions, draft.sourceUnits);
+    const dedupedActions = await dedupeCommitmentsSemantically(deduped.actions, draft.draftId, 'merged');
+    const ownersChecked = applyRequesterOwnerRule(dedupedActions, draft.sourceUnits);
     traceOwners('applyRequesterOwnerRule', ownersChecked.actions, draft.draftId);
     const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
     traceOwners('softened', softened.actions, draft.draftId);
@@ -14864,7 +14908,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     meetingType: details.meetingType, dropped: presenterAidGate.dropped
   }));
   traceOwners('presenterAidGate(final)', presenterAidGate.actions, draft.draftId);
-  const actionFlagState = reconcileRecordFlags({ actions: presenterAidGate.actions }, mergeMeetingAgentFlags(refereeFlags, [
+  // Later passes (lifecycle, answered, salvage) can add a second wording of a
+  // commitment after the merge above, so the finished list is read once more.
+  const finalActions = await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final');
+  const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
     ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
