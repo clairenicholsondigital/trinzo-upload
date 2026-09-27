@@ -66,6 +66,7 @@ const {
   removePersonalAsides,
   finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
+const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -8771,6 +8772,37 @@ function meetingAgentTopicLabelRuleEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TOPIC_LABEL_RULE_V1 || '0'));
 }
 
+// Name subjects, not records. The transcript is segmented where the meeting
+// changes subject (utils/canonicalMinutes/discourseSegments.js), the segments
+// go through the same discovery prompt as anchors so the model names each
+// one, and every discovered record is filed under the segment its evidence
+// sits in. Runs beside the primary discovery call; a failed naming leg leaves
+// the per-record labels as they were. The rule text must stay byte-identical
+// to tests/fixtures/topic-naming-rule-v1.txt. Off unless
+// MEETING_MINUTES_AGENT_TOPIC_SEGMENTS_V1 is on.
+const MEETING_AGENT_TOPIC_NAMING_RULE = 'TOPIC LABELS. Each anchor here is one passage of the meeting. The topic field names the single main subject of that passage: a short noun phrase of two to five words with no verb and no "and" joining two subjects ("Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking"). It never describes what happened to the subject, so not "Clarification on probability bands" or "Confirmation of lack of procedure". Where a passage touches two subjects, name the one it spends most words on. Use the same label word for word only when a later passage is plainly the same subject continued; otherwise give it its own label.';
+function meetingAgentTopicSegmentsEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TOPIC_SEGMENTS_V1 || '0'));
+}
+function meetingMinutesAgentTopicNamingPrompt({ transcript, details, anchors = [], steer }) {
+  const payload = {
+    requestId: crypto.randomUUID(),
+    stage: 'DISCUSSION_ANCHORED_DISCOVERY',
+    details: details || {},
+    reviewerEmphasis: meetingAgentSteerText(steer),
+    writingRules: [MEETING_AGENT_TOPIC_NAMING_RULE],
+    preparedTranscript: String(transcript || '').trim(),
+    anchors: anchors.map((anchor) => ({
+      anchorId: meetingMinutesAgentText(anchor?.anchorId, 180),
+      evidenceIds: (Array.isArray(anchor?.evidenceIds) ? anchor.evidenceIds : []).slice(0, 12),
+      window: meetingMinutesAgentText(anchor?.window, 6000),
+      cues: meetingMinutesAgentText(anchor?.cues, 300),
+      priority: Number(anchor?.priority || 0)
+    }))
+  };
+  return `[DISCUSSION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
+}
+
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
   const writingRules = [
     ...(meetingAgentCorrectionRuleEnabled() ? [MEETING_AGENT_CORRECTION_RULE] : []),
@@ -13521,6 +13553,25 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       stage, transcript, details, steer: draft.steer, salientDetails
     });
   const primaryValidationCandidates = stage === 'discussion' ? primaryDiscussionCandidates : actionDiscoveryInventory;
+  // Subject naming leg: segments of the transcript, named by the same prompt.
+  let topicSegments = [];
+  let topicSegmentAnchors = [];
+  if (anchoredDiscussion && meetingAgentTopicSegmentsEnabled()) {
+    try {
+      topicSegments = await discourseSegments(draft.sourceUnits);
+      topicSegmentAnchors = segmentAnchors(draft.sourceUnits, topicSegments);
+    } catch (error) {
+      safeLogError('[meeting-minutes-agent] discourse segmentation skipped', error);
+      topicSegments = []; topicSegmentAnchors = [];
+    }
+  }
+  const topicNamingPromise = topicSegmentAnchors.length
+    ? call('primary-topics', meetingMinutesAgentTopicNamingPrompt({ transcript, details, anchors: topicSegmentAnchors, steer: draft.steer }), {
+      optional: true, maxAttempts: 2, responseKind: 'anchored_discussion_discovery',
+      candidateCount: topicSegmentAnchors.length,
+      transformResult: (result) => ({ segmentLabels: segmentLabels(result, topicSegmentAnchors) })
+    }).catch((error) => { safeLogError('[meeting-minutes-agent] topic naming skipped', error); return null; })
+    : Promise.resolve(null);
   // The second discovery leg runs beside the first, never instead of it: it
   // is optional, so a failure here costs nothing but the union.
   const secondPrimaryPromise = stage === 'actions' && meetingMinutesAgentPrimaryUnionEnabled()
@@ -13533,7 +13584,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       )
     })
     : Promise.resolve(null);
-  let [primaryResult, stagedAll, primarySecondResult] = await Promise.all([call('primary', primaryPrompt, {
+  let [primaryResult, stagedAll, primarySecondResult, topicNaming] = await Promise.all([call('primary', primaryPrompt, {
     optional: true,
     candidateCount: primaryValidationCandidates.length,
     ...(stage === 'actions' ? { repairPrompt: meetingAgentEmptyDiscoveryRepairPrompt } : {}),
@@ -13558,7 +13609,18 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         result, stage, primaryValidationCandidates, draft.sourceUnits, { meetingDate: details.meetingDate }
       )
     })
-  }), stagedPromise, secondPrimaryPromise]);
+  }), stagedPromise, secondPrimaryPromise, topicNamingPromise]);
+  const topicLabels = Array.isArray(topicNaming?.segmentLabels) ? topicNaming.segmentLabels : [];
+  if (stage === 'discussion' && primaryResult && topicLabels.some(Boolean)) {
+    const before = (primaryResult.discussion || []).length;
+    const regrouped = regroupDiscussionBySegments(primaryResult.discussion, draft.sourceUnits, topicSegments, topicLabels);
+    primaryResult = { ...primaryResult, discussion: regrouped.discussion };
+    console.info(JSON.stringify({
+      event: 'meeting_agent_topic_segments', journeyId: draft.draftId || '',
+      segments: topicSegments.length, labelled: topicLabels.filter(Boolean).length,
+      topicsBefore: before, topicsAfter: regrouped.discussion.length, moved: regrouped.moved
+    }));
+  }
   if (primarySecondResult) {
     const before = Array.isArray(primaryResult?.actions) ? primaryResult.actions.length : 0;
     primaryResult = unionActionDiscoveryResults(primaryResult, primarySecondResult);
@@ -14035,9 +14097,27 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }
     finalDiscussion = await dedupeSupportingDetailsSemantically(finalDiscussion, { journeyId: draft.draftId });
+    // The referee and recovery passes publish whichever candidate they chose,
+    // label and all, so subjects are filed once more here, on the final
+    // records, by the segment their evidence sits in.
+    if (topicLabels.some(Boolean)) {
+      const refiled = regroupDiscussionBySegments(finalDiscussion, draft.sourceUnits, topicSegments, topicLabels);
+      console.info(JSON.stringify({
+        event: 'meeting_agent_topic_segments_final', journeyId: draft.draftId || '',
+        topicsBefore: finalDiscussion.length, topicsAfter: refiled.discussion.length, moved: refiled.moved
+      }));
+      finalDiscussion = refiled.discussion;
+    }
     if (meetingMinutesAgentDiscussionOrganiseEnabled()) {
       try {
-        const organised = await organiseDiscussionForReview(finalDiscussion, draft.sourceUnits);
+        // Segment-named topics are already grouped by subject: merge only on
+        // the same label, not on captions that happen to share a word.
+        // Measured 2026-09-27 on stored replies for five transcripts: this
+        // setting gave 7.6 topics / 0.6 singletons per run against 14.3 / 7.2
+        // without segments, and kept every row.
+        const organiserOptions = topicLabels.some(Boolean)
+          ? { mergeSimilarity: 0.85, adjacentSimilarity: 0.92, labelSimilarity: 0.6 } : {};
+        const organised = await organiseDiscussionForReview(finalDiscussion, draft.sourceUnits, organiserOptions);
         console.log(JSON.stringify({ event: 'meeting_agent_discussion_organised', journeyId: draft.draftId, ...organised.before, afterTopics: organised.after.topics, afterRows: organised.after.rows }));
         finalDiscussion = organised.discussion;
       } catch (error) {
@@ -16514,6 +16594,9 @@ router.stagedEvaluation = {
   meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAnchoredDiscussionPrompt,
   MEETING_AGENT_TOPIC_LABEL_RULE,
+  MEETING_AGENT_TOPIC_NAMING_RULE,
+  meetingMinutesAgentTopicNamingPrompt,
+  meetingAgentTopicSegmentsEnabled,
   meetingAgentTopicLabelRuleEnabled,
   normaliseAnchoredDiscussionDiscovery,
   meetingMinutesAgentAnchoredActionPrompt,
