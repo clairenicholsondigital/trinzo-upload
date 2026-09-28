@@ -1377,6 +1377,7 @@ test('every warning decision exposes a durable Undo that survives refresh', { ti
     await saved;
     assert.equal(await page.locator('#undoToast').isVisible(), true);
     assert.match(await page.textContent('#undoToastMessage'), /Warning confirmed/i);
+    assert.equal(await page.locator('#undoToastButton').evaluate((node) => getComputedStyle(node).color), 'rgb(255, 255, 255)');
     assert.equal(await page.locator('#undoLastDecision').isVisible(), true);
 
     await page.reload();
