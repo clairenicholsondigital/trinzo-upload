@@ -43,6 +43,7 @@ const {
   timingForPublication
 } = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
+const { classifyStagedTopic } = require('../utils/stagedEditorial');
 const {
   hybridCandidateLedgerFromResult,
   highConfidenceRefereedAction,
@@ -612,6 +613,21 @@ test('discussion ledger identifies facts, decisions and questions while excludin
   assert.equal(candidates.length, 3);
   assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0751').kindHints.includes('decision'));
   assert.ok(candidates.find((candidate) => candidate.focusEvidenceId === 'T0752').kindHints.includes('open_question'));
+});
+
+test('discussion ledger preserves generic responsibility, workstream and coordination context', () => {
+  const candidates = discussionCandidateInventory(normaliseSourceUnits([
+    { id: 'T0780', speaker: 'Alex', text: 'Corporate threat monitoring is handled at head office and fed down to the site.', classification: 'keep' },
+    { id: 'T0781', speaker: 'Priya', text: 'We are considering a separate track, subject to the logistics and risk review.', classification: 'keep' },
+    { id: 'T0782', speaker: 'Alex', text: 'The team will coordinate at the end of the day after site work.', classification: 'keep' }
+  ]));
+  assert.ok(candidates.every((candidate) => candidate.kindHints.includes('material_context')));
+  assert.ok(candidates.every((candidate) => candidate.priority >= 2));
+});
+
+test('hotel administration stays administrative while hotel coordination remains material', () => {
+  assert.equal(classifyStagedTopic('Hotel reservation and travel arrangements'), 'administrative_only');
+  assert.notEqual(classifyStagedTopic('Coordinate after site while returning to the hotel'), 'administrative_only');
 });
 
 test('the completeness audit candidate set excludes represented evidence and keeps uncovered work', () => {

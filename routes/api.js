@@ -12764,7 +12764,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // Explicit decisions remain core; other accurate recovery material is kept as
   // collapsed context on the closest proposition in the same topic.
   const recoveredRows = flattenHybridDiscussion(recovered);
-  const materialCore = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|significant risk|material risk|unresolved|required decision|requires? confirmation|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation))\b/i;
+  const materialCore = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|significant risk|material risk|unresolved|required decision|requires? confirmation|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation)|responsibil(?:ity|ities)|handled (?:at|by)|separate track|workstream|in parallel|handover|debrief|end of day|after (?:the )?site|return journey)\b/i;
   const recoveredCore = recoveredRows.filter((item) => item.recordType === 'decision'
     || materialCore.test(String(item.record?.text || '')));
   if (recoveredCore.length) {
@@ -12838,7 +12838,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // detail when it adds a distinct decision, scope/requirement, risk,
   // dependency, quantified change or consequential unresolved matter. This is
   // evidence- and language-based; it contains no meeting/client vocabulary.
-  const materialDetail = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|scope|require(?:d|ment|s)?|must|standard|regulat(?:ion|ory)|compliance|risk|block(?:ed|er|ing)?|depend(?:s|ent|ency)?|subject to|unresolved|uncertain|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation)|primary (?:role|focus|objective|purpose)|increase|decrease|reduc(?:e|ed|tion)|total|target|deadline|\d+(?:[.,]\d+)?%)\b/i;
+  const materialDetail = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|scope|require(?:d|ment|s)?|must|standard|regulat(?:ion|ory)|compliance|risk|block(?:ed|er|ing)?|depend(?:s|ent|ency)?|subject to|unresolved|uncertain|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation)|primary (?:role|focus|objective|purpose)|responsibil(?:ity|ities)|handled (?:at|by)|separate track|workstream|in parallel|coordination|handover|debrief|end of day|after (?:the )?site|return journey|increase|decrease|reduc(?:e|ed|tion)|total|target|deadline|\d+(?:[.,]\d+)?%)\b/i;
   const visibleRecords = topics.flatMap((topic) => [...topic.decisions, ...topic.openQuestions, ...topic.points]);
   if (options.promoteMaterialSupporting !== false) {
     for (const topic of topics) {

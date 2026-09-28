@@ -606,6 +606,9 @@ function evidenceIdsFor(value, units = [], supplied = []) {
 const LEAVING_REMARK_PATTERN = /\b(?:(?:need|needs|have|got|going|about|time) to (?:shoot|dash|go|run|head (?:off|out)|get off|leave|be off)\b(?!\s+(?:you|it|that|this|the|a|an|over|across|through|them))|i(?:'ll| will) (?:shoot|dash|head off|be off)\b(?!\s+(?:you|it|that|this|the|a|an|over|across|through|them))|let you go|gotta go|got to go|delivery(?:'s| is)? (?:here|arriving|at the door)|someone(?:'s| is)? at the door|catch you later|see you (?:later|then|soon|all)|speak (?:later|soon))\b/i;
 const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute)|meeting (?:started|opened|began) with (?:attendee )?introductions?|attendees? introduced themselves|presence of .{0,80}(?:was|were) noted)\b/i;
 const DELIVERABLE_CONTEXT_PATTERN = /\b(?:action|approval|audit|assessment|CAPA|change|compliance|decision|document|file|finding|plan|procedure|report|review|risk|scope|software|standard|submission|test|tracker|training|translation|validation|version)\b/i;
+// Preserve generic responsibility boundaries, provisional workstream
+// allocation and operational coordination for later classification.
+const MATERIAL_DISCUSSION_CONTEXT_PATTERN = /\b(?:corporate|head office|site[- ]level|top[- ]level|handled (?:at|by)|fed down|responsibil(?:ity|ities)|separate track|workstream|in parallel|coordinate|coordination|handover|debrief|end of day|after (?:the )?site|on the way back|return journey)\b/i;
 
 function salientExcerpt(value, pattern) {
   const source = text(value, 5000);
@@ -1896,6 +1899,7 @@ function discussionCandidateInventory(units = []) {
       DISCUSSION_UNRESOLVED_POSITION_PATTERN.test(unit.text) ? 'unresolved_position' : '',
       salientIds.has(unit.id) ? 'important_detail' : '',
       actionIds.has(unit.id) ? 'action_context' : '',
+      MATERIAL_DISCUSSION_CONTEXT_PATTERN.test(unit.text) ? 'material_context' : '',
       'discussion_fact'
     ].filter(Boolean);
     const window = rows.slice(Math.max(0, index - 1), Math.min(rows.length, index + 2));
@@ -1910,6 +1914,7 @@ function discussionCandidateInventory(units = []) {
         + (kindHints.includes('negative_position') || kindHints.includes('unresolved_position') ? 4 : 0)
         + (kindHints.includes('important_detail') ? 3 : 0)
         + (kindHints.includes('action_context') ? 2 : 0)
+        + (kindHints.includes('material_context') ? 2 : 0)
         + Math.min(2, Math.floor(words.length / 12)),
       sequence: unit.sequence,
       focusText: text(unit.text, 500),

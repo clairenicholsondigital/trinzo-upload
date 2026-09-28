@@ -109,7 +109,9 @@ function objectiveIntentForTopic(topic) {
 
 function classifyStagedTopic(value) {
   const text = String(value || '').toLowerCase();
-  if (/\b(?:hotel|reservation|travel|flight|taxi|dinner|lunch|greeting|introductions?|participant arrangements?)\b/.test(text)) return 'administrative_only';
+  const operationalCoordination = /\b(?:coordinate|coordination|connect|handover|debrief|after (?:the )?site|end of day|on the way back|return journey|workstream|separate track)\b/.test(text);
+  if (/\b(?:hotel|reservation|travel|flight|taxi|dinner|lunch|greeting|introductions?|participant arrangements?)\b/.test(text)
+    && !operationalCoordination) return 'administrative_only';
   if (/\b(?:site access|document access|evidence access|audit dates?|audit schedule|preparation schedule|delivery schedule|deadline|timeline)\b/.test(text)) return 'administrative_but_material';
   return 'substantive';
 }
