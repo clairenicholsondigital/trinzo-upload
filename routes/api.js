@@ -11684,6 +11684,7 @@ function hybridCandidateDispositions(candidates = [], published = [], proposed =
 // merges a step into the action that waits for it ("Re-share the deck once
 // the animation updates are complete" is not "Restore the animation").
 const ACTION_DEPENDENCY_CLAUSE = /\b(?:once|after|when|as soon as|following|until)\b(.+)$/i;
+const GENERIC_DEPENDENCY_CLAUSE = /^(?:(?:it|that|this)(?:\s+is|['’]s)|(?:the work|the task|the job)\s+is)\s+(?:done|complete|completed|finished|ready)$/i;
 function actionDependsOn(waiting = '', step = '') {
   const clause = String(waiting || '').match(ACTION_DEPENDENCY_CLAUSE)?.[1] || '';
   if (!clause) return false;
@@ -11696,12 +11697,39 @@ function actionDependsOn(waiting = '', step = '') {
     && hybridContentTokenOverlap(stepSubject, String(waiting).replace(ACTION_DEPENDENCY_CLAUSE, '')) === 0;
 }
 
+// A condition is part of the deliverable when it carries a real gate such as
+// a meeting, approval, date or preceding work item. Do not make ordinary
+// paraphrases distinct merely because one says "once it is done" and the
+// other spells out the work that must be completed first.
+function meaningfulActionDependency(value = '') {
+  const match = String(value || '').match(ACTION_DEPENDENCY_CLAUSE);
+  if (!match) return '';
+  const clause = match[1].replace(/[.!?]+$/, '').trim().toLowerCase();
+  return GENERIC_DEPENDENCY_CLAUSE.test(clause) ? '' : clause;
+}
+
+function meaningfulActionDependencyDiff(left = '', right = '') {
+  const hasClause = (value) => ACTION_DEPENDENCY_CLAUSE.test(String(value || ''));
+  const a = meaningfulActionDependency(left);
+  const b = meaningfulActionDependency(right);
+  // Both wordings still carry a dependency, so a generic pronoun form and a
+  // fuller description are compatible paraphrases of the same wait condition.
+  if (hasClause(left) && hasClause(right) && (!a || !b)) return false;
+  // A meaningful gate cannot disappear during dedupe. If both actions have a
+  // meaningful gate, only materially different gates make them distinct; a
+  // generic "once it is done" clause remains compatible with either wording.
+  if (!a && !b) return false;
+  if (!a || !b) return true;
+  return hybridContentTokenOverlap(a, b) < 0.5;
+}
+
 function distinctActionDeliverables(left = {}, right = {}) {
   const a = meetingMinutesAgentText(left.action, 1600);
   const b = meetingMinutesAgentText(right.action, 1600);
   if (!a || !b) return false;
   if (hybridContentTokenOverlap(a, b) === 0) return true;
   if (actionDependsOn(a, b) || actionDependsOn(b, a)) return true;
+  if (meaningfulActionDependencyDiff(a, b)) return true;
   // "Ask Ravi whether the protocols are blocked" and "Ask Ravi about folder
   // access" share a verb and a person, not a deliverable. Compare what is
   // being done - the words after the lead verb, without people's names - and
@@ -11799,6 +11827,12 @@ function sameActionApproach(left = {}, right = {}) {
 function dedupeHybridActionRecords(records = [], options = {}) {
   const merged = [];
   const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
+  const wordingDetail = (value) => {
+    const text = meetingMinutesAgentText(value, 1600);
+    const qualifiers = (text.match(/\b(?:at|in|on|via|during|over|through|face[- ]?to[- ]?face|in person|online|on[- ]?site|weekend|morning|afternoon|evening|before|after|until|following)\b/gi) || []).length;
+    const content = new Set((text.toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || [])).size;
+    return (qualifiers * 2) + Math.min(content, 20) * 0.1;
+  };
   const preference = (record = {}) => {
     const wording = meetingMinutesAgentText(record.action, 1600);
     const wordCount = wording.split(/\s+/).filter(Boolean).length;
@@ -11807,6 +11841,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       + Math.min(4, (record.owners || []).length) * 4
       + Number(timingRank[record.timing?.kind] || 0) * 3
       + Math.min(35, wordCount)
+      + wordingDetail(wording)
       - Math.max(0, wordCount - 45) * 2;
   };
   const stableEvidence = (rows) => [...new Set(rows.flatMap((record) => record.evidenceIds || []))]
