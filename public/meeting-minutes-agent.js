@@ -17,6 +17,7 @@
   var saveInFlight = null;
   var saveQueued = false;
   var pendingGenerationEdits = false;
+  var pendingGenerationNavigation = false;
   var actionsInvalidatedDuringGeneration = false;
   var generationPollKey = '';
   var navigationScrollStep = null;
@@ -212,7 +213,7 @@
   var EMPTY_ROW_NOTICE = 'Empty rows stay in this tab until you type into them.';
 
   function generationSaveText(running) {
-    if (pendingGenerationEdits) return 'Your edits save as soon as generation finishes. Keep this tab open until then.';
+    if (pendingGenerationEdits) return 'Generation continues if you close this tab, but your latest edits are waiting to save. Keep this tab open until they are saved.';
     if (hasTransientEditorState()) return EMPTY_ROW_NOTICE;
     return 'Everything is saved. You can close the tab' + (running === false ? '.' : ' - generation carries on without it.');
   }
@@ -532,10 +533,13 @@
     var statusStage = status.dataset.stage;
     if (stepChanged && !statusStage) setStatus('');
     status.hidden = !status.textContent || Boolean(statusStage && STAGE_STEP[statusStage] !== state.currentStep);
-    // Deliberate navigation is persisted independently from the furthest unlocked
-    // step. During generation scheduleSave holds it until the background write is
-    // complete, so reopening the draft returns to the screen the reviewer chose.
-    if (!rendering && stepChanged && !(options && options.persist === false)) scheduleSave();
+    // Deliberate navigation is useful to remember, but it is not user work and
+    // must not produce a warning that implies generation needs this tab. Save
+    // the position after the generation write if the tab is still open.
+    if (!rendering && stepChanged && !(options && options.persist === false)) {
+      if (generationRunning()) pendingGenerationNavigation = true;
+      else scheduleSave();
+    }
     // Deliberate navigation goes to the beginning of the newly opened section.
     // Autosave normally preserves the reader's position, but while this move is
     // settling it must not restore the position from the previous section.
@@ -775,6 +779,7 @@
       var stage = element.dataset.speculationNotice;
       renderSpeculationNotice(element, stage, speculationFor(stage));
     });
+    updateStageAdvanceLabels();
   }
 
   function backgroundWorkPreparing() {
@@ -782,6 +787,12 @@
     var speculation = state.draft.speculation;
     var prewarm = state.draft.actionsPrewarm;
     return Boolean((speculation && speculation.status === 'preparing') || (prewarm && prewarm.status === 'preparing'));
+  }
+
+  function stagePreparingInBackground(stage) {
+    if (!state.draft) return false;
+    var info = speculationFor(stage) || (stage === 'actions' ? state.draft.actionsPrewarm : null);
+    return Boolean(info && info.status === 'preparing');
   }
 
   // A stage reports ready a moment before it is written into the draft, so
@@ -1755,7 +1766,10 @@
       var activeGenerationStage = state.draft.generation && state.draft.generation.status === 'running'
         ? state.draft.generation.stage : '';
       var disabledControls = {
-        generateActions: Boolean(activeGenerationStage),
+        startDiscussion: Boolean(activeGenerationStage)
+          || (!stageHasContent('discussion') && stagePreparingInBackground('discussion')),
+        generateActions: Boolean(activeGenerationStage)
+          || (!stageHasContent('actions') && stagePreparingInBackground('actions')),
         addDiscussion: activeGenerationStage === 'discussion',
         applyDiscussionEdit: Boolean(activeGenerationStage),
         generateSummary: Boolean(activeGenerationStage),
@@ -2046,18 +2060,21 @@
   // read while it runs. The server keeps going even if this tab closes.
   var pendingRegenerationStage = '';
 
-  // A button that reads "Generate actions" and then navigates is lying about
-  // itself; one that reads "Review actions" and then generates is worse. The
-  // label follows whether the stage is already there.
+  // A button that reads "Generate actions" while the server is already doing
+  // that work contradicts the status directly above it. Reflect all three real
+  // states: no work started, work under way, and saved work ready to open.
   function updateStageAdvanceLabels() {
-    [['startDiscussion', 'discussion', 'Generate discussion', 'Continue to Discussion'],
-      ['generateActions', 'actions', 'Generate actions', 'Continue to Actions']
+    [['startDiscussion', 'discussion', 'Generate discussion', 'Preparing Discussion…', 'Continue to Discussion'],
+      ['generateActions', 'actions', 'Generate actions', 'Preparing Actions…', 'Continue to Actions']
     ].forEach(function (entry) {
       var button = document.getElementById(entry[0]);
       var label = button && button.querySelector('[data-stage-advance-label]');
       if (!label) return;
-      var text = stageHasContent(entry[1]) ? entry[3] : entry[2];
+      var text = stageHasContent(entry[1]) ? entry[4]
+        : stagePreparingInBackground(entry[1]) ? entry[3] : entry[2];
       if (label.textContent !== text) label.textContent = text;
+      button.disabled = Boolean(state.draft && state.draft.generation && state.draft.generation.status === 'running')
+        || (!stageHasContent(entry[1]) && stagePreparingInBackground(entry[1]));
     });
   }
 
@@ -2223,7 +2240,9 @@
             : state.draft.qualityNotice || stageReadyText(activeStage), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
-        if (pendingGenerationEdits) scheduleSave();
+        var saveAfterGeneration = pendingGenerationEdits || pendingGenerationNavigation;
+        pendingGenerationNavigation = false;
+        if (saveAfterGeneration) scheduleSave();
         else if (hasTransientEditorState()) setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
         else setSaveStatus(savedStatusText(state.draft.updatedAt), 'saved');
       } catch (error) { setStatus(error.message, true, expectedGeneration.stage); }

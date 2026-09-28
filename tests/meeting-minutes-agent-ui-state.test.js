@@ -149,6 +149,7 @@ function startStubServer() {
   const prewarming = baseDraft('prewarming', false);
   prewarming.currentStep = 2;
   prewarming.selectedStep = 2;
+  prewarming.actions = [];
   prewarming.actionsPrewarm = { status: 'preparing', startedAt: '2026-09-16T12:00:02.000Z', completedAt: '' };
   drafts.set('prewarming', prewarming);
   const discussionReady = baseDraft('discussion-ready', false);
@@ -871,8 +872,10 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     assert.equal(await page.locator('#viewGeneratedStage').isVisible(), true);
 
     await page.click('[data-step="0"]');
+    assert.match(await page.textContent('#saveStatus'), /Everything is saved.*generation carries on without it/i,
+      'navigation alone does not pretend the background run depends on this tab');
     await page.fill('#meetingTitle', 'Edited while actions run');
-    assert.match(await page.textContent('#saveStatus'), /edits save as soon as generation finishes.*Keep this tab open until then/i);
+    assert.match(await page.textContent('#saveStatus'), /Generation continues if you close this tab.*latest edits are waiting to save.*Keep this tab open until they are saved/i);
     // The generation panel used to repeat this sentence; the save strip is now
     // the only place that says whether the tab is safe to close.
     assert.equal(await page.locator('#generationLeaveMessage').count(), 0);
@@ -895,6 +898,8 @@ test('Discussion shows Actions prewarming while the reviewer works', { timeout: 
     assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
     assert.equal(await page.locator('#actionsPrewarmNotice').isVisible(), true);
     assert.match(await page.textContent('#actionsPrewarmNotice'), /Preparing Actions in the background/i);
+    assert.equal(await page.textContent('#generateActions [data-stage-advance-label]'), 'Preparing Actions…');
+    assert.equal(await page.locator('#generateActions').isDisabled(), true);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
