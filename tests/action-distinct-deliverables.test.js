@@ -88,11 +88,11 @@ test('the same meeting described twice merges; different work with a shared noun
   const { dedupeHybridActionRecords, sameActionApproach } = require('../routes/api').stagedEvaluation;
   const row = (id, text, owners, evidenceIds) => ({ id, action: text, owners, timing: { kind: 'not_stated' }, evidenceIds });
   const merged = dedupeHybridActionRecords([
-    row('a', 'Hold a pre-audit preparation session to review the information before the audit begins.', ['Sam Carter', 'Lee Hart'], ['T0001']),
-    row('b', 'Hold a pre-audit preparation session face to face at the hotel on the weekend before the Monday start.', ['Sam Carter', 'Lee Hart'], ['T0099'])
+    row('a', 'Hold a project planning session to review the open items before work begins.', ['Sam Carter', 'Lee Hart'], ['T0001']),
+    row('b', 'Hold a project planning session in person at the conference room on Saturday before the Monday start.', ['Sam Carter', 'Lee Hart'], ['T0099'])
   ], {});
   assert.equal(merged.length, 1);
-  assert.match(merged[0].action, /face to face|hotel|weekend/i,
+  assert.match(merged[0].action, /in person|conference room|Saturday/i,
     'the consolidated meeting must retain useful location or manner detail');
   assert.equal(dedupeHybridActionRecords([
     row('a', 'Send the standards list to the reviewer.', ['Sam Carter'], ['T0001']),
