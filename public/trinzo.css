@@ -532,6 +532,18 @@ tbody tr:last-child td { border-bottom:none; }
   background:var(--info-bg) !important;
   border-color:var(--info-border) !important;
 }
+.generation-spinner {
+  width:.72rem;
+  height:.72rem;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  animation:library-spin .8s linear infinite;
+}
+@keyframes library-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) {
+  .generation-spinner { animation:none; border-right-color:currentColor; opacity:.65; }
+}
 .status.failed,
 .status.cancelled {
   color:var(--danger-text) !important;

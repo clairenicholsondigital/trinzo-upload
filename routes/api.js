@@ -11155,6 +11155,12 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
       fileName: safe.fileName || '',
       currentStep: safe.currentStep || 0,
       stageLabel: safe.stageLabel,
+      generation: safe.generation ? {
+        stage: safe.generation.stage,
+        status: safe.generation.status,
+        message: safe.generation.message || '',
+        startedAt: safe.generation.startedAt || ''
+      } : null,
       openFlagCount: (safe.reviewFlags || []).filter((flag) => flag.status === 'open').length,
       updatedAt: safe.updatedAt,
       createdAt: safe.createdAt,
