@@ -9,6 +9,7 @@ Create a `.env` file using existing pattern:
 - `POWER_AUTOMATE_AGENT_TIMEOUT_MS` (optional, default `120000`)
 - `MEETING_MINUTES_AGENT_HYBRID_V4` (optional feature flag; set to `1` to enable the staged-candidate plus Power Automate referee workflow)
 - `MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS` (optional, default `600000`; maximum age of a background hybrid generation before it is treated as interrupted)
+- `MEETING_MINUTES_AGENT_BASELINE_TOKEN_SHA256` (optional; SHA-256 of the bearer token allowed to reset Meeting Minutes in-memory caches before a controlled baseline run)
 - `POWER_AUTOMATE_WEBHOOK_URL` (required for finalisation step; HTTP trigger URL from your Power Automate flow)
 - `DATABASE_URL` (optional; Postgres connection string) or `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`
 - `PGPOOL_MAX` (optional, default `5`) and `PGCONNECT_TIMEOUT_MS` (optional, default `5000`) for the pooled Postgres client used by persistence and migrations.
@@ -22,6 +23,23 @@ npm start
 ```
 
 Open `http://localhost:3978`.
+
+## Baseline cache reset
+
+An external baseline harness can start from a cold application cache with:
+
+```bash
+curl --fail-with-body -X POST \
+  -H "Authorization: Bearer $TRINZO_BASELINE_TOKEN" \
+  https://trinzo.virtual-hub.online/api/meeting-minutes-agent/testing/reset-memory-cache
+```
+
+The endpoint clears Meeting Minutes candidate, prewarm, speculation, evidence-context,
+canonical MiniLM-profile and worker embedding caches. It never deletes drafts or their
+persisted pass caches, so a baseline run should create new drafts. If any Meeting Minutes
+generation is still active it returns `409 BASELINE_RESET_BUSY`; callers should wait and
+retry before uploading the batch. The route returns `401` for a missing or incorrect token
+and `503` when reset has not been configured or the local MiniLM worker cannot be reset.
 
 ## Frontend workflow
 1. Upload `.docx`/`.txt`.

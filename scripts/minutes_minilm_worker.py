@@ -42,6 +42,19 @@ class MiniLMWorkerHandler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:  # pragma: no cover - exercised in real envs
+        if self.path == "/cache/reset":
+            # This worker is bound to loopback by default and the public reset
+            # endpoint calls it only after authenticating the baseline token.
+            # The model remains loaded; only memoized embeddings are removed.
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._send_json({"ok": False, "reason": "Loopback access only."}, status=403)
+                return
+            cache = getattr(BACKEND, "_cache", None)
+            cleared = len(cache) if isinstance(cache, dict) else 0
+            if isinstance(cache, dict):
+                cache.clear()
+            self._send_json({"ok": True, "cleared": cleared})
+            return
         if self.path != "/encode":
             self._send_json({"ok": False, "reason": "Not found."}, status=404)
             return

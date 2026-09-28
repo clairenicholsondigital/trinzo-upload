@@ -6,6 +6,7 @@ const express = require('express');
 const apiRoutes = require('./routes/api');
 const authRoutes = require('./routes/auth');
 const meetingAgentRoutes = require('./routes/meetingAgent');
+const { createBaselineTestingRouter } = require('./routes/baselineTesting');
 const reviewFeedbackRoutes = require('./routes/reviewFeedback');
 const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 
@@ -207,6 +208,9 @@ app.get('/auth/forgot-password', (req, res) => {
 
 app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes);
 app.use('/api/meeting-agent', meetingAgentRoutes);
+app.use('/api/meeting-minutes-agent/testing', createBaselineTestingRouter({
+  clearMemoryCaches: apiRoutes.stagedEvaluation.clearMeetingAgentMemoryCaches
+}));
 app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
 

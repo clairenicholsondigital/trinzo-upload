@@ -52,6 +52,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
+const { clearMiniLMProfileMemoryCache } = require('../utils/canonicalMinutes/minilm');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { batchRefereeCandidates, normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
@@ -269,6 +270,7 @@ const {
   supersededCheckItems,
   supersededVerdicts,
   correctnessChecksEnabled,
+  clearMeetingMinutesAgentV2MemoryCaches,
   mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
 const { shapeDiscussion, dedupeDiscussionBody } = require('../utils/discussionShape');
@@ -13458,6 +13460,85 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
 const meetingAgentDraftWriteQueues = new Map();
 const meetingAgentObservedGenerationCompletions = new Set();
 
+function meetingAgentMemoryCacheState() {
+  return {
+    stagedCandidates: privateStagedCandidateCache.size,
+    stagedPreparing: [...privateStagedCandidateCache.values()].filter((entry) => entry.status !== 'ready').length,
+    stagedActive: privateStagedActive,
+    stagedQueued: privateStagedQueue.length,
+    actionPrimary: privateActionPrimaryCache.size,
+    actionPrimaryPreparing: [...privateActionPrimaryCache.values()].filter((entry) => entry.status !== 'ready').length,
+    stageSpeculations: privateStageSpeculations.size,
+    stageSpeculationsRunning: runningStageSpeculationCount(),
+    speculationTimers: speculationTimers.size,
+    backgroundStagesActive: activeMeetingAgentBackgroundStages,
+    draftWrites: meetingAgentDraftWriteQueues.size,
+    observedGenerationCompletions: meetingAgentObservedGenerationCompletions.size
+  };
+}
+
+async function resetMinutesMiniLmWorkerMemoryCache() {
+  const base = new URL(process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767');
+  if (!['127.0.0.1', '::1', 'localhost'].includes(base.hostname)) {
+    const error = new Error('The configured MiniLM worker is not local, so its memory cache cannot be reset safely.');
+    error.statusCode = 503;
+    error.code = 'BASELINE_RESET_WORKER_NOT_LOCAL';
+    throw error;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(new URL('/cache/reset', base).toString(), {
+      method: 'POST', headers: { Accept: 'application/json' }, signal: controller.signal
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.ok) {
+      const error = new Error('The MiniLM worker did not reset its memory cache.');
+      error.statusCode = 503;
+      error.code = 'BASELINE_RESET_WORKER_FAILED';
+      throw error;
+    }
+    return Number(body.cleared || 0);
+  } catch (error) {
+    if (error.code && String(error.code).startsWith('BASELINE_RESET_')) throw error;
+    const wrapped = new Error('The MiniLM worker could not be reached to reset its memory cache.');
+    wrapped.statusCode = 503;
+    wrapped.code = 'BASELINE_RESET_WORKER_UNAVAILABLE';
+    throw wrapped;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function clearMeetingAgentMemoryCaches() {
+  const before = meetingAgentMemoryCacheState();
+  const busy = before.stagedPreparing || before.stagedActive || before.stagedQueued
+    || before.actionPrimaryPreparing || before.stageSpeculationsRunning
+    || before.backgroundStagesActive || before.draftWrites;
+  if (busy) {
+    const error = new Error('Meeting-minutes work is still running. Retry the reset after it finishes.');
+    error.statusCode = 409;
+    error.code = 'BASELINE_RESET_BUSY';
+    error.state = before;
+    throw error;
+  }
+
+  // Reset the separate embedding worker first. If it is unavailable, leave the
+  // application caches untouched so a retry has an all-or-nothing contract.
+  const workerEmbeddings = await resetMinutesMiniLmWorkerMemoryCache();
+  for (const timer of speculationTimers.values()) clearTimeout(timer);
+  speculationTimers.clear();
+  privateStageSpeculations.clear();
+  privateStagedCandidateCache.clear();
+  privateActionPrimaryCache.clear();
+  meetingAgentObservedGenerationCompletions.clear();
+  const canonicalProfiles = clearMiniLMProfileMemoryCache();
+  const v2 = clearMeetingMinutesAgentV2MemoryCaches();
+  const after = meetingAgentMemoryCacheState();
+  console.info(JSON.stringify({ event: 'meeting_agent_memory_cache_reset', before, after, workerEmbeddings, canonicalProfiles }));
+  return { cleared: { workerEmbeddings, canonicalProfiles, ...v2 }, before, after };
+}
+
 function meetingAgentCompletedStagePerformance(draft = {}) {
   const stages = ['discussion', 'actions', 'summary'].map((stage) => ({
     stage, ...(draft.qualityState?.[stage] || {})
@@ -16365,7 +16446,11 @@ async function adoptStageSpeculation(fresh, stage, draftId, userId) {
 // Runs after the response has already gone back to the reviewer. Same in-process
 // pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
 // process, so there is no other executor to hand it to.
+let activeMeetingAgentBackgroundStages = 0;
+
 async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
+  activeMeetingAgentBackgroundStages += 1;
+  try {
   const backgroundStartedAt = Date.now();
   let result = null;
   let failure = null;
@@ -16438,6 +16523,9 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
     conflictFieldCount: Array.isArray(persistence?.conflictFields) ? persistence.conflictFields.length : 0,
     errorCode: failure ? meetingMinutesAgentText(failure.code, 120) || undefined : undefined
   }));
+  } finally {
+    activeMeetingAgentBackgroundStages = Math.max(0, activeMeetingAgentBackgroundStages - 1);
+  }
 }
 
 router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth, async (req, res) => {
@@ -17061,6 +17149,8 @@ router.stagedEvaluation = {
   adoptStageSpeculation,
   applyStageResultVirtually,
   privateStageSpeculations,
+  meetingAgentMemoryCacheState,
+  clearMeetingAgentMemoryCaches,
   meetingAgentCallContext,
   MEETING_AGENT_BOOT_ID,
   parseJsonLenient

@@ -25,6 +25,12 @@ const PROFILE_CACHE_LIMIT = Number(process.env.CANONICAL_MINILM_CACHE_LIMIT || 8
 // cache and recomputes, which is the behaviour that makes it safe to leave on.
 const DISK_CACHE_DIR = process.env.CANONICAL_MINILM_DISK_CACHE || '';
 
+function clearMiniLMProfileMemoryCache() {
+  const cleared = profileCache.size;
+  profileCache.clear();
+  return cleared;
+}
+
 function diskCachePath(cacheKey) {
   return path.join(DISK_CACHE_DIR, `${cacheKey}.json`);
 }
@@ -106,4 +112,4 @@ function semanticFor(profile, eventOrId) {
   return profile?.events?.[typeof eventOrId === 'string' ? eventOrId : eventOrId?.id] || { scores: {}, primaryRole: 'unknown', confidence: 0, margin: 0 };
 }
 
-module.exports = { evidencePayload, loadMiniLMProfileSync, semanticFor };
+module.exports = { evidencePayload, loadMiniLMProfileSync, semanticFor, clearMiniLMProfileMemoryCache };

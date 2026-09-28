@@ -170,7 +170,15 @@ function includedUnit(unit) {
 // Evidence validation touches the same immutable source-unit array many times
 // during one generation. Keep its derived indexes with that array so every
 // action does not rebuild the transcript, speakers and token frequencies.
-const evidenceContextCache = new WeakMap();
+let evidenceContextCache = new WeakMap();
+
+function clearMeetingMinutesAgentV2MemoryCaches() {
+  // WeakMap deliberately has no clear(). Replacing it drops every memoized
+  // transcript context while allowing any in-flight caller to finish with the
+  // context object it already holds.
+  evidenceContextCache = new WeakMap();
+  return { evidenceContexts: 'reset' };
+}
 const RESOLUTION_STOP_WORDS = new Set([
   'action', 'after', 'again', 'also', 'and', 'are', 'before', 'been', 'being', 'but', 'can', 'complete',
   'completed', 'could', 'did', 'discussion', 'does', 'done', 'follow', 'for', 'from', 'had', 'has', 'have',
@@ -5509,6 +5517,7 @@ module.exports = {
   evidenceWindowUnits,
   evidenceSupportScore,
   evidenceContextFor,
+  clearMeetingMinutesAgentV2MemoryCaches,
   resolveEvidence,
   normaliseActions,
   actionEvidenceDisposition,
