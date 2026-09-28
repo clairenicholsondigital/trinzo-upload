@@ -1751,18 +1751,32 @@
     summary: ['executiveSummary', 'meetingObjectives']
   };
 
+  // When the server last ran a stage. A run that found nothing still ran: an
+  // Actions run on a meeting where nobody takes anything on writes an empty
+  // list, and that write must be adopted like any other or the tab sits a
+  // revision behind until its next save is refused as "updated elsewhere".
+  function stageGeneratedAt(draft, stage) {
+    var generated = draft && draft.generatedStages;
+    return generated && typeof generated === 'object' ? String(generated[stage] || '') : '';
+  }
+
   function stageContentKey(draft, stage) {
     return BACKGROUND_STAGES[stage].map(function (field) {
       return JSON.stringify(draft && draft[field] != null ? draft[field] : null);
-    }).join('|');
+    }).concat([stageGeneratedAt(draft, stage)]).join('|');
   }
 
-  function stageIsEmpty(draft, stage) {
+  function stageHasRows(draft, stage) {
     if (stage === 'summary') {
-      return !String((draft && draft.executiveSummary) || '').trim()
-        && !(((draft && draft.meetingObjectives) || []).length);
+      return Boolean(String((draft && draft.executiveSummary) || '').trim())
+        || Boolean(((draft && draft.meetingObjectives) || []).length);
     }
-    return !(((draft && draft[stage]) || []).length);
+    return Boolean(((draft && draft[stage]) || []).length);
+  }
+
+  // Nothing to look at and no run behind it: the tab holds nothing here.
+  function stageIsEmpty(draft, stage) {
+    return !stageHasRows(draft, stage) && !stageGeneratedAt(draft, stage);
   }
 
   // The server finishes stages the reviewer has not reached yet and writes them
@@ -1794,6 +1808,7 @@
     stages.forEach(function (stage) {
       BACKGROUND_STAGES[stage].forEach(function (field) { state.draft[field] = serverDraft[field]; });
     });
+    if (serverDraft.generatedStages) state.draft.generatedStages = serverDraft.generatedStages;
     state.draft.revision = serverDraft.revision;
     state.draft.updatedAt = serverDraft.updatedAt;
     if (serverDraft.staleStages) state.draft.staleStages = serverDraft.staleStages;

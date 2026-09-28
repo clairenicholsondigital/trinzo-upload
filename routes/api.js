@@ -10783,9 +10783,11 @@ function meetingAgentNextSpeculativeStage(draft = {}) {
   const generation = meetingAgentGenerationState(draft.generation);
   if (generation && generation.status === 'running') return '';
   const stale = new Set(Array.isArray(draft.staleStages) ? draft.staleStages : []);
-  if (!(Array.isArray(draft.discussion) && draft.discussion.length)) return 'discussion';
-  if (!(Array.isArray(draft.actions) && draft.actions.length) || stale.has('actions')) return 'actions';
-  if (!meetingMinutesAgentText(draft.executiveSummary, 20) || stale.has('summary')) return 'summary';
+  // A stage that ran and came back empty is finished, not waiting: the next
+  // stage is the one to prepare (an empty Actions list still has a summary).
+  if (!meetingAgentStageHasContent(draft, 'discussion')) return 'discussion';
+  if (!meetingAgentStageHasContent(draft, 'actions') || stale.has('actions')) return 'actions';
+  if (!meetingAgentStageHasContent(draft, 'summary') || stale.has('summary')) return 'summary';
   return '';
 }
 
@@ -10841,12 +10843,28 @@ function runningStageSpeculationCount() {
   return count;
 }
 
+// When a stage was last generated, from the run's own quality record. Empty
+// output is still output: a meeting where nobody takes anything on ends its
+// Actions run with no rows, and that run is finished all the same.
+function meetingAgentStageGeneratedAt(draft = {}, stage = '') {
+  const state = draft?.qualityState && typeof draft.qualityState === 'object' ? draft.qualityState[stage] : null;
+  return state && typeof state === 'object' ? meetingMinutesAgentText(state.completedAt, 40) : '';
+}
+
 // Does this stage already hold something the reviewer could be looking at?
+// A stage that has been run and legitimately came back empty counts: draft
+// 1051 (a parking meeting with no owned actions) ended its Actions run with
+// zero rows, and treating that as "never run" made speculation run the stage
+// again and write the same empty result over it, moving the revision under the
+// reviewer's tab until Create summary failed with "updated elsewhere". Being
+// outdated is a separate question (see meetingAgentNextSpeculativeStage): an
+// outdated stage is re-run, but what it holds is still the reviewer's.
 function meetingAgentStageHasContent(draft = {}, stage = '') {
-  if (stage === 'discussion') return Array.isArray(draft.discussion) && draft.discussion.length > 0;
-  if (stage === 'actions') return Array.isArray(draft.actions) && draft.actions.length > 0;
-  if (stage === 'summary') return Boolean(meetingMinutesAgentText(draft.executiveSummary, 20));
-  return true;
+  if (!['discussion', 'actions', 'summary'].includes(stage)) return true;
+  if (stage === 'discussion' && Array.isArray(draft.discussion) && draft.discussion.length > 0) return true;
+  if (stage === 'actions' && Array.isArray(draft.actions) && draft.actions.length > 0) return true;
+  if (stage === 'summary' && meetingMinutesAgentText(draft.executiveSummary, 20)) return true;
+  return Boolean(meetingAgentStageGeneratedAt(draft, stage));
 }
 
 // Write a speculative result into the draft, but only into a stage that is
@@ -11095,6 +11113,14 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);
   safe.speculation = meetingAgentSpeculationState(draft);
+  // When each stage was last run. The tab uses this to tell "run and found
+  // nothing" from "not run yet", so a background run that comes back empty is
+  // adopted like any other rather than left to surface as a revision conflict.
+  safe.generatedStages = {
+    discussion: meetingAgentStageGeneratedAt(draft, 'discussion'),
+    actions: meetingAgentStageGeneratedAt(draft, 'actions'),
+    summary: meetingAgentStageGeneratedAt(draft, 'summary')
+  };
   // Degraded-source details remain in private qualityState and telemetry. If a
   // recovery path produced a grounded result and the stage persisted it as a
   // success, reviewers should see that success—not an implementation warning.
@@ -14790,10 +14816,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // "Possibly have some questions on the reviewed document." describes a state
     // of mind, not work anyone is doing. Dropped rather than offered: there is
     // nothing here for a reviewer to accept.
-    const notActions = timingChecked.actions.filter((action) => isNotAnAction(action?.action));
+    // Running the call ("give it thirty seconds for Dermot and then") is
+    // screened here as well as at candidate time, because the referee can
+    // publish from an older ledger and the model legs never saw the screen.
+    const notActions = timingChecked.actions.filter((action) => isNotAnAction(action?.action) || isMeetingAdminAction(action?.action));
     if (notActions.length) {
       timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !notActions.includes(action)) };
-      console.log(JSON.stringify({ event: 'meeting_agent_not_actions', journeyId: draft.draftId, removed: notActions.length }));
+      console.log(JSON.stringify({
+        event: 'meeting_agent_not_actions', journeyId: draft.draftId, removed: notActions.length,
+        meetingAdmin: notActions.filter((action) => isMeetingAdminAction(action?.action)).length,
+        wording: notActions.map((action) => meetingMinutesAgentText(action?.action, 120))
+      }));
     }
     const farewells = timingChecked.actions.filter((action) => isFarewellAction(action, draft.sourceUnits));
     if (farewells.length) {

@@ -87,14 +87,26 @@ function startStubServer() {
   // The server finishes a stage on its own and writes it into the draft, which
   // advances the revision under an open tab. 'background-conflict' never polls
   // (no speculation), so the tab only learns about the write when it saves.
-  ['background-conflict', 'background-poll'].forEach((id) => {
+  ['background-conflict', 'background-poll', 'background-empty'].forEach((id) => {
     const draft = baseDraft(id, false);
     draft.actions = [];
     draft.currentStep = 2;
     draft.selectedStep = 2;
-    if (id === 'background-poll') draft.speculation = { stage: 'actions', status: 'preparing' };
+    if (id !== 'background-conflict') draft.speculation = { stage: 'actions', status: 'preparing' };
     drafts.set(id, draft);
   });
+  // The background Actions run found nothing to list (a meeting where nobody
+  // takes anything on). It still ran, and the draft says so.
+  function finishActionsEmptyInBackground(id) {
+    const prior = drafts.get(id);
+    const next = {
+      ...prior, revision: prior.revision + 1, updatedAt: new Date().toISOString(),
+      actions: [], speculation: null,
+      generatedStages: { discussion: '2026-09-16T12:00:00.000Z', actions: '2026-09-16T12:03:00.000Z', summary: '' }
+    };
+    drafts.set(id, next);
+    return next;
+  }
   const backgroundActions = [{
     id: 'action-background', action: 'Circulate the checked report.', owners: ['Alex Reed'],
     timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
@@ -381,6 +393,13 @@ function startStubServer() {
       return res.json({
         ok: true, generation: null, actionsPrewarm: null,
         speculation: filled.speculation, draft: filled
+      });
+    }
+    if (req.params.id === 'background-empty') {
+      const finished = draft.generatedStages ? draft : finishActionsEmptyInBackground(req.params.id);
+      return res.json({
+        ok: true, generation: null, actionsPrewarm: null,
+        speculation: finished.speculation, draft: finished
       });
     }
     res.json({
@@ -1688,6 +1707,39 @@ test('background work already written into the draft appears without being asked
     await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation today.');
     await page.waitForFunction(async () => (await (await fetch('/test-state/background-poll')).json()).patches >= 1);
     assert.deepEqual(conflicts, [], 'the tab was already level with the revision it adopted');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a background run that found nothing is adopted like any other, not left as a conflict', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchOnDiscussion(port, 'background-empty');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    // The server writes the empty Actions result at a newer revision. The tab
+    // must take that revision: nothing is on screen to lose, and "no actions"
+    // is the finished result, not the absence of one.
+    await page.waitForResponse(async (response) => {
+      if (!response.url().endsWith('/drafts/background-empty/generation')) return false;
+      const body = await response.json().catch(() => null);
+      return Boolean(body && body.draft && body.draft.generatedStages);
+    });
+    // The poll handler adopts the revision once the body is parsed.
+    await page.waitForTimeout(400);
+
+    const conflicts = [];
+    page.on('response', (response) => { if (response.status() === 409) conflicts.push(response.url()); });
+    await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation today.');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/background-empty')).json()).patches >= 1);
+    assert.deepEqual(conflicts, [], 'the tab was level with the empty run it adopted');
+    assert.equal(await page.locator('#reloadDraft').isHidden(), true, 'no reload banner for a run that found nothing');
+    assert.doesNotMatch(await page.textContent('#saveStatus'), /Changed elsewhere/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
