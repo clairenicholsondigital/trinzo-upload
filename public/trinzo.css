@@ -384,21 +384,14 @@ tbody tr:last-child td { border-bottom:none; }
 .jobs tbody tr:hover td {
   background:var(--brand-050) !important;
 }
-.jobs th:nth-child(1),
-.jobs td:nth-child(1) { width:5%; }
-.jobs th:nth-child(2),
-.jobs td:nth-child(2) {
-  width:43%;
+.jobs .col-select { width:3.5rem; }
+.jobs .col-meeting {
+  width:40%;
   overflow-wrap:anywhere;
 }
-.jobs th:nth-child(3),
-.jobs td:nth-child(3) {
-  width:19%;
-}
-.jobs th:nth-child(4),
-.jobs td:nth-child(4) { width:14%; }
-.jobs th:nth-child(5),
-.jobs td:nth-child(5) { width:19%; }
+.jobs .col-started { width:18%; }
+.jobs .col-status { width:17%; }
+.jobs .col-actions { width:25%; }
 .jobs .progress {
   min-width:0;
   color:var(--text);
@@ -410,16 +403,18 @@ tbody tr:last-child td { border-bottom:none; }
 .jobs .fill {
   background:linear-gradient(90deg,var(--accent),var(--brand)) !important;
 }
-.jobs .row-actions {
+.jobs .library-action-group {
   display:flex;
   gap:.45rem;
   flex-wrap:wrap;
   align-items:center;
   min-width:0;
 }
-.jobs .row-actions .button,
-.jobs .row-actions button {
+.jobs .library-action-group .button,
+.jobs .library-action-group button {
   min-height:2.25rem;
+  padding:.5rem .72rem;
+  line-height:1.15;
 }
 .jobs .resume-staged {
   white-space:nowrap;
@@ -428,7 +423,7 @@ tbody tr:last-child td { border-bottom:none; }
   font-size:1.2em;
   line-height:1;
 }
-.jobs .row-actions button.danger {
+.jobs .library-action-group button.danger {
   background:var(--danger-text) !important;
   border-color:var(--danger-text) !important;
   color:#fff !important;
@@ -489,8 +484,12 @@ tbody tr:last-child td { border-bottom:none; }
     letter-spacing:.04em;
     text-transform:uppercase;
   }
-  .jobs .row-actions {
+  .jobs .library-action-group {
     min-width:0;
+  }
+  .jobs .library-action-group .button,
+  .jobs .library-action-group button {
+    flex:1 1 9rem;
   }
 }
 

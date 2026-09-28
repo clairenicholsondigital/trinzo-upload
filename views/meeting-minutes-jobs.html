@@ -37,6 +37,14 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .jobs th { background:#0b1530; color:var(--muted); font-size:.86rem; }
 .jobs tr { background:#071126; }
 .jobs tr:hover { background:#0b1730; }
+.jobs .col-select { width:3.5rem; }
+.jobs .col-meeting { width:40%; }
+.jobs .col-started { width:18%; }
+.jobs .col-status { width:17%; }
+.jobs .col-actions { width:25%; }
+.jobs .library-action-group { display:flex; gap:.45rem; align-items:center; flex-wrap:wrap; }
+.jobs .library-action-group .button,
+.jobs .library-action-group button { min-height:2.25rem; padding:.5rem .72rem; line-height:1.15; }
 .bulk-bar { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; margin:.85rem 0 0; padding:.55rem .65rem; border:1px solid var(--border); border-radius:10px; background:var(--soft); color:var(--text); }
 .bulk-bar label { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); font-size:.9rem; cursor:pointer; }
 .bulk-bar input, .job-select { accent-color:var(--accent); }
@@ -1250,21 +1258,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         <table class="jobs">
           <thead>
             <tr>
-              ${showBulkSelection ? '<th aria-label="Select"></th>' : ''}
-              <th>Meeting</th>
-              <th>Started</th>
-              <th>Status</th>
-              <th>Actions</th>
+              ${showBulkSelection ? '<th class="col-select" aria-label="Select"></th>' : ''}
+              <th class="col-meeting">Meeting</th>
+              <th class="col-started">Started</th>
+              <th class="col-status">Status</th>
+              <th class="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
             ${jobs.map((job) => `
               <tr>
-                ${showBulkSelection ? `<td data-label="Select"><input class="job-select" type="checkbox" data-select-job="${escapeHtml(job.jobId)}" aria-label="Select ${escapeHtml(jobTitle(job))}" ${canArchive(job) ? '' : 'disabled'} /></td>` : ''}
-                <td data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong></td>
-                <td data-label="Started">${escapeHtml(formatDate(job.createdAt))}</td>
-                <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
-                <td data-label="Actions" class="row-actions">
+                ${showBulkSelection ? `<td class="col-select" data-label="Select"><input class="job-select" type="checkbox" data-select-job="${escapeHtml(job.jobId)}" aria-label="Select ${escapeHtml(jobTitle(job))}" ${canArchive(job) ? '' : 'disabled'} /></td>` : ''}
+                <td class="col-meeting" data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong></td>
+                <td class="col-started" data-label="Started">${escapeHtml(formatDate(job.createdAt))}</td>
+                <td class="col-status" data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
+                <td class="col-actions" data-label="Actions"><div class="library-action-group">
                   ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
                   ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">${job.status === 'complete' ? 'Open final minutes' : 'Resume'}</a><button class="danger" data-delete-agent-draft="${escapeHtml(job.draftId)}" type="button">Delete</button>` : ''}
                   ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button resume-staged" href="${escapeAttribute(job.resumeUrl)}">Resume staged review <span aria-hidden="true">›</span></a>` : ''}
@@ -1272,6 +1280,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+                </div>
                 </td>
               </tr>
             `).join('')}
