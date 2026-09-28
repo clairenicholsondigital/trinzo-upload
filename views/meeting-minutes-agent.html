@@ -692,13 +692,19 @@
 .meeting-agent-page .flag-target{display:grid;gap:.4rem;margin-top:.55rem;padding:.6rem;border-radius:var(--radius-sm);background:var(--soft)}
 .meeting-agent-page .flag-target>span{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
 .meeting-agent-page .flag-target blockquote{margin:0;padding-left:.65rem;border-left:3px solid var(--accent);font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .flag-target p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
+.meeting-agent-page .flag-target.is-suggestion{border:1px solid var(--brand-200);background:var(--brand-50)}
 .meeting-agent-page .flag-target .compact{justify-self:start}
 .meeting-agent-page .flag-target-highlight{outline:3px solid var(--warn-border);outline-offset:3px;transition:outline-color .3s}
-.meeting-agent-page .flag input{margin-top:.55rem;font-size:var(--fs-sm)}
 .meeting-agent-page .flag details{margin-top:.5rem}
+.meeting-agent-page .review-decision-prompt{display:grid;gap:.15rem;margin:.65rem 0 0;padding-top:.6rem;border-top:1px solid var(--border);font-size:var(--fs-sm);line-height:1.4}
+.meeting-agent-page .review-decision-prompt span{color:var(--muted)}
+.meeting-agent-page .review-note>summary{width:max-content;cursor:pointer;color:var(--accent-700);font-size:var(--fs-sm);font-weight:var(--fw-bold)}
+.meeting-agent-page .review-note>div{display:flex;gap:.45rem;align-items:center;margin-top:.35rem}
+.meeting-agent-page .review-note input{margin:0;min-width:0;font-size:var(--fs-sm)}
+.meeting-agent-page .review-note button{flex:none}
 .meeting-agent-page .flag-actions{
   display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.6rem}
-.meeting-agent-page .flag-actions .quiet{margin-left:auto}
 .meeting-agent-page .review-item-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,38%);gap:.8rem;align-items:start}
 .meeting-agent-page .review-item-main{min-width:0}
 .meeting-agent-page .review-evidence{min-width:0;padding:.55rem;border-radius:var(--radius-sm);background:var(--soft-2)}
@@ -711,7 +717,8 @@
 .meeting-agent-page .review-evidence-head strong{font-size:var(--fs-sm);color:var(--heading)}
 .meeting-agent-page .review-evidence-body{margin-top:.35rem}
 .meeting-agent-page .review-evidence .evidence-row{margin:.25rem 0}
-.meeting-agent-page .review-route-missing{margin:.5rem 0 0;color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .review-route-missing{display:grid;gap:.15rem;margin:.55rem 0 0;padding:.55rem .65rem;border-radius:var(--radius-sm);background:var(--soft);color:var(--muted);font-size:var(--fs-sm)}
+.meeting-agent-page .review-route-missing strong{color:var(--heading)}
 
 /* ------------------------------------------------------------ proposal -- */
 .meeting-agent-page .proposal{margin:.85rem 0 0;padding-top:.8rem;border-top:1px solid var(--border)}
@@ -1004,7 +1011,7 @@
   <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><a id="resumeLaterLink" href="/jobs">Library</a><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span></span></div>
 
   <div class="workflow-utilities">
-    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">Check or correct each item before sharing. Open items do not prevent export.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes</h3><p class="muted">Select the changes to apply. Unchecked suggestions stay in this review queue until you apply or dismiss them.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply changes</button><button id="acceptAllProposal" type="button" hidden>Apply all</button></div></section></div></details>
+    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">For each item, check the source, correct the minutes if needed, then make a decision.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Suggested changes: choose what to add</h3><p class="muted">Tick the suggestions you want to add. Open any suggestion to check its reason and transcript evidence first. Unchecked suggestions stay in this review queue until you add them or choose Leave all suggestions out.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary quiet" type="button">Leave all suggestions out</button><button id="acceptSelectedProposal" class="button" type="button">Add selected to minutes</button><button id="acceptAllProposal" type="button" hidden>Add all to minutes</button></div></section></div></details>
   </div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>

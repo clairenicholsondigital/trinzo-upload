@@ -1547,7 +1547,12 @@
   }
 
   function reviewQueueCounts() {
-    var flags = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status === 'open'; }).length;
+    // A proposal's generated review flag is bookkeeping for persistence. The
+    // proposal itself is the one decision the reviewer needs to see, so do not
+    // count the same suggested change again as a separate warning.
+    var flags = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) {
+      return flag.status === 'open' && !proposalChangeForFlag(flag);
+    }).length;
     var proposal = state.draft && state.draft.pendingProposal;
     var suggestions = proposal && Array.isArray(proposal.changes) ? proposal.changes.length : 0;
     return { flags: flags, suggestions: suggestions, total: flags + suggestions };
@@ -1563,8 +1568,8 @@
     updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) intro.textContent = counts.suggestions
-      ? 'Warnings and suggested changes are kept together here. Open an item to review its source and make a decision.'
-      : 'Check or correct each item before sharing. Open items do not prevent export.';
+      ? 'Work through each item below. Suggested changes are only added to the minutes when you choose to add them.'
+      : 'For each item, check the source, correct the minutes if needed, then choose whether it is resolved or not needed.';
     updateFinishingBar();
   }
 
@@ -1585,31 +1590,42 @@
 
   function renderFlags() {
     var flags = (state.draft && state.draft.reviewFlags) || [];
-    var open = flags.filter(function (flag) { return flag.status === 'open'; });
+    var open = flags.filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
     var panel = document.getElementById('reviewFlags');
     var wasHidden = panel.hidden;
     if (open.length && wasHidden) panel.open = false;
     var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Check this against the transcript', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
       if (flag.status !== 'open') return '';
+      if (proposalChangeForFlag(flag)) return '';
       var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
-      var body = '<span class="flag-kind">Warning · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(flag.message) + '</div>';
       var target = flagTarget(flag);
+      var displayMessage = target && target.proposal
+        ? 'The agent found a possible addition that is not in the minutes yet.'
+        : flag.message;
+      var body = '<span class="flag-kind">Needs a decision · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(displayMessage) + '</div>';
       if (target) {
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
-        body += '<div class="flag-target"><span>' + (target.proposal ? 'Related suggestion' : 'Affected ' + escapeHtml(target.label.toLowerCase())) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote><button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review suggestion' : 'View and edit') + '</button></div>';
-      } else body += '<p class="review-route-missing"><strong>No saved item or pending suggestion matches this warning.</strong> If the issue still matters, add or correct the relevant item and then resolve the warning. If its content was removed, dismiss it.</p>';
-      body += '<input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="Add a correction note (optional)" aria-label="Correction note">';
-      // One primary: "Mark as checked" is the answer a reviewer gives most often.
-      var actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Mark as checked</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save review note</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Dismiss warning</button>';
+        body += '<div class="flag-target' + (target.proposal ? ' is-suggestion' : '') + '"><span>' + (target.proposal ? 'Suggested addition to the minutes' : 'Item to check · ' + escapeHtml(target.label)) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote>'
+          + (target.proposal ? '<p>This has not been added yet. Open it to choose whether to add it or leave it out.</p>' : '<p>Open this item if the wording, owner or timing needs correcting.</p>')
+          + '<button class="' + (target.proposal ? 'button' : 'secondary') + ' compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review and decide →' : 'Open item to correct') + '</button></div>';
+      } else body += '<div class="review-route-missing"><strong>No matching item is currently in the minutes.</strong><span>If this matters, add or correct the relevant item first. Otherwise choose Not needed.</span></div>';
+      var actions = '';
+      // A linked proposal has its own add/leave-out decision. Showing warning
+      // controls here as well made it look as though "checked" would add it.
+      if (!target || !target.proposal) {
+        body += '<p class="review-decision-prompt"><strong>Your decision</strong><span>After checking the source and making any correction, mark the issue resolved. Choose Not needed only when it should not affect the minutes.</span></p>';
+        body += '<details class="review-note"><summary>Add a review note (optional)</summary><div><input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="What did you check or change?" aria-label="Review note"><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save note and resolve</button></div></details>';
+        actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Resolved in minutes</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Not needed</button>';
+      }
       // Collapsed by default: the passage is often longer than the warning it
       // supports, and a reviewer who trusts the quoted line never opens it.
       var evidenceLines = evidenceContext(flag.evidenceIds).length;
       var evidence = '<details class="review-evidence" data-keep-open="' + escapeHtml(disclosureKey(flag.evidenceIds, 'flag-' + flag.id)) + '"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
         + (evidenceLines ? evidenceLines + ' line' + (evidenceLines === 1 ? '' : 's') : 'none linked')
         + '</span></summary><div class="review-evidence-body">' + evidenceHtml(flag.evidenceIds) + '</div></details>';
-      return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + '<div class="flag-actions">' + actions + '</div></div>' + evidence + '</div></div>';
+      return '<div class="flag review-queue-item' + (target && target.proposal ? ' suggestion-route' : '') + '"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
     }).join('');
     restoreDisclosures(document.getElementById('flagList'));
     updateReviewQueueSummary();
@@ -1685,7 +1701,7 @@
     var count = document.getElementById('proposalSelectionCount');
     var apply = document.getElementById('acceptSelectedProposal');
     if (count) count.textContent = selected + ' of ' + boxes.length + ' selected';
-    if (apply) { apply.textContent = 'Apply ' + selected + ' change' + (selected === 1 ? '' : 's'); apply.disabled = selected === 0; }
+    if (apply) { apply.textContent = 'Add ' + selected + ' to minutes'; apply.disabled = selected === 0; }
   }
 
   function formatUkDate(value) {
@@ -3216,7 +3232,7 @@
       openReviewTarget(targetButton);
       return;
     }
-    var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); var decisionLabel=button.dataset.flagStatus==='dismissed'?'Warning dismissed':button.dataset.flagStatus==='corrected'?'Warning correction saved':'Warning confirmed'; queueReviewDecision(decisionLabel);
+    var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); var decisionLabel=button.dataset.flagStatus==='dismissed'?'Review item marked not needed':button.dataset.flagStatus==='corrected'?'Review note saved and item resolved':'Review item resolved'; queueReviewDecision(decisionLabel);
   });
   document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
   document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });

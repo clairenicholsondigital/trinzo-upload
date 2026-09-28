@@ -1270,7 +1270,7 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
   }
 });
 
-test('a missing-content warning opens and highlights its exact pending suggestion', { timeout: 120000 }, async () => {
+test('a missing-content proposal is shown once as the suggestion the reviewer must decide', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -1278,15 +1278,12 @@ test('a missing-content warning opens and highlights its exact pending suggestio
     browser = launched.browser;
     const { page, errors } = launched;
     if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
-    const warning = page.locator('.flag').filter({ hasText: 'Possible missed action: Confirm access to the audit folder.' });
-    assert.match(await warning.textContent(), /Related suggestion/i);
-    assert.equal(await warning.locator('text=No saved item or pending suggestion matches').count(), 0);
-    await warning.locator('[data-view-flag-target]').click();
     const suggestion = page.locator('#minutes-proposal-proposal-1');
     await suggestion.waitFor();
-    assert.equal(await suggestion.locator('.proposal-detail').evaluate((node) => node.open), true);
-    assert.equal(await suggestion.locator('.proposal-detail>summary').evaluate((node) => node === document.activeElement), true);
-    assert.equal(await suggestion.evaluate((node) => node.classList.contains('flag-target-highlight')), true);
+    assert.equal(await page.locator('.flag').filter({ hasText: 'Confirm access to the audit folder.' }).count(), 0);
+    assert.match(await page.textContent('#proposalPanel'), /choose what to add/i);
+    assert.match(await suggestion.textContent(), /Confirm access to the audit folder/i);
+    assert.match(await page.textContent('#acceptSelectedProposal'), /Add 1 to minutes/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -1372,11 +1369,11 @@ test('every warning decision exposes a durable Undo that survives refresh', { ti
     if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
     const warning = page.locator('.flag').filter({ hasText: 'Check the owner of this action.' });
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
-      && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Warning confirmed');
-    await warning.getByRole('button', { name: 'Mark as checked' }).click();
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Review item resolved');
+    await warning.getByRole('button', { name: 'Resolved in minutes' }).click();
     await saved;
     assert.equal(await page.locator('#undoToast').isVisible(), true);
-    assert.match(await page.textContent('#undoToastMessage'), /Warning confirmed/i);
+    assert.match(await page.textContent('#undoToastMessage'), /Review item resolved/i);
     assert.equal(await page.locator('#undoToastButton').evaluate((node) => getComputedStyle(node).color), 'rgb(255, 255, 255)');
     assert.equal(await page.locator('#undoLastDecision').isVisible(), true);
 
