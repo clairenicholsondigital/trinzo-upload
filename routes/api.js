@@ -11172,6 +11172,127 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   return safe;
 }
 
+function meetingInsightEvidence(draft = {}, evidenceIds = []) {
+  const wanted = new Set((Array.isArray(evidenceIds) ? evidenceIds : []).map(String));
+  return (Array.isArray(draft.sourceUnits) ? draft.sourceUnits : [])
+    .filter((unit) => wanted.has(String(unit?.id || '')))
+    .slice(0, 3)
+    .map((unit) => ({
+      id: meetingMinutesAgentText(unit?.id, 80),
+      speaker: meetingMinutesAgentText(unit?.speaker, 120),
+      timestamp: meetingMinutesAgentText(unit?.timestamp, 40),
+      text: meetingMinutesAgentText(unit?.text, 700)
+    }));
+}
+
+function buildMeetingInsights(drafts = [], filters = {}) {
+  const entries = [];
+  const meetings = [];
+  const people = new Set();
+  const topics = new Map();
+  const addTopic = (value) => {
+    const topic = meetingMinutesAgentText(value, 240);
+    if (topic) topics.set(topic, (topics.get(topic) || 0) + 1);
+    return topic;
+  };
+  const addPeople = (values) => (Array.isArray(values) ? values : []).map((value) => meetingMinutesAgentText(value, 120)).filter(Boolean).map((value) => {
+    people.add(value);
+    return value;
+  });
+
+  for (const raw of Array.isArray(drafts) ? drafts : []) {
+    const draft = publicMeetingAgentDraft(raw);
+    const details = draft.details || {};
+    const meeting = {
+      draftId: String(draft.draftId || ''),
+      title: meetingMinutesAgentText(details.meetingTitle || draft.title || 'Meeting minutes', 300),
+      date: meetingMinutesAgentText(details.meetingDate || '', 20),
+      location: meetingMinutesAgentText(details.meetingLocation || '', 160),
+      status: meetingMinutesAgentText(draft.status || 'draft', 30),
+      updatedAt: draft.updatedAt || null,
+      resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(draft.draftId || '')}`
+    };
+    meetings.push(meeting);
+    addPeople([...(details.internalAttendees || []), ...(details.clientAttendees || []), ...(details.allAttendees || [])]);
+    const evidenceFor = (ids) => meetingInsightEvidence(draft, ids);
+    const addEntry = (kind, text, extra = {}) => {
+      const cleanText = meetingMinutesAgentText(text, 1800);
+      if (!cleanText) return;
+      const entryPeople = addPeople(extra.people || []);
+      const topic = addTopic(extra.topic || '');
+      entries.push({
+        id: meetingMinutesAgentText(`${meeting.draftId}-${kind}-${extra.id || entries.length}`, 180),
+        kind, text: cleanText, topic, people: entryPeople,
+        timing: meetingMinutesAgentText(extra.timing, 240),
+        meeting,
+        evidence: evidenceFor(extra.evidenceIds),
+        needsAttention: Boolean(extra.needsAttention),
+        attentionReason: meetingMinutesAgentText(extra.attentionReason, 240)
+      });
+    };
+    for (const topic of Array.isArray(draft.discussion) ? draft.discussion : []) {
+      const topicName = topic?.topic || 'Discussion';
+      for (const item of Array.isArray(topic?.decisions) ? topic.decisions : []) addEntry('decision', item?.text || item, { id: item?.id, topic: topicName, evidenceIds: item?.evidenceIds });
+      for (const item of Array.isArray(topic?.openQuestions) ? topic.openQuestions : []) addEntry('question', item?.text || item, { id: item?.id, topic: topicName, evidenceIds: item?.evidenceIds, needsAttention: true, attentionReason: 'Open question' });
+      for (const item of Array.isArray(topic?.points) ? topic.points : []) addEntry('discussion', item?.text || item, { id: item?.id, topic: topicName, evidenceIds: item?.evidenceIds });
+    }
+    for (const action of Array.isArray(draft.actions) ? draft.actions : []) {
+      const owners = Array.isArray(action?.owners) ? action.owners : [];
+      const timing = meetingAgentTimingLabel(action?.timing);
+      const missingOwner = owners.length === 0;
+      const missingTiming = !action?.timing || action.timing.kind === 'not_stated' || (!action.timing.wording && !action.timing.exactDate);
+      addEntry('action', action?.action, {
+        id: action?.id, people: owners, timing, evidenceIds: action?.evidenceIds,
+        needsAttention: missingOwner || missingTiming,
+        attentionReason: missingOwner && missingTiming ? 'No owner or date agreed' : missingOwner ? 'No owner agreed' : missingTiming ? 'No date agreed' : ''
+      });
+    }
+  }
+
+  const stats = {
+    meetings: meetings.length,
+    decisions: entries.filter((entry) => entry.kind === 'decision').length,
+    actions: entries.filter((entry) => entry.kind === 'action').length,
+    openQuestions: entries.filter((entry) => entry.kind === 'question').length
+  };
+  const type = ['decision', 'action', 'question', 'discussion'].includes(String(filters.type || '')) ? String(filters.type) : '';
+  const person = String(filters.person || '').trim().toLowerCase();
+  const topic = String(filters.topic || '').trim().toLowerCase();
+  const status = ['draft', 'review', 'complete'].includes(String(filters.status || '').toLowerCase()) ? String(filters.status).toLowerCase() : '';
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.from || '')) ? String(filters.from) : '';
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.to || '')) ? String(filters.to) : '';
+  const stopWords = new Set(['what', 'when', 'where', 'which', 'who', 'why', 'how', 'did', 'does', 'have', 'has', 'about', 'from', 'with', 'that', 'this', 'were', 'was', 'the', 'our', 'and', 'for', 'into']);
+  const terms = String(filters.q || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]{1,}/g)?.filter((term) => !stopWords.has(term)) || [];
+  const intent = /\b(decid\w*|decis\w*|agree\w*)/i.test(String(filters.q || '')) ? 'decision' : /\b(action\w*|commit\w*|follow[- ]?up|doing|owner\w*)/i.test(String(filters.q || '')) ? 'action' : '';
+  const scored = entries.map((entry) => {
+    const haystack = [entry.text, entry.topic, entry.meeting.title, entry.meeting.date, entry.meeting.location, entry.people.join(' '), entry.timing].join(' ').toLowerCase();
+    const termScore = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+    return { entry, score: termScore + (intent && entry.kind === intent ? 2 : 0) };
+  }).filter(({ entry, score }) => {
+    if (terms.length && score === 0) return false;
+    if (type && entry.kind !== type) return false;
+    if (person && !entry.people.some((value) => value.toLowerCase() === person)) return false;
+    if (topic && entry.topic.toLowerCase() !== topic) return false;
+    if (status && entry.meeting.status !== status) return false;
+    if (from && (!entry.meeting.date || entry.meeting.date < from)) return false;
+    if (to && (!entry.meeting.date || entry.meeting.date > to)) return false;
+    return true;
+  }).sort((left, right) => right.score - left.score || String(right.entry.meeting.date || right.entry.meeting.updatedAt || '').localeCompare(String(left.entry.meeting.date || left.entry.meeting.updatedAt || '')));
+  const limit = Math.min(Math.max(Number(filters.limit) || 80, 1), 300);
+  const offset = Math.min(Math.max(Number(filters.offset) || 0, 0), 100000);
+  return {
+    stats,
+    facets: {
+      people: [...people].sort((a, b) => a.localeCompare(b)).slice(0, 200),
+      topics: [...topics.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 200).map(([name, count]) => ({ name, count }))
+    },
+    recentMeetings: meetings.sort((a, b) => String(b.date || b.updatedAt || '').localeCompare(String(a.date || a.updatedAt || ''))).slice(0, 8),
+    attention: entries.filter((entry) => entry.needsAttention).slice(0, 12),
+    results: scored.slice(offset, offset + limit).map(({ entry }) => entry),
+    pagination: { total: scored.length, limit, offset }
+  };
+}
+
 function mergeMeetingAgentFlags(existing = [], added = []) {
   const byId = new Map();
   for (const raw of [...existing, ...added].filter(isUsefulMeetingAgentReviewFlag)) {
@@ -15234,6 +15355,15 @@ router.get('/meeting-minutes-agent/drafts', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/meeting-minutes-agent/insights', requireAuth, async (req, res) => {
+  try {
+    const drafts = await listMeetingMinutesAgentDrafts(req.authUser?.userId, 100);
+    return res.json({ ok: true, ...buildMeetingInsights(drafts, req.query || {}) });
+  } catch (error) {
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
 router.get('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
@@ -16735,6 +16865,8 @@ router.post('/copilot-chat', async (req, res) => {
     return res.status(500).json({ ok: false, error: error.message || 'Chat test failed.' });
   }
 });
+
+router.meetingInsights = { buildMeetingInsights };
 
 router.stagedEvaluation = {
   runStagedSequenceForEvaluation,

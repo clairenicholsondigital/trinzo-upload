@@ -6,7 +6,8 @@
   var primaryHomeUrl = '/meeting-minutes-agent';
   var primaryNavItems = [
     { href: primaryHomeUrl, label: 'Meeting Minutes Agent' },
-    { href: '/jobs', label: 'Library' }
+    { href: '/jobs', label: 'Library' },
+    { href: '/insights', label: 'Insights' }
   ];
 
   function normalisedPath(value) {
