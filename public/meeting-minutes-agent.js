@@ -2110,16 +2110,26 @@
     if (!(options && options.regenerate)) { showStep(STAGE_STEP[stage], { scroll: true }); return; }
     pendingRegenerationStage = stage;
     var dialog = document.getElementById('regenerationDialog');
-    var summaryRegeneration = stage === 'summary';
-    document.getElementById('regenerationTitle').textContent = summaryRegeneration
-      ? 'Regenerate meeting summary?'
-      : 'Generate new suggestions?';
-    document.getElementById('regenerationMessage').textContent = summaryRegeneration
-      ? 'This will create new meeting objectives and a new executive summary. Your current version stays visible while the agent works, then the new version will replace it.'
-      : 'Your current draft stays visible while the agent works. Anything you edited remains unchanged; new differences arrive as suggestions for you to apply or dismiss.';
-    document.getElementById('confirmRegeneration').textContent = summaryRegeneration
-      ? 'Regenerate summary'
-      : 'Generate suggestions';
+    var regenerationCopy = {
+      discussion: {
+        title: 'Regenerate discussion?',
+        message: 'Your current discussion stays visible while the agent works. Anything you edited remains unchanged; newly generated differences arrive as suggestions for you to apply or dismiss.',
+        confirm: 'Regenerate discussion'
+      },
+      actions: {
+        title: 'Regenerate actions?',
+        message: 'Your current action list stays visible while the agent works. Anything you edited remains unchanged; newly generated differences arrive as suggestions for you to apply or dismiss.',
+        confirm: 'Regenerate actions'
+      },
+      summary: {
+        title: 'Regenerate meeting summary?',
+        message: 'This will create new meeting objectives and a new executive summary. Your current version stays visible while the agent works, then the new version will replace it.',
+        confirm: 'Regenerate summary'
+      }
+    }[stage];
+    document.getElementById('regenerationTitle').textContent = regenerationCopy.title;
+    document.getElementById('regenerationMessage').textContent = regenerationCopy.message;
+    document.getElementById('confirmRegeneration').textContent = regenerationCopy.confirm;
     dialog.showModal();
   }
 

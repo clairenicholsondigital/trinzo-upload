@@ -1602,6 +1602,12 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.ok(actionLayout.height < 180, JSON.stringify(actionLayout));
     assert.equal(actionLayout.metaAligned, true, JSON.stringify(actionLayout));
     assert.match(await page.textContent('#auditActions'), /Check transcript for more actions/i);
+    await page.click('#regenerateActions');
+    assert.equal(await page.textContent('#regenerationTitle'), 'Regenerate actions?');
+    assert.match(await page.textContent('#regenerationMessage'), /current action list stays visible/i);
+    assert.match(await page.textContent('#regenerationMessage'), /differences arrive as suggestions/i);
+    assert.equal(await page.textContent('#confirmRegeneration'), 'Regenerate actions');
+    await page.locator('#regenerationDialog button[value="cancel"]').click();
 
     await page.selectOption('#mobileStepSelect', '4');
     assert.match(await page.textContent('#generateSummary'), /Regenerate summary/i);
@@ -1883,8 +1889,8 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     // Asking before replacing work the reviewer may have edited is the point of
     // the dialog, and it is still asked on the path that means "redo this".
     assert.equal(await page.locator('#regenerationDialog').isVisible(), true);
-    assert.equal(await page.textContent('#regenerationTitle'), 'Generate new suggestions?');
-    assert.equal(await page.textContent('#confirmRegeneration'), 'Generate suggestions');
+    assert.equal(await page.textContent('#regenerationTitle'), 'Regenerate actions?');
+    assert.equal(await page.textContent('#confirmRegeneration'), 'Regenerate actions');
     await page.click('#confirmRegeneration');
     const response = await started;
     assert.equal(response.request().postDataJSON().selectedStep, 2);
