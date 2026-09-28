@@ -615,7 +615,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("job.status === 'complete' ? 'Open final minutes' : 'Resume'", jobs_page)
         self.assertNotIn('href="/jobs?type=meeting-minutes"', jobs_page)
         self.assertNotIn('href="/jobs?type=project-updates"', jobs_page)
-        self.assertIn('href="/staged-meeting-minutes">Process new meeting</a>', jobs_page)
+        self.assertIn('href="/meeting-minutes-agent">Process new meeting</a>', jobs_page)
         self.assertIn('Resume staged review <span aria-hidden="true">›</span>', jobs_page)
         self.assertIn("body: JSON.stringify(allFinished ? { archiveAll: true }", jobs_page)
         self.assertIn('aria-label="Job queues"', jobs_page)
