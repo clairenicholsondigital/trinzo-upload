@@ -2095,13 +2095,21 @@ const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
 // when-question sits in its own short turn, outside the cited commitment. When
 // an action has no timing, a when-question inside its exchange whose reply
 // (within the next two rows) names a time supplies it.
-const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would|do|does|did|should|might) (?:you|that|it|we|he|she|they)|when do you (?:think|reckon|expect)|what(?:'s| is) the (?:date|deadline|timescale|timeline|timing)|what sort of time(?:scale|frame|line)|(?:any idea|roughly) when|how soon|when for|when(?:'s| is| would| will) (?:that|it|this) (?:be|due|going to|likely|for))\b/i;
+const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would|do|does|did|should|might) (?:you|that|it|we|he|she|they)|when do you (?:think|reckon|expect)|what(?:'s| is) the (?:date|deadline|timescale|timeline|timing)|what sort of time(?:scale|frame|line)|(?:any idea|roughly) when|how soon|when for|when(?:'s| is| would| will) (?:that|it|this) (?:be|due|going to|likely|for)|(?:timeline|timescale|timeframe|time frame|eta) (?:on|for) (?:that|this|it|those|these))\b/i;
 // The asker can be the one who settles it: "And when do you think, Dermot?"
 // ... "Okay so that's the fifteenth. I'll put it in as the fifteenth." A row
 // from the asker counts only when it reads as settling the date, never when
 // it is another question.
 const SETTLES_TIMING = /\b(?:so that(?:'s| is)|let(?:'s| us) (?:say|call it|put|go with)|put (?:it|that) (?:in|down) (?:as|for)|call it|we(?:'ll| will) say|pencil(?:led)? (?:it |that )?in|go with|make it)\b/i;
 const ANSWER_TIMING = /\b(?:today|tonight|tomorrow(?: morning| afternoon)?|this week|next week|end of (?:the |this |next )?week|(?:the )?(?:rest|remainder) of (?:the |this )?week|(?:this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|a fortnight|(?:in |within )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2}) (?:days?|weeks?|months?)|(?:by |on )?the (?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)|\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
+// Does the answer name what it is about before the time? "The three new DIs,
+// this week" does; "Okay so that's the fifteenth" and "It'll be Friday though"
+// do not - what is left once the fillers go is nothing.
+const ANSWER_LEAD_FILLER = /\b(?:okay|ok|yeah|yes|yep|right|well|so|actually|probably|maybe|hopefully|ideally|erm|um|that(?:'s|’s| is| would be| will be| should be)?|it(?:'s|’s|'ll|’ll| is| will| would| should| could)?(?: be)?|i(?:'ll|’ll| will| would| can| think| reckon| would say)?|we(?:'ll|’ll| will| would| can| could)?|let(?:'s|’s| us)|put (?:it|that) (?:in|down) (?:as|for)|call it|say|go with|make it|by|on|for|the|a|an|at|in|then|about|around|roughly|be|is|was|and|of|to)\b/gi;
+function answerNamesSubject(lead = '') {
+  return contentTokens(String(lead || '').replace(ANSWER_LEAD_FILLER, ' ')).length > 0;
+}
+const UNKNOWN_TIMING_ANSWER = /\b(?:don['’]t know|do not know|no idea|not sure|couldn['’]t say|can['’]t say|hard to say|it depends|could be [^.,;]{1,40} or (?:it )?could be)\b/i;
 function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
   const window = evidenceWindowUnits(units, evidenceIds, 3);
@@ -2115,10 +2123,120 @@ function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {})
       const spoken = String(reply?.text || '');
       if (reply?.speaker === question?.speaker && (/\?/.test(spoken) || !SETTLES_TIMING.test(spoken))) continue;
       const phrase = spoken.match(ANSWER_TIMING);
-      if (phrase) return timingFrom({ timing: { wording: phrase[0].toLowerCase().replace(/\s+/g, ' ').trim() } }, options);
+      if (!phrase) continue;
+      // "I genuinely don't know until I've looked, it could be a phone call
+      // or it could be a month" answers the question with no answer.
+      if (UNKNOWN_TIMING_ANSWER.test(spoken)) continue;
+      // "The three new DIs, this week. The duplicate, I genuinely don't know."
+      // An answer that names its own subject before the time is about that
+      // subject: take it only for an action that shares a word with it. A bare
+      // "Friday" or "It'll be Friday though" names nothing and is taken as is.
+      const lead = spoken.slice(0, phrase.index);
+      if (options.action && answerNamesSubject(lead) && !sharesSubjectWord(options.action, spoken)) continue;
+      return timingFrom({ timing: { wording: phrase[0].toLowerCase().replace(/\s+/g, ' ').trim() } }, options);
     }
   }
   return timing;
+}
+
+// ---- Acceptance that lives in the turn structure, not the cited words ------
+// The keyword reading of an action's cited lines answers "unclear" for three
+// exchanges a person reads as accepted work (draft 1055, all three stuck in
+// the suggestions queue):
+//   "David, is that something you can write up as comments?" / "It'll be
+//   Friday though, I'm on site Wednesday and Thursday."     - a timing is
+//   the yes;
+//   "Can you find out what they'd need to do it" said by the chair straight
+//   after Ffion raised the problem, and nobody objects   - the addressee is
+//   the previous speaker;
+//   "So those need new DIs" ... "And Sanjay, timeline on that?" / "The three
+//   new DIs, this week."                                   - the owner
+//   answers a when-question about the same work with a date.
+// Each rule needs speakers and order, so it reads the transcript rows rather
+// than the flattened evidence string. It only ever upgrades "unclear" or
+// "unaccepted_request"; suggestions, status and completed work stay as they are.
+const ASKS_FOR_WORK = /\b(?:please|can (?:you|somebody|someone)|could (?:you|somebody|someone)|would (?:you|somebody|someone)|will (?:you|somebody|someone)|(?:is|are) (?:that|this|it|they) something (?:you|we) (?:can|could)|(?:are|would) you (?:able|happy|ok|okay) to|you (?:can|could) (?:write|send|draft|check|find|look|do|put|pull|get|sort|chase|update|prepare|review)\b|(?:do|can) you (?:want|mind) to)\b/i;
+const ASKS_WHEN = new RegExp(`${WHEN_QUESTION.source}|\\b(?:timeline|timescale|timeframe|time frame|eta|when)\\b[^.?!]{0,40}\\?`, 'i');
+const DECLINES_WORK = /\b(?:can't|cannot|couldn't|won't|not me|not (?:my|mine)|i don't think i can|i'm not (?:able|sure i can)|no,? (?:i|we) (?:can't|won't|don't))\b/i;
+function speakerIsOwnerName(speaker = '', owners = []) {
+  const names = (Array.isArray(owners) ? owners : []).map((owner) => String(owner || '').trim().toLowerCase()).filter(Boolean);
+  if (!names.length) return true;
+  return speakerIsOwner(speaker, owners);
+}
+function sharesSubjectWord(action = '', spoken = '') {
+  const words = (value) => new Set(String(value || '').toLowerCase().match(/[a-z][a-z0-9'-]{2,}/g) || []);
+  const stop = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'from', 'into', 'then', 'them', 'they', 'those', 'these', 'there', 'their', 'have', 'has', 'will', 'week', 'day', 'days', 'new', 'one', 'two', 'three', 'four', 'five', 'all', 'any', 'are', 'was', 'were', 'been', 'being', 'just', 'also', 'not', 'but', 'yes', 'yeah', 'okay', 'well', 'need', 'needs', 'get', 'got', 'its', 'our', 'your', 'you', 'out', 'about', 'what', 'which', 'when', 'where', 'who', 'how', 'can', 'could', 'should', 'would']);
+  const target = [...words(action)].filter((word) => !stop.has(word));
+  const source = words(spoken);
+  return target.some((word) => source.has(word) || source.has(`${word}s`) || (word.endsWith('s') && source.has(word.slice(0, -1))));
+}
+function acceptanceAroundEvidenceDetail(action = {}, units = []) {
+  const none = { disposition: '', evidenceIds: [] };
+  const rows = evidenceContextFor(units).rows;
+  const wanted = new Set((Array.isArray(action?.evidenceIds) ? action.evidenceIds : []).map((id) => text(id, 30)));
+  const cited = rows.map((unit, index) => (wanted.has(unit.id) ? index : -1)).filter((index) => index >= 0);
+  if (!cited.length) return none;
+  const owners = Array.isArray(action?.owners) ? action.owners : [];
+  // Accepted by whom? Without a named owner there is nobody for the reply
+  // to tie the work to, and an ownerless "accepted" row was being restored to
+  // the published list and then absorbing the suggestion it came from.
+  if (!owners.length) return none;
+  const first = Math.min(...cited);
+  const last = Math.max(...cited);
+  const declinedAfter = (index) => rows.slice(index + 1, index + 3).some((row) => DECLINES_WORK.test(String(row?.text || '')));
+  // Rule 1: a request or when-question answered, within two rows, by someone
+  // else with a time or a yes. The answerer must be the owner when one is named.
+  for (const index of new Set([...cited, ...cited.map((value) => value + 1)])) {
+    const row = rows[index];
+    if (!row) continue;
+    const spoken = String(row.text || '');
+    if (!ASKS_FOR_WORK.test(spoken) && !ASKS_WHEN.test(spoken)) continue;
+    for (const reply of rows.slice(index + 1, index + 3)) {
+      if (!reply || reply.speaker === row.speaker) continue;
+      const answer = String(reply.text || '');
+      if (DECLINES_WORK.test(answer) || UNKNOWN_TIMING_ANSWER.test(answer)) break;
+      if (!hasTimingSignal(answer) && !ACTION_ACCEPTANCE_PATTERN.test(answer)) continue;
+      if (!speakerIsOwnerName(reply.speaker, owners)) continue;
+      // "The three new DIs, this week" answers for the DIs, not for whatever
+      // else was asked about nearby; a bare "Friday" or "yes" answers for it.
+      const timed = answer.match(ANSWER_TIMING);
+      const lead = timed ? answer.slice(0, timed.index) : '';
+      if (timed && answerNamesSubject(lead) && !sharesSubjectWord(action.action, answer)) continue;
+      return { disposition: 'accepted_request', evidenceIds: [row.id, reply.id] };
+    }
+  }
+  // Rule 2: the chair hands the work to the person who just raised it. The
+  // request comes from someone else within three rows of the owner's cited
+  // line, nobody but the requester speaks in between, and nobody declines.
+  if (owners.length) {
+    for (let index = first; index <= Math.min(rows.length - 1, last + 3); index += 1) {
+      const row = rows[index];
+      if (!row || !ASKS_FOR_WORK.test(String(row.text || '')) || speakerIsOwner(row.speaker, owners)) continue;
+      const ownerBefore = rows.slice(Math.max(0, index - 3), index).map((unit, offset) => ({ unit, at: Math.max(0, index - 3) + offset }))
+        .filter(({ unit }) => speakerIsOwner(unit.speaker, owners)).pop();
+      if (!ownerBefore) continue;
+      const between = rows.slice(ownerBefore.at + 1, index);
+      if (between.some((unit) => unit.speaker !== row.speaker)) continue;
+      if (declinedAfter(index)) continue;
+      return { disposition: 'accepted_request', evidenceIds: [rows[ownerBefore.at].id, row.id] };
+    }
+  }
+  // Rule 3: later on, the owner answers a when-question about the same work
+  // with a time. "And Sanjay, timeline on that?" "The three new DIs, this week."
+  if (owners.length) {
+    for (let index = last + 1; index <= Math.min(rows.length - 1, last + 12); index += 1) {
+      const row = rows[index];
+      if (!row || !speakerIsOwner(row.speaker, owners)) continue;
+      const spoken = String(row.text || '');
+      if (!hasTimingSignal(spoken) || !sharesSubjectWord(action.action, spoken)) continue;
+      const asked = rows.slice(Math.max(0, index - 2), index).some((unit) => unit.speaker !== row.speaker && ASKS_WHEN.test(String(unit.text || '')));
+      if (asked) return { disposition: 'committed', evidenceIds: [rows[index - 1].id, row.id] };
+    }
+  }
+  return none;
+}
+function acceptanceAroundEvidence(action = {}, units = []) {
+  return acceptanceAroundEvidenceDetail(action, units).disposition;
 }
 
 // "Let's put the follow-up in for the ninth or the tenth." "The tenth suits
@@ -2262,7 +2380,13 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action) => {
     let evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
-    let timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options), units, evidenceIds, options), units, evidenceIds, options);
+    // The rows where the work was accepted (a timing given as the yes, the
+    // chair handing it over, the owner answering a when-question) belong in
+    // the citation: they are what a reviewer checks, and the timing backfills
+    // read the cited rows.
+    const accepted = acceptanceAroundEvidenceDetail(action, units);
+    if (accepted.disposition) evidenceIds = [...new Set([...evidenceIds, ...accepted.evidenceIds])].slice(0, 8);
+    let timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options), units, evidenceIds, { ...options, action: action?.action }), units, evidenceIds, options);
     if (timing.kind === 'not_stated') {
       const adjacent = adjacentOwnerTiming(action, units, evidenceIds, options);
       if (adjacent) ({ evidenceIds, timing } = adjacent);
@@ -4661,7 +4785,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       timing = normaliseTimingWording(timing);
       timingShapeIssue = timingPublicationIssue(timing);
       if (timingShapeIssue) timing = timingForPublication(timing);
-      timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timing, units, evidenceIds, options), units, evidenceIds, options), units, evidenceIds, options);
+      timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timing, units, evidenceIds, options), units, evidenceIds, { ...options, action }), units, evidenceIds, options);
       // Replaced from the transcript rather than removed: nothing to report.
       if (timingShapeIssue && timing.kind !== 'not_stated' && timing.wording) timingShapeIssue = '';
     }
@@ -5321,6 +5445,8 @@ module.exports = {
   supersededVerdicts,
   applyRequesterOwnerRule,
   backfillAskedTiming,
+  acceptanceAroundEvidence,
+  acceptanceAroundEvidenceDetail,
   resolveOfferedDateChoice,
   ownerTakesItOn,
   ownerAssignedInMeeting,

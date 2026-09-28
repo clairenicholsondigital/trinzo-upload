@@ -238,7 +238,14 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
     if (at < 0) { kept.push({ record: action, index }); return; }
     const existing = kept[at].record;
     const verdict = commitmentDuplicate(existing, action, { cosine: cosineOf(kept[at].index, index) });
-    const [winner, loser] = weight(action) > weight(existing) ? [action, existing] : [existing, action];
+    // When one action is a step of the other ("Load the documents for Grace
+    // to review" inside "Load ... then download and put them in the tech
+    // file"), the compound is the one that keeps both steps; dropping it for
+    // the fuller-looking single step loses the second step for good.
+    const steps = (r) => 1 + (String(r.action || '').match(/\b(?:then|after that|followed by|and (?:then )?(?:download|send|share|upload|update|review|confirm|check|put|insert|place|forward|circulate|submit|return|report|book|arrange|schedule|prepare|draft|write|complete|finalise|finalize|issue|raise|log|record|add|remove|test|run|deploy|release|publish|notify|inform|chase|escalate)\b)/gi) || []).length;
+    const [winner, loser] = steps(action) !== steps(existing)
+      ? (steps(action) > steps(existing) ? [action, existing] : [existing, action])
+      : (weight(action) > weight(existing) ? [action, existing] : [existing, action]);
     kept[at] = { index: winner === action ? index : kept[at].index, record: {
       ...winner,
       owners: winner.owners && winner.owners.length ? winner.owners : (loser.owners || []),

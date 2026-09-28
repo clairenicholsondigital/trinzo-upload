@@ -86,3 +86,21 @@ test('the merge keeps the fuller record and unions evidence and flags', () => {
   assert.deepEqual(out.actions[0].reviewFlagIds.sort(), ['f1', 'f2']);
   assert.equal(out.merged.length, 1);
 });
+
+// Draft 1041: "Load the documents onto Cognidocs for Grace to review and
+// approve" is the first step of "Load the responses ... then download and
+// insert them into the tech file and point the auditor to them". The fuller
+// looking single step (owner, timing, three cited lines) used to win the
+// merge, and the second step vanished from the minutes.
+test('when one action is a step of the other, the compound survives the merge', () => {
+  const step = { id: 's', action: 'Load the documents onto Cognidocs for Grace to review and approve.', owners: ['Rebecca Gill'],
+    timing: { kind: 'target', wording: 'today', exactDate: '' }, evidenceIds: ['T0126', 'T0127', 'T0128'], reviewFlagIds: [] };
+  const compound = { id: 'c', action: 'Load the responses to the CARs into Cognidocs for Grace to review and approve, then download and insert them into the tech file and point the auditor to them.',
+    owners: ['Rebecca Gill'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0127'], reviewFlagIds: [] };
+  const { actions, merged } = mergeCommitmentDuplicates([step, compound]);
+  assert.equal(merged.length, 1, 'they are the same work');
+  assert.equal(actions.length, 1);
+  assert.match(actions[0].action, /then download/);
+  assert.equal(actions[0].timing.wording, 'today', 'the step\'s timing is kept on the survivor');
+  assert.deepEqual(actions[0].evidenceIds, ['T0127', 'T0126', 'T0128']);
+});

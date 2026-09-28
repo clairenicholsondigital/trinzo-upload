@@ -257,6 +257,7 @@ const {
   describesUsualPractice,
   isNotAnAction,
   isMinuteInstruction,
+  acceptanceAroundEvidence,
   isSocialAside,
   isAobPersonalAside,
   isFarewellAction,
@@ -8672,6 +8673,10 @@ function meetingMinutesDiscussionRestatementsEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_RESTATEMENTS_V1 || '1'));
 }
 
+function meetingMinutesAgentReplayPassCacheEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_REPLAY_PASS_CACHE || '0'));
+}
+
 function meetingMinutesMinuteInstructionRuleEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1 || '1'));
 }
@@ -11433,7 +11438,7 @@ function isReviewableActionProposal(record = {}, sourceUnits = []) {
   const evidence = surroundingEvidence(sourceUnits, record.evidenceIds).filter((unit) => unit.cited)
     .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
   if (isIdeaOnlyContemplation(`${record.action} ${evidence}`)) return false;
-  const disposition = actionEvidenceDisposition(record.action, evidence);
+  const disposition = actionDispositionWithContext(record, sourceUnits, evidence);
   // A proposal is still reviewer work. Suggestions, rejected or completed
   // work, status narration and unanswered requests are not uncertain actions;
   // they are non-actions and should not be presented for acceptance.
@@ -11869,7 +11874,7 @@ function mergePublishedActionEvidence(published = [], complete = []) {
 
 function hybridActionSourceInfo(action, candidates = []) {
   const matches = candidates.filter((candidate) => candidate.recordType === 'action' && hybridCandidateMatchesRecord(candidate, action));
-  const discoverySources = [...new Set(matches.map((candidate) => candidate.sourcePass).filter((source) => ['staged', 'primary', 'recovery', 'salvage'].includes(source)))];
+  const discoverySources = [...new Set(matches.map((candidate) => candidate.sourcePass).filter((source) => ['staged', 'primary', 'primary-2', 'recovery', 'salvage'].includes(source)))];
   const explicitDeterministic = matches.some((candidate) => candidate.sourcePass === 'deterministic' && ['committed', 'accepted_request'].includes(candidate.dispositionHint));
   return { discoverySources, explicitDeterministic, candidateIds: matches.map((candidate) => candidate.candidateId) };
 }
@@ -11879,6 +11884,17 @@ function hybridActionSourceInfo(action, candidates = []) {
 // This is intentionally narrower than the normal evidence gate: anything with
 // a field-level review flag, suggestion/status evidence, staged-only provenance
 // or weak lexical grounding remains in the proposal UI.
+// The keyword disposition of the cited lines, upgraded from "unclear" or an
+// unanswered request when the turn structure around those lines shows the
+// work being accepted (a timing given as the yes, the chair handing it to the
+// person who raised it, the owner answering a when-question about it). Never
+// upgrades suggestions, status, completed or rejected work.
+function actionDispositionWithContext(action = {}, sourceUnits = [], evidence = '') {
+  const disposition = actionEvidenceDisposition(action?.action || '', evidence);
+  if (!['unclear', 'unaccepted_request'].includes(disposition)) return disposition;
+  return acceptanceAroundEvidence(action, sourceUnits) || disposition;
+}
+
 function highConfidenceRefereedAction(action, candidates = [], sourceUnits = []) {
   if (!action?.action || !Array.isArray(action.evidenceIds) || !action.evidenceIds.length) return false;
   if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length) return false;
@@ -11888,7 +11904,7 @@ function highConfidenceRefereedAction(action, candidates = [], sourceUnits = [])
     .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
   if (evidenceSupportScore(action.action, evidence) < 0.3) return false;
   return ['committed', 'accepted_request', 'conditional_commitment']
-    .includes(actionEvidenceDisposition(action.action, evidence));
+    .includes(actionDispositionWithContext(action, sourceUnits, evidence));
 }
 
 function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
@@ -11901,8 +11917,11 @@ function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
     .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
   if (isIdeaOnlyContemplation(`${action.action} ${evidence}`)) return false;
   if (explicitDocumentation) return true;
+  // Nobody shown taking it on: it stays a suggestion ("no owner"), however
+  // many passes found it. Adding an owner is the reviewer's call.
+  if (!(action.owners || []).length) return false;
   const support = evidenceSupportScore(action.action, evidence);
-  const disposition = actionEvidenceDisposition(action.action, evidence);
+  const disposition = actionDispositionWithContext(action, sourceUnits, evidence);
   if (!['committed', 'accepted_request', 'conditional_commitment'].includes(disposition)) return false;
   // Two independent Agent discovery passes are sufficient even when their
   // formal wording is slightly broader than one cited turn. A deterministic
@@ -12237,6 +12256,18 @@ function borrowOwnersFromTwin(selected = {}, pool = []) {
     owners: candidateOwnersOf(twin),
     evidenceIds: [...new Set([...(twin.evidenceIds || []), ...(twin.record?.evidenceIds || [])])]
   };
+}
+
+// Where a suggestion goes between the candidate pool and the review queue.
+// MEETING_MINUTES_AGENT_TRACE_PROPOSALS=<text> prints every step for the
+// proposals whose wording contains that text.
+function traceProposals(step, records = [], draftId = '') {
+  const needle = String(process.env.MEETING_MINUTES_AGENT_TRACE_PROPOSALS || '').trim().toLowerCase();
+  if (!needle) return;
+  const rows = (Array.isArray(records) ? records : []).map((record) => record?.after || record)
+    .filter((record) => String(record?.action || '').toLowerCase().includes(needle))
+    .map((record) => `${meetingMinutesAgentText(record.action, 120)} | ${JSON.stringify(record.owners || [])} | ${JSON.stringify(record.evidenceIds || [])}`);
+  console.info(JSON.stringify({ event: 'meeting_agent_proposal_trace', journeyId: draftId, step, count: rows.length, rows }));
 }
 
 function traceOwners(step, actions = [], journeyId = '') {
@@ -12755,7 +12786,7 @@ function enrichDiscussionEvidenceFromDispositions(discussion = [], dispositions 
 function corroboratedOmittedActionProposals(candidates = [], records = [], sourceUnits = [], options = {}) {
   const eligible = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
     candidate?.recordType === 'action'
-    && ['staged', 'primary', 'recovery'].includes(candidate?.sourcePass)
+    && ['staged', 'primary', 'primary-2', 'recovery'].includes(candidate?.sourcePass)
     && hybridRecordText(candidate?.record || candidate)
     && Array.isArray(candidate?.evidenceIds)
     && candidate.evidenceIds.length
@@ -12769,7 +12800,7 @@ function corroboratedOmittedActionProposals(candidates = [], records = [], sourc
     if (group) group.push(candidate);
     else groups.push([candidate]);
   }
-  const sourceRank = { primary: 3, recovery: 2, staged: 1 };
+  const sourceRank = { primary: 3, 'primary-2': 3, recovery: 2, staged: 1 };
   const proposed = [];
   for (const group of groups) {
     const sources = [...new Set(group.map((candidate) => candidate.sourcePass))];
@@ -12822,7 +12853,7 @@ function strongOmittedDiscoveryProposals(candidates = [], records = [], sourceUn
     const evidence = surroundingEvidence(sourceUnits, candidate.evidenceIds).filter((unit) => unit.cited)
       .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
     if (evidenceSupportScore(candidate.record.action, evidence) < 0.3) continue;
-    if (!['committed', 'accepted_request', 'conditional_commitment'].includes(actionEvidenceDisposition(candidate.record.action, evidence))) continue;
+    if (!['committed', 'accepted_request', 'conditional_commitment'].includes(actionDispositionWithContext(candidate.record, sourceUnits, evidence))) continue;
     proposals.push(candidate.record);
   }
   return dedupeHybridActionRecords(normaliseAgentResult({ actions: proposals }, sourceUnits, 'actions', {
@@ -13392,11 +13423,17 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const candidateIds = Array.isArray(callOptions.candidateIds)
       ? callOptions.candidateIds.map((candidateId) => meetingMinutesAgentText(candidateId, 160)).filter(Boolean)
       : [];
-    const cached = passCache.find((entry) => entry.stage === stage && entry.pass === pass
+    const exact = passCache.find((entry) => entry.stage === stage && entry.pass === pass
       && entry.promptSha256 === promptSha256);
+    // Offline replay (harness only): serve a pass by name when its prompt no
+    // longer hashes the same, so the assembly after the model calls can be
+    // re-run from a stored draft without calling the flow. Never on live.
+    const replayed = !exact && meetingMinutesAgentReplayPassCacheEnabled()
+      ? passCache.find((entry) => entry.stage === stage && entry.pass === pass) : null;
+    const cached = exact || replayed;
     if (cached) {
       const reportedError = meetingAgentResultError(cached.result);
-      const validationError = typeof callOptions.validateResult === 'function'
+      const validationError = !replayed && typeof callOptions.validateResult === 'function'
         ? callOptions.validateResult(cached.result) : null;
       if (!reportedError && !validationError) {
         const resultCounts = meetingAgentResultCounts(cached.result);
@@ -14432,6 +14469,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     degradedSources.push('The final action referee returned an implausibly sparse result; the evidence-normalised primary draft was retained for safety.');
     refereeActions = primary.actions;
   }
+  // The second discovery leg is a discovery source in its own right. Its
+  // actions were folded into the first leg's list for the referee, so an
+  // action both legs found still counted as one source and a referee
+  // "proposal" left it in the suggestions queue (draft 1055: three real,
+  // owned actions). Added after the referee so its prompts are unchanged.
+  if (stage === 'actions' && primarySecondResult) {
+    const secondLeg = normaliseAgentResult(primarySecondResult, draft.sourceUnits, 'actions', { meetingDate: details.meetingDate });
+    ensemble.push(...hybridCandidateLedgerFromResult({ actions: secondLeg.actions }, 'primary-2'));
+  }
   const automatic = [];
   let singleSource = [];
   let highConfidencePromotionCount = 0;
@@ -14601,6 +14647,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // Apply one publication rule after every proposal-producing branch has been
   // combined. Previously an identical safe commitment could be promoted or
   // review-gated solely according to which Agent response property carried it.
+  traceProposals('proposalCandidates', proposalCandidates, draft.draftId);
   const safeProposalPromotions = proposalCandidates.filter((record) =>
     !isVagueReconstructedAction(record.action)
     && !isAobPersonalAside(record, draft.sourceUnits)
@@ -14611,6 +14658,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     !safeProposalPromotions.includes(record) && !isVagueReconstructedAction(record.action)
     && !isAobPersonalAside(record, draft.sourceUnits)
     && isReviewableActionProposal(record, draft.sourceUnits));
+  traceProposals('safePromotions', safeProposalPromotions, draft.draftId);
+  traceProposals('remainingProposalCandidates', remainingProposalCandidates, draft.draftId);
   const finalPublishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
     .filter((record) => !isVagueReconstructedAction(record.action));
   const acceptedActionAccounting = reconcileAcceptedRefereeActions(
@@ -14623,14 +14672,18 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   const primaryActionAccounting = reconcileAcceptedRefereeActions(
     acceptedActionAccounting.actions, primary.actions, remainingProposalCandidates, ensemble, draft.sourceUnits
   );
-  const complete = dedupeHybridActionRecords(normaliseAgentResult({
+  traceProposals('publishedBeforeComplete', primaryActionAccounting.actions, draft.draftId);
+  const completeNormalised = normaliseAgentResult({
     actions: [...primaryActionAccounting.actions, ...remainingProposalCandidates]
-  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions,
-  { sourceUnits: draft.sourceUnits });
+  }, draft.sourceUnits, 'actions', { enforceEvidence: false, meetingDate: details.meetingDate }).actions;
+  traceProposals('completeNormalised', completeNormalised, draft.draftId);
+  const complete = dedupeHybridActionRecords(completeNormalised, { sourceUnits: draft.sourceUnits });
+  traceProposals('complete', complete, draft.draftId);
   const reconciledPublishedActions = attachNearbyDependencyConditions(backfillActionCommitmentEvidence(
     mergePublishedActionEvidence(primaryActionAccounting.actions, complete), draft.sourceUnits,
     { meetingDate: details.meetingDate }
   ), draft.sourceUnits);
+  traceProposals('reconciledPublished', reconciledPublishedActions, draft.draftId);
   const builtProposal = removePublishedActionProposalDuplicates(
     buildProposal('actions', reconciledPublishedActions, complete), reconciledPublishedActions
   );
@@ -14638,6 +14691,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     (builtProposal.changes || []).filter(meetingAgentProposalChangeIsVisible),
     draft.sourceUnits, draft.draftId, 'proposal'
   );
+  traceProposals('builtProposal', builtProposal.changes, draft.draftId);
   const proposal = annotateActionProposalChains(builtProposal, actionChains);
   const corroboratedProposalIds = new Set(candidateBackstop.map((action) => action.id));
   const strongDiscoveryProposalIds = new Set(strongDiscoveryBackstop.map((action) => action.id));
@@ -15773,7 +15827,7 @@ function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
         });
       }
       const evidence = proposalEvidenceText(sourceUnits, record.evidenceIds);
-      const disposition = evidence ? actionEvidenceDisposition(record.action || '', evidence) : 'unclear';
+      const disposition = evidence ? actionDispositionWithContext(record, sourceUnits, evidence) : 'unclear';
       if (!PRESELECTABLE_ADD_DISPOSITIONS.has(disposition)) {
         return withSelection(change, false, {
           label: 'commitment not clear',
@@ -16760,6 +16814,7 @@ router.stagedEvaluation = {
   strongOmittedDiscoveryProposals,
   hybridActionSourceInfo,
   highConfidenceRefereedAction,
+  actionDispositionWithContext,
   safeAgentProposalPromotion,
   preselectActionProposal,
   echoesPublishedAction,
