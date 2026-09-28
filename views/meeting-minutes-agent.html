@@ -973,6 +973,7 @@
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
 </svg>
@@ -1003,7 +1004,7 @@
 
   <!-- ============================================ 0 - upload and details -->
   <section class="panel screen active" data-screen="0">
-    <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div></div>
+    <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Choose Word document</button></div></div>
 
     <section id="uploadConfirmation" class="upload-confirmation" role="status" aria-live="polite" hidden>
       <h2>Transcript uploaded</h2>

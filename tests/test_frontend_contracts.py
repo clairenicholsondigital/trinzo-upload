@@ -207,6 +207,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('<symbol id="i-trash"', page)
         self.assertIn('#i-arrow-right', page)
         self.assertIn('id="saveMinutes" class="button"', page)
+        self.assertIn('<use href="#i-upload"/></svg>Choose Word document', page)
         self.assertIn('id="finalSaveConfirmation"', page)
         self.assertIn('This transcript is marked Complete in Library.', page)
         self.assertIn('#i-save', page)
