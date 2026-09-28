@@ -16029,7 +16029,16 @@ function destructiveActionEdit(before = {}, after = {}, sourceUnits = []) {
 function echoesPublishedAction(published = {}, proposal = {}) {
   const a = meetingMinutesAgentText(published.action, 1600);
   const b = meetingMinutesAgentText(proposal.action, 1600);
-  if (!a || !b || distinctActionDeliverables(published, proposal)) return false;
+  if (!a || !b) return false;
+  // A different wait condition does not make the underlying deliverable a
+  // different action for duplicate-suggestion review. The normal action
+  // deduper still preserves meaningful conditions; this narrower check only
+  // decides whether an optional suggestion should be pre-ticked.
+  const withoutDependency = (value) => String(value || '')
+    .replace(ACTION_DEPENDENCY_CLAUSE, '')
+    .replace(/[\s,.;:]+$/, '');
+  if (distinctActionDeliverables(published, proposal)
+    && distinctActionDeliverables({ action: withoutDependency(a) }, { action: withoutDependency(b) })) return false;
   const unhyphen = (value) => String(value || '').replace(/(\w)-(\w)/g, '$1 $2');
   return sharesDistinctivePhrase(a, b) || hybridContentTokenOverlap(unhyphen(a), unhyphen(b)) >= 0.45;
 }
