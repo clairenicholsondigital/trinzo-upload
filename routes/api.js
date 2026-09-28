@@ -9950,8 +9950,22 @@ function acquireMeetingAgentCallSlot() {
   });
 }
 
+// Which flow answers a prompt. Action discovery (prompt line 1 is the
+// ACTION_DISCOVERY marker) can go to a flow that calls the Meeting Action
+// Extractor child agent directly: traced on 2026-09-27, every flow non-answer
+// (ContentValidationError, Escalate topic, {"Done":true}, invalid_output) was
+// the parent orchestrator's own turn failing after the child had already
+// returned a full answer. Everything else keeps the main flow. Unset means
+// no change.
+function meetingAgentFlowUrlFor(prompt = '') {
+  const main = String(process.env.POWER_AUTOMATE_AGENT_WEBHOOK_URL || '').trim();
+  const direct = String(process.env.POWER_AUTOMATE_ACTION_DISCOVERY_WEBHOOK_URL || '').trim();
+  const marker = String(prompt || '').split('\n', 1)[0].trim();
+  return direct && marker === 'ACTION_DISCOVERY' ? direct : main;
+}
+
 async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
-  const webhookUrl = String(process.env.POWER_AUTOMATE_AGENT_WEBHOOK_URL || '').trim();
+  const webhookUrl = meetingAgentFlowUrlFor(prompt);
   if (!webhookUrl) {
     const error = new Error('POWER_AUTOMATE_AGENT_WEBHOOK_URL is not configured.');
     error.statusCode = 500;
@@ -16640,6 +16654,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentPrompt,
   meetingMinutesAgentPrimaryPrompt,
   meetingMinutesAgentAnchoredDiscussionPrompt,
+  meetingAgentFlowUrlFor,
   MEETING_AGENT_TOPIC_LABEL_RULE,
   MEETING_AGENT_TOPIC_NAMING_RULE,
   meetingMinutesAgentTopicNamingPrompt,
