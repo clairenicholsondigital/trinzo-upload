@@ -9955,17 +9955,28 @@ function acquireMeetingAgentCallSlot() {
 // Extractor child agent directly: traced on 2026-09-27, every flow non-answer
 // (ContentValidationError, Escalate topic, {"Done":true}, invalid_output) was
 // the parent orchestrator's own turn failing after the child had already
-// returned a full answer. Everything else keeps the main flow. Unset means
-// no change.
-function meetingAgentFlowUrlFor(prompt = '') {
+// returned a full answer. Measured 2026-09-28, 5 transcripts x 5 runs per arm,
+// failures counted as empty: parent flow 75.7% of gold per call (4 of 25
+// calls non-answers, 36 s), child flow 89.4% (0 non-answers, 14 s), but two
+// child runs unioned reach only 90.4% where two parent runs reach 95.1% -
+// the parent's variance is worth keeping. One parent leg unioned with one
+// child leg: 93.2% with no retries. So by default only the second discovery
+// leg ('actions:primary-2') goes to the direct flow;
+// POWER_AUTOMATE_ACTION_DISCOVERY_ROUTE=all sends both. Everything else keeps
+// the main flow. An unset direct URL means no change.
+function meetingAgentFlowUrlFor(prompt = '', options = {}) {
   const main = String(process.env.POWER_AUTOMATE_AGENT_WEBHOOK_URL || '').trim();
   const direct = String(process.env.POWER_AUTOMATE_ACTION_DISCOVERY_WEBHOOK_URL || '').trim();
+  if (!direct) return main;
   const marker = String(prompt || '').split('\n', 1)[0].trim();
-  return direct && marker === 'ACTION_DISCOVERY' ? direct : main;
+  if (marker !== 'ACTION_DISCOVERY') return main;
+  const route = String(process.env.POWER_AUTOMATE_ACTION_DISCOVERY_ROUTE || 'second-leg').trim().toLowerCase();
+  if (route === 'all') return direct;
+  return /:primary-2$/.test(String(options.pass || '')) ? direct : main;
 }
 
 async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
-  const webhookUrl = meetingAgentFlowUrlFor(prompt);
+  const webhookUrl = meetingAgentFlowUrlFor(prompt, options);
   if (!webhookUrl) {
     const error = new Error('POWER_AUTOMATE_AGENT_WEBHOOK_URL is not configured.');
     error.statusCode = 500;
@@ -10428,7 +10439,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
         ? Math.max(10000, Math.min(configuredAttemptTimeoutMs, remaining))
         : undefined;
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
-        paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind
+        paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass
       });
       const transformedResult = typeof options.transformResult === 'function'
         ? options.transformResult(freshResult) : freshResult;
