@@ -99,3 +99,22 @@ test('a spoken day with its month becomes a date', () => {
   assert.equal(relativeExactDate('the seventeenth of March', '2026-06-24'), '2027-03-17');
   assert.equal(relativeExactDate('the thirty-second of July', '2026-06-24'), '');
 });
+
+test('an ordinal that goes on to name a period is not a day of the month', () => {
+  assert.equal(relativeExactDate('before the first site week', TUESDAY), '');
+  assert.equal(relativeExactDate('before the first site week, preferably the weekend before', TUESDAY), '');
+  assert.equal(relativeExactDate('by the second project month', TUESDAY), '');
+  assert.equal(relativeExactDate('before the third full working day', TUESDAY), '');
+  assert.equal(relativeExactDate('until the fifth review year', TUESDAY), '');
+  assert.equal(relativeExactDate('on the sixth training day', TUESDAY), '');
+  assert.equal(relativeExactDate('by the 3rd working day', TUESDAY), '');
+  assert.equal(relativeExactDate('on the 1st morning', TUESDAY), '');
+  assert.equal(relativeExactDate('by the 2nd onboarding hour', TUESDAY), '');
+});
+
+test('a day of the month still stands when a connective separates it from a later period word', () => {
+  assert.equal(relativeExactDate('by the 17th so the week after is free', TUESDAY), '2026-03-17');
+  assert.equal(relativeExactDate('by the 17th, then the week after', TUESDAY), '2026-03-17');
+  assert.equal(relativeExactDate('before the first', TUESDAY), '2026-04-01');
+  assert.equal(relativeExactDate('by the 17th before the event starts', TUESDAY), '2026-03-17');
+});

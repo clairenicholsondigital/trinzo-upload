@@ -260,6 +260,7 @@ const {
   isNotAnAction,
   isMinuteInstruction,
   acceptanceAroundEvidence,
+  groundUnstatedDiscussionMonths,
   isSocialAside,
   isAobPersonalAside,
   isFarewellAction,
@@ -8444,6 +8445,13 @@ function normaliseAgentActions(candidate) {
 
 const MEETING_AGENT_OBJECTIVE_STYLE = 'Write each objective as one plain aim with one leading verb and the concrete subject the meeting named - "Agree the site audit travel arrangements", "Confirm who completes the auditor training". Never pair near-synonymous verbs ("plan and prepare", "review and assess"), never repeat the verb as a noun ("prepare ... preparation activities"), and never pad with generic tails such as "including various activities", "and related matters" or "as needed". If two aims are genuinely separate, write two objectives.';
 
+// A day spoken without its month was published with the meeting's month
+// ("away the 14th to the 17th" became "14th-17th June"); context meant July.
+const MEETING_AGENT_UNSPOKEN_MONTH_RULE = 'Never add a month, year or weekday to a date that the speakers did not say. The meeting date is not evidence of which month a spoken day belongs to. When the day is spoken without its month, keep it as spoken and write [month to confirm] after it - "away 9th-12th [month to confirm]".';
+// An off-hand "I'm not a football person" was minuted as a participant's
+// attitude to football.
+const MEETING_AGENT_SMALL_TALK_RULE = 'Leave out small talk, jokes, personal tastes and attitudes (sport, weather, holidays, how someone feels about something off-topic) unless they change the work, its timing or its logistics. Keep the practical consequence and drop the aside - "traffic may be heavy on the day of the marathon", not who does or does not enjoy running.';
+
 function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const taskMarker = isEdit
@@ -8483,6 +8491,8 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push(MEETING_AGENT_OBJECTIVE_STYLE);
     shared.push('Discovery must be comprehensive, but the eventual reviewer-facing draft must be concise. Identify decisions and unresolved questions separately for the referee, keep distinct workstreams separate, and do not turn proposals or completed work into new actions.');
     shared.push('The discussion evidence windows below are recall aids, not an allowlist and not finished minutes. Find material propositions rather than producing one point per source window. Preserve quantities, blockers and dependencies so the referee can choose what is core and what is supporting context.');
+    shared.push(MEETING_AGENT_UNSPOKEN_MONTH_RULE);
+    shared.push(MEETING_AGENT_SMALL_TALK_RULE);
   } else if (stage === 'summary') {
     shared.push(returnContract('executiveSummary, meetingObjectives, '));
     shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
@@ -9394,6 +9404,7 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
     isDiscussion
       ? 'Return only material discussion propositions, decisions, open questions or evidenced objectives absent from CURRENT DRAFT. Preserve explicit refusals, opposition and honest unknowns without reversing their polarity. A parked or deferred matter and a hedged possibility are not decisions. Preserve useful secondary facts for referee classification, but do not treat routine administration, incidental process detail, unchanged status or history without a current consequence as core minutes. Objectives may be clarified by explicit purpose, planning, scope or role-framing evidence later in the meeting; do not promote a merely discussed topic. Return actions as an empty array.'
       : 'Return only genuine future commitments, accepted requests, ongoing reviews with a concrete next step, or dependency-triggered work absent from CURRENT DRAFT. Return discussion and meetingObjectives as empty arrays.',
+    ...(isDiscussion ? [MEETING_AGENT_UNSPOKEN_MONTH_RULE, MEETING_AGENT_SMALL_TALK_RULE] : []),
     ...(!isDiscussion ? ['Assess compound intentions, named joint commitments, passive obligations, scheduled future work and conditional work explicitly. Split different deliverables; do not split a single continued deliverable.'] : []),
     ...(!isDiscussion ? ['For each confirmed open question, check whether a named person explicitly accepted responsibility to resolve it. If so, return that decision-resolution work as an action; otherwise do not turn the question into an action.'] : []),
     ...(!isDiscussion ? ['An action_thread groups adjacent evidence as a multi-turn exchange. An action_chain may connect a request, offer, assignment, acceptance, commitment, timing or recap across a longer topic span. Assess its eventUnits and signals as one lifecycle, but resolve references conservatively. scores and ownerHints are navigation aids, not authority: use an owner only when cited evidence assigns or accepts the work. An unclear reference requires a proposal or rejection, never a guessed deliverable.'] : []),
@@ -14494,6 +14505,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain,
         rejected: fidelityChecked.rejected
       }));
+    }
+    // A month the speakers never named is replaced with a visible placeholder
+    // and flagged, whichever pass wrote it.
+    const monthGrounding = groundUnstatedDiscussionMonths(finalDiscussion, draft.sourceUnits);
+    if (monthGrounding.changed.length) {
+      finalDiscussion = monthGrounding.discussion;
+      fidelityFlags = [...fidelityFlags, ...monthGrounding.flags];
+      console.log(JSON.stringify({ event: 'meeting_agent_unstated_month', journeyId: draft.draftId, changed: monthGrounding.changed }));
     }
     if (correctnessChecksEnabled()) {
       const objections = promoteMaterialObjectionDetails(finalDiscussion);

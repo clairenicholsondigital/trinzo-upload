@@ -949,6 +949,15 @@ function isoDateOffset(meetingDate, days) {
   return date.toISOString().slice(0, 10);
 }
 
+// An ordinal that goes on to name a period is a thing, not a day of the month:
+// "before the first audit week" was dated the 1st, and "the second project
+// month", "the 3rd working day" or "the first morning" read the same way. Up to
+// three describing words may sit between the ordinal and the period noun; a
+// connective ("by the 17th so the week after is free") ends the phrase, so the
+// date there still stands.
+const ORDINAL_PHRASE_WORD = String.raw`(?!(?:and|or|but|so|then|to|the|a|an|at|on|in|by|for|of|when|if|as|with|from|until|before|after|because|is|was|will|we|i|you|he|she|they|it|that|which)\b)[a-z][a-z'’-]*`;
+const ORDINAL_NAMES_A_PERIOD = String.raw`(?:\s+${ORDINAL_PHRASE_WORD}){0,3}\s+(?:hours?|days?|weeks?|weekends?|fortnights?|months?|quarters?|years?|mornings?|afternoons?|evenings?|nights?)\b`;
+
 function relativeExactDate(wording, meetingDate) {
   const value = text(wording, 220).toLowerCase();
   if (!value || !meetingDate) return '';
@@ -1035,8 +1044,8 @@ function relativeExactDate(wording, meetingDate) {
   // by punctuation or "of <month>", or follows by/on/before/until. Otherwise
   // "the second Priya starts talking" would read as the 2nd.
   const WORD_ORDINAL = '(?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth';
-  const ordinal = value.match(/\b(?:on |by |for |before |until )?the (\d{1,2})(?:st|nd|rd|th)?\b(?!\s*-?\s*last\b|\s+(?:week|month|of\s+(?:the\s+)?(?:week|month)))(?!\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december))/)
-    || value.match(new RegExp(String.raw`\b(?:on|by|before|until|no later than)\s+the\s+(${WORD_ORDINAL})\b(?!\s+of\s+[a-z]|\s*-?\s*last\b|\s+(?:week|month|time|round|batch|half|quarter|phase|stage|step|item|point|question|draft|version|session|meeting|call|day|attempt))`))
+  const ordinal = value.match(new RegExp(String.raw`\b(?:on |by |for |before |until )?the (\d{1,2})(?:st|nd|rd|th)?\b(?!\s*-?\s*last\b|\s+(?:week|month|of\s+(?:the\s+)?(?:week|month)))(?!\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december))(?!${ORDINAL_NAMES_A_PERIOD})`))
+    || value.match(new RegExp(String.raw`\b(?:on|by|before|until|no later than)\s+the\s+(${WORD_ORDINAL})\b(?!\s+of\s+[a-z]|\s*-?\s*last\b|\s+(?:week|month|time|round|batch|half|quarter|phase|stage|step|item|point|question|draft|version|session|meeting|call|day|attempt))(?!${ORDINAL_NAMES_A_PERIOD})`))
     || value.match(new RegExp(String.raw`\bthe\s+(${WORD_ORDINAL})(?=\s*(?:$|[.,;:!?)"'’]))`));
   if (ordinal) {
     const token = (ordinal[1] || '').replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
@@ -1066,7 +1075,9 @@ const STATED_DAY_BOUND_PATTERN = new RegExp(
   + '(\\d{1,2}(?=(?:st|nd|rd|th)\\b)|' + Object.keys(ORDINAL_DAY_WORDS).join('|').replace(/-/g, '[- ]') + ')'
   + '(?:st|nd|rd|th)?\\b(?:\\s+(?:of\\s+)?(' + MONTH_WORDS.join('|') + '))?'
   // An ordinal followed by a noun is a thing, not a date: "before the first batch".
-  + '(?!\\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year)\\b)',
+  + '(?!\\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year)\\b)'
+  // "Before the first audit week" names a week, not the 1st.
+  + '(?!' + ORDINAL_NAMES_A_PERIOD + ')',
   'i'
 );
 
@@ -4528,13 +4539,16 @@ function discussionFidelityCheckPrompt(items = []) {
     'DISCUSSION_CRITIC_EVIDENCE_FIDELITY',
     'Each item contains a proposed meeting-minutes sentence and its nearby transcript passage. The passage is the only authority. Check fidelity to what participants said; do not supply outside-domain knowledge.',
     'Look for changed counts, reversed cause/responsibility/direction, a condition rewritten as a requirement, a planning milestone rewritten as completion or rollout, hopes rewritten as commitments, past work rewritten as future work, unsupported certainty, unexplained transcript shorthand, and compressed note fragments that are not clear client-ready sentences.',
+    'Also look for added specifics: a date, month, year, weekday, number, name, place, or someone\'s opinion, taste or attitude that no line of the passage states. A day spoken without its month does not tell you the month. An added specific is not a matter of doubt: remove it with "corrected", or choose "uncertain" with issue "added_detail" when the row cannot stand without it.',
+    'Small talk, jokes and personal tastes that do not affect the work, its timing or its logistics are not minutes material: choose "uncertain" with issue "small_talk".',
     'For enumerated behaviour, preserve every source pairing: do not collapse distinct states, priorities, quantities or outcomes into one generic description.',
     'Do not infer that a current-period condition caused a previous-period result merely because the statements are adjacent. Preserve comparison wording and time direction exactly.',
     'Replace unresolved labels such as "the speaker" only when the passage identifies the person; otherwise choose "uncertain".',
     'Choose "supported", "corrected", or "uncertain". Use "corrected" only when one accurate, complete, client-ready replacement sentence can be written from the passage. Use "uncertain" when the row appears wrong but the passage does not support a safe replacement.',
     'For "corrected", provide problemQuote copied exactly from the proposed row, evidenceQuote copied exactly from the transcript passage, and correctedText. Preserve qualifications and sequence; never merge different people or workstreams.',
-    'For "uncertain", provide problemQuote and evidenceQuote where possible. Quotes must be contiguous and at most 25 words. If unsure whether meaning changed, choose "supported".',
-    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","problemQuote":"","evidenceQuote":"","correctedText":"","reason":""}]}',
+    'For "uncertain", provide problemQuote, and evidenceQuote where the passage has one; an added specific has nothing to quote, so leave evidenceQuote empty. Quotes must be contiguous and at most 25 words. If unsure whether meaning changed, choose "supported".',
+    'Set issue to "added_detail" or "small_talk" for those two cases and leave it empty otherwise.',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","issue":"","problemQuote":"","evidenceQuote":"","correctedText":"","reason":""}]}',
     `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage })))}`
   ].join('\n\n');
 }
@@ -4548,7 +4562,12 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     const row = verdicts.get(item.id);
     if (!row || !['corrected', 'uncertain'].includes(row.verdict)) continue;
     const problemCheck = decisionQuoteValidation(row.problemQuote, item.row);
-    const evidenceCheck = decisionQuoteValidation(row.evidenceQuote, item.passage);
+    // A claim the passage never makes (an added month, an attitude nobody
+    // voiced) has no transcript words to quote. An "uncertain" verdict may
+    // therefore stand on the quoted problem alone; a supplied evidence quote
+    // must still be real, and a correction always needs one.
+    const noEvidenceQuote = row.verdict === 'uncertain' && !text(row.evidenceQuote, 400);
+    const evidenceCheck = noEvidenceQuote ? { valid: true } : decisionQuoteValidation(row.evidenceQuote, item.passage);
     if (!problemCheck.valid || !evidenceCheck.valid) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: !problemCheck.valid ? `problem_${problemCheck.reason}` : `evidence_${evidenceCheck.reason}` });
       continue;
@@ -4578,11 +4597,20 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
         const warning = warnings.get(key);
         if (!replacement && !warning) return record;
         const result = replacement || warning;
+        const issue = text(result.issue, 30);
+        // A general "check this" warning stays quiet unless its reason names a
+        // material doubt. An added detail or small talk is always worth a look,
+        // so those say so in words the reviewer-burden filter keeps.
+        const warningMessage = issue === 'added_detail'
+          ? `Cannot verify "${text(result.problemQuote, 180)}" in the cited passage; confirm it or remove it.`
+          : issue === 'small_talk'
+            ? `Not clear whether this belongs in the minutes: it reads as small talk. ${text(result.reason, 200)}`.trim()
+            : `Check this sentence against the cited passage: ${text(result.reason, 260) || 'the wording may change the meaning.'}`;
         const flag = normaliseFlag({
           kind: 'uncertain_fact',
           message: replacement
             ? `Wording corrected against the cited passage: "${text(result.problemQuote, 180)}" → "${replacement.correctedText}".`
-            : `Check this sentence against the cited passage: ${text(result.reason, 260) || 'the wording may change the meaning.'}`,
+            : warningMessage,
           evidenceIds: record.evidenceIds || []
         }, flags.length);
         flags.push(flag);
@@ -4676,6 +4704,95 @@ function filterUnsupportedQuantifiedDiscussion(discussion = [], units = []) {
     return next;
   }).filter((topic) => ['points', 'decisions', 'openQuestions'].some((kind) => (topic?.[kind] || []).length));
   return { discussion: topics, removed };
+}
+
+// ---- Unstated months -------------------------------------------------------
+// "I won't be around between the 14th and the 17th" was minuted as "14th-17th
+// June": the model borrowed the meeting's month, and the meeting meant July.
+// A month written beside a day must be heard near the cited lines ("next
+// month" counts); otherwise it is replaced with a visible placeholder and the
+// row is flagged, which is what a reviewer did by hand.
+const UNSTATED_MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const UNSTATED_MONTH = String.raw`(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)`;
+const UNSTATED_DAY = String.raw`\d{1,2}(?:st|nd|rd|th)?`;
+const UNSTATED_DAY_SPAN = String.raw`${UNSTATED_DAY}(?:\s*(?:-|–|—|to|and|until|through|or)\s*(?:the\s+)?${UNSTATED_DAY})?`;
+const DAY_THEN_MONTH = new RegExp(String.raw`\b(${UNSTATED_DAY_SPAN})\s+(?:of\s+)?${UNSTATED_MONTH}(?![a-z])(?!\s+[a-z])`, 'gi');
+const DAY_THEN_MONTH_LOOSE = new RegExp(String.raw`\b(${UNSTATED_DAY_SPAN})\s+(?:of\s+)?${UNSTATED_MONTH}(?![a-z])`, 'gi');
+const MONTH_THEN_DAY = new RegExp(String.raw`\b${UNSTATED_MONTH}\s+(${UNSTATED_DAY_SPAN})\b`, 'gi');
+
+function monthNameFor(token = '') {
+  const value = String(token || '').toLowerCase();
+  return UNSTATED_MONTH_NAMES.find((name) => name === value || name.slice(0, 3) === value.slice(0, 3)) || '';
+}
+
+function monthHeardNear(month, units = [], evidenceIds = []) {
+  const heard = evidenceWindowUnits(units, evidenceIds, 3, 3).map((unit) => String(unit.text || '').toLowerCase()).join(' ');
+  if (/\b(?:this|next|last|following|previous|that) month\b/.test(heard)) return true;
+  // "May" is also a verb; only the full word or a clear abbreviation counts.
+  const short = month === 'may' ? 'may' : month.slice(0, 3);
+  return new RegExp(String.raw`\b(?:${month}|${short}\.?)(?![a-z])`).test(heard);
+}
+
+function stripUnstatedMonths(value = '', units = [], evidenceIds = []) {
+  const removed = [];
+  let result = String(value || '');
+  const replace = (pattern, dayIndex, monthIndex) => {
+    result = result.replace(pattern, (...match) => {
+      const whole = match[0];
+      const month = monthNameFor(match[monthIndex]);
+      // "the 14th may slip" is a verb, not May.
+      if (!month || (month === 'may' && !/^may\b/i.test(match[monthIndex]))) return whole;
+      if (monthHeardNear(month, units, evidenceIds)) return whole;
+      removed.push({ day: match[dayIndex], month });
+      return `${match[dayIndex]} [month to confirm]`;
+    });
+  };
+  replace(DAY_THEN_MONTH, 1, 2);
+  // Loose form: any month other than May may run straight into the next word.
+  result = result.replace(DAY_THEN_MONTH_LOOSE, (whole, day, token) => {
+    const month = monthNameFor(token);
+    if (!month || month === 'may' || monthHeardNear(month, units, evidenceIds)) return whole;
+    removed.push({ day, month });
+    return `${day} [month to confirm]`;
+  });
+  replace(MONTH_THEN_DAY, 2, 1);
+  return { text: result, removed };
+}
+
+function groundUnstatedDiscussionMonths(discussion = [], units = []) {
+  const flags = [];
+  const changed = [];
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).map((record) => {
+        const own = stripUnstatedMonths(record?.text, units, record?.evidenceIds || []);
+        const removed = [...own.removed];
+        const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).map((detail) => {
+          const checked = stripUnstatedMonths(detail?.text, units, detail?.evidenceIds || record?.evidenceIds || []);
+          removed.push(...checked.removed);
+          return checked.removed.length ? { ...detail, text: checked.text } : detail;
+        });
+        if (!removed.length) return record;
+        const months = [...new Set(removed.map((item) => item.month[0].toUpperCase() + item.month.slice(1)))];
+        const flag = normaliseFlag({
+          kind: 'timing',
+          message: `Nobody named the month for ${removed.map((item) => `"${item.day}"`).join(', ')}; "${months.join('", "')}" was not said near the cited lines and has been replaced with [month to confirm]. Confirm the month.`,
+          evidenceIds: record.evidenceIds || []
+        }, flags.length);
+        flags.push(flag);
+        changed.push({ id: record.id || '', removed });
+        return {
+          ...record,
+          text: own.text,
+          ...(Array.isArray(record?.supportingDetails) ? { supportingDetails } : {}),
+          reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])]
+        };
+      });
+    }
+    return next;
+  });
+  return { discussion: topics, flags, changed };
 }
 
 // ---- Action completeness --------------------------------------------------
@@ -5494,6 +5611,8 @@ module.exports = {
   applyDiscussionFidelityResults,
   quantifiedClaimGroundingIssue,
   filterUnsupportedQuantifiedDiscussion,
+  groundUnstatedDiscussionMonths,
+  stripUnstatedMonths,
   actionCompletenessCheckItems,
   actionCompletenessCheckPrompt,
   applyActionCompletenessResults,
