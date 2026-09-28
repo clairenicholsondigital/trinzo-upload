@@ -1752,6 +1752,17 @@
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
   }
 
+  function renderFinalSaveState() {
+    var complete = Boolean(state.draft && state.draft.status === 'complete');
+    var button = document.getElementById('saveMinutes');
+    var confirmation = document.getElementById('finalSaveConfirmation');
+    if (button) {
+      button.disabled = complete;
+      button.innerHTML = icon('save') + (complete ? 'Final minutes saved' : 'Save final minutes');
+    }
+    if (confirmation) confirmation.hidden = !complete;
+  }
+
   function renderAll() {
     var snapshot = captureFocus();
     rendering = true;
@@ -1790,6 +1801,7 @@
       if (actionsInstruction) actionsInstruction.disabled = generationRunning('actions');
       renderStaleNotice();
       updateStageAdvanceLabels();
+      renderFinalSaveState();
     } else document.getElementById('staleNotice').hidden = true;
     // The Review page's document is built on entry; a draft resumed on Review
     // (or re-rendered while it is open) must build it too.
@@ -3193,7 +3205,21 @@
   document.getElementById('undoLastDecision').addEventListener('click', undoLastReviewDecision);
   document.getElementById('redoLastDecision').addEventListener('click', redoLastReviewDecision);
   document.getElementById('undoToastButton').addEventListener('click', undoLastReviewDecision);
-  document.getElementById('saveMinutes').addEventListener('click', function () { saveDraftNow('complete').then(function(){setStatus('Final minutes saved to the Library.',false,'review');}).catch(function(error){setStatus(error.message,true,'review');}); });
+  document.getElementById('saveMinutes').addEventListener('click', async function () {
+    var button = document.getElementById('saveMinutes');
+    button.disabled = true;
+    button.innerHTML = icon('save') + 'Saving final minutes…';
+    setStatus('Saving the final minutes and marking this transcript Complete in Library…', false, 'review');
+    try {
+      await saveDraftNow('complete');
+      renderFinalSaveState();
+      setStatus('Final minutes saved. This transcript is marked Complete in Library.', false, 'review');
+      document.getElementById('finalSaveConfirmation').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } catch (error) {
+      renderFinalSaveState();
+      setStatus(error.message, true, 'review');
+    }
+  });
   document.getElementById('reloadDraft').addEventListener('click', function () {
     if (state.draft) loadDraft(state.draft.draftId);
   });

@@ -806,6 +806,11 @@
 .meeting-agent-page .final-actions .spacer{flex:1}
 .meeting-agent-page .final-actions .divider{
   width:1px;height:1.4rem;background:var(--border);flex:none}
+.meeting-agent-page .final-save-confirmation{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;
+  max-width:76ch;margin:1rem auto 0;padding:.9rem 1rem}
+.meeting-agent-page .final-save-confirmation strong{display:block;margin-bottom:.2rem;color:var(--ok-text)}
+.meeting-agent-page .final-save-confirmation p{margin:0;font-size:var(--fs-sm);line-height:1.45}
 .meeting-agent-page .export-group{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .meeting-agent-page .evidence-choice{
   display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:var(--fs-sm)}
@@ -1103,6 +1108,10 @@
       <span class="spacer"></span>
       <details class="export-menu"><summary class="secondary"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Export</summary><div class="export-menu-body"><label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>Print</button><button id="downloadPdf" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download PDF</button><button id="downloadWord" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download Word</button></div></details>
       <button id="saveMinutes" class="button" type="button"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save final minutes</button>
+    </div>
+    <div id="finalSaveConfirmation" class="message success final-save-confirmation" role="status" aria-live="polite" hidden>
+      <div><strong>Final minutes saved</strong><p>This transcript is marked Complete in Library. You can reopen the final minutes there or export a copy here.</p></div>
+      <a class="secondary" href="/jobs">Open Library</a>
     </div>
     <div class="screen-actions"><button id="newMinutes" class="secondary quiet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restart"/></svg>Process new meeting</button></div>
   </section>

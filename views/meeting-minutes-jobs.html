@@ -43,7 +43,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .bulk-count { color:var(--muted); font-size:.86rem; min-width:5.5rem; }
 .status { display:inline-flex; padding:.25rem .55rem; border-radius:999px; border:1px solid var(--border); font-weight:700; font-size:.82rem; }
 .status.running { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
-.status.completed { color:#bbf7d0; border-color:#166534; background:#052e1b; }
+.status.completed, .status.complete { color:#bbf7d0; border-color:#166534; background:#052e1b; }
 .status.failed, .status.cancelled { color:#fecaca; border-color:#7f1d1d; background:#3a1515; }
 .status.queued, .status.retry_wait { color:#fde68a; border-color:#854d0e; background:#3a2c15; }
 .status.in_review, .status.final_review { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
@@ -1264,7 +1264,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td data-label="Actions" class="row-actions">
                   ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
-                  ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-agent-draft="${escapeHtml(job.draftId)}" type="button">Delete</button>` : ''}
+                  ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">${job.status === 'complete' ? 'Open final minutes' : 'Resume'}</a><button class="danger" data-delete-agent-draft="${escapeHtml(job.draftId)}" type="button">Delete</button>` : ''}
                   ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button resume-staged" href="${escapeAttribute(job.resumeUrl)}">Resume staged review <span aria-hidden="true">›</span></a>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}

@@ -1630,6 +1630,16 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     await page.click('.export-menu>summary');
     assert.equal(await page.locator('.export-menu-body').isVisible(), true);
     assert.match(await page.textContent('#saveMinutes'), /Save final minutes/i);
+    const finalSave = page.waitForResponse((response) => response.request().method() === 'PATCH'
+      && response.url().endsWith('/api/meeting-minutes-agent/drafts/layout'));
+    await page.click('#saveMinutes');
+    const finalSaveResponse = await finalSave;
+    assert.equal(finalSaveResponse.request().postDataJSON().status, 'complete');
+    assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true);
+    assert.match(await page.textContent('#finalSaveConfirmation'), /marked Complete in Library/i);
+    assert.equal(await page.textContent('#saveMinutes'), 'Final minutes saved');
+    assert.equal(await page.locator('#saveMinutes').isDisabled(), true);
+    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.status), 'complete');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
