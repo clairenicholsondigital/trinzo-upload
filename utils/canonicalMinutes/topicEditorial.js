@@ -169,6 +169,7 @@ function labelIsClientReady(value) {
 // are real subjects. Excluding modals costs nothing and avoids refusing a
 // legitimate technical heading.
 const SPEECH_OPENER = /^(?:please|let['’]?s|let us|go ahead|carry on|sure|thanks|thank you|sorry|maybe|actually|obviously|basically|just|right then|first off|anyway)\b/i;
+const STRUCTURAL_TOPIC = /^(?:the\s+)?(?:(?:meeting\s+)?agenda(?:\s+items?)?|meeting\s+minutes?|minutes?|meeting\s+notes?|discussion\s+topics?|general\s+discussion)$/i;
 
 // The single gate every topic label passes before a reviewer sees it.
 //
@@ -239,6 +240,7 @@ function labelNamesAWorkstream(value) {
 function isPublishableTopicLabel(value) {
   const text = clean(value);
   if (!text || /^substantive discussion$/i.test(text)) return false;
+  if (STRUCTURAL_TOPIC.test(text)) return false;
   if (!labelIsClientReady(text)) return false;
   return !SPEECH_OPENER.test(text);
 }

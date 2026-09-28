@@ -47,6 +47,10 @@ test('subject labels are kept', () => {
 
 test('the placeholder label never reaches a reviewer', () => {
   assert.equal(isPublishableTopicLabel('Substantive discussion'), false);
+  assert.equal(isPublishableTopicLabel('Meeting agenda'), false);
+  assert.equal(isPublishableTopicLabel('Agenda'), false);
+  assert.equal(isPublishableTopicLabel('Meeting minutes'), false);
+  assert.equal(isPublishableTopicLabel('General discussion'), false);
   assert.equal(isPublishableTopicLabel(''), false);
   assert.equal(isPublishableTopicLabel(null), false);
 });

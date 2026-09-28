@@ -8,6 +8,7 @@ const {
   removeAnsweredQuestionClauses, removeContradictoryResponsibilities,
   isPersonalAside, isPeripheralAside, isRoutineMeetingAdministration,
   removePersonalAsides, normaliseDecisionTopicHeadings,
+  repairStructuralTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
@@ -42,6 +43,19 @@ test('closure clauses are stripped from row wording', () => {
   assert.equal(stripClosure('Outstanding mute button issue reviewed with clinical input to confirm acceptability and closure.'),
     'Outstanding mute button issue reviewed with clinical input to confirm acceptability and closure.');
   assert.equal(stripClosure('Next steps agreed; thanks and farewells.'), 'Next steps agreed');
+});
+
+test('structural meeting-agenda headings are replaced from grounded topic content', () => {
+  const repaired = repairStructuralTopicHeadings([{
+    id: 'topic-agenda',
+    topic: 'Meeting agenda',
+    points: [{ id: 'p1', text: 'The mute button remains the outstanding alarm-control issue.', evidenceIds: ['T0005'] }],
+    decisions: [],
+    openQuestions: []
+  }], units);
+  assert.equal(repaired.length, 1);
+  assert.equal(repaired[0].topic, 'Alarm behaviour and controls');
+  assert.equal(repaired[0].points[0].id, 'p1', 'repair keeps the grounded minutes row intact');
 });
 
 test('personal wellbeing and time-away asides are not meeting content', () => {

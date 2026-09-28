@@ -64,7 +64,8 @@ const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = r
 const {
   organiseDiscussionForReview,
   removePersonalAsides,
-  finaliseDiscussionForPublication
+  finaliseDiscussionForPublication,
+  repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
@@ -8810,7 +8811,7 @@ function meetingAgentCorrectionRuleEnabled() {
 // anchored discovery request; the text must stay byte-identical to
 // tests/fixtures/topic-label-rule-v1.txt. Off unless
 // MEETING_MINUTES_AGENT_TOPIC_LABEL_RULE_V1 is on.
-const MEETING_AGENT_TOPIC_LABEL_RULE = 'TOPIC LABELS. The topic field names the agenda subject a record belongs to, not the record itself. A subject label is a short noun phrase of two to five words with no verb: "Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking". It never describes what happened to the subject, so not "Clarification on probability bands", "Confirmation of lack of procedure", "Painting lines without enforcement is ineffective". A meeting usually has four to eight subjects and several anchors belong to each: when an anchor continues a subject an earlier anchor already has, reuse that earlier label word for word. Give a new label only where the transcript moves to a different subject.';
+const MEETING_AGENT_TOPIC_LABEL_RULE = 'TOPIC LABELS. The topic field names the agenda subject a record belongs to, not the record itself. A subject label is a short noun phrase of two to five words with no verb: "Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking". It never describes what happened to the subject, so not "Clarification on probability bands", "Confirmation of lack of procedure", "Painting lines without enforcement is ineffective". Never use a heading that names the document or meeting structure, such as "Meeting agenda", "Agenda", "Meeting minutes" or "General discussion"; name the actual subject discussed. A meeting usually has four to eight subjects and several anchors belong to each: when an anchor continues a subject an earlier anchor already has, reuse that earlier label word for word. Give a new label only where the transcript moves to a different subject.';
 function meetingAgentTopicLabelRuleEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TOPIC_LABEL_RULE_V1 || '0'));
 }
@@ -8823,7 +8824,7 @@ function meetingAgentTopicLabelRuleEnabled() {
 // the per-record labels as they were. The rule text must stay byte-identical
 // to tests/fixtures/topic-naming-rule-v1.txt. Off unless
 // MEETING_MINUTES_AGENT_TOPIC_SEGMENTS_V1 is on.
-const MEETING_AGENT_TOPIC_NAMING_RULE = 'TOPIC LABELS. Each anchor here is one passage of the meeting. The topic field names the single main subject of that passage: a short noun phrase of two to five words with no verb and no "and" joining two subjects ("Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking"). It never describes what happened to the subject, so not "Clarification on probability bands" or "Confirmation of lack of procedure". Where a passage touches two subjects, name the one it spends most words on. Use the same label word for word only when a later passage is plainly the same subject continued; otherwise give it its own label.';
+const MEETING_AGENT_TOPIC_NAMING_RULE = 'TOPIC LABELS. Each anchor here is one passage of the meeting. The topic field names the single main subject of that passage: a short noun phrase of two to five words with no verb and no "and" joining two subjects ("Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking"). It never describes what happened to the subject, so not "Clarification on probability bands" or "Confirmation of lack of procedure". Never use a heading that names the document or meeting structure, such as "Meeting agenda", "Agenda", "Meeting minutes" or "General discussion"; name the actual subject discussed. Where a passage touches two subjects, name the one it spends most words on. Use the same label word for word only when a later passage is plainly the same subject continued; otherwise give it its own label.';
 function meetingAgentTopicSegmentsEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TOPIC_SEGMENTS_V1 || '0'));
 }
@@ -11111,6 +11112,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
     ...publicFields,
     reviewFlags: visibleReviewFlags
   });
+  safe.discussion = repairStructuralTopicHeadings(safe.discussion, draft.sourceUnits || []);
   safe.actions = (Array.isArray(safe.actions) ? safe.actions : []).map((action) => ({
     ...action,
     timing: meetingAgentTimingForPublication(action?.timing)

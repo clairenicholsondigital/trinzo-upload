@@ -10,6 +10,7 @@
 // fallback. Record ids, evidence ids and review-flag links are preserved.
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
+const { editorialTopicLabel, isPublishableTopicLabel } = require('./topicEditorial');
 const {
   isPersonalAside,
   isPeripheralAside,
@@ -20,7 +21,8 @@ const {
 
 const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should', 'are', 'was', 'were', 'has', 'have', 'been']);
 const ROW_KINDS = ['points', 'decisions', 'openQuestions'];
-const GENERIC_TOPIC = /^(?:discussion|general|other|misc(?:ellaneous)?|meeting|notes?|closure|closing|summary|recap(?: of .*)?|main focus areas and meeting closure)$/i;
+const GENERIC_TOPIC = /^(?:discussion|general|other|misc(?:ellaneous)?|meeting|(?:meeting\s+)?agenda(?:\s+items?)?|meeting\s+minutes?|notes?|closure|closing|summary|recap(?: of .*)?|main focus areas and meeting closure)$/i;
+const STRUCTURAL_TOPIC = /^(?:the\s+)?(?:(?:meeting\s+)?agenda(?:\s+items?)?|meeting\s+minutes?|minutes?|meeting\s+notes?|discussion\s+topics?|general\s+discussion)$/i;
 const CLOSURE_WORDS = '(?:thanks|closure|closing\\s+remarks|farewells?|goodbyes?)';
 const CLOSURE_VERB = '(?:(?:the\\s+)?meeting\\s+(?:was\\s+)?(?:concluded|closed|ended|wrapped\\s+up))';
 const CLOSURE_CLAUSE = new RegExp(
@@ -607,6 +609,30 @@ function normaliseDecisionTopicHeadings(topics = []) {
   });
 }
 
+// A generated heading must name the subject of the minutes, not the document
+// structure containing it. Re-name structural labels from their grounded rows
+// at the final publication boundary, after every model and recovery path has
+// contributed. Reviewer-authored headings remain authoritative.
+function repairStructuralTopicHeadings(topics = [], sourceUnits = []) {
+  const evidence = { events: Array.isArray(sourceUnits) ? sourceUnits : [] };
+  return (Array.isArray(topics) ? topics : []).map((topic) => {
+    const current = text(topic?.topic, 220);
+    if (!STRUCTURAL_TOPIC.test(current) || topic?.reviewerAuthored || topic?.confirmedTopic) return topic;
+    const rows = topicRows(topic).map(({ record }) => record).filter((record) => text(record?.text));
+    const evidenceIds = [...new Set(rows.flatMap((record) => record.evidenceIds || []))];
+    for (const record of rows) {
+      const replacement = editorialTopicLabel({
+        representativeText: record.text,
+        evidenceIds
+      }, evidence);
+      if (replacement && isPublishableTopicLabel(replacement) && !STRUCTURAL_TOPIC.test(replacement)) {
+        return { ...topic, topic: replacement };
+      }
+    }
+    return { ...topic, topic: 'Discussion' };
+  });
+}
+
 function valueSet(value, pattern) {
   return new Set((String(value || '').match(pattern) || []).map((item) => item.toLowerCase()));
 }
@@ -852,6 +878,7 @@ async function prepareRestatementVectors(topics = [], options = {}) {
 
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   let topics = removeNonContentAsides(discussion);
+  topics = repairStructuralTopicHeadings(topics, options.sourceUnits || []);
   topics = normaliseDecisionTopicHeadings(topics);
   const preparedOptions = await prepareRestatementVectors(topics, options);
   topics = await dedupeAdjacentRestatements(topics, preparedOptions);
@@ -974,6 +1001,7 @@ module.exports = {
   rehomeSupportingDetails,
   sortByEvidence,
   normaliseDecisionTopicHeadings,
+  repairStructuralTopicHeadings,
   dedupeAdjacentRestatements,
   dedupeGlobalRestatements,
   finaliseDiscussionForPublication,
