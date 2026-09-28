@@ -747,13 +747,13 @@
   margin-top:.65rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--surface);box-shadow:var(--shadow-lg)}
 .meeting-agent-page .proposal-footer>.muted{margin-right:auto}
-.meeting-agent-page .regeneration-dialog{
+.meeting-agent-page .confirmation-dialog{
   width:min(520px,calc(100vw - 2rem));padding:0;border:1px solid var(--border);
   border-radius:var(--radius);color:var(--text);box-shadow:var(--shadow-lg)}
-.meeting-agent-page .regeneration-dialog::backdrop{background:rgba(21,38,48,.38)}
-.meeting-agent-page .regeneration-dialog form{display:grid;gap:.7rem;padding:1.1rem}
-.meeting-agent-page .regeneration-dialog h2,.meeting-agent-page .regeneration-dialog p{margin:0}
-.meeting-agent-page .regeneration-dialog h2{font-size:var(--fs-lg)}
+.meeting-agent-page .confirmation-dialog::backdrop{background:rgba(21,38,48,.38)}
+.meeting-agent-page .confirmation-dialog form{display:grid;gap:.7rem;padding:1.1rem}
+.meeting-agent-page .confirmation-dialog h2,.meeting-agent-page .confirmation-dialog p{margin:0}
+.meeting-agent-page .confirmation-dialog h2{font-size:var(--fs-lg)}
 .meeting-agent-page .dialog-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.25rem}
 
 /* ------------------------------------------------------ final document -- */
@@ -868,10 +868,18 @@
   .meeting-agent-page .attendee-groups{grid-template-columns:1fr}
   .meeting-agent-page .field.full{grid-column:auto}
   .meeting-agent-page.has-draft{padding-bottom:7rem}
-  .meeting-agent-page .save-strip{align-items:center;gap:.35rem;width:calc(100% - 1rem);bottom:.45rem;padding:.45rem .5rem}
-  .meeting-agent-page .save-strip-primary{display:grid;gap:.15rem;flex:1}
-  .meeting-agent-page .save-strip-actions{gap:.2rem}
-  .meeting-agent-page .save-strip-actions button{padding:.4rem .48rem}
+  /* Give the mobile bar two deliberate rows. Previously the action buttons
+     were vertically centred against the combined Saved + suggestions stack,
+     which left them floating awkwardly between the two lines. */
+  .meeting-agent-page .save-strip{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
+    gap:.4rem .45rem;width:calc(100% - 1rem);bottom:.45rem;padding:.55rem .6rem}
+  .meeting-agent-page .save-strip-primary{display:contents}
+  .meeting-agent-page .save-status{grid-column:1/-1;line-height:1.25}
+  .meeting-agent-page .review-queue-toggle{grid-column:1;grid-row:2;justify-self:start;max-width:100%}
+  .meeting-agent-page .save-strip-actions{
+    grid-column:2;grid-row:2;justify-content:flex-end;flex-wrap:wrap;gap:.3rem}
+  .meeting-agent-page .save-strip-actions button{min-height:42px;padding:.4rem .5rem}
   .meeting-agent-page .save-strip-actions .wide-label{display:none}
   .meeting-agent-page .save-strip-actions .narrow-label{display:inline}
   .meeting-agent-page #resumeLaterLink{display:none}
@@ -989,10 +997,13 @@
   <section class="panel screen active" data-screen="0">
     <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div></div>
 
-    <div id="detailsEditor" hidden>
-      <section id="uploadConfirmation" class="upload-confirmation" role="status" aria-live="polite" hidden>
-        <h2>Transcript uploaded</h2>
-        <p id="uploadConfirmationDetail"></p>
+    <section id="uploadConfirmation" class="upload-confirmation" role="status" aria-live="polite" hidden>
+      <h2>Transcript uploaded</h2>
+      <p id="uploadConfirmationDetail"></p>
+      <div id="uploadConfirmationPending" hidden>
+        <p>Trinzo is reading the transcript and saving your resumable draft now. Keep this page open for a moment; as soon as it is ready, you can leave and reopen it from <strong>Library</strong>.</p>
+      </div>
+      <div id="uploadConfirmationReady" hidden>
         <p>The next screens take you through the minutes in order. Each one is prepared in the background while you work on the one before it.</p>
         <ol>
           <li><strong>Details</strong> &mdash; check the title, date, location and who was there.</li>
@@ -1003,7 +1014,10 @@
         </ol>
         <p>You do not have to finish now. Open <a href="/jobs">Library</a> at any time to come back to this draft: nothing is lost, and preparation carries on while you are away.</p>
         <div class="upload-confirmation-actions"><button id="uploadConfirmationContinue" class="button" type="button">Check the meeting details</button><a class="secondary" href="/jobs">Go to Library</a></div>
-      </section>
+      </div>
+    </section>
+
+    <div id="detailsEditor" hidden>
       <div class="toolbar"><h2>Meeting details</h2></div>
       <div class="form-grid details-meta-grid">
         <label class="field full"><span>Meeting title</span><input id="meetingTitle"></label>
@@ -1092,11 +1106,18 @@
     </div>
     <div class="screen-actions"><button id="newMinutes" class="secondary quiet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restart"/></svg>Process new meeting</button></div>
   </section>
-  <dialog id="regenerationDialog" class="regeneration-dialog" aria-labelledby="regenerationTitle">
+  <dialog id="regenerationDialog" class="confirmation-dialog" aria-labelledby="regenerationTitle">
     <form method="dialog">
       <h2 id="regenerationTitle">Generate new suggestions?</h2>
       <p id="regenerationMessage">Your current edits will remain. New results will arrive as suggestions, and nothing will change until you apply them.</p>
       <div class="dialog-actions"><button class="secondary" value="cancel" type="submit">Cancel</button><button id="confirmRegeneration" class="button" value="confirm" type="submit">Generate suggestions</button></div>
+    </form>
+  </dialog>
+  <dialog id="newTranscriptDialog" class="confirmation-dialog" aria-labelledby="newTranscriptTitle">
+    <form method="dialog">
+      <h2 id="newTranscriptTitle">Choose another transcript?</h2>
+      <p>Your work on this meeting is saved in Library, so you can return to it at any time. Choosing another transcript starts a separate draft.</p>
+      <div class="dialog-actions"><button class="secondary" value="cancel" type="submit">Stay here</button><button id="confirmNewTranscript" class="button" type="button">Choose another transcript</button></div>
     </form>
   </dialog>
   <div id="undoToast" class="undo-toast" role="status" aria-live="polite" hidden><span id="undoToastMessage"></span><button id="undoToastButton" class="secondary" type="button">Undo</button></div>

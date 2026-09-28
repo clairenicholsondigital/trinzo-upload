@@ -234,7 +234,10 @@ function startStubServer() {
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
   app.get('/static/trinzo.js', (req, res) => res.type('application/javascript').send(''));
   app.get('/static/trinzo-fonts.css', (req, res) => res.type('text/css').send(''));
-  app.post('/api/meeting-minutes-agent/prepare', (req, res) => {
+  app.post('/api/meeting-minutes-agent/prepare', async (req, res) => {
+    // Leave a visible preparation window so the upload test can prove that
+    // acknowledgement does not wait for the prepared draft response.
+    await new Promise((resolve) => setTimeout(resolve, 500));
     const prepared = baseDraft('prepared', false);
     prepared.currentStep = 0;
     prepared.selectedStep = 0;
@@ -1550,6 +1553,23 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     // summary 4, review 5. This fixture opens on Summary.
     assert.equal(await page.locator('#mobileStepCount').textContent(), 'Step 4 of 5');
     assert.ok(await page.locator('.nav a').first().evaluate((node) => node.getBoundingClientRect().height >= 40));
+    const saveBarLayout = await page.evaluate(() => {
+      const rect = (selector) => {
+        const box = document.querySelector(selector).getBoundingClientRect();
+        return { top: box.top, right: box.right, bottom: box.bottom, left: box.left, height: box.height };
+      };
+      return {
+        bar: rect('#saveStrip'), status: rect('#saveStatus'),
+        suggestions: rect('#reviewQueueToggle'), actions: rect('.save-strip-actions')
+      };
+    });
+    assert.ok(saveBarLayout.status.bottom < saveBarLayout.suggestions.top, JSON.stringify(saveBarLayout));
+    assert.ok(Math.abs(
+      (saveBarLayout.suggestions.top + saveBarLayout.suggestions.bottom) / 2
+      - (saveBarLayout.actions.top + saveBarLayout.actions.bottom) / 2
+    ) < 4, JSON.stringify(saveBarLayout));
+    assert.ok(saveBarLayout.bar.left < saveBarLayout.suggestions.left, JSON.stringify(saveBarLayout));
+    assert.ok(saveBarLayout.actions.right < saveBarLayout.bar.right, JSON.stringify(saveBarLayout));
     await page.click('#reviewQueueToggle');
     assert.ok(await page.locator('.review-flags-body').evaluate((node) => node.getBoundingClientRect().width > 330));
     await page.click('#reviewQueueToggle');
@@ -1586,6 +1606,12 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     await page.selectOption('#mobileStepSelect', '4');
     assert.match(await page.textContent('#generateSummary'), /Regenerate summary/i);
     assert.ok(await page.locator('#executiveSummary').evaluate((node) => node.getBoundingClientRect().height < 150));
+    await page.click('#generateSummary');
+    assert.equal(await page.textContent('#regenerationTitle'), 'Regenerate meeting summary?');
+    assert.match(await page.textContent('#regenerationMessage'), /new meeting objectives and a new executive summary/i);
+    assert.match(await page.textContent('#regenerationMessage'), /new version will replace it/i);
+    assert.equal(await page.textContent('#confirmRegeneration'), 'Regenerate summary');
+    await page.locator('#regenerationDialog button[value="cancel"]').click();
 
     await page.selectOption('#mobileStepSelect', '5');
     assert.equal(await page.locator('.final-actions>.secondary, .final-actions>.button, .final-actions>.export-menu').count(), 3);
@@ -1857,6 +1883,8 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     // Asking before replacing work the reviewer may have edited is the point of
     // the dialog, and it is still asked on the path that means "redo this".
     assert.equal(await page.locator('#regenerationDialog').isVisible(), true);
+    assert.equal(await page.textContent('#regenerationTitle'), 'Generate new suggestions?');
+    assert.equal(await page.textContent('#confirmRegeneration'), 'Generate suggestions');
     await page.click('#confirmRegeneration');
     const response = await started;
     assert.equal(response.request().postDataJSON().selectedStep, 2);
@@ -1957,8 +1985,15 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     page.on('pageerror', (error) => errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent`);
     assert.equal(await page.locator('#uploadConfirmation').isHidden(), true, 'nothing to confirm before an upload');
+    const preparedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/prepare'));
     await page.setInputFiles('#transcriptFile', { name: 'weekly-checkin.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });
-    await page.waitForFunction(() => !document.getElementById('uploadConfirmation').hidden);
+    assert.equal(await page.locator('#uploadConfirmation').isVisible(), true, 'the upload is acknowledged before preparation finishes');
+    assert.match(await page.textContent('#uploadConfirmation'), /"weekly-checkin\.docx" has been uploaded/);
+    assert.equal(await page.locator('#uploadConfirmationPending').isVisible(), true);
+    assert.match(await page.textContent('#uploadConfirmationPending'), /reopen it from Library/);
+    assert.equal(await page.locator('#uploadConfirmationReady').isHidden(), true, 'resume links wait until the draft is persisted');
+    await preparedResponse;
+    await page.waitForFunction(() => !document.getElementById('uploadConfirmationReady').hidden);
     const text = await page.textContent('#uploadConfirmation');
     assert.match(text, /Transcript uploaded/);
     assert.match(text, /"weekly-checkin.docx" was read successfully/);
@@ -1974,6 +2009,45 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=prepared`);
     await page.waitForFunction(() => !document.getElementById('detailsEditor').hidden);
     assert.equal(await page.locator('#uploadConfirmation').isHidden(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('choosing another transcript first saves the current draft and explains how to return', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="0"]');
+    await page.fill('#meetingTitle', 'A newly edited meeting title');
+
+    const saved = page.waitForResponse((response) =>
+      response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+        && response.request().method() === 'PATCH');
+    await page.click('#replaceTranscript');
+    await saved;
+
+    assert.equal(await page.locator('#newTranscriptDialog').isVisible(), true);
+    assert.equal(await page.textContent('#newTranscriptTitle'), 'Choose another transcript?');
+    assert.match(await page.textContent('#newTranscriptDialog'), /saved in Library/i);
+    assert.match(await page.textContent('#newTranscriptDialog'), /return to it at any time/i);
+    assert.match(await page.textContent('#newTranscriptDialog'), /starts a separate draft/i);
+    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft.details.meetingTitle), 'A newly edited meeting title');
+
+    await page.locator('#newTranscriptDialog button[value="cancel"]').click();
+    assert.equal(await page.locator('#newTranscriptDialog').isHidden(), true);
+    assert.match(page.url(), /draftId=editor/);
+
+    await page.click('#replaceTranscript');
+    const chooser = page.waitForEvent('filechooser');
+    await page.click('#confirmNewTranscript');
+    await chooser;
+    assert.equal(await page.locator('#newTranscriptDialog').isHidden(), true);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

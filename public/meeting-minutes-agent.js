@@ -961,6 +961,12 @@
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) return setStatus('Choose a Word .docx transcript.', true);
     var form = new FormData(); form.append('file', file);
+    // Acknowledge the upload immediately. Transcript preparation can take a
+    // few seconds and must not leave the reviewer wondering whether the file
+    // selection worked. Library is described here, but only becomes a link
+    // once the server has persisted the resumable draft.
+    uploadZone.hidden = true;
+    showUploadConfirmation(file.name, 0, true);
     setBusy(true, 'Reading the Word document and preparing the transcript...');
     try {
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
@@ -974,7 +980,12 @@
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length);
       setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');
-    } catch (error) { setStatus(error.message, true); }
+    } catch (error) {
+      hideUploadConfirmation();
+      uploadZone.hidden = false;
+      fileInput.value = '';
+      setStatus(error.message, true);
+    }
     finally { setBusy(false); }
   }
 
@@ -2099,9 +2110,16 @@
     if (!(options && options.regenerate)) { showStep(STAGE_STEP[stage], { scroll: true }); return; }
     pendingRegenerationStage = stage;
     var dialog = document.getElementById('regenerationDialog');
-    document.getElementById('regenerationMessage').textContent = stage === 'summary'
-      ? 'Your current summary stays visible while the agent works. The refreshed summary will replace it when ready.'
+    var summaryRegeneration = stage === 'summary';
+    document.getElementById('regenerationTitle').textContent = summaryRegeneration
+      ? 'Regenerate meeting summary?'
+      : 'Generate new suggestions?';
+    document.getElementById('regenerationMessage').textContent = summaryRegeneration
+      ? 'This will create new meeting objectives and a new executive summary. Your current version stays visible while the agent works, then the new version will replace it.'
       : 'Your current draft stays visible while the agent works. Anything you edited remains unchanged; new differences arrive as suggestions for you to apply or dismiss.';
+    document.getElementById('confirmRegeneration').textContent = summaryRegeneration
+      ? 'Regenerate summary'
+      : 'Generate suggestions';
     dialog.showModal();
   }
 
@@ -2344,15 +2362,21 @@
   }
 
   /* ------------------------------------------------------------ events */
-  // Shown once, straight after a transcript is prepared: what the next
-  // screens do, and that leaving for the Library loses nothing.
-  function showUploadConfirmation(fileName, unitCount) {
+  // Shown first as an immediate upload acknowledgement, then updated when
+  // preparation has produced the resumable draft and its next-step guidance.
+  function showUploadConfirmation(fileName, unitCount, preparing) {
     var panel = document.getElementById('uploadConfirmation');
     if (!panel) return;
     var detail = document.getElementById('uploadConfirmationDetail');
     var count = Number(unitCount || 0);
-    detail.textContent = (fileName ? '"' + fileName + '" was read successfully' : 'The transcript was read successfully')
-      + (count ? ', with ' + count + ' passage' + (count === 1 ? '' : 's') + ' of speech ready to work from.' : '.');
+    detail.textContent = preparing
+      ? (fileName ? '"' + fileName + '" has been uploaded.' : 'The transcript has been uploaded.')
+      : (fileName ? '"' + fileName + '" was read successfully' : 'The transcript was read successfully')
+        + (count ? ', with ' + count + ' passage' + (count === 1 ? '' : 's') + ' of speech ready to work from.' : '.');
+    var pending = document.getElementById('uploadConfirmationPending');
+    var ready = document.getElementById('uploadConfirmationReady');
+    if (pending) pending.hidden = !preparing;
+    if (ready) ready.hidden = Boolean(preparing);
     panel.hidden = false;
   }
 
@@ -2374,7 +2398,24 @@
   ['dragleave','drop'].forEach(function (name) { uploadZone.addEventListener(name, function (event) { event.preventDefault(); uploadZone.classList.remove('dragover'); }); });
   uploadZone.addEventListener('drop', function (event) { if (event.dataTransfer && event.dataTransfer.files.length) prepareFile(event.dataTransfer.files[0]); });
   fileInput.addEventListener('change', function () { prepareFile(fileInput.files[0]); });
-  document.getElementById('replaceTranscript').addEventListener('click', function () { fileInput.value=''; fileInput.click(); });
+  async function askToChooseAnotherTranscript() {
+    // Make the Library promise in the dialog true before offering to leave.
+    // saveDraftNow also reads the active editor, so the latest field is part
+    // of the resumable draft rather than only visible in this tab.
+    try {
+      await saveDraftNow();
+      document.getElementById('newTranscriptDialog').showModal();
+    } catch (error) {
+      setStatus('Save this draft before choosing another transcript. ' + error.message, true, currentStageName());
+    }
+  }
+
+  document.getElementById('replaceTranscript').addEventListener('click', askToChooseAnotherTranscript);
+  document.getElementById('confirmNewTranscript').addEventListener('click', function () {
+    document.getElementById('newTranscriptDialog').close('confirm');
+    fileInput.value = '';
+    fileInput.click();
+  });
 
   detailsEditor.addEventListener('click', function (event) {
     var add = event.target.closest('[data-add-attendee]');
@@ -3130,7 +3171,7 @@
   document.getElementById('downloadWord').addEventListener('click', function () { downloadExport('docx'); });
   document.getElementById('downloadPdf').addEventListener('click', function () { downloadExport('pdf'); });
   document.getElementById('printMinutes').addEventListener('click', function () { window.print(); });
-  document.getElementById('newMinutes').addEventListener('click', function () { window.location.href='/meeting-minutes-agent'; });
+  document.getElementById('newMinutes').addEventListener('click', askToChooseAnotherTranscript);
   document.querySelectorAll('[data-back]').forEach(function(button){button.addEventListener('click',function(){showStep(button.dataset.back, { scroll: true, restore: true });});});
   document.querySelectorAll('[data-step]').forEach(function(button){button.addEventListener('click',function(){if(!button.disabled){if(Number(button.dataset.step)===MAX_STEP){readEditors();activeFinalEdit=null;renderFinal();}showStep(button.dataset.step, { scroll: true, restore: true });}});});
 
