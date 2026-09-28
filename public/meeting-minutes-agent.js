@@ -118,6 +118,46 @@
       var previewIcon = preview.querySelector('.ic use');
       if (previewIcon) previewIcon.setAttribute('href', state.currentStep === MAX_STEP ? '#i-arrow-left' : '#i-eye');
     }
+    updateDraftDownloadState();
+  }
+
+  function generationStageLabel(stage) {
+    var value = String(stage || '').replace(/[_-]+/g, ' ').trim();
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Generation';
+  }
+
+  function draftDownloadReadiness() {
+    if (!state.draft) return { ready: false, message: 'A draft is needed before it can be downloaded.' };
+    var running = state.draft.generation && state.draft.generation.status === 'running'
+      ? state.draft.generation.stage : '';
+    if (running) {
+      return { ready: false, message: 'Download will be available when ' + generationStageLabel(running) + ' finishes generating.' };
+    }
+    if (state.draft.status === 'complete') return { ready: true, message: '' };
+    var include = includedSectionState();
+    var required = ['discussion', 'actions'];
+    if (include.meetingObjectives || include.executiveSummary) required.push('summary');
+    var missing = required.filter(function (stage) { return !stageGeneratedAt(state.draft, stage); });
+    if (!missing.length) return { ready: true, message: '' };
+    var labels = missing.map(generationStageLabel);
+    var list = labels.length === 1 ? labels[0]
+      : labels.slice(0, -1).join(', ') + ' and ' + labels[labels.length - 1];
+    return { ready: false, message: 'Download will be available after ' + list + ' finish generating.' };
+  }
+
+  function updateDraftDownloadState() {
+    var button = document.getElementById('downloadDraft');
+    if (!button) return;
+    var readiness = draftDownloadReadiness();
+    button.disabled = !readiness.ready;
+    button.title = readiness.message;
+    button.setAttribute('aria-label', readiness.ready ? 'Download draft' : 'Preparing draft. ' + readiness.message);
+    var wide = button.querySelector('.wide-label');
+    var narrow = button.querySelector('.narrow-label');
+    if (wide) wide.textContent = readiness.ready ? 'Download draft' : 'Preparing draft';
+    if (narrow) narrow.textContent = readiness.ready ? 'Download' : 'Preparing';
+    var hint = document.getElementById('downloadDraftHint');
+    if (hint) hint.textContent = readiness.message;
   }
 
   function showUndoToast(label) {
@@ -3201,7 +3241,10 @@
     if(state.currentStep===MAX_STEP){showStep(previewReturnStep,{scroll:true});return;}
     readEditors();previewReturnStep=state.currentStep;activeFinalEdit=null;renderFinal();showStep(MAX_STEP,{scroll:true});
   });
-  document.getElementById('downloadDraft').addEventListener('click', function () { downloadExport('docx'); });
+  document.getElementById('downloadDraft').addEventListener('click', function () {
+    if (!draftDownloadReadiness().ready) return;
+    downloadExport('docx');
+  });
   document.getElementById('undoLastDecision').addEventListener('click', undoLastReviewDecision);
   document.getElementById('redoLastDecision').addEventListener('click', redoLastReviewDecision);
   document.getElementById('undoToastButton').addEventListener('click', undoLastReviewDecision);

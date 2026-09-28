@@ -217,6 +217,12 @@ class FrontendContractTest(unittest.TestCase):
         # which gained the icon on 24 Sep alongside Preview document.
         self.assertEqual(page.count('#i-download'), 4)
         self.assertIn('<use href="#i-eye"/></svg><span class="wide-label">Preview draft', page)
+        self.assertIn('aria-describedby="downloadDraftHint"', page)
+        self.assertIn('function draftDownloadReadiness()', client)
+        self.assertIn("required = ['discussion', 'actions']", client)
+        self.assertIn("required.push('summary')", client)
+        self.assertIn("button.disabled = !readiness.ready", client)
+        self.assertIn("readiness.ready ? 'Download draft' : 'Preparing draft'", client)
         # Every back control carries the same left arrow, so none reads as
         # half-finished next to its neighbours.
         # Four back buttons since the Focus screen went; Preview swaps to this
