@@ -1676,7 +1676,7 @@
     var control = options.singleLine
       ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
       : '<textarea data-final-editor-value rows="' + (options.rows || 2) + '" aria-label="' + escapeHtml(options.label || 'Edit text') + '">' + escapeHtml(value || '') + '</textarea>';
-    return '<span class="final-inline-editor" data-final-editor>' + control + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
+    return '<span class="final-inline-editor' + (options.block ? ' block' : '') + '" data-final-editor>' + control + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
   }
 
   function finalTimingDisplay(action) {
@@ -1736,7 +1736,7 @@
       var topicId = topic.id || 'topic-' + topicIndex;
       var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
         .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text}; }); });
-      return '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
+      return '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
     }).join('');
     var actionsHtml = (draft.actions || []).map(function (action) {
       var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', action.id, field); })[0] || '';

@@ -1411,6 +1411,13 @@ test('final minutes edit source records in place and the finishing bar remains a
     assert.equal(await page.locator('#finalDocument .final-kind-label').filter({ hasText: 'Discussion' }).count(), 0);
 
     await page.locator('#finalDocument [data-kind="discussion"][data-field="text"]').first().click();
+    const discussionEditorLayout = await page.locator('#finalDocument .final-proposition-content.is-editing').evaluate((node) => ({
+      contentWidth: node.getBoundingClientRect().width,
+      editorWidth: node.querySelector('[data-final-editor]').getBoundingClientRect().width,
+      rows: node.querySelector('textarea').getAttribute('rows')
+    }));
+    assert.ok(discussionEditorLayout.editorWidth >= discussionEditorLayout.contentWidth * 0.95, JSON.stringify(discussionEditorLayout));
+    assert.equal(discussionEditorLayout.rows, '3');
     await page.fill('#finalDocument [data-final-editor-value]', 'The final report is ready to circulate.');
     let saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Meeting sentence edited');
