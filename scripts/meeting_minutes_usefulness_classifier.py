@@ -20,6 +20,14 @@ from pathlib import Path
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 LABELS = ("retain", "remove", "uncertain")
 SPEAKER_LINE = re.compile(r"^\s*(?P<speaker>[A-Za-z][A-Za-z .,'()&/\-]{1,90}?)\s+(?P<timestamp>\d{1,2}:\d{2}(?::\d{2})?)(?P<text>.*)$")
+COLON_SPEAKER_LINE = re.compile(
+    r"^\s*(?P<speaker>[A-Za-z][A-Za-z .,'’()&/\-]{0,90}?)\s*:\s*(?P<text>.*)$"
+)
+NON_SPEAKER_COLON_LABELS = {
+    "action", "actions", "agenda", "attendee", "attendees", "date", "duration",
+    "location", "meeting", "meeting date", "meeting title", "note", "notes",
+    "participants", "subject", "time", "title", "transcript",
+}
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])")
 NOISE = re.compile(
     r"\b(?:share my screen|screen share|can you hear|can't hear|mute|unmute|camera|"
@@ -90,7 +98,7 @@ def read_transcript_file(path: Path) -> str:
 
 
 def parse_transcript(text: str, source: str = "") -> list[dict]:
-    """Parse Teams-style lines while retaining speaker and timestamp."""
+    """Parse timestamped Teams turns or ``Speaker Name: speech`` turns."""
     units: list[dict] = []
     current: dict | None = None
     for line_no, raw in enumerate(text.splitlines(), 1):
@@ -100,6 +108,13 @@ def parse_transcript(text: str, source: str = "") -> list[dict]:
         if TRANSCRIPTION_MARKER.search(line):
             continue
         match = SPEAKER_LINE.match(line)
+        colon_match = COLON_SPEAKER_LINE.match(line) if not match else None
+        non_speaker_colon_label = bool(
+            colon_match
+            and compact(colon_match.group("speaker")).lower() in NON_SPEAKER_COLON_LABELS
+        )
+        if non_speaker_colon_label:
+            colon_match = None
         if match:
             if current:
                 units.extend(split_unit(current))
@@ -110,6 +125,18 @@ def parse_transcript(text: str, source: str = "") -> list[dict]:
                 "timestamp": match.group("timestamp"),
                 "body": compact(match.group("text")),
             }
+        elif colon_match:
+            if current:
+                units.extend(split_unit(current))
+            current = {
+                "source": source,
+                "line": line_no,
+                "speaker": compact(colon_match.group("speaker")),
+                "timestamp": "",
+                "body": compact(colon_match.group("text")),
+            }
+        elif non_speaker_colon_label:
+            continue
         elif current and not re.match(r"^(?:\d+ June \d{4}|\d+m \d+s|.+ started transcription)$", line, re.I):
             current["body"] = compact(f"{current['body']} {line}")
     if current:
