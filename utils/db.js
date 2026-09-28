@@ -3671,6 +3671,37 @@ async function listMeetingMinutesAgentDrafts(userId, limit = 50) {
   return result.rows.map((row) => meetingMinutesAgentDraftFromRow(row, false));
 }
 
+async function listMeetingMinutesAgentDraftPage(userId, options = {}) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const limit = Math.min(Math.max(Number(options.limit) || 10, 1), 50);
+  const offset = Math.min(Math.max(Number(options.offset) || 0, 0), 100000);
+  const search = String(options.search || '').trim().slice(0, 200);
+  const status = ['draft', 'review', 'complete'].includes(String(options.status || '').toLowerCase())
+    ? String(options.status).toLowerCase()
+    : '';
+  const params = [Number(userId), search, status];
+  const where = `user_id = $1
+    AND ($2 = '' OR title ILIKE '%' || $2 || '%' OR file_name ILIKE '%' || $2 || '%')
+    AND ($3 = '' OR status = $3)`;
+  const [countResult, rowsResult] = await Promise.all([
+    query(`SELECT COUNT(*)::int AS total FROM meeting_minutes_agent_drafts WHERE ${where}`, params),
+    query(
+      `SELECT id, revision, status, title, file_name, payload, created_at, updated_at
+       FROM meeting_minutes_agent_drafts
+       WHERE ${where}
+       ORDER BY updated_at DESC
+       LIMIT $4 OFFSET $5`,
+      [...params, limit, offset]
+    )
+  ]);
+  return {
+    drafts: rowsResult.rows.map((row) => meetingMinutesAgentDraftFromRow(row, false)),
+    total: Number(countResult.rows[0]?.total || 0),
+    limit,
+    offset
+  };
+}
+
 async function updateMeetingMinutesAgentDraft(draftId, userId, expectedRevision, updates = {}) {
   await ensureMeetingMinutesAgentDraftSchema();
   const current = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
@@ -3886,6 +3917,7 @@ module.exports = {
   createMeetingMinutesAgentDraft,
   getMeetingMinutesAgentDraft,
   listMeetingMinutesAgentDrafts,
+  listMeetingMinutesAgentDraftPage,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,

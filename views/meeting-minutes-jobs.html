@@ -45,6 +45,12 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .jobs .library-action-group { display:flex; gap:.45rem; align-items:center; flex-wrap:wrap; }
 .jobs .library-action-group .button,
 .jobs .library-action-group button { min-height:2.25rem; padding:.5rem .72rem; line-height:1.15; }
+.library-tools { display:grid; grid-template-columns:minmax(16rem,1fr) minmax(11rem,auto); gap:.75rem; align-items:end; margin:.9rem 1.25rem 0; }
+.library-tools label { display:grid; gap:.3rem; }
+.library-tools input, .library-tools select { min-height:2.65rem; }
+.library-pagination { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; margin:.85rem 1.25rem 0; }
+.library-pagination-actions { display:flex; align-items:center; gap:.5rem; }
+.library-page-label { min-width:7rem; text-align:center; color:var(--muted); }
 .bulk-bar { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; margin:.85rem 0 0; padding:.55rem .65rem; border:1px solid var(--border); border-radius:10px; background:var(--soft); color:var(--text); }
 .bulk-bar label { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); font-size:.9rem; cursor:pointer; }
 .bulk-bar input, .job-select { accent-color:var(--accent); }
@@ -163,6 +169,8 @@ summary { cursor:pointer; color:var(--accent); font-weight:700; padding:.75rem; 
 details[open] summary { border-bottom-left-radius:0; border-bottom-right-radius:0; }
 details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-right-radius:0; }
 @media (max-width: 860px) {
+  .library-tools { grid-template-columns:1fr; margin:.75rem 1rem 0; }
+  .library-pagination { margin:.75rem 1rem 0; }
   .jobs, .jobs thead, .jobs tbody, .jobs tr, .jobs th, .jobs td { display:block; width:100%; }
   .jobs thead { display:none; }
   .jobs td { border-bottom:none; }
@@ -230,6 +238,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       <a class="queue-tab" href="/jobs" aria-current="page">All items</a>
       <a class="queue-tab" href="/jobs?type=meeting-minutes-agent">Meeting Minutes Agent</a>
     </nav>
+    <div class="library-tools" role="search" aria-label="Filter Library drafts">
+      <label for="librarySearch"><span>Search drafts</span><input id="librarySearch" type="search" placeholder="Search meeting title or transcript filename" autocomplete="off" /></label>
+      <label for="libraryStatus"><span>Status</span><select id="libraryStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="review">In review</option><option value="complete">Complete</option></select></label>
+    </div>
     <div id="bulkBar" class="bulk-bar" hidden>
       <label><input id="selectAllJobs" type="checkbox" /> Select all</label>
       <span id="bulkCount" class="bulk-count">0 selected</span>
@@ -238,6 +250,14 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     </div>
     <div id="message" class="message" hidden></div>
     <div id="listView"></div>
+    <div id="libraryPagination" class="library-pagination" aria-live="polite">
+      <span id="libraryResultCount" class="muted">Loading drafts…</span>
+      <div class="library-pagination-actions">
+        <button id="libraryPrevious" class="secondary" type="button">Previous</button>
+        <span id="libraryPageLabel" class="library-page-label">Page 1 of 1</span>
+        <button id="libraryNext" class="secondary" type="button">Next</button>
+      </div>
+    </div>
   </section>
 
   <section id="detailPanel" class="panel" hidden>
@@ -281,6 +301,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const bulkCount = document.getElementById('bulkCount');
   const archiveSelectedBtn = document.getElementById('archiveSelectedBtn');
   const archiveAllBtn = document.getElementById('archiveAllBtn');
+  const librarySearch = document.getElementById('librarySearch');
+  const libraryStatus = document.getElementById('libraryStatus');
+  const libraryPagination = document.getElementById('libraryPagination');
+  const libraryResultCount = document.getElementById('libraryResultCount');
+  const libraryPrevious = document.getElementById('libraryPrevious');
+  const libraryNext = document.getElementById('libraryNext');
+  const libraryPageLabel = document.getElementById('libraryPageLabel');
   const pathMatch = window.location.pathname.match(/(?:\/jobs|\/meeting-minutes-final\/jobs)\/([^/]+)(?:\/result)?$/);
   const resultOnly = /(?:\/jobs|\/meeting-minutes-final\/jobs)\/[^/]+\/result$/.test(window.location.pathname);
   let activeJobId = pathMatch && /^\d+$/.test(pathMatch[1]) ? Number(pathMatch[1]) : null;
@@ -292,6 +319,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   let editFocused = false;
   let timer = null;
   let visibleJobs = [];
+  let libraryPage = 1;
+  let libraryTotal = 0;
+  const libraryPageSize = 10;
+  let librarySearchTimer = null;
   const selectedJobs = new Set();
 
   function escapeHtml(value) {
@@ -1243,13 +1274,26 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     });
   }
 
+  function renderLibraryPagination() {
+    const totalPages = Math.max(1, Math.ceil(libraryTotal / libraryPageSize));
+    const start = libraryTotal ? ((libraryPage - 1) * libraryPageSize) + 1 : 0;
+    const end = Math.min(libraryTotal, libraryPage * libraryPageSize);
+    libraryResultCount.textContent = libraryTotal
+      ? `Showing ${start}–${end} of ${libraryTotal} draft${libraryTotal === 1 ? '' : 's'}`
+      : 'No matching drafts';
+    libraryPageLabel.textContent = `Page ${libraryPage} of ${totalPages}`;
+    libraryPrevious.disabled = libraryPage <= 1;
+    libraryNext.disabled = libraryPage >= totalPages;
+    libraryPagination.hidden = false;
+  }
+
   function renderJobs(jobs) {
     visibleJobs = jobs;
     selectedJobs.clear();
     updateBulkControls();
     if (!jobs.length) {
-      const type = currentQueueType();
-      listView.innerHTML = `<p class="muted">No ${type === 'project-updates' ? 'project-update' : type === 'meeting-minutes' ? 'meeting-minutes' : ''} items yet.</p>`;
+      const filtered = librarySearch.value.trim() || libraryStatus.value;
+      listView.innerHTML = `<p class="muted">${filtered ? 'No drafts match your current filters.' : 'No Library drafts yet.'}</p>`;
       return;
     }
     const showBulkSelection = jobs.some(canArchive);
@@ -1502,7 +1546,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   async function loadList() {
     if (resultOnly) return;
     updateQueueTabs();
-    const agentPayload = await fetchJson('/api/meeting-minutes-agent/drafts?limit=100');
+    const params = new URLSearchParams({
+      limit: String(libraryPageSize),
+      offset: String((libraryPage - 1) * libraryPageSize)
+    });
+    const search = librarySearch.value.trim();
+    const status = libraryStatus.value;
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    const agentPayload = await fetchJson(`/api/meeting-minutes-agent/drafts?${params.toString()}`);
+    libraryTotal = Number(agentPayload.pagination?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(libraryTotal / libraryPageSize));
+    if (libraryPage > totalPages) {
+      libraryPage = totalPages;
+      return loadList();
+    }
     const agentDrafts = (Array.isArray(agentPayload.drafts) ? agentPayload.drafts : []).map((draft) => ({
       jobId: `agent-${draft.draftId}`,
       draftId: draft.draftId,
@@ -1518,6 +1576,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       resumeUrl: draft.resumeUrl
     }));
     renderJobs(agentDrafts);
+    renderLibraryPagination();
   }
 
   async function loadDetail() {
@@ -1604,6 +1663,27 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   });
   archiveSelectedBtn.addEventListener('click', () => archiveJobs(visibleJobs.filter((job) => selectedJobs.has(String(job.jobId)))));
   archiveAllBtn.addEventListener('click', () => archiveJobs(visibleJobs.filter(canArchive), true));
+  librarySearch.addEventListener('input', () => {
+    clearTimeout(librarySearchTimer);
+    librarySearchTimer = setTimeout(() => {
+      libraryPage = 1;
+      loadList().catch((error) => setMessage(error.message || 'Could not filter Library drafts.', 'error'));
+    }, 250);
+  });
+  libraryStatus.addEventListener('change', () => {
+    libraryPage = 1;
+    loadList().catch((error) => setMessage(error.message || 'Could not filter Library drafts.', 'error'));
+  });
+  libraryPrevious.addEventListener('click', () => {
+    if (libraryPage <= 1) return;
+    libraryPage -= 1;
+    loadList().catch((error) => setMessage(error.message || 'Could not load the previous page.', 'error'));
+  });
+  libraryNext.addEventListener('click', () => {
+    if (libraryPage * libraryPageSize >= libraryTotal) return;
+    libraryPage += 1;
+    loadList().catch((error) => setMessage(error.message || 'Could not load the next page.', 'error'));
+  });
   resultActions.addEventListener('click', (event) => {
     const deleteBackendJob = event.target.closest('[data-delete]');
     if (deleteBackendJob) {

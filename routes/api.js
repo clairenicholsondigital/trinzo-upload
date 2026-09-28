@@ -153,6 +153,7 @@ const {
   createMeetingMinutesAgentDraft,
   getMeetingMinutesAgentDraft,
   listMeetingMinutesAgentDrafts,
+  listMeetingMinutesAgentDraftPage,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,
@@ -15209,8 +15210,17 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
 
 router.get('/meeting-minutes-agent/drafts', requireAuth, async (req, res) => {
   try {
-    const drafts = await listMeetingMinutesAgentDrafts(req.authUser?.userId, req.query?.limit || 50);
-    return res.json({ ok: true, drafts: drafts.map((draft) => publicMeetingAgentDraft(draft, { summary: true })) });
+    const page = await listMeetingMinutesAgentDraftPage(req.authUser?.userId, {
+      limit: req.query?.limit,
+      offset: req.query?.offset,
+      search: req.query?.search,
+      status: req.query?.status
+    });
+    return res.json({
+      ok: true,
+      drafts: page.drafts.map((draft) => publicMeetingAgentDraft(draft, { summary: true })),
+      pagination: { total: page.total, limit: page.limit, offset: page.offset }
+    });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
   }
