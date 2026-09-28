@@ -717,11 +717,11 @@
     var previewNote = document.getElementById('generationPreviewNote');
     previewNote.hidden = !generation || !preview.length;
     previewNote.textContent = preview.length
-      ? preview.length + ' evidence-checked action' + (preview.length === 1 ? '' : 's') + ' available to read while the final check continues. Editing unlocks when checks finish.'
+      ? preview.length + ' early possible action' + (preview.length === 1 ? '' : 's') + ' ready to look over while final checks continue. This temporary preview will be replaced automatically.'
       : '';
     var view = document.getElementById('viewGeneratedStage');
     view.hidden = stage !== 'actions' || state.currentStep === STAGE_STEP.actions || (!preview.length && !notice);
-    view.textContent = generation ? 'View action preview' : 'View actions';
+    view.textContent = generation ? 'View working preview' : 'View actions';
   }
 
   // An edit to earlier content marks what is derived from it as outdated,
@@ -1250,15 +1250,15 @@
         ? generation.previewSavedActions
         : Array.isArray(state.draft.actions) ? state.draft.actions : [];
       var intro = preview.length
-        ? 'You can start reading these while the final quality checks continue. Editing unlocks when the final version is ready.'
+        ? 'These are early possible actions from the transcript, shown so you have something useful to review while the agent finishes its checks. They may change, merge or disappear. The finished action list will replace this preview automatically, and editing will then unlock.'
         : prior.length
           ? 'These saved actions remain visible while a refreshed version is prepared.'
-          : 'Possible actions will appear here as soon as the evidence check finishes.';
+          : 'Early possible actions will appear here as soon as the first checks finish.';
       var readOnlyRows = function (items, className) { return items.map(function (item) {
         return '<tr class="preview-action-row ' + className + '"><td data-label="Action"><div>' + escapeHtml(item.action || '') + '</div><div class="action-tools">' + evidenceBlock(item.evidenceIds) + '</div></td><td data-label="Owners"><div class="preview-action-meta">' + escapeHtml((item.owners || []).join(', ') || 'Not stated') + '</div></td><td data-label="Timing"><div class="preview-action-meta">' + escapeHtml(timingDisplayText(item.timing)) + '</div></td></tr>';
       }).join(''); };
       var sections = '';
-      if (preview.length) sections += '<tr class="generation-section-row"><th colspan="3">Evidence-checked preview</th></tr>' + readOnlyRows(preview, 'preview-current');
+      if (preview.length) sections += '<tr class="generation-section-row working-preview-section"><th colspan="3"><span class="working-preview-heading"><span class="working-preview-dot" aria-hidden="true"></span><span><strong>Working preview</strong><small>Temporary — final checks still running</small></span></span></th></tr>' + readOnlyRows(preview, 'preview-current');
       if (prior.length) sections += '<tr class="generation-section-row saved-actions-heading"><th colspan="3">Previously saved actions</th></tr>' + readOnlyRows(prior, 'preview-saved');
       document.getElementById('actionsBody').innerHTML = '<tr class="generation-row"><td colspan="3"><p class="generating">' + escapeHtml(intro) + '</p></td></tr>' + sections;
       return;

@@ -612,6 +612,15 @@
   background:var(--info-bg);color:var(--info-text);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
 .meeting-agent-page .preview-action-meta{color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
 .meeting-agent-page .generation-section-row th{padding:.75rem .6rem .35rem;background:#fff;color:var(--heading);font-size:var(--fs-sm)}
+.meeting-agent-page .generation-section-row.working-preview-section th{
+  padding:.75rem;background:var(--info-bg);border-top:1px solid var(--info-border);border-bottom:1px solid var(--info-border)}
+.meeting-agent-page .working-preview-heading{display:flex;align-items:center;gap:.65rem;text-transform:none;letter-spacing:0}
+.meeting-agent-page .working-preview-heading>span:last-child{display:grid;gap:.08rem}
+.meeting-agent-page .working-preview-heading strong{color:var(--info-text);font-size:var(--fs-sm)}
+.meeting-agent-page .working-preview-heading small{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-regular)}
+.meeting-agent-page .working-preview-dot{
+  width:.85rem;height:.85rem;flex:none;border-radius:50%;border:2px solid var(--brand-200);border-top-color:var(--accent);animation:agent-spin .75s linear infinite}
+@media(prefers-reduced-motion:reduce){.meeting-agent-page .working-preview-dot{animation:none;border-color:var(--accent)}}
 .meeting-agent-page .preview-saved{background:#fff}
 
 .meeting-agent-page .owner-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0 .4rem}
