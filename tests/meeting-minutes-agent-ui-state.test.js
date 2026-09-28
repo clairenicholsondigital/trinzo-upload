@@ -848,7 +848,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     const { page, errors } = launched;
 
     assert.match(await page.textContent('#actionsBody'), /evidence-checked report/i);
-    assert.match(await page.textContent('#actionsBody'), /final quality checks continue/i);
+    assert.match(await page.textContent('#actionsBody'), /Temporary — final checks still running/i);
     assert.equal(await page.locator('#actionsBody textarea').count(), 0, 'preview remains read-only');
     assert.equal(await page.locator('#generationProgress').isVisible(), true);
     assert.match(await page.textContent('#generationPhases'), /Find possible actions.*Finish the draft/s);
@@ -961,7 +961,7 @@ test('successful Actions regeneration clears its outdated warning and stays clea
     const launched = await launchPage(port, 'actions-completing');
     browser = launched.browser;
     const { page, errors } = launched;
-    assert.match(await page.textContent('#actionsBody'), /Evidence-checked preview/i);
+    assert.match(await page.textContent('#actionsBody'), /Working preview/i);
     assert.match(await page.textContent('#actionsBody'), /Previously saved actions/i);
     assert.match(await page.textContent('#actionsBody'), /Send the revised report/i);
     await page.waitForFunction(() => /Send the final checked report/i.test(document.getElementById('actionsBody').textContent));
@@ -1257,7 +1257,7 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     assert.equal(await page.locator('.proposal-content').isHidden(), true);
     assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
     assert.match(await page.textContent('#proposalSelectionCount'), /1 of 1 selected/i);
-    assert.match(await page.textContent('#acceptSelectedProposal'), /Apply 1 change/i);
+    assert.match(await page.textContent('#acceptSelectedProposal'), /Add 1 to minutes/i);
     assert.match(await page.textContent('#proposalPanel'), /Unchecked suggestions stay/i);
     await page.click('.proposal-detail>summary');
     assert.equal(await page.locator('.proposal-content').isVisible(), true);
