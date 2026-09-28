@@ -226,7 +226,9 @@ test('meaningless timing is removed and clearly flagged on generated actions', (
       evidenceIds: ['T0001']
     }] }, [{ id: 'T0001', speaker: 'Alex', text: 'There are some further updates that need to happen to that risk management plan.' }], 'actions');
     assert.deepEqual(result.actions[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
-    assert.match(result.reviewFlags[0].message, /does not state a date, target or dependency/i);
+    // "There are ..." is now read as a copied sentence before the correctness
+    // check sees it; either flag tells the reviewer the same thing.
+    assert.match(result.reviewFlags[0].message, /does not state a date, target or dependency|copied action sentence rather than a date/i);
   } finally {
     if (prior === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
     else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = prior;

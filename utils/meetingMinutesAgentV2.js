@@ -1161,7 +1161,16 @@ const DEPENDENCY_TIMING = /\b(?:if|after|before|once|when|whenever|following|upo
 const DEPENDENCY_LEAD_IN = /^(?:(?:and\s+)?(?:in parallel|then|separately|at the same time|in tandem)[,;:]?\s+)+(?=(?:if|after|before|once|when|whenever|following|upon|subject to|dependent on|pending|until|unless|provided that|based on|contingent on|as soon as|on completion|on approval|on receipt)\b)/i;
 const DURATION_TASK_NOUN = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[ -](?:business[ -])?(?:day|week|month|quarter|year)s?[ -](?:pilot|trial|test|review|programme|program|project|phase|study|workshop|exercise|engagement|contract|period|cycle|sprint)\b/i;
 const EXPLICIT_DUE_CUE = /\b(?:by|before|within|no later than|due|deadline|target|today|tonight|tomorrow|this\s+(?:week|month|quarter|year)|next\s+(?:week|month|quarter|year)|end of|on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2})|at\s+\d{1,2})\b/i;
-const RAW_TIMING_CLAUSE_START = /^(?:(?:i|we|you|he|she|they|it)\s+(?:['’]?ll|will|shall|can|could|would|should|do|does|did|am|is|are|was|were|have|has|had|need|needs|want|wants|plan|plans|start|starts)|(?:the|a|an|this|that)\s+[\p{L}\p{N}'’-]+\s+(?:will|shall|can|could|would|should|is|are|was|were|has|had|needs|starts)|[\p{Lu}][\p{L}'’-]+\s+(?:will|shall|can|could|would|should|is|was|has|needs|starts))\b/iu;
+// The pronoun may be contracted: "I'll draft that." (draft 1055) came through
+// the space-separated form untouched and was published as a deadline.
+const RAW_TIMING_CLAUSE_START = /^(?:(?:i|we|you|he|she|they|it|there|here)(?:\s+(?:['’]?ll|will|shall|can|could|would|should|do|does|did|am|is|are|was|were|have|has|had|need|needs|want|wants|plan|plans|start|starts)|['’](?:ll|ve|re|d|m)\b)|(?:the|a|an|this|that)\s+[\p{L}\p{N}'’-]+\s+(?:will|shall|can|could|would|should|is|are|was|were|has|had|needs|starts)|[\p{Lu}][\p{L}'’-]+\s+(?:will|shall|can|could|would|should|is|was|has|needs|starts))\b/iu;
+// Time words the two lists above do not carry but real timings use: "in a
+// fortnight", "straight away", "during the live webinar", "by close of play".
+const TIMING_SIGNAL_EXTRA = /\b(?:fortnight|now|straight away|right away|at once|first thing|close of play|end of play|end of the day|eod|cop|eom|eoy|lunchtime|noon|midday|midnight|o['’]clock|half past|quarter (?:past|to)|hours?|minutes?|[ap]\.?m\.?|q[1-4]|h[12]|sprint|release|launch|go-live|christmas|easter|new year|summer|autumn|winter|spring|during|throughout|while|whilst|ahead of|prior to|in time|ready for|depending on|dependent|depends|decision|outcome|start of|beginning of|middle of|mid-\w+|fortnightly|weekly|monthly|daily)\b/i;
+function hasTimingSignal(wording = '') {
+  const value = String(wording || '');
+  return CALENDAR_TIMING.test(value) || DEPENDENCY_TIMING.test(value) || TIMING_SIGNAL_EXTRA.test(value);
+}
 
 function normaliseTimingWording(timing = {}) {
   const kind = text(timing?.kind, 30);
@@ -1184,6 +1193,11 @@ function timingPublicationIssue(timing = {}) {
   if (cleanTiming.kind !== 'dependency' && DURATION_TASK_NOUN.test(wording) && !EXPLICIT_DUE_CUE.test(wording)) {
     return 'task_duration_not_due_date';
   }
+  // Fail closed on wording with no time in it at all. "create those two
+  // language characterization situations" was published as a deadline; it is
+  // a copied clause, not a time. Of 1,554 stored timings only the copied
+  // clauses lack every signal word above.
+  if (!hasTimingSignal(wording)) return 'no_timing_signal';
   return '';
 }
 
@@ -1202,7 +1216,10 @@ function timingWordingHasMeaning(timing = {}) {
   if (!wording && /^\d{4}-\d{2}-\d{2}$/.test(text(timing?.exactDate, 20))) return true;
   if (!wording) return false;
   if (timingPublicationIssue(cleanTiming)) return false;
-  return kind === 'dependency' ? DEPENDENCY_TIMING.test(wording) : CALENDAR_TIMING.test(wording);
+  // "if gaps are found during traceability review" arrived labelled a
+  // deadline; the label is wrong, the timing is real. Any time signal counts,
+  // whichever kind the model chose.
+  return hasTimingSignal(wording);
 }
 
 function isIdeaOnlyContemplation(value) {
@@ -1233,7 +1250,46 @@ const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|con
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
 const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share)\b/i;
-const ACTION_PASSIVE_OBLIGATION_PATTERN = /\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
+// ---- Running the call itself --------------------------------------------------
+// "I'll give it thirty seconds for Dermot and then we'll just crack on, because
+// I know Ffion has to drop at half past." (draft 1055, the chair's first line)
+// became the published action "give it thirty seconds for Dermot and then".
+// This is someone running the call: waiting for a latecomer, getting started,
+// someone leaving early, audio and screen trouble, a parcel at the door. What
+// separates it from planned work that mentions the same equipment ("Start the
+// recording when Priya begins speaking" is a real task for next week's
+// webinar) is that each of these is a spoken idiom of call management with no
+// deliverable in it, said about this meeting as it happens.
+const LIVE_CALL_CONDUCT = new RegExp([
+  // waiting for people to arrive
+  String.raw`\b(?:give|allow)\s+(?:it|him|her|them|[\p{Lu}][\p{L}'’-]+)\s+(?:a\s+)?(?:few\s+(?:more\s+)?|couple\s+(?:more\s+)?(?:of\s+)?|another\s+|(?:thirty|twenty|fifteen|ten|five|two|one|\d+)\s+(?:more\s+)?)?(?:seconds?|secs?|minutes?|mins?|moments?|tick)\b`,
+  String.raw`\bwait(?:ing)?\s+(?:a\s+(?:few|couple)\s+(?:more\s+)?(?:seconds|secs|minutes|mins)|another\s+(?:minute|couple)|for\s+(?:[\p{Lu}][\p{L}'’-]+|everyone|everybody|the\s+others|others)\s+to\s+(?:join|arrive|dial\s+in|come\s+on|log\s+on|get\s+on|turn\s+up))\b`,
+  // getting started, moving on, wrapping up this call
+  String.raw`\b(?:just\s+)?(?:crack\s+on|make\s+a\s+start|get\s+(?:started|going|cracking|underway)|kick\s+(?:things\s+)?off|press\s+on|get\s+(?:through|round)\s+(?:the\s+)?agenda|step\s+(?:down\s+)?through\s+the\s+(?:core\s+areas|agenda|tracker|list)|wrap\s+(?:it\s+|this\s+)?up|call\s+it\s+(?:a\s+day|there)|leave\s+it\s+there)\b`,
+  // leaving early, time pressure on this call
+  String.raw`\b(?:has|have|had|need|needs|got|going)\s+to\s+(?:drop|leave|go|shoot|dash|jump|hop)(?:\s+off|\s+out)?\s+(?:at|by|in|for|before|around|about)\b`,
+  String.raw`\b(?:hard\s+stop|drop(?:ping)?\s+off|be\s+done|finish(?:ed|ing)?\s+up|wrap(?:ped)?\s+up)\s+(?:well\s+)?(?:at|by|before)\s+(?:that|then|half\s+past|quarter|\d{1,2}(?::\d{2})?|the\s+hour|the\s+(?:half|quarter))\b`,
+  String.raw`\b(?:it(?:'s| is)\s+getting\s+late|(?:mindful|conscious)\s+of\s+(?:the\s+)?time|time\s+check|(?:we(?:'ve| have)\s+got|there(?:'s| is))\s+(?:about\s+|only\s+|just\s+)?(?:\d+|five|ten|fifteen|twenty)\s+minutes\s+(?:left|to\s+go))\b`,
+  // audio, video, screen
+  String.raw`\b(?:you(?:'re| are)|i(?:'m| am)|(?:he|she)(?:'s| is)|we(?:'re| are))\s+(?:a\s+bit\s+|still\s+|all\s+)?(?:on\s+mute|muted|frozen|breaking\s+up|cutting\s+out|echoing|lagging)\b`,
+  String.raw`\bcan\s+(?:you|everyone|everybody|anyone|people)\s+(?:all\s+)?(?:hear|see)\s+(?:me|us|my\s+screen|that|this|the\s+screen)\b`,
+  String.raw`\b(?:let\s+me|i(?:'ll| will| am going to|'m going to)|i(?:'m| am)\s+just\s+going\s+to)\s+(?:just\s+)?(?:share|stop\s+sharing|put\s+up|bring\s+up)\s+(?:my|the)\s+screen\b`,
+  String.raw`\b(?:my|the|your)\s+(?:internet|connection|wifi|wi-fi|bandwidth|camera|mic|microphone|audio|sound|video)\s+(?:is|was|keeps|has|went|has\s+gone|is\s+going)\b`,
+  // interruptions at home
+  String.raw`\b(?:someone(?:'s| is)\s+at\s+(?:my|the)\s+door|(?:sorry|hang\s+on)[,.]?\s+(?:parcel|delivery|doorbell|the\s+dog|my\s+dog|the\s+kids|one\s+sec|two\s+secs|back\s+in\s+a\s+(?:sec|second|minute|tick)))\b`
+].join('|'), 'iu');
+// One turn can run the call and still promise something: "Sorry, you're on
+// mute. Right, so I'll send the deck tomorrow." Judge the pieces, not the
+// whole: it is conduct only when nothing with work in it is left over.
+const CONDUCT_PIECE_SPLIT = /(?<=[.!?;])\s+|,\s*(?=(?:and\s+then|then|but|so|because|and)\b)|\s+(?=(?:and\s+then|and|but|so|because)\s+(?:i|we|you|he|she|they)\b)|(?=\b(?:i|we)\s*(?:['’]ll|will|shall|am going to|are going to)\s+)/iu;
+function isLiveCallConduct(value = '') {
+  const source = text(value, 1200);
+  if (!source || !LIVE_CALL_CONDUCT.test(source)) return false;
+  const rest = source.split(CONDUCT_PIECE_SPLIT).map((piece) => String(piece || '').trim()).filter(Boolean)
+    .filter((piece) => !LIVE_CALL_CONDUCT.test(piece));
+  return !rest.some((piece) => contentTokens(piece).length >= 3);
+}
+const ACTION_PASSIVE_OBLIGATION_PATTERN =/\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
 const ACTION_IMPERATIVE_PATTERN = /^\s*(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s*,\s*)?(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
 const ACTION_CONCRETE_OFFER_PATTERN = /\b(?:I|we)\s+(?:can|could|would be able to|am available to|are available to)\s+(?:have a look at|attend|check|collect|contact|deliver|go|handle|prepare|provide|review|send|speak|test|visit)\b/i;
@@ -1276,7 +1332,7 @@ function actionEvidenceDisposition(action, evidence) {
   const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source)
     || ACTION_JOINT_INTENTION_PATTERN.test(source) || ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(source)
     || isDecisionResolutionCommitment(source) || accepted;
-  if (ACTION_ADMIN_PATTERN.test(action) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
+  if ((ACTION_ADMIN_PATTERN.test(action) || isLiveCallConduct(action)) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
   if (ACTION_COMPLETED_PATTERN.test(source) && !hasCommitment) return 'completed';
   if (requested && !accepted
     && !ACTION_COMMITMENT_PATTERN.test(source.replace(ACTION_REQUEST_PATTERN, ''))
@@ -1403,6 +1459,8 @@ function actionCandidateInventory(units = []) {
     const explicitAcceptedCommitment = ACTION_ACCEPTANCE_PATTERN.test(unit.text)
       && (ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text));
     if (!directCue && !contextualAcceptance && !acceptedOfferAhead) continue;
+    // Running the call is not a candidate for anything.
+    if (isLiveCallConduct(unit.text)) continue;
     // An honest unknown is meeting content, not a promise. Keep an explicit
     // follow-up ("I don't know; I'll check tomorrow"), but do not manufacture
     // work from "I don't know" or "I'll know after the meeting".
@@ -1467,9 +1525,12 @@ function actionCandidateInventory(units = []) {
         const start = Number(match.index || 0) + match[0].length;
         const end = clauseIndex + 1 < promiseStarts.length
           ? Number(promiseStarts[clauseIndex + 1].index) : String(unit.text || '').length;
-        const focusText = text(String(unit.text || '').slice(start, end)
-          .replace(/^\s*[,;:.–—-]+\s*/, '').replace(/\s*(?:,|;|\band)\s*$/i, ''), 500);
-        if (contentTokens(focusText).length < 2) return;
+        // The cut lands just before the next promise marker, so the clause
+        // can end on the joint ("...for Dermot and then"). Trim the joint;
+        // a clause that only ran the call is not a candidate either.
+        const focusText = trimDanglingTail(text(String(unit.text || '').slice(start, end)
+          .replace(/^\s*[,;:.–—-]+\s*/, ''), 500));
+        if (contentTokens(focusText).length < 2 || isLiveCallConduct(focusText)) return;
         candidates.push({
           ...candidate,
           candidateId: stableId('candidate-clause', `${unit.id}|${clauseIndex + 1}|${focusText}`),
@@ -2034,7 +2095,12 @@ const CITED_TIMING_COMMITMENT_CUE = /\blet\s+(?:me|us)\b|\blet's\b/i;
 // when-question sits in its own short turn, outside the cited commitment. When
 // an action has no timing, a when-question inside its exchange whose reply
 // (within the next two rows) names a time supplies it.
-const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would) (?:you|that|it|we)|what(?:'s| is) the (?:date|deadline)|how soon|when(?:'s| is) (?:that|it) (?:due|going to))\b/i;
+const WHEN_QUESTION = /\b(?:by when|when by|when (?:can|will|could|would|do|does|did|should|might) (?:you|that|it|we|he|she|they)|when do you (?:think|reckon|expect)|what(?:'s| is) the (?:date|deadline|timescale|timeline|timing)|what sort of time(?:scale|frame|line)|(?:any idea|roughly) when|how soon|when for|when(?:'s| is| would| will) (?:that|it|this) (?:be|due|going to|likely|for))\b/i;
+// The asker can be the one who settles it: "And when do you think, Dermot?"
+// ... "Okay so that's the fifteenth. I'll put it in as the fifteenth." A row
+// from the asker counts only when it reads as settling the date, never when
+// it is another question.
+const SETTLES_TIMING = /\b(?:so that(?:'s| is)|let(?:'s| us) (?:say|call it|put|go with)|put (?:it|that) (?:in|down) (?:as|for)|call it|we(?:'ll| will) say|pencil(?:led)? (?:it |that )?in|go with|make it)\b/i;
 const ANSWER_TIMING = /\b(?:today|tonight|tomorrow(?: morning| afternoon)?|this week|next week|end of (?:the |this |next )?week|(?:the )?(?:rest|remainder) of (?:the |this )?week|(?:this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|a fortnight|(?:in |within )?(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2}) (?:days?|weeks?|months?)|(?:by |on )?the (?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty-?\w+|thirtieth|thirty-?first)|\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
 function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {}) {
   if (timing.kind !== 'not_stated') return timing;
@@ -2045,9 +2111,10 @@ function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {})
   for (const question of window) {
     if (!WHEN_QUESTION.test(String(question?.text || ''))) continue;
     const at = all.indexOf(question);
-    for (const reply of all.slice(at + 1, at + 3)) {
-      if (reply?.speaker === question?.speaker) continue;
-      const phrase = String(reply?.text || '').match(ANSWER_TIMING);
+    for (const reply of all.slice(at + 1, at + 4)) {
+      const spoken = String(reply?.text || '');
+      if (reply?.speaker === question?.speaker && (/\?/.test(spoken) || !SETTLES_TIMING.test(spoken))) continue;
+      const phrase = spoken.match(ANSWER_TIMING);
       if (phrase) return timingFrom({ timing: { wording: phrase[0].toLowerCase().replace(/\s+/g, ' ').trim() } }, options);
     }
   }
@@ -2551,8 +2618,12 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     const row = item ? verdicts.get(item.id) : null;
     if (!row || !['belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
     const replacement = text(row.correctTiming, 120);
+    // Verbatim is necessary, not sufficient: "I'll draft that." is in the
+    // passage word for word and is not a timing. A replacement must pass the
+    // same shape check as any published timing.
     const replacementIsVerbatim = replacement && quotedVerbatim(replacement, item.passage)
-      && quoteText(replacement) !== quoteText(wording);
+      && quoteText(replacement) !== quoteText(wording)
+      && !timingPublicationIssue(timingFrom({ timing: { wording: replacement } }, options));
     const timingQuoteCheck = quotedVerbatimValidation(row.timingQuote, item.passage);
     if (!timingQuoteCheck.valid && !replacementIsVerbatim) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: `timing_${timingQuoteCheck.reason}` });
@@ -2616,7 +2687,7 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
 // commits to it, is assigned it or agrees to it, and the quote is in the
 // passage. Owners the model cannot tie to those words are removed.
 function isMeetingAdminAction(value = '') {
-  return ACTION_ADMIN_PATTERN.test(String(value || ''));
+  return ACTION_ADMIN_PATTERN.test(String(value || '')) || isLiveCallConduct(value);
 }
 
 function commitmentCheckEnabled() {
@@ -3778,10 +3849,22 @@ const SPECULATIVE_ACTION = /^\s*(?:possibly|maybe|perhaps|potentially)\b/i;
 // standing rule for how things are done, with nobody doing anything by a
 // date. It belongs in the minutes, not the action list.
 const STANDING_POLICY_ACTION = /^\s*(?:always|never)\b/i;
+// "give it thirty seconds for Dermot and then" - a clause cut off at its
+// joint. Whatever it was going to say, a sentence ending on a conjunction is
+// not an instruction anyone can act on. "so" is kept where it is the object
+// ("if she is comfortable doing so").
+const DANGLING_TAIL = /(?:\s*(?:,|;|\b(?:and|then|but|or|because|although|whereas|whilst)\b|(?<!\b(?:do|doing|done|did|does)\s)\bso\b))+\s*[.]?\s*$/i;
+function trimDanglingTail(value = '') {
+  return String(value || '').replace(DANGLING_TAIL, '').trim();
+}
+const DANGLING_TAIL_WORD = /(?:\b(?:and|then|but|or|because|although|whereas|whilst)\b|(?<!\b(?:do|doing|done|did|does)\s)\bso\b)\s*[.,;]?\s*$/i;
+function endsOnDanglingTail(value = '') {
+  return DANGLING_TAIL_WORD.test(String(value || '').trim());
+}
 function isNotAnAction(value = '') {
   const wording = text(value, 600);
   return NOT_A_DELIVERABLE.test(wording) || SPECULATIVE_ACTION.test(wording)
-    || STANDING_POLICY_ACTION.test(wording);
+    || STANDING_POLICY_ACTION.test(wording) || endsOnDanglingTail(wording);
 }
 
 // ---- Instructions to whoever writes the minutes ------------------------------
@@ -4560,7 +4643,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       // The keyword reading can be wrong ("Janine and Adil, you're involved in
       // that next week" reads as no commitment). A caller may collect these
       // for a quote-verified second look; they are never published from here.
-      if (Array.isArray(options.vetoed) && COMMITMENT_RECHECK_DISPOSITIONS.has(disposition) && !ACTION_ADMIN_PATTERN.test(action)) {
+      if (Array.isArray(options.vetoed) && COMMITMENT_RECHECK_DISPOSITIONS.has(disposition) && !isMeetingAdminAction(action)) {
         options.vetoed.push({ id: text(item?.id, 80) || stableId('action', action, index), action, owners, timing: timingFrom(item, options), evidenceIds, reviewFlagIds: [], disposition });
       }
       return null;
@@ -4568,14 +4651,19 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     // Recovery fills gaps in fresh agent output only. A save (enforceEvidence
     // false) carries timings a reviewer or a timing check has already settled,
     // so an empty timing there is deliberate and must stay empty.
-    let timing = options.enforceEvidence === false
-      ? timingFrom(item, options)
-      : resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(item, options), units, evidenceIds, options), units, evidenceIds, options), units, evidenceIds, options);
+    let timing = timingFrom(item, options);
     let timingShapeIssue = '';
     if (options.enforceEvidence !== false) {
+      // Shape is checked before the transcript backfills, not after: a copied
+      // sentence in the timing column ("I'll draft that.") used to block the
+      // backfills, which only fill an empty timing, so the real answer three
+      // rows later ("Okay so that's the fifteenth") was never looked for.
       timing = normaliseTimingWording(timing);
       timingShapeIssue = timingPublicationIssue(timing);
       if (timingShapeIssue) timing = timingForPublication(timing);
+      timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timing, units, evidenceIds, options), units, evidenceIds, options), units, evidenceIds, options);
+      // Replaced from the transcript rather than removed: nothing to report.
+      if (timingShapeIssue && timing.kind !== 'not_stated' && timing.wording) timingShapeIssue = '';
     }
     // Agent output is corrected once, on the published actions, so every
     // change reaches the reviewer with its flag (see applyTimingClauseChecks).
@@ -4676,7 +4764,9 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         kind: 'timing',
         message: action._timingPublicationIssue === 'task_duration_not_due_date'
           ? 'Timing was removed because it described how long the work lasts rather than when it is due.'
-          : 'Timing was removed because it was a copied action sentence rather than a date, target or dependency phrase.',
+          : action._timingPublicationIssue === 'no_timing_signal'
+            ? 'Timing was removed because it does not say when the work is due or what it depends on.'
+            : 'Timing was removed because it was a copied action sentence rather than a date, target or dependency phrase.',
         evidenceIds: action.evidenceIds
       }, flags.length);
       flags.push(flag);
@@ -5212,6 +5302,10 @@ module.exports = {
   mentionedPeople,
   describesUsualPractice,
   isNotAnAction,
+  isLiveCallConduct,
+  hasTimingSignal,
+  trimDanglingTail,
+  endsOnDanglingTail,
   isMinuteInstruction,
   isSocialAside,
   isAobPersonalAside,
