@@ -447,6 +447,20 @@ test('concrete future intentions are commitments but aspirations to think are no
   ), 'suggestion');
 });
 
+test('brief first-person sharing used to run the meeting is meeting admin, not a follow-up action', () => {
+  assert.equal(
+    actionEvidenceDisposition('Share that briefly.', 'I will quickly share that and then move on.'),
+    'meeting_admin'
+  );
+  assert.equal(
+    actionEvidenceDisposition(
+      'Share the completed validation report with the client by Friday.',
+      'I will quickly share the completed validation report with the client by Friday.'
+    ),
+    'committed'
+  );
+});
+
 test('multi-turn scheduling conflicts become one context-rich commitment thread', () => {
   const units = normaliseSourceUnits([
     { id: 'T0730', speaker: 'Morgan', text: "I won't be available between Tuesday and Thursday.", classification: 'keep' },

@@ -1269,6 +1269,13 @@ const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|con
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
 const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share)\b/i;
+// A short first-person "quickly/briefly/just share" line is often the chair
+// moving the meeting along, rather than work that remains after the call. Keep
+// this separate from ACTION_ADMIN_PATTERN: a normal "share the report" remains
+// a possible deliverable, and explicit recipients, deliverables or timing keep
+// the line eligible as a real action.
+const MEETING_ADMIN_SHARE_PATTERN = /\b(?:i|we)\s+(?:'ll|will|shall|am going to|are going to)\s+(?:just|quickly|briefly)\s+share\b/i;
+const SHARE_DELIVERABLE_CONTEXT = /\b(?:by|before|until|tomorrow|today|next\s+(?:week|month)|deadline|due|client|customer|supplier|stakeholder|external|team|colleagues?|board|committee|report|document|proposal|draft|result|results|data|link|file|presentation|deck|slides?|agenda|minutes|action\s+points?|findings?|quote|invoice|contract|formal\s+record)\b/i;
 // ---- Running the call itself --------------------------------------------------
 // "I'll give it thirty seconds for Dermot and then we'll just crack on, because
 // I know Ffion has to drop at half past." (draft 1055, the chair's first line)
@@ -1308,6 +1315,10 @@ function isLiveCallConduct(value = '') {
     .filter((piece) => !LIVE_CALL_CONDUCT.test(piece));
   return !rest.some((piece) => contentTokens(piece).length >= 3);
 }
+function isMeetingAdminShare(value = '', context = '') {
+  const source = `${text(value, 1200)} ${text(context, 15000)}`;
+  return MEETING_ADMIN_SHARE_PATTERN.test(source) && !SHARE_DELIVERABLE_CONTEXT.test(source);
+}
 const ACTION_PASSIVE_OBLIGATION_PATTERN =/\b(?:(?:is|are|was|were|will be)\s+)?(?:required|needed|expected|planned|scheduled|assigned)\s+to\b|\b(?:needs?|requires?)\s+(?:approval|assessment|completion|confirmation|documentation|follow[- ]?up|investigation|review|testing|updat(?:e|ing)|validation)\b/i;
 const ACTION_FOLLOW_UP_PATTERN = /\b(?:action point|next step|take[- ]?away|follow[- ]?up|circle back|come back (?:to|with)|pick (?:this|that|it) up|look into|find out|make sure|ensure|sort (?:this|that|it) out|leave (?:this|that|it) with)\b/i;
 const ACTION_IMPERATIVE_PATTERN = /^\s*(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{2,}\s*,\s*)?(?:(?:and|then|also)\s+)?(?:(?:when|once|after|before)\b.{0,100}?,\s*)?(?:please\s+)?(?:send|share|provide|forward|review|check|assess|create|produce|prepare|draft|update|revise|complete|finish|confirm|clarify|determine|test|verify|contact|call|message|schedule|arrange|document)\b/i;
@@ -1336,6 +1347,7 @@ function actionEvidenceDisposition(action, evidence) {
   if (LEAVING_REMARK_PATTERN.test(source) && !DELIVERABLE_CONTEXT_PATTERN.test(action)
     && !/\b(?:send|email|order|book|confirm|ring|call|contact|arrange|prepare|review|update|write|share|forward|submit)\b/i.test(action)) return 'meeting_admin';
   if (!source) return 'unclear';
+  if (isMeetingAdminShare(action, source)) return 'meeting_admin';
   const actionTokens = contentTokens(action).slice(0, 12);
   const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
   const predicateWords = [...new Set(predicateGroups.flat())];
@@ -5553,6 +5565,7 @@ module.exports = {
   describesUsualPractice,
   isNotAnAction,
   isLiveCallConduct,
+  isMeetingAdminShare,
   hasTimingSignal,
   trimDanglingTail,
   endsOnDanglingTail,
