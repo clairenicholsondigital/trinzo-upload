@@ -1269,6 +1269,7 @@
       var targetId = recordDomId('action', item.id, index);
       var transcriptId = actionTranscriptId(item.id, index);
       var transcriptKey = disclosureKey(item.evidenceIds, 'action-transcript:' + (item.id || index));
+      var transcriptOpen = Boolean(openDisclosures[transcriptKey]);
       // No "•••" menu on an action row: it only repeated the row's own
       // View transcript and Remove from minutes controls under a heading,
       // and two remove buttons that do the same thing read as two things.
@@ -1276,7 +1277,7 @@
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
       var decisions = '<div class="row-decisions">'
-        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="false">View transcript</button>'
+        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '"><span data-transcript-toggle-label>' + (transcriptOpen ? 'Hide transcript' : 'View transcript') + '</span><span class="row-transcript-chevron" aria-hidden="true">⌄</span></button>'
         + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Mark checked') + '</button>'
         + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Remove from minutes</button>'
         + '</div>';
@@ -2894,13 +2895,11 @@
       var transcriptRow = transcriptButton.closest('[data-action-row]');
       var transcriptPanel = transcriptRow && transcriptRow.querySelector('[data-action-transcript-panel]');
       if (transcriptPanel) {
-        transcriptPanel.open = true;
-        transcriptButton.setAttribute('aria-expanded', 'true');
-        window.setTimeout(function () {
-          transcriptPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          var summary = transcriptPanel.querySelector('summary');
-          if (summary) summary.focus({ preventScroll: true });
-        }, 0);
+        var opening = !transcriptPanel.open;
+        transcriptPanel.open = opening;
+        transcriptButton.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        var transcriptLabel = transcriptButton.querySelector('[data-transcript-toggle-label]');
+        if (transcriptLabel) transcriptLabel.textContent = opening ? 'Hide transcript' : 'View transcript';
       }
       return;
     }
