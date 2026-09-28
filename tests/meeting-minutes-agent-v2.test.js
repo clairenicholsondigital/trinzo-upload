@@ -245,6 +245,24 @@ test('expanded result supports decisions, questions, joint owners, targets and e
   assert.ok(result.reviewFlags.some((flag) => flag.kind === 'unclear_reference'));
 });
 
+test('generated actions use digits, compact target labels and a separate deadline field', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0100', speaker: 'Alex', text: "I'll order three hundred and fifty labels by Saturday.", classification: 'keep', confidence: 0.98 },
+    { id: 'T0101', speaker: 'Alex', text: "I'll prepare the exam materials from now till race day.", classification: 'keep', confidence: 0.98 },
+    { id: 'T0102', speaker: 'Alex', text: "I'll repair the water butt by Saturday.", classification: 'keep', confidence: 0.98 }
+  ]);
+  const result = normaliseAgentResult({ actions: [
+    { action: 'Order three hundred and fifty labels by Saturday.', owners: ['Alex'], timing: { kind: 'deadline', wording: 'Saturday' }, evidenceIds: ['T0100'] },
+    { action: 'Prepare the exam materials.', owners: ['Alex'], timing: { kind: 'target', wording: 'from now till race day' }, evidenceIds: ['T0101'] },
+    { action: 'Repair the water butt by Saturday.', owners: ['Alex'], timing: { kind: 'deadline', wording: 'Saturday' }, evidenceIds: ['T0102'] }
+  ] }, units, 'actions');
+  assert.equal(result.actions[0].action, 'Order 350 labels.');
+  assert.equal(result.actions[0].timing.wording, 'Saturday');
+  assert.equal(result.actions[1].timing.wording, 'race day');
+  assert.equal(result.actions[2].action, 'Repair the water butt.');
+  assert.equal(result.actions[2].timing.wording, 'Saturday');
+});
+
 test('unsupported evidence IDs are removed and visibly flagged', () => {
   const result = normaliseAgentResult({ actions: [{
     action: 'Send the report to Alex.', owner: 'Priya', deadline: 'Friday', evidenceIds: ['T9999']

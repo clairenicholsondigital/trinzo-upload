@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
+const { convertSpokenNumbers } = require('./spokenNumbers');
 const {
   isRoutineMeetingAdministrationText,
   removeRoutineMeetingAdministrationSentences
@@ -1194,6 +1195,13 @@ function hasTimingSignal(wording = '') {
 function normaliseTimingWording(timing = {}) {
   const kind = text(timing?.kind, 30);
   let wording = text(timing?.wording, 220);
+  // Targets are labels, not sentence fragments. "from now till race day"
+  // carries the same target as "race day", but the latter is what belongs in
+  // a compact timing field and is what the reviewer can scan quickly.
+  if (kind === 'target') {
+    wording = wording.replace(/^from\s+now\s+(?:until|till|to|through)\s+/i, '');
+    wording = wording.replace(/^(?:until|till|through)\s+/i, '');
+  }
   if (kind === 'dependency') {
     const trimmed = wording.replace(DEPENDENCY_LEAD_IN, '');
     if (trimmed !== wording) wording = trimmed.replace(/^([a-z])/, (letter) => letter.toUpperCase());
@@ -1251,7 +1259,7 @@ function isIdeaOnlyContemplation(value) {
 }
 
 function cleanActionWording(value = '') {
-  const source = text(value, 1600);
+  const source = convertSpokenNumbers(text(value, 1600)).text;
   // Remove tautological scaffolding while retaining every deliverable:
   // "Implement a system to implement X and add Y" ->
   // "Implement a system for X and add Y".
@@ -4886,7 +4894,7 @@ const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'm
 
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
-    const action = cleanActionWording(item?.action);
+    let action = cleanActionWording(item?.action);
     if (!action || isIdeaOnlyContemplation(action)) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
@@ -4923,6 +4931,12 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       timingShapeIssue = timingPublicationIssue(timing);
       if (timingShapeIssue) timing = timingForPublication(timing);
       timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timing, units, evidenceIds, options), units, evidenceIds, { ...options, action }), units, evidenceIds, options);
+      // A generated action should name the work once. Its agreed deadline or
+      // target belongs in the structured timing field, where it remains
+      // searchable and can be checked independently of the action wording.
+      if (timing.kind !== 'not_stated' && timing.wording) {
+        action = replaceEmbeddedTiming(action, timing.wording, '');
+      }
       // Replaced from the transcript rather than removed: nothing to report.
       if (timingShapeIssue && timing.kind !== 'not_stated' && timing.wording) timingShapeIssue = '';
     }
