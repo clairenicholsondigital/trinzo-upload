@@ -1103,8 +1103,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
     const actionDeleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
-    await page.click('#actionsBody .record-menu>summary');
-    await page.click('#actionsBody [data-delete-action]');
+    await page.click('#actionsBody [data-reject-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     const navigationSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().selectedStep === 2);
@@ -1340,8 +1339,7 @@ test('an unlinked timing warning routes to its Action field and resolves when th
 
     const savedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/unlinked-warning')
       && response.request().method() === 'PATCH');
-    await page.click('#minutes-action-training-action .record-menu>summary');
-    await page.click('#minutes-action-training-action [data-delete-action]');
+    await page.click('#minutes-action-training-action [data-reject-action]');
     await savedResponse;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/unlinked-warning')).json()).draft);
     assert.equal(saved.reviewFlags.find((flag) => flag.id === 'training-timing-flag').status, 'dismissed');
@@ -1419,6 +1417,11 @@ test('final minutes edit source records in place and the finishing bar remains a
     await saved;
 
     await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').first().click();
+    // The editor is a row of its own under the action, wide enough to type in,
+    // not squeezed into the Timing cell.
+    assert.equal(await page.locator('#finalDocument tr.final-editor-row td[colspan="3"] [data-final-editor]').count(), 1);
+    assert.ok((await page.locator('#finalDocument [data-final-timing-wording]').evaluate((node) => node.getBoundingClientRect().width)) >= 200, 'the As said field is wide enough to read');
+    assert.equal(await page.locator('#finalDocument .final-editing-cell [data-field="timing"]').count(), 1, 'the cell being edited stays highlighted');
     await page.selectOption('#finalDocument [data-final-timing-kind]', 'deadline');
     await page.fill('#finalDocument [data-final-timing-wording]', 'by Friday');
     await page.fill('#finalDocument [data-final-timing-date]', '2026-09-18');
@@ -1919,6 +1922,58 @@ test('merging is offered only when there is somewhere to merge to', { timeout: 1
     // This fixture has one topic, so the control would have nothing to offer.
     assert.equal(await page.locator('#discussionList .discussion-card').count(), 1);
     assert.equal(await page.locator('#discussionList [data-merge-topic]').count(), 0);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('an action row has one set of controls, not a menu repeating them', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.equal(await page.locator('#actionsBody .record-menu').count(), 0);
+    assert.equal(await page.locator('#actionsBody [data-action-row]').first().locator('[data-reject-action]').count(), 1);
+    assert.equal(await page.locator('#actionsBody [data-action-row]').first().locator('[data-open-action-transcript]').count(), 1);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a fresh upload is confirmed, explains the next screens, and points at the Library', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(30000);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent`);
+    assert.equal(await page.locator('#uploadConfirmation').isHidden(), true, 'nothing to confirm before an upload');
+    await page.setInputFiles('#transcriptFile', { name: 'weekly-checkin.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });
+    await page.waitForFunction(() => !document.getElementById('uploadConfirmation').hidden);
+    const text = await page.textContent('#uploadConfirmation');
+    assert.match(text, /Transcript uploaded/);
+    assert.match(text, /"weekly-checkin.docx" was read successfully/);
+    for (const step of ['Details', 'Discussion', 'Actions', 'Summary', 'Review']) assert.match(text, new RegExp(step));
+    assert.equal(await page.locator('#uploadConfirmation a[href="/jobs"]').count(), 2, 'Library is linked in the text and as a button');
+    assert.equal(await page.locator('#detailsEditor').isVisible(), true, 'the details are already there underneath');
+
+    await page.click('#uploadConfirmationContinue');
+    assert.equal(await page.locator('#uploadConfirmation').isHidden(), true);
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'meetingTitle');
+
+    // Coming back to the draft from the Library does not show it again.
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=prepared`);
+    await page.waitForFunction(() => !document.getElementById('detailsEditor').hidden);
+    assert.equal(await page.locator('#uploadConfirmation').isHidden(), true);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

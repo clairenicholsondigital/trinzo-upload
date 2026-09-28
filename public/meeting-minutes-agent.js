@@ -491,6 +491,9 @@
   function showStep(index, options) {
     var leavingStep = state.currentStep;
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
+    // The upload confirmation belongs to the moment after upload; moving on
+    // to another screen is the reviewer saying they have read it.
+    if (state.currentStep !== 0) hideUploadConfirmation();
     if (leavingStep !== state.currentStep) stepScrollMemory[leavingStep] = window.scrollY;
     // A draft saved on the retired Focus step has nowhere to land; send it on
     // to Discussion rather than showing an empty screen.
@@ -969,6 +972,7 @@
         readDetails(); scheduleSave();
       }
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
+      showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length);
       setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');
     } catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
@@ -1203,7 +1207,9 @@
       var targetId = recordDomId('action', item.id, index);
       var transcriptId = actionTranscriptId(item.id, index);
       var transcriptKey = disclosureKey(item.evidenceIds, 'action-transcript:' + (item.id || index));
-      var menu = recordMenu(item, '<button class="delete quiet" data-delete-action="' + index + '" type="button">Remove from minutes</button>');
+      // No "•••" menu on an action row: it only repeated the row's own
+      // View transcript and Remove from minutes controls under a heading,
+      // and two remove buttons that do the same thing read as two things.
       var kept = isActionKept(item.id);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
@@ -1218,7 +1224,7 @@
       var grip = '<button type="button" class="action-grip" data-action-grip="' + index + '" draggable="true"'
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea>' + menu + '</div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea></div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
     }).join('') || '<tr><td colspan="3" class="muted">No actions returned. Check the transcript for commitments.</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
@@ -1641,7 +1647,7 @@
 
   function finalTextEditor(kind, id, field, value, options) {
     options = options || {};
-    if (!finalEditMatches(kind, id, field)) {
+    if (!finalEditMatches(kind, id, field) || options.deferred) {
       var displayValue = options.displayValue == null ? value : options.displayValue;
       return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(id || '') + '" data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
     }
@@ -1651,16 +1657,37 @@
     return '<span class="final-inline-editor" data-final-editor>' + control + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
   }
 
-  function finalTimingEditor(action) {
-    var timing = action.timing || {};
-    if (!finalEditMatches('action', action.id, 'timing')) {
-      return '<button class="final-editable final-editable-cell" data-final-edit data-kind="action" data-record-id="' + escapeHtml(action.id) + '" data-field="timing" type="button" title="Click to edit timing">' + escapeHtml(timingText(timing)) + '</button>';
+  function finalTimingDisplay(action) {
+    return '<button class="final-editable final-editable-cell" data-final-edit data-kind="action" data-record-id="' + escapeHtml(action.id) + '" data-field="timing" type="button" title="Click to edit timing">' + escapeHtml(timingText(action.timing || {})) + '</button>';
+  }
+
+  function finalEditButtons() {
+    return '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span>';
+  }
+
+  // The editor for an action's field, laid out in a row of its own under the
+  // action. The cells are too narrow to type in: the timing editor squeezed
+  // into the Timing cell showed "Ta", "straig" and "dc".
+  function finalActionEditorRow(action, field) {
+    var title = '<p class="final-editor-title">Editing ' + (field === 'owners' ? 'the owners' : field === 'timing' ? 'the timing' : 'the wording') + ' of: <em>' + escapeHtml(String(action.action || '').slice(0, 140)) + '</em></p>';
+    var body;
+    if (field === 'timing') {
+      var timing = action.timing || {};
+      body = '<span class="final-inline-editor timing" data-final-editor>' + title
+        + '<label><span class="lbl">Type</span><select data-final-timing-kind aria-label="Timing type"><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option></select></label>'
+        + '<label><span class="lbl">As said in the meeting</span><input data-final-timing-wording value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. by Friday, once the report is back" aria-label="Timing as said"></label>'
+        + '<label><span class="lbl">Exact date (optional)</span><input data-final-timing-date type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label>'
+        + finalEditButtons() + '</span>';
+    } else if (field === 'owners') {
+      body = '<span class="final-inline-editor" data-final-editor>' + title
+        + '<label><span class="lbl">Owners (separate names with commas)</span><input data-final-editor-value value="' + escapeHtml((action.owners || []).join(', ')) + '" aria-label="Edit owners"></label>'
+        + finalEditButtons() + '</span>';
+    } else {
+      body = '<span class="final-inline-editor" data-final-editor>' + title
+        + '<textarea data-final-editor-value rows="3" aria-label="Edit action">' + escapeHtml(action.action || '') + '</textarea>'
+        + finalEditButtons() + '</span>';
     }
-    return '<span class="final-inline-editor timing" data-final-editor>'
-      + '<label><span class="lbl">Type</span><select data-final-timing-kind><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option></select></label>'
-      + '<label><span class="lbl">As said</span><input data-final-timing-wording value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. by Friday"></label>'
-      + '<label><span class="lbl">Date</span><input data-final-timing-date type="date" value="' + escapeHtml(timing.exactDate || '') + '"></label>'
-      + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
+    return '<tr class="final-editor-row"><td colspan="3">' + body + '</td></tr>';
   }
 
   // A meeting nobody from the client side attended is an internal meeting, not
@@ -1690,7 +1717,13 @@
       return '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
     }).join('');
     var actionsHtml = (draft.actions || []).map(function (action) {
-      return '<tr><td>' + finalTextEditor('action', action.id, 'action', action.action, {block:true,label:'Edit action'}) + '</td><td>' + finalTextEditor('action', action.id, 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated'}) + '</td><td>' + finalTimingEditor(action) + '</td></tr>';
+      var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', action.id, field); })[0] || '';
+      var cell = function (field, html) { return '<td' + (editing === field ? ' class="final-editing-cell"' : '') + '>' + html + '</td>'; };
+      return '<tr' + (editing ? ' class="is-editing"' : '') + '>'
+        + cell('action', finalTextEditor('action', action.id, 'action', action.action, {block:true,label:'Edit action',deferred:true}))
+        + cell('owners', finalTextEditor('action', action.id, 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated',deferred:true}))
+        + cell('timing', finalTimingDisplay(action)) + '</tr>'
+        + (editing ? finalActionEditorRow(action, editing) : '');
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
     document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>' + finalAttendeesHtml(details) + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select');
@@ -1825,6 +1858,9 @@
   function adoptDraft(draft) {
     if (!draft) return;
     var replacingExistingDraft = Boolean(state.draft);
+    // Only the upload itself shows the confirmation (prepareFile re-shows it
+    // after adopting); a draft opened from the Library starts without it.
+    if (!replacingExistingDraft) hideUploadConfirmation();
     rememberPendingActions();
     rememberPendingDiscussion();
     document.getElementById('reloadDraft').hidden = true;
@@ -2308,6 +2344,29 @@
   }
 
   /* ------------------------------------------------------------ events */
+  // Shown once, straight after a transcript is prepared: what the next
+  // screens do, and that leaving for the Library loses nothing.
+  function showUploadConfirmation(fileName, unitCount) {
+    var panel = document.getElementById('uploadConfirmation');
+    if (!panel) return;
+    var detail = document.getElementById('uploadConfirmationDetail');
+    var count = Number(unitCount || 0);
+    detail.textContent = (fileName ? '"' + fileName + '" was read successfully' : 'The transcript was read successfully')
+      + (count ? ', with ' + count + ' passage' + (count === 1 ? '' : 's') + ' of speech ready to work from.' : '.');
+    panel.hidden = false;
+  }
+
+  function hideUploadConfirmation() {
+    var panel = document.getElementById('uploadConfirmation');
+    if (panel) panel.hidden = true;
+  }
+
+  document.getElementById('uploadConfirmationContinue').addEventListener('click', function () {
+    hideUploadConfirmation();
+    var title = document.getElementById('meetingTitle');
+    if (title) { title.focus({ preventScroll: true }); title.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  });
+
   uploadZone.addEventListener('click', function (event) { if (event.target.id !== 'chooseFile') fileInput.click(); });
   document.getElementById('chooseFile').addEventListener('click', function (event) { event.stopPropagation(); fileInput.click(); });
   uploadZone.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); } });

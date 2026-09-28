@@ -776,6 +776,28 @@
 .meeting-agent-page .final-inline-editor.timing{grid-template-columns:repeat(3,minmax(0,1fr))}
 .meeting-agent-page .final-inline-editor.timing .final-edit-actions{grid-column:1/-1}
 .meeting-agent-page .final-edit-actions{display:flex;justify-content:flex-end;gap:.4rem}
+/* An action's editor gets a row of its own under the action rather than the
+   cell it came from: the Owners and Timing cells are too narrow to type in
+   (the timing editor showed "Ta", "straig" and "dc"). The cell being edited
+   stays highlighted so it is clear which value the row is for. */
+.meeting-agent-page .final-editing-cell .final-editable{border-color:var(--accent);background:var(--brand-050)}
+.meeting-agent-page .final-editor-row>td{padding:0 .6rem .7rem;border-bottom:1px solid var(--border)}
+.meeting-agent-page .final-editor-row .final-inline-editor{display:grid;gap:.5rem .8rem;padding:.7rem .8rem}
+.meeting-agent-page .final-editor-row .final-editor-title{grid-column:1/-1;margin:0;color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .final-editor-row .final-inline-editor.timing{grid-template-columns:minmax(9rem,12rem) minmax(14rem,1fr) minmax(10rem,12rem)}
+.meeting-agent-page .final-editor-row .final-inline-editor label{display:grid;gap:.15rem;min-width:0}
+.meeting-agent-page .final-editor-row .final-inline-editor label>.lbl{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .final-editor-row .final-inline-editor input,
+.meeting-agent-page .final-editor-row .final-inline-editor select,
+.meeting-agent-page .final-editor-row .final-inline-editor textarea{width:100%;min-width:0;box-sizing:border-box;font-size:var(--fs-sm);padding:.45rem .55rem}
+.meeting-agent-page .final-editor-row .final-edit-actions{grid-column:1/-1}
+.meeting-agent-page .upload-confirmation{
+  margin:0 0 1rem;padding:1rem 1.1rem;border:1px solid var(--info-border);
+  border-left:var(--rail) solid var(--accent);border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text)}
+.meeting-agent-page .upload-confirmation h2{margin:0 0 .3rem;font-size:var(--fs-lg);color:var(--heading)}
+.meeting-agent-page .upload-confirmation p{margin:.3rem 0;font-size:var(--fs-sm);line-height:1.5}
+.meeting-agent-page .upload-confirmation ol{margin:.4rem 0 .6rem 1.2rem;padding:0;font-size:var(--fs-sm);line-height:1.5}
+.meeting-agent-page .upload-confirmation-actions{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-top:.7rem}
 .meeting-agent-page .final-edit-hint{margin:0;color:var(--muted);font-size:var(--fs-cap)}
 .meeting-agent-page .final-actions{
   position:static;gap:.5rem;margin-top:1.2rem;padding:.7rem .85rem;
@@ -899,6 +921,8 @@
   .meeting-agent-page .export-menu-body{position:static;margin-top:.4rem;box-shadow:none}
   .meeting-agent-page .final-inline-editor.timing{grid-template-columns:1fr}
   .meeting-agent-page .final-inline-editor.timing .final-edit-actions{grid-column:auto}
+  .meeting-agent-page .final-editor-row .final-inline-editor.timing{grid-template-columns:1fr}
+  .meeting-agent-page .final-editor-row>td{padding:0 .35rem .6rem}
 }
 
 /* ------------------------------------------------------------- print -- */
@@ -966,6 +990,20 @@
     <div id="uploadZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload Word transcript"><input id="transcriptFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div><strong>Drop a Word transcript here</strong><p class="muted">or choose a .docx file (maximum 5 MB)</p><button id="chooseFile" class="button" type="button">Choose Word document</button></div></div>
 
     <div id="detailsEditor" hidden>
+      <section id="uploadConfirmation" class="upload-confirmation" role="status" aria-live="polite" hidden>
+        <h2>Transcript uploaded</h2>
+        <p id="uploadConfirmationDetail"></p>
+        <p>The next screens take you through the minutes in order. Each one is prepared in the background while you work on the one before it.</p>
+        <ol>
+          <li><strong>Details</strong> &mdash; check the title, date, location and who was there.</li>
+          <li><strong>Discussion</strong> &mdash; what was said, grouped by subject, each line linked to the transcript.</li>
+          <li><strong>Actions</strong> &mdash; who committed to what and by when, with anything uncertain offered as a suggestion.</li>
+          <li><strong>Summary</strong> &mdash; objectives and an executive summary.</li>
+          <li><strong>Review</strong> &mdash; the finished minutes, editable in place, then export.</li>
+        </ol>
+        <p>You do not have to finish now. Open <a href="/jobs">Library</a> at any time to come back to this draft: nothing is lost, and preparation carries on while you are away.</p>
+        <div class="upload-confirmation-actions"><button id="uploadConfirmationContinue" class="button" type="button">Check the meeting details</button><a class="secondary" href="/jobs">Go to Library</a></div>
+      </section>
       <div class="toolbar"><h2>Meeting details</h2></div>
       <div class="form-grid details-meta-grid">
         <label class="field full"><span>Meeting title</span><input id="meetingTitle"></label>
