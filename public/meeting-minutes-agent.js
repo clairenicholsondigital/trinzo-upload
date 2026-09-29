@@ -1056,7 +1056,6 @@
   }
 
   function omittedDetailsPanel(discussion) {
-    var labels = { points: 'Discussion', decisions: 'Decision', openQuestions: 'Open question' };
     var grouped = (discussion || []).map(function (topic, topicIndex) {
       var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
         return (topic[field] || []).flatMap(function (item, itemIndex) {
@@ -1072,7 +1071,7 @@
     return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Review omitted details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details were left out of the draft. Check whether anything should be included.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
       return '<section class="omitted-topic"><h3>' + escapeHtml(group.topic.topic || 'Untitled topic') + '</h3><div class="omitted-detail-list">' + group.rows.map(function (row) {
         var detailId = row.detail.id || (group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex);
-        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><span class="omitted-detail-kind">' + escapeHtml(labels[row.field]) + '</span><p>' + escapeHtml(row.detail.text || '') + '</p></div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
+        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><span class="omitted-detail-kind">Discussion context</span><p>' + escapeHtml(row.detail.text || '') + '</p></div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
       }).join('') + '</div></section>';
     }).join('') + '</div></div></details>';
   }
@@ -2820,7 +2819,7 @@
       var promoteList=promoteTopic && promoteTopic[promote.dataset.parentField];
       var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
-      if(promoted) promoteList.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[]});
+      if(promoted) promoteTopic.points.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[]});
     }
     if(moveNew){
       var sourceIndex=Number(moveNew.dataset.topicIndex);

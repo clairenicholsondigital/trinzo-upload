@@ -41,6 +41,10 @@ test('spoken date shapes become minutes dates', () => {
   assert.equal(dated('the 23rd of July'), '23rd July');
   assert.equal(dated('July the 23rd'), '23rd July');
   assert.equal(dated('delivery on the 15th August'), 'delivery on 15th August');
+  assert.equal(dated('Marcus is away the week of the twentieth'), 'Marcus is away the week of the 20th');
+  assert.equal(dated('Louise starts on the fourteenth'), 'Louise starts on 14th');
+  assert.equal(dated('the twenty-fifth of August'), '25th August');
+  assert.equal(dated('August the thirty-first'), '31st August');
 });
 
 test('a title-cased ordinal suffix is corrected', () => {
@@ -56,6 +60,7 @@ test('dates already correct, and non-dates, are unchanged', () => {
   assert.equal(dated('23rd July'), '23rd July');
   assert.equal(dated('Not stated'), 'Not stated');
   assert.equal(dated('next Tuesday'), 'next Tuesday');
+  assert.equal(dated('Choose the first option'), 'Choose the first option');
   assert.equal(dated(''), '');
 });
 

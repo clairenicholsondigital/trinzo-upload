@@ -28,6 +28,17 @@ const MATERIAL_CONTENT = /\b(?:agreed|decided|approved|rejected|confirmed|commit
 // contingency or operational requirement remains publishable.
 const MEETING_ADMIN_CHECK = /\b(?:checks?|asks?|verif(?:y|ies|ied)|tests?|makes? sure|confirms? whether|checks? (?:whether|if)|can (?:everyone|you|participants?|attendees?)|is (?:the )?)\b.{0,100}\b(?:shared? screen|screen shar(?:e|ed|ing)|slides?|display|camera|microphone|mic|audio|sound)\b|\b(?:shared? screen|screen shar(?:e|ed|ing)|slides?|display|camera|microphone|mic|audio|sound)\b.{0,100}\b(?:visible|readable|audible|working|can be (?:seen|heard)|checks?|verif(?:y|ies|ied))\b/i;
 const MATERIAL_MEETING_TECH = /\b(?:agreed|decided|required|requirement|fallback|contingency|backup|failed|failure|fault|issue|problem|risk|blocked|prevented|delayed|unavailable|not working|could not|couldn['’]?t)\b/i;
+// Generic chairing questions at the end of an agenda item solicit content but
+// are not themselves content. Keep this deliberately specific: "have I missed
+// anything?" is administration; "have I missed any validation risks?" is a
+// substantive question and does not match.
+const PERSON_NAME = String.raw`(?:[A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,3})`;
+const MEETING_WRAP_UP = [
+  new RegExp(String.raw`^(?:${PERSON_NAME}\s+)?(?:asked|asks|checked|checks)\s+(?:if|whether)\s+(?:anything\s+(?:else\s+)?(?:was\s+)?missed|(?:i|we|he|she|they)\s+(?:have|has|had)\s+missed\s+anything)(?:\s+from\s+(?:your|his|her|their)\s+side)?$`, 'iu'),
+  new RegExp(String.raw`^(?:${PERSON_NAME},\s+)?(?:have|has|had)\s+(?:i|we|he|she|they)\s+missed\s+anything$`, 'iu'),
+  /^(?:is|was)\s+there\s+anything\s+(?:else\s+)?(?:from\s+(?:your|his|her|their)\s+side\s*)?$/i,
+  /^(?:is|was)\s+that\s+everything$/i
+];
 
 function valueText(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
@@ -49,24 +60,32 @@ function isPeripheralAside(value) {
 
 function isRoutineMeetingAdministration(value) {
   const wording = valueText(value);
-  return Boolean(wording && MEETING_ADMIN_CHECK.test(wording) && !MATERIAL_MEETING_TECH.test(wording));
+  return Boolean(wording && (MEETING_WRAP_UP.some((pattern) => pattern.test(wording.replace(/[?.!]+$/, '').trim()))
+    || (MEETING_ADMIN_CHECK.test(wording) && !MATERIAL_MEETING_TECH.test(wording))));
+}
+
+function stripRoutineMeetingAdministration(value) {
+  const wording = valueText(value);
+  if (!wording) return '';
+  // Generated minutes commonly join several compact facts with semicolons.
+  // Remove only an administrative clause, never the useful clauses beside it.
+  return wording.split(/\s*;\s*/).filter((clause) => !isRoutineMeetingAdministration(clause)).join('; ');
 }
 
 function removeNonContentAsides(topics = []) {
   return (Array.isArray(topics) ? topics : []).map((topic) => {
     const cleaned = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
-      cleaned[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : [])
-        .filter((record) => !isPersonalAside(record?.text)
-          && !isPeripheralAside(record?.text)
-          && !isRoutineMeetingAdministration(record?.text))
-        .map((record) => ({
-          ...record,
-          supportingDetails: (Array.isArray(record?.supportingDetails) ? record.supportingDetails : [])
-            .filter((detail) => !isPersonalAside(detail?.text)
-              && !isPeripheralAside(detail?.text)
-              && !isRoutineMeetingAdministration(detail?.text))
-        }));
+      cleaned[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).flatMap((record) => {
+        const recordText = stripRoutineMeetingAdministration(record?.text);
+        if (!recordText || isPersonalAside(recordText) || isPeripheralAside(recordText)) return [];
+        const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).flatMap((detail) => {
+          const detailText = stripRoutineMeetingAdministration(detail?.text);
+          return !detailText || isPersonalAside(detailText) || isPeripheralAside(detailText)
+            ? [] : [{ ...detail, text: detailText }];
+        });
+        return [{ ...record, text: recordText, supportingDetails }];
+      });
     }
     return cleaned;
   }).filter((topic) => ['points', 'decisions', 'openQuestions'].some((kind) => cleanedLength(topic, kind)));
@@ -84,6 +103,7 @@ module.exports = {
   isPersonalAside,
   isPeripheralAside,
   isRoutineMeetingAdministration,
+  stripRoutineMeetingAdministration,
   removeNonContentAsides,
   removePersonalAsides
 };

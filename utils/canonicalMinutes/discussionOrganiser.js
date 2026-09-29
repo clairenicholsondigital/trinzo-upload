@@ -11,6 +11,7 @@
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
 const { editorialTopicLabel, isPublishableTopicLabel } = require('./topicEditorial');
+const { normaliseDatePhrases } = require('../spokenForms');
 const {
   isPersonalAside,
   isPeripheralAside,
@@ -878,6 +879,19 @@ async function prepareRestatementVectors(topics = [], options = {}) {
 
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   let topics = removeNonContentAsides(discussion);
+  topics = topics.map((topic) => {
+    const next = { ...topic };
+    for (const kind of ROW_KINDS) {
+      next[kind] = (topic[kind] || []).map((record) => ({
+        ...record,
+        text: normaliseDatePhrases(record?.text).text,
+        supportingDetails: (record?.supportingDetails || []).map((detail) => ({
+          ...detail, text: normaliseDatePhrases(detail?.text).text
+        }))
+      }));
+    }
+    return next;
+  });
   topics = repairStructuralTopicHeadings(topics, options.sourceUnits || []);
   topics = normaliseDecisionTopicHeadings(topics);
   const preparedOptions = await prepareRestatementVectors(topics, options);

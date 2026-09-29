@@ -104,6 +104,39 @@ test('routine meeting technology checks are filtered without suppressing substan
   ]) assert.equal(isRoutineMeetingAdministration(wording), false, wording);
 });
 
+test('generic wrap-up questions are removed without deleting useful clauses beside them', () => {
+  for (const wording of [
+    'Dermot asked if anything was missed from his side.',
+    'Dermot, have I missed anything?',
+    'Is that everything?'
+  ]) assert.equal(isRoutineMeetingAdministration(wording), true, wording);
+  assert.equal(isRoutineMeetingAdministration('Have I missed any validation risks?'), false);
+
+  const cleaned = removePersonalAsides([{
+    id: 'topic-wrap', topic: 'Supplier ownership', decisions: [], openQuestions: [],
+    points: [{
+      id: 'p-wrap',
+      text: 'Ownership is likely Ffion or procurement; Jacqui will ask on Thursday; Dermot asked if anything was missed from his side.',
+      evidenceIds: ['T0001'],
+      supportingDetails: [{ id: 's-wrap', text: 'Dermot, have I missed anything?', evidenceIds: ['T0002'] }]
+    }]
+  }]);
+  assert.equal(cleaned[0].points[0].text, 'Ownership is likely Ffion or procurement; Jacqui will ask on Thursday');
+  assert.deepEqual(cleaned[0].points[0].supportingDetails, []);
+});
+
+test('the publication boundary formats spoken calendar ordinals in rows and context', async () => {
+  const cleaned = await finaliseDiscussionForPublication([{
+    id: 'topic-dates', topic: 'Availability', decisions: [], openQuestions: [],
+    points: [{
+      id: 'p-date', text: 'Marcus is away the week of the twentieth.', evidenceIds: ['T0001'],
+      supportingDetails: [{ id: 's-date', text: 'Louise starts on the fourteenth.', evidenceIds: ['T0002'] }]
+    }]
+  }], { sourceUnits: units });
+  assert.equal(cleaned[0].points[0].text, 'Marcus is away the week of the 20th.');
+  assert.equal(cleaned[0].points[0].supportingDetails[0].text, 'Louise starts on 14th.');
+});
+
 test('routine meeting technology checks are removed from primary and supporting rows', () => {
   const cleaned = removePersonalAsides([{
     id: 'topic-1', topic: 'Demonstration',
