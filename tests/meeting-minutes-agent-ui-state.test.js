@@ -1722,10 +1722,23 @@ test('dense layouts give writing space to content rather than repeated controls'
     const objectiveLayout = await page.evaluate(() => {
       const list = document.getElementById('objectivesList').getBoundingClientRect();
       const editor = document.querySelector('[data-objective-index]').getBoundingClientRect();
-      return { listWidth: list.width, editorWidth: editor.width, editorHeight: editor.height };
+      const remove = document.querySelector('[data-remove-objective]');
+      const removeRect = remove.getBoundingClientRect();
+      return {
+        listWidth: list.width,
+        editorWidth: editor.width,
+        editorHeight: editor.height,
+        removeText: remove.textContent.trim(),
+        removeLabel: remove.getAttribute('aria-label'),
+        removeWidth: removeRect.width,
+        removeHeight: removeRect.height
+      };
     });
     assert.ok(objectiveLayout.editorWidth > objectiveLayout.listWidth * 0.8, JSON.stringify(objectiveLayout));
     assert.ok(objectiveLayout.editorHeight < 80, JSON.stringify(objectiveLayout));
+    assert.equal(objectiveLayout.removeText, '');
+    assert.match(objectiveLayout.removeLabel, /Remove objective 1/i);
+    assert.ok(objectiveLayout.removeWidth >= 36 && objectiveLayout.removeHeight >= 36, JSON.stringify(objectiveLayout));
 
     await page.click('[data-step="3"]');
     const actionLayout = await page.evaluate(() => {

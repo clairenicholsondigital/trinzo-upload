@@ -971,7 +971,7 @@
     var objectives = draft.meetingObjectives || [];
     document.getElementById('objectivesList').innerHTML = objectives.map(function (item, index) {
       var objectiveText = typeof item === 'string' ? item : item.text;
-      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet" data-remove-objective="' + index + '" type="button">Remove</button></div></div>';
+      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet icon-only" data-remove-objective="' + index + '" type="button" aria-label="Remove objective ' + (index + 1) + '" title="Remove objective">' + icon('trash') + '</button></div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
     var generate = document.getElementById('generateSummary');
     generate.hidden = summaryRunning;
