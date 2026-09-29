@@ -796,6 +796,12 @@
 .meeting-agent-page .final-document h4{font-size:var(--fs-md);margin:.9rem 0 .3rem}
 .meeting-agent-page .final-document section{
   margin-top:1.2rem;padding-top:.9rem;border-top:1px solid var(--border)}
+.meeting-agent-page .final-objectives{display:grid;gap:.4rem;margin:.5rem 0;padding:0;list-style:none}
+.meeting-agent-page .final-objectives li{
+  display:grid;grid-template-columns:.7rem minmax(0,1fr);column-gap:.35rem;align-items:start;min-width:0}
+.meeting-agent-page .final-objectives li::before{content:"•";grid-column:1;grid-row:1;line-height:1.5}
+.meeting-agent-page .final-objectives li>*{grid-column:2;grid-row:1;min-width:0}
+.meeting-agent-page .final-objectives .final-editable{display:block;width:100%;box-sizing:border-box}
 .meeting-agent-page .final-editable{
   display:inline;text-align:left;padding:.12rem .2rem;margin:-.12rem -.2rem;
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;

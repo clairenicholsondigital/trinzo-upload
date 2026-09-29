@@ -215,6 +215,16 @@ function startStubServer() {
   const mobileSaveBar = baseDraft('mobile-save-bar', false);
   mobileSaveBar.lastUndo = { id: 'undo-mobile', label: 'edit a long discussion item' };
   drafts.set('mobile-save-bar', mobileSaveBar);
+  const objectiveLayout = baseDraft('objective-layout', false);
+  objectiveLayout.currentStep = 5;
+  objectiveLayout.selectedStep = 5;
+  objectiveLayout.meetingObjectives = [
+    { id: 'objective-layout-1', text: 'Review risk and software progress.', evidenceIds: ['T0001'] },
+    { id: 'objective-layout-2', text: 'Update the minutes table for the new set of minutes.', evidenceIds: ['T0001'] },
+    { id: 'objective-layout-3', text: 'Clarify formative study dates and alignment with MDR submission and NB review.', evidenceIds: ['T0001'] },
+    { id: 'objective-layout-4', text: 'Confirm the status of operational procedures for electromed medical devices.', evidenceIds: ['T0001'] }
+  ];
+  drafts.set('objective-layout', objectiveLayout);
   const transcriptDisplay = baseDraft('transcript-display', false);
   transcriptDisplay.sourceUnits = [
     { id: 'T0000', speaker: 'Alex Reed', timestamp: '00:08', text: 'The report has the final comments.' },
@@ -1433,6 +1443,7 @@ test('applying one proposal preserves the unchecked proposal and warning after r
     const applied = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/partial-proposals/proposal'));
     await page.click('#acceptSelectedProposal');
     await applied;
+    await page.waitForFunction(() => document.querySelectorAll('[data-proposal-change]').length === 1);
     assert.equal(await page.locator('[data-proposal-change]').count(), 1);
     assert.equal(await page.locator('[data-proposal-change]').isChecked(), false);
     assert.match(await page.textContent('.proposal-summary'), /Circulate the audit checklist/i);
@@ -1514,6 +1525,47 @@ test('every warning decision exposes a durable Undo that survives refresh', { ti
     const restored = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
     assert.equal(restored.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'open');
     assert.match(await page.textContent('#workflowStatus'), /undone/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('review objectives keep every mobile bullet aligned to its first line', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=objective-layout`);
+    await page.waitForSelector('.final-objectives li');
+
+    const layout = await page.locator('.final-objectives').evaluate((list) => {
+      const listBox = list.getBoundingClientRect();
+      const rows = Array.from(list.querySelectorAll('li')).map((row) => {
+        const rowBox = row.getBoundingClientRect();
+        const textBox = row.firstElementChild.getBoundingClientRect();
+        return {
+          display: getComputedStyle(row).display,
+          marker: getComputedStyle(row, '::before').content,
+          textStartsAtTop: Math.abs(textBox.top - rowBox.top) < 2,
+          textIsIndented: textBox.left > rowBox.left,
+          textUsesWidth: textBox.width > listBox.width * 0.8
+        };
+      });
+      return {
+        rows,
+        pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    assert.equal(layout.rows.length, 4);
+    assert.ok(layout.rows.every((row) => row.display === 'grid'), JSON.stringify(layout));
+    assert.ok(layout.rows.every((row) => row.marker.includes('•')), JSON.stringify(layout));
+    assert.ok(layout.rows.every((row) => row.textStartsAtTop && row.textIsIndented && row.textUsesWidth), JSON.stringify(layout));
+    assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

@@ -1821,7 +1821,7 @@
     var draft = state.draft || {}; var details = draft.details || {};
     var include = includedSectionState();
     var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;}) : [];
-    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
+    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
       + (include.executiveSummary && draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
