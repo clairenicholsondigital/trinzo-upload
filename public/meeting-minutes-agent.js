@@ -60,21 +60,10 @@
 
   // One rule for whether leaving is safe: anything unsaved, anything waiting
   // behind a running generation, or any unfinished entry that only exists in
-  // this tab. Every "Keep this tab open" message and the Resume-later link
-  // read this, so they can never disagree.
+  // this tab.
   function mustKeepTabOpen(kind) {
     var unsaved = ['dirty','waiting','local-only','saving','error'].includes(kind);
     return unsaved || Boolean(pendingGenerationEdits) || hasTransientEditorState();
-  }
-
-  function refreshLeaveSafety() {
-    var element = document.getElementById('saveStatus');
-    var keepOpen = mustKeepTabOpen(element ? element.dataset.state : '');
-    var resumeLink = document.getElementById('resumeLaterLink');
-    if (resumeLink) resumeLink.hidden = keepOpen;
-    // The save strip is the one place that says whether the tab is safe to
-    // close. The generation panel used to mirror it, which put the same
-    // sentence on screen twice while a stage was running.
   }
 
   function setSaveStatus(message, kind) {
@@ -85,7 +74,6 @@
     strip.dataset.state = kind || '';
     element.textContent = message || '';
     element.dataset.state = kind || '';
-    refreshLeaveSafety();
     updateFinishingBar();
   }
 
@@ -128,8 +116,6 @@
     }
     var download = document.getElementById('downloadDraft');
     if (download) download.hidden = state.currentStep === MAX_STEP;
-    var library = document.getElementById('resumeLaterLink');
-    if (library) library.hidden = state.currentStep === MAX_STEP;
     updateDraftDownloadState();
   }
 

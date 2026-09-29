@@ -481,7 +481,6 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     await page.click('#addAction');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 2);
     assert.match(await page.textContent('#saveStatus'), /kept in this tab/i);
-    assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'no resume-later invitation while an unfinished row exists');
 
     // Force an autosave which returns a server-normalised draft without the
     // blank row. The local editor row must remain available for entry.
@@ -491,7 +490,6 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     // The autosave succeeded, but the blank row still lives only in this tab:
     // the status must keep saying so and the resume link must stay hidden.
     assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
-    assert.equal(await page.locator('#resumeLaterLink').isHidden(), true, 'resume link stays hidden after an autosave while an unfinished row exists');
 
     await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
     await page.click('#actionsBody [data-action-row="0"] [data-edit-owners]');
@@ -961,7 +959,6 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     // The generation panel used to repeat this sentence; the save strip is now
     // the only place that says whether the tab is safe to close.
     assert.equal(await page.locator('#generationLeaveMessage').count(), 0);
-    assert.equal(await page.locator('#resumeLaterLink').isHidden(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);
     assert.deepEqual(errors, []);
   } finally {
@@ -1919,6 +1916,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     // summary 4, review 5. This fixture opens on Summary.
     assert.equal(await page.locator('#mobileStepCount').textContent(), 'Step 4 of 5');
     assert.ok(await page.locator('.nav a').first().evaluate((node) => node.getBoundingClientRect().height >= 40));
+    assert.equal(await page.locator('#resumeLaterLink').count(), 0, 'Library is not repeated in the bottom status bar');
     const saveBarLayout = await page.evaluate(() => {
       const rect = (selector) => {
         const box = document.querySelector(selector).getBoundingClientRect();
