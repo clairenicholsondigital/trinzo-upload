@@ -272,6 +272,20 @@ tbody tr:last-child td { border-bottom:none; }
   min-height:2.65rem;
   white-space:nowrap;
 }
+.jobs-actions #refreshBtn {
+  flex:0 0 2.65rem;
+  width:2.65rem;
+  padding:0;
+}
+.library-refresh-icon {
+  width:1.15rem;
+  height:1.15rem;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
 .queue-tabs {
   display:flex !important;
   flex-wrap:wrap !important;

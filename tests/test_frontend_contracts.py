@@ -623,6 +623,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('class="jobs-page"', jobs_page)
         self.assertIn('class="jobs-header"', jobs_page)
         self.assertIn('class="jobs-actions"', jobs_page)
+        self.assertIn('id="refreshBtn" type="button" aria-label="Refresh Library" title="Refresh Library"', jobs_page)
+        self.assertIn('class="library-refresh-icon"', jobs_page)
+        self.assertIn('.jobs-actions #refreshBtn', shared_css)
+        self.assertIn('.library-refresh-icon', shared_css)
         # The Library lists Meeting Minutes Agent drafts only. Staged job DETAIL
         # rendering below is deliberately kept, so /jobs/:id and
         # /meeting-minutes-final/jobs/:id deep links still resolve.
