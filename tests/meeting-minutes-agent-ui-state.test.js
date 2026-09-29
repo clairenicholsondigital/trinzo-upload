@@ -1720,6 +1720,25 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(omittedDetailLayout.controlsBelowCopy, true, JSON.stringify(omittedDetailLayout));
     assert.ok(omittedDetailLayout.textOverflow <= 1, JSON.stringify(omittedDetailLayout));
     assert.ok(omittedDetailLayout.detailOverflow <= 1, JSON.stringify(omittedDetailLayout));
+    await page.click('.omitted-detail-actions .evidence-toggle');
+    const omittedTranscriptLayout = await page.locator('.omitted-detail').evaluate((detail) => {
+      const disclosure = detail.querySelector('.omitted-detail-actions>details');
+      const panel = disclosure.querySelector('.evidence-panel');
+      const detailBox = detail.getBoundingClientRect();
+      const disclosureBox = disclosure.getBoundingClientRect();
+      const panelBox = panel.getBoundingClientRect();
+      const screen = document.querySelector('[data-screen="2"]');
+      return {
+        disclosureUsesRow: disclosureBox.width > detailBox.width * 0.9,
+        panelInsideCard: panelBox.left >= detailBox.left - 1 && panelBox.right <= detailBox.right + 1,
+        detailOverflow: detail.scrollWidth - detail.clientWidth,
+        screenOverflow: screen.scrollWidth - screen.clientWidth
+      };
+    });
+    assert.equal(omittedTranscriptLayout.disclosureUsesRow, true, JSON.stringify(omittedTranscriptLayout));
+    assert.equal(omittedTranscriptLayout.panelInsideCard, true, JSON.stringify(omittedTranscriptLayout));
+    assert.ok(omittedTranscriptLayout.detailOverflow <= 1, JSON.stringify(omittedTranscriptLayout));
+    assert.ok(omittedTranscriptLayout.screenOverflow <= 1, JSON.stringify(omittedTranscriptLayout));
 
     await page.selectOption('#mobileStepSelect', '3');
     const actionLayout = await page.evaluate(() => {

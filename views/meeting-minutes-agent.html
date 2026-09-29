@@ -522,14 +522,15 @@
   font-size:var(--fs-cap);font-weight:var(--fw);list-style:none}
 .meeting-agent-page .evidence-toggle::-webkit-details-marker{display:none}
 .meeting-agent-page .evidence-panel{
-  margin-top:.45rem;padding:.6rem;border-radius:var(--radius-sm);background:var(--soft-2)}
+  min-width:0;max-width:100%;box-sizing:border-box;margin-top:.45rem;padding:.6rem;
+  border-radius:var(--radius-sm);background:var(--soft-2);overflow-wrap:anywhere}
 .meeting-agent-page .action-transcript-panel{
   margin:.55rem 0 .25rem;scroll-margin-top:1rem;scroll-margin-bottom:7rem}
 .meeting-agent-page .action-transcript-panel[open]{
   padding:.35rem;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-sm);background:var(--soft-2)}
 .meeting-agent-page .action-transcript-panel .evidence-panel{margin-top:0;max-height:none;overflow:visible}
 .meeting-agent-page .evidence-row{
-  padding:.35rem .5rem;margin:.2rem 0;border:1px solid var(--border);
+  min-width:0;max-width:100%;box-sizing:border-box;padding:.35rem .5rem;margin:.2rem 0;border:1px solid var(--border);
   border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
 .meeting-agent-page .evidence-row.cited{border-left:var(--rail) solid var(--accent)}
 /* Extra transcript lines are there to be glanced at, not read as separate
@@ -542,7 +543,7 @@
 .meeting-agent-page .evidence-row:not(.cited)>div:last-child{display:inline}
 .meeting-agent-page .source-meta{
   display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem;
-  margin-bottom:.15rem;font-size:var(--fs-cap);color:var(--muted)}
+  min-width:0;margin-bottom:.15rem;font-size:var(--fs-cap);color:var(--muted)}
 .meeting-agent-page .source-speaker{font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
 .meeting-agent-page .source-time{font-variant-numeric:tabular-nums}
 
@@ -965,6 +966,10 @@
   .meeting-agent-page .omitted-detail{display:grid;grid-template-columns:minmax(0,1fr);gap:.55rem}
   .meeting-agent-page .omitted-detail-copy{width:100%}
   .meeting-agent-page .omitted-detail-actions{width:100%;justify-content:flex-start}
+  .meeting-agent-page .omitted-detail-actions>details[open]{flex:1 1 100%;width:100%;min-width:0}
+  .meeting-agent-page .omitted-detail-actions>details[open]>.evidence-toggle{
+    width:max-content;max-width:100%;box-sizing:border-box}
+  .meeting-agent-page .omitted-detail-actions>details[open]>.evidence-panel{width:100%}
   .meeting-agent-page .editable-actions-table tr{
     display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:.35rem .45rem;margin:.55rem 0;padding:.55rem}
