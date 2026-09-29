@@ -8453,6 +8453,7 @@ const MEETING_AGENT_UNSPOKEN_MONTH_RULE = 'Never add a month, year or weekday to
 // An off-hand "I'm not a football person" was minuted as a participant's
 // attitude to football.
 const MEETING_AGENT_SMALL_TALK_RULE = 'Leave out small talk, jokes, personal tastes and attitudes (sport, weather, holidays, how someone feels about something off-topic) unless they change the work, its timing or its logistics. Keep the practical consequence and drop the aside - "traffic may be heavy on the day of the marathon", not who does or does not enjoy running.';
+const MEETING_AGENT_DISCUSSION_COVERAGE_RULE = 'Discussion coverage. Do not use an action-category heading such as action items, priorities, next steps or follow-ups as a discussion topic. Keep genuine factual discussion under the subject it belongs to, and put actual commitments in actions. Preserve concise statements of a device, system, software or process capability, limitation or behaviour even when they contain no decision, owner or deadline. When a meaningful technical statement is split across adjacent transcript turns or recognition boundaries, use the neighbouring evidence to recover the point before deciding it is incomplete; discard it only when the combined evidence remains non-substantive, conversational or unsupported.';
 
 function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
@@ -8495,6 +8496,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push('The discussion evidence windows below are recall aids, not an allowlist and not finished minutes. Find material propositions rather than producing one point per source window. Preserve quantities, blockers and dependencies so the referee can choose what is core and what is supporting context.');
     shared.push(MEETING_AGENT_UNSPOKEN_MONTH_RULE);
     shared.push(MEETING_AGENT_SMALL_TALK_RULE);
+    shared.push(MEETING_AGENT_DISCUSSION_COVERAGE_RULE);
   } else if (stage === 'summary') {
     shared.push(returnContract('executiveSummary, meetingObjectives, '));
     shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
@@ -8880,7 +8882,8 @@ function meetingMinutesAgentTopicNamingPrompt({ transcript, details, anchors = [
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
   const writingRules = [
     ...(meetingAgentCorrectionRuleEnabled() ? [MEETING_AGENT_CORRECTION_RULE] : []),
-    ...(meetingAgentTopicLabelRuleEnabled() ? [MEETING_AGENT_TOPIC_LABEL_RULE] : [])
+    ...(meetingAgentTopicLabelRuleEnabled() ? [MEETING_AGENT_TOPIC_LABEL_RULE] : []),
+    MEETING_AGENT_DISCUSSION_COVERAGE_RULE
   ];
   const payload = {
     requestId: crypto.randomUUID(),
@@ -9424,7 +9427,7 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
     isDiscussion
       ? 'Return only material discussion propositions, decisions, open questions or evidenced objectives absent from CURRENT DRAFT. Preserve explicit refusals, opposition and honest unknowns without reversing their polarity. A parked or deferred matter and a hedged possibility are not decisions. Preserve useful secondary facts for referee classification, but do not treat routine administration, incidental process detail, unchanged status or history without a current consequence as core minutes. Objectives may be clarified by explicit purpose, planning, scope or role-framing evidence later in the meeting; do not promote a merely discussed topic. Return actions as an empty array.'
       : 'Return only genuine future commitments, accepted requests, ongoing reviews with a concrete next step, or dependency-triggered work absent from CURRENT DRAFT. Return discussion and meetingObjectives as empty arrays.',
-    ...(isDiscussion ? [MEETING_AGENT_UNSPOKEN_MONTH_RULE, MEETING_AGENT_SMALL_TALK_RULE] : []),
+    ...(isDiscussion ? [MEETING_AGENT_UNSPOKEN_MONTH_RULE, MEETING_AGENT_SMALL_TALK_RULE, MEETING_AGENT_DISCUSSION_COVERAGE_RULE] : []),
     ...(!isDiscussion ? ['Assess compound intentions, named joint commitments, passive obligations, scheduled future work and conditional work explicitly. Split different deliverables; do not split a single continued deliverable.'] : []),
     ...(!isDiscussion ? ['For each confirmed open question, check whether a named person explicitly accepted responsibility to resolve it. If so, return that decision-resolution work as an action; otherwise do not turn the question into an action.'] : []),
     ...(!isDiscussion ? ['An action_thread groups adjacent evidence as a multi-turn exchange. An action_chain may connect a request, offer, assignment, acceptance, commitment, timing or recap across a longer topic span. Assess its eventUnits and signals as one lifecycle, but resolve references conservatively. scores and ownerHints are navigation aids, not authority: use an owner only when cited evidence assigns or accepts the work. An unclear reference requires a proposal or rejection, never a guessed deliverable.'] : []),
@@ -9588,7 +9591,7 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
     expectedCandidateIds: contract.expectedCandidateIds,
     candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
     preparedTranscript: evidencePacket.preparedTranscript,
-    ...(contract.stage.startsWith('DISCUSSION') && meetingAgentCorrectionRuleEnabled() ? { writingRules: [MEETING_AGENT_CORRECTION_RULE] } : {})
+    ...(contract.stage.startsWith('DISCUSSION') ? { writingRules: [MEETING_AGENT_DISCUSSION_COVERAGE_RULE, ...(meetingAgentCorrectionRuleEnabled() ? [MEETING_AGENT_CORRECTION_RULE] : [])] } : {})
   };
   return [
     `[${contract.stage}]`,
@@ -17074,6 +17077,7 @@ router.stagedEvaluation = {
   meetingMinutesAgentAnchoredDiscussionPrompt,
   meetingAgentFlowUrlFor,
   MEETING_AGENT_TOPIC_LABEL_RULE,
+  MEETING_AGENT_DISCUSSION_COVERAGE_RULE,
   MEETING_AGENT_TOPIC_NAMING_RULE,
   meetingMinutesAgentTopicNamingPrompt,
   meetingAgentTopicSegmentsEnabled,

@@ -28,6 +28,23 @@ function isTranscriptMetaText(value) {
     || /^(?:hello|hi|morning|afternoon|thanks? (?:all|everyone)|cheers|bye|see you|speak soon)[.! ]*$/i.test(text);
 }
 
+// Descriptions of tone or conversational style are not minutes content. Keep this
+// deliberately semantic and narrow: a technical sentence may contain "comments", a
+// "discussion" or an "informal" working session without being disposable. The rule is
+// for records whose substance is the aside itself.
+const SOCIAL_META_COMMENTARY = /\b(?:jok(?:e|ed|ing)|banter|small\s+talk|chit[- ]chat|light[- ]hearted\s+(?:comments?|remarks?)|informal\s+(?:comments?|remarks?)|social\s+(?:comments?|remarks?)|off[- ]topic\s+(?:comments?|remarks?)|conversational\s+aside)\b/i;
+const MATERIAL_META_CONTEXT = /\b(?:device|software|system|application|platform|interface|firmware|product|feature|test(?:ing)?|validation|risk|decision|approval|requirement|standard|compliance|audit|deadline|dependency|blocker|owner|action|deliverable|evidence|procedure|document|report)\b/i;
+
+function isSocialOrMetaCommentary(value) {
+  const text = clean(value);
+  if (!text || !SOCIAL_META_COMMENTARY.test(text)) return false;
+  if (/\b(?:jok(?:e|ed|ing)|banter|small\s+talk|chit[- ]chat)\b/i.test(text)) return true;
+  // A sentence that carries a concrete subject or outcome is retained. This avoids
+  // turning a word blacklist into a data-loss rule.
+  if (MATERIAL_META_CONTEXT.test(text) && /\b(?:is|are|was|were|does|do|did|will|would|can|could|has|have|requires?|supports?|prevents?|allows?|affects?|changes?)\b/i.test(text)) return false;
+  return true;
+}
+
 function isCorrectionOrAcknowledgementFragment(value) {
   const text = clean(value);
   if (!text) return true;
@@ -69,7 +86,7 @@ function canStandAloneAsMinutesEvidence(value, options = {}) {
   if (!text) return false;
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length < 4) return false;
-  if (isTranscriptMetaText(text) || isCorrectionOrAcknowledgementFragment(text) || isContextDependentText(text) || isMalformedTranscriptText(text)) return false;
+  if (isTranscriptMetaText(text) || isSocialOrMetaCommentary(text) || isCorrectionOrAcknowledgementFragment(text) || isContextDependentText(text) || isMalformedTranscriptText(text)) return false;
   if (!options.allowConditional && isConditionalLead(text)) return false;
   return true;
 }
@@ -96,6 +113,7 @@ function canSupportPurposeDimension(value) {
 
 module.exports = {
   isTranscriptMetaText,
+  isSocialOrMetaCommentary,
   isCorrectionOrAcknowledgementFragment,
   isContextDependentText,
   isConditionalLead,

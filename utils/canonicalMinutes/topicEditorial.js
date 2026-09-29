@@ -170,6 +170,8 @@ function labelIsClientReady(value) {
 // legitimate technical heading.
 const SPEECH_OPENER = /^(?:please|let['’]?s|let us|go ahead|carry on|sure|thanks|thank you|sorry|maybe|actually|obviously|basically|just|right then|first off|anyway)\b/i;
 const STRUCTURAL_TOPIC = /^(?:the\s+)?(?:(?:meeting\s+)?agenda(?:\s+items?)?|meeting\s+minutes?|minutes?|meeting\s+notes?|discussion\s+topics?|general\s+discussion)$/i;
+const ACTION_CATEGORY_TOPIC = /^(?:action(?:\s+(?:items?|points?))?|action\s+items?\s+and\s+priorities|priorities|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?)(?:\s+(?:and|&)\s+(?:priorities|next\s+steps?|follow[- ]?ups?|actions?|tasks?))?$/i;
+const ACTION_CATEGORY_RECORD = /^(?:(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}){0,3})[,;:]?\s+)?(?:will|shall|must|needs?\s+to|is\s+to|are\s+to|to\s+|please\s+|review\b|confirm\b|update\b|send\b|share\b|prepare\b|complete\b|check\b|test\b|provide\b|follow[- ]?up\b)/i;
 
 // The single gate every topic label passes before a reviewer sees it.
 //
@@ -241,15 +243,28 @@ function isPublishableTopicLabel(value) {
   const text = clean(value);
   if (!text || /^substantive discussion$/i.test(text)) return false;
   if (STRUCTURAL_TOPIC.test(text)) return false;
+  if (ACTION_CATEGORY_TOPIC.test(text)) return false;
   if (!labelIsClientReady(text)) return false;
   return !SPEECH_OPENER.test(text);
+}
+
+function isActionCategoryTopicCard(card = {}) {
+  const topic = clean(card?.topic);
+  if (!ACTION_CATEGORY_TOPIC.test(topic)) return false;
+  const records = [
+    ...(Array.isArray(card?.points) ? card.points : []),
+    ...(Array.isArray(card?.decisions) ? card.decisions : []),
+    ...(Array.isArray(card?.openQuestions) ? card.openQuestions : [])
+  ].map((item) => clean(typeof item === 'string' ? item : item?.text)).filter(Boolean);
+  return records.length > 0 && records.every((record) => ACTION_CATEGORY_RECORD.test(record));
 }
 
 // Applied at the point the discussion is returned, so it covers every card
 // whatever produced it. A topic the reviewer confirmed themselves is theirs to
 // word however they like and is never second-guessed here.
 function publishableTopicCards(cards) {
-  return (Array.isArray(cards) ? cards : []).filter((card) => isReviewerAuthored(card) || isPublishableTopicLabel(card?.topic));
+  return (Array.isArray(cards) ? cards : []).filter((card) => isReviewerAuthored(card) || isPublishableTopicLabel(card?.topic)
+    && !isActionCategoryTopicCard(card));
 }
 
 function editorialTopics(topics, evidence, maximum = 8) {
@@ -304,4 +319,4 @@ function editorialTopics(topics, evidence, maximum = 8) {
 
 module.exports = {
   labelIsTurnDerived,
-  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, publishableTopicCards };
+  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards };

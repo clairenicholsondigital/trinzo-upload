@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { editorialTopicLabel, editorialTopics } = require('../utils/canonicalMinutes/topicEditorial');
+const { editorialTopicLabel, editorialTopics, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards } = require('../utils/canonicalMinutes/topicEditorial');
 
 function topicFor(text, id = 'topic_1') {
   const evidence = prepareEvidence(`Amina Khan  00:01\n${text}`);
@@ -99,4 +99,29 @@ test('a solar shed alarm is not medtech alarm behaviour, a mute-button discussio
 test('confirming venue access is not technical setup, screen sharing is', () => {
   assert.equal(conceptFor('Dan can update the run sheet after access is confirmed with the venue'), '');
   assert.equal(conceptFor('check screen sharing and camera access before the session'), 'Technical setup');
+});
+
+test('action-category headings do not become discussion topics', () => {
+  assert.equal(isPublishableTopicLabel('Action items and priorities'), false);
+  const card = {
+    topic: 'Action items and priorities',
+    points: [{ text: 'Priya will review the validation report.' }],
+    decisions: [],
+    openQuestions: []
+  };
+  assert.equal(isActionCategoryTopicCard(card), true);
+  assert.deepEqual(publishableTopicCards([card]), []);
+});
+
+test('mixed action-category cards retain factual discussion rather than dropping it wholesale', () => {
+  const card = {
+    topic: 'Action items and priorities',
+    points: [
+      { text: 'Priya will review the validation report.' },
+      { text: 'The device does not retain the previous software setting.' }
+    ]
+  };
+  assert.equal(isActionCategoryTopicCard(card), false);
+  // Mixed cards are not classified as action-only; the current V2 normaliser
+  // preserves their factual discussion while the action stage handles commitments.
 });

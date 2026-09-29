@@ -834,6 +834,27 @@ test('discussion consolidation removes repeated records but preserves distinct d
   assert.equal(result.discussion[0].decisions.length, 1);
 });
 
+test('generated action-category discussion buckets are removed at normalisation', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0810', speaker: 'Priya', text: 'I will review the validation report next week.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ discussion: [{
+    topic: 'Action items and priorities',
+    points: [{ text: 'Priya will review the validation report next week.', evidenceIds: ['T0810'] }]
+  }] }, units, 'discussion');
+  assert.deepEqual(result.discussion, []);
+});
+
+test('technical behaviour receives a protected discussion-candidate signal', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0820', speaker: 'Priya', text: 'The device does not retain the previous software setting.', classification: 'keep' }
+  ]);
+  const candidate = discussionCandidateInventory(units).find((item) => item.focusEvidenceId === 'T0820');
+  assert.ok(candidate);
+  assert.ok(candidate.kindHints.includes('technical_behaviour'));
+  assert.ok(candidate.priority >= 4);
+});
+
 test('one source passage can contribute several salient detail categories', () => {
   const inventory = salientDetailInventory(normaliseSourceUnits([
     { id: 'T0900', speaker: 'Alex', text: 'Three alarm tests remain pending approval before validation can finish.', classification: 'keep' }

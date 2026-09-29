@@ -29,12 +29,12 @@ test('with the flag on, anchored discussion discovery carries it as a writing ru
   const prompt = withFlag('1', () => stagedEvaluation.meetingMinutesAgentAnchoredDiscussionPrompt(args));
   assert.equal(prompt.split('\n')[0], '[DISCUSSION_ANCHORED_DISCOVERY]');
   const payload = payloadOf(prompt);
-  assert.deepEqual(payload.writingRules, [FIXTURE]);
+  assert.deepEqual(payload.writingRules, [FIXTURE, stagedEvaluation.MEETING_AGENT_DISCUSSION_COVERAGE_RULE]);
   const keys = Object.keys(payload);
   assert.ok(keys.indexOf('writingRules') < keys.indexOf('preparedTranscript'));
 });
 
-test('with the flag off, the request is unchanged', () => {
+test('with the flag off, the generic discussion coverage rule remains active', () => {
   const prompt = withFlag('0', () => stagedEvaluation.meetingMinutesAgentAnchoredDiscussionPrompt(args));
-  assert.equal(payloadOf(prompt).writingRules, undefined);
+  assert.deepEqual(payloadOf(prompt).writingRules, [stagedEvaluation.MEETING_AGENT_DISCUSSION_COVERAGE_RULE]);
 });

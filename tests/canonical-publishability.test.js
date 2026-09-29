@@ -8,6 +8,7 @@ const { purposePlan } = require('../utils/canonicalMinutes/meetingPurpose');
 const semanticStages = require('../utils/canonicalMinutes/semanticStages');
 const {
   isTranscriptMetaText,
+  isSocialOrMetaCommentary,
   isCorrectionOrAcknowledgementFragment,
   isContextDependentText,
   isConditionalLead,
@@ -15,6 +16,19 @@ const {
   canStandAloneAsMinutesEvidence,
   canHeadlineTopic
 } = require('../utils/canonicalMinutes/publishability');
+
+test('canonical publishability removes tone-only social commentary but keeps material technical facts', () => {
+  for (const text of [
+    'There were some informal remarks during the discussion.',
+    'Someone joked about whether the audit would happen.',
+    'The conversation included some light-hearted comments.'
+  ]) {
+    assert.equal(isSocialOrMetaCommentary(text), true, text);
+    assert.equal(canStandAloneAsMinutesEvidence(text), false, text);
+  }
+  assert.equal(isSocialOrMetaCommentary('The device does not retain the previous software setting.'), false);
+  assert.equal(canStandAloneAsMinutesEvidence('The device does not retain the previous software setting.'), true);
+});
 
 test('canonical publishability rejects correction chatter as standalone minutes evidence', () => {
   assert.equal(isCorrectionOrAcknowledgementFragment("No, sorry, that's not correct."), true);
