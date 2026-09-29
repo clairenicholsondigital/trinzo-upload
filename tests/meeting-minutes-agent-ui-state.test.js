@@ -1316,6 +1316,7 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
     assert.equal(await page.textContent('.proposal-heading h3'), 'Choose what to add');
     assert.doesNotMatch(await page.textContent('#proposalChanges'), /Suggestion ·/i);
     assert.match(await page.locator('.proposal-kind').first().textContent(), /New item|Edit|Removal/i);
+    assert.equal(await page.locator('#rejectProposal').getAttribute('class'), 'secondary');
     const layout = await page.locator('.proposal-detail>summary').first().evaluate((node) => {
       const label = node.querySelector('.proposal-kind').getBoundingClientRect();
       const summary = node.querySelector('.proposal-summary');
