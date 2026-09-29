@@ -1010,11 +1010,12 @@
   /* Keep omitted transcript details readable on narrow screens. Their review
      controls used to reserve a fixed right-hand column, squeezing longer
      details down to one or two words per line. */
-  .meeting-agent-page .omitted-detail{grid-template-columns:minmax(0,1fr);gap:.55rem}
-  .meeting-agent-page .omitted-detail-copy{grid-column:1;width:100%}
+  .meeting-agent-page .omitted-detail{grid-template-columns:max-content minmax(0,1fr);gap:.55rem}
+  .meeting-agent-page .omitted-detail-copy{grid-column:1/-1;width:100%}
   .meeting-agent-page .omitted-detail-actions>[data-promote-supporting]{grid-column:1;grid-row:2;justify-self:start}
-  .meeting-agent-page .omitted-detail-actions>details{grid-column:1;grid-row:3}
-  .meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-copy{grid-column:1}
+  .meeting-agent-page .omitted-detail-actions>details{grid-column:2;grid-row:2}
+  .meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-copy{grid-column:1/-1}
+  .meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-actions>details{grid-column:1/-1;grid-row:3}
   .meeting-agent-page .editable-actions-table tr{
     display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:.35rem .45rem;margin:.55rem 0;padding:.55rem}

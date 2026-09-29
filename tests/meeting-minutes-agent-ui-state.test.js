@@ -2044,14 +2044,14 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
         copyWidth: copyBox.width,
         availableWidth: detailBox.width,
         controlsBelowCopy: buttonBox.top >= copyBox.bottom - 1,
-        transcriptBelowControls: disclosureBox.top >= buttonBox.bottom - 1,
+        controlsShareRow: Math.abs(disclosureBox.top - buttonBox.top) < 2 && disclosureBox.left >= buttonBox.right - 1,
         textOverflow: text.scrollWidth - text.clientWidth,
         detailOverflow: detail.scrollWidth - detail.clientWidth
       };
     });
     assert.ok(omittedDetailLayout.copyWidth > omittedDetailLayout.availableWidth * 0.9, JSON.stringify(omittedDetailLayout));
     assert.equal(omittedDetailLayout.controlsBelowCopy, true, JSON.stringify(omittedDetailLayout));
-    assert.equal(omittedDetailLayout.transcriptBelowControls, true, JSON.stringify(omittedDetailLayout));
+    assert.equal(omittedDetailLayout.controlsShareRow, true, JSON.stringify(omittedDetailLayout));
     assert.ok(omittedDetailLayout.textOverflow <= 1, JSON.stringify(omittedDetailLayout));
     assert.ok(omittedDetailLayout.detailOverflow <= 1, JSON.stringify(omittedDetailLayout));
     await page.click('.omitted-detail-actions .evidence-toggle');
