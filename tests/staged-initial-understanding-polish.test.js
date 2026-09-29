@@ -180,3 +180,15 @@ test('polish fails open when Trooper is unavailable', async () => {
   assert.equal(result.reason, 'unavailable');
   assert.deepEqual(result.objectives, input.objectives);
 });
+
+test('opaque project references stay out of objective and purpose prose', async () => {
+  const result = await polishInitialUnderstanding({
+    meetingTitle: 'Client Abbott T796 Audit Kick Off Sylmar',
+    meetingPurpose: 'Prepare for the Abbott T796 audit.',
+    objectives: ['Prepare for the T796 audit.', 'Review ISO 13485 evidence.'],
+    overallTopics: ['Audit preparation'],
+    executiveSummary: 'The meeting covered audit preparation.'
+  }, {});
+  assert.equal(result.meetingPurpose, 'Prepare for the Abbott audit.');
+  assert.deepEqual(result.objectives, ['Prepare for the audit.', 'Review ISO 13485 evidence.']);
+});

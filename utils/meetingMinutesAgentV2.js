@@ -1212,6 +1212,14 @@ function normaliseTimingWording(timing = {}) {
   return { ...timing, kind, wording };
 }
 
+// A timing field must remain useful when it is read outside the conversation. Relative
+// wording with an unresolved speaker perspective is not a date or a dependable
+// dependency: "before you arrive" leaves the reader asking who "you" is and where they
+// are arriving. Keep named-person references such as "before she arrives" for now; those
+// can be resolved from the cited evidence, whereas second-person/collective deixis cannot
+// safely be guessed at publication time.
+const UNRESOLVED_DEICTIC_TIMING = /\b(?:before|after|when|once|until|by)\s+(?:(?:you|we|they)\b[^,.!?;]*\b(?:arrive|arrival|return|leave|get there|go there)\b|(?:your|our|their)\s+(?:arrival|return|visit)\b)/i;
+
 // Timing is a compact date/target/dependency field, not a second copy of the action.
 // Fail closed when a generated value is shaped like spoken action prose or when its only
 // apparent calendar signal is the duration of the work itself ("four-week pilot").
@@ -1220,6 +1228,7 @@ function timingPublicationIssue(timing = {}) {
   const wording = cleanTiming.wording;
   if (cleanTiming.kind === 'not_stated' || !wording) return '';
   if (RAW_TIMING_CLAUSE_START.test(wording)) return 'sentence_shaped_timing';
+  if (UNRESOLVED_DEICTIC_TIMING.test(wording)) return 'unresolved_deictic_timing';
   if (cleanTiming.kind !== 'dependency' && DURATION_TASK_NOUN.test(wording) && !EXPLICIT_DUE_CUE.test(wording)) {
     return 'task_duration_not_due_date';
   }
@@ -1262,7 +1271,21 @@ function isIdeaOnlyContemplation(value) {
 }
 
 function cleanActionWording(value = '') {
-  const source = convertSpokenNumbers(text(value, 1600)).text;
+  let source = convertSpokenNumbers(text(value, 1600)).text;
+  // Ownership is stored separately from the action. When a named owner says they will
+  // "determine/work out a way to" perform a concrete deliverable, retain the deliverable
+  // as the reviewer-facing action rather than publishing the planning wrapper and owner
+  // twice. Do not simplify "determine the scope" or "determine whether...": those are
+  // genuine resolution tasks, not wrappers around an already named deliverable.
+  const concreteVerb = '(?:provide|share|send|arrange|prepare|review|update|complete|confirm|create|draft|submit|deliver|secure|obtain|compile|circulate|schedule|book|check|resolve|clarify|coordinate|discuss|organise|organize)';
+  const ownedWrapper = new RegExp(`^(?:(?:I|we|you|he|she|they)\\b|(?:[A-Z][\\p{L}'’.-]+(?:\\s+[A-Z][\\p{L}'’.-]+){0,3}))\\s+(?:will|shall)\\s+(?:determine|work out|figure out|find)\\s+(?:a|the)\\s+(?:way|method|approach|route)\\s+to\\s+(${concreteVerb}\\b.+)$`, 'iu');
+  const wrapped = source.match(ownedWrapper);
+  if (wrapped) source = wrapped[1].charAt(0).toUpperCase() + wrapped[1].slice(1);
+  else {
+    const bareWrapper = new RegExp(`^(?:determine|work out|figure out|find)\\s+(?:a|the)\\s+(?:way|method|approach|route)\\s+to\\s+(${concreteVerb}\\b.+)$`, 'i');
+    const bare = source.match(bareWrapper);
+    if (bare) source = bare[1].charAt(0).toUpperCase() + bare[1].slice(1);
+  }
   // Remove tautological scaffolding while retaining every deliverable:
   // "Implement a system to implement X and add Y" ->
   // "Implement a system for X and add Y".

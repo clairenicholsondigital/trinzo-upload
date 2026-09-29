@@ -23,6 +23,14 @@ test('wording with no time in it fails closed, whatever kind the model chose', (
   assert.equal(V.timingPublicationIssue({ kind: 'target', wording: 'the usability file' }), 'no_timing_signal');
 });
 
+test('unresolved second-person arrival targets fail closed', () => {
+  for (const wording of ['before you arrive', 'when we get there', 'after they return', 'before your arrival']) {
+    assert.equal(V.timingPublicationIssue({ kind: 'target', wording }), 'unresolved_deictic_timing', wording);
+    assert.equal(V.timingWordingHasMeaning({ kind: 'target', wording }), false, wording);
+  }
+  assert.equal(V.timingPublicationIssue({ kind: 'dependency', wording: 'before she arrives' }), '');
+});
+
 test('real timings that the old lists did not know still pass', () => {
   for (const [kind, wording] of [
     ['deadline', 'in a fortnight'], ['target', 'straight away'], ['dependency', 'during the live webinar'],

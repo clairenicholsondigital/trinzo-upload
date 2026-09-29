@@ -8,6 +8,7 @@ const {
 const { packEntryIds, packCitedText, evidenceEntriesFor } = require('./canonicalMinutes/evidenceCitations');
 const { canHeadlineTopic } = require('./canonicalMinutes/publishability');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('./canonicalMinutes/topicEditorial');
+const { stripOpaqueMeetingReference } = require('./canonicalMinutes/referenceText');
 
 function clean(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
@@ -179,7 +180,7 @@ function validateCitedRevision(original, revised, evidencePack, options = {}) {
     return '';
   };
 
-  const purposeField = fieldOf(revised?.meetingPurpose);
+  const purposeField = { ...fieldOf(revised?.meetingPurpose), text: stripOpaqueMeetingReference(fieldOf(revised?.meetingPurpose).text) };
   const purposeIssue = shapeIssue(purposeField.text, false) || citedFieldIssue(purposeField, evidencePack, sourceText, allowedIds, options);
   let meetingPurpose = purposeField.text;
   if (purposeIssue) {
@@ -195,7 +196,9 @@ function validateCitedRevision(original, revised, evidencePack, options = {}) {
     executiveSummary = clean(original.executiveSummary);
   }
 
-  const objectiveFields = (Array.isArray(revised?.objectives) ? revised.objectives : []).map(fieldOf);
+  const objectiveFields = (Array.isArray(revised?.objectives) ? revised.objectives : [])
+    .map(fieldOf)
+    .map((field) => ({ ...field, text: stripOpaqueMeetingReference(field.text) }));
   const acceptedObjectives = [];
   for (const field of objectiveFields) {
     const issue = objectiveIssue(field.text) || citedFieldIssue(field, evidencePack, sourceText, allowedIds, options);
@@ -465,8 +468,8 @@ function validateInitialUnderstandingRevision(original, revised, evidencePack = 
     return validateCitedRevision(original, revised, evidencePack, options);
   }
   const originalPurposeIssue = presentationTextIssue(original.meetingPurpose, 'purpose');
-  const meetingPurpose = clean(fieldOf(revised?.meetingPurpose).text) || (originalPurposeIssue ? '' : clean(original.meetingPurpose));
-  const objectives = dedupeObjectives((revised?.objectives || []).map((item) => fieldOf(item).text), 5);
+  const meetingPurpose = stripOpaqueMeetingReference(clean(fieldOf(revised?.meetingPurpose).text)) || (originalPurposeIssue ? '' : stripOpaqueMeetingReference(clean(original.meetingPurpose)));
+  const objectives = dedupeObjectives((revised?.objectives || []).map((item) => stripOpaqueMeetingReference(fieldOf(item).text)), 5);
   const executiveSummary = clean(fieldOf(revised?.executiveSummary).text);
   if (!meetingPurpose || !objectives.length || !executiveSummary) return { ok: false, reason: 'incomplete_response' };
   const sourceNeedsPresentationPolish = hasPresentationIssue(original);
@@ -527,8 +530,8 @@ function validateInitialUnderstandingRevision(original, revised, evidencePack = 
 async function polishInitialUnderstanding(input = {}, options = {}) {
   const original = {
     meetingTitle: clean(input.meetingTitle),
-    meetingPurpose: clean(input.meetingPurpose),
-    objectives: dedupeObjectives(input.objectives, 8),
+    meetingPurpose: stripOpaqueMeetingReference(clean(input.meetingPurpose)),
+    objectives: dedupeObjectives((Array.isArray(input.objectives) ? input.objectives : []).map(stripOpaqueMeetingReference), 8),
     overallTopics: cleanLines(input.overallTopics, 8),
     executiveSummary: clean(input.executiveSummary)
   };

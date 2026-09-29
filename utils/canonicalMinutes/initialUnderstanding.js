@@ -6,6 +6,7 @@ const { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject } = r
 const { purposeFromTitleShape } = require('./titlePurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
 const { minutesEnglishFaults, repairMechanicalFaults } = require('../minutesEnglish');
+const { stripOpaqueMeetingReference } = require('./referenceText');
 const { editorialTopicLabel, isPublishableTopicLabel, labelIsTurnDerived, labelNamesAWorkstream, CONCEPTS } = require('./topicEditorial');
 const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
 
@@ -753,7 +754,7 @@ function buildObjectives(profileId, workstreams, purpose, actions = [], topicHin
   const capped = derived.slice(0, 8);
   if (capped.length) {
     return capped.map((item, index) => ({
-      text: item.text,
+      text: stripOpaqueMeetingReference(item.text),
       evidenceIds: item.evidenceIds.length ? item.evidenceIds : (pooledIds.length ? pooledIds : purpose.evidenceIds),
       provenance: 'transcript_emergent',
       ...(item.actionDerived ? { actionDerived: true } : {}),
@@ -763,7 +764,7 @@ function buildObjectives(profileId, workstreams, purpose, actions = [], topicHin
   const configObjectives = MODE_CONFIG[profileId]?.objectives || [];
   if (configObjectives.length) {
     return configObjectives.slice(0, 4).map((text, index) => ({
-      text,
+      text: stripOpaqueMeetingReference(text),
       evidenceIds: pooledIds.length ? pooledIds : purpose.evidenceIds,
       provenance: 'model_inferred',
       id: `initial_objective_${index + 1}`

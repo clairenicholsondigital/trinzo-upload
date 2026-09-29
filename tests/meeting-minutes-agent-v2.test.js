@@ -39,9 +39,11 @@ const {
   mergeGroundedObjectiveRecords,
   groundedExecutiveSummary,
   relativeExactDate,
+  cleanActionWording,
   timingWordingHasMeaning,
   timingForPublication
 } = require('../utils/meetingMinutesAgentV2');
+const { stripOpaqueMeetingReference } = require('../utils/canonicalMinutes/referenceText');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { classifyStagedTopic } = require('../utils/stagedEditorial');
 const {
@@ -58,6 +60,20 @@ const sourceUnits = normaliseSourceUnits([
   { id: 'T0003', speaker: 'Alex', timestamp: '00:01:30', text: 'Maybe it is standard 60601 something; I am not sure.', classification: 'keep', confidence: 0.72 },
   { id: 'T0004', speaker: 'System', timestamp: '00:01:45', text: 'Recording stopped.', classification: 'remove', confidence: 0.99 }
 ]);
+
+test('owned planning wrappers collapse to the concrete deliverable only', () => {
+  assert.equal(cleanActionWording('Stuart Smith will determine a way to provide secure document access.'), 'Provide secure document access.');
+  assert.equal(cleanActionWording('Work out a way to share the report.'), 'Share the report.');
+  assert.equal(cleanActionWording('Determine the audit scope.'), 'Determine the audit scope.');
+  assert.equal(cleanActionWording('Determine whether access is appropriate.'), 'Determine whether access is appropriate.');
+});
+
+test('opaque meeting references are removed from prose but standards remain', () => {
+  assert.equal(stripOpaqueMeetingReference('Prepare for the Abbott T796 audit.'), 'Prepare for the Abbott audit.');
+  assert.equal(stripOpaqueMeetingReference('Prepare for project M204 review.'), 'Prepare for project review.');
+  assert.equal(stripOpaqueMeetingReference('Review ISO13485 evidence.'), 'Review ISO13485 evidence.');
+  assert.equal(stripOpaqueMeetingReference('Review ISO 13485 evidence.'), 'Review ISO 13485 evidence.');
+});
 
 test('agent details omit organisation and prepared transcript has stable source references', () => {
   assert.deepEqual(sanitiseDetails({
