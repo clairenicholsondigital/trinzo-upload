@@ -62,7 +62,9 @@ test('a repair that moves the work onto someone else is refused', async () => {
   // service the chiller", quietly making the engineer the owner of an action belonging to
   // the brewer who was going to ring them. Requiring the imperative prevents the reframing.
   const original = 'Get the chiller serviced before we pitch the IPA on the fifteenth';
-  assert.equal(await repairedAction(original, 'The refrigeration engineer is to service the chiller before the IPA pitch.'), original);
+  const action = await repairedAction(original, 'The refrigeration engineer is to service the chiller before the IPA pitch.');
+  assert.equal(action, 'Get the chiller serviced before we pitch the IPA on 15th');
+  assert.doesNotMatch(action, /refrigeration engineer/i);
 });
 
 test('a repair may not invent a fact the original did not carry', async () => {
