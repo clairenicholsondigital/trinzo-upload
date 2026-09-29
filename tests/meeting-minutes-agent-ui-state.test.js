@@ -222,6 +222,19 @@ function startStubServer() {
     { id: 'T0002', speaker: 'Sam Okoro', timestamp: '00:14', text: 'I will check the recipient list.' }
   ];
   drafts.set('transcript-display', transcriptDisplay);
+  const minutesFirstWarning = baseDraft('minutes-first-warning', false);
+  minutesFirstWarning.sourceUnits = [{
+    id: 'T0099', speaker: 'Alex Reed', timestamp: '12:10',
+    text: 'The applicable standard may be 27427, subject to confirmation.'
+  }];
+  minutesFirstWarning.discussion[0].points[0].reviewFlagIds = [];
+  minutesFirstWarning.actions[0].reviewFlagIds = [];
+  minutesFirstWarning.reviewFlags = [{
+    id: 'flag-reference', kind: 'unclear_reference',
+    message: 'Confirm the standard reference exactly as spoken: “The applicable standard may be 27427, subject to confirmation.”',
+    evidenceIds: ['T0099'], status: 'open', correctionNote: ''
+  }];
+  drafts.set('minutes-first-warning', minutesFirstWarning);
   const actionsCompleting = baseDraft('actions-completing', true);
   actionsCompleting.selectedStep = 2;
   actionsCompleting.staleStages = ['actions'];
@@ -1272,6 +1285,37 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
     await page.click('[data-delete-topic="0"]');
     assert.equal(await page.locator('#staleNotice').isVisible(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('warnings lead with the potential minutes content, not the system issue', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=minutes-first-warning`);
+    await page.waitForSelector('.flag', { state: 'attached' });
+    await page.click('#reviewQueueToggle');
+
+    const warning = page.locator('.flag').first();
+    assert.equal(await warning.locator('.flag-target>span').textContent(), 'Transcript detail to consider');
+    assert.match(await warning.locator('.flag-target blockquote').textContent(), /standard may be 27427/i);
+    assert.doesNotMatch(await warning.textContent(), /No matching item is currently in the minutes/i);
+    assert.equal(await warning.locator('.flag-kind').textContent(), 'Why this needs review · Reference to check');
+    assert.equal(await warning.locator('.flag-message').textContent(), 'Confirm the standard reference exactly as spoken.');
+    const order = await warning.evaluate((node) => {
+      const candidate = node.querySelector('.flag-target');
+      const reason = node.querySelector('.flag-review-reason');
+      return Boolean(candidate.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    assert.equal(order, true, 'the potential minutes content appears before the review reason');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

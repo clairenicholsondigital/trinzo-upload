@@ -684,15 +684,16 @@
   padding:.75rem .85rem;border:1px solid var(--border);
   border-left:var(--rail) solid var(--warn-text);border-radius:var(--radius-sm)}
 .meeting-agent-page .flag.resolved{border-left-color:var(--border-strong);opacity:.7}
-.meeting-agent-page .flag-kind{display:block;margin-bottom:.3rem;color:var(--warn-text)}
+.meeting-agent-page .flag-kind{display:block;color:var(--warn-text);font-size:var(--fs-cap);font-weight:var(--fw-bold);letter-spacing:.03em;text-transform:uppercase}
 .meeting-agent-page .flag.resolved .flag-kind{color:var(--muted)}
-.meeting-agent-page .flag-message{line-height:1.5}
-.meeting-agent-page .flag-target{display:grid;gap:.4rem;margin-top:.55rem;padding:.6rem;border-radius:var(--radius-sm);background:var(--soft)}
-.meeting-agent-page .flag-target>span{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
-.meeting-agent-page .flag-target blockquote{margin:0;padding-left:.65rem;border-left:3px solid var(--accent);font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .flag-message{color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .flag-target{display:grid;gap:.4rem;padding:.7rem .75rem;border:1px solid var(--brand-200);border-left:4px solid var(--accent);border-radius:var(--radius-sm);background:var(--surface)}
+.meeting-agent-page .flag-target>span{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--accent-700);text-transform:uppercase;letter-spacing:.04em}
+.meeting-agent-page .flag-target blockquote{margin:0;color:var(--heading);font-size:var(--fs-md);font-weight:var(--fw-bold);line-height:1.5}
 .meeting-agent-page .flag-target p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
 .meeting-agent-page .flag-target.is-suggestion{border:1px solid var(--brand-200);background:var(--brand-50)}
 .meeting-agent-page .flag-target .compact{justify-self:start}
+.meeting-agent-page .flag-review-reason{display:grid;gap:.25rem;margin-top:.65rem;padding:.55rem .1rem 0;border-top:1px solid var(--border)}
 .meeting-agent-page .flag-target-highlight{outline:3px solid var(--warn-border);outline-offset:3px;transition:outline-color .3s}
 .meeting-agent-page .flag details{margin-top:.5rem}
 .meeting-agent-page .review-decision-prompt{display:grid;gap:.15rem;margin:.65rem 0 0;padding-top:.6rem;border-top:1px solid var(--border);font-size:var(--fs-sm);line-height:1.4}
@@ -715,8 +716,7 @@
 .meeting-agent-page .review-evidence-head strong{font-size:var(--fs-sm);color:var(--heading)}
 .meeting-agent-page .review-evidence-body{margin-top:.35rem}
 .meeting-agent-page .review-evidence .evidence-row{margin:.25rem 0}
-.meeting-agent-page .review-route-missing{display:grid;gap:.15rem;margin:.55rem 0 0;padding:.55rem .65rem;border-radius:var(--radius-sm);background:var(--soft);color:var(--muted);font-size:var(--fs-sm)}
-.meeting-agent-page .review-route-missing strong{color:var(--heading)}
+.meeting-agent-page .review-route-missing{display:grid;gap:.15rem;padding:.55rem .65rem;border-radius:var(--radius-sm);background:var(--soft);color:var(--muted);font-size:var(--fs-sm)}
 
 /* ------------------------------------------------------------ proposal -- */
 .meeting-agent-page .proposal{margin:.85rem 0 0;padding-top:.8rem;border-top:1px solid var(--border)}

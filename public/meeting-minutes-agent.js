@@ -1594,6 +1594,21 @@
     if (row) row.classList.toggle('is-open', open);
   }
 
+  function reviewCandidateForFlag(flag, target) {
+    if (target && target.text) return target.text;
+    var cited = evidenceContext(flag && flag.evidenceIds).filter(function (unit) { return unit.cited; });
+    return cited.map(function (unit) { return unit.text || ''; }).filter(Boolean).join(' ').slice(0, 800);
+  }
+
+  function conciseReviewMessage(message) {
+    var value = String(message || 'Review this item against the transcript.').trim();
+    var withoutQuotedPassage = value.replace(/[:\s]*[“"][\s\S]*$/, '').trim();
+    if (withoutQuotedPassage && withoutQuotedPassage !== value) {
+      return /[.!?]$/.test(withoutQuotedPassage) ? withoutQuotedPassage : withoutQuotedPassage + '.';
+    }
+    return value;
+  }
+
   function renderFlags() {
     var flags = (state.draft && state.draft.reviewFlags) || [];
     var open = flags.filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
@@ -1609,14 +1624,26 @@
       var displayMessage = target && target.proposal
         ? 'The agent found a possible addition that is not in the minutes yet.'
         : flag.message;
-      var body = '<span class="flag-kind">Needs a decision · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(displayMessage) + '</div>';
+      var candidateText = reviewCandidateForFlag(flag, target);
+      var candidateLabel = target
+        ? (target.proposal ? 'Proposed minutes text' : 'Current minutes item · ' + target.label)
+        : 'Transcript detail to consider';
+      var body = '';
+      if (candidateText) {
+        body += '<div class="flag-target' + (target && target.proposal ? ' is-suggestion' : '') + (!target ? ' transcript-candidate' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span><blockquote>' + escapeHtml(candidateText) + '</blockquote>';
+      }
       if (target) {
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
-        body += '<div class="flag-target' + (target.proposal ? ' is-suggestion' : '') + '"><span>' + (target.proposal ? 'Suggested addition to the minutes' : 'Item to check · ' + escapeHtml(target.label)) + '</span><blockquote>' + escapeHtml(target.text) + '</blockquote>'
+        body += (candidateText ? '' : '<div class="flag-target' + (target.proposal ? ' is-suggestion' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span>')
           + (target.proposal ? '<p>This has not been added yet. Open it to choose whether to add it or leave it out.</p>' : '<p>Open this item if the wording, owner or timing needs correcting.</p>')
           + '<button class="' + (target.proposal ? 'button' : 'secondary') + ' compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review and decide →' : 'Open item to correct') + '</button></div>';
-      } else body += '<div class="review-route-missing"><strong>No matching item is currently in the minutes.</strong><span>If this matters, add or correct the relevant item first. Otherwise choose Not needed.</span></div>';
+      } else if (candidateText) {
+        body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
+      } else {
+        body += '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
+      }
+      body += '<div class="flag-review-reason"><span class="flag-kind">Why this needs review · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(conciseReviewMessage(displayMessage)) + '</div></div>';
       var actions = '';
       // A linked proposal has its own add/leave-out decision. Showing warning
       // controls here as well made it look as though "checked" would add it.
