@@ -114,3 +114,29 @@ test('the jobs page renders as a page, not as its own source code', { timeout: 1
     await browser.close();
   }
 });
+
+test('the Library primary actions share one compact row on a phone', { timeout: 120000 }, async () => {
+  const { chromium } = require('playwright');
+  const sharedCss = fs.readFileSync(path.resolve(__dirname, '../public/trinzo.css'), 'utf8');
+  const html = fs.readFileSync(path.join(VIEWS, 'meeting-minutes-jobs.html'), 'utf8')
+    .replace('<link rel="stylesheet" href="/static/trinzo.css">', `<style>${sharedCss}</style>`);
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    const layout = await page.locator('.jobs-actions').evaluate((actions) => {
+      const process = actions.querySelector('.button').getBoundingClientRect();
+      const refresh = actions.querySelector('#refreshBtn').getBoundingClientRect();
+      const outer = actions.getBoundingClientRect();
+      return {
+        sameRow: Math.abs(process.top - refresh.top) < 2,
+        compactHeight: outer.height <= Math.max(process.height, refresh.height) + 2,
+        inside: process.left >= outer.left - 1 && refresh.right <= outer.right + 1,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    assert.deepEqual(layout, { sameRow: true, compactHeight: true, inside: true, overflow: 0 });
+  } finally {
+    await browser.close();
+  }
+});

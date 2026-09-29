@@ -640,6 +640,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="refreshBtn" type="button" aria-label="Refresh Library" title="Refresh Library"', jobs_page)
         self.assertIn('class="library-refresh-icon"', jobs_page)
         self.assertIn('.jobs-actions #refreshBtn', shared_css)
+        self.assertIn('grid-template-columns:minmax(0,1fr) auto;', shared_css)
         self.assertIn('.library-refresh-icon', shared_css)
         # The Library lists Meeting Minutes Agent drafts only. Staged job DETAIL
         # rendering below is deliberately kept, so /jobs/:id and
