@@ -125,7 +125,7 @@ class FrontendContractTest(unittest.TestCase):
         # The omitted-details review is one shared panel, and its open state
         # survives the same re-render path as the other evidence disclosures.
         self.assertIn('id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"', client)
-        self.assertIn('Review omitted details (', client)
+        self.assertIn('Review additional details (', client)
         self.assertIn('Add to minutes', client)
         self.assertIn('function restoreDisclosures', client)
         self.assertIn('<details class="record-add-menu">', client)
