@@ -1613,6 +1613,16 @@
     return value;
   }
 
+  function reviewMessageAddsDetail(message, label) {
+    var normalise = function (value) {
+      return String(value || '').trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+    };
+    var detail = normalise(message);
+    var kind = normalise(label);
+    if (!detail || detail === kind) return false;
+    return ['cannot verify', 'unable to verify', 'not verified', 'review this item against the transcript', 'check against the transcript'].indexOf(detail) === -1;
+  }
+
   function renderFlags() {
     var flags = (state.draft && state.draft.reviewFlags) || [];
     var open = flags.filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
@@ -1647,7 +1657,10 @@
       } else {
         body += '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
       }
-      body += '<details class="flag-review-reason"><summary><span>Why this was highlighted</span><span class="flag-kind">' + escapeHtml(label) + '</span></summary><div class="flag-message">' + escapeHtml(conciseReviewMessage(displayMessage)) + '</div></details>';
+      var reviewMessage = conciseReviewMessage(displayMessage);
+      body += reviewMessageAddsDetail(reviewMessage, label)
+        ? '<details class="flag-review-reason"><summary><span>Why this was highlighted</span><span class="flag-kind">' + escapeHtml(label) + '</span></summary><div class="flag-message">' + escapeHtml(reviewMessage) + '</div></details>'
+        : '<div class="flag-review-summary"><span class="flag-kind">' + escapeHtml(label) + '</span></div>';
       var actions = '';
       // A linked proposal has its own add/leave-out decision. Showing warning
       // controls here as well made it look as though "checked" would add it.

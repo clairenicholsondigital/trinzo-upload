@@ -243,6 +243,9 @@ function startStubServer() {
     id: 'flag-reference', kind: 'unclear_reference',
     message: 'Confirm the standard reference exactly as spoken: “The applicable standard may be 27427, subject to confirmation.”',
     evidenceIds: ['T0099'], status: 'open', correctionNote: ''
+  }, {
+    id: 'flag-generic', kind: 'uncertain_fact', message: 'Cannot verify.',
+    evidenceIds: ['T0099'], status: 'open', correctionNote: ''
   }];
   drafts.set('minutes-first-warning', minutesFirstWarning);
   const actionsCompleting = baseDraft('actions-completing', true);
@@ -1336,6 +1339,10 @@ test('review checks lead with the potential minutes content and keep diagnostic 
     });
     assert.equal(noteLayout.every((item) => item.left >= item.parentLeft - 1 && item.right <= item.parentRight + 1), true);
     assert.equal(noteLayout.every((item) => item.width > 240), true, 'open note controls use the mobile card width');
+    const genericCheck = page.locator('.flag').nth(1);
+    assert.equal(await genericCheck.locator('.flag-review-reason').count(), 0, 'a generic reason does not create an empty disclosure');
+    assert.equal(await genericCheck.locator('.flag-review-summary .flag-kind').textContent(), 'Uncertain detail');
+    assert.doesNotMatch(await genericCheck.textContent(), /Cannot verify|Why this was highlighted/i);
     const order = await warning.evaluate((node) => {
       const candidate = node.querySelector('.flag-target');
       const reason = node.querySelector('.flag-review-reason');
