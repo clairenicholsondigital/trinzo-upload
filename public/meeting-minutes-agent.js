@@ -77,6 +77,11 @@
     updateFinishingBar();
   }
 
+  function formatReviewDecisionLabel(value) {
+    var label = String(value || 'Review decision').trim();
+    return label ? label.charAt(0).toUpperCase() + label.slice(1) : 'Review decision';
+  }
+
   function updateFinishingBar() {
     if (!state.draft) return;
     var finalReview = state.currentStep === MAX_STEP;
@@ -92,7 +97,7 @@
     var undo = document.getElementById('undoLastDecision');
     if (undo) {
       undo.hidden = !state.draft.lastUndo;
-      var undoLabel = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : 'Undo';
+      var undoLabel = state.draft.lastUndo ? 'Undo: ' + formatReviewDecisionLabel(state.draft.lastUndo.label) : 'Undo';
       undo.innerHTML = '<span class="wide-label">' + escapeHtml(undoLabel) + '</span><span class="narrow-label">' + (finalReview ? 'Undo' : 'Undo last change') + '</span>';
       undo.setAttribute('aria-label', undoLabel);
       undo.title = state.draft.lastUndo ? undoLabel : '';
@@ -100,7 +105,7 @@
     var redo = document.getElementById('redoLastDecision');
     if (redo) {
       redo.hidden = !state.draft.lastRedo;
-      var redoLabel = state.draft.lastRedo ? 'Redo: ' + state.draft.lastRedo.label : 'Redo';
+      var redoLabel = state.draft.lastRedo ? 'Redo: ' + formatReviewDecisionLabel(state.draft.lastRedo.label) : 'Redo';
       redo.innerHTML = '<span class="wide-label">' + escapeHtml(redoLabel) + '</span><span class="narrow-label">Redo last change</span>';
       redo.setAttribute('aria-label', redoLabel);
       redo.title = state.draft.lastRedo ? redoLabel : '';
@@ -168,7 +173,8 @@
     var message = document.getElementById('undoToastMessage');
     if (!toast || !message) return;
     clearTimeout(undoToastTimer);
-    message.textContent = (label || 'Review decision') + '. ';
+    var formatted = formatReviewDecisionLabel(label);
+    message.textContent = formatted + (/[.!?]$/.test(formatted) ? ' ' : '. ');
     toast.hidden = false;
     undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 10000);
   }
@@ -213,7 +219,7 @@
       return;
     }
     undoGroup = { key: groupKey || '', at: now };
-    pendingReviewDecisionLabel = String(label || 'Change').slice(0, 160);
+    pendingReviewDecisionLabel = formatReviewDecisionLabel(label || 'Change').slice(0, 160);
   }
 
   // Anything that is not typing closes the current group, so the next
@@ -224,7 +230,7 @@
 
   function queueReviewDecision(label) {
     endUndoGroup();
-    pendingReviewDecisionLabel = String(label || 'Review decision').slice(0, 160);
+    pendingReviewDecisionLabel = formatReviewDecisionLabel(label || 'Review decision').slice(0, 160);
     editVersion += 1;
     setSaveStatus('Saving review decision...', 'saving');
     saveDraftNow().catch(function (error) { setStatus(error.message, true, currentStageName()); });

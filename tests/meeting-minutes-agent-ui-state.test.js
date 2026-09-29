@@ -919,6 +919,28 @@ test('independent section switches hide output without deleting saved content', 
   }
 });
 
+test('edit confirmations and history labels use sentence capitalisation', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'layout');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="4"]');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
+      && response.request().method() === 'PATCH'
+      && response.request().postDataJSON().reviewDecisionLabel === 'Remove objective');
+    await page.locator('[data-remove-objective]').first().click();
+    await saved;
+    assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Remove objective.');
+    assert.equal(await page.locator('#undoLastDecision').getAttribute('aria-label'), 'Undo: Remove objective');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('a typing burst is one undo step, and a second field starts another', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -1888,7 +1910,7 @@ test('phone save bar gives history and document actions their own responsive row
     await page.waitForSelector('#undoLastDecision:not([hidden])');
 
     assert.equal(await page.locator('#undoLastDecision .narrow-label').textContent(), 'Undo last change');
-    assert.match(await page.locator('#undoLastDecision').getAttribute('aria-label'), /Undo: edit a long discussion item/i);
+    assert.equal(await page.locator('#undoLastDecision').getAttribute('aria-label'), 'Undo: Edit a long discussion item');
     const layout = await page.evaluate(() => {
       const box = (selector) => {
         const rect = document.querySelector(selector).getBoundingClientRect();
