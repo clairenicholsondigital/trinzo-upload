@@ -748,12 +748,25 @@
 .meeting-agent-page .proposal-change pre{
   margin:0;padding:.35rem .5rem;border-radius:var(--radius-sm);background:var(--soft);
   font-family:inherit;font-size:var(--fs-sm);line-height:1.45;white-space:pre-wrap}
+.meeting-agent-page .proposal-wording{
+  display:grid;gap:.3rem;padding:.7rem .8rem;border:1px solid var(--brand-200);
+  border-left:4px solid var(--accent);border-radius:var(--radius-sm);background:var(--surface)}
+.meeting-agent-page .proposal-wording-label,
+.meeting-agent-page .proposal-value-label{
+  color:var(--accent-700);font-size:var(--fs-cap);font-weight:var(--fw-bold);
+  letter-spacing:.04em;text-transform:uppercase}
+.meeting-agent-page .proposal-wording pre{
+  padding:0;background:transparent;color:var(--heading);font-size:var(--fs-md);font-weight:var(--fw-bold);line-height:1.5}
+.meeting-agent-page .proposal-wording.removal{border-left-color:var(--danger-text)}
 .meeting-agent-page .proposal-comparison{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
-.meeting-agent-page .proposal-value-label{margin:0 0 .2rem}
+.meeting-agent-page .proposal-version{padding:.6rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft)}
+.meeting-agent-page .proposal-version.proposed{border-color:var(--brand-200);border-left:4px solid var(--accent);background:var(--surface)}
+.meeting-agent-page .proposal-version pre{padding:.25rem 0 0;background:transparent}
+.meeting-agent-page .proposal-version.proposed pre{color:var(--heading);font-size:var(--fs-md);font-weight:var(--fw-bold)}
 .meeting-agent-page .proposal-rationale{
-  display:grid;gap:.4rem;margin-top:.5rem;padding:.55rem .65rem;
-  border-left:3px solid var(--accent);border-radius:var(--radius-sm);background:var(--soft-2);
+  display:grid;gap:.4rem;margin-top:.6rem;padding:.55rem .65rem;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft);
   color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
 .meeting-agent-page .proposal-rationale strong{color:var(--heading)}
 .meeting-agent-page .commitment-chain{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;color:var(--text)}

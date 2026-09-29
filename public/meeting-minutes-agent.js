@@ -1674,9 +1674,10 @@
     document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
       var content;
       if (change.before && change.after) {
-        content = '<div class="proposal-comparison"><div><div class="proposal-value-label">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre></div><div><div class="proposal-value-label">Proposed</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre></div></div>';
+        content = '<div class="proposal-comparison"><div class="proposal-version before"><div class="proposal-value-label">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre></div><div class="proposal-version proposed"><div class="proposal-value-label">Proposed minutes text</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre></div></div>';
       } else {
-        content = '<pre>' + escapeHtml(proposalRecord(change.after || change.before)) + '</pre>';
+        var wordingLabel = change.type === 'remove' ? 'Item to remove' : 'Proposed minutes text';
+        content = '<div class="proposal-wording' + (change.type === 'remove' ? ' removal' : '') + '"><span class="proposal-wording-label">' + wordingLabel + '</span><pre>' + escapeHtml(proposalRecord(change.after || change.before)) + '</pre></div>';
       }
       if (change.reviewContext) {
         content += '<div class="proposal-rationale"><div><strong>Why this needs review:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'

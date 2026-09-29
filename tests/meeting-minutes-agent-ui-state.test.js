@@ -1309,7 +1309,7 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
-    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=partial-proposals`);
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=proposals`);
     await page.waitForSelector('.proposal-detail', { state: 'attached' });
     if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
 
@@ -1330,6 +1330,20 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
     assert.equal(layout.summaryBelowLabel, true, JSON.stringify(layout));
     assert.equal(layout.wraps, true, JSON.stringify(layout));
     assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
+    await page.locator('.proposal-detail>summary').first().click();
+    assert.equal(await page.locator('.proposal-wording-label').first().textContent(), 'Proposed minutes text');
+    const hierarchy = await page.locator('.proposal-detail').first().evaluate((node) => {
+      const wording = node.querySelector('.proposal-wording');
+      const wordingText = wording.querySelector('pre');
+      const rationale = node.querySelector('.proposal-rationale');
+      return {
+        wordingBeforeReason: Boolean(wording.compareDocumentPosition(rationale) & Node.DOCUMENT_POSITION_FOLLOWING),
+        wordingFontSize: parseFloat(getComputedStyle(wordingText).fontSize),
+        reasonFontSize: parseFloat(getComputedStyle(rationale).fontSize)
+      };
+    });
+    assert.equal(hierarchy.wordingBeforeReason, true, JSON.stringify(hierarchy));
+    assert.ok(hierarchy.wordingFontSize > hierarchy.reasonFontSize, JSON.stringify(hierarchy));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
