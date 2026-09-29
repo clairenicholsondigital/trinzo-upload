@@ -40,6 +40,11 @@ test('organisations and systems heard as other words', () => {
   assert.equal(fix('OReilly, you\'re not in the addressee list.'), "O'Reilly, you're not in the addressee list.");
 });
 
+test('the confirmed Teams person-name substitution is corrected everywhere it appears', () => {
+  assert.equal(fix('Colby will send the file to Colby on Monday.'), 'Cody will send the file to Cody on Monday.');
+  assert.equal(fix('Colby-related configuration remains unchanged.'), 'Cody-related configuration remains unchanged.');
+});
+
 test('codes and figures', () => {
   assert.equal(fix('focus on TFO3 this week.'), 'focus on TF03 this week.');
   assert.equal(fix('used as part UDIDI, but'), 'used as part UDI-DI, but');

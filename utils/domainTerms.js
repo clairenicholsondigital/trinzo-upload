@@ -96,6 +96,7 @@ const TRANSCRIPT_PHRASE_CORRECTIONS = [
   { pattern: /\bKappa(s?)\b/g, replacement: 'CAPA$1', reason: 'CAPA misheard' },
   { pattern: /\bS-BOM\b/gi, replacement: 'SBOM', reason: 'SBOM hyphenated' },
   { pattern: /\bOReilly\b/g, replacement: "O'Reilly", reason: 'Apostrophe dropped' },
+  { pattern: /\bColby\b/gi, replacement: 'Cody', reason: 'Confirmed person name misheard' },
   // Codes: the letter O for a zero in a technical-file number; UDI-DI run
   // together; "A1 in 100" is "a 1 in 100".
   { pattern: /\bTFO(\d)\b/g, replacement: 'TF0$1', reason: 'Letter O for zero' },

@@ -58,6 +58,18 @@ test('structural meeting-agenda headings are replaced from grounded topic conten
   assert.equal(repaired[0].points[0].id, 'p1', 'repair keeps the grounded minutes row intact');
 });
 
+test('composed generic meeting headings are replaced from grounded content', () => {
+  const repaired = repairStructuralTopicHeadings([{
+    id: 'topic-introduction',
+    topic: 'Meeting Introduction and Initial Updates',
+    points: [{ id: 'p1', text: 'Supplier validation testing remains dependent on the packaging results.', evidenceIds: ['T0001'] }],
+    decisions: [],
+    openQuestions: []
+  }], [{ id: 'T0001', speaker: 'Alex', text: 'Supplier validation testing remains dependent on the packaging results.' }]);
+  assert.equal(repaired[0].topic, 'Risks and dependencies');
+  assert.equal(repaired[0].points[0].id, 'p1');
+});
+
 test('personal wellbeing and time-away asides are not meeting content', () => {
   for (const wording of [
     'Morgan suggests that Alex needs a break.',

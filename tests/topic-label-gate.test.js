@@ -51,6 +51,10 @@ test('the placeholder label never reaches a reviewer', () => {
   assert.equal(isPublishableTopicLabel('Agenda'), false);
   assert.equal(isPublishableTopicLabel('Meeting minutes'), false);
   assert.equal(isPublishableTopicLabel('General discussion'), false);
+  assert.equal(isPublishableTopicLabel('Meeting Introduction and Initial Updates'), false);
+  assert.equal(isPublishableTopicLabel('Opening Status and General Updates'), false);
+  assert.equal(isPublishableTopicLabel('Initial audit update'), true,
+    'a genuine subject prevents a superficially similar heading being removed');
   assert.equal(isPublishableTopicLabel(''), false);
   assert.equal(isPublishableTopicLabel(null), false);
 });

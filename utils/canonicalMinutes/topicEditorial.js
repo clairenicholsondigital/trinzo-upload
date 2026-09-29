@@ -170,6 +170,26 @@ function labelIsClientReady(value) {
 // legitimate technical heading.
 const SPEECH_OPENER = /^(?:please|let['’]?s|let us|go ahead|carry on|sure|thanks|thank you|sorry|maybe|actually|obviously|basically|just|right then|first off|anyway)\b/i;
 const STRUCTURAL_TOPIC = /^(?:the\s+)?(?:(?:meeting\s+)?agenda(?:\s+items?)?|meeting\s+minutes?|minutes?|meeting\s+notes?|discussion\s+topics?|general\s+discussion)$/i;
+const STRUCTURAL_TOPIC_WORDS = new Set([
+  'agenda', 'discussion', 'discussions', 'general', 'initial', 'introduction',
+  'introductions', 'introductory', 'item', 'items', 'meeting', 'minute',
+  'minutes', 'note', 'notes', 'opening', 'overview', 'recap', 'status',
+  'summary', 'topic', 'topics', 'update', 'updates', 'welcome'
+]);
+const STRUCTURAL_TOPIC_CONNECTORS = new Set(['a', 'an', 'and', 'of', 'the']);
+
+// Reject headings made entirely from document/meeting scaffolding, while
+// retaining any heading with a real subject (for example "Regulatory status"
+// or "Initial audit update"). This is deliberately compositional rather than
+// a list of phrases seen in individual transcripts.
+function isStructuralTopicLabel(value) {
+  const text = clean(value);
+  if (!text) return false;
+  if (STRUCTURAL_TOPIC.test(text)) return true;
+  const words = (text.toLowerCase().match(/[a-z]+/g) || [])
+    .filter((word) => !STRUCTURAL_TOPIC_CONNECTORS.has(word));
+  return words.length > 0 && words.every((word) => STRUCTURAL_TOPIC_WORDS.has(word));
+}
 const ACTION_CATEGORY_TOPIC = /^(?:action(?:\s+(?:items?|points?))?|action\s+items?\s+and\s+priorities|priorities|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?)(?:\s+(?:and|&)\s+(?:priorities|next\s+steps?|follow[- ]?ups?|actions?|tasks?))?$/i;
 const ACTION_CATEGORY_RECORD = /^(?:(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}){0,3})[,;:]?\s+)?(?:will|shall|must|needs?\s+to|is\s+to|are\s+to|to\s+|please\s+|review\b|confirm\b|update\b|send\b|share\b|prepare\b|complete\b|check\b|test\b|provide\b|follow[- ]?up\b)/i;
 
@@ -242,7 +262,7 @@ function labelNamesAWorkstream(value) {
 function isPublishableTopicLabel(value) {
   const text = clean(value);
   if (!text || /^substantive discussion$/i.test(text)) return false;
-  if (STRUCTURAL_TOPIC.test(text)) return false;
+  if (isStructuralTopicLabel(text)) return false;
   if (ACTION_CATEGORY_TOPIC.test(text)) return false;
   if (!labelIsClientReady(text)) return false;
   return !SPEECH_OPENER.test(text);
@@ -319,4 +339,4 @@ function editorialTopics(topics, evidence, maximum = 8) {
 
 module.exports = {
   labelIsTurnDerived,
-  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards };
+  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isStructuralTopicLabel, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards };

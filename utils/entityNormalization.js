@@ -13,7 +13,10 @@ function key(value) {
 // labels Rebecca Gill as "Rebecca Cuckoo", and that spelling must be corrected
 // consistently even when no attendee list is available yet.
 const FIXED_PERSON_ALIASES = Object.freeze([
-  { pattern: /\bRebecca\s+Cuckoo\b/giu, replacement: 'Rebecca Gill' }
+  { pattern: /\bRebecca\s+Cuckoo\b/giu, replacement: 'Rebecca Gill' },
+  // Confirmed Teams ASR substitution. Word boundaries avoid partial changes
+  // inside a different name while still correcting possessive/hyphenated use.
+  { pattern: /\bColby\b/giu, replacement: 'Cody' }
 ]);
 
 function normaliseFixedPersonAliases(value) {

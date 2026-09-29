@@ -198,6 +198,18 @@ test('generated timing trims dependency lead-ins and retains concise valid timin
   }
 });
 
+test('generated timing removes conversational hedges only before time expressions', () => {
+  assert.deepEqual(
+    timingForPublication({ kind: 'target', wording: 'as of kind of next Monday', exactDate: '' }),
+    { kind: 'target', wording: 'as of next Monday', exactDate: '' }
+  );
+  assert.deepEqual(
+    timingForPublication({ kind: 'deadline', wording: 'sort of by Friday', exactDate: '' }),
+    { kind: 'deadline', wording: 'by Friday', exactDate: '' }
+  );
+  assert.equal(normaliseKnownTerms('Colby will ask Cody.'), 'Cody will ask Cody.');
+});
+
 test('known transcription variants are unconditionally normalised throughout nested minutes data', () => {
   assert.equal(
     normaliseKnownTerms('Udimed, Udemed, udimed and UDEMED'),

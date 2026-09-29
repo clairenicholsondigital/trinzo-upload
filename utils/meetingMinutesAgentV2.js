@@ -1209,6 +1209,10 @@ function hasTimingSignal(wording = '') {
 function normaliseTimingWording(timing = {}) {
   const kind = text(timing?.kind, 30);
   let wording = text(timing?.wording, 220);
+  // Timing fields are labels rather than transcript quotations. Remove only
+  // hedges immediately before an unmistakable time expression; a wider
+  // removal could change substantive phrases such as "a kind of review".
+  wording = wording.replace(/\b(?:kind|sort)\s+of\s+(?=(?:next|this|coming|following|today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|by|before|after|within|until|on)\b)/gi, '');
   // Targets are labels, not sentence fragments. "from now till race day"
   // carries the same target as "race day", but the latter is what belongs in
   // a compact timing field and is what the reviewer can scan quickly.
