@@ -1591,6 +1591,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const card = topic.closest('.discussion-card');
       const kind = card.querySelector('.proposition-kind');
       const text = card.querySelector('[data-record-field]');
+      const proposition = text.closest('.proposition-row');
       const screen = document.querySelector('[data-screen="2"]');
       const toolbar = screen.querySelector('.toolbar');
       const actions = screen.querySelector('.screen-toolbar-actions');
@@ -1599,6 +1600,9 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
         titleWidth: topic.getBoundingClientRect().width,
         cardWidth: card.getBoundingClientRect().width,
         kindAboveText: kind.getBoundingClientRect().bottom <= text.getBoundingClientRect().top + 1,
+        propositionWidth: proposition.getBoundingClientRect().width,
+        propositionTextWidth: text.getBoundingClientRect().width,
+        propositionOverflow: proposition.scrollWidth - proposition.clientWidth,
         toolbarWidth: toolbar.getBoundingClientRect().width,
         actionsWidth: actions.getBoundingClientRect().width,
         screenOverflow: screen.scrollWidth - screen.clientWidth
@@ -1607,6 +1611,8 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(discussionLayout.titleVisible, true, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.titleWidth > discussionLayout.cardWidth * 0.8, JSON.stringify(discussionLayout));
     assert.equal(discussionLayout.kindAboveText, true, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.propositionTextWidth > discussionLayout.propositionWidth * 0.8, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.propositionOverflow <= 1, JSON.stringify(discussionLayout));
     assert.ok(Math.abs(discussionLayout.toolbarWidth - discussionLayout.actionsWidth) < 2, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.screenOverflow <= 1, JSON.stringify(discussionLayout));
 

@@ -941,10 +941,14 @@
   .meeting-agent-page .topic-count{display:block;margin:-.1rem .35rem .15rem}
   .meeting-agent-page .card-head .record-add-menu{grid-column:1;justify-self:end}
   .meeting-agent-page .card-head .topic-menu{grid-column:2}
-  .meeting-agent-page .proposition-row{grid-template-columns:minmax(0,1fr) auto}
+  /* A proposition's overflow menu is a small corner control, not a content
+     column. Keeping it in the mobile grid reserved half the row for it and
+     left long discussion text in a very narrow strip. */
+  .meeting-agent-page .proposition-row{
+    display:block;position:relative;min-width:0;padding-right:2.8rem}
   .meeting-agent-page .proposition-row .proposition-kind{grid-column:1;grid-row:1}
-  .meeting-agent-page .proposition-row textarea{grid-column:1;grid-row:2}
-  .meeting-agent-page .proposition-row .record-menu{grid-column:2;grid-row:1/3}
+  .meeting-agent-page .proposition-row textarea{display:block;width:100%;box-sizing:border-box}
+  .meeting-agent-page .proposition-row .record-menu{position:absolute;top:.35rem;right:.35rem}
   .meeting-agent-page .editable-actions-table tr{
     display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:.35rem .45rem;margin:.55rem 0;padding:.55rem}
