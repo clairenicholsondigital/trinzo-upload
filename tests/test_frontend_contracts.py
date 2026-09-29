@@ -155,6 +155,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.meeting-agent-page .proposal-kind-add{', page)
         self.assertIn('.meeting-agent-page .proposal-kind-modify{', page)
         self.assertIn('.meeting-agent-page .proposal-kind-remove{', page)
+        self.assertIn('.proposal-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--heading);font-size:var(--fs-sm);font-weight:var(--fw-bold)}', page)
         self.assertIn('class="proposal-header"', page)
         self.assertIn('class="proposal-footer"', page)
         self.assertIn('Choose changes to apply', page)

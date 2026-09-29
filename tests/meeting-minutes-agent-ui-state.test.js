@@ -1475,11 +1475,15 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
       return {
         summaryBelowLabel: summaryBox.top >= label.bottom - 1,
         wraps: getComputedStyle(summary).whiteSpace === 'normal',
+        summaryWeight: getComputedStyle(summary).fontWeight,
+        detailWeight: getComputedStyle(node.parentElement.querySelector('.proposal-content')).fontWeight,
         pageOverflow: screen.scrollWidth - screen.clientWidth
       };
     });
     assert.equal(layout.summaryBelowLabel, true, JSON.stringify(layout));
     assert.equal(layout.wraps, true, JSON.stringify(layout));
+    assert.equal(layout.summaryWeight, '700', JSON.stringify(layout));
+    assert.equal(layout.detailWeight, '400', JSON.stringify(layout));
     assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
     await page.locator('.proposal-detail>summary').first().click();
     // The expanded view must not repeat the text the row summary already shows.
