@@ -553,6 +553,13 @@
     // A draft saved on the retired Focus step has nowhere to land; send it on
     // to Discussion rather than showing an empty screen.
     if (state.currentStep === 1) state.currentStep = 2;
+    // The review queue is shared by every workflow screen. Close it when the
+    // reviewer moves on so the next screen starts clean; the persistent
+    // suggestions control remains available to reopen it at any time.
+    if (leavingStep !== state.currentStep) {
+      var reviewPanel = document.getElementById('reviewFlags');
+      if (reviewPanel) reviewPanel.open = false;
+    }
     if (completedGenerationNotice && STAGE_STEP[completedGenerationNotice.stage] === state.currentStep) {
       completedGenerationNotice = null;
     }
@@ -600,6 +607,7 @@
     if (options && options.scroll) beginStepNavigationScroll(options.restore);
     renderGenerationProgress();
     updateFinishingBar();
+    if (leavingStep !== state.currentStep) updateReviewQueueSummary();
     if (options && options.scroll) {
       maybeOpenPreparedDiscussion();
       maybeOpenPreparedSummary();

@@ -151,6 +151,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("add:' proposal-kind-add'", client)
         self.assertIn("modify:' proposal-kind-modify'", client)
         self.assertIn("remove:' proposal-kind-remove'", client)
+        self.assertIn('if (reviewPanel) reviewPanel.open = false;', client)
         self.assertIn('.proposal-kind', page)
         self.assertIn('.meeting-agent-page .proposal-kind-add{', page)
         self.assertIn('.meeting-agent-page .proposal-kind-modify{', page)

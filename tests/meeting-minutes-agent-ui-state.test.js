@@ -1443,6 +1443,11 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     assert.equal(await page.locator('.proposal-content').isVisible(), true);
     await page.uncheck('[data-proposal-change]');
     assert.equal(await page.locator('#acceptSelectedProposal').isDisabled(), true);
+    await page.click('[data-step="2"]');
+    assert.equal(await page.locator('#reviewFlags').evaluate((node) => node.open), false, 'the suggestions close between workflow screens');
+    assert.equal(await page.locator('#reviewQueueToggle').getAttribute('aria-expanded'), 'false');
+    await page.click('#reviewQueueToggle');
+    assert.equal(await page.locator('#reviewFlags').evaluate((node) => node.open), true, 'the suggestions remain expandable');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
