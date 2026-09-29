@@ -74,6 +74,7 @@ const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitm
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
+const { convertSpokenNumbers } = require('../utils/spokenNumbers');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
@@ -340,6 +341,52 @@ function meetingAgentObjectives(value) {
     .map((item) => meetingMinutesAgentText(typeof item === 'string' ? item : item?.text, 400))
     .filter(Boolean)
     .slice(0, 20);
+}
+
+// Number words belong in transcript evidence as spoken, but the minutes themselves use
+// figures. Keep this boundary deliberately narrow: only reviewer-facing minute fields are
+// formatted, never meeting metadata, attendee names, sourceUnits, flags or quoted evidence.
+// convertSpokenNumbers is conservative around names, dates, ordinals and bare one-to-nine
+// prose, and is idempotent, so legacy drafts and newly saved drafts can share this path.
+function normaliseMeetingAgentMinuteNumbers(draft = {}) {
+  const numberText = (value) => convertSpokenNumbers(String(value == null ? '' : value)).text;
+  const minuteRecord = (record) => {
+    if (typeof record === 'string') return numberText(record);
+    if (!record || typeof record !== 'object') return record;
+    return {
+      ...record,
+      text: numberText(record.text),
+      ...(Array.isArray(record.supportingDetails)
+        ? { supportingDetails: record.supportingDetails.map(minuteRecord) }
+        : {})
+    };
+  };
+  const minuteTopic = (topic) => {
+    if (!topic || typeof topic !== 'object') return topic;
+    return {
+      ...topic,
+      topic: numberText(topic.topic),
+      ...Object.fromEntries(['points', 'decisions', 'openQuestions']
+        .filter((key) => Array.isArray(topic[key]))
+        .map((key) => [key, topic[key].map(minuteRecord)]))
+    };
+  };
+  return {
+    ...draft,
+    executiveSummary: numberText(draft.executiveSummary),
+    meetingObjectives: (Array.isArray(draft.meetingObjectives) ? draft.meetingObjectives : []).map((objective) =>
+      typeof objective === 'string' ? numberText(objective)
+        : objective && typeof objective === 'object' ? { ...objective, text: numberText(objective.text) }
+          : objective),
+    discussion: (Array.isArray(draft.discussion) ? draft.discussion : []).map(minuteTopic),
+    actions: (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
+      ...action,
+      action: numberText(action?.action),
+      ...(action?.timing && typeof action.timing === 'object'
+        ? { timing: { ...action.timing, wording: numberText(action.timing.wording) } }
+        : {})
+    }))
+  };
 }
 
 function meetingAgentObjectiveRecords(value) {
@@ -11055,6 +11102,7 @@ function meetingAgentWithoutDanglingFlagRefs(records = [], flagIds = new Set()) 
 }
 
 function meetingAgentDraftPayload(draft = {}) {
+  draft = normaliseMeetingAgentMinuteNumbers(draft);
   const payloadFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
     [...(draft.discussion || []), ...(draft.actions || [])],
@@ -11097,6 +11145,7 @@ function meetingAgentDraftPayload(draft = {}) {
 }
 
 function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
+  draft = normaliseMeetingAgentMinuteNumbers(draft);
   const details = sanitiseMeetingAgentDetails(draft.details);
   const include = includedSections(draft);
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
@@ -11137,6 +11186,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
+  draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
@@ -17008,7 +17058,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
 
 router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, async (req, res) => {
   try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
+    const draft = normaliseMeetingAgentMinuteNumbers(await loadOwnedMeetingAgentDraft(req));
     const exportDraft = normaliseMeetingAgentKnownTermsDeep({
       ...draft,
       ...applyIncludedSections(draft, { executiveSummary: draft.executiveSummary, meetingObjectives: draft.meetingObjectives }),

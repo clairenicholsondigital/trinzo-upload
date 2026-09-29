@@ -90,6 +90,38 @@ test('existing drafts cannot expose raw action prose as a timing value', () => {
   });
 });
 
+test('published minute fields use figures while transcript evidence stays verbatim', () => {
+  const draft = baseDraft();
+  draft.executiveSummary = 'Eleven out of ninety checks were complete.';
+  draft.meetingObjectives = [{ id: 'O1', text: 'Review thirty items.' }];
+  draft.discussion = [{
+    topic: 'Thirty item review',
+    points: [{
+      text: 'Eleven out of ninety checks were complete.',
+      supportingDetails: [{ text: 'Thirty items remained.' }]
+    }],
+    decisions: [{ text: 'Order twenty replacement labels.' }],
+    openQuestions: [{ text: 'Whether ninety checks are sufficient.' }]
+  }];
+  draft.actions = [{
+    id: 'A1', action: 'Review thirty items.', owners: ['Alex Reed'],
+    timing: { kind: 'target', wording: 'within twenty days', exactDate: '' }
+  }];
+  draft.sourceUnits = [{ id: 'T0001', speaker: 'Alex Reed', text: 'Eleven out of ninety checks were complete.' }];
+
+  const published = publicMeetingAgentDraft(draft);
+  assert.equal(published.executiveSummary, '11 out of 90 checks were complete.');
+  assert.equal(published.meetingObjectives[0].text, 'Review 30 items.');
+  assert.equal(published.discussion[0].topic, '30 item review');
+  assert.equal(published.discussion[0].points[0].text, '11 out of 90 checks were complete.');
+  assert.equal(published.discussion[0].points[0].supportingDetails[0].text, '30 items remained.');
+  assert.equal(published.discussion[0].decisions[0].text, 'Order 20 replacement labels.');
+  assert.equal(published.discussion[0].openQuestions[0].text, 'Whether 90 checks are sufficient.');
+  assert.equal(published.actions[0].action, 'Review 30 items.');
+  assert.equal(published.actions[0].timing.wording, 'within 20 days');
+  assert.equal(published.sourceUnits[0].text, 'Eleven out of ninety checks were complete.');
+});
+
 const results = {
   discussion: { changes: {
     discussion: [{ topic: 'Generated discussion', points: [] }],
