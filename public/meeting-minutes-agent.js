@@ -1793,8 +1793,21 @@
         + '<label><span class="lbl">Exact date (optional)</span><input data-final-timing-date type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label>'
         + finalEditButtons() + '</span>';
     } else if (field === 'owners') {
+      var selectedOwners = Array.isArray(activeFinalEdit && activeFinalEdit.ownerSelection)
+        ? activeFinalEdit.ownerSelection : (action.owners || []);
+      var selectedKeys = selectedOwners.map(function (owner) { return String(owner).toLowerCase(); });
+      var ownerChips = selectedOwners.map(function (owner) {
+        return '<span class="owner-chip">' + escapeHtml(owner)
+          + '<button type="button" data-final-remove-owner="' + escapeHtml(owner) + '" aria-label="Remove owner ' + escapeHtml(owner) + '">&times;</button></span>';
+      }).join('') || '<span class="muted">No owner selected</span>';
+      var ownerOptions = participantNames().filter(function (name) {
+        return selectedKeys.indexOf(name.toLowerCase()) < 0;
+      }).map(function (name) {
+        return '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
+      }).join('');
       body = '<span class="final-inline-editor"' + editorAttributes + '>'
-        + '<label><span class="lbl">Owners (separate names with commas)</span><input data-final-editor-value value="' + escapeHtml((action.owners || []).join(', ')) + '" aria-label="Edit owners"></label>'
+        + '<div class="final-owner-picker"><span class="lbl">Owners</span><div class="owner-chips">' + ownerChips + '</div>'
+        + '<label><span class="visually-hidden">Add an attendee as owner</span><select data-final-add-owner aria-label="Add an attendee as owner"><option value="">Choose a participant...</option>' + ownerOptions + '</select></label></div>'
         + finalEditButtons() + '</span>';
     } else {
       body = '<span class="final-inline-editor"' + editorAttributes + '>'
@@ -3191,7 +3204,7 @@
         if (!value) return false;
         action.action = value; label = 'Action edited';
       } else if (edit.field === 'owners') {
-        action.owners = value.split(/[,;]+/).map(function (owner) { return owner.trim(); }).filter(Boolean);
+        action.owners = (edit.ownerSelection || action.owners || []).slice();
         label = 'Action owners edited';
       } else if (edit.field === 'timing') {
         action.timing = {
@@ -3211,14 +3224,36 @@
   }
 
   document.getElementById('finalDocument').addEventListener('click', function (event) {
+    var removeOwner = event.target.closest('[data-final-remove-owner]');
+    if (removeOwner && activeFinalEdit && activeFinalEdit.field === 'owners') {
+      activeFinalEdit.ownerSelection = (activeFinalEdit.ownerSelection || []).filter(function (owner) {
+        return owner.toLowerCase() !== removeOwner.dataset.finalRemoveOwner.toLowerCase();
+      });
+      renderFinal();
+      return;
+    }
     var editable = event.target.closest('[data-final-edit]');
     if (editable) {
       activeFinalEdit = { kind:editable.dataset.kind, id:editable.dataset.recordId || '', field:editable.dataset.field };
+      if (activeFinalEdit.kind === 'action' && activeFinalEdit.field === 'owners') {
+        var action = (state.draft.actions || []).find(function (item) { return String(item.id) === String(activeFinalEdit.id); });
+        activeFinalEdit.ownerSelection = action ? (action.owners || []).slice() : [];
+      }
       renderFinal();
       return;
     }
     if (event.target.closest('[data-final-cancel]')) { activeFinalEdit = null; renderFinal(); return; }
     if (event.target.closest('[data-final-save]')) applyFinalEdit();
+  });
+
+  document.getElementById('finalDocument').addEventListener('change', function (event) {
+    var select = event.target.closest('[data-final-add-owner]');
+    if (!select || !select.value || !activeFinalEdit || activeFinalEdit.field !== 'owners') return;
+    var selected = activeFinalEdit.ownerSelection || (activeFinalEdit.ownerSelection = []);
+    if (!selected.some(function (owner) { return owner.toLowerCase() === select.value.toLowerCase(); })) {
+      selected.push(select.value);
+    }
+    renderFinal();
   });
 
   document.getElementById('finalDocument').addEventListener('keydown', function (event) {

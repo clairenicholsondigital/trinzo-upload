@@ -1611,12 +1611,26 @@ test('final minutes edit source records in place and the finishing bar remains a
     await actionEditor.locator('[data-final-cancel]').click();
 
     await page.locator('#finalDocument [data-kind="action"][data-field="owners"]').first().click();
-    await page.fill('#finalDocument [data-final-editor-value]', 'Alex Reed, Sam Okoro');
+    assert.deepEqual(await page.locator('#finalDocument [data-final-add-owner] option').allTextContents(), [
+      'Choose a participant...', 'Sam Okoro'
+    ]);
+    assert.equal(await page.locator('#finalDocument [data-final-editor-value]').count(), 0, 'owners are selected rather than typed as comma-separated text');
+    await page.selectOption('#finalDocument [data-final-add-owner]', 'Sam Okoro');
+    assert.deepEqual(await page.locator('#finalDocument .final-owner-picker .owner-chip').allTextContents(), ['Alex Reed×', 'Sam Okoro×']);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const ownerPickerLayout = await page.locator('#finalDocument .final-owner-picker').evaluate((node) => ({
+      pickerWidth: node.getBoundingClientRect().width,
+      selectWidth: node.querySelector('select').getBoundingClientRect().width,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+    }));
+    assert.ok(ownerPickerLayout.selectWidth <= ownerPickerLayout.pickerWidth + 1, JSON.stringify(ownerPickerLayout));
+    assert.ok(ownerPickerLayout.pageOverflow <= 1, JSON.stringify(ownerPickerLayout));
     saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Action owners edited');
     await page.click('#finalDocument [data-final-save]');
     await saved;
 
+    await page.setViewportSize({ width: 1280, height: 720 });
     await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').first().click();
     // The editor is a row of its own under the action, wide enough to type in,
     // not squeezed into the Timing cell.
