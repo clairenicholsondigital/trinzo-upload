@@ -896,6 +896,21 @@
   .meeting-agent-page .form-grid,
   .meeting-agent-page .attendee-groups{grid-template-columns:1fr}
   .meeting-agent-page .field.full{grid-column:auto}
+  /* Keep each review screen's title and controls readable on a phone. The
+     desktop flex row leaves too little room for three long controls, which
+     causes cramped buttons and lets the edit popover escape the viewport. */
+  .meeting-agent-page .toolbar{align-items:stretch;gap:.55rem}
+  .meeting-agent-page .toolbar h2{flex:1 1 100%;font-size:var(--fs-lg);line-height:1.25}
+  .meeting-agent-page .screen-toolbar-actions{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;
+    width:100%;gap:.4rem;min-width:0}
+  .meeting-agent-page .screen-toolbar-actions>*{width:100%;min-width:0}
+  .meeting-agent-page .screen-toolbar-actions button,
+  .meeting-agent-page .screen-toolbar-actions>details>summary{
+    width:100%;min-width:0;white-space:normal;text-align:center}
+  .meeting-agent-page .agent-edit-body{
+    right:auto;left:0;max-width:calc(100vw - 1.2rem);box-sizing:border-box}
+  .meeting-agent-page .review-flags-summary{width:auto;max-width:100%;margin-left:0;justify-content:space-between}
   .meeting-agent-page.has-draft{padding-bottom:7rem}
   /* Give the mobile bar two deliberate rows. Previously the action buttons
      were vertically centred against the combined Saved + suggestions stack,
@@ -947,6 +962,17 @@
   .meeting-agent-page .editable-actions-table .timing-editor select{grid-column:1/-1;padding:.3rem .4rem}
   .meeting-agent-page .editable-actions-table .timing-editor label>span{display:none}
   .meeting-agent-page .editable-actions-table .timing-editor input{min-width:0;padding:.3rem .35rem}
+  .meeting-agent-page .editable-actions-table td,
+  .meeting-agent-page .editable-actions-table td>*{min-width:0;max-width:100%}
+  .meeting-agent-page .editable-actions-table .owner-add select,
+  .meeting-agent-page .editable-actions-table .owner-add input,
+  .meeting-agent-page .editable-actions-table .timing-editor select,
+  .meeting-agent-page .editable-actions-table .timing-editor input{width:100%;box-sizing:border-box}
+  .meeting-agent-page .seg{display:flex;width:100%;min-width:0}
+  .meeting-agent-page .seg label{flex:1 1 0;min-width:0}
+  .meeting-agent-page .seg span{padding:.3rem .25rem;text-align:center;overflow:hidden;text-overflow:ellipsis}
+  .meeting-agent-page .proposal-footer{display:grid;grid-template-columns:1fr;justify-content:stretch}
+  .meeting-agent-page .proposal-footer>*{width:100%;margin-right:0}
   .meeting-agent-page .proposal-comparison{grid-template-columns:1fr}
   .meeting-agent-page .screen-actions>*{width:100%}
   .meeting-agent-page .final-actions .divider,
