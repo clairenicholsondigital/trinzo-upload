@@ -3037,7 +3037,7 @@
         var ids = keptActionIds();
         var at = ids.indexOf(keptRow.id);
         if (at === -1) ids.push(keptRow.id); else ids.splice(at, 1);
-        markUndoStep(at === -1 ? 'mark action checked' : 'clear action check', '');
+        markUndoStep(at === -1 ? 'Action marked as checked' : 'Action marked as unchecked', '');
       }
       rerenderActions(); scheduleSave();
       return;

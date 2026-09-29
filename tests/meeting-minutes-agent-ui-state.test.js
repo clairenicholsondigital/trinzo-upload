@@ -543,9 +543,26 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     assert.match(await bar.textContent(), /1 action · 1 unchecked · 0 suggestions/, 'everything starts unchecked');
 
     // Keep marks a row as checked without changing the minutes.
+    const checkedSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+      && response.request().method() === 'PATCH'
+      && response.request().postDataJSON().reviewDecisionLabel === 'Action marked as checked');
     await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await checkedSave;
     assert.match(await bar.textContent(), /1 action · 0 unchecked · 0 suggestions/);
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1, 'keeping removes nothing');
+    assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Action marked as checked.');
+
+    const uncheckedSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
+      && response.request().method() === 'PATCH'
+      && response.request().postDataJSON().reviewDecisionLabel === 'Action marked as unchecked');
+    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await uncheckedSave;
+    assert.match(await bar.textContent(), /1 action · 1 unchecked · 0 suggestions/);
+    assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Action marked as unchecked.');
+
+    // Put it back in the checked state before exercising removal.
+    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    assert.match(await bar.textContent(), /1 action · 0 unchecked · 0 suggestions/);
 
     // Rejecting moves the row out of the register and into Removed.
     await page.click('#actionsBody [data-action-row="0"] [data-reject-action]');
