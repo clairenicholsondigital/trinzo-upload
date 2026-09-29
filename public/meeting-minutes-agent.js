@@ -1329,14 +1329,8 @@
     if (!bar || !panel || !state.draft) return;
     var actions = state.draft.actions || [];
     var removed = removedActions();
-    var checked = actions.filter(function (item) { return isActionKept(item.id); }).length;
-    var undecided = Math.max(0, actions.length - checked);
-    var proposal = state.draft.pendingProposal;
-    var proposed = proposal && Array.isArray(proposal.changes)
-      ? proposal.changes.filter(function (change) { return change && change.type === 'add'; }).length
-      : 0;
     bar.hidden = !actions.length && !removed.length;
-    bar.innerHTML = '<span class="review-count review-count-open"><strong>' + actions.length + '</strong> action' + (actions.length === 1 ? '' : 's') + ' · <strong>' + undecided + '</strong> unchecked · <strong>' + proposed + '</strong> suggestion' + (proposed === 1 ? '' : 's') + '</span>';
+    bar.innerHTML = '<span class="review-count review-count-open"><strong>' + actions.length + '</strong> action' + (actions.length === 1 ? '' : 's') + '</span>';
 
     panel.hidden = !removed.length;
     var summary = document.getElementById('removedActionsSummary');
