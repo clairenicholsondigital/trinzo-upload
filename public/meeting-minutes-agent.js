@@ -1569,9 +1569,11 @@
       : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'Review complete';
     updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
-    if (intro) intro.textContent = counts.flags
-      ? 'A few details are worth a quick source check. They may already be right; open a minutes item only if you want to change it, then mark it checked.'
-      : 'Choose any suggestions you want to add. Nothing changes in the minutes until you confirm it.';
+    // With only suggestions queued, the panel heading already says what to do.
+    if (intro) {
+      intro.hidden = !counts.flags;
+      intro.textContent = 'A few details are worth a quick source check. They may already be right; open a minutes item only if you want to change it, then mark it checked.';
+    }
     updateFinishingBar();
   }
 
@@ -1709,22 +1711,19 @@
     var wasHidden = panel.hidden;
     panel.hidden = !proposal || !(proposal.changes || []).length;
     if (panel.hidden) { updateReviewQueueSummary(); return; }
-    var changeLabels = { add:'New item', modify:'Edit', remove:'Removal' };
+    var changeLabels = { add:'New', modify:'Edit', remove:'Removal' };
     document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
-      var content;
-      if (change.before && change.after) {
-        content = '<div class="proposal-comparison"><div class="proposal-version before"><div class="proposal-value-label">Before</div><pre>' + escapeHtml(proposalRecord(change.before)) + '</pre></div><div class="proposal-version proposed"><div class="proposal-value-label">Proposed minutes text</div><pre>' + escapeHtml(proposalRecord(change.after)) + '</pre></div></div>';
-      } else {
-        var wordingLabel = change.type === 'remove' ? 'Item to remove' : 'Proposed minutes text';
-        content = '<div class="proposal-wording' + (change.type === 'remove' ? ' removal' : '') + '"><span class="proposal-wording-label">' + wordingLabel + '</span><pre>' + escapeHtml(proposalRecord(change.after || change.before)) + '</pre></div>';
-      }
-      if (change.reviewContext) {
-        content += '<div class="proposal-rationale"><div><strong>Why it was suggested:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
-          + (change.reviewContext.label ? '<div class="commitment-chain"><span>In the transcript</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
-          + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds, String(change.id || '')) : '') + '</div>';
-      }
+      // The row summary already shows the proposed text, so the expanded view
+      // only adds what the summary cannot: the earlier wording, the reason and
+      // the evidence.
+      var content = '';
+      if (change.before && change.after) content += '<p class="proposal-before"><span>Was:</span> ' + escapeHtml(proposalRecord(change.before)) + '</p>';
+      if (change.reviewContext && change.reviewContext.reason) content += '<p class="proposal-rationale">' + escapeHtml(change.reviewContext.reason) + '</p>';
+      var links = '';
+      if (change.reviewContext && (change.reviewContext.evidenceIds || []).length) links += evidenceBlock(change.reviewContext.evidenceIds, String(change.id || ''));
       var target = proposalTarget(change, proposal.stage);
-      if (target) content += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
+      if (target) links += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
+      if (links) content += '<div class="proposal-links">' + links + '</div>';
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
       var summary = proposalRecord(change.after || change.before);
       return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === true ? ' checked' : '') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';

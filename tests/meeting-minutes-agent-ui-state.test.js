@@ -1464,7 +1464,7 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
 
     assert.equal(await page.textContent('.proposal-heading h3'), 'Choose what to add');
     assert.doesNotMatch(await page.textContent('#proposalChanges'), /Suggestion ·/i);
-    assert.match(await page.locator('.proposal-kind').first().textContent(), /New item|Edit|Removal/i);
+    assert.match(await page.locator('.proposal-kind').first().textContent(), /New|Edit|Removal/i);
     assert.equal(await page.locator('#rejectProposal').getAttribute('class'), 'secondary');
     const layout = await page.locator('.proposal-detail>summary').first().evaluate((node) => {
       const label = node.querySelector('.proposal-kind').getBoundingClientRect();
@@ -1481,19 +1481,12 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
     assert.equal(layout.wraps, true, JSON.stringify(layout));
     assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
     await page.locator('.proposal-detail>summary').first().click();
-    assert.equal(await page.locator('.proposal-wording-label').first().textContent(), 'Proposed minutes text');
-    const hierarchy = await page.locator('.proposal-detail').first().evaluate((node) => {
-      const wording = node.querySelector('.proposal-wording');
-      const wordingText = wording.querySelector('pre');
-      const rationale = node.querySelector('.proposal-rationale');
-      return {
-        wordingBeforeReason: Boolean(wording.compareDocumentPosition(rationale) & Node.DOCUMENT_POSITION_FOLLOWING),
-        wordingFontSize: parseFloat(getComputedStyle(wordingText).fontSize),
-        reasonFontSize: parseFloat(getComputedStyle(rationale).fontSize)
-      };
+    // The expanded view must not repeat the text the row summary already shows.
+    const repeated = await page.locator('.proposal-detail').first().evaluate((node) => {
+      const summary = node.querySelector('.proposal-summary').textContent.trim();
+      return node.querySelector('.proposal-content').textContent.includes(summary);
     });
-    assert.equal(hierarchy.wordingBeforeReason, true, JSON.stringify(hierarchy));
-    assert.ok(hierarchy.wordingFontSize > hierarchy.reasonFontSize, JSON.stringify(hierarchy));
+    assert.equal(repeated, false);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

@@ -43,7 +43,7 @@ const {
   timingWordingHasMeaning,
   timingForPublication
 } = require('../utils/meetingMinutesAgentV2');
-const { stripOpaqueMeetingReference } = require('../utils/canonicalMinutes/referenceText');
+const { stripOpaqueMeetingReference, stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { classifyStagedTopic } = require('../utils/stagedEditorial');
 const {
@@ -71,7 +71,10 @@ test('owned planning wrappers collapse to the concrete deliverable only', () => 
 test('opaque meeting references are removed from prose but standards remain', () => {
   assert.equal(stripOpaqueMeetingReference('Prepare for the Abbott T796 audit.'), 'Prepare for the Abbott audit.');
   assert.equal(stripOpaqueMeetingReference('Prepare for project M204 review.'), 'Prepare for project review.');
+  assert.equal(stripOpaqueMeetingReference('Contingencies for the Client M204 Larkfield MK Thursday Session.'), 'Contingencies for the Larkfield MK Thursday Session.');
   assert.equal(stripOpaqueMeetingReference('Review ISO13485 evidence.'), 'Review ISO13485 evidence.');
+  assert.equal(stripMeetingTitleReferences('Contingencies for the Client M204 Larkfield MK Thursday Session, on the CT300 unit.', 'Client M204 Larkfield MK Thursday Session'), 'Contingencies for the Larkfield MK Thursday Session, on the CT300 unit.');
+  assert.equal(stripMeetingTitleReferences('Uses the CT300 unit.', 'Weekly sync'), 'Uses the CT300 unit.');
   assert.equal(stripOpaqueMeetingReference('Review ISO 13485 evidence.'), 'Review ISO 13485 evidence.');
 });
 

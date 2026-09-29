@@ -759,31 +759,10 @@
 .meeting-agent-page .proposal-change pre{
   margin:0;padding:.35rem .5rem;border-radius:var(--radius-sm);background:var(--soft);
   font-family:inherit;font-size:var(--fs-sm);line-height:1.45;white-space:pre-wrap}
-.meeting-agent-page .proposal-wording{
-  display:grid;gap:.3rem;padding:.7rem .8rem;border:1px solid var(--brand-200);
-  border-left:4px solid var(--accent);border-radius:var(--radius-sm);background:var(--surface)}
-.meeting-agent-page .proposal-wording-label,
-.meeting-agent-page .proposal-value-label{
-  color:var(--accent-700);font-size:var(--fs-cap);font-weight:var(--fw-bold);
-  letter-spacing:.04em;text-transform:uppercase}
-.meeting-agent-page .proposal-wording pre{
-  padding:0;background:transparent;color:var(--heading);font-size:var(--fs-md);font-weight:var(--fw-bold);line-height:1.5}
-.meeting-agent-page .proposal-wording.removal{border-left-color:var(--danger-text)}
-.meeting-agent-page .proposal-comparison{
-  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
-.meeting-agent-page .proposal-version{padding:.6rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft)}
-.meeting-agent-page .proposal-version.proposed{border-color:var(--brand-200);border-left:4px solid var(--accent);background:var(--surface)}
-.meeting-agent-page .proposal-version pre{padding:.25rem 0 0;background:transparent}
-.meeting-agent-page .proposal-version.proposed pre{color:var(--heading);font-size:var(--fs-md);font-weight:var(--fw-bold)}
-.meeting-agent-page .proposal-rationale{
-  display:grid;gap:.4rem;margin-top:.6rem;padding:.55rem .65rem;
-  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft);
-  color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
-.meeting-agent-page .proposal-rationale strong{color:var(--heading)}
-.meeting-agent-page .commitment-chain{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;color:var(--text)}
-.meeting-agent-page .commitment-chain span{
-  padding:.12rem .42rem;border-radius:var(--radius-pill);background:var(--brand-100);
-  color:var(--accent-700);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
+.meeting-agent-page .proposal-before{margin:0 0 .35rem;color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .proposal-before span{font-weight:var(--fw-bold)}
+.meeting-agent-page .proposal-rationale{margin:0 0 .45rem;color:var(--text);font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .proposal-links{display:flex;align-items:flex-start;gap:.5rem;flex-wrap:wrap}
 .meeting-agent-page .proposal-footer{
   position:sticky;bottom:.5rem;display:flex;align-items:center;justify-content:flex-end;gap:.5rem;
   margin-top:.65rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);
@@ -1063,7 +1042,6 @@
   .meeting-agent-page .proposal-summary{
     grid-column:1;grid-row:2;overflow:visible;text-overflow:clip;white-space:normal;line-height:1.35}
   .meeting-agent-page .proposal-chevron{grid-column:2;grid-row:1/3;align-self:center}
-  .meeting-agent-page .proposal-comparison{grid-template-columns:1fr}
   .meeting-agent-page .screen-actions>*{width:100%}
   .meeting-agent-page .final-actions .divider,
   .meeting-agent-page .final-actions .spacer{display:none}
@@ -1132,7 +1110,7 @@
   <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span></span></div>
 
   <div class="workflow-utilities">
-    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">A few details are worth a quick source check. They may already be right.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Choose what to add</h3><p class="muted">Tick the changes you want to add. Open an item to check its reason and transcript evidence. Unticked items stay here until you add them or choose Leave all out.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary" type="button">Leave all out</button><button id="acceptSelectedProposal" class="button" type="button">Add selected to minutes</button><button id="acceptAllProposal" type="button" hidden>Add all to minutes</button></div></section></div></details>
+    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">A few details are worth a quick source check. They may already be right.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Choose what to add</h3><p class="muted">Tick the changes you want. Open an item to check the evidence. Unticked items stay here.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Add selected to minutes</button><button id="acceptAllProposal" type="button" hidden>Add all to minutes</button></div></section></div></details>
   </div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>

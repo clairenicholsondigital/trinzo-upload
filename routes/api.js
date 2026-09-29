@@ -1,4 +1,5 @@
 const express = require('express');
+const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
 const mammoth = require('mammoth');
 const fetch = require('node-fetch');
@@ -8499,7 +8500,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push(MEETING_AGENT_DISCUSSION_COVERAGE_RULE);
   } else if (stage === 'summary') {
     shared.push(returnContract('executiveSummary, meetingObjectives, '));
-    shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes.');
+    shared.push('Populate executiveSummary as one prose paragraph of at most 150 words, written for somebody who did not attend: what the meeting was for, what was settled, and what happens next. No bullet points, no speaker names, no quotes. Do not repeat internal client, project or job reference codes from the meeting title (for example "Client M204"); name the meeting by what it is.');
     shared.push('Use CONFIRMED DISCUSSION AND ACTIONS as the sole factual source for the executive summary. Do not introduce a fact just because it appears elsewhere in the transcript.');
     shared.push('Populate meetingObjectives as [{"id":"string","text":"string","evidenceIds":["T0001"]}] - at most four short, distinct aims supported by explicit purpose, planning, scope or role-framing evidence anywhere in the meeting. Do not infer objectives from topics that merely happened to be discussed; scope or logistics are separate aims only when explicitly framed that way.');
     shared.push(MEETING_AGENT_OBJECTIVE_STYLE);
@@ -13898,7 +13899,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // what it does guarantee is that the excluded section never reaches the
     // minutes, whichever pass produced it.
     const summaryValues = applyIncludedSections(draft, {
-      executiveSummary: groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []),
+      executiveSummary: stripMeetingTitleReferences(groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []), draft.details?.meetingTitle),
       meetingObjectives: mergeGroundedObjectiveRecords([
         draft.meetingObjectives || [], parsed.meetingObjectives || parsed.objectives || []
       ], draft.sourceUnits)
@@ -15768,7 +15769,7 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
     // whole draft; model-created summary flags otherwise duplicate issues that
     // are already represented by the evidence-backed records.
     const changes = {
-      executiveSummary: groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []),
+      executiveSummary: stripMeetingTitleReferences(groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []), draft.details?.meetingTitle),
       meetingObjectives: groundedObjectiveRecords(parsed.meetingObjectives, draft.sourceUnits)
     };
     return {
