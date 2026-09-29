@@ -2013,6 +2013,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const screen = document.querySelector('[data-screen="2"]');
       const toolbar = screen.querySelector('.toolbar');
       const actions = screen.querySelector('.screen-toolbar-actions');
+      const regenerate = screen.querySelector('#regenerateDiscussion').getBoundingClientRect();
       const header = card.querySelector('.card-head');
       const collapse = header.querySelector('.topic-collapse').getBoundingClientRect();
       const topicBox = topic.getBoundingClientRect();
@@ -2033,6 +2034,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
         propositionOverflow: proposition.scrollWidth - proposition.clientWidth,
         toolbarWidth: toolbar.getBoundingClientRect().width,
         actionsWidth: actions.getBoundingClientRect().width,
+        regenerateWidth: regenerate.width,
         screenOverflow: screen.scrollWidth - screen.clientWidth
       };
     });
@@ -2045,6 +2047,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.ok(discussionLayout.propositionTextWidth > discussionLayout.propositionWidth * 0.8, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionOverflow <= 1, JSON.stringify(discussionLayout));
     assert.ok(Math.abs(discussionLayout.toolbarWidth - discussionLayout.actionsWidth) < 2, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.regenerateWidth > discussionLayout.actionsWidth * 0.9, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.screenOverflow <= 1, JSON.stringify(discussionLayout));
 
     await page.click('#omittedDetailsPanel>summary');
@@ -2100,17 +2103,20 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const screen = document.querySelector('[data-screen="3"]');
       const toolbar = screen.querySelector('.toolbar');
       const actions = screen.querySelector('.screen-toolbar-actions');
+      const regenerate = screen.querySelector('#regenerateActions').getBoundingClientRect();
       return {
         height: row.getBoundingClientRect().height,
         metaAligned: Math.abs(owners.top - timing.top) < 4,
         toolbarWidth: toolbar.getBoundingClientRect().width,
         actionsWidth: actions.getBoundingClientRect().width,
+        regenerateWidth: regenerate.width,
         screenOverflow: screen.scrollWidth - screen.clientWidth
       };
     });
     assert.ok(actionLayout.height < 180, JSON.stringify(actionLayout));
     assert.equal(actionLayout.metaAligned, true, JSON.stringify(actionLayout));
     assert.ok(Math.abs(actionLayout.toolbarWidth - actionLayout.actionsWidth) < 2, JSON.stringify(actionLayout));
+    assert.ok(actionLayout.regenerateWidth > actionLayout.actionsWidth * 0.9, JSON.stringify(actionLayout));
     assert.ok(actionLayout.screenOverflow <= 1, JSON.stringify(actionLayout));
     assert.match(await page.textContent('#auditActions'), /Check transcript for more actions/i);
     await page.click('#regenerateActions');
