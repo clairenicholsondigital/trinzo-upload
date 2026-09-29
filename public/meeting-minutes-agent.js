@@ -1725,8 +1725,9 @@
       if (target) links += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
       if (links) content += '<div class="proposal-links">' + links + '</div>';
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
+      var kindClass={add:' proposal-kind-add',modify:' proposal-kind-modify',remove:' proposal-kind-remove'}[change.type] || '';
       var summary = proposalRecord(change.after || change.before);
-      return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === true ? ' checked' : '') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
+      return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === true ? ' checked' : '') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind' + kindClass + '">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
     }).join('');
     updateProposalSelection();
     updateReviewQueueSummary();
