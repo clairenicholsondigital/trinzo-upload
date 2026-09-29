@@ -935,6 +935,16 @@
   .meeting-agent-page .save-strip-actions{
     grid-column:2;grid-row:2;justify-content:flex-end;flex-wrap:wrap;gap:.3rem}
   .meeting-agent-page .save-strip-actions button{min-height:42px;padding:.4rem .5rem}
+  /* Undo/redo adds a third action to the fixed bar. Give all actions a full
+     row instead of squeezing a long history label beside the warning chip. */
+  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])){
+    grid-template-columns:minmax(0,1fr)}
+  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .review-queue-toggle{
+    grid-column:1;grid-row:2}
+  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .save-strip-actions{
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-column:1;grid-row:3;width:100%;gap:.35rem}
+  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .save-strip-actions button{
+    width:100%;min-width:0;white-space:normal}
   .meeting-agent-page .save-strip-actions .wide-label{display:none}
   .meeting-agent-page .save-strip-actions .narrow-label{display:inline}
   .meeting-agent-page #resumeLaterLink{display:none}

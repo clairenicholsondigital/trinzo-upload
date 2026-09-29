@@ -96,14 +96,18 @@
     var undo = document.getElementById('undoLastDecision');
     if (undo) {
       undo.hidden = !state.draft.lastUndo;
-      undo.textContent = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : 'Undo';
-      undo.title = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : '';
+      var undoLabel = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : 'Undo';
+      undo.innerHTML = '<span class="wide-label">' + escapeHtml(undoLabel) + '</span><span class="narrow-label">Undo last change</span>';
+      undo.setAttribute('aria-label', undoLabel);
+      undo.title = state.draft.lastUndo ? undoLabel : '';
     }
     var redo = document.getElementById('redoLastDecision');
     if (redo) {
       redo.hidden = !state.draft.lastRedo;
-      redo.textContent = state.draft.lastRedo ? 'Redo: ' + state.draft.lastRedo.label : 'Redo';
-      redo.title = state.draft.lastRedo ? 'Redo: ' + state.draft.lastRedo.label : '';
+      var redoLabel = state.draft.lastRedo ? 'Redo: ' + state.draft.lastRedo.label : 'Redo';
+      redo.innerHTML = '<span class="wide-label">' + escapeHtml(redoLabel) + '</span><span class="narrow-label">Redo last change</span>';
+      redo.setAttribute('aria-label', redoLabel);
+      redo.title = state.draft.lastRedo ? redoLabel : '';
     }
     var preview = document.getElementById('previewDocument');
     if (preview) {

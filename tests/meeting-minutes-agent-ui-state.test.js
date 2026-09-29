@@ -212,6 +212,9 @@ function startStubServer() {
   layout.executiveSummary = 'The team confirmed the main preparation priorities and owners.';
   layout.discussion[0].topic = 'Audit preparation and document access for the upcoming site visit';
   drafts.set('layout', layout);
+  const mobileSaveBar = baseDraft('mobile-save-bar', false);
+  mobileSaveBar.lastUndo = { id: 'undo-mobile', label: 'edit a long discussion item' };
+  drafts.set('mobile-save-bar', mobileSaveBar);
   const transcriptDisplay = baseDraft('transcript-display', false);
   transcriptDisplay.sourceUnits = [
     { id: 'T0000', speaker: 'Alex Reed', timestamp: '00:08', text: 'The report has the final comments.' },
@@ -1619,6 +1622,50 @@ test('dense layouts give writing space to content rather than repeated controls'
     // this back over the line.
     assert.ok(propHeight < 60, 'proposition row height ' + propHeight);
     assert.ok(await page.locator('.review-flags-summary').evaluate((node) => node.getBoundingClientRect().width < 260));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('phone save bar gives history and document actions their own responsive row', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=mobile-save-bar`);
+    await page.waitForSelector('#undoLastDecision:not([hidden])');
+
+    assert.equal(await page.locator('#undoLastDecision .narrow-label').textContent(), 'Undo last change');
+    assert.match(await page.locator('#undoLastDecision').getAttribute('aria-label'), /Undo: edit a long discussion item/i);
+    const layout = await page.evaluate(() => {
+      const box = (selector) => {
+        const rect = document.querySelector(selector).getBoundingClientRect();
+        return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+      };
+      const bar = box('#saveStrip');
+      const buttons = Array.from(document.querySelectorAll('.save-strip-actions>button:not([hidden])')).map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+      });
+      return {
+        bar,
+        status: box('#saveStatus'),
+        review: box('#reviewQueueToggle'),
+        actions: box('.save-strip-actions'),
+        buttons,
+        pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    assert.ok(layout.status.bottom <= layout.review.top, JSON.stringify(layout));
+    assert.ok(layout.review.bottom <= layout.actions.top, JSON.stringify(layout));
+    assert.ok(layout.buttons.every((button) => button.left >= layout.bar.left && button.right <= layout.bar.right), JSON.stringify(layout));
+    assert.ok(layout.buttons.every((button) => Math.abs(button.top - layout.buttons[0].top) < 2), JSON.stringify(layout));
+    assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
