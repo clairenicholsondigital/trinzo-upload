@@ -1743,7 +1743,7 @@
     var count = document.getElementById('proposalSelectionCount');
     var apply = document.getElementById('acceptSelectedProposal');
     if (count) count.textContent = selected + ' of ' + boxes.length + ' selected';
-    if (apply) { apply.textContent = 'Add ' + selected + ' to minutes'; apply.disabled = selected === 0; }
+    if (apply) { apply.textContent = 'Apply selected'; apply.disabled = selected === 0; }
   }
 
   function formatUkDate(value) {

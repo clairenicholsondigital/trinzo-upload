@@ -1437,7 +1437,7 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     assert.equal(await page.locator('.proposal-content').isHidden(), true);
     assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
     assert.match(await page.textContent('#proposalSelectionCount'), /1 of 1 selected/i);
-    assert.match(await page.textContent('#acceptSelectedProposal'), /Add 1 to minutes/i);
+    assert.equal(await page.textContent('#acceptSelectedProposal'), 'Apply selected');
     assert.match(await page.textContent('#proposalPanel'), /Unticked items stay/i);
     await page.click('.proposal-detail>summary');
     assert.equal(await page.locator('.proposal-content').isVisible(), true);
@@ -1462,7 +1462,7 @@ test('suggested changes use concise, readable rows on a phone', { timeout: 12000
     await page.waitForSelector('.proposal-detail', { state: 'attached' });
     if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
 
-    assert.equal(await page.textContent('.proposal-heading h3'), 'Choose what to add');
+    assert.equal(await page.textContent('.proposal-heading h3'), 'Choose changes to apply');
     assert.doesNotMatch(await page.textContent('#proposalChanges'), /Suggestion ·/i);
     assert.match(await page.locator('.proposal-kind').first().textContent(), /New|Edit|Removal/i);
     assert.equal(await page.locator('.proposal-kind').first().getAttribute('class'), 'proposal-kind proposal-kind-add');
@@ -1508,7 +1508,7 @@ test('a missing-content proposal is shown once as the suggestion the reviewer mu
     assert.equal(await page.locator('.flag').filter({ hasText: 'Confirm access to the audit folder.' }).count(), 0);
     assert.match(await page.textContent('#proposalPanel'), /choose what to add/i);
     assert.match(await suggestion.textContent(), /Confirm access to the audit folder/i);
-    assert.match(await page.textContent('#acceptSelectedProposal'), /Add 1 to minutes/i);
+    assert.equal(await page.textContent('#acceptSelectedProposal'), 'Apply selected');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
