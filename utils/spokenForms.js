@@ -56,6 +56,7 @@ function expandSpokenContractions(value) {
 }
 
 const MONTH = '(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)';
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CALENDAR_ORDINALS = {
   first: '1st', second: '2nd', third: '3rd', fourth: '4th', fifth: '5th', sixth: '6th', seventh: '7th', eighth: '8th', ninth: '9th', tenth: '10th',
   eleventh: '11th', twelfth: '12th', thirteenth: '13th', fourteenth: '14th', fifteenth: '15th', sixteenth: '16th', seventeenth: '17th', eighteenth: '18th', nineteenth: '19th', twentieth: '20th',
@@ -66,6 +67,46 @@ const CALENDAR_ORDINAL = Object.keys(CALENDAR_ORDINALS).sort((left, right) => ri
 
 function calendarOrdinal(value) {
   return CALENDAR_ORDINALS[String(value || '').toLowerCase().replace(/\s+/g, '-')];
+}
+
+function ordinalNumber(value) {
+  const token = String(value || '').toLowerCase().replace(/\s+/g, '-');
+  return Number(token.replace(/(?:st|nd|rd|th)$/i, ''))
+    || Number((calendarOrdinal(token) || '').replace(/(?:st|nd|rd|th)$/i, ''));
+}
+
+function ordinalLabel(day) {
+  const remainder = day % 100;
+  const suffix = remainder >= 11 && remainder <= 13 ? 'th'
+    : day % 10 === 1 ? 'st' : day % 10 === 2 ? 'nd' : day % 10 === 3 ? 'rd' : 'th';
+  return `${day}${suffix}`;
+}
+
+function monthIndex(value) {
+  const prefix = String(value || '').slice(0, 3).toLowerCase();
+  return MONTH_NAMES.findIndex((name) => name.slice(0, 3).toLowerCase() === prefix);
+}
+
+// English commonly carries the month only on the end of a range. When the
+// first day is later than the second, the range necessarily crosses a month
+// boundary: "27th through to 7th August" means 27 July–7 August. Otherwise
+// both dates share the named month. Invalid implied dates are left untouched.
+function expandEllipticalDateRanges(value) {
+  const day = String.raw`(?:\d{1,2}(?:st|nd|rd|th)?|${CALENDAR_ORDINAL})`;
+  const range = new RegExp(String.raw`\b(?:the\s+)?(${day})\s+(?:through(?:\s+to)?|until|to|[-–—])\s+(?:the\s+)?(${day})\s+(${MONTH})\b`, 'gi');
+  return String(value || '').replace(range, (match, startToken, endToken, namedMonth) => {
+    const startDay = ordinalNumber(startToken);
+    const endDay = ordinalNumber(endToken);
+    const endMonth = monthIndex(namedMonth);
+    if (!startDay || !endDay || startDay > 31 || endDay > 31 || endMonth < 0) return match;
+    const startMonth = startDay > endDay ? (endMonth + 11) % 12 : endMonth;
+    // February may validly have 29 days because the year is normally omitted;
+    // impossible dates such as 31 April must not be manufactured.
+    const maximum = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][startMonth];
+    const endMaximum = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][endMonth];
+    if (startDay > maximum || endDay > endMaximum) return match;
+    return `${ordinalLabel(startDay)} ${MONTH_NAMES[startMonth]}–${ordinalLabel(endDay)} ${MONTH_NAMES[endMonth]}`;
+  });
 }
 
 // Day and month names are proper nouns wherever they appear, so "09:30 thursday" is wrong
@@ -110,7 +151,20 @@ function normaliseDatePhrases(value) {
     // that reached us from anywhere that title-cased it.
     .replace(/\b(\d{1,2})(ST|ND|RD|TH|St|Nd|Rd|Th)\b/g, (match, day, suffix) => `${day}${suffix.toLowerCase()}`)
     .replace(DAY_OR_MONTH, (name) => name.charAt(0).toUpperCase() + name.slice(1).toLowerCase());
+  text = expandEllipticalDateRanges(text);
   return { text, changed: text !== before };
 }
 
-module.exports = { expandSpokenContractions, normaliseDatePhrases, CONTRACTIONS };
+function normaliseDatePhrasesDeep(value) {
+  if (typeof value === 'string') return normaliseDatePhrases(value).text;
+  if (Array.isArray(value)) return value.map(normaliseDatePhrasesDeep);
+  if (value && typeof value === 'object') {
+    if (value instanceof Date) return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseDatePhrasesDeep(item)]));
+  }
+  return value;
+}
+
+module.exports = { expandSpokenContractions, normaliseDatePhrases, normaliseDatePhrasesDeep, CONTRACTIONS };

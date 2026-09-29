@@ -80,6 +80,7 @@ const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/can
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { normaliseDomainTermsDeep, applyTranscriptPhraseCorrections } = require('../utils/domainTerms');
+const { normaliseDatePhrasesDeep } = require('../utils/spokenForms');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
@@ -11165,7 +11166,8 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     action: action?.action || '',
     deadline: meetingAgentTimingLabel(action?.timing)
   }));
-  const minutes = { details, executiveSummary, meetingObjectives, discussion, actions };
+  const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
+  const minutes = { details, ...publication };
   if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
   minutes.supportingDetails = (Array.isArray(draft.discussion) ? draft.discussion : []).flatMap((topic) =>
     [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
@@ -11197,11 +11199,13 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
     ...publicFields,
     reviewFlags: visibleReviewFlags
   });
-  safe.discussion = repairStructuralTopicHeadings(safe.discussion, draft.sourceUnits || []);
-  safe.actions = (Array.isArray(safe.actions) ? safe.actions : []).map((action) => ({
+  safe.discussion = normaliseDatePhrasesDeep(repairStructuralTopicHeadings(safe.discussion, draft.sourceUnits || []));
+  safe.actions = normaliseDatePhrasesDeep((Array.isArray(safe.actions) ? safe.actions : []).map((action) => ({
     ...action,
     timing: meetingAgentTimingForPublication(action?.timing)
-  }));
+  })));
+  safe.executiveSummary = normaliseDatePhrasesDeep(safe.executiveSummary);
+  safe.meetingObjectives = normaliseDatePhrasesDeep(safe.meetingObjectives);
   safe.details = sanitiseMeetingAgentDetails(safe.details);
   safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);

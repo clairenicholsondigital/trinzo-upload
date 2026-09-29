@@ -1008,6 +1008,17 @@ test('Word export uses UK dates, timing labels and contains no organisation fiel
   assert.match(documentXml, /approval followed the scope review/);
 });
 
+test('Word export expands a month omitted from the start of a cross-month range', async () => {
+  const draft = {
+    details: { meetingTitle: 'Range review', meetingDate: '2026-07-20' },
+    executiveSummary: 'The review window runs from 27th through to 7th August.',
+    discussion: [], actions: [], sourceUnits: [], reviewFlags: []
+  };
+  const buffer = await generateMeetingMinutesAgentDocx(draft, false);
+  const documentXml = await (await JSZip.loadAsync(buffer)).file('word/document.xml').async('string');
+  assert.match(documentXml, /27th July–7th August/);
+});
+
 test('an inserted row is one change, and any subset of changes applies correctly', () => {
   const first = { id: 'a', action: 'Re-issue the alarm verification report.' };
   const second = { id: 'b', action: 'Chase the vendor for the translation files.' };

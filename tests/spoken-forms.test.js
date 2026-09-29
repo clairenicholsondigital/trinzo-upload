@@ -47,6 +47,21 @@ test('spoken date shapes become minutes dates', () => {
   assert.equal(dated('August the thirty-first'), '31st August');
 });
 
+test('a month stated once at the end of a date range is made explicit', () => {
+  assert.equal(dated('Leave runs from 27th through to the 7th of August.'),
+    'Leave runs from 27th July–7th August.');
+  assert.equal(dated('Testing runs third to seventh August.'),
+    'Testing runs 3rd August–7th August.');
+  assert.equal(dated('The window is twenty-seventh through to seventh of August.'),
+    'The window is 27th July–7th August.');
+});
+
+test('elliptical date ranges fail closed when the month or implied date is unsafe', () => {
+  assert.equal(dated('The window is 27th through to 7th.'), 'The window is 27th through to 7th.');
+  assert.equal(dated('The window is 31st to 7th May.'), 'The window is 31st to 7th May.');
+  assert.equal(dated('The window is 27th July to 7th August.'), 'The window is 27th July to 7th August.');
+});
+
 test('a title-cased ordinal suffix is corrected', () => {
   // The real defect the reviewer saw: an unanchored /[a-z]/i capitaliser matched the first
   // letter ANYWHERE, so "23rd of July" became "23Rd of July". Both capitalisers are now

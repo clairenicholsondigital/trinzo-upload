@@ -2,6 +2,7 @@
 
 const JSZip = require('jszip');
 const { timingForPublication } = require('./meetingMinutesAgentV2');
+const { normaliseDatePhrasesDeep } = require('./spokenForms');
 function formatUkDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return String(value || '');
   return new Intl.DateTimeFormat('en-GB', {
@@ -126,6 +127,15 @@ function documentBody(draft = {}, includeEvidence = false) {
 }
 
 async function generateMeetingMinutesAgentDocx(draft = {}, includeEvidence = false) {
+  // Normalise only authored minutes fields. Source units in the optional
+  // evidence appendix remain faithful to the transcript.
+  draft = {
+    ...draft,
+    executiveSummary: normaliseDatePhrasesDeep(draft.executiveSummary),
+    meetingObjectives: normaliseDatePhrasesDeep(draft.meetingObjectives),
+    discussion: normaliseDatePhrasesDeep(draft.discussion),
+    actions: normaliseDatePhrasesDeep(draft.actions)
+  };
   const zip = new JSZip();
   zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`);
   zip.folder('_rels').file('.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);

@@ -122,6 +122,27 @@ test('published minute fields use figures while transcript evidence stays verbat
   assert.equal(published.sourceUnits[0].text, 'Eleven out of ninety checks were complete.');
 });
 
+test('published date ranges expand an omitted month without rewriting transcript evidence', () => {
+  const draft = baseDraft();
+  draft.executiveSummary = 'The review runs from 27th through to 7th August.';
+  draft.discussion = [{
+    topic: 'Review schedule',
+    points: [{ text: 'Testing runs from 27th through to the 7th of August.' }],
+    decisions: [], openQuestions: []
+  }];
+  draft.actions = [{
+    id: 'A1', action: 'Cover the review window.', owners: ['Alex Reed'],
+    timing: { kind: 'target', wording: '27th through to 7th August', exactDate: '' }
+  }];
+  draft.sourceUnits = [{ id: 'T0001', speaker: 'Alex Reed', text: 'It is the 27th through to 7th August.' }];
+
+  const published = publicMeetingAgentDraft(draft);
+  assert.equal(published.executiveSummary, 'The review runs from 27th July–7th August.');
+  assert.equal(published.discussion[0].points[0].text, 'Testing runs from 27th July–7th August.');
+  assert.equal(published.actions[0].timing.wording, '27th July–7th August');
+  assert.equal(published.sourceUnits[0].text, 'It is the 27th through to 7th August.');
+});
+
 const results = {
   discussion: { changes: {
     discussion: [{ topic: 'Generated discussion', points: [] }],
