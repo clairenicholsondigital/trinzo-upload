@@ -704,9 +704,9 @@
 .meeting-agent-page .flag-target-highlight{outline:3px solid var(--warn-border);outline-offset:3px;transition:outline-color .3s}
 .meeting-agent-page .flag details{margin-top:.5rem}
 .meeting-agent-page .review-note>summary{width:max-content;cursor:pointer;color:var(--accent-700);font-size:var(--fs-sm);font-weight:var(--fw-bold)}
-.meeting-agent-page .review-note>div{display:flex;gap:.45rem;align-items:center;margin-top:.35rem}
+.meeting-agent-page .review-note>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.45rem;align-items:center;margin-top:.35rem}
 .meeting-agent-page .review-note input{margin:0;min-width:0;font-size:var(--fs-sm)}
-.meeting-agent-page .review-note button{flex:none}
+.meeting-agent-page .review-note button{min-width:0;white-space:normal}
 .meeting-agent-page .flag-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.5rem}
 .meeting-agent-page .review-item-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,38%);gap:.8rem;align-items:start}
 .meeting-agent-page .review-item-main{min-width:0}
@@ -935,6 +935,15 @@
   .meeting-agent-page .agent-edit-body{
     right:auto;left:0;max-width:calc(100vw - 1.2rem);box-sizing:border-box}
   .meeting-agent-page .review-flags-summary{width:auto;max-width:100%;margin-left:0;justify-content:space-between}
+  .meeting-agent-page .review-flags-body{padding:0 .65rem .65rem}
+  .meeting-agent-page .flag{padding:.6rem}
+  .meeting-agent-page .review-note>div{grid-template-columns:minmax(0,1fr)}
+  .meeting-agent-page .review-note button{width:100%}
+  .meeting-agent-page .flag-actions{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+  .meeting-agent-page .flag-actions button{width:100%;min-width:0;white-space:normal}
+  .meeting-agent-page .review-evidence{max-width:100%;padding:.45rem;overflow:hidden}
+  .meeting-agent-page .review-evidence .evidence-row{overflow-wrap:anywhere}
+  .meeting-agent-page .review-evidence .source-meta{column-gap:.5rem}
   .meeting-agent-page.has-draft{padding-bottom:7rem}
   /* Give the mobile bar two deliberate rows. Previously the action buttons
      were vertically centred against the combined Saved + suggestions stack,

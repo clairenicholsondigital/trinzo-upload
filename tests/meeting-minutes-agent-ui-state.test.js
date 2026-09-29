@@ -1326,6 +1326,16 @@ test('review checks lead with the potential minutes content and keep diagnostic 
     assert.equal(await warning.getByRole('button', { name: 'Mark checked' }).count(), 1);
     assert.equal(await warning.getByRole('button', { name: 'Does not belong in minutes' }).count(), 1);
     assert.doesNotMatch(await warning.textContent(), /Your decision|Resolved in minutes|Open item to correct/i);
+    await warning.locator('.review-note>summary').click();
+    const noteLayout = await warning.locator('.review-note>div').evaluate((node) => {
+      const parent = node.getBoundingClientRect();
+      return Array.from(node.children).map((child) => {
+        const rect = child.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, width: rect.width, parentLeft: parent.left, parentRight: parent.right };
+      });
+    });
+    assert.equal(noteLayout.every((item) => item.left >= item.parentLeft - 1 && item.right <= item.parentRight + 1), true);
+    assert.equal(noteLayout.every((item) => item.width > 240), true, 'open note controls use the mobile card width');
     const order = await warning.evaluate((node) => {
       const candidate = node.querySelector('.flag-target');
       const reason = node.querySelector('.flag-review-reason');

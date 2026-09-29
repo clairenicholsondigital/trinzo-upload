@@ -1647,8 +1647,8 @@
       // A linked proposal has its own add/leave-out decision. Showing warning
       // controls here as well made it look as though "checked" would add it.
       if (!target || !target.proposal) {
-        body += '<details class="review-note"><summary>Add a note</summary><div><input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="What did you check or change?" aria-label="Review note"><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save note and mark checked</button></div></details>';
-        actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Mark checked</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Does not belong in minutes</button>';
+        body += '<details class="review-note"><summary>Add a note</summary><div><input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="What did you check or change?" aria-label="Review note"><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save note &amp; mark checked</button></div></details>';
+        actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Mark checked</button><button class="secondary" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Does not belong in minutes</button>';
       }
       // Collapsed by default: the passage is often longer than the warning it
       // supports, and a reviewer who trusts the quoted line never opens it.
