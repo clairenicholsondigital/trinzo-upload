@@ -185,9 +185,10 @@
 .meeting-agent-page .workflow-utilities.is-open{display:block;margin-bottom:.75rem}
 .meeting-agent-page .workflow-utilities .review-flags{margin:0}
 .meeting-agent-page .workflow-utilities .review-flags-body{width:100%}
-/* The chip opens the queue from the status bar; the panel's own summary is
-   redundant once it does, but stays for the toggle target. */
-.meeting-agent-page .review-flags-summary{display:none}
+/* The status-bar chip is the labelled control for this queue. Hide the
+   details element's otherwise empty native summary so it cannot appear as an
+   unexplained second expander above the current screen. */
+.meeting-agent-page .workflow-utilities .review-flags-summary{display:none}
 .meeting-agent-page .review-queue-toggle{
   display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;
   border:1px solid var(--warn-border,var(--border-strong));border-radius:999px;

@@ -1663,6 +1663,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.ok(saveBarLayout.bar.left < saveBarLayout.suggestions.left, JSON.stringify(saveBarLayout));
     assert.ok(saveBarLayout.actions.right < saveBarLayout.bar.right, JSON.stringify(saveBarLayout));
     await page.click('#reviewQueueToggle');
+    assert.equal(await page.locator('.review-flags-summary').isHidden(), true, 'the labelled status-bar control replaces the empty native expander');
     assert.ok(await page.locator('.review-flags-body').evaluate((node) => node.getBoundingClientRect().width > 330));
     await page.click('#reviewQueueToggle');
     assert.equal(await page.locator('.review-flags-body').isHidden(), true, 'the queue closes again from the status bar');
