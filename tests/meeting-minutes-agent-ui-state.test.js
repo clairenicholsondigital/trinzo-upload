@@ -2364,6 +2364,12 @@ test('a topic can be merged into another in one action, and the rows all come wi
     assert.equal(await page.locator('#discussionList .discussion-card').count(), 2);
     // Both hold one line, so both are drawn as the single lines they are.
     assert.equal(await page.locator('#discussionList .discussion-card.is-single').count(), 2);
+    const singleTopicStyle = await page.locator('#discussionList .discussion-card.is-single').first().evaluate((card) => ({
+      background: getComputedStyle(card.querySelector('.card-head')).backgroundColor,
+      title: getComputedStyle(card.querySelector('.topic-field textarea')).color
+    }));
+    assert.deepEqual(singleTopicStyle, { background: 'rgb(238, 250, 249)', title: 'rgb(1, 23, 59)' },
+      'single-item topics use the same header treatment as every other topic');
 
     await page.click('#discussionList .discussion-card >> nth=0 >> .topic-menu > summary');
     await page.selectOption('#discussionList [data-merge-topic="0"]', '1');
