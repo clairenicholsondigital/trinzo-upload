@@ -112,16 +112,35 @@ function sameOrNestedActionDeliverable(left = {}, right = {}) {
 // unrelated send-and-sign work separate while preventing two rows for one
 // document from reaching the reviewer.
 function sameComplementaryDocumentDeliverable(left = {}, right = {}) {
-  if (!compatibleOwners(left, right) || evidenceDistance(left, right) > 6) return false;
   const leftWords = tokens(left.action || left.text);
   const rightWords = tokens(right.action || right.text);
   const leftVerb = leftWords[0]; const rightVerb = rightWords[0];
   const complementary = (COMPLEMENTARY_DOCUMENT_VERBS.has(leftVerb) && COMPLEMENTARY_DELIVERY_VERBS.has(rightVerb))
     || (COMPLEMENTARY_DOCUMENT_VERBS.has(rightVerb) && COMPLEMENTARY_DELIVERY_VERBS.has(leftVerb));
   if (!complementary) return false;
-  const leftPairs = new Set(leftWords.slice(1).map((word, index) => `${word} ${leftWords[index + 2] || ''}`).filter((pair) => !pair.endsWith(' ')));
-  const rightPairs = new Set(rightWords.slice(1).map((word, index) => `${word} ${rightWords[index + 2] || ''}`).filter((pair) => !pair.endsWith(' ')));
+  const delivery = COMPLEMENTARY_DELIVERY_VERBS.has(leftVerb) ? left : right;
+  const completion = delivery === left ? right : left;
+  // The preparation and hand-off may be spoken far apart and owned by
+  // different people. That is still one workflow only when the delivery
+  // recipient is exactly the owner of the completion step. All other cases
+  // retain the existing same-owner/nearby-evidence guard.
+  const recipientOwnerHandoff = ownerMatchesTarget(completion, recipientTokens(delivery.action || delivery.text));
+  if (!recipientOwnerHandoff && (!compatibleOwners(left, right) || evidenceDistance(left, right) > 6)) return false;
+  const objectPairs = (words) => {
+    const meaningful = words.slice(1).filter((word) => !CONTENT_STOP_WORDS.has(word));
+    return new Set(meaningful.map((word, index) => `${word} ${meaningful[index + 1] || ''}`).filter((pair) => !pair.endsWith(' ')));
+  };
+  const leftPairs = objectPairs(leftWords);
+  const rightPairs = objectPairs(rightWords);
   return [...leftPairs].some((pair) => rightPairs.has(pair) && pair.split(' ').every((word) => word.length > 2));
+}
+
+function complementaryDocumentRecipientHandoff(left = {}, right = {}) {
+  const records = [left, right];
+  const delivery = records.find((record) => COMPLEMENTARY_DELIVERY_VERBS.has(tokens(record.action || record.text)[0]));
+  const completion = records.find((record) => COMPLEMENTARY_DOCUMENT_VERBS.has(tokens(record.action || record.text)[0]));
+  return Boolean(delivery && completion
+    && ownerMatchesTarget(completion, recipientTokens(delivery.action || delivery.text)));
 }
 
 function mergeComplementaryDocumentWording(left = {}, right = {}) {
@@ -130,6 +149,13 @@ function mergeComplementaryDocumentWording(left = {}, right = {}) {
   if (!delivery || !completion) return String(left.action || left.text || right.action || right.text || '');
   const deliveryText = String(delivery.action || delivery.text || '').trim().replace(/[.?!]+$/, '');
   const completionText = String(completion.action || completion.text || '').trim().replace(/[.?!]+$/, '');
+  if (complementaryDocumentRecipientHandoff(left, right)) {
+    const purpose = {
+      approve: 'approval', attest: 'attestation', complete: 'completion',
+      countersign: 'countersignature', execute: 'execution', sign: 'signature'
+    }[tokens(completionText)[0]] || 'completion';
+    return `${deliveryText} for ${purpose}.`;
+  }
   const rawTokens = (value) => String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]*/g) || [];
   const deliveryWords = rawTokens(deliveryText);
   const completionWords = rawTokens(completionText);
@@ -287,6 +313,7 @@ module.exports = {
   sameQuestionCommunicationDeliverable,
   sameOrNestedActionDeliverable,
   sameComplementaryDocumentDeliverable,
+  complementaryDocumentRecipientHandoff,
   mergeComplementaryDocumentWording,
   sameContactPurposeDeliverable,
   sameReciprocalContactDeliverable,

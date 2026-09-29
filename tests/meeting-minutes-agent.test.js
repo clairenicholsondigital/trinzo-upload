@@ -466,6 +466,34 @@ test('action dedupe preserves distinct predicates and recipients', () => {
   assert.deepEqual(new Set(rows.map((row) => row.id)), new Set(['prepare', 'send', 'alex', 'priya']));
 });
 
+test('document delivery to its completion owner becomes one hand-off workflow', () => {
+  const rows = dedupeHybridActionRecords([{
+    id: 'complete', action: 'Complete the supplier declaration form.', owners: ['Morgan Lee'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010']
+  }, {
+    id: 'send', action: 'Send the supplier declaration form to Morgan Lee.', owners: ['Alex Green'],
+    timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: ['T0080']
+  }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].action, 'Send the supplier declaration form to Morgan Lee for completion.');
+  assert.deepEqual(new Set(rows[0].owners), new Set(['Morgan Lee', 'Alex Green']));
+  assert.deepEqual(rows[0].evidenceIds, ['T0010', 'T0080']);
+});
+
+test('different recipients or different documents do not collapse into a hand-off', () => {
+  const base = (id, action, owners) => ({
+    id, action, owners, timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [`T0${id.length + 10}`]
+  });
+  assert.equal(dedupeHybridActionRecords([
+    base('complete', 'Complete the supplier declaration form.', ['Morgan Lee']),
+    base('wrong-recipient', 'Send the supplier declaration form to Priya Shah.', ['Alex Green'])
+  ]).length, 2);
+  assert.equal(dedupeHybridActionRecords([
+    base('complete', 'Complete the supplier declaration form.', ['Morgan Lee']),
+    base('different-document', 'Send the supplier audit report to Morgan Lee.', ['Alex Green'])
+  ]).length, 2);
+});
+
 test('an exact deliverable with conflicting owners uses a unique explicit self-commitment', () => {
   const rows = [
     { id: 'inferred', action: 'Send the code of conduct to Niamh and require completion before sharing further materials.', owners: ['Stuart Smith'], timing: { kind: 'not_stated' }, evidenceIds: ['T0010'] },

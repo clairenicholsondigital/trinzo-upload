@@ -71,7 +71,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { convertSpokenNumbers } = require('../utils/spokenNumbers');
@@ -12011,7 +12011,8 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     // A reciprocal check-in that neither side clearly took on belongs to
     // both participants.
     const reciprocal = !ownersCompatible && !evidenceOwner && sameReciprocalContactDeliverable(record, duplicate);
-    const combinedOwners = ownersCompatible || reciprocal
+    const documentHandoff = complementaryDocumentRecipientHandoff(record, duplicate);
+    const combinedOwners = ownersCompatible || reciprocal || documentHandoff
       ? [...new Set([...duplicateOwners, ...recordOwners])].slice(0, 8)
       : evidenceOwner ? [evidenceOwner] : (preferred.owners || []);
     // Related or nested actions may legitimately dedupe, but a deadline may
