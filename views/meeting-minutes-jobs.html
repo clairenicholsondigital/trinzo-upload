@@ -337,6 +337,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return escapeHtml(value);
   }
 
+  function libraryDeleteButton(attribute, value, label = 'Delete draft') {
+    return `<button class="secondary library-delete" ${attribute}="${escapeAttribute(value)}" type="button" aria-label="${escapeAttribute(label)}" title="${escapeAttribute(label)}"><svg class="library-delete-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" /></svg></button>`;
+  }
+
   function setMessage(text, type = '') {
     message.hidden = !text;
     message.textContent = text || '';
@@ -1326,13 +1330,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                   ? `<span class="status running" role="status"><span class="generation-spinner" aria-hidden="true"></span>Generating</span><br><small class="muted">${escapeHtml(generationStage)} in progress</small>`
                   : `<span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}`}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td class="col-actions" data-label="Actions"><div class="library-action-group">
-                  ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
-                  ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">${generating ? 'View progress' : job.status === 'complete' ? 'Open final minutes' : 'Resume'}</a><button class="danger" data-delete-agent-draft="${escapeHtml(job.draftId)}" type="button">Delete</button>` : ''}
+                  ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a>${libraryDeleteButton('data-delete-staged', job.jobId)}` : ''}
+                  ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">${generating ? 'View progress' : job.status === 'complete' ? 'Open final minutes' : 'Resume'}</a>${libraryDeleteButton('data-delete-agent-draft', job.draftId)}` : ''}
                   ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button resume-staged" href="${escapeAttribute(job.resumeUrl)}">Resume staged review <span aria-hidden="true">›</span></a>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${!isStagedJob(job) && !isMeetingAgentDraft(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
-                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? libraryDeleteButton('data-delete', job.jobId, 'Delete job') : ''}
                 </div>
                 </td>
               </tr>`;
