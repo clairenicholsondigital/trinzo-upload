@@ -831,10 +831,11 @@
 .meeting-agent-page .final-editor-row .final-inline-editor textarea{width:100%;min-width:0;box-sizing:border-box;font-size:var(--fs-sm);padding:.45rem .55rem}
 .meeting-agent-page .final-editor-row .final-edit-actions{grid-column:1/-1}
 .meeting-agent-page .upload-confirmation{
-  margin:0 0 1rem;padding:1rem 1.1rem;border:1px solid var(--info-border);
+  box-sizing:border-box;min-width:0;max-width:100%;margin:0 0 1rem;padding:1rem 1.1rem;border:1px solid var(--info-border);
   border-left:var(--rail) solid var(--accent);border-radius:var(--radius-sm);background:var(--info-bg);color:var(--info-text)}
 .meeting-agent-page .upload-confirmation h2{margin:0 0 .3rem;font-size:var(--fs-lg);color:var(--heading)}
 .meeting-agent-page .upload-confirmation p{margin:.3rem 0;font-size:var(--fs-sm);line-height:1.5}
+.meeting-agent-page #uploadConfirmationDetail{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .meeting-agent-page .upload-confirmation ol{margin:.4rem 0 .6rem 1.2rem;padding:0;font-size:var(--fs-sm);line-height:1.5}
 .meeting-agent-page .upload-confirmation-actions{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-top:.7rem}
 .meeting-agent-page .final-edit-hint{margin:0;color:var(--muted);font-size:var(--fs-cap)}

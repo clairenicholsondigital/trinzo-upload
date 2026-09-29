@@ -2541,7 +2541,7 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: { width: 320, height: 720 } });
     page.setDefaultTimeout(30000);
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
@@ -2550,9 +2550,24 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     assert.equal(await page.locator('#meetingLocation').getAttribute('placeholder'), null);
     assert.equal(await page.locator('#uploadConfirmation').isHidden(), true, 'nothing to confirm before an upload');
     const preparedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/prepare'));
-    await page.setInputFiles('#transcriptFile', { name: 'weekly-checkin.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });
+    const longFileName = 'Client_T788_Calderhaven_SW_weekly_checkin_document_with_a_very_long_filename.docx';
+    await page.setInputFiles('#transcriptFile', { name: longFileName, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });
     assert.equal(await page.locator('#uploadConfirmation').isVisible(), true, 'the upload is acknowledged before preparation finishes');
-    assert.match(await page.textContent('#uploadConfirmation'), /"weekly-checkin\.docx" has been uploaded/);
+    assert.match(await page.textContent('#uploadConfirmation'), new RegExp('"' + longFileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '" has been uploaded'));
+    const mobileUploadLayout = await page.evaluate(() => {
+      const panel = document.getElementById('uploadConfirmation').getBoundingClientRect();
+      const detail = document.getElementById('uploadConfirmationDetail');
+      return {
+        viewportWidth: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        panelLeft: panel.left,
+        panelRight: panel.right,
+        detailOverflow: detail.scrollWidth - detail.clientWidth
+      };
+    });
+    assert.ok(mobileUploadLayout.documentWidth <= mobileUploadLayout.viewportWidth, JSON.stringify(mobileUploadLayout));
+    assert.ok(mobileUploadLayout.panelLeft >= 0 && mobileUploadLayout.panelRight <= mobileUploadLayout.viewportWidth, JSON.stringify(mobileUploadLayout));
+    assert.ok(mobileUploadLayout.detailOverflow <= 1, JSON.stringify(mobileUploadLayout));
     assert.equal(await page.locator('#uploadConfirmationPending').isVisible(), true);
     assert.match(await page.textContent('#uploadConfirmationPending'), /creating your draft/i);
     assert.doesNotMatch(await page.textContent('#uploadConfirmationPending'), /keep this page open|reopen it from Library/i);
@@ -2561,7 +2576,7 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     await page.waitForFunction(() => !document.getElementById('uploadConfirmationReady').hidden);
     const text = await page.textContent('#uploadConfirmation');
     assert.match(text, /Transcript uploaded/);
-    assert.match(text, /"weekly-checkin.docx" was read successfully/);
+    assert.match(text, new RegExp('"' + longFileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '" was read successfully'));
     for (const step of ['Details', 'Discussion', 'Actions', 'Summary', 'Review']) assert.match(text, new RegExp(step));
     assert.equal(await page.locator('#uploadConfirmation a[href="/jobs"]').count(), 2, 'Library is linked in the text and as a button');
     assert.equal(await page.locator('#detailsEditor').isVisible(), true, 'the details are already there underneath');
