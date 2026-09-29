@@ -2451,7 +2451,8 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     assert.equal(await page.locator('#uploadConfirmation').isVisible(), true, 'the upload is acknowledged before preparation finishes');
     assert.match(await page.textContent('#uploadConfirmation'), /"weekly-checkin\.docx" has been uploaded/);
     assert.equal(await page.locator('#uploadConfirmationPending').isVisible(), true);
-    assert.match(await page.textContent('#uploadConfirmationPending'), /reopen it from Library/);
+    assert.match(await page.textContent('#uploadConfirmationPending'), /creating your draft/i);
+    assert.doesNotMatch(await page.textContent('#uploadConfirmationPending'), /keep this page open|reopen it from Library/i);
     assert.equal(await page.locator('#uploadConfirmationReady').isHidden(), true, 'resume links wait until the draft is persisted');
     await preparedResponse;
     await page.waitForFunction(() => !document.getElementById('uploadConfirmationReady').hidden);
