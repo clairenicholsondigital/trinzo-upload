@@ -1633,6 +1633,20 @@ test('final minutes edit source records in place and the finishing bar remains a
     assert.equal(await page.locator('#finalDocument .final-editor-title').count(), 0);
     await actionEditor.locator('[data-final-cancel]').click();
 
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.locator('#undoLastDecision .narrow-label').textContent(), 'Undo');
+    const finalBarLayout = await page.evaluate(() => {
+      const review = document.getElementById('reviewQueueToggle').getBoundingClientRect();
+      const undo = document.getElementById('undoLastDecision').getBoundingClientRect();
+      const actions = document.querySelector('.save-strip-actions').getBoundingClientRect();
+      return {
+        sameRow: Math.abs((review.top + review.height / 2) - (undo.top + undo.height / 2)) < 3,
+        unusedWidth: actions.width - undo.width
+      };
+    });
+    assert.equal(finalBarLayout.sameRow, true, JSON.stringify(finalBarLayout));
+    assert.ok(finalBarLayout.unusedWidth < 4, JSON.stringify(finalBarLayout));
+
     await page.locator('#finalDocument [data-kind="action"][data-field="owners"]').first().click();
     assert.deepEqual(await page.locator('#finalDocument [data-final-add-owner] option').allTextContents(), [
       'Choose a participant...', 'All participants', 'Sam Okoro'
@@ -1640,7 +1654,6 @@ test('final minutes edit source records in place and the finishing bar remains a
     assert.equal(await page.locator('#finalDocument [data-final-editor-value]').count(), 0, 'owners are selected rather than typed as comma-separated text');
     await page.selectOption('#finalDocument [data-final-add-owner]', '__all');
     assert.deepEqual(await page.locator('#finalDocument .final-owner-picker .owner-chip').allTextContents(), ['Alex Reed×', 'Sam Okoro×']);
-    await page.setViewportSize({ width: 390, height: 844 });
     const ownerPickerLayout = await page.locator('#finalDocument .final-owner-picker').evaluate((node) => ({
       pickerWidth: node.getBoundingClientRect().width,
       selectWidth: node.querySelector('select').getBoundingClientRect().width,
@@ -1685,7 +1698,7 @@ test('final minutes edit source records in place and the finishing bar remains a
     assert.equal(stored.actions[0].timing.kind, 'not_stated');
     assert.deepEqual(stored.actions[0].owners, ['Alex Reed', 'Sam Okoro'], 'Undo restores only the latest review decision');
 
-    await page.click('#previewDocument');
+    await page.click('.final-actions [data-back="4"]');
     await page.waitForFunction(() => document.querySelector('[data-screen="4"]').classList.contains('active'));
     assert.deepEqual(errors, []);
   } finally {

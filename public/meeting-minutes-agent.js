@@ -91,13 +91,16 @@
 
   function updateFinishingBar() {
     if (!state.draft) return;
+    var finalReview = state.currentStep === MAX_STEP;
+    var saveStrip = document.getElementById('saveStrip');
+    if (saveStrip) saveStrip.classList.toggle('is-final-review', finalReview);
     // Both controls name the change they act on, so the reviewer can tell what
     // is about to happen before pressing them.
     var undo = document.getElementById('undoLastDecision');
     if (undo) {
       undo.hidden = !state.draft.lastUndo;
       var undoLabel = state.draft.lastUndo ? 'Undo: ' + state.draft.lastUndo.label : 'Undo';
-      undo.innerHTML = '<span class="wide-label">' + escapeHtml(undoLabel) + '</span><span class="narrow-label">Undo last change</span>';
+      undo.innerHTML = '<span class="wide-label">' + escapeHtml(undoLabel) + '</span><span class="narrow-label">' + (finalReview ? 'Undo' : 'Undo last change') + '</span>';
       undo.setAttribute('aria-label', undoLabel);
       undo.title = state.draft.lastUndo ? undoLabel : '';
     }

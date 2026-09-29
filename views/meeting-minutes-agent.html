@@ -972,6 +972,16 @@
     display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-column:1;grid-row:3;width:100%;gap:.35rem}
   .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .save-strip-actions button{
     width:100%;min-width:0;white-space:normal}
+  /* Review already hides Preview and Download. When Undo is the only action,
+     keep it beside the checks instead of reserving an empty three-button row. */
+  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))){
+    grid-template-columns:minmax(0,1fr) auto}
+  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .review-queue-toggle{
+    grid-column:1;grid-row:2}
+  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions{
+    display:flex;grid-column:2;grid-row:2;width:auto;justify-content:flex-end}
+  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions button{
+    width:auto;min-width:4.5rem;white-space:nowrap}
   .meeting-agent-page .save-strip-actions .wide-label{display:none}
   .meeting-agent-page .save-strip-actions .narrow-label{display:inline}
   .meeting-agent-page #resumeLaterLink{display:none}
