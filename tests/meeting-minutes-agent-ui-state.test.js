@@ -1303,7 +1303,7 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
   }
 });
 
-test('warnings lead with the potential minutes content, not the system issue', { timeout: 120000 }, async () => {
+test('review checks lead with the potential minutes content and keep diagnostic detail collapsed', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -1319,8 +1319,13 @@ test('warnings lead with the potential minutes content, not the system issue', {
     assert.equal(await warning.locator('.flag-target>span').textContent(), 'Transcript detail to consider');
     assert.match(await warning.locator('.flag-target blockquote').textContent(), /standard may be 27427/i);
     assert.doesNotMatch(await warning.textContent(), /No matching item is currently in the minutes/i);
-    assert.equal(await warning.locator('.flag-kind').textContent(), 'Why this needs review · Reference to check');
+    assert.equal(await warning.locator('.flag-kind').textContent(), 'Reference to check');
+    assert.equal(await warning.locator('.flag-review-reason').evaluate((node) => node.open), false);
+    assert.equal(await warning.locator('.flag-review-reason>summary').getByText('Why this was highlighted').count(), 1);
     assert.equal(await warning.locator('.flag-message').textContent(), 'Confirm the standard reference exactly as spoken.');
+    assert.equal(await warning.getByRole('button', { name: 'Mark checked' }).count(), 1);
+    assert.equal(await warning.getByRole('button', { name: 'Does not belong in minutes' }).count(), 1);
+    assert.doesNotMatch(await warning.textContent(), /Your decision|Resolved in minutes|Open item to correct/i);
     const order = await warning.evaluate((node) => {
       const candidate = node.querySelector('.flag-target');
       const reason = node.querySelector('.flag-review-reason');
@@ -1511,7 +1516,7 @@ test('every warning decision exposes a durable Undo that survives refresh', { ti
     const warning = page.locator('.flag').filter({ hasText: 'Check the owner of this action.' });
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Review item resolved');
-    await warning.getByRole('button', { name: 'Resolved in minutes' }).click();
+    await warning.getByRole('button', { name: 'Mark checked' }).click();
     await saved;
     assert.equal(await page.locator('#undoToast').isVisible(), true);
     assert.match(await page.textContent('#undoToastMessage'), /Review item resolved/i);
@@ -1582,7 +1587,7 @@ test('final minutes edit source records in place and the finishing bar remains a
     browser = launched.browser;
     const { page, errors } = launched;
     assert.equal(await page.locator('#saveStrip').evaluate((node) => getComputedStyle(node).position), 'fixed');
-    assert.match(await page.textContent('#flagCount'), /2 warnings/i);
+    assert.match(await page.textContent('#flagCount'), /2 checks/i);
     await page.click('#previewDocument');
     await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
     assert.match(await page.getAttribute('#previewDocument', 'aria-label'), /Back to editing/i);

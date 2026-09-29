@@ -1568,13 +1568,13 @@
     var panel = document.getElementById('reviewFlags');
     panel.hidden = counts.total === 0;
     document.getElementById('flagCount').textContent = counts.flags
-      ? counts.flags + ' warning' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
+      ? counts.flags + ' check' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
       : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'Review complete';
     updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
-    if (intro) intro.textContent = counts.suggestions
-      ? 'Work through each item below. Nothing is added to the minutes until you choose it.'
-      : 'For each item, check the source, correct the minutes if needed, then choose whether it is resolved or not needed.';
+    if (intro) intro.textContent = counts.flags
+      ? 'A few details are worth a quick source check. They may already be right; open a minutes item only if you want to change it, then mark it checked.'
+      : 'Choose any suggestions you want to add. Nothing changes in the minutes until you confirm it.';
     updateFinishingBar();
   }
 
@@ -1625,7 +1625,7 @@
         : flag.message;
       var candidateText = reviewCandidateForFlag(flag, target);
       var candidateLabel = target
-        ? (target.proposal ? 'Proposed minutes text' : 'Current minutes item · ' + target.label)
+        ? (target.proposal ? 'Proposed minutes text' : 'In the minutes · ' + target.label)
         : 'Transcript detail to consider';
       var body = '';
       if (candidateText) {
@@ -1635,21 +1635,20 @@
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += (candidateText ? '' : '<div class="flag-target' + (target.proposal ? ' is-suggestion' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span>')
-          + (target.proposal ? '<p>This has not been added yet. Open it to choose whether to add it or leave it out.</p>' : '<p>Open this item if the wording, owner or timing needs correcting.</p>')
-          + '<button class="' + (target.proposal ? 'button' : 'secondary') + ' compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review and decide →' : 'Open item to correct') + '</button></div>';
+          + (target.proposal ? '<p>This has not been added yet. Open it to choose whether to add it or leave it out.</p>' : '')
+          + '<button class="' + (target.proposal ? 'button' : 'secondary') + ' compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review and decide →' : 'Open in minutes') + '</button></div>';
       } else if (candidateText) {
         body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
       } else {
         body += '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
       }
-      body += '<div class="flag-review-reason"><span class="flag-kind">Why this needs review · ' + escapeHtml(label) + '</span><div class="flag-message">' + escapeHtml(conciseReviewMessage(displayMessage)) + '</div></div>';
+      body += '<details class="flag-review-reason"><summary><span>Why this was highlighted</span><span class="flag-kind">' + escapeHtml(label) + '</span></summary><div class="flag-message">' + escapeHtml(conciseReviewMessage(displayMessage)) + '</div></details>';
       var actions = '';
       // A linked proposal has its own add/leave-out decision. Showing warning
       // controls here as well made it look as though "checked" would add it.
       if (!target || !target.proposal) {
-        body += '<p class="review-decision-prompt"><strong>Your decision</strong><span>After checking the source and making any correction, mark the issue resolved. Choose Not needed only when it should not affect the minutes.</span></p>';
-        body += '<details class="review-note"><summary>Add a review note (optional)</summary><div><input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="What did you check or change?" aria-label="Review note"><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save note and resolve</button></div></details>';
-        actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Resolved in minutes</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Not needed</button>';
+        body += '<details class="review-note"><summary>Add a note</summary><div><input data-flag-correction="' + index + '" value="' + escapeHtml(flag.correctionNote || '') + '" placeholder="What did you check or change?" aria-label="Review note"><button class="secondary" data-flag-index="' + index + '" data-flag-status="corrected" type="button">Save note and mark checked</button></div></details>';
+        actions = '<button class="button" data-flag-index="' + index + '" data-flag-status="confirmed" type="button">Mark checked</button><button class="secondary quiet" data-flag-index="' + index + '" data-flag-status="dismissed" type="button">Does not belong in minutes</button>';
       }
       // Collapsed by default: the passage is often longer than the warning it
       // supports, and a reviewer who trusts the quoted line never opens it.
@@ -1710,7 +1709,7 @@
         content = '<div class="proposal-wording' + (change.type === 'remove' ? ' removal' : '') + '"><span class="proposal-wording-label">' + wordingLabel + '</span><pre>' + escapeHtml(proposalRecord(change.after || change.before)) + '</pre></div>';
       }
       if (change.reviewContext) {
-        content += '<div class="proposal-rationale"><div><strong>Why this needs review:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
+        content += '<div class="proposal-rationale"><div><strong>Why it was suggested:</strong> ' + escapeHtml(change.reviewContext.reason || '') + '</div>'
           + (change.reviewContext.label ? '<div class="commitment-chain"><span>In the transcript</span> ' + escapeHtml(change.reviewContext.label) + '</div>' : '')
           + ((change.reviewContext.evidenceIds || []).length ? evidenceBlock(change.reviewContext.evidenceIds, String(change.id || '')) : '') + '</div>';
       }

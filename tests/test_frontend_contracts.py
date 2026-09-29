@@ -159,7 +159,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.stage-next-action{', page)
         self.assertIn('class="proposal-comparison"', client)
         self.assertIn('class="proposal-content"', client)
-        self.assertIn('Why this needs review:', client)
+        self.assertIn('Why it was suggested:', client)
         self.assertIn('class="commitment-chain"', client)
         self.assertIn('.proposal-rationale', page)
         self.assertIn('actionCommitmentChainInventory', api)
