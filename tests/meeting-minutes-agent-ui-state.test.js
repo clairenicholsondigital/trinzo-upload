@@ -513,7 +513,7 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.equal(await page.locator('#minutes-discussion-discussion-1').count(), 1);
     assert.match(await page.textContent('#omittedDetailsPanel'), /These details were left out of the draft/i);
     assert.match(await page.textContent('#omittedDetailsPanel'), /report incorporates the final comments/i);
-    assert.equal(await page.locator('#omittedDetailsPanel .omitted-detail-kind').textContent(), 'Discussion context');
+    assert.equal(await page.locator('#omittedDetailsPanel .omitted-detail-kind').count(), 0, 'the shared panel does not repeat a label above every detail');
     assert.equal(await page.locator('.supporting-context').count(), 0, 'omitted details use one shared review panel');
     assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').count(), 1);
     assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').textContent(), 'Add to minutes');
