@@ -803,6 +803,11 @@ test('independent section switches hide output without deleting saved content', 
 
     await page.click('[data-step="4"]');
     assert.equal(await page.locator('[data-section="executiveSummary"]').isHidden(), false);
+    assert.equal(await page.evaluate(() => {
+      const rule = Array.from(document.querySelectorAll('style')).flatMap((node) => Array.from(node.sheet.cssRules || []))
+        .find((candidate) => candidate.selectorText === '.meeting-agent-page .summary-field .add-record');
+      return rule && rule.style.background;
+    }), 'var(--brand-050)', 'the add-objective control uses the brand tint');
     const longSummary = 'A long reviewer-written summary sentence that must remain readable without an internal scrollbar. '.repeat(24);
     await page.fill('#executiveSummary', longSummary);
     await page.waitForTimeout(100);
