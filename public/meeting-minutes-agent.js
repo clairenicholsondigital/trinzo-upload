@@ -1782,21 +1782,22 @@
   // action. The cells are too narrow to type in: the timing editor squeezed
   // into the Timing cell showed "Ta", "straig" and "dc".
   function finalActionEditorRow(action, field) {
-    var title = '<p class="final-editor-title">Editing ' + (field === 'owners' ? 'the owners' : field === 'timing' ? 'the timing' : 'the wording') + ' of: <em>' + escapeHtml(String(action.action || '').slice(0, 140)) + '</em></p>';
+    var editorLabel = field === 'owners' ? 'Edit action owners' : field === 'timing' ? 'Edit action timing' : 'Edit action wording';
+    var editorAttributes = ' data-final-editor role="group" aria-label="' + escapeHtml(editorLabel) + '"';
     var body;
     if (field === 'timing') {
       var timing = action.timing || {};
-      body = '<span class="final-inline-editor timing" data-final-editor>' + title
+      body = '<span class="final-inline-editor timing"' + editorAttributes + '>'
         + '<label><span class="lbl">Type</span><select data-final-timing-kind aria-label="Timing type"><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option></select></label>'
         + '<label><span class="lbl">As said in the meeting</span><input data-final-timing-wording value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. by Friday, once the report is back" aria-label="Timing as said"></label>'
         + '<label><span class="lbl">Exact date (optional)</span><input data-final-timing-date type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label>'
         + finalEditButtons() + '</span>';
     } else if (field === 'owners') {
-      body = '<span class="final-inline-editor" data-final-editor>' + title
+      body = '<span class="final-inline-editor"' + editorAttributes + '>'
         + '<label><span class="lbl">Owners (separate names with commas)</span><input data-final-editor-value value="' + escapeHtml((action.owners || []).join(', ')) + '" aria-label="Edit owners"></label>'
         + finalEditButtons() + '</span>';
     } else {
-      body = '<span class="final-inline-editor" data-final-editor>' + title
+      body = '<span class="final-inline-editor"' + editorAttributes + '>'
         + '<textarea data-final-editor-value rows="3" aria-label="Edit action">' + escapeHtml(action.action || '') + '</textarea>'
         + finalEditButtons() + '</span>';
     }

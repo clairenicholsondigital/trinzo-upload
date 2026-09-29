@@ -1603,6 +1603,13 @@ test('final minutes edit source records in place and the finishing bar remains a
     await page.click('#finalDocument [data-final-save]');
     await saved;
 
+    await page.locator('#finalDocument [data-kind="action"][data-field="action"]').first().click();
+    const actionEditor = page.locator('#finalDocument tr.final-editor-row [data-final-editor]');
+    assert.equal(await actionEditor.getAttribute('aria-label'), 'Edit action wording');
+    assert.doesNotMatch(await actionEditor.textContent(), /Editing the wording of/i);
+    assert.equal(await page.locator('#finalDocument .final-editor-title').count(), 0);
+    await actionEditor.locator('[data-final-cancel]').click();
+
     await page.locator('#finalDocument [data-kind="action"][data-field="owners"]').first().click();
     await page.fill('#finalDocument [data-final-editor-value]', 'Alex Reed, Sam Okoro');
     saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
