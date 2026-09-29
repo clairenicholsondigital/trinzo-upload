@@ -859,6 +859,7 @@
   max-width:76ch;margin:1rem auto 0;padding:.9rem 1rem}
 .meeting-agent-page .final-save-confirmation strong{display:block;margin-bottom:.2rem;color:var(--ok-text)}
 .meeting-agent-page .final-save-confirmation p{margin:0;font-size:var(--fs-sm);line-height:1.45}
+.meeting-agent-page .final-save-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .meeting-agent-page .export-group{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .meeting-agent-page .evidence-choice{
   display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:var(--fs-sm)}
@@ -1053,6 +1054,10 @@
   .meeting-agent-page .screen-actions>*{width:100%}
   .meeting-agent-page .final-actions .divider,
   .meeting-agent-page .final-actions .spacer{display:none}
+  .meeting-agent-page .final-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+  .meeting-agent-page .final-actions #saveMinutes{grid-column:1/-1;grid-row:1}
+  .meeting-agent-page .final-actions>[data-back]{grid-column:1;grid-row:2}
+  .meeting-agent-page .final-actions .export-menu{grid-column:2;grid-row:2}
   .meeting-agent-page .export-group{width:auto}
   .meeting-agent-page .generation-phases{grid-template-columns:1fr}
   .meeting-agent-page .export-menu{width:100%}
@@ -1238,9 +1243,8 @@
     </div>
     <div id="finalSaveConfirmation" class="message success final-save-confirmation" role="status" aria-live="polite" hidden>
       <div><strong>Final minutes saved</strong><p>This transcript is marked Complete in Library. You can reopen the final minutes there or export a copy here.</p></div>
-      <a class="secondary" href="/jobs">Open Library</a>
+      <div class="final-save-actions"><a class="secondary" href="/jobs">Open Library</a><button id="newMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restart"/></svg>Process new meeting</button></div>
     </div>
-    <div class="screen-actions"><button id="newMinutes" class="secondary quiet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restart"/></svg>Process new meeting</button></div>
   </section>
   <dialog id="regenerationDialog" class="confirmation-dialog" aria-labelledby="regenerationTitle">
     <form method="dialog">

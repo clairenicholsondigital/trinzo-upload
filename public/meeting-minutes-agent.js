@@ -111,6 +111,7 @@
     }
     var preview = document.getElementById('previewDocument');
     if (preview) {
+      preview.hidden = state.currentStep === MAX_STEP;
       var label = state.currentStep === MAX_STEP ? 'Back to editing' : 'Preview draft';
       var wide = preview.querySelector('.wide-label');
       var narrow = preview.querySelector('.narrow-label');
@@ -122,6 +123,10 @@
       var previewIcon = preview.querySelector('.ic use');
       if (previewIcon) previewIcon.setAttribute('href', state.currentStep === MAX_STEP ? '#i-arrow-left' : '#i-eye');
     }
+    var download = document.getElementById('downloadDraft');
+    if (download) download.hidden = state.currentStep === MAX_STEP;
+    var library = document.getElementById('resumeLaterLink');
+    if (library) library.hidden = state.currentStep === MAX_STEP;
     updateDraftDownloadState();
   }
 
@@ -1862,6 +1867,7 @@
     var button = document.getElementById('saveMinutes');
     var confirmation = document.getElementById('finalSaveConfirmation');
     if (button) {
+      button.hidden = complete;
       button.disabled = complete;
       button.innerHTML = icon('save') + (complete ? 'Final minutes saved' : 'Save final minutes');
     }

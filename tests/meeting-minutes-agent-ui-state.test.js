@@ -2000,6 +2000,9 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
 
     await page.selectOption('#mobileStepSelect', '5');
     assert.equal(await page.locator('.final-actions>.secondary, .final-actions>.button, .final-actions>.export-menu').count(), 3);
+    assert.equal(await page.locator('#previewDocument').isHidden(), true, 'the final review does not repeat its Back action in the fixed bar');
+    assert.equal(await page.locator('#downloadDraft').isHidden(), true, 'the final review uses its full export menu instead of a duplicate download');
+    assert.equal(await page.locator('#newMinutes').isHidden(), true, 'a new meeting is offered only after these minutes are final');
     assert.equal(await page.locator('.export-menu-body').isHidden(), true);
     await page.click('.export-menu>summary');
     assert.equal(await page.locator('.export-menu-body').isVisible(), true);
@@ -2011,8 +2014,8 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(finalSaveResponse.request().postDataJSON().status, 'complete');
     assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true);
     assert.match(await page.textContent('#finalSaveConfirmation'), /marked Complete in Library/i);
-    assert.equal(await page.textContent('#saveMinutes'), 'Final minutes saved');
-    assert.equal(await page.locator('#saveMinutes').isDisabled(), true);
+    assert.equal(await page.locator('#saveMinutes').isHidden(), true);
+    assert.equal(await page.locator('#newMinutes').isVisible(), true);
     assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.status), 'complete');
     assert.deepEqual(errors, []);
   } finally {
