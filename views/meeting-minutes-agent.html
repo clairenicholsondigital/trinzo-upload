@@ -590,6 +590,9 @@
 .meeting-agent-page .row-decisions button{font-size:.8rem;line-height:1.25;padding:.1rem .45rem;border-radius:999px;border:1px solid var(--line,#d5d8dd);background:transparent;cursor:pointer;color:inherit}
 .meeting-agent-page .row-decisions button:hover{border-color:var(--ink,#1d2430)}
 .meeting-agent-page .row-decisions .row-transcript{display:inline-flex;align-items:center;gap:.3rem}
+.meeting-agent-page .row-decisions .icon-only{display:inline-grid;place-items:center;width:2.25rem;min-width:2.25rem;height:2.25rem;padding:0;border-radius:50%;color:var(--muted)}
+.meeting-agent-page .row-decisions .icon-only .ic{width:.95rem;height:.95rem}
+.meeting-agent-page .row-decisions .row-reject:hover{border-color:var(--danger-text);color:var(--danger-text);background:var(--danger-bg)}
 .meeting-agent-page .row-transcript-chevron{display:inline-block;font-size:1rem;line-height:.7;transition:transform .15s ease}
 .meeting-agent-page .row-transcript[aria-expanded="true"]{border-color:var(--accent);background:var(--info-bg);color:var(--info-text)}
 .meeting-agent-page .row-transcript[aria-expanded="true"] .row-transcript-chevron{transform:rotate(180deg)}
@@ -1098,6 +1101,7 @@
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
   <symbol id="i-restart" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
   <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>

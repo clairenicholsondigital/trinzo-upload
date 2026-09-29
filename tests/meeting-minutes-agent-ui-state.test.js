@@ -2383,8 +2383,17 @@ test('an action row has one set of controls, not a menu repeating them', { timeo
     browser = launched.browser;
     const { page, errors } = launched;
     assert.equal(await page.locator('#actionsBody .record-menu').count(), 0);
-    assert.equal(await page.locator('#actionsBody [data-action-row]').first().locator('[data-reject-action]').count(), 1);
-    assert.equal(await page.locator('#actionsBody [data-action-row]').first().locator('[data-open-action-transcript]').count(), 1);
+    const row = page.locator('#actionsBody [data-action-row]').first();
+    assert.equal(await row.locator('[data-reject-action]').count(), 1);
+    assert.equal(await row.locator('[data-open-action-transcript]').count(), 1);
+    assert.equal((await row.locator('[data-transcript-toggle-label]').innerText()).trim(), 'Source');
+    assert.equal((await row.locator('[data-keep-action]').innerText()).trim(), '');
+    assert.equal((await row.locator('[data-reject-action]').innerText()).trim(), '');
+    assert.equal(await row.locator('[data-keep-action]').getAttribute('aria-label'), 'Mark action checked');
+    assert.equal(await row.locator('[data-reject-action]').getAttribute('aria-label'), 'Remove action from minutes');
+    const controlsWidth = await row.locator('.row-decisions').evaluate((node) => Array.from(node.children)
+      .reduce((total, child) => total + child.getBoundingClientRect().width, 0));
+    assert.ok(controlsWidth < 190, 'secondary action controls stay compact: ' + controlsWidth);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

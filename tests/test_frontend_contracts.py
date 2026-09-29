@@ -92,7 +92,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('data-action-transcript-panel', client)
         self.assertIn('data-transcript-toggle-label', client)
         self.assertIn("transcriptPanel.open = opening", client)
-        self.assertIn("opening ? 'Hide transcript' : 'View transcript'", client)
+        self.assertIn("opening ? 'Hide source transcript' : 'View source transcript'", client)
         self.assertIn('.row-transcript[aria-expanded="true"]', page)
         self.assertIn("scrollIntoView({ behavior: 'smooth', block: 'center' })", client)
         self.assertIn('id="executiveSummary" rows="3"', page)

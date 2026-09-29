@@ -1281,15 +1281,15 @@
       var transcriptKey = disclosureKey(item.evidenceIds, 'action-transcript:' + (item.id || index));
       var transcriptOpen = Boolean(openDisclosures[transcriptKey]);
       // No "•••" menu on an action row: it only repeated the row's own
-      // View transcript and Remove from minutes controls under a heading,
+      // source and remove controls under a heading,
       // and two remove buttons that do the same thing read as two things.
       var kept = isActionKept(item.id);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
       var decisions = '<div class="row-decisions">'
-        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '"><span data-transcript-toggle-label>' + (transcriptOpen ? 'Hide transcript' : 'View transcript') + '</span><span class="row-transcript-chevron" aria-hidden="true">⌄</span></button>'
-        + '<button type="button" class="quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Checked' : 'Mark checked') + '</button>'
-        + '<button type="button" class="quiet row-reject" data-reject-action="' + index + '">Remove from minutes</button>'
+        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '" aria-label="' + (transcriptOpen ? 'Hide source transcript' : 'View source transcript') + '"><span data-transcript-toggle-label>Source</span><span class="row-transcript-chevron" aria-hidden="true">⌄</span></button>'
+        + '<button type="button" class="quiet row-keep icon-only' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '" aria-label="' + (kept ? 'Mark action unchecked' : 'Mark action checked') + '" title="' + (kept ? 'Marked checked' : 'Mark checked') + '">' + icon('check') + '</button>'
+        + '<button type="button" class="quiet row-reject icon-only" data-reject-action="' + index + '" aria-label="Remove action from minutes" title="Remove from minutes">' + icon('trash') + '</button>'
         + '</div>';
       var transcriptPanel = '<details id="' + escapeHtml(transcriptId) + '" class="action-transcript-panel" data-action-transcript-panel data-keep-open="' + escapeHtml(transcriptKey) + '"><summary class="visually-hidden">Transcript passage</summary><div class="evidence-panel">' + evidenceHtml(item.evidenceIds) + '</div></details>';
       // Reordering: the handle is the drag source and also takes arrow keys, so
@@ -2981,8 +2981,7 @@
         var opening = !transcriptPanel.open;
         transcriptPanel.open = opening;
         transcriptButton.setAttribute('aria-expanded', opening ? 'true' : 'false');
-        var transcriptLabel = transcriptButton.querySelector('[data-transcript-toggle-label]');
-        if (transcriptLabel) transcriptLabel.textContent = opening ? 'Hide transcript' : 'View transcript';
+        transcriptButton.setAttribute('aria-label', opening ? 'Hide source transcript' : 'View source transcript');
       }
       return;
     }
