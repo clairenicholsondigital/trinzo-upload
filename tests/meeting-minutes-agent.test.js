@@ -2510,6 +2510,26 @@ test('the deduplicated discovery inventory keeps a chain and drops the thread an
   assert.deepEqual(dedupeActionDiscoveryInventory([], [], candidates).map((item) => item.candidateId), ['c1', 'c2', 'c3', 'c4', 'c5']);
 });
 
+test('a chain keeps component candidates when it contains distinct operations', () => {
+  const chains = [{ candidateId: 'chain-1', recordType: 'action_chain', candidateIds: ['c1', 'c2'] }];
+  const candidates = [
+    { candidateId: 'c1', actionFamily: 'send', speaker: 'David', focusText: 'Send the debug commands.' },
+    { candidateId: 'c2', actionFamily: 'test', speaker: 'Andrew', focusText: 'Test the debug commands.' }
+  ];
+  const result = dedupeActionDiscoveryInventory(chains, [], candidates).map((item) => item.candidateId);
+  assert.deepEqual(result, ['chain-1', 'c1', 'c2']);
+});
+
+test('a same-operation request and acceptance still collapse into the chain', () => {
+  const chains = [{ candidateId: 'chain-1', recordType: 'action_chain', candidateIds: ['c1', 'c2'] }];
+  const candidates = [
+    { candidateId: 'c1', actionFamily: 'review', speaker: 'Morgan', focusText: 'Review the report.' },
+    { candidateId: 'c2', actionFamily: 'review', speaker: 'Alex', focusText: 'I will review it.' }
+  ];
+  const result = dedupeActionDiscoveryInventory(chains, [], candidates).map((item) => item.candidateId);
+  assert.deepEqual(result, ['chain-1']);
+});
+
 test('the recovery prompt receives a compact discussion context, not the whole draft object', () => {
   const discussion = [{
     id: 't1', topic: 'Malt', points: [{ id: 'p1', text: 'Eighteen sacks will not cover both brews.', evidenceIds: ['T0001'], reviewFlagIds: ['f'], supportingDetails: [{ text: 'x'.repeat(2000) }] }],

@@ -8763,10 +8763,28 @@ function meetingAgentRefereeAccountedForAllCandidates(refereeParsed = {}, refere
 // gap three times. Keep the chain, drop the members it already contains.
 function dedupeActionDiscoveryInventory(chains = [], threads = [], candidates = []) {
   const covered = new Set();
-  for (const chain of chains) for (const id of chain?.candidateIds || []) covered.add(String(id));
+  const chainCovered = new Set();
+  const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => [String(candidate?.candidateId || ''), candidate]));
+  const retainedComponentIds = new Set();
+  for (const chain of chains) {
+    const members = (chain?.candidateIds || []).map((id) => candidatesById.get(String(id))).filter(Boolean);
+    const actionFamilies = new Set(members.map((candidate) => String(candidate?.actionFamily || '').trim()).filter(Boolean));
+    // A chain is a context graph, not automatically one deliverable. Keep its
+    // component candidates when it contains different operations so that the
+    // referee can retain separate send/test, trace/incorporate, or review/follow-up
+    // work. Same-operation request/acceptance pairs remain safely collapsed.
+    if (actionFamilies.size > 1) {
+      for (const member of members) retainedComponentIds.add(String(member.candidateId));
+    }
+    for (const id of chain?.candidateIds || []) {
+      chainCovered.add(String(id));
+      if (!retainedComponentIds.has(String(id))) covered.add(String(id));
+    }
+  }
   const keptThreads = threads.filter((thread) => {
     const members = (thread?.candidateIds || []).map(String);
-    return !(members.length && members.every((id) => covered.has(id)));
+    return !(members.length && members.every((id) => chainCovered.has(id)));
   });
   for (const thread of keptThreads) for (const id of thread?.candidateIds || []) covered.add(String(id));
   const keptCandidates = candidates.filter((candidate) => !covered.has(String(candidate?.candidateId || '')));

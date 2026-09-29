@@ -1562,6 +1562,12 @@ function actionCandidateInventory(units = []) {
       candidateId: stableId('candidate', unit.id),
       focusEvidenceId: unit.id,
       evidenceIds: ids,
+      // Keep the accountable speaker and operation available to the action
+      // inventory deduper. A commitment chain is useful context, but a chain
+      // containing different operations (for example send -> test) must not
+      // hide the component deliverables from the referee.
+      speaker: text(unit.speaker, 180),
+      actionFamily: chainActionFamily(unit.text),
       dispositionHint: acceptedOfferAhead || addressedAccepted ? 'accepted_request' : actionEvidenceDisposition(unit.text, context),
       cueKinds: addressedAccepted ? [...cueKinds, 'addressed'] : cueKinds,
       priority: (contextualAcceptance || acceptedRequestAhead || acceptedOfferAhead ? 4 : 0)
