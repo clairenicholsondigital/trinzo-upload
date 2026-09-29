@@ -40,6 +40,8 @@ const ACTION_VERBS = new Set([
   'complete', 'confirm', 'create', 'draft', 'finalise', 'finalize', 'finish',
   'prepare', 'review', 'schedule', 'test', 'update', 'verify'
 ]);
+const COMPLEMENTARY_DOCUMENT_VERBS = new Set(['sign', 'complete', 'approve', 'attest', 'execute', 'countersign']);
+const COMPLEMENTARY_DELIVERY_VERBS = new Set(['ask', 'email', 'forward', 'send', 'share', 'submit', 'provide', 'issue', 'deliver', 'circulate']);
 const CONTENT_STOP_WORDS = new Set([
   'a', 'an', 'and', 'all', 'also', 'as', 'at', 'by', 'for', 'from', 'has',
   'have', 'if', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'their', 'then',
@@ -101,6 +103,47 @@ function sameOrNestedActionDeliverable(left = {}, right = {}) {
   const a = actionClauses(leftText); const b = actionClauses(rightText);
   if (!a.length || !b.length) return false;
   return a.some((one) => b.some((two) => clauseCoverage(one, two, leftText, rightText) >= 0.67));
+}
+
+// Some workflows describe one document hand-off from both sides: one row says
+// to send/share the document, another says to sign/complete it before the next
+// step. Treat these as one deliverable only when the wording shares a specific
+// multi-word object and the cited evidence is the same or adjacent. This keeps
+// unrelated send-and-sign work separate while preventing two rows for one
+// document from reaching the reviewer.
+function sameComplementaryDocumentDeliverable(left = {}, right = {}) {
+  if (!compatibleOwners(left, right) || evidenceDistance(left, right) > 6) return false;
+  const leftWords = tokens(left.action || left.text);
+  const rightWords = tokens(right.action || right.text);
+  const leftVerb = leftWords[0]; const rightVerb = rightWords[0];
+  const complementary = (COMPLEMENTARY_DOCUMENT_VERBS.has(leftVerb) && COMPLEMENTARY_DELIVERY_VERBS.has(rightVerb))
+    || (COMPLEMENTARY_DOCUMENT_VERBS.has(rightVerb) && COMPLEMENTARY_DELIVERY_VERBS.has(leftVerb));
+  if (!complementary) return false;
+  const leftPairs = new Set(leftWords.slice(1).map((word, index) => `${word} ${leftWords[index + 2] || ''}`).filter((pair) => !pair.endsWith(' ')));
+  const rightPairs = new Set(rightWords.slice(1).map((word, index) => `${word} ${rightWords[index + 2] || ''}`).filter((pair) => !pair.endsWith(' ')));
+  return [...leftPairs].some((pair) => rightPairs.has(pair) && pair.split(' ').every((word) => word.length > 2));
+}
+
+function mergeComplementaryDocumentWording(left = {}, right = {}) {
+  const delivery = [left, right].find((record) => COMPLEMENTARY_DELIVERY_VERBS.has(tokens(record.action || record.text)[0]));
+  const completion = delivery === left ? right : left;
+  if (!delivery || !completion) return String(left.action || left.text || right.action || right.text || '');
+  const deliveryText = String(delivery.action || delivery.text || '').trim().replace(/[.?!]+$/, '');
+  const completionText = String(completion.action || completion.text || '').trim().replace(/[.?!]+$/, '');
+  const rawTokens = (value) => String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]*/g) || [];
+  const deliveryWords = rawTokens(deliveryText);
+  const completionWords = rawTokens(completionText);
+  let shared = '';
+  for (let length = Math.min(deliveryWords.length, completionWords.length); length >= 2 && !shared; length -= 1) {
+    for (let index = 0; index + length <= completionWords.length; index += 1) {
+      const phrase = completionWords.slice(index, index + length).join(' ');
+      if (deliveryWords.join(' ').includes(phrase)) { shared = phrase; break; }
+    }
+  }
+  if (!shared) return `${deliveryText} and ${completionText}.`;
+  const escaped = shared.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const compactCompletion = completionText.replace(new RegExp(`(?:\\bthe\\s+)?${escaped}`, 'i'), 'it');
+  return `${deliveryText} and ${compactCompletion.charAt(0).toLowerCase()}${compactCompletion.slice(1)}.`;
 }
 
 function recipientTokens(value = '') {
@@ -243,6 +286,8 @@ module.exports = {
   questionCommunicationFrame,
   sameQuestionCommunicationDeliverable,
   sameOrNestedActionDeliverable,
+  sameComplementaryDocumentDeliverable,
+  mergeComplementaryDocumentWording,
   sameContactPurposeDeliverable,
   sameReciprocalContactDeliverable,
   circularMetaAction,

@@ -43,6 +43,22 @@ test('true rewordings of one deliverable still merge', () => {
   assert.equal(rows.length, 1);
 });
 
+test('complementary send-and-sign wording for one document merges when evidence is adjacent', () => {
+  const rows = dedupeHybridActionRecords([
+    action('a', 'Send the signed access form to Jordan.', ['T0020', 'T0021']),
+    action('b', 'Sign the access form before the review begins.', ['T0021', 'T0022'])
+  ]);
+  assert.equal(rows.length, 1);
+});
+
+test('complementary document handling stays separate for distant evidence', () => {
+  const rows = dedupeHybridActionRecords([
+    action('a', 'Send the signed access form to Jordan.', ['T0020']),
+    action('b', 'Sign the access form before the review begins.', ['T0090'])
+  ]);
+  assert.equal(rows.length, 2);
+});
+
 test('a named request answered by that person committing is accepted work', () => {
   const { addressedRequestAcceptedAhead, actionCandidateInventory } = require('../utils/meetingMinutesAgentV2');
   const rows = [

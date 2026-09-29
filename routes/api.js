@@ -70,7 +70,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
@@ -11892,6 +11892,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
   };
   for (const record of Array.isArray(records) ? records : []) {
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
+    let complementaryDuplicate = null;
     const duplicate = merged.find((existing) => {
       const conventional = !distinctActionDeliverables(record, existing)
         && hybridCandidateMatchesRecord(candidate, existing)
@@ -11917,6 +11918,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       // One conversation, one action, whichever side each wording was
       // written from. The owner is settled below.
       if (sameReciprocalContactDeliverable(record, existing)) return true;
+      if (sameComplementaryDocumentDeliverable(record, existing)) {
+        complementaryDuplicate = existing;
+        return true;
+      }
       if (!sameOrNestedActionDeliverable(record, existing)) return false;
       const recordQuestionFrame = questionCommunicationFrame(record);
       const existingQuestionFrame = questionCommunicationFrame(existing);
@@ -11936,6 +11941,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       || (preference(record) === preference(duplicate)
         && String(record.action || '').localeCompare(String(duplicate.action || '')) < 0)
       ? record : duplicate;
+    if (complementaryDuplicate === duplicate) {
+      preferred = { ...preferred, action: mergeComplementaryDocumentWording(record, duplicate) };
+    }
     // Never let the vaguer "figure out a way to ..." wording win.
     if (wayToParaphraseOf(preferred, preferred === record ? duplicate : record)) {
       preferred = preferred === record ? duplicate : record;

@@ -2760,12 +2760,32 @@ function quotedVerbatim(quote, passage) {
   return quotedVerbatimValidation(quote, passage).valid;
 }
 
-function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacementTiming = '') {
+function dateWordingVariants(exactDate = '') {
+  const match = String(exactDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return [];
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const day = Number(match[3]);
+  const suffix = day % 10 === 1 && day % 100 !== 11 ? 'st' : day % 10 === 2 && day % 100 !== 12 ? 'nd' : day % 10 === 3 && day % 100 !== 13 ? 'rd' : 'th';
+  const month = months[Number(match[2]) - 1];
+  if (!month) return [];
+  return [
+    `${day}${suffix} ${month}`,
+    `${day}${suffix} of ${month}`,
+    `${day} ${month}`,
+    `${month} ${day}${suffix}`,
+    `${month} ${day}`
+  ];
+}
+
+function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacementTiming = '', exactDate = '') {
   const source = String(actionText || '').trim();
   const previous = String(previousTiming || '').trim();
   if (!source || !previous) return source;
-  const escaped = previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  const pattern = new RegExp(`(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?${escaped}`, 'i');
+  const candidates = [...new Set([previous, ...dateWordingVariants(exactDate)])]
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length)
+    .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
+  const pattern = new RegExp(`(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?(?:the\\s+)?(?:${candidates.join('|')})`, 'i');
   if (!pattern.test(source)) return source;
   const replacement = String(replacementTiming || '').trim();
   let revised = source.replace(pattern, replacement);
@@ -2868,7 +2888,7 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     if (replacement && sameTiming(replacement, wording)) return action;
     const usable = replacementIsVerbatim;
     const timing = usable ? timingFrom({ timing: { wording: replacement } }, options) : { kind: 'not_stated', wording: '', exactDate: '' };
-    const actionText = replaceEmbeddedTiming(action.action, wording, usable ? replacement : '');
+    const actionText = replaceEmbeddedTiming(action.action, wording, usable ? replacement : '', action.timing?.exactDate);
     const said = !timingQuoteCheck.valid
       ? 'the replacement is directly supported by the cited passage'
       : row.verdict === 'belongs_to_other_step'
@@ -4980,7 +5000,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       // target belongs in the structured timing field, where it remains
       // searchable and can be checked independently of the action wording.
       if (timing.kind !== 'not_stated' && timing.wording) {
-        action = replaceEmbeddedTiming(action, timing.wording, '');
+        action = replaceEmbeddedTiming(action, timing.wording, '', timing.exactDate);
       }
       // Replaced from the transcript rather than removed: nothing to report.
       if (timingShapeIssue && timing.kind !== 'not_stated' && timing.wording) timingShapeIssue = '';
@@ -5158,7 +5178,10 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         exactDateSupported = new RegExp(`\\b0?${Number(day)}(?:st|nd|rd|th)?\\b[\\s\\S]{0,20}\\b${monthNames[Number(month)]}\\b[\\s\\S]{0,20}\\b${year}\\b`, 'i').test(evidenceText)
           || evidenceText.includes(action.timing.exactDate);
         const safelyDerivedDate = wordingSupported ? relativeExactDate(action.timing.wording, options.meetingDate) : '';
-        exactDateSupported = exactDateSupported || safelyDerivedDate === action.timing.exactDate;
+        const evidenceDate = statedCalendarDate(evidenceText, options.meetingDate);
+        exactDateSupported = exactDateSupported
+          || safelyDerivedDate === action.timing.exactDate
+          || evidenceDate === action.timing.exactDate;
         if (!exactDateSupported) {
           const unsupportedExactDate = action.timing.exactDate;
           if (enforceEvidence) action.timing.exactDate = '';

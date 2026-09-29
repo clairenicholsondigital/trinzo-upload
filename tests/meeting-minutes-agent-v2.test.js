@@ -166,6 +166,22 @@ test('generated timing rejects raw action sentences and task durations but keeps
   });
 });
 
+test('generated action text does not repeat a structured date in a different spoken form', () => {
+  const units = normaliseSourceUnits([{
+    id: 'T0151', speaker: 'Alex Carter', classification: 'keep', confidence: 0.99,
+    text: 'Alex will complete the training attestation by 17th of July before the review starts.'
+  }]);
+  const result = normaliseAgentResult({ actions: [{
+    action: 'Complete and submit the training attestation by the 17th of July before the review starts.',
+    owners: ['Alex Carter'],
+    timing: { kind: 'deadline', wording: '17th July', exactDate: '2026-07-17' },
+    evidenceIds: ['T0151']
+  }] }, units, 'actions', { meetingDate: '2026-06-22' });
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.actions[0].action, 'Complete and submit the training attestation before the review starts.');
+  assert.equal(result.actions[0].timing.exactDate, '2026-07-17');
+});
+
 test('generated timing trims dependency lead-ins and retains concise valid timing phrases', () => {
   const cases = [
     [{ kind: 'dependency', wording: 'In parallel once they start manually doing the process', exactDate: '' }, { kind: 'dependency', wording: 'Once they start manually doing the process', exactDate: '' }],
