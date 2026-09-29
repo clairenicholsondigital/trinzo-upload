@@ -1800,9 +1800,11 @@
         return '<span class="owner-chip">' + escapeHtml(owner)
           + '<button type="button" data-final-remove-owner="' + escapeHtml(owner) + '" aria-label="Remove owner ' + escapeHtml(owner) + '">&times;</button></span>';
       }).join('') || '<span class="muted">No owner selected</span>';
-      var ownerOptions = participantNames().filter(function (name) {
+      var availableOwners = participantNames().filter(function (name) {
         return selectedKeys.indexOf(name.toLowerCase()) < 0;
-      }).map(function (name) {
+      });
+      var ownerOptions = (availableOwners.length ? '<option value="__all">All participants</option>' : '')
+        + availableOwners.map(function (name) {
         return '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
       }).join('');
       body = '<span class="final-inline-editor"' + editorAttributes + '>'
@@ -3250,9 +3252,10 @@
     var select = event.target.closest('[data-final-add-owner]');
     if (!select || !select.value || !activeFinalEdit || activeFinalEdit.field !== 'owners') return;
     var selected = activeFinalEdit.ownerSelection || (activeFinalEdit.ownerSelection = []);
-    if (!selected.some(function (owner) { return owner.toLowerCase() === select.value.toLowerCase(); })) {
-      selected.push(select.value);
-    }
+    var additions = select.value === '__all' ? participantNames() : [select.value];
+    additions.forEach(function (name) {
+      if (!selected.some(function (owner) { return owner.toLowerCase() === name.toLowerCase(); })) selected.push(name);
+    });
     renderFinal();
   });
 

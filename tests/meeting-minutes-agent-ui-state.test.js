@@ -1612,10 +1612,10 @@ test('final minutes edit source records in place and the finishing bar remains a
 
     await page.locator('#finalDocument [data-kind="action"][data-field="owners"]').first().click();
     assert.deepEqual(await page.locator('#finalDocument [data-final-add-owner] option').allTextContents(), [
-      'Choose a participant...', 'Sam Okoro'
+      'Choose a participant...', 'All participants', 'Sam Okoro'
     ]);
     assert.equal(await page.locator('#finalDocument [data-final-editor-value]').count(), 0, 'owners are selected rather than typed as comma-separated text');
-    await page.selectOption('#finalDocument [data-final-add-owner]', 'Sam Okoro');
+    await page.selectOption('#finalDocument [data-final-add-owner]', '__all');
     assert.deepEqual(await page.locator('#finalDocument .final-owner-picker .owner-chip').allTextContents(), ['Alex Reed×', 'Sam Okoro×']);
     await page.setViewportSize({ width: 390, height: 844 });
     const ownerPickerLayout = await page.locator('#finalDocument .final-owner-picker').evaluate((node) => ({
