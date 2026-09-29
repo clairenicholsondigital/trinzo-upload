@@ -59,6 +59,7 @@ const {
   corroboratedOmittedDiscussionRecords,
   mergeHybridDiscussionTopics,
   compactDiscussionPropositions,
+  consolidateSupportingDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,
@@ -92,6 +93,19 @@ const {
   normaliseAgentDiscussion,
   normaliseAgentActions
 } = api.stagedEvaluation;
+
+test('bare status reassurance is consolidated into a fuller context item about the same subject', () => {
+  const details = consolidateSupportingDetails({
+    text: 'The delivery programme was reviewed.', evidenceIds: ['T0001'],
+    supportingDetails: [
+      { id: 'dated', text: 'Translation review is scheduled for next week.', evidenceIds: ['T0010'] },
+      { id: 'status', text: 'On track for the translation review.', evidenceIds: ['T0011'] },
+      { id: 'other', text: 'Interface testing is on track.', evidenceIds: ['T0012'] },
+      { id: 'timed-status', text: 'Packaging review is on track for completion next Thursday.', evidenceIds: ['T0013'] }
+    ]
+  });
+  assert.deepEqual(details.map((detail) => detail.id), ['timed-status', 'dated', 'other']);
+});
 
 test('proposal decisions resolve only their linked review flags', () => {
   const acceptedChange = {

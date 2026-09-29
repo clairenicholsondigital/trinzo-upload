@@ -12312,6 +12312,22 @@ function discussionInformationTokens(value = '') {
     .filter((token) => !stop.has(token)).map(stem));
 }
 
+function lowInformationStatusSubject(value = '') {
+  const text = String(value || '').trim();
+  const status = /\b(?:on track|on schedule|progressing as (?:planned|expected)|proceeding as planned|underway as planned|going to plan)\b/i;
+  if (!status.test(text)) return new Set();
+  // A status phrase carrying its own date, quantity, blocker or concrete
+  // completion update still adds information and must remain independently
+  // reviewable. This only identifies bare reassurance about a named subject.
+  if (/\b(?:by|before|after|next|this|today|tomorrow|yesterday|deadline|due|scheduled|completed?|finished?|blocked?|delayed?|awaiting|\d)\b/i.test(text)) return new Set();
+  const subject = text
+    .replace(/^\s*(?:the\s+)?(?:work|activity|task|project|process)\s+(?:is|remains?|stays?)\s+/i, '')
+    .replace(/^\s*(?:is|remains?|stays?)?\s*(?:on track|on schedule)\s+(?:for|with|on)?\s*/i, '')
+    .replace(/\b(?:is|are|remains?|stays?)?\s*(?:on track|on schedule|progressing as (?:planned|expected)|proceeding as planned|underway as planned|going to plan)\b/ig, ' ');
+  const tokens = discussionInformationTokens(subject);
+  return tokens.size >= 2 ? tokens : new Set();
+}
+
 function supportingDetailAddsInformation(detail, retained = [], primary = {}) {
   const text = String(detail?.text || '').trim();
   if (!text) return false;
@@ -12319,6 +12335,7 @@ function supportingDetailAddsInformation(detail, retained = [], primary = {}) {
   if (!detailTokens.size) return false;
   const detailNumbers = new Set(text.match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
   const evidence = new Set(detail?.evidenceIds || []);
+  const statusSubject = lowInformationStatusSubject(text);
   for (const other of [primary, ...retained]) {
     const otherText = String(other?.text || '').trim();
     if (!otherText) continue;
@@ -12329,6 +12346,10 @@ function supportingDetailAddsInformation(detail, retained = [], primary = {}) {
       && ![...detailNumbers].some((number) => otherNumbers.has(number));
     if (conflictingQuantity) continue;
     const sharedEvidence = (other?.evidenceIds || []).some((id) => evidence.has(id));
+    if (statusSubject.size) {
+      const subjectCovered = [...statusSubject].filter((token) => otherTokens.has(token)).length / statusSubject.size;
+      if (subjectCovered >= 0.8) return false;
+    }
     // A short source fragment adds no reviewer value when its meaningful words
     // are already present in a fuller proposition. Evidence overlap permits a
     // slightly looser threshold, but never collapses conflicting quantities.
@@ -12339,7 +12360,8 @@ function supportingDetailAddsInformation(detail, retained = [], primary = {}) {
 
 function consolidateSupportingDetails(record = {}) {
   const ordered = [...(record.supportingDetails || [])].sort((left, right) =>
-    String(right?.text || '').length - String(left?.text || '').length);
+    Number(Boolean(lowInformationStatusSubject(left?.text).size)) - Number(Boolean(lowInformationStatusSubject(right?.text).size))
+    || String(right?.text || '').length - String(left?.text || '').length);
   const retained = [];
   for (const detail of ordered) {
     if (supportingDetailAddsInformation(detail, retained, record)) retained.push(detail);
@@ -17161,6 +17183,7 @@ router.stagedEvaluation = {
   corroboratedOmittedDiscussionRecords,
   mergeHybridDiscussionTopics,
   compactDiscussionPropositions,
+  consolidateSupportingDetails,
   promoteMaterialObjectionDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
