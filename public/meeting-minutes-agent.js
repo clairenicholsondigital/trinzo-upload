@@ -976,6 +976,8 @@
       ? details.meetingTitle.trim() : 'Meeting Minutes Agent';
   }
 
+  var DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
+
   function readDetails() {
     if (!state.draft) return {};
     var internalAttendees = attendeeNames('internal');
@@ -983,7 +985,7 @@
     state.draft.details = {
       meetingTitle: document.getElementById('meetingTitle').value.trim(),
       meetingDate: document.getElementById('meetingDate').value,
-      meetingLocation: document.getElementById('meetingLocation').value.trim(),
+      meetingLocation: document.getElementById('meetingLocation').value.trim() || DEFAULT_MEETING_LOCATION,
       meetingType: meetingTypeValue(document.getElementById('meetingType').value),
       clientAttendeeLabel: document.getElementById('clientAttendeeLabelSelect').value === 'External' ? 'External' : 'Client',
       internalAttendees: internalAttendees,
@@ -998,15 +1000,13 @@
     var details = draft.details || {};
     setFieldValue('meetingTitle', details.meetingTitle || '');
     setFieldValue('meetingDate', details.meetingDate || '');
-    setFieldValue('meetingLocation', details.meetingLocation || '');
+    setFieldValue('meetingLocation', details.meetingLocation || DEFAULT_MEETING_LOCATION);
     setMeetingTypeField(details.meetingType || '');
     renderAttendeeGroup('internal', details.internalAttendees || []);
     renderAttendeeGroup('client', details.clientAttendees || []);
     setFieldValue('clientAttendeeLabelSelect', details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
     document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
   }
-
-  var DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
 
   async function prepareFile(file) {
     if (!file) return;
@@ -1022,12 +1022,6 @@
     try {
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
-      // Trinzo meetings are held on Teams, so a fresh upload starts there. Only
-      // on upload: a location the reviewer later clears stays cleared.
-      if (!String((state.draft.details || {}).meetingLocation || '').trim()) {
-        document.getElementById('meetingLocation').value = DEFAULT_MEETING_LOCATION;
-        readDetails(); scheduleSave();
-      }
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length);
       setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');

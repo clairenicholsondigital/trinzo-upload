@@ -2443,6 +2443,8 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent`);
+    assert.equal(await page.locator('#meetingLocation').inputValue(), 'Microsoft Teams', 'Teams is a real default value, not placeholder text');
+    assert.equal(await page.locator('#meetingLocation').getAttribute('placeholder'), null);
     assert.equal(await page.locator('#uploadConfirmation').isHidden(), true, 'nothing to confirm before an upload');
     const preparedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/prepare'));
     await page.setInputFiles('#transcriptFile', { name: 'weekly-checkin.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });

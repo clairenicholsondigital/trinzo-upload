@@ -15449,6 +15449,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     const preparationMs = Date.now() - preparationStartedAt;
     const metadataStartedAt = Date.now();
     const details = sanitiseMeetingAgentDetails(extractStagedDetailsFromTranscript(transcript.text, transcript.fileName).screens.details);
+    details.meetingLocation = 'Microsoft Teams';
     const sourceUnits = normaliseSourceUnits(prepared.sourceUnits);
     const preparedTranscript = preparedTranscriptFromUnits(sourceUnits);
     const salientDetails = salientDetailInventory(sourceUnits);

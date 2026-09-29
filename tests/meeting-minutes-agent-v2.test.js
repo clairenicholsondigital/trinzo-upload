@@ -80,7 +80,7 @@ test('agent details omit organisation and prepared transcript has stable source 
     meetingTitle: 'Review', organisation: 'Must disappear', organization: 'Also disappear',
     meetingDate: '2026-06-23', allAttendees: ['Alex', 'Alex', 'Priya']
   }), {
-    meetingTitle: 'Review', meetingDate: '2026-06-23', meetingLocation: '', meetingType: '',
+    meetingTitle: 'Review', meetingDate: '2026-06-23', meetingLocation: 'Microsoft Teams', meetingType: '',
     // Nobody is recognised as internal, so nobody is defaulted to Client.
     clientAttendeeLabel: 'Client', internalAttendees: ['Alex', 'Priya'], clientAttendees: [], allAttendees: ['Alex', 'Priya']
   });
@@ -239,7 +239,7 @@ test('legacy attendee lists classify known Trinzo people as internal and retain 
   assert.deepEqual(sanitiseDetails({
     allAttendees: ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch'], clientAttendeeLabel: 'External'
   }), {
-    meetingTitle: '', meetingDate: '', meetingLocation: '', meetingType: '', clientAttendeeLabel: 'External',
+    meetingTitle: '', meetingDate: '', meetingLocation: 'Microsoft Teams', meetingType: '', clientAttendeeLabel: 'External',
     internalAttendees: ['Jacqui Fox', 'Stuart Smith'], clientAttendees: ['Niamh Lynch'],
     allAttendees: ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch']
   });

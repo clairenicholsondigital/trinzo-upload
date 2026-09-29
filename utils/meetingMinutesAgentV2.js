@@ -110,6 +110,8 @@ function stableId(prefix, value, index = 0) {
   return `${prefix}-${crypto.createHash('sha1').update(`${index}|${text(value, 4000)}`).digest('hex').slice(0, 10)}`;
 }
 
+const DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
+
 function sanitiseDetails(candidate = {}) {
   const names = (value) => [...new Set((Array.isArray(value) ? value : [])
     .map((name) => text(name, 180)).filter(Boolean))].slice(0, 100);
@@ -143,7 +145,7 @@ function sanitiseDetails(candidate = {}) {
   return {
     meetingTitle: text(candidate.meetingTitle, 300),
     meetingDate: /^\d{4}-\d{2}-\d{2}$/.test(text(candidate.meetingDate, 20)) ? text(candidate.meetingDate, 20) : '',
-    meetingLocation: text(candidate.meetingLocation, 200),
+    meetingLocation: text(candidate.meetingLocation, 200) || DEFAULT_MEETING_LOCATION,
     meetingType: text(candidate.meetingType, 200),
     clientAttendeeLabel: candidate.clientAttendeeLabel === 'External' ? 'External' : 'Client',
     internalAttendees,
