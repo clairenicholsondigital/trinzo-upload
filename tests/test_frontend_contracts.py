@@ -158,6 +158,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.meeting-agent-page .proposal-kind-remove{', page)
         self.assertIn('.proposal-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--heading);font-size:var(--fs-sm);font-weight:var(--fw-bold)}', page)
         self.assertIn('.omitted-detail-actions>details{grid-column:2;grid-row:2}', page)
+        self.assertIn('.save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden])))', page)
         self.assertIn('class="proposal-header"', page)
         self.assertIn('class="proposal-footer"', page)
         self.assertIn('Choose changes to apply', page)

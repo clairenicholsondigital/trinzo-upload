@@ -970,6 +970,15 @@
     display:flex;grid-column:2;grid-row:2;width:auto;justify-content:flex-end}
   .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions button{
     width:auto;min-width:4.5rem;white-space:nowrap}
+  /* Final review already contains its own Back and Export controls. When the
+     fixed bar has no history action left, fit it to Saved + suggestions
+     instead of preserving an empty document-actions column. */
+  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))){
+    grid-template-columns:max-content;width:max-content;max-width:calc(100% - 1rem);justify-content:start}
+  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .save-status,
+  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .review-queue-toggle{
+    grid-column:1}
+  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .save-strip-actions{display:none}
   .meeting-agent-page .save-strip-actions .wide-label{display:none}
   .meeting-agent-page .save-strip-actions .narrow-label{display:inline}
   .meeting-agent-page .undo-toast{bottom:6.2rem;width:calc(100% - 1rem)}

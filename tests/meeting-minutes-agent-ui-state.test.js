@@ -2121,6 +2121,17 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(await page.locator('.final-actions>.secondary, .final-actions>.button, .final-actions>.export-menu').count(), 3);
     assert.equal(await page.locator('#previewDocument').isHidden(), true, 'the final review does not repeat its Back action in the fixed bar');
     assert.equal(await page.locator('#downloadDraft').isHidden(), true, 'the final review uses its full export menu instead of a duplicate download');
+    const compactFinalBar = await page.locator('#saveStrip').evaluate((bar) => {
+      const box = bar.getBoundingClientRect();
+      return {
+        width: box.width,
+        centreOffset: Math.abs((box.left + box.width / 2) - window.innerWidth / 2),
+        actionsHidden: getComputedStyle(bar.querySelector('.save-strip-actions')).display === 'none'
+      };
+    });
+    assert.ok(compactFinalBar.width < 320, JSON.stringify(compactFinalBar));
+    assert.ok(compactFinalBar.centreOffset < 2, JSON.stringify(compactFinalBar));
+    assert.equal(compactFinalBar.actionsHidden, true, JSON.stringify(compactFinalBar));
     assert.equal(await page.locator('#newMinutes').isHidden(), true, 'a new meeting is offered only after these minutes are final');
     assert.equal(await page.locator('.export-menu-body').isHidden(), true);
     await page.click('.export-menu>summary');
