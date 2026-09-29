@@ -1515,7 +1515,7 @@ test('a missing-content proposal is shown once as the suggestion the reviewer mu
     const suggestion = page.locator('#minutes-proposal-proposal-1');
     await suggestion.waitFor();
     assert.equal(await page.locator('.flag').filter({ hasText: 'Confirm access to the audit folder.' }).count(), 0);
-    assert.match(await page.textContent('#proposalPanel'), /choose what to add/i);
+    assert.match(await page.textContent('#proposalPanel'), /choose changes to apply/i);
     assert.match(await suggestion.textContent(), /Confirm access to the audit folder/i);
     assert.equal(await page.textContent('#acceptSelectedProposal'), 'Apply selected');
     assert.deepEqual(errors, []);
