@@ -15496,7 +15496,8 @@ router.get('/meeting-minutes-agent/drafts', requireAuth, async (req, res) => {
       limit: req.query?.limit,
       offset: req.query?.offset,
       search: req.query?.search,
-      status: req.query?.status
+      status: req.query?.status,
+      sort: req.query?.sort
     });
     return res.json({
       ok: true,

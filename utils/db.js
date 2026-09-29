@@ -3679,6 +3679,15 @@ async function listMeetingMinutesAgentDraftPage(userId, options = {}) {
   const status = ['draft', 'review', 'complete'].includes(String(options.status || '').toLowerCase())
     ? String(options.status).toLowerCase()
     : '';
+  const sort = ['newest', 'oldest', 'title_asc', 'title_desc'].includes(String(options.sort || '').toLowerCase())
+    ? String(options.sort).toLowerCase()
+    : 'newest';
+  const orderBy = {
+    newest: 'created_at DESC, id DESC',
+    oldest: 'created_at ASC, id ASC',
+    title_asc: 'LOWER(title) ASC, created_at DESC, id DESC',
+    title_desc: 'LOWER(title) DESC, created_at DESC, id DESC'
+  }[sort];
   const params = [Number(userId), search, status];
   const where = `user_id = $1
     AND ($2 = '' OR title ILIKE '%' || $2 || '%' OR file_name ILIKE '%' || $2 || '%')
@@ -3689,7 +3698,7 @@ async function listMeetingMinutesAgentDraftPage(userId, options = {}) {
       `SELECT id, revision, status, title, file_name, payload, created_at, updated_at
        FROM meeting_minutes_agent_drafts
        WHERE ${where}
-       ORDER BY updated_at DESC
+       ORDER BY ${orderBy}
        LIMIT $4 OFFSET $5`,
       [...params, limit, offset]
     )

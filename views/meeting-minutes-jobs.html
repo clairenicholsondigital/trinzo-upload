@@ -45,7 +45,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .jobs .library-action-group { display:flex; gap:.45rem; align-items:center; flex-wrap:wrap; }
 .jobs .library-action-group .button,
 .jobs .library-action-group button { min-height:2.25rem; padding:.5rem .72rem; line-height:1.15; }
-.library-tools { display:grid; grid-template-columns:minmax(16rem,1fr) minmax(11rem,auto); gap:.75rem; align-items:end; margin:.9rem 1.25rem 0; }
+.library-tools { display:grid; grid-template-columns:minmax(16rem,1fr) repeat(2,minmax(11rem,auto)); gap:.75rem; align-items:end; margin:.9rem 1.25rem 0; }
 .library-tools label { display:grid; gap:.3rem; }
 .library-tools input, .library-tools select { min-height:2.65rem; }
 .library-pagination { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; margin:.85rem 1.25rem 0; }
@@ -243,6 +243,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <div class="library-tools" role="search" aria-label="Filter Library drafts">
       <label for="librarySearch"><span>Search drafts</span><input id="librarySearch" type="search" placeholder="Search meeting title or transcript filename" autocomplete="off" /></label>
       <label for="libraryStatus"><span>Status</span><select id="libraryStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="review">In review</option><option value="complete">Complete</option></select></label>
+      <label for="librarySort"><span>Sort by</span><select id="librarySort"><option value="newest" selected>Most recent first</option><option value="oldest">Oldest first</option><option value="title_asc">Meeting title A–Z</option><option value="title_desc">Meeting title Z–A</option></select></label>
     </div>
     <div id="bulkBar" class="bulk-bar" hidden>
       <label><input id="selectAllJobs" type="checkbox" /> Select all</label>
@@ -305,6 +306,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const archiveAllBtn = document.getElementById('archiveAllBtn');
   const librarySearch = document.getElementById('librarySearch');
   const libraryStatus = document.getElementById('libraryStatus');
+  const librarySort = document.getElementById('librarySort');
   const libraryPagination = document.getElementById('libraryPagination');
   const libraryResultCount = document.getElementById('libraryResultCount');
   const libraryPrevious = document.getElementById('libraryPrevious');
@@ -1559,6 +1561,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     });
     const search = librarySearch.value.trim();
     const status = libraryStatus.value;
+    params.set('sort', librarySort.value || 'newest');
     if (search) params.set('search', search);
     if (status) params.set('status', status);
     const agentPayload = await fetchJson(`/api/meeting-minutes-agent/drafts?${params.toString()}`);
@@ -1681,6 +1684,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   libraryStatus.addEventListener('change', () => {
     libraryPage = 1;
     loadList().catch((error) => setMessage(error.message || 'Could not filter Library drafts.', 'error'));
+  });
+  librarySort.addEventListener('change', () => {
+    libraryPage = 1;
+    loadList().catch((error) => setMessage(error.message || 'Could not sort Library drafts.', 'error'));
   });
   libraryPrevious.addEventListener('click', () => {
     if (libraryPage <= 1) return;
