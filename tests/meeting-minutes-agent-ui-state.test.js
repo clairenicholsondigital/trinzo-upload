@@ -2013,10 +2013,20 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const screen = document.querySelector('[data-screen="2"]');
       const toolbar = screen.querySelector('.toolbar');
       const actions = screen.querySelector('.screen-toolbar-actions');
+      const header = card.querySelector('.card-head');
+      const collapse = header.querySelector('.topic-collapse').getBoundingClientRect();
+      const topicBox = topic.getBoundingClientRect();
+      const count = header.querySelector('.topic-count').getBoundingClientRect();
+      const add = header.querySelector('.record-add-toggle').getBoundingClientRect();
+      const menu = header.querySelector('.topic-menu>summary').getBoundingClientRect();
       return {
         titleVisible: topic.scrollHeight <= topic.clientHeight + 1,
         titleWidth: topic.getBoundingClientRect().width,
         cardWidth: card.getBoundingClientRect().width,
+        headerHeight: header.getBoundingClientRect().height,
+        collapseBesideTitle: collapse.top < topicBox.bottom && collapse.bottom > topicBox.top,
+        countBesideControls: Math.abs((count.top + count.height / 2) - (add.top + add.height / 2)) < 4
+          && Math.abs((count.top + count.height / 2) - (menu.top + menu.height / 2)) < 4,
         kindAboveText: kind.getBoundingClientRect().bottom <= text.getBoundingClientRect().top + 1,
         propositionWidth: proposition.getBoundingClientRect().width,
         propositionTextWidth: text.getBoundingClientRect().width,
@@ -2028,6 +2038,9 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     });
     assert.equal(discussionLayout.titleVisible, true, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.titleWidth > discussionLayout.cardWidth * 0.8, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.headerHeight < 125, JSON.stringify(discussionLayout));
+    assert.equal(discussionLayout.collapseBesideTitle, true, JSON.stringify(discussionLayout));
+    assert.equal(discussionLayout.countBesideControls, true, JSON.stringify(discussionLayout));
     assert.equal(discussionLayout.kindAboveText, true, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionTextWidth > discussionLayout.propositionWidth * 0.8, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionOverflow <= 1, JSON.stringify(discussionLayout));

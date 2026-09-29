@@ -987,14 +987,18 @@
   .meeting-agent-page .attendee-chip .move-long{display:none}
   .meeting-agent-page .attendee-chip .move-short{display:inline}
   .meeting-agent-page .attendee-chip .attendee-move{padding:.4rem .55rem}
-  .meeting-agent-page .card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-  .meeting-agent-page .card-head .topic-field{grid-column:1/-1}
-  /* On a phone there is not enough width for the title and its count side by
-     side without squeezing the title, so the count drops back under it. */
-  .meeting-agent-page .card-head .topic-field{display:block}
-  .meeting-agent-page .topic-count{display:block;margin:-.1rem .35rem .15rem}
-  .meeting-agent-page .card-head .record-add-menu{grid-column:1;justify-self:end}
-  .meeting-agent-page .card-head .topic-menu{grid-column:2}
+  .meeting-agent-page .card-head{
+    display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;
+    align-items:center;gap:.25rem .4rem;padding:.4rem .5rem}
+  /* Two compact rows: collapse + title, then count + actions. The previous
+     auto-placement gave the collapse control a row of its own and left the
+     count above another mostly empty controls row. */
+  .meeting-agent-page .card-head .topic-collapse{grid-column:1;grid-row:1;align-self:start}
+  .meeting-agent-page .card-head .topic-field{display:contents}
+  .meeting-agent-page .card-head .topic-field textarea{grid-column:2/-1;grid-row:1;width:100%}
+  .meeting-agent-page .topic-count{grid-column:2;grid-row:2;display:block;margin:0 .35rem}
+  .meeting-agent-page .card-head .record-add-menu{grid-column:3;grid-row:2;justify-self:end}
+  .meeting-agent-page .card-head .topic-menu{grid-column:4;grid-row:2}
   /* Keep topic actions usable on the narrowest supported phones. The menu
      used to size itself from the select's options, leaving a cramped panel
      that could drift outside the viewport. Give it a predictable viewport-
