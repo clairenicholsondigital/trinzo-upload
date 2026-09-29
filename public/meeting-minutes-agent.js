@@ -446,6 +446,15 @@
     document.getElementById(group + 'Attendees').innerHTML = (names || []).map(function (name) { return attendeeChip(name, group); }).join('');
   }
 
+  function setClientAttendeeVisibility(showGroup) {
+    var group = document.getElementById('clientAttendeeGroup');
+    var firstAdd = document.getElementById('addFirstClientAttendee');
+    var labelControl = document.getElementById('clientAttendeeLabelControl');
+    if (group) group.hidden = !showGroup;
+    if (firstAdd) firstAdd.hidden = showGroup;
+    if (labelControl) labelControl.hidden = !showGroup;
+  }
+
   function sourceUnits() { return (state.draft && state.draft.sourceUnits) || []; }
 
   function evidenceContext(ids) {
@@ -1009,6 +1018,7 @@
     setMeetingTypeField(details.meetingType || '');
     renderAttendeeGroup('internal', details.internalAttendees || []);
     renderAttendeeGroup('client', details.clientAttendees || []);
+    setClientAttendeeVisibility((details.clientAttendees || []).some(function (name) { return String(name || '').trim(); }));
     setFieldValue('clientAttendeeLabelSelect', details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
     document.getElementById('clientAttendeeHeading').textContent = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
   }
@@ -2570,6 +2580,7 @@
     var remove = event.target.closest('[data-remove-attendee]');
     if (add) {
       var group = add.dataset.addAttendee;
+      if (group === 'client') setClientAttendeeVisibility(true);
       document.getElementById(group + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip('', group));
       var addedInputs = document.querySelectorAll('[data-attendee-name="' + group + '"]');
       if (addedInputs.length) addedInputs[addedInputs.length - 1].focus();
@@ -2579,12 +2590,16 @@
       var chip = move.closest('.attendee-chip');
       var input = chip && chip.querySelector('[data-attendee-name]');
       var destination = move.dataset.moveAttendee === 'internal' ? 'client' : 'internal';
+      if (destination === 'client') setClientAttendeeVisibility(true);
       document.getElementById(destination + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip(input ? input.value : '', destination));
       chip.remove();
     } else if (remove) {
       remove.closest('.attendee-chip').remove();
     }
-    if (move || remove) { readDetails(); rerenderActions(); scheduleSave(); }
+    if (move || remove) {
+      setClientAttendeeVisibility(attendeeNames('client').length > 0);
+      readDetails(); rerenderActions(); scheduleSave();
+    }
   });
 
   document.getElementById('clientAttendeeLabelSelect').addEventListener('change', function (event) {

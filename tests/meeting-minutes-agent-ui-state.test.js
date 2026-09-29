@@ -66,6 +66,12 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  const internalOnly = baseDraft('internal-only', false);
+  internalOnly.currentStep = 0;
+  internalOnly.selectedStep = 0;
+  internalOnly.details.clientAttendees = [];
+  internalOnly.details.allAttendees = internalOnly.details.internalAttendees.slice();
+  drafts.set('internal-only', internalOnly);
   const topicCleanup = baseDraft('topic-cleanup', false);
   topicCleanup.discussion.push({
     id: 'topic-2', topic: 'Second topic', points: [{
@@ -469,6 +475,33 @@ async function launchPage(port, draftId) {
   await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
   return { browser, page, errors };
 }
+
+test('an internal-only meeting does not reserve an empty client-attendee panel', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'internal-only');
+    browser = launched.browser;
+    const { page, errors } = launched;
+
+    assert.equal(await page.locator('#clientAttendeeGroup').isHidden(), true);
+    assert.equal(await page.locator('#clientAttendeeLabelControl').isHidden(), true);
+    assert.equal(await page.locator('#addFirstClientAttendee').isVisible(), true);
+    await page.click('#addFirstClientAttendee');
+    assert.equal(await page.locator('#clientAttendeeGroup').isVisible(), true);
+    assert.equal(await page.locator('#clientAttendeeLabelControl').isVisible(), true);
+    assert.equal(await page.locator('#addFirstClientAttendee').isHidden(), true);
+    assert.equal(await page.locator('#clientAttendees input').evaluate((node) => node === document.activeElement), true);
+    await page.fill('#clientAttendees input', 'Taylor Green');
+    await page.click('#clientAttendees [data-remove-attendee]');
+    assert.equal(await page.locator('#clientAttendeeGroup').isHidden(), true, 'removing the only client attendee collapses the empty panel again');
+    assert.equal(await page.locator('#addFirstClientAttendee').isVisible(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 
 test('action editor keeps blank rows, custom-owner text and linked flag targets across autosave renders', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();

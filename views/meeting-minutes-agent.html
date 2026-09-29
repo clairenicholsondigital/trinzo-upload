@@ -335,6 +335,7 @@
 .meeting-agent-page .attendee-group-head{
   display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem}
 .meeting-agent-page .attendee-group-head strong{font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .empty-client-attendee-action{justify-self:start;align-self:start}
 .meeting-agent-page .attendee-list{display:grid;gap:.4rem}
 .meeting-agent-page .attendee-chip{
   display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:.35rem;align-items:center}
@@ -1177,9 +1178,10 @@
         <div class="field full attendee-classifier">
           <div class="attendee-groups">
             <section class="attendee-group"><div class="attendee-group-head"><strong>Internal attendees</strong><button class="secondary" data-add-attendee="internal" type="button">Add person</button></div><div id="internalAttendees" class="attendee-list"></div></section>
-            <section class="attendee-group"><div class="attendee-group-head"><strong><span id="clientAttendeeHeading">Client</span> attendees</strong><button class="secondary" data-add-attendee="client" type="button">Add person</button></div><div id="clientAttendees" class="attendee-list"></div></section>
+            <section id="clientAttendeeGroup" class="attendee-group"><div class="attendee-group-head"><strong><span id="clientAttendeeHeading">Client</span> attendees</strong><button class="secondary" data-add-attendee="client" type="button">Add person</button></div><div id="clientAttendees" class="attendee-list"></div></section>
+            <button id="addFirstClientAttendee" class="secondary compact empty-client-attendee-action" data-add-attendee="client" type="button" hidden>Add client attendee</button>
           </div>
-          <label class="attendee-label-control" for="clientAttendeeLabelSelect">Label the client group in the minutes as <select id="clientAttendeeLabelSelect"><option value="Client">Client</option><option value="External">External</option></select></label>
+          <label id="clientAttendeeLabelControl" class="attendee-label-control" for="clientAttendeeLabelSelect">Label the client group in the minutes as <select id="clientAttendeeLabelSelect"><option value="Client">Client</option><option value="External">External</option></select></label>
           <div class="attendee-help">Edit names directly, or move a person between the Internal and Client groups. Choosing External changes only the heading used in the minutes.</div>
         </div>
       </div>
