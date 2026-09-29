@@ -500,7 +500,7 @@
 .meeting-agent-page .omitted-topic h3{margin:0 0 .4rem;font-size:var(--fs-sm);color:var(--heading)}
 .meeting-agent-page .omitted-detail-list{display:grid;gap:.35rem}
 .meeting-agent-page .omitted-detail{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;padding:.55rem .6rem;border-left:3px solid var(--border-strong);background:var(--surface)}
-.meeting-agent-page .omitted-detail-copy{min-width:0}
+.meeting-agent-page .omitted-detail-copy{flex:1 1 auto;min-width:0}
 .meeting-agent-page .omitted-detail-copy p{margin:.18rem 0 0}
 .meeting-agent-page .omitted-detail-kind{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
 .meeting-agent-page .omitted-detail-actions{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;flex-wrap:wrap;flex:none}
@@ -949,6 +949,12 @@
   .meeting-agent-page .proposition-row .proposition-kind{grid-column:1;grid-row:1}
   .meeting-agent-page .proposition-row textarea{display:block;width:100%;box-sizing:border-box}
   .meeting-agent-page .proposition-row .record-menu{position:absolute;top:.35rem;right:.35rem}
+  /* Keep omitted transcript details readable on narrow screens. Their review
+     controls used to reserve a fixed right-hand column, squeezing longer
+     details down to one or two words per line. */
+  .meeting-agent-page .omitted-detail{display:grid;grid-template-columns:minmax(0,1fr);gap:.55rem}
+  .meeting-agent-page .omitted-detail-copy{width:100%}
+  .meeting-agent-page .omitted-detail-actions{width:100%;justify-content:flex-start}
   .meeting-agent-page .editable-actions-table tr{
     display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:.35rem .45rem;margin:.55rem 0;padding:.55rem}
