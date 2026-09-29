@@ -3100,7 +3100,6 @@
     if (!input.value.trim()) {
       delete actionEditorState.customOwners[actionId];
       input.hidden = true;
-      refreshLeaveSafety();
       return;
     }
     var index = (state.draft.actions || []).findIndex(function (action) { return action.id === actionId; });
@@ -3108,7 +3107,6 @@
     var added = addOwner(index, input.value);
     input.value = '';
     delete actionEditorState.customOwners[actionId];
-    refreshLeaveSafety();
     if (!added) return;
     renderActions();
     // The field this was typed into is hidden again by the re-render, so focus

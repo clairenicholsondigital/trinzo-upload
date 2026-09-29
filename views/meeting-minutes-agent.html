@@ -494,12 +494,18 @@
 .meeting-agent-page .omitted-topic:first-child{padding-top:0;border-top:0}
 .meeting-agent-page .omitted-topic h3{margin:0 0 .4rem;font-size:var(--fs-sm);color:var(--heading)}
 .meeting-agent-page .omitted-detail-list{display:grid;gap:.35rem}
-.meeting-agent-page .omitted-detail{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;padding:.55rem .6rem;border-left:3px solid var(--border-strong);background:var(--surface)}
-.meeting-agent-page .omitted-detail-copy{flex:1 1 auto;min-width:0}
+.meeting-agent-page .omitted-detail{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.45rem .75rem;align-items:start;padding:.55rem .6rem;border-left:3px solid var(--border-strong);background:var(--surface)}
+.meeting-agent-page .omitted-detail-copy{grid-column:1;min-width:0}
 .meeting-agent-page .omitted-detail-copy p{margin:.18rem 0 0}
 .meeting-agent-page .omitted-detail-kind{color:var(--muted);font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .omitted-detail-actions{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;flex-wrap:wrap;flex:none}
-.meeting-agent-page .omitted-detail-actions>details{min-width:0}
+.meeting-agent-page .omitted-detail-actions{display:contents}
+.meeting-agent-page .omitted-detail-actions>[data-promote-supporting]{grid-column:2;grid-row:1;align-self:end}
+.meeting-agent-page .omitted-detail-actions>details{grid-column:1/-1;grid-row:2;min-width:0;width:100%}
+.meeting-agent-page .omitted-detail-actions>details>.evidence-toggle{width:max-content;max-width:100%;box-sizing:border-box}
+.meeting-agent-page .omitted-detail-actions>details>.evidence-panel{width:100%}
+.meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-copy{grid-column:1/-1}
+.meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-actions>[data-promote-supporting]{grid-column:1;grid-row:2;justify-self:start}
+.meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-actions>details{grid-row:3}
 .meeting-agent-page .generation-row td{padding:0;border:0}
 .meeting-agent-page .generation-row .generating{margin:0}
 .meeting-agent-page .secondary.compact{min-height:34px;padding:.35rem .6rem;font-size:var(--fs-sm)}
@@ -1016,13 +1022,11 @@
   /* Keep omitted transcript details readable on narrow screens. Their review
      controls used to reserve a fixed right-hand column, squeezing longer
      details down to one or two words per line. */
-  .meeting-agent-page .omitted-detail{display:grid;grid-template-columns:minmax(0,1fr);gap:.55rem}
-  .meeting-agent-page .omitted-detail-copy{width:100%}
-  .meeting-agent-page .omitted-detail-actions{width:100%;justify-content:flex-start}
-  .meeting-agent-page .omitted-detail-actions>details[open]{flex:1 1 100%;width:100%;min-width:0}
-  .meeting-agent-page .omitted-detail-actions>details[open]>.evidence-toggle{
-    width:max-content;max-width:100%;box-sizing:border-box}
-  .meeting-agent-page .omitted-detail-actions>details[open]>.evidence-panel{width:100%}
+  .meeting-agent-page .omitted-detail{grid-template-columns:minmax(0,1fr);gap:.55rem}
+  .meeting-agent-page .omitted-detail-copy{grid-column:1;width:100%}
+  .meeting-agent-page .omitted-detail-actions>[data-promote-supporting]{grid-column:1;grid-row:2;justify-self:start}
+  .meeting-agent-page .omitted-detail-actions>details{grid-column:1;grid-row:3}
+  .meeting-agent-page .omitted-detail:has(.omitted-detail-actions>details[open]) .omitted-detail-copy{grid-column:1}
   .meeting-agent-page .editable-actions-table tr{
     display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:.35rem .45rem;margin:.55rem 0;padding:.55rem}

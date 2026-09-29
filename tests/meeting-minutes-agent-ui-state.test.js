@@ -517,7 +517,25 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.equal(await page.locator('.supporting-context').count(), 0, 'omitted details use one shared review panel');
     assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').count(), 1);
     assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').textContent(), 'Add to minutes');
-    await page.click('#omittedDetailsPanel summary');
+    await page.click('#omittedDetailsPanel > .omitted-details-summary');
+    await page.click('#omittedDetailsPanel .evidence-toggle');
+    const desktopOmittedLayout = await page.locator('#omittedDetailsPanel .omitted-detail').evaluate((detail) => {
+      const copy = detail.querySelector('.omitted-detail-copy').getBoundingClientRect();
+      const button = detail.querySelector('[data-promote-supporting]').getBoundingClientRect();
+      const disclosure = detail.querySelector('.omitted-detail-actions>details').getBoundingClientRect();
+      const panel = detail.querySelector('.evidence-panel').getBoundingClientRect();
+      const outer = detail.getBoundingClientRect();
+      return {
+        copyUsesRow: copy.width > outer.width * 0.9,
+        controlsBelowCopy: button.top >= copy.bottom - 1,
+        transcriptUsesRow: disclosure.width > outer.width * 0.9,
+        panelInsideCard: panel.left >= outer.left - 1 && panel.right <= outer.right + 1,
+        overflow: detail.scrollWidth - detail.clientWidth
+      };
+    });
+    assert.deepEqual(desktopOmittedLayout, {
+      copyUsesRow: true, controlsBelowCopy: true, transcriptUsesRow: true, panelInsideCard: true, overflow: 0
+    });
     await page.click('#omittedDetailsPanel [data-promote-supporting]');
     assert.equal(await page.locator('#omittedDetailsPanel').count(), 0, 'adding an omitted detail removes it from the review panel');
     assert.equal(await page.locator('#minutes-discussion-support-1').count(), 1);
@@ -1976,20 +1994,24 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const detail = document.querySelector('.omitted-detail');
       const copy = detail.querySelector('.omitted-detail-copy');
       const text = copy.querySelector('p');
-      const actions = detail.querySelector('.omitted-detail-actions');
+      const button = detail.querySelector('[data-promote-supporting]');
+      const disclosure = detail.querySelector('.omitted-detail-actions>details');
       const detailBox = detail.getBoundingClientRect();
       const copyBox = copy.getBoundingClientRect();
-      const actionsBox = actions.getBoundingClientRect();
+      const buttonBox = button.getBoundingClientRect();
+      const disclosureBox = disclosure.getBoundingClientRect();
       return {
         copyWidth: copyBox.width,
         availableWidth: detailBox.width,
-        controlsBelowCopy: actionsBox.top >= copyBox.bottom - 1,
+        controlsBelowCopy: buttonBox.top >= copyBox.bottom - 1,
+        transcriptBelowControls: disclosureBox.top >= buttonBox.bottom - 1,
         textOverflow: text.scrollWidth - text.clientWidth,
         detailOverflow: detail.scrollWidth - detail.clientWidth
       };
     });
     assert.ok(omittedDetailLayout.copyWidth > omittedDetailLayout.availableWidth * 0.9, JSON.stringify(omittedDetailLayout));
     assert.equal(omittedDetailLayout.controlsBelowCopy, true, JSON.stringify(omittedDetailLayout));
+    assert.equal(omittedDetailLayout.transcriptBelowControls, true, JSON.stringify(omittedDetailLayout));
     assert.ok(omittedDetailLayout.textOverflow <= 1, JSON.stringify(omittedDetailLayout));
     assert.ok(omittedDetailLayout.detailOverflow <= 1, JSON.stringify(omittedDetailLayout));
     await page.click('.omitted-detail-actions .evidence-toggle');
