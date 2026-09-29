@@ -1736,6 +1736,15 @@ test('final minutes edit source records in place and the finishing bar remains a
 
     await page.click('.final-actions [data-back="4"]');
     await page.waitForFunction(() => document.querySelector('[data-screen="4"]').classList.contains('active'));
+
+    await page.click('#openFinalReview');
+    const completed = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
+      && response.request().method() === 'PATCH' && response.request().postDataJSON().status === 'complete');
+    await page.click('#saveMinutes');
+    await completed;
+    assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true, 'the green completion message remains visible');
+    assert.equal(await page.locator('.final-actions').isVisible(), true, 'Back and Export remain available');
+    assert.equal(await page.locator('#saveStrip').isHidden(), true, 'the redundant sticky status strip leaves once the minutes are final');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

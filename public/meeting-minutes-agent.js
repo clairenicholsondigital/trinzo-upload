@@ -80,8 +80,13 @@
   function updateFinishingBar() {
     if (!state.draft) return;
     var finalReview = state.currentStep === MAX_STEP;
+    var finalComplete = finalReview && state.draft.status === 'complete';
     var saveStrip = document.getElementById('saveStrip');
-    if (saveStrip) saveStrip.classList.toggle('is-final-review', finalReview);
+    if (saveStrip) {
+      saveStrip.classList.toggle('is-final-review', finalReview);
+      saveStrip.hidden = finalComplete;
+    }
+    document.body.classList.toggle('final-complete', finalComplete);
     // Both controls name the change they act on, so the reviewer can tell what
     // is about to happen before pressing them.
     var undo = document.getElementById('undoLastDecision');
