@@ -968,6 +968,19 @@
   .meeting-agent-page .topic-count{display:block;margin:-.1rem .35rem .15rem}
   .meeting-agent-page .card-head .record-add-menu{grid-column:1;justify-self:end}
   .meeting-agent-page .card-head .topic-menu{grid-column:2}
+  /* Keep topic actions usable on the narrowest supported phones. The menu
+     used to size itself from the select's options, leaving a cramped panel
+     that could drift outside the viewport. Give it a predictable viewport-
+     bounded width and let every control shrink inside it. */
+  .meeting-agent-page .topic-menu>summary,
+  .meeting-agent-page .record-add-toggle{width:44px;min-width:44px;min-height:44px}
+  .meeting-agent-page .topic-menu-popover{
+    right:-1rem;width:min(18rem,calc(100vw - 2rem));min-width:0;max-width:calc(100vw - 2rem);
+    box-sizing:border-box;padding:.55rem}
+  .meeting-agent-page .merge-topic{min-width:0}
+  .meeting-agent-page .merge-topic select{
+    width:100%;min-width:0;max-width:100%;box-sizing:border-box;text-overflow:ellipsis}
+  .meeting-agent-page .topic-menu-popover .delete{min-height:44px}
   /* A proposition's overflow menu is a small corner control, not a content
      column. Keeping it in the mobile grid reserved half the row for it and
      left long discussion text in a very narrow strip. */

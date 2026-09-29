@@ -1769,6 +1769,46 @@ test('phone save bar gives history and document actions their own responsive row
   }
 });
 
+test('topic actions stay inside a narrow phone viewport', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 320, height: 720 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=topic-cleanup`);
+    await page.waitForSelector('#actionsBody tr');
+    await page.selectOption('#mobileStepSelect', '2');
+    await page.click('#discussionList .discussion-card:first-child .topic-menu>summary');
+
+    const layout = await page.evaluate(() => {
+      const bounds = (selector) => {
+        const rect = document.querySelector(selector).getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+      };
+      return {
+        viewport: window.innerWidth,
+        menu: bounds('#discussionList .discussion-card:first-child .topic-menu-popover'),
+        select: bounds('#discussionList .discussion-card:first-child [data-merge-topic]'),
+        remove: bounds('#discussionList .discussion-card:first-child [data-delete-topic]'),
+        toggle: bounds('#discussionList .discussion-card:first-child .topic-menu>summary'),
+        pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    assert.ok(layout.menu.left >= 8 && layout.menu.right <= layout.viewport - 8, JSON.stringify(layout));
+    assert.ok(layout.menu.width >= 240, JSON.stringify(layout));
+    assert.ok(layout.select.left >= layout.menu.left && layout.select.right <= layout.menu.right, JSON.stringify(layout));
+    assert.ok(layout.remove.left >= layout.menu.left && layout.remove.right <= layout.menu.right, JSON.stringify(layout));
+    assert.ok(layout.toggle.width >= 44 && layout.toggle.height >= 44, JSON.stringify(layout));
+    assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('phone layout reaches the work quickly and keeps editing controls compact', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
