@@ -631,6 +631,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="librarySearch" type="search"', jobs_page)
         self.assertIn('id="libraryStatus"', jobs_page)
         self.assertIn('id="librarySort"', jobs_page)
+        self.assertIn('grid-template-columns:minmax(16rem,1fr) repeat(2,minmax(11rem,13rem));', shared_css)
+        self.assertIn('.library-tools {\n    grid-template-columns:1fr;', shared_css)
         self.assertIn('<option value="newest" selected>Most recent first</option>', jobs_page)
         self.assertIn('id="libraryPrevious"', jobs_page)
         self.assertIn('id="libraryNext"', jobs_page)

@@ -351,7 +351,7 @@ tbody tr:last-child td { border-bottom:none; }
 }
 .library-tools {
   display:grid;
-  grid-template-columns:minmax(16rem,1fr) minmax(11rem,auto);
+  grid-template-columns:minmax(16rem,1fr) repeat(2,minmax(11rem,13rem));
   gap:.75rem;
   align-items:end;
   margin:.9rem 1.25rem 0;
