@@ -1570,7 +1570,7 @@
     updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) intro.textContent = counts.suggestions
-      ? 'Work through each item below. Suggested changes are only added to the minutes when you choose to add them.'
+      ? 'Work through each item below. Nothing is added to the minutes until you choose it.'
       : 'For each item, check the source, correct the minutes if needed, then choose whether it is resolved or not needed.';
     updateFinishingBar();
   }
@@ -1687,7 +1687,7 @@
       if (target) content += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
       var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
       var summary = proposalRecord(change.after || change.before);
-      return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === true ? ' checked' : '') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">Suggestion · ' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Suggested change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
+      return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === true ? ' checked' : '') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
     }).join('');
     updateProposalSelection();
     updateReviewQueueSummary();

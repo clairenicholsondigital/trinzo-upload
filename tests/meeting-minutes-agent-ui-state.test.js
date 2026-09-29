@@ -1289,11 +1289,47 @@ test('suggested changes are compact until the reviewer asks for detail', { timeo
     assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
     assert.match(await page.textContent('#proposalSelectionCount'), /1 of 1 selected/i);
     assert.match(await page.textContent('#acceptSelectedProposal'), /Add 1 to minutes/i);
-    assert.match(await page.textContent('#proposalPanel'), /Unchecked suggestions stay/i);
+    assert.match(await page.textContent('#proposalPanel'), /Unticked items stay/i);
     await page.click('.proposal-detail>summary');
     assert.equal(await page.locator('.proposal-content').isVisible(), true);
     await page.uncheck('[data-proposal-change]');
     assert.equal(await page.locator('#acceptSelectedProposal').isDisabled(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('suggested changes use concise, readable rows on a phone', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=partial-proposals`);
+    await page.waitForSelector('.proposal-detail', { state: 'attached' });
+    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
+
+    assert.equal(await page.textContent('.proposal-heading h3'), 'Choose what to add');
+    assert.doesNotMatch(await page.textContent('#proposalChanges'), /Suggestion ·/i);
+    assert.match(await page.locator('.proposal-kind').first().textContent(), /New item|Edit|Removal/i);
+    const layout = await page.locator('.proposal-detail>summary').first().evaluate((node) => {
+      const label = node.querySelector('.proposal-kind').getBoundingClientRect();
+      const summary = node.querySelector('.proposal-summary');
+      const summaryBox = summary.getBoundingClientRect();
+      const screen = document.querySelector('.meeting-agent-page');
+      return {
+        summaryBelowLabel: summaryBox.top >= label.bottom - 1,
+        wraps: getComputedStyle(summary).whiteSpace === 'normal',
+        pageOverflow: screen.scrollWidth - screen.clientWidth
+      };
+    });
+    assert.equal(layout.summaryBelowLabel, true, JSON.stringify(layout));
+    assert.equal(layout.wraps, true, JSON.stringify(layout));
+    assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
