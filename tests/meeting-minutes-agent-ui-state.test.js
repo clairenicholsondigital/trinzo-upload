@@ -212,6 +212,13 @@ function startStubServer() {
   layout.executiveSummary = 'The team confirmed the main preparation priorities and owners.';
   layout.discussion[0].topic = 'Audit preparation and document access for the upcoming site visit';
   drafts.set('layout', layout);
+  const transcriptDisplay = baseDraft('transcript-display', false);
+  transcriptDisplay.sourceUnits = [
+    { id: 'T0000', speaker: 'Alex Reed', timestamp: '00:08', text: 'The report has the final comments.' },
+    { id: 'T0001', speaker: 'Alex Reed', timestamp: '00:10', text: 'Alex will send the revised report.' },
+    { id: 'T0002', speaker: 'Sam Okoro', timestamp: '00:14', text: 'I will check the recipient list.' }
+  ];
+  drafts.set('transcript-display', transcriptDisplay);
   const actionsCompleting = baseDraft('actions-completing', true);
   actionsCompleting.selectedStep = 2;
   actionsCompleting.staleStages = ['actions'];
@@ -703,6 +710,30 @@ test('action View transcript opens the relevant passage by mouse and keyboard', 
     await page.keyboard.press('Enter');
     await page.waitForTimeout(50);
     assert.equal(await panel.evaluate((node) => node.open), true, 'keyboard activation opens the same passage');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
+test('transcript excerpts hide internal ids and avoid repeated speaker labels', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'transcript-display');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="3"]');
+    await page.click('[data-action-row="0"] [data-open-action-transcript]');
+    const panel = page.locator('[data-action-row="0"] [data-action-transcript-panel]');
+
+    assert.equal(await panel.locator('.source-id').count(), 0, 'internal transcript ids are not rendered');
+    assert.equal(await panel.locator('.source-kind').count(), 0, 'context rows do not repeat an explanatory label');
+    assert.doesNotMatch(await panel.textContent(), /surrounding context/i);
+    assert.equal(await panel.locator('.source-speaker', { hasText: 'Alex Reed' }).count(), 1, 'a consecutive speaker is named once');
+    assert.equal(await panel.locator('.source-speaker', { hasText: 'Sam Okoro' }).count(), 1, 'a new speaker is named');
+    assert.equal(await panel.locator('.source-time').count(), 3, 'timestamps still distinguish each line');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

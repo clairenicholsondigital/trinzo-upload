@@ -531,9 +531,8 @@
   padding:.35rem .5rem;margin:.2rem 0;border:1px solid var(--border);
   border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
 .meeting-agent-page .evidence-row.cited{border-left:var(--rail) solid var(--accent)}
-/* Surrounding context is there to be glanced at, not read. Giving it a card of
-   its own made a five-line passage taller than the screen, so it drops the
-   border and runs its speaker label inline with the words. */
+/* Extra transcript lines are there to be glanced at, not read as separate
+   cards, so they stay compact and run their metadata inline with the words. */
 .meeting-agent-page .evidence-row:not(.cited){
   padding:.15rem .5rem;margin:.1rem 0;border:0;background:transparent;
   color:var(--muted);font-size:var(--fs-cap)}
@@ -545,9 +544,6 @@
   margin-bottom:.15rem;font-size:var(--fs-cap);color:var(--muted)}
 .meeting-agent-page .source-speaker{font-size:var(--fs-sm);font-weight:var(--fw-bold);color:var(--heading)}
 .meeting-agent-page .source-time{font-variant-numeric:tabular-nums}
-/* The transcript id is a reference, not something to read past every time. */
-.meeting-agent-page .source-id{opacity:.6;font-variant-numeric:tabular-nums}
-.meeting-agent-page .source-kind{font-style:italic}
 
 /* ------------------------------------------------------- actions table -- */
 .meeting-agent-page .actions-wrap{width:100%;overflow-x:auto}

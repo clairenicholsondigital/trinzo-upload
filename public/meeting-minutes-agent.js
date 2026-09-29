@@ -459,12 +459,14 @@
   function evidenceHtml(ids) {
     var context = evidenceContext(ids);
     if (!context.length) return '<p class="muted">No source passage is linked. A review flag has been added.</p>';
-    return context.map(function (unit) {
+    return context.map(function (unit, index) {
+      var previous = index > 0 ? context[index - 1] : null;
+      var speaker = unit.speaker || 'Unknown speaker';
+      var previousSpeaker = previous && (previous.speaker || 'Unknown speaker');
+      var showSpeaker = !previous || speaker.trim().toLowerCase() !== previousSpeaker.trim().toLowerCase();
       return '<div class="evidence-row' + (unit.cited ? ' cited' : '') + '"><div class="source-meta">'
-        + '<span class="source-speaker">' + escapeHtml(unit.speaker || 'Unknown speaker') + '</span>'
+        + (showSpeaker ? '<span class="source-speaker">' + escapeHtml(speaker) + '</span>' : '')
         + (unit.timestamp ? '<span class="source-time">' + escapeHtml(unit.timestamp) + '</span>' : '')
-        + '<span class="source-id">' + escapeHtml(unit.id) + '</span>'
-        + (unit.cited ? '' : '<span class="source-kind">surrounding context</span>')
         + '</div><div>' + escapeHtml(unit.text) + '</div></div>';
     }).join('');
   }
