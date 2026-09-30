@@ -11900,6 +11900,171 @@ function sameActionApproach(left = {}, right = {}) {
   return [...leftTypes].some((type) => rightTypes.has(type));
 }
 
+const DELIVERY_BUNDLE_VERBS = new Set([
+  'circulate', 'deliver', 'email', 'forward', 'issue', 'provide', 'send', 'share', 'submit'
+]);
+const DOCUMENT_WORKFLOW_VERBS = new Set([
+  'complete', 'create', 'draft', 'finalise', 'finalize', 'prepare', 'review', 'revise', 'update'
+]);
+const DOCUMENT_WORKFLOW_OBJECTS = new Set([
+  'contract', 'deck', 'document', 'file', 'form', 'invoice', 'manual', 'matrix',
+  'minutes', 'pack', 'plan', 'presentation', 'proposal', 'report', 'schedule',
+  'spreadsheet', 'tracker'
+]);
+const DELIVERY_NAME_WORD = String.raw`[A-Z][\p{L}\p{M}'’.-]*`;
+const DELIVERY_NAME = String.raw`${DELIVERY_NAME_WORD}(?:\s+${DELIVERY_NAME_WORD}){0,3}`;
+
+function exactActionOwners(record = {}) {
+  return [...new Set((record.owners || []).map((owner) => meetingMinutesAgentText(owner, 160).toLowerCase()).filter(Boolean))].sort();
+}
+
+function sameExactActionOwners(left = {}, right = {}) {
+  const a = exactActionOwners(left); const b = exactActionOwners(right);
+  return a.length > 0 && a.length === b.length && a.every((owner, index) => owner === b[index]);
+}
+
+// A narrow structural parser for client-ready delivery actions. Named targets
+// are required: grouping generic "send this to the team" work can hide separate
+// responsibilities, whereas repeated hand-offs to one explicit person are the
+// noisy pattern this pass is intended to compact.
+function actionDeliveryFrame(record = {}) {
+  const action = meetingMinutesAgentText(record.action || record.text, 1600).trim().replace(/[.?!]+$/, '');
+  const rawVerb = action.match(/^([A-Za-z-]+)\b/)?.[1] || '';
+  const verb = rawVerb.toLowerCase();
+  if (!DELIVERY_BUNDLE_VERBS.has(verb)) return null;
+  const escapedVerb = rawVerb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let match = action.match(new RegExp(`^${escapedVerb}\\s+(.+?)\\s+(?:to|with)\\s+(${DELIVERY_NAME})(.*)$`, 'u'));
+  if (match) {
+    const object = meetingMinutesAgentText(match[1], 1000).trim();
+    const recipient = meetingMinutesAgentText(match[2], 200).trim();
+    const tail = meetingMinutesAgentText(match[3], 700).trim();
+    if (object && recipient) return { verb, recipient, recipientKey: recipient.toLowerCase(), object, tail };
+  }
+  // "Provide Morgan Lee with/access to ..." puts the recipient before the
+  // object. Keep this explicit to avoid guessing a recipient from arbitrary
+  // capitalised words elsewhere in the action.
+  match = action.match(new RegExp(`^${escapedVerb}\\s+(${DELIVERY_NAME})\\s+(with\\s+|access\\s+to\\s+)(.+)$`, 'u'));
+  if (!match) return null;
+  const recipient = meetingMinutesAgentText(match[1], 200).trim();
+  let object = meetingMinutesAgentText(match[3], 1000).trim();
+  if (/^access\s+to\s+/i.test(match[2])) object = `access to ${object}`;
+  object = object.replace(/^access to (.+?) securely(?=,|$)/i, 'secure access to $1');
+  return recipient && object
+    ? { verb, recipient, recipientKey: recipient.toLowerCase(), object, tail: '' }
+    : null;
+}
+
+function actionTimingClause(record = {}) {
+  const timing = record.timing || {};
+  if (!timing.kind || timing.kind === 'not_stated') return '';
+  const wording = meetingMinutesAgentText(timing.wording, 300).trim().replace(/[.]+$/, '');
+  if (wording) {
+    const actionWords = new Set((meetingMinutesAgentText(record.action, 1600).toLowerCase().match(/[a-z0-9][a-z0-9'’-]+/g) || []));
+    const timingWords = (wording.toLowerCase().match(/[a-z0-9][a-z0-9'’-]+/g) || []).filter((word) => word.length > 2);
+    const alreadyPresent = timingWords.length && timingWords.filter((word) => actionWords.has(word)).length / timingWords.length >= 0.75;
+    return alreadyPresent ? '' : lowerListItem(wording);
+  }
+  const exactDate = meetingMinutesAgentText(timing.exactDate, 20);
+  return exactDate ? `by ${exactDate}` : '';
+}
+
+function lowerListItem(value = '') {
+  const text = meetingMinutesAgentText(value, 1200).trim().replace(/[.]+$/, '');
+  if (!text) return '';
+  return /^[A-Z]{2,}\b/.test(text) ? text : `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+}
+
+function deliveryBundleItem(record = {}, frame = actionDeliveryFrame(record)) {
+  if (!frame) return '';
+  const tail = frame.tail ? `${/^[,;]/.test(frame.tail) ? '' : ' '}${frame.tail}` : '';
+  const timing = actionTimingClause(record);
+  return lowerListItem(`${frame.object}${tail}${timing ? ` ${timing}` : ''}`);
+}
+
+function joinedActionItems(items = []) {
+  if (items.length < 2) return items[0] || '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join('; ')}; and ${items.at(-1)}`;
+}
+
+function stableActionEvidence(records = [], limit = 24) {
+  return [...new Set(records.flatMap((record) => record.evidenceIds || []))]
+    .sort((left, right) => Number(String(left).match(/\d+/)?.[0] || Infinity)
+      - Number(String(right).match(/\d+/)?.[0] || Infinity)).slice(0, limit);
+}
+
+// Compact multiple real deliverables without pretending they are duplicates.
+// The exact owner and explicit named recipient must match, while timing stays
+// beside its own item in the resulting sentence.
+function bundleSameRecipientDeliveries(records = []) {
+  const groups = new Map();
+  (Array.isArray(records) ? records : []).forEach((record, index) => {
+    const frame = actionDeliveryFrame(record);
+    const owners = exactActionOwners(record);
+    if (!frame || !owners.length) return;
+    const key = `${owners.join('|')}::${frame.recipientKey}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ record, frame, index });
+  });
+  const replacements = new Map(); const removed = new Set();
+  for (const group of groups.values()) {
+    if (group.length < 2 || group.length > 6) continue;
+    const items = group.map(({ record, frame }) => deliveryBundleItem(record, frame)).filter(Boolean);
+    if (items.length !== group.length || items.some((item) => item.split(/\s+/).length > 55)) continue;
+    const [first] = group;
+    const combined = {
+      ...first.record,
+      action: `Provide ${first.frame.recipient} with ${joinedActionItems(items)}.`,
+      timing: { kind: 'not_stated', wording: '', exactDate: '' },
+      evidenceIds: stableActionEvidence(group.map(({ record }) => record)),
+      reviewFlagIds: [...new Set(group.flatMap(({ record }) => record.reviewFlagIds || []))].slice(0, 24)
+    };
+    replacements.set(first.index, combined);
+    group.slice(1).forEach(({ index }) => removed.add(index));
+  }
+  return records.flatMap((record, index) => removed.has(index) ? [] : [replacements.get(index) || record]);
+}
+
+function documentWorkflowTokens(value = '') {
+  const stop = new Set(['a', 'an', 'and', 'before', 'for', 'from', 'in', 'into', 'of', 'on', 'the', 'then', 'to', 'with',
+    ...DELIVERY_BUNDLE_VERBS, ...DOCUMENT_WORKFLOW_VERBS, 'updated', 'revised', 'prepared', 'completed']);
+  return new Set((meetingMinutesAgentText(value, 1600).toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || [])
+    .map((word) => word.replace(/(?:ing|ed|es|s)$/, ''))
+    .filter((word) => !stop.has(word)));
+}
+
+function sameDocumentDeliveryWorkflow(left = {}, right = {}) {
+  if (!sameExactActionOwners(left, right)) return false;
+  const leftVerb = meetingMinutesAgentText(left.action, 1600).toLowerCase().match(/^([a-z-]+)/)?.[1] || '';
+  const rightVerb = meetingMinutesAgentText(right.action, 1600).toLowerCase().match(/^([a-z-]+)/)?.[1] || '';
+  const delivery = DELIVERY_BUNDLE_VERBS.has(leftVerb) ? left : (DELIVERY_BUNDLE_VERBS.has(rightVerb) ? right : null);
+  const work = delivery === left ? right : left;
+  const workVerb = meetingMinutesAgentText(work?.action, 1600).toLowerCase().match(/^([a-z-]+)/)?.[1] || '';
+  if (!delivery || !work || !DOCUMENT_WORKFLOW_VERBS.has(workVerb) || !actionDeliveryFrame(delivery)) return false;
+  const timingSignature = (record) => {
+    const timing = record.timing || {};
+    return !timing.kind || timing.kind === 'not_stated' ? ''
+      : `${timing.kind}|${meetingMinutesAgentText(timing.wording, 300).toLowerCase()}|${meetingMinutesAgentText(timing.exactDate, 20)}`;
+  };
+  const workTiming = timingSignature(work); const deliveryTiming = timingSignature(delivery);
+  if (workTiming && deliveryTiming && workTiming !== deliveryTiming) return false;
+  const a = documentWorkflowTokens(work.action); const b = documentWorkflowTokens(delivery.action);
+  const shared = [...a].filter((word) => b.has(word));
+  if (shared.length >= 2) return true;
+  const deliveryEvidence = new Set(delivery.evidenceIds || []);
+  const sharedEvidence = (work.evidenceIds || []).some((id) => deliveryEvidence.has(id));
+  return sharedEvidence && shared.some((word) => DOCUMENT_WORKFLOW_OBJECTS.has(word));
+}
+
+function mergeDocumentDeliveryWorkflow(left = {}, right = {}) {
+  const leftVerb = meetingMinutesAgentText(left.action, 1600).toLowerCase().match(/^([a-z-]+)/)?.[1] || '';
+  const delivery = DELIVERY_BUNDLE_VERBS.has(leftVerb) ? left : right;
+  const work = delivery === left ? right : left;
+  const workText = meetingMinutesAgentText(work.action, 1600).trim().replace(/[.?!]+$/, '');
+  const deliveryText = meetingMinutesAgentText(delivery.action, 1600).trim().replace(/[.?!]+$/, '');
+  return `${workText}, then ${deliveryText.charAt(0).toLowerCase()}${deliveryText.slice(1)}.`;
+}
+
 function dedupeHybridActionRecords(records = [], options = {}) {
   const merged = [];
   const timingRank = { deadline: 4, target: 3, dependency: 2, not_stated: 1 };
@@ -11948,6 +12113,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
   for (const record of Array.isArray(records) ? records : []) {
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     let complementaryDuplicate = null;
+    let documentWorkflowDuplicate = null;
     const duplicate = merged.find((existing) => {
       const conventional = !distinctActionDeliverables(record, existing)
         && hybridCandidateMatchesRecord(candidate, existing)
@@ -11977,6 +12143,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         complementaryDuplicate = existing;
         return true;
       }
+      if (sameDocumentDeliveryWorkflow(record, existing)) {
+        documentWorkflowDuplicate = existing;
+        return true;
+      }
       if (!sameOrNestedActionDeliverable(record, existing)) return false;
       const recordQuestionFrame = questionCommunicationFrame(record);
       const existingQuestionFrame = questionCommunicationFrame(existing);
@@ -11998,6 +12168,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       ? record : duplicate;
     if (complementaryDuplicate === duplicate) {
       preferred = { ...preferred, action: mergeComplementaryDocumentWording(record, duplicate) };
+    }
+    if (documentWorkflowDuplicate === duplicate) {
+      preferred = { ...preferred, action: mergeDocumentDeliveryWorkflow(record, duplicate) };
     }
     // Never let the vaguer "figure out a way to ..." wording win.
     if (wayToParaphraseOf(preferred, preferred === record ? duplicate : record)) {
@@ -12021,7 +12194,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     const sameDeliverable = (strictActionDeliverableMatch(record, duplicate)
       && strictActionDeliverableMatch(duplicate, record))
       || sameReciprocalContactDeliverable(record, duplicate);
-    const timing = sameDeliverable
+    const timing = documentWorkflowDuplicate === duplicate
+      ? (record.timing?.kind && record.timing.kind !== 'not_stated' ? record.timing : duplicate.timing)
+      : sameDeliverable
       ? (Number(timingRank[record.timing?.kind] || 0) > Number(timingRank[duplicate.timing?.kind] || 0)
         ? record.timing : duplicate.timing)
       : preferred.timing;
@@ -12032,10 +12207,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24)
     });
   }
-  return merged.sort((left, right) => {
+  const sorted = merged.sort((left, right) => {
     const first = (record) => Math.min(...(record.evidenceIds || []).map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
     return first(left) - first(right) || String(left.action || '').localeCompare(String(right.action || ''));
   });
+  return bundleSameRecipientDeliveries(sorted);
 }
 
 // AI passes frequently phrase the same proposed deliverable differently and
@@ -17213,6 +17389,10 @@ router.stagedEvaluation = {
   strictActionDeliverableMatch,
   reconcileAcceptedRefereeActions,
   dedupeHybridActionRecords,
+  actionDeliveryFrame,
+  bundleSameRecipientDeliveries,
+  sameDocumentDeliveryWorkflow,
+  mergeDocumentDeliveryWorkflow,
   distinctActionDeliverables,
   sameActionApproach,
   nestedActionWork,

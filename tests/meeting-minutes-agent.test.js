@@ -494,6 +494,102 @@ test('different recipients or different documents do not collapse into a hand-of
   ]).length, 2);
 });
 
+test('same-owner deliveries to one named recipient become one evidence-backed bundle', () => {
+  const rows = dedupeHybridActionRecords([{
+    id: 'training', action: 'Send the relevant training standards pack to Morgan Lee.', owners: ['Alex Green'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010']
+  }, {
+    id: 'scope', action: 'Provide the audit scope outputs to Morgan Lee.', owners: ['Alex Green'],
+    timing: { kind: 'dependency', wording: 'once the scope is determined', exactDate: '' }, evidenceIds: ['T0040']
+  }, {
+    id: 'risk', action: 'Share the risk analysis with Morgan Lee after confidentiality is in place.', owners: ['Alex Green'],
+    timing: { kind: 'deadline', wording: 'before the audit', exactDate: '2026-08-03' }, evidenceIds: ['T0080']
+  }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].action,
+    'Provide Morgan Lee with the relevant training standards pack; the audit scope outputs once the scope is determined; and the risk analysis after confidentiality is in place before the audit.');
+  assert.deepEqual(rows[0].owners, ['Alex Green']);
+  assert.deepEqual(rows[0].evidenceIds, ['T0010', 'T0040', 'T0080']);
+  assert.deepEqual(rows[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
+});
+
+test('delivery bundling handles recipient-first access wording and is idempotent', () => {
+  const records = [{
+    id: 'access', action: 'Provide Morgan Lee access to audit documents securely, including upload arrangements.', owners: ['Alex Green'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010']
+  }, {
+    id: 'tracker', action: 'Share the audit findings tracker with Morgan Lee.', owners: ['Alex Green'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020']
+  }];
+  const once = dedupeHybridActionRecords(structuredClone(records));
+  assert.equal(once.length, 1);
+  assert.equal(once[0].action,
+    'Provide Morgan Lee with secure access to audit documents, including upload arrangements and the audit findings tracker.');
+  assert.deepEqual(dedupeHybridActionRecords(structuredClone(once)), once);
+});
+
+test('delivery bundling never crosses owner or recipient boundaries', () => {
+  const base = (id, action, owner) => ({
+    id, action, owners: [owner], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [`T00${id.length}`]
+  });
+  const rows = dedupeHybridActionRecords([
+    base('one', 'Send the audit plan to Morgan Lee.', 'Alex Green'),
+    base('two', 'Share the findings tracker with Priya Shah.', 'Alex Green'),
+    base('three', 'Provide the risk analysis to Morgan Lee.', 'Taylor Reed')
+  ]);
+  assert.equal(rows.length, 3);
+});
+
+test('document work followed by delivery becomes one ordered workflow', () => {
+  const rows = dedupeHybridActionRecords([{
+    id: 'update', action: 'Review and update the risk matrix to justify the probability values.', owners: ['Rebecca Gill'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010']
+  }, {
+    id: 'circulate', action: 'Circulate the updated risk matrix to Andrew Kane for review.', owners: ['Rebecca Gill'],
+    timing: { kind: 'deadline', wording: 'by Friday', exactDate: '2026-06-26' }, evidenceIds: ['T0080']
+  }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].action,
+    'Review and update the risk matrix to justify the probability values, then circulate the updated risk matrix to Andrew Kane for review.');
+  assert.deepEqual(rows[0].timing, { kind: 'deadline', wording: 'by Friday', exactDate: '2026-06-26' });
+  assert.deepEqual(rows[0].evidenceIds, ['T0010', 'T0080']);
+});
+
+test('shared evidence can link a shortened document name to its delivery step', () => {
+  const rows = dedupeHybridActionRecords([{
+    id: 'update', action: 'Review and update the risk documentation, including the risk matrix.', owners: ['Rebecca Gill'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010', 'T0020']
+  }, {
+    id: 'circulate', action: 'Circulate the updated matrix to Andrew for review.', owners: ['Rebecca Gill'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020']
+  }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].action,
+    'Review and update the risk documentation, including the risk matrix, then circulate the updated matrix to Andrew for review.');
+});
+
+test('reviewing one document and sending another remain separate workflows', () => {
+  const rows = dedupeHybridActionRecords([{
+    id: 'review', action: 'Review and update the risk matrix.', owners: ['Rebecca Gill'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010']
+  }, {
+    id: 'send', action: 'Send the audit report to Andrew Kane.', owners: ['Rebecca Gill'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0020']
+  }]);
+  assert.equal(rows.length, 2);
+});
+
+test('different document-workflow deadlines remain separate', () => {
+  const rows = dedupeHybridActionRecords([{
+    id: 'update', action: 'Update the supplier risk matrix.', owners: ['Rebecca Gill'],
+    timing: { kind: 'deadline', wording: 'by Thursday', exactDate: '2026-06-25' }, evidenceIds: ['T0010']
+  }, {
+    id: 'send', action: 'Send the updated supplier risk matrix to Andrew Kane.', owners: ['Rebecca Gill'],
+    timing: { kind: 'deadline', wording: 'by Friday', exactDate: '2026-06-26' }, evidenceIds: ['T0020']
+  }]);
+  assert.equal(rows.length, 2);
+});
+
 test('an exact deliverable with conflicting owners uses a unique explicit self-commitment', () => {
   const rows = [
     { id: 'inferred', action: 'Send the code of conduct to Niamh and require completion before sharing further materials.', owners: ['Stuart Smith'], timing: { kind: 'not_stated' }, evidenceIds: ['T0010'] },
