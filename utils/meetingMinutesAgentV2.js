@@ -2812,9 +2812,18 @@ function timingCheckItems(actions = [], units = []) {
   return (Array.isArray(actions) ? actions : []).map((action, index) => {
     if (!action?.timing || action.timing.kind === 'not_stated' || !text(action.timing.wording, 220)) return null;
     if (TIMING_NO_VALUE.test(text(action.timing.wording, 220))) return null;
-    const passage = evidenceWindowUnits(units, action.evidenceIds || [], 2).map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`);
-    if (!passage.length) return null;
-    return { id: `a${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [], timing: text(action.timing.wording, 220), passage: passage.join('\n') };
+    // A timing is often qualified a few turns after it is first proposed:
+    // "ideally before Friday" followed by "Monday is the hard stop if needed".
+    // Keep two lines of lead-in but look further forward so the critic sees the
+    // current timing rather than validating the first date in isolation.
+    const passageUnits = evidenceWindowUnits(units, action.evidenceIds || [], 2, 10);
+    if (!passageUnits.length) return null;
+    return {
+      id: `a${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [],
+      timing: text(action.timing.wording, 220),
+      passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
+      passageUnits: passageUnits.map((unit) => ({ id: unit.id, text: unit.text }))
+    };
   }).filter(Boolean);
 }
 
@@ -2825,12 +2834,14 @@ function timingCheckPrompt(items = [], meetingDate = '') {
     `The meeting took place on ${meetingDate || 'an unstated date'}. Do not calculate dates.`,
     'For each item decide one verdict:',
     `- "correct": the timing was said about this action's own work. When an action names several steps or deliverables, the timing is correct if it was said about ANY of them. Judge only the steps the action names.`,
+    `- "qualified": a LATER statement about this same action changes an earlier firm date into a preference, target, contingency or fallback. Use this only when the passage explicitly connects the timings; merely mentioning another date is not enough.`,
     `- "belongs_to_other_step": the timing was said about a different piece of work: another step in a sequence, another person's task, a related meeting, an approval, a regulatory deadline or a schedule of other events.`,
     '- "past_event": the timing refers to something that has already happened.',
     '- "misread": the timing states a day or date the passage does not support as said (for example a wrong month, or an arrival time used as a meeting time).',
     `For every verdict give timingQuote: the exact words in the passage where the timing was said. For "belongs_to_other_step" also give stepQuote: the exact words naming the other piece of work the timing applies to (that work must not be one of the steps the action names). For any verdict other than "correct" give correctTiming: the exact words in the passage that give THIS action's own timing, or an empty string if the passage gives none.`,
+    `For "qualified", also give qualificationQuote: the exact later words that explicitly qualify or replace the earlier timing; preferredTiming: the exact preferred/ideal timing words; and fallbackTiming: the exact contingency or hard-stop timing words, or empty when there is no separate fallback. Do not use "qualified" unless preferredTiming is present verbatim and every non-empty timing field is a contiguous transcript quote.`,
     'Every quote must be copied verbatim from the passage as one contiguous span of at most 25 words. Never paraphrase a quote. If you are unsure, choose "correct".',
-    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","timingQuote":"","stepQuote":"","correctTiming":"","reason":""}]}',
+    'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","timingQuote":"","stepQuote":"","correctTiming":"","qualificationQuote":"","preferredTiming":"","fallbackTiming":"","reason":""}]}',
     `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, timing: item.timing, passage: item.passage })))}`
   ].join('\n\n');
 }
@@ -2851,7 +2862,43 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     }
     const item = byIndex.get(index);
     const row = item ? verdicts.get(item.id) : null;
-    if (!row || !['belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
+    if (!row || !['qualified', 'belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
+    if (row.verdict === 'qualified') {
+      const timingQuote = quotedVerbatimValidation(row.timingQuote, item.passage);
+      const qualificationQuote = quotedVerbatimValidation(row.qualificationQuote, item.passage, 40);
+      const preferred = text(row.preferredTiming, 120);
+      const fallback = text(row.fallbackTiming, 120);
+      const preferredValid = preferred && quotedVerbatim(preferred, item.passage)
+        && hasTimingSignal(preferred);
+      const fallbackValid = !fallback || (quotedVerbatim(fallback, item.passage)
+        && hasTimingSignal(fallback) && quoteText(fallback) !== quoteText(preferred));
+      // This pass is deliberately fail-closed. A model judgement alone cannot
+      // soften a deadline: every component and the words connecting them must
+      // be copied from the supplied passage.
+      if (!timingQuote.valid || !qualificationQuote.valid || !preferredValid || !fallbackValid) {
+        rejected.push({ id: item.id, verdict: row.verdict, reason: 'qualification_not_verbatim_or_complete' });
+        return action;
+      }
+      const qualifiedWording = fallback
+        ? `Preferred: ${preferred}; fallback: ${fallback}`
+        : preferred;
+      const timing = { kind: 'target', wording: qualifiedWording, exactDate: '' };
+      if (timingPublicationIssue(timing)) {
+        rejected.push({ id: item.id, verdict: row.verdict, reason: 'qualified_timing_not_publishable' });
+        return action;
+      }
+      const quoteNeedles = [row.qualificationQuote, preferred, fallback].filter(Boolean).map(quoteText);
+      const addedEvidence = (item.passageUnits || []).filter((unit) => {
+        const value = quoteText(unit.text);
+        return quoteNeedles.some((needle) => value.includes(needle) || needle.includes(value));
+      }).map((unit) => unit.id);
+      return {
+        ...action,
+        action: replaceEmbeddedTiming(action.action, wording, '', action.timing?.exactDate),
+        timing,
+        evidenceIds: [...new Set([...(action.evidenceIds || []), ...addedEvidence])].slice(0, 12)
+      };
+    }
     const replacement = text(row.correctTiming, 120);
     // Verbatim is necessary, not sufficient: "I'll draft that." is in the
     // passage word for word and is not a timing. A replacement must pass the
@@ -4614,7 +4661,7 @@ function applyDecisionCheckResults(discussion = [], items = [], results = []) {
 // responsibility or milestone during compression. Check only higher-risk
 // shapes and accept a correction only when both the generated problem and the
 // correcting transcript words are quoted verbatim.
-const DISCUSSION_FIDELITY_RISK = /\d|;|\b(?:if|unless|whether|before|after|then|because|due to|result(?:s|ed)? in|inform(?:ed|s)|depend(?:s|ed|ent)?|aim(?:s|ed|ing)?|target|rollout|on track|tight on time|complete(?:d|ion)?|submission|items?|responsib(?:le|ility)|require(?:d|ment|s)?|must|expected|plan(?:ned)?|working|progress(?:ing|ed)?|minor|major|more substantial|less|more|increase|decrease|the speaker|need to|current|questions? on|questions? about)\b/i;
+const DISCUSSION_FIDELITY_RISK = /\d|;|\b(?:if|unless|whether|before|after|then|because|due to|result(?:s|ed)? in|inform(?:ed|s)|depend(?:s|ed|ent)?|aim(?:s|ed|ing)?|target|deadline|preferred|fallback|hard stop|rollout|on track|tight on time|complete(?:d|ion)?|submission|items?|responsib(?:le|ility)|require(?:d|ment|s)?|must|expected|plan(?:ned)?|working|progress(?:ing|ed)?|minor|major|more substantial|less|more|increase|decrease|the speaker|need to|current|questions? on|questions? about)\b/i;
 function discussionFidelityCheckItems(discussion = [], units = []) {
   const items = [];
   (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
@@ -4622,11 +4669,15 @@ function discussionFidelityCheckItems(discussion = [], units = []) {
       (topic?.[kind] || []).forEach((record, rowIndex) => {
         const row = text(record?.text, 1000);
         if (!row || !DISCUSSION_FIDELITY_RISK.test(row)) return;
-        const passageUnits = evidenceWindowUnits(units, record.evidenceIds || [], 2, 10).slice(0, 32);
+        // Later turns can explicitly soften or replace an initially firm date.
+        // Give the fidelity critic enough forward context to see a preference,
+        // contingency or hard stop before it approves the earlier wording.
+        const passageUnits = evidenceWindowUnits(units, record.evidenceIds || [], 2, 16).slice(0, 40);
         if (!passageUnits.length) return;
         items.push({
           id: `df${items.length + 1}`, topicIndex, kind, rowIndex, row,
-          passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n')
+          passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
+          passageUnits: passageUnits.map((unit) => ({ id: unit.id, text: unit.text }))
         });
       });
     }
@@ -4642,12 +4693,13 @@ function discussionFidelityCheckPrompt(items = []) {
     'Also look for added specifics: a date, month, year, weekday, number, name, place, or someone\'s opinion, taste or attitude that no line of the passage states. A day spoken without its month does not tell you the month. An added specific is not a matter of doubt: remove it with "corrected", or choose "uncertain" with issue "added_detail" when the row cannot stand without it.',
     'Small talk, jokes and personal tastes that do not affect the work, its timing or its logistics are not minutes material: choose "uncertain" with issue "small_talk".',
     'For enumerated behaviour, preserve every source pairing: do not collapse distinct states, priorities, quantities or outcomes into one generic description.',
+    'When a later statement qualifies an earlier date for the same work, the later clarification controls. A preferred date and a fallback or hard stop must be preserved together; do not publish the earlier date alone as an unconditional deadline. Correct the row to one current account so a later deduplication pass can remove obsolete restatements.',
     'Do not infer that a current-period condition caused a previous-period result merely because the statements are adjacent. Preserve comparison wording and time direction exactly.',
     'Replace unresolved labels such as "the speaker" only when the passage identifies the person; otherwise choose "uncertain".',
     'Choose "supported", "corrected", or "uncertain". Use "corrected" only when one accurate, complete, client-ready replacement sentence can be written from the passage. Use "uncertain" when the row appears wrong but the passage does not support a safe replacement.',
-    'For "corrected", provide problemQuote copied exactly from the proposed row, evidenceQuote copied exactly from the transcript passage, and correctedText. Preserve qualifications and sequence; never merge different people or workstreams.',
+    'For "corrected", provide problemQuote copied exactly from the proposed row, evidenceQuote copied exactly from the transcript passage, and correctedText. Preserve qualifications and sequence; never merge different people or workstreams. Set issue to "temporal_qualification" only when the evidenceQuote explicitly qualifies or replaces an earlier timing for the same work.',
     'For "uncertain", provide problemQuote, and evidenceQuote where the passage has one; an added specific has nothing to quote, so leave evidenceQuote empty. Quotes must be contiguous and at most 25 words. If unsure whether meaning changed, choose "supported".',
-    'Set issue to "added_detail" or "small_talk" for those two cases and leave it empty otherwise.',
+    'Set issue to "added_detail", "small_talk" or "temporal_qualification" only for those cases and leave it empty otherwise.',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","issue":"","problemQuote":"","evidenceQuote":"","correctedText":"","reason":""}]}',
     `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage })))}`
   ].join('\n\n');
@@ -4698,6 +4750,26 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
         if (!replacement && !warning) return record;
         const result = replacement || warning;
         const issue = text(result.issue, 30);
+        // A quote-verified later timing clarification is ordinary editorial
+        // reconciliation, not another task for the reviewer. Apply it quietly
+        // and cite the later source line; uncertain or general corrections keep
+        // the established visible review flag.
+        const automaticTemporalCorrection = Boolean(replacement)
+          && issue === 'temporal_qualification'
+          && /\b(?:instead of|rather than|not (?:the )?hard stop|ideally|preferred?|if needed|contingenc(?:y|ies)|fallback|hard stop)\b/i.test(result.evidenceQuote || '')
+          && hasTimingSignal(replacement.correctedText);
+        if (automaticTemporalCorrection) {
+          const evidenceNeedle = quoteText(result.evidenceQuote);
+          const laterEvidence = (items.find((item) => `${item.topicIndex}|${item.kind}|${item.rowIndex}` === key)?.passageUnits || [])
+            .filter((unit) => quoteText(unit.text).includes(evidenceNeedle) || evidenceNeedle.includes(quoteText(unit.text)))
+            .map((unit) => unit.id);
+          corrected += 1;
+          return {
+            ...record,
+            text: replacement.correctedText,
+            evidenceIds: [...new Set([...(record.evidenceIds || []), ...laterEvidence])].slice(0, 12)
+          };
+        }
         // A general "check this" warning stays quiet unless its reason names a
         // material doubt. An added detail or small talk is always worth a look,
         // so those say so in words the reviewer-burden filter keeps.

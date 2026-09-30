@@ -106,6 +106,44 @@ test('fidelity candidates include later lines needed to preserve milestone seque
   assert.match(items[0].passage, /After that, we will have to implement it/i);
 });
 
+test('fidelity candidates include a later preference and fallback clarification', () => {
+  const discussion = [{ topic: 'Delivery timing', points: [{
+    id: 'p1', text: 'The report has a firm deadline of Thursday.', evidenceIds: ['T0001']
+  }], decisions: [], openQuestions: [] }];
+  const units = [
+    { id: 'T0001', speaker: 'Alex', text: 'The report needs to be finished by Thursday.' },
+    ...Array.from({ length: 11 }, (_, index) => ({
+      id: `T${String(index + 2).padStart(4, '0')}`, speaker: 'Priya', text: `Separate agenda item ${index + 1}.`
+    })),
+    { id: 'T0013', speaker: 'Alex', text: 'Ideally before Thursday, but Friday is the hard stop if needed.' }
+  ];
+  const items = V.discussionFidelityCheckItems(discussion, units);
+  assert.equal(items.length, 1);
+  assert.match(items[0].passage, /Friday is the hard stop if needed/i);
+  assert.match(V.discussionFidelityCheckPrompt(items), /preferred date and a fallback or hard stop must be preserved together/i);
+});
+
+test('a quote-verified later timing clarification updates discussion without another review flag', () => {
+  const discussion = [{ topic: 'Delivery timing', points: [{
+    id: 'p1', text: 'The report has a firm deadline of Thursday.', evidenceIds: ['T0001'], reviewFlagIds: []
+  }], decisions: [], openQuestions: [] }];
+  const units = [
+    { id: 'T0001', speaker: 'Alex', text: 'The report needs to be finished by Thursday.' },
+    { id: 'T0002', speaker: 'Alex', text: 'Ideally the report is finished before Thursday, but Friday is the hard stop if needed.' }
+  ];
+  const items = V.discussionFidelityCheckItems(discussion, units);
+  const result = V.applyDiscussionFidelityResults(discussion, items, [{
+    id: items[0].id, verdict: 'corrected', issue: 'temporal_qualification',
+    problemQuote: 'firm deadline of Thursday',
+    evidenceQuote: 'Ideally the report is finished before Thursday, but Friday is the hard stop if needed',
+    correctedText: 'The report is ideally due before Thursday, with Friday as the hard stop if needed.'
+  }]);
+  assert.equal(result.corrected, 1);
+  assert.equal(result.flags.length, 0);
+  assert.deepEqual(result.discussion[0].points[0].evidenceIds, ['T0001', 'T0002']);
+  assert.match(result.discussion[0].points[0].text, /Thursday.*Friday/);
+});
+
 test('a quote-verified direction correction replaces the row and raises a review flag', () => {
   const discussion = [{ topic: 'Procedure', points: [{
     id: 'p1', text: "The procedure update informed Louise's feedback.", evidenceIds: ['T0001'], reviewFlagIds: []

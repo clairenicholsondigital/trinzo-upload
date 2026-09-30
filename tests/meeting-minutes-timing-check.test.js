@@ -220,6 +220,55 @@ test('a timing change that only adds a hedge is not made and not explained', () 
   assert.equal(out.flags.length, 0);
 });
 
+test('a later verified clarification preserves preferred and fallback timing as one target', () => {
+  const source = [
+    { id: 'T0001', speaker: 'Alex', text: 'The report needs to be finished by Thursday.' },
+    { id: 'T0002', speaker: 'Priya', text: 'That would let us review it before the meeting.' },
+    { id: 'T0003', speaker: 'Alex', text: 'Ideally before Thursday, but Friday is the hard stop if needed.' }
+  ];
+  const actions = [{
+    id: 'a1', action: 'Finish the report by Thursday.', owners: ['Alex'],
+    timing: { kind: 'deadline', wording: 'by Thursday', exactDate: '' },
+    evidenceIds: ['T0001'], reviewFlagIds: []
+  }];
+  const items = V.timingCheckItems(actions, source);
+  assert.match(items[0].passage, /Friday is the hard stop if needed/,
+    'the timing check must see later qualification evidence');
+  const result = V.applyTimingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'qualified', timingQuote: 'by Thursday',
+    qualificationQuote: 'Ideally before Thursday, but Friday is the hard stop if needed',
+    preferredTiming: 'before Thursday', fallbackTiming: 'Friday', correctTiming: '', reason: ''
+  }]);
+  assert.equal(result.actions[0].action, 'Finish the report.');
+  assert.deepEqual(result.actions[0].timing, {
+    kind: 'target', wording: 'Preferred: before Thursday; fallback: Friday', exactDate: ''
+  });
+  assert.deepEqual(result.actions[0].evidenceIds, ['T0001', 'T0003']);
+  assert.equal(result.flags.length, 0, 'fully verified clarification is applied without another reviewer flag');
+  assert.deepEqual(result.rejected, []);
+});
+
+test('a second nearby date cannot qualify a deadline without explicit verbatim clarification', () => {
+  const source = [
+    { id: 'T0001', speaker: 'Alex', text: 'The report needs to be finished by Thursday.' },
+    { id: 'T0002', speaker: 'Priya', text: 'The planning meeting is on Friday.' }
+  ];
+  const actions = [{
+    id: 'a1', action: 'Finish the report by Thursday.', owners: ['Alex'],
+    timing: { kind: 'deadline', wording: 'by Thursday', exactDate: '' },
+    evidenceIds: ['T0001'], reviewFlagIds: []
+  }];
+  const items = V.timingCheckItems(actions, source);
+  const result = V.applyTimingCheckResults(actions, items, [{
+    id: items[0].id, verdict: 'qualified', timingQuote: 'by Thursday',
+    qualificationQuote: 'Friday is the fallback', preferredTiming: 'Thursday',
+    fallbackTiming: 'Friday'
+  }]);
+  assert.deepEqual(result.actions, actions);
+  assert.equal(result.flags.length, 0);
+  assert.equal(result.rejected[0].reason, 'qualification_not_verbatim_or_complete');
+});
+
 test('a timing asked and answered before the later steps still leaves the deadline column', () => {
   const V = require('../utils/meetingMinutesAgentV2');
   const units = [

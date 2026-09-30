@@ -8522,6 +8522,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     'Do not invent names, owners, deadlines, dates, decisions or actions.',
     'Every generated point, decision, open question and action must cite one or more supplied transcript IDs in evidenceIds. Never invent an evidence ID.',
     'Preserve exact quantities, language counts, alarm behaviour, approval status, blockers and dependencies when material.',
+    'Read timing chronologically. If later evidence qualifies an earlier date for the same work, preserve the current meaning: state both the preferred timing and any fallback or hard stop, and never leave the earlier date presented as an unconditional deadline.',
     'Preserve unclear standard references exactly as spoken and add an unclear_reference review flag instead of silently correcting them.',
     'Use reviewFlags only when human review is genuinely required: ambiguous or conflicting source wording, unclear references, unsupported ownership or timing, unresolved decisions, or missing evidence.',
     'Do not flag a supported fact merely because it is conditional, provisional, pending or not yet confirmed. Put unresolved matters in openQuestions and provisional timing in the action timing field.',
