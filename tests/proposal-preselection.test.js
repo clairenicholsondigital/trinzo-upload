@@ -7,7 +7,8 @@ const api = require('../routes/api');
 const {
   preselectActionProposal,
   preselectDiscussionProposal,
-  preselectRequestedProposal
+  preselectRequestedProposal,
+  filterIncompleteProposalChanges
 } = api.stagedEvaluation;
 
 const units = [
@@ -96,4 +97,26 @@ test('discussion removals start unticked; a reviewer-requested edit starts ticke
   assert.deepEqual(discussion.changes.map((change) => change.selected), [false, true]);
   const requested = preselectRequestedProposal({ stage: 'actions', changes: [{ id: 'x', type: 'remove', before: caterer, after: null }] });
   assert.equal(requested.changes[0].selected, true);
+});
+
+test('proposal boundary removes heading fragments but keeps concise complete records', () => {
+  const actions = preselectActionProposal({ stage: 'actions', changes: [
+    { id: 'heading', type: 'add', after: { action: 'Review of cybersecurity controls', owners: ['Sam'], evidenceIds: ['T0001'] } },
+    { id: 'noun', type: 'add', after: { action: 'Cybersecurity controls and risks', owners: ['Sam'], evidenceIds: ['T0001'] } },
+    { id: 'contact', type: 'add', after: { action: 'Speak to the relevant person.', owners: ['Sam'], evidenceIds: ['T0001'] } },
+    { id: 'short-valid', type: 'add', after: { action: 'Confirm the submission date.', owners: ['Sam'], evidenceIds: ['T0001'] } }
+  ] }, [], units);
+  assert.deepEqual(actions.changes.map((change) => change.id), ['short-valid']);
+
+  const discussion = filterIncompleteProposalChanges({ stage: 'discussion', changes: [
+    { id: 'empty-topic', type: 'add', after: { topic: 'Cybersecurity controls and risks', points: [{ text: 'USB port security' }], decisions: [], openQuestions: [] } },
+    { id: 'structural-topic', type: 'add', after: { topic: 'Meeting Introduction and Initial Updates', points: [{ text: 'The audit remains on track.' }], decisions: [], openQuestions: [] } },
+    { id: 'complete-topic', type: 'add', after: { topic: 'Cybersecurity controls and risks', points: [
+      { text: 'USB port security' },
+      { text: 'The residual cybersecurity risk remains high.' }
+    ], decisions: [], openQuestions: [] } },
+    { id: 'remove', type: 'remove', before: { topic: 'Earlier topic', points: [] }, after: null }
+  ] });
+  assert.deepEqual(discussion.changes.map((change) => change.id), ['complete-topic', 'remove']);
+  assert.deepEqual(discussion.changes[0].after.points.map((row) => row.text), ['The residual cybersecurity risk remains high.']);
 });

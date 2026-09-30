@@ -11190,13 +11190,15 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
+  const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
     [...(publicFields.discussion || []), ...(publicFields.actions || [])],
-    publicFields.pendingProposal
+    visibleProposal
   );
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
+    pendingProposal: visibleProposal,
     reviewFlags: visibleReviewFlags
   });
   safe.discussion = normaliseDatePhrasesDeep(repairStructuralTopicHeadings(safe.discussion, draft.sourceUnits || []));
@@ -11648,7 +11650,7 @@ function isVagueReconstructedAction(value = '') {
   // week") and unresolved references into rows such as "Speak with the team
   // as agreed".  Reject the whole contact-only family, including named
   // contacts; an owner or a date does not supply the missing deliverable.
-  const contactOpening = /^(?:(?:talk|speak|chat|liaise|meet|check in|touch base|catch up|follow up|reach out|sync(?: up)?)\s+(?:to|with)\b|(?:contact|call|chase|message|phone|ring)\s+(?!a meeting\b|the meeting\b))/i.test(source);
+  const contactOpening = /^(?:(?:talk|speak|chat|liaise|meet|check in|touch base|catch up|follow up|reach out|sync(?: up)?)\s+(?:to|with)\b|(?:contact|call|message|phone|ring)\s+(?!a meeting\b|the meeting\b))/i.test(source);
   const contactOnly = contactOpening
     && !/\b(?:about|regarding|concerning|in relation to|to (?:ask|check|clarify|confirm|decide|determine|discuss|establish|find|obtain|request|resolve|review|verify)|so that|in order to)\b/.test(source)
     && !/\band\s+(?:ask|check|clarify|confirm|decide|determine|discuss|document|establish|find|obtain|prepare|provide|request|resolve|review|send|share|update|verify)\b/.test(source);
@@ -16390,6 +16392,68 @@ function withSelection(change, selected, context = null) {
   return next;
 }
 
+const DISCUSSION_PROPOSITION_PREDICATE = /\b(?:am|is|are|was|were|be|been|being|has|have|had|will|would|shall|should|can|could|may|might|must|remain(?:s|ed)?|include(?:s|d)?|require(?:s|d)?|depend(?:s|ed)?|use(?:s|d)?|contain(?:s|ed)?|provide(?:s|d)?|support(?:s|ed)?|cover(?:s|ed)?|continue(?:s|d)?|start(?:s|ed)?|end(?:s|ed)?|need(?:s|ed)?|allow(?:s|ed)?|prevent(?:s|ed)?|indicate(?:s|d)?|show(?:s|ed)?|mean(?:s|t)?|agree(?:s|d)?|decid(?:e|es|ed)|confirm(?:s|ed)?|approv(?:e|es|ed)|identif(?:y|ies|ied)|report(?:s|ed)?|note(?:s|d)?|review(?:s|ed)?|discuss(?:es|ed)|complete(?:s|d)?|block(?:s|ed)?|delay(?:s|ed)?|move(?:s|d)?|plan(?:s|ned)?|schedul(?:e|es|ed)|expect(?:s|ed)?|accept(?:s|ed)?|load(?:s|ed)?|finish(?:es|ed)|fail(?:s|ed)?|pending|underway|available|unresolved)\b/i;
+
+function completeDiscussionSuggestionText(value = '') {
+  const source = meetingMinutesAgentText(value, 1600).trim();
+  const words = source.match(/[\p{L}\p{N}][\p{L}\p{N}'’/-]*/gu) || [];
+  // Suggestions are optional editorial changes, so they can meet a stricter
+  // presentation bar than extraction candidates: a complete sentence or
+  // question must carry terminal punctuation. Headings characteristically do
+  // not, even when one of their nouns can also be read as a verb.
+  if (words.length < 3 || !/[.?!]$/.test(source)) return false;
+  return /\?$/.test(source) || DISCUSSION_PROPOSITION_PREDICATE.test(source);
+}
+
+function completeActionSuggestionText(value = '') {
+  const source = meetingMinutesAgentText(value, 1600).trim();
+  const words = source.match(/[\p{L}\p{N}][\p{L}\p{N}'’/-]*/gu) || [];
+  if (words.length < 2 || !isClientReadyActionWording(source)
+    || isVagueReconstructedAction(source) || /[:;]\s*$/.test(source)) return false;
+  // These are noun headings beginning with a word that can also be an
+  // imperative ("Review of controls", "Update on testing"). A determiner or
+  // direct object after the verb remains valid: "Review the controls".
+  if (/^(?:review|update|summary|overview|discussion|status|progress)\s+(?:of|on|for)\b/i.test(source)) return false;
+  const objectWords = words.slice(1).map((word) => word.toLowerCase());
+  const placeholders = new Set(['it', 'this', 'that', 'them', 'thing', 'things', 'something', 'someone', 'somebody', 'person', 'people', 'relevant']);
+  return objectWords.some((word) => !placeholders.has(word));
+}
+
+function cleanDiscussionProposalTopic(topic = {}) {
+  if (!topic || typeof topic !== 'object') return null;
+  const clean = { ...topic };
+  for (const kind of ['points', 'decisions', 'openQuestions']) {
+    clean[kind] = (Array.isArray(topic[kind]) ? topic[kind] : []).filter((record) =>
+      completeDiscussionSuggestionText(record?.text || record));
+  }
+  const hasRows = clean.points.length || clean.decisions.length || clean.openQuestions.length;
+  if (!hasRows || !isPublishableTopicLabel(clean.topic || '')) return null;
+  return clean;
+}
+
+// One final proposal boundary is shared by normal generation, regeneration,
+// explicit AI edits, completeness audits and legacy drafts loaded from disk.
+// Removal suggestions remain visible; additions and edits must contain a
+// complete record rather than a heading, label or dangling phrase.
+function filterIncompleteProposalChanges(proposal = null) {
+  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
+  const stage = proposal.stage === 'discussion' ? 'discussion' : 'actions';
+  const changes = [];
+  for (const change of proposal.changes) {
+    if (change?.type === 'remove') { changes.push(change); continue; }
+    if (!change?.after) continue;
+    if (stage === 'actions') {
+      if (completeActionSuggestionText(change.after.action)) changes.push(change);
+      continue;
+    }
+    const after = change.after?.topic
+      ? cleanDiscussionProposalTopic(change.after)
+      : completeDiscussionSuggestionText(change.after?.text) ? change.after : null;
+    if (after) changes.push({ ...change, after });
+  }
+  return changes.length ? { ...proposal, changes } : null;
+}
+
 // Returns the reason an action edit would lose information the reviewer
 // already has, or '' when it only adds or rewords.
 function destructiveActionEdit(before = {}, after = {}, sourceUnits = []) {
@@ -16425,6 +16489,7 @@ function echoesPublishedAction(published = {}, proposal = {}) {
 }
 
 function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
+  proposal = filterIncompleteProposalChanges(proposal);
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
   const removedTargets = new Set(proposal.changes.filter((change) => change.type === 'remove')
     .map((change) => change.before).filter(Boolean));
@@ -16527,6 +16592,7 @@ function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
 
 // Discussion rows: additions and rewordings start ticked, removals never do.
 function preselectDiscussionProposal(proposal) {
+  proposal = filterIncompleteProposalChanges(proposal);
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
   return {
     ...proposal,
@@ -16547,6 +16613,7 @@ function preselectDiscussionProposal(proposal) {
 // A reviewer's own instruction ("Ask AI to edit") is a request for exactly
 // these changes, so they start ticked.
 function preselectRequestedProposal(proposal) {
+  proposal = filterIncompleteProposalChanges(proposal);
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
   return { ...proposal, changes: proposal.changes.map((change) => ({ ...change, selected: change.selected !== false })) };
 }
@@ -16706,7 +16773,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
     };
     if (reviewerEdited) {
       const proposal = preselectDiscussionProposal(buildProposal('discussion', current, generated));
-      changes.pendingProposal = proposal.changes.length ? { ...proposal, source: 'regeneration' } : null;
+      changes.pendingProposal = proposal?.changes?.length ? { ...proposal, source: 'regeneration' } : null;
       delete changes.discussion;
       const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
       incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
@@ -17504,6 +17571,9 @@ router.stagedEvaluation = {
   actionDispositionWithContext,
   safeAgentProposalPromotion,
   preselectActionProposal,
+  filterIncompleteProposalChanges,
+  completeActionSuggestionText,
+  completeDiscussionSuggestionText,
   echoesPublishedAction,
   preselectDiscussionProposal,
   foldUnownedNearCopies,
