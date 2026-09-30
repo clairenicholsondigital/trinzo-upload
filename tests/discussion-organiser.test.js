@@ -9,7 +9,8 @@ const {
   isPersonalAside, isPeripheralAside, isRoutineMeetingAdministration,
   removePersonalAsides, normaliseDecisionTopicHeadings,
   repairStructuralTopicHeadings,
-  dedupeAdjacentRestatements, dedupeGlobalRestatements, finaliseDiscussionForPublication
+  dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
+  consolidatePartialOverlapRows, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -329,6 +330,55 @@ test('global cleanup is idempotent', async () => {
   const once = await dedupeGlobalRestatements(discussion, { encode: () => null });
   const twice = await dedupeGlobalRestatements(once, { encode: () => null });
   assert.deepEqual(twice, once);
+});
+
+test('bounded overlap sandwiches are consolidated without adding reviewer flags', async () => {
+  const sourceUnits = Array.from({ length: 12 }, (_, offset) => ({
+    id: `T${String(48 + offset).padStart(4, '0')}`, sequence: 48 + offset, speaker: 'Stuart', text: 'Audit scope discussion.'
+  }));
+  const discussion = [{
+    id: 'audit', topic: 'Audit scope', decisions: [], openQuestions: [], points: [
+      { id: 'a', text: 'The audit is a normal full compliance audit with findings and ratings, and it does not involve AI components based on current knowledge.', evidenceIds: ['T0048'] },
+      { id: 'b', text: "The audit is a routine full-compliance audit against 21 CFRs, MDSAP and MDR, and Stuart said he had concerns about the site's software development process during his previous visit.", evidenceIds: ['T0051', 'T0053', 'T0058'] },
+      { id: 'c', text: 'The audit includes follow-up on prior concerns about the software development process at a fundamental quality system level.', evidenceIds: ['T0053', 'T0055'] }
+    ]
+  }];
+  assert.equal(partialOverlapCandidates(discussion, { sourceUnits }).length, 1);
+  const consolidated = await consolidatePartialOverlapRows(discussion, {
+    sourceUnits,
+    rewritePartialOverlaps: async (candidates) => [{
+      candidateId: candidates[0].candidateId,
+      consolidate: true,
+      rows: [
+        { text: 'The audit is a routine full-compliance audit against 21 CFRs, MDSAP and MDR, with findings and ratings; it does not involve AI components based on current knowledge.' },
+        { text: "The audit includes follow-up on Stuart's prior concerns from his previous visit about the site's software development process at a fundamental quality system level." }
+      ]
+    }]
+  });
+  assert.equal(consolidated[0].points.length, 2);
+  assert.deepEqual(new Set(consolidated[0].points[0].evidenceIds), new Set(['T0048', 'T0051', 'T0053', 'T0058', 'T0055']));
+  assert.deepEqual(consolidated[0].points.flatMap((row) => row.reviewFlagIds), []);
+});
+
+test('overlap consolidation fails closed when a figure or polarity is lost', async () => {
+  const sourceUnits = Array.from({ length: 12 }, (_, offset) => ({
+    id: `T${String(48 + offset).padStart(4, '0')}`, sequence: 48 + offset, text: 'Audit scope discussion.'
+  }));
+  const discussion = [{ topic: 'Audit scope', decisions: [], openQuestions: [], points: [
+    { id: 'a', text: 'The audit is a full compliance audit and does not involve AI.', evidenceIds: ['T0048'] },
+    { id: 'b', text: 'The audit is a full compliance audit against 21 CFR, and Stuart raised software concerns.', evidenceIds: ['T0051', 'T0053'] },
+    { id: 'c', text: 'The audit follows up the prior software concerns at quality-system level.', evidenceIds: ['T0053', 'T0055'] }
+  ] }];
+  const consolidated = await consolidatePartialOverlapRows(discussion, {
+    sourceUnits,
+    rewritePartialOverlaps: async (candidates) => candidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      consolidate: true,
+      rows: [{ text: 'The audit is a full compliance audit that follows up software concerns.' }]
+    }))
+  });
+  assert.deepEqual(consolidated[0].points.map((row) => ({ id: row.id, text: row.text, evidenceIds: row.evidenceIds })),
+    discussion[0].points);
 });
 
 test('the publication boundary applies content, heading and restatement safeguards together', async () => {

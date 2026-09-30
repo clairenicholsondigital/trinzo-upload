@@ -764,6 +764,134 @@ function rowContainment(left, right) {
   return shared / smaller;
 }
 
+// Generated rows sometimes form an A / A+B / B "overlap sandwich": one
+// compound row repeats a facet from each neighbour. Whole-row dedupe cannot
+// safely see that shape because the compound row also contains real, unique
+// information. Only expose tightly bounded, adjacent triples to the optional
+// editorial rewrite below; a failed or uncertain rewrite leaves them verbatim.
+function splitIndependentClauses(value) {
+  const source = text(value, 4000);
+  if (!source) return [];
+  return source.split(/[,;]\s+(?:and|but)\s+(?=(?:[A-Z][\w'’-]+|the|it|this|that|there)\s+(?:is|are|was|were|does|do|did|has|have|had|will|would|said|noted|confirmed|reported|raised|expressed)\b)/i)
+    .map((clause) => text(clause).replace(/[.;,]\s*$/, '').trim())
+    .filter((clause) => contentTokens(clause).size >= 3);
+}
+
+function clauseTokens(value) {
+  return contentTokens(text(value).replace(/([a-z0-9])-([a-z0-9])/gi, '$1 $2'));
+}
+
+function clauseOverlap(left, right) {
+  const a = clauseTokens(left); const b = clauseTokens(right);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
+function partialOverlapCandidates(topics = [], options = {}) {
+  const index = unitIndex(options.sourceUnits || []);
+  const candidates = [];
+  (Array.isArray(topics) ? topics : []).forEach((topic, topicIndex) => {
+    const rows = Array.isArray(topic?.points) ? topic.points : [];
+    for (let rowIndex = 1; rowIndex < rows.length - 1; rowIndex += 1) {
+      const group = rows.slice(rowIndex - 1, rowIndex + 2);
+      if (group.some((record) => record?.reviewerAuthored)) continue;
+      if (rowEvidenceGap(group[0], group[1], index) > 4 || rowEvidenceGap(group[1], group[2], index) > 4) continue;
+      const middleClauses = splitIndependentClauses(group[1]?.text);
+      if (middleClauses.length !== 2) continue;
+      const leftScores = middleClauses.map((clause) => clauseOverlap(group[0]?.text, clause));
+      const rightScores = middleClauses.map((clause) => clauseOverlap(group[2]?.text, clause));
+      const leftClause = leftScores[0] >= leftScores[1] ? 0 : 1;
+      const rightClause = rightScores[0] >= rightScores[1] ? 0 : 1;
+      if (leftClause === rightClause || leftScores[leftClause] < 0.36 || rightScores[rightClause] < 0.36) continue;
+      const ids = group.map((record) => text(record?.id, 160));
+      const candidateId = `overlap:${text(topic?.id || topic?.topic, 100)}:${ids.join(':') || rowIndex}`;
+      candidates.push({
+        candidateId,
+        topicIndex,
+        rowIndex: rowIndex - 1,
+        topic: text(topic?.topic, 220),
+        rows: group.map((record) => ({
+          id: text(record?.id, 160), text: text(record?.text), evidenceIds: [...(record?.evidenceIds || [])]
+        }))
+      });
+      rowIndex += 1; // Candidate groups never overlap.
+    }
+  });
+  return candidates.slice(0, Math.max(1, Number(options.maximumPartialOverlapCandidates || 8)));
+}
+
+function consolidationNumbers(value) {
+  return valueSet(value, ROW_NUMBER);
+}
+
+function consolidationNamesAndAcronyms(value) {
+  const ignored = new Set(['A', 'An', 'The', 'It', 'This', 'That', 'These', 'Those']);
+  return new Set((String(value || '').match(/\b[A-Z][A-Za-z0-9'’-]*\b/g) || [])
+    .map((token) => token.replace(/[’']s$/i, ''))
+    .filter((token) => !ignored.has(token)));
+}
+
+function validPartialOverlapRewrite(candidate, proposedRows) {
+  if (!Array.isArray(proposedRows) || proposedRows.length < 1 || proposedRows.length >= candidate.rows.length) return false;
+  const originals = candidate.rows.map((row) => text(row?.text)).filter(Boolean);
+  const rewritten = proposedRows.map((row) => text(typeof row === 'string' ? row : row?.text)).filter(Boolean);
+  if (rewritten.length !== proposedRows.length || rewritten.some((row) => contentTokens(row).size < 4)) return false;
+  const originalText = originals.join(' '); const rewrittenText = rewritten.join(' ');
+  if (!sameSet(consolidationNumbers(originalText), consolidationNumbers(rewrittenText))) return false;
+  if (!sameSet(consolidationNamesAndAcronyms(originalText), consolidationNamesAndAcronyms(rewrittenText))) return false;
+  if (ROW_NEGATION.test(originalText) !== ROW_NEGATION.test(rewrittenText)) return false;
+  if (ROW_UNCERTAINTY.test(originalText) !== ROW_UNCERTAINTY.test(rewrittenText)) return false;
+  const sourceTokens = clauseTokens(originalText); const outputTokens = clauseTokens(rewrittenText);
+  let retained = 0;
+  for (const token of sourceTokens) if (outputTokens.has(token)) retained += 1;
+  if (!sourceTokens.size || retained / sourceTokens.size < 0.68) return false;
+  // Every source row must still be recognisable in at least one output row,
+  // and every output row must be grounded in the supplied rows.
+  if (originals.some((source) => Math.max(...rewritten.map((row) => clauseOverlap(source, row))) < 0.34)) return false;
+  if (rewritten.some((row) => clauseOverlap(row, originalText) < 0.55)) return false;
+  return true;
+}
+
+async function consolidatePartialOverlapRows(topics = [], options = {}) {
+  if (typeof options.rewritePartialOverlaps !== 'function') return topics;
+  const candidates = partialOverlapCandidates(topics, options);
+  if (!candidates.length) return topics;
+  let results;
+  try { results = await options.rewritePartialOverlaps(candidates); } catch { return topics; }
+  const byId = new Map((Array.isArray(results) ? results : [])
+    .map((result) => [text(result?.candidateId, 300), result]));
+  const cloned = (Array.isArray(topics) ? topics : []).map(cloneTopic);
+  let applied = 0;
+  for (const candidate of [...candidates].reverse()) {
+    const result = byId.get(candidate.candidateId);
+    const proposed = result?.consolidate === true ? result.rows : null;
+    if (!validPartialOverlapRewrite(candidate, proposed)) continue;
+    const rows = cloned[candidate.topicIndex]?.points || [];
+    const originals = rows.slice(candidate.rowIndex, candidate.rowIndex + candidate.rows.length);
+    if (originals.length !== candidate.rows.length
+      || originals.some((record, index) => text(record?.id, 160) !== candidate.rows[index].id)) continue;
+    const evidenceIds = [...new Set(originals.flatMap((record) => record.evidenceIds || []))];
+    const reviewFlagIds = [...new Set(originals.flatMap((record) => record.reviewFlagIds || []))];
+    const supportingDetails = originals.flatMap((record) => record.supportingDetails || []);
+    const replacements = proposed.map((proposedRow, index) => ({
+      ...cloneRecord(originals[Math.min(index, originals.length - 1)]),
+      id: originals[index]?.id || `${originals[0]?.id || 'point'}-consolidated-${index + 1}`,
+      text: text(typeof proposedRow === 'string' ? proposedRow : proposedRow?.text),
+      evidenceIds,
+      reviewFlagIds,
+      supportingDetails: index === 0 ? supportingDetails : []
+    }));
+    rows.splice(candidate.rowIndex, candidate.rows.length, ...replacements);
+    applied += 1;
+  }
+  if (applied && typeof options.onPartialOverlapConsolidated === 'function') {
+    options.onPartialOverlapConsolidated({ candidates: candidates.length, applied });
+  }
+  return cloned;
+}
+
 const ROW_PREDICATE_FAMILIES = [
   /\b(?:captur(?:e|ed|ing)|record(?:ed|ing)?|log(?:ged|ging)?)\b/i,
   /\b(?:clean(?:ed|ing)?|filter(?:ed|ing)?|triag(?:e|ed|ing))\b/i,
@@ -896,6 +1024,7 @@ async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   const preparedOptions = await prepareRestatementVectors(topics, options);
   topics = await dedupeAdjacentRestatements(topics, preparedOptions);
   topics = await dedupeGlobalRestatements(topics, preparedOptions);
+  topics = await consolidatePartialOverlapRows(topics, preparedOptions);
   return topics;
 }
 
@@ -1022,6 +1151,9 @@ module.exports = {
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements,
   dedupeGlobalRestatements,
+  splitIndependentClauses,
+  partialOverlapCandidates,
+  consolidatePartialOverlapRows,
   finaliseDiscussionForPublication,
   unitIndex
 };

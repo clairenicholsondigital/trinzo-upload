@@ -11876,7 +11876,11 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
   }
   result = removePersonalAsides(result);
   result = shapeDiscussion(result, options.people || []).discussion;
-  result = await finaliseDiscussionForPublication(result, { sourceUnits: options.sourceUnits || [] });
+  result = await finaliseDiscussionForPublication(result, {
+    sourceUnits: options.sourceUnits || [],
+    rewritePartialOverlaps: options.rewritePartialOverlaps,
+    onPartialOverlapConsolidated: options.onPartialOverlapConsolidated
+  });
   const bodyDedupe = dedupeDiscussionBody(result, options.people || []);
   result = bodyDedupe.discussion;
   return {
@@ -11887,6 +11891,30 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
     dropped: bodyDedupe.dropped,
     diagnostics: discussionStructureDiagnostics(result)
   };
+}
+
+function discussionOverlapConsolidationPrompt(candidates = []) {
+  return `You are the final copy editor for client-facing meeting minutes.
+
+The supplied candidates each contain exactly three adjacent discussion points from the SAME section. They may form an overlap sandwich: A, then A+B, then B. Decide independently for each candidate whether the three points can safely become fewer, clearer points.
+
+Rules:
+- Consolidate only when every material fact can be retained without inference.
+- Preserve all names, figures, dates, standards, scope limits, polarity, uncertainty, attribution and timing.
+- Remove repeated framing and put related facts in a natural reading order.
+- Prefer two concise points. Use one only when all three genuinely express one proposition.
+- Do not create actions, decisions, headings, warnings, suggestions or review flags.
+- Do not add facts from general knowledge.
+- If uncertain, return consolidate=false and rows=[].
+- Return JSON only: {"results":[{"candidateId":"...","consolidate":true|false,"rows":[{"text":"..."}]}]}.
+- Return exactly one result for every supplied candidate ID.
+
+CANDIDATES:
+${JSON.stringify(candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    section: candidate.topic,
+    rows: candidate.rows.map((row) => ({ text: row.text, evidenceIds: row.evidenceIds }))
+  })))}`;
 }
 
 function looksLikeStandaloneHeadingFragment(value = '', topic = '') {
@@ -14442,7 +14470,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }));
       if (typeof callOptions.captureError === 'function') callOptions.captureError(error);
       if (!callOptions.optional) throw error;
-      degradedSources.push(`The optional ${pass} quality pass did not complete: ${error.message}`);
+      if (callOptions.silentOptionalFailure !== true) {
+        degradedSources.push(`The optional ${pass} quality pass did not complete: ${error.message}`);
+      }
       return null;
     }
   };
@@ -15266,12 +15296,32 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         console.log(JSON.stringify({ event: 'meeting_agent_promoted_objections', journeyId: draft.draftId, promoted: objections.promoted }));
       }
     }
+    const rewritePartialOverlaps = async (candidates) => {
+      const result = await call(
+        'critic-discussion-overlap-consolidation',
+        discussionOverlapConsolidationPrompt(candidates),
+        {
+          optional: true,
+          responseKind: 'correction_check',
+          maxAttempts: 1,
+          silentOptionalFailure: true,
+          candidateCount: candidates.length,
+          candidateIds: candidates.map((candidate) => candidate.candidateId)
+        }
+      );
+      return Array.isArray(result?.results) ? result.results : [];
+    };
     // A final publication-boundary pass also covers wording returned by the
     // later question, attribution and fidelity checks. Flag reconciliation
     // below then drops any warning whose only target was removed here.
     const finalQuantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
     finalDiscussion = await finaliseDiscussionForPublication(finalQuantifiedGrounding.discussion, {
-      sourceUnits: draft.sourceUnits
+      sourceUnits: draft.sourceUnits,
+      rewritePartialOverlaps,
+      onPartialOverlapConsolidated: ({ candidates, applied }) => console.log(JSON.stringify({
+        event: 'meeting_agent_partial_overlap_consolidation', journeyId: draft.draftId,
+        candidates, applied
+      }))
     });
     if (finalQuantifiedGrounding.removed.length) console.log(JSON.stringify({
       event: 'meeting_agent_final_quantified_claim_filter', journeyId: draft.draftId,
@@ -15302,6 +15352,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         people: meetingAgentPeopleNames(draft.sourceUnits),
         organise: meetingMinutesAgentDiscussionOrganiseEnabled(),
         includeAllDetails,
+        rewritePartialOverlaps,
+        onPartialOverlapConsolidated: ({ candidates, applied }) => console.log(JSON.stringify({
+          event: 'meeting_agent_post_promotion_overlap_consolidation', journeyId: draft.draftId,
+          candidates, applied
+        })),
         onRestatements: (merges) => console.log(JSON.stringify({
           event: 'meeting_agent_post_promotion_restatements', journeyId: draft.draftId, merges
         }))
