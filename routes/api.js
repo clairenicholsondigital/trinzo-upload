@@ -11626,7 +11626,8 @@ function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed
   const restored = [];
   let eligibleCount = 0;
   for (const record of Array.isArray(accepted) ? accepted : []) {
-    if (!(record?.owners || []).length || !highConfidenceRefereedAction(record, candidates, sourceUnits)) continue;
+    if (!(record?.owners || []).length || isVagueReconstructedAction(record?.action)
+      || !highConfidenceRefereedAction(record, candidates, sourceUnits)) continue;
     eligibleCount += 1;
     if (actions.some((existing) => strictActionDeliverableMatch(record, existing))
       || proposals.some((existing) => strictActionDeliverableMatch(record, existing))) continue;
@@ -11642,14 +11643,98 @@ function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed
 
 function isVagueReconstructedAction(value = '') {
   const source = meetingMinutesAgentText(value, 500).toLowerCase().replace(/[.?!]+$/, '').trim();
+  // A conversation is only a useful action when the minutes say what it must
+  // achieve.  Models otherwise turn social closings ("I'll speak to you next
+  // week") and unresolved references into rows such as "Speak with the team
+  // as agreed".  Reject the whole contact-only family, including named
+  // contacts; an owner or a date does not supply the missing deliverable.
+  const contactOpening = /^(?:(?:talk|speak|chat|liaise|meet|check in|touch base|catch up|follow up|reach out|sync(?: up)?)\s+(?:to|with)\b|(?:contact|call|chase|message|phone|ring)\s+(?!a meeting\b|the meeting\b))/i.test(source);
+  const contactOnly = contactOpening
+    && !/\b(?:about|regarding|concerning|in relation to|to (?:ask|check|clarify|confirm|decide|determine|discuss|establish|find|obtain|request|resolve|review|verify)|so that|in order to)\b/.test(source)
+    && !/\band\s+(?:ask|check|clarify|confirm|decide|determine|discuss|document|establish|find|obtain|prepare|provide|request|resolve|review|send|share|update|verify)\b/.test(source);
   const vagueReferences = [
     /\bfollow up\b/, /\bwhat can be done\b/, /\b(?:the|this|that) plan\b/,
     /\bbetter picture\b/, /\b(?:crossover|overlap)\b/, /\bregarding (?:it|this|that)\b/
   ].filter((pattern) => pattern.test(source)).length;
-  return circularMetaAction(source)
+  return contactOnly || circularMetaAction(source)
     || /^(?:plan|address|handle|manage|resolve|sort out|deal with)\s+(?:the\s+)?(?:timeline|situation|issue|matter|arrangements?|logistics?|availability|constraint)(?:\s+(?:around|regarding|for)\s+(?:the\s+)?(?:recorded\s+)?(?:availability\s+)?constraint)?$/.test(source)
     || /^(?:ensure|make sure)\s+(?:that\s+)?(?:everything|things|items)\s+(?:is|are)\s+(?:ready|in place)$/.test(source)
     || vagueReferences >= 3;
+}
+
+const PRIORITY_SUPPORTING_DETAIL = /\b(?:high|medium|moderate|low|significant|material|residual|cybersecurity|safety)?\s*risk(?:s|y)?\b|\b(?:hazard|threat|blocker|blocking|blocked|roadblock|at risk|off track|on track|behind schedule|ahead of schedule|delay(?:ed|s)?|overdue|partway through|in progress|underway|not (?:yet )?started|target(?:ed)? completion|due (?:by|on)|failed|failure)\b/i;
+
+// Priority facts must read as ordinary minutes, carry evidence and add meaning
+// not already present in a visible row.  This promotes risks and meaningful
+// delivery status out of the optional drawer without inventing or rewriting
+// anything.  A ceiling protects unusually repetitive risk workshops.
+function promotePrioritySupportingDetails(discussion = [], limit = 12) {
+  const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: (topic.points || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
+    decisions: (topic.decisions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
+    openQuestions: (topic.openQuestions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] }))
+  }));
+  const visible = result.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  let promoted = 0;
+  for (const topic of result) {
+    const additions = [];
+    for (const kind of ['decisions', 'openQuestions', 'points']) {
+      for (const record of topic[kind] || []) {
+        const retained = [];
+        for (const detail of record.supportingDetails || []) {
+          const value = meetingMinutesAgentText(detail?.text, 1600);
+          const readable = value && !/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you)\b/i.test(value);
+          const duplicate = visible.some((other) => other !== record
+            && hybridContentTokenOverlap(other?.text, value) >= 0.7)
+            || hybridContentTokenOverlap(record?.text, value) >= 0.7;
+          if (promoted < limit && readable && PRIORITY_SUPPORTING_DETAIL.test(value)
+            && (detail.evidenceIds || []).length && !duplicate
+            && supportingDetailAddsInformation(detail, visible, {})) {
+            const row = {
+              ...detail,
+              id: detail.id || `priority-${record.id || 'row'}-${promoted + 1}`,
+              text: value,
+              evidenceIds: [...new Set(detail.evidenceIds || [])].slice(0, 8),
+              supportingDetails: []
+            };
+            additions.push(row);
+            visible.push(row);
+            promoted += 1;
+          } else retained.push(detail);
+        }
+        record.supportingDetails = retained;
+      }
+    }
+    if (additions.length) topic.points.push(...additions);
+  }
+  return { discussion: result, promoted };
+}
+
+// Additional details are reviewer context, not a second set of minutes.  Keep
+// them sparse and spread across the draft after semantic consolidation.  Main
+// propositions, decisions, questions and their evidence are never removed.
+function limitSupportingDetails(discussion = [], maxTotal = 12, maxPerRecord = 2) {
+  const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: (topic.points || []).map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record).slice(0, maxPerRecord) })),
+    decisions: (topic.decisions || []).map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record).slice(0, maxPerRecord) })),
+    openQuestions: (topic.openQuestions || []).map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record).slice(0, maxPerRecord) }))
+  }));
+  const rows = result.flatMap((topic) => ['decisions', 'openQuestions', 'points']
+    .flatMap((kind) => topic[kind] || []));
+  const selected = new Map(rows.map((record) => [record, []]));
+  let retained = 0;
+  for (let detailIndex = 0; detailIndex < maxPerRecord && retained < maxTotal; detailIndex += 1) {
+    for (const record of rows) {
+      const detail = record.supportingDetails?.[detailIndex];
+      if (!detail || retained >= maxTotal) continue;
+      selected.get(record).push(detail);
+      retained += 1;
+    }
+  }
+  for (const record of rows) record.supportingDetails = selected.get(record);
+  return result;
 }
 
 function isReviewableActionProposal(record = {}, sourceUnits = []) {
@@ -14943,6 +15028,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         dropped: bodyDedupe.dropped.slice(0, 20)
       }));
     }
+    const priorityDetails = promotePrioritySupportingDetails(finalDiscussion);
+    finalDiscussion = limitSupportingDetails(priorityDetails.discussion);
+    if (priorityDetails.promoted) console.log(JSON.stringify({
+      event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
+      promoted: priorityDetails.promoted
+    }));
     const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
@@ -15570,7 +15661,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   traceOwners('presenterAidGate(final)', presenterAidGate.actions, draft.draftId);
   // Later passes (lifecycle, answered, salvage) can add a second wording of a
   // commitment after the merge above, so the finished list is read once more.
-  const finalActions = await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final');
+  const finalActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final'))
+    .filter((record) => !isVagueReconstructedAction(record?.action));
   const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
@@ -15584,7 +15676,11 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         // Later checks (lifecycle, answered, completed) add their own
         // suggestions after the proposal was first filtered, so the same-thing
         // and personal-errand filters run once more on the final list.
-        const finalProposal = removePublishedActionProposalDuplicates(proposal, actionFlagState.content.actions);
+        const finalProposal = removePublishedActionProposalDuplicates({
+          ...proposal,
+          changes: (proposal.changes || []).filter((change) =>
+            !isVagueReconstructedAction(change?.after?.action || change?.before?.action))
+        }, actionFlagState.content.actions);
         return finalProposal.changes.length
           ? preselectActionProposal(finalProposal, actionFlagState.content.actions, draft.sourceUnits)
           : null;
@@ -17421,6 +17517,8 @@ router.stagedEvaluation = {
   mergeHybridDiscussionTopics,
   compactDiscussionPropositions,
   consolidateSupportingDetails,
+  promotePrioritySupportingDetails,
+  limitSupportingDetails,
   promoteMaterialObjectionDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,

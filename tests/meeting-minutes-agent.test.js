@@ -60,6 +60,8 @@ const {
   mergeHybridDiscussionTopics,
   compactDiscussionPropositions,
   consolidateSupportingDetails,
+  promotePrioritySupportingDetails,
+  limitSupportingDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,
@@ -105,6 +107,28 @@ test('bare status reassurance is consolidated into a fuller context item about t
     ]
   });
   assert.deepEqual(details.map((detail) => detail.id), ['timed-status', 'dated', 'other']);
+});
+
+test('priority risk and delivery status details become primary minutes before extras are capped', () => {
+  const discussion = [{
+    id: 'topic-1', topic: 'Delivery review', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'The delivery programme was reviewed.', evidenceIds: ['T0001'],
+      supportingDetails: [
+        { id: 'risk', text: 'The unresolved interface defect remains a high risk to the release.', evidenceIds: ['T0002'] },
+        { id: 'status', text: 'Electrical compliance testing is on track for completion next Thursday.', evidenceIds: ['T0003'] },
+        { id: 'context-1', text: 'The test team is using the revised protocol.', evidenceIds: ['T0004'] },
+        { id: 'context-2', text: 'The protocol is stored in the quality folder.', evidenceIds: ['T0005'] },
+        { id: 'context-3', text: 'The folder is available to the wider project team.', evidenceIds: ['T0006'] }
+      ]
+    }]
+  }];
+  const promoted = promotePrioritySupportingDetails(discussion);
+  assert.equal(promoted.promoted, 2);
+  assert.deepEqual(promoted.discussion[0].points.slice(1).map((row) => row.id), ['risk', 'status']);
+  const limited = limitSupportingDetails(promoted.discussion, 1, 2);
+  assert.equal(limited[0].points[0].supportingDetails.length, 1);
+  assert.equal(limited[0].points.slice(1).every((row) => row.supportingDetails.length === 0), true);
 });
 
 test('proposal decisions resolve only their linked review flags', () => {
@@ -1598,6 +1622,14 @@ test('rejected cluster releases editorial overflow but not paraphrases or raw wi
 
 test('vague reconstructed actions are rejected and implemented deliverables cover equivalent proposals', () => {
   assert.equal(isVagueReconstructedAction('Plan the timeline around the recorded availability constraint.'), true);
+  assert.equal(isVagueReconstructedAction('Speak to the relevant person.'), true);
+  assert.equal(isVagueReconstructedAction('Speak with the team as agreed.'), true);
+  assert.equal(isVagueReconstructedAction('Follow up with Cody next week.'), true);
+  assert.equal(isVagueReconstructedAction('Speak with Cody to confirm the EUDAMED submission date.'), false);
+  assert.equal(isVagueReconstructedAction('Contact the supplier regarding the missing declaration.'), false);
+  assert.equal(isVagueReconstructedAction('Follow up on the SRN submission.'), false);
+  assert.equal(isVagueReconstructedAction('Call a meeting to review the audit plan.'), false);
+  assert.equal(isVagueReconstructedAction('Meet the agreed submission deadline.'), false);
   assert.equal(isVagueReconstructedAction('Develop the audit preparation calendar for the first audit week.'), false);
   assert.equal(publishedActionCoversProposal({
     action: 'Determine and implement a secure method for providing document access, including external SharePoint access.',
