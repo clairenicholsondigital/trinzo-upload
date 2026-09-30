@@ -61,7 +61,7 @@ const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, c
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
-const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
+const { normaliseAttendeeReferences, normalisePublishedParticipantReference } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const {
   organiseDiscussionForReview,
@@ -11878,6 +11878,7 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
   result = shapeDiscussion(result, options.people || []).discussion;
   result = await finaliseDiscussionForPublication(result, {
     sourceUnits: options.sourceUnits || [],
+    people: options.people || [],
     rewritePartialOverlaps: options.rewritePartialOverlaps,
     onPartialOverlapConsolidated: options.onPartialOverlapConsolidated
   });
@@ -11896,13 +11897,13 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
 function discussionOverlapConsolidationPrompt(candidates = []) {
   return `You are the final copy editor for client-facing meeting minutes.
 
-The supplied candidates each contain exactly three adjacent discussion points from the SAME section. They may form an overlap sandwich: A, then A+B, then B. Decide independently for each candidate whether the three points can safely become fewer, clearer points.
+The supplied candidates each contain two or three adjacent discussion points from the SAME section. Three-row candidates may form an overlap sandwich: A, then A+B, then B. Two-row candidates are strongly similar adjacent points that may be differently worded versions of the same fact. Decide independently whether each candidate can safely become fewer, clearer points.
 
 Rules:
 - Consolidate only when every material fact can be retained without inference.
 - Preserve all names, figures, dates, standards, scope limits, polarity, uncertainty, attribution and timing.
 - Remove repeated framing and put related facts in a natural reading order.
-- Prefer two concise points. Use one only when all three genuinely express one proposition.
+- For a two-row candidate, use one concise point when both rows describe the same event or fact. For a three-row candidate, prefer two concise points; use one only when all three genuinely express one proposition.
 - Do not create actions, decisions, headings, warnings, suggestions or review flags.
 - Do not add facts from general knowledge.
 - If uncertain, return consolidate=false and rows=[].
@@ -15317,6 +15318,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     const finalQuantifiedGrounding = filterUnsupportedQuantifiedDiscussion(finalDiscussion, draft.sourceUnits);
     finalDiscussion = await finaliseDiscussionForPublication(finalQuantifiedGrounding.discussion, {
       sourceUnits: draft.sourceUnits,
+      people: meetingAgentPeopleNames(draft.sourceUnits),
       rewritePartialOverlaps,
       onPartialOverlapConsolidated: ({ candidates, applied }) => console.log(JSON.stringify({
         event: 'meeting_agent_partial_overlap_consolidation', journeyId: draft.draftId,
@@ -15998,8 +16000,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // which can rewrite two variants into the same finished action. Reconcile the
   // finished rows before they reach the editable Actions screen, carrying all
   // evidence and flags forward and retaining the stronger timing.
-  const actionsBeforeDisplayDedupe = timingChecked.actions.length;
-  const splitRows = splitCompoundActionList(timingChecked.actions, draft.draftId);
+  const actionPeople = meetingAgentPeopleNames(draft.sourceUnits);
+  const participantNormalisedActions = timingChecked.actions.map((record) => ({
+    ...record,
+    action: normalisePublishedParticipantReference(record?.action, actionPeople)
+  }));
+  const actionsBeforeDisplayDedupe = participantNormalisedActions.length;
+  const splitRows = splitCompoundActionList(participantNormalisedActions, draft.draftId);
   // The completeness, answered and lifecycle checks rewrite wording after the
   // earlier fold ran, which can leave an unowned paraphrase beside the owned
   // action it restates. Fold once more on what the reviewer will actually see.
@@ -16026,6 +16033,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // Later passes (lifecycle, answered, salvage) can add a second wording of a
   // commitment after the merge above, so the finished list is read once more.
   const finalActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final'))
+    .map((record) => ({
+      ...record,
+      action: normalisePublishedParticipantReference(record?.action, actionPeople)
+    }))
     .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
     .filter((record) => record && !isVagueReconstructedAction(record?.action));
   const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [

@@ -76,8 +76,26 @@ function attendeeFirstNames(attendees = []) {
 function personShapedContext(text, start, end) {
   const before = text.slice(Math.max(0, start - 80), start);
   const after = text.slice(end, Math.min(text.length, end + 45));
-  return /(?:\b(?:call|meeting|session|check-in|catch-up)\s+with\s+|\b(?:meet|speak|talk|check|follow[- ]?up)\s+(?:with|to)\s+|\b(?:ask|asked|tell|told|email|emailed|contact|contacted|phone|phoned|message|messaged|invite|invited)\s+|\b(?:send|share|provide|forward|circulate)\b.{0,35}\bto\s+)$/i.test(before)
+  return /(?:\b(?:participant|attendee|speaker)\s+|\b(?:call|meeting|session|check-in|catch-up)\b.{0,50}\b(?:with|for)\s+|\b(?:meet|speak|talk|check|follow[- ]?up)\s+(?:with|to)\s+|\b(?:ask|asked|tell|told|email|emailed|contact|contacted|phone|phoned|message|messaged|invite|invited)\s+|\b(?:send|share|provide|forward|circulate)\b.{0,35}\bto\s+)$/i.test(before)
     || /^\s*(?:said|asked|confirmed|noted|explained|will|can|could|needs?\s+to|has\s+to|is\s+going\s+to)\b/i.test(after);
+}
+
+function stripGenericRoleBeforeKnownPerson(value, attendees = []) {
+  let output = String(value || '');
+  const names = attendeeFirstNames(attendees)
+    .flatMap((item) => [item.fullName, item.firstName])
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+  for (const name of [...new Set(names)]) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    output = output.replace(new RegExp(`\\b(?:participant|attendee|speaker)\\s+(${escaped})\\b`, 'gi'), '$1');
+  }
+  return output;
+}
+
+function normalisePublishedParticipantReference(value, attendees = []) {
+  const corrected = normaliseAttendeeReferences(value, attendees).text;
+  return stripGenericRoleBeforeKnownPerson(corrected, attendees);
 }
 
 function extractMentionedPeople(text, confirmedAttendees = []) {
@@ -198,5 +216,7 @@ module.exports = {
   findAttendeeSurnameCorrections,
   normaliseFixedPersonAliases,
   normaliseFixedPersonAliasesDeep,
-  normaliseAttendeeReferences
+  normaliseAttendeeReferences,
+  stripGenericRoleBeforeKnownPerson,
+  normalisePublishedParticipantReference
 };

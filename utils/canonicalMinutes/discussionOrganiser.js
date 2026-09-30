@@ -12,6 +12,7 @@
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
 const { editorialTopicLabel, isPublishableTopicLabel, isStructuralTopicLabel } = require('./topicEditorial');
 const { normaliseDatePhrases } = require('../spokenForms');
+const { normalisePublishedParticipantReference } = require('../entityNormalization');
 const {
   isPersonalAside,
   isPeripheralAside,
@@ -794,6 +795,7 @@ function partialOverlapCandidates(topics = [], options = {}) {
   const candidates = [];
   (Array.isArray(topics) ? topics : []).forEach((topic, topicIndex) => {
     const rows = Array.isArray(topic?.points) ? topic.points : [];
+    const claimed = new Set();
     for (let rowIndex = 1; rowIndex < rows.length - 1; rowIndex += 1) {
       const group = rows.slice(rowIndex - 1, rowIndex + 2);
       if (group.some((record) => record?.reviewerAuthored)) continue;
@@ -816,7 +818,38 @@ function partialOverlapCandidates(topics = [], options = {}) {
           id: text(record?.id, 160), text: text(record?.text), evidenceIds: [...(record?.evidenceIds || [])]
         }))
       });
+      claimed.add(rowIndex - 1); claimed.add(rowIndex); claimed.add(rowIndex + 1);
       rowIndex += 1; // Candidate groups never overlap.
+    }
+    // A simpler pair can survive the ordinary restatement pass when one row
+    // contains malformed ASR wording or a little extra purpose. Offer only
+    // adjacent, evidence-near, strongly similar pairs to the same no-loss
+    // editor used for overlap sandwiches. Reviewer-authored rows never move.
+    for (let rowIndex = 0; rowIndex < rows.length - 1; rowIndex += 1) {
+      if (claimed.has(rowIndex) || claimed.has(rowIndex + 1)) continue;
+      const group = rows.slice(rowIndex, rowIndex + 2);
+      if (group.some((record) => record?.reviewerAuthored)
+        || rowEvidenceGap(group[0], group[1], index) > 4
+        || !rowsClaimCompatible(group[0], group[1])
+        || !rowPredicatesCompatible(group[0], group[1])) continue;
+      const lexical = clauseOverlap(group[0]?.text, group[1]?.text);
+      const leftVector = options.restatementVectorByText?.get(text(group[0]?.text));
+      const rightVector = options.restatementVectorByText?.get(text(group[1]?.text));
+      const semantic = leftVector && rightVector ? cosine(leftVector, rightVector) : 0;
+      if (!((semantic >= 0.84 && lexical >= 0.38) || lexical >= 0.68)) continue;
+      const ids = group.map((record) => text(record?.id, 160));
+      const candidateId = `overlap:${text(topic?.id || topic?.topic, 100)}:${ids.join(':') || rowIndex}`;
+      candidates.push({
+        candidateId,
+        topicIndex,
+        rowIndex,
+        topic: text(topic?.topic, 220),
+        rows: group.map((record) => ({
+          id: text(record?.id, 160), text: text(record?.text), evidenceIds: [...(record?.evidenceIds || [])]
+        }))
+      });
+      claimed.add(rowIndex); claimed.add(rowIndex + 1);
+      rowIndex += 1;
     }
   });
   return candidates.slice(0, Math.max(1, Number(options.maximumPartialOverlapCandidates || 8)));
@@ -1006,14 +1039,19 @@ async function prepareRestatementVectors(topics = [], options = {}) {
 
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   let topics = removeNonContentAsides(discussion);
+  const people = [...new Set([
+    ...(Array.isArray(options.people) ? options.people : []),
+    ...(Array.isArray(options.sourceUnits) ? options.sourceUnits.map((unit) => unit?.speaker) : [])
+  ].map((name) => text(name, 180)).filter(Boolean))];
+  const normalisePeople = (value) => normalisePublishedParticipantReference(value, people);
   topics = topics.map((topic) => {
-    const next = { ...topic };
+    const next = { ...topic, topic: normalisePeople(topic?.topic) };
     for (const kind of ROW_KINDS) {
       next[kind] = (topic[kind] || []).map((record) => ({
         ...record,
-        text: normaliseDatePhrases(record?.text).text,
+        text: normaliseDatePhrases(normalisePeople(record?.text)).text,
         supportingDetails: (record?.supportingDetails || []).map((detail) => ({
-          ...detail, text: normaliseDatePhrases(detail?.text).text
+          ...detail, text: normaliseDatePhrases(normalisePeople(detail?.text)).text
         }))
       }));
     }
@@ -1025,6 +1063,19 @@ async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   topics = await dedupeAdjacentRestatements(topics, preparedOptions);
   topics = await dedupeGlobalRestatements(topics, preparedOptions);
   topics = await consolidatePartialOverlapRows(topics, preparedOptions);
+  // The bounded editor is instructed not to add generic role labels, but the
+  // publication contract is enforced in code as well.
+  topics = topics.map((topic) => ({
+    ...topic,
+    topic: normalisePeople(topic?.topic),
+    ...Object.fromEntries(ROW_KINDS.map((kind) => [kind, (topic[kind] || []).map((record) => ({
+      ...record,
+      text: normalisePeople(record?.text),
+      supportingDetails: (record?.supportingDetails || []).map((detail) => ({
+        ...detail, text: normalisePeople(detail?.text)
+      }))
+    }))]))
+  }));
   return topics;
 }
 

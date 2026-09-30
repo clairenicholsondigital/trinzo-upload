@@ -360,6 +360,44 @@ test('bounded overlap sandwiches are consolidated without adding reviewer flags'
   assert.deepEqual(consolidated[0].points.flatMap((row) => row.reviewFlagIds), []);
 });
 
+test('publication removes known-person role prefixes and corrects names before final dedupe', async () => {
+  const sourceUnits = [
+    { id: 'T0030', sequence: 30, speaker: 'Jenny Gough', text: 'The validation route is confirmed.' },
+    { id: 'T0031', sequence: 31, speaker: 'Orla Skally', text: 'We will arrange a weekly call alongside the working sessions.' },
+    { id: 'T0032', sequence: 32, speaker: 'Jacqui Fox', text: 'The weekly call with Orla will provide ongoing coordination.' }
+  ];
+  const cleaned = await finaliseDiscussionForPublication([{
+    topic: 'Working arrangements', decisions: [], openQuestions: [], points: [
+      { id: 'person', text: 'Participant Jenny Gough confirmed the validation route.', evidenceIds: ['T0030'] },
+      { id: 'call-a', text: 'A weekly recurrence call will be established for Oral alongside the working sessions.', evidenceIds: ['T0031'] },
+      { id: 'call-b', text: 'A weekly recurring call with Orla is planned alongside working sessions to provide ongoing coordination.', evidenceIds: ['T0032'] }
+    ]
+  }], { sourceUnits, encode: (values) => values.map(() => [1, 0]) });
+  assert.equal(cleaned[0].points[0].text, 'Jenny Gough confirmed the validation route.');
+  assert.equal(cleaned[0].points.length, 2);
+  assert.match(cleaned[0].points[1].text, /\bOrla\b/);
+  assert.doesNotMatch(cleaned[0].points[1].text, /\bOral\b/);
+  assert.deepEqual(new Set(cleaned[0].points[1].evidenceIds), new Set(['T0031', 'T0032']));
+});
+
+test('strong adjacent two-row restatements can use the guarded consolidation editor', async () => {
+  const sourceUnits = [
+    { id: 'T0040', sequence: 40, speaker: 'Orla Skally', text: 'We will have a weekly coordination call with the working sessions.' },
+    { id: 'T0042', sequence: 42, speaker: 'Jacqui Fox', text: 'The regular weekly call with Orla will coordinate the working sessions.' }
+  ];
+  const discussion = [{ topic: 'Working arrangements', decisions: [], openQuestions: [], points: [
+    { id: 'a', text: 'A weekly coordination call with Orla will accompany the working sessions.', evidenceIds: ['T0040'] },
+    { id: 'b', text: 'Orla will join a regular weekly call alongside working sessions for coordination.', evidenceIds: ['T0042'] }
+  ] }];
+  const values = discussion[0].points.map((row) => row.text);
+  const candidates = partialOverlapCandidates(discussion, {
+    sourceUnits,
+    restatementVectorByText: new Map(values.map((value) => [value, [1, 0]]))
+  });
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].rows.length, 2);
+});
+
 test('overlap consolidation fails closed when a figure or polarity is lost', async () => {
   const sourceUnits = Array.from({ length: 12 }, (_, offset) => ({
     id: `T${String(48 + offset).padStart(4, '0')}`, sequence: 48 + offset, text: 'Audit scope discussion.'
