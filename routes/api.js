@@ -11151,7 +11151,9 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const include = includedSections(draft);
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
   const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
-  const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(draft.discussion, draft.sourceUnits);
+  const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(
+    removeHeadingFragmentsFromDiscussion(draft.discussion), draft.sourceUnits
+  );
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
     .filter(Boolean);
@@ -11194,7 +11196,9 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
-  const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(publicFields.discussion, draft.sourceUnits);
+  const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
+    removeHeadingFragmentsFromDiscussion(publicFields.discussion), draft.sourceUnits
+  );
   const visibleActions = (Array.isArray(publicFields.actions) ? publicFields.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
     .filter(Boolean);
@@ -11677,6 +11681,33 @@ function isVagueReconstructedAction(value = '') {
 const MINOR_COPY_COURTESY = /\b(?:cc(?:'d|ed|ing)?|copy|copied|copying|include|add)\b[^.]{0,100}\b(?:email|mail|correspondence|thread|recipient|her|him|them|you)\b/i;
 const COURTESY_CORRECTION = /\b(?:sorry|apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|this time|don['’]?t worry|do not worry)\b/i;
 const STRONG_COURTESY_CORRECTION = /\b(?:apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|don['’]?t worry|do not worry)\b/i;
+const PERSON_NAME_WORD = "[A-Z][\\p{L}'’.-]+";
+const PERSON_NAME = `${PERSON_NAME_WORD}(?:\\s+${PERSON_NAME_WORD}){0,2}`;
+const RECEIPT_ACKNOWLEDGEMENT = new RegExp(
+  `^${PERSON_NAME}\\s+(?:acknowledg(?:e|es|ed)|confirm(?:s|ed)?)\\s+(?:safe\\s+)?receipt(?:\\s+of\\s+(?:the\\s+)?(?:email|message|credentials?|account details|access details|login details))?[.!]?$`,
+  'iu'
+);
+const OFF_RECORD_REQUEST = new RegExp(
+  `^(?:${PERSON_NAME}\\s+)?(?:asks?|requests?|asked|requested)\\s+(?:for\\s+)?(?:a\\s+)?(?:comment|conversation|discussion|remark)\\s+off[- ]the[- ]record[.!]?$`,
+  'iu'
+);
+const ADMINISTRATIVE_TAIL = new RegExp(
+  `(?:[,;]|\\s+and|\\s+then)\\s*(?:${PERSON_NAME}\\s+)?(?:acknowledg(?:e|es|ed)|confirm(?:s|ed)?)\\s+(?:safe\\s+)?receipt(?:\\s+of\\s+(?:the\\s+)?(?:email|message|credentials?|account details|access details|login details))?[.!]?$`,
+  'iu'
+);
+
+function stripAdministrativeAsideText(value = '') {
+  const source = meetingMinutesAgentText(value, 1600).trim();
+  if (!source || RECEIPT_ACKNOWLEDGEMENT.test(source) || OFF_RECORD_REQUEST.test(source)) return '';
+  const withoutTail = source.replace(ADMINISTRATIVE_TAIL, '').replace(/[\s,;:-]+$/, '').trim();
+  if (withoutTail !== source) return /[.?!]$/.test(withoutTail) ? withoutTail : `${withoutTail}.`;
+  // Keep the confirmed work, not the narration about a minor addressing or
+  // distribution error which preceded it.
+  const correction = source.match(/^acknowledg(?:e|ement|ing)\s+of\s+(?:an?\s+)?(?:email|distribution|addressing|recipient|copying|cc)\s+(?:error|mistake)(?:\s+with\s+apolog(?:y|ies))?\s+and\s+confirmation\s+that\s+(.+)$/i);
+  if (!correction?.[1]) return source;
+  const substantive = correction[1].trim();
+  return `${substantive.charAt(0).toUpperCase()}${substantive.slice(1)}`;
+}
 
 function minorCommunicationCourtesy(record = {}, sourceUnits = []) {
   const wording = meetingMinutesAgentText(record?.action || record?.text, 1600);
@@ -11695,30 +11726,69 @@ function minorCommunicationCourtesy(record = {}, sourceUnits = []) {
 }
 
 function stripMinorCommunicationCourtesy(record = {}, sourceUnits = []) {
-  if (!minorCommunicationCourtesy(record, sourceUnits)) return record;
   const field = record.action != null ? 'action' : 'text';
   const value = meetingMinutesAgentText(record[field], 1600);
-  if (/^\s*(?:apologise|apologize|say sorry|cc|copy|include|add)\b/i.test(value)) return null;
-  const cleaned = value.replace(/\s*,?\s+(?:and|then)\s+(?:cc|copy|include|add)\b[^.;]{0,180}[.]?$/i, '')
-    .replace(/[\s,;:-]+$/, '').trim();
-  if (!cleaned || cleaned === value) return null;
-  return { ...record, [field]: /[.?!]$/.test(cleaned) ? cleaned : `${cleaned}.` };
+  let cleaned = stripAdministrativeAsideText(value);
+  if (!cleaned) return null;
+  if (minorCommunicationCourtesy(record, sourceUnits)) {
+    if (/^\s*(?:apologise|apologize|say sorry|cc|copy|include|add)\b/i.test(cleaned)) return null;
+    const withoutCourtesy = cleaned.replace(/\s*,?\s+(?:and|then)\s+(?:cc|copy|include|add)\b[^.;]{0,180}[.]?$/i, '')
+      .replace(/[\s,;:-]+$/, '').trim();
+    if (!withoutCourtesy || withoutCourtesy === cleaned) return null;
+    cleaned = withoutCourtesy;
+  }
+  return cleaned === value ? record
+    : { ...record, [field]: /[.?!]$/.test(cleaned) ? cleaned : `${cleaned}.` };
 }
 
 function removeMinorCommunicationCourtesyDiscussion(discussion = [], sourceUnits = []) {
   return (Array.isArray(discussion) ? discussion : []).map((topic) => {
     const next = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
-      next[kind] = (topic[kind] || []).filter((record) => !minorCommunicationCourtesy(record, sourceUnits)).map((record) => ({
-        ...record,
-        supportingDetails: (record.supportingDetails || []).filter((detail) => !minorCommunicationCourtesy(detail, sourceUnits))
-      }));
+      next[kind] = (topic[kind] || []).map((record) => stripMinorCommunicationCourtesy(record, sourceUnits))
+        .filter(Boolean).map((record) => ({
+          ...record,
+          supportingDetails: (record.supportingDetails || [])
+            .map((detail) => stripMinorCommunicationCourtesy(detail, sourceUnits)).filter(Boolean)
+        }));
     }
     return next;
   }).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length);
 }
 
 const PRIORITY_SUPPORTING_DETAIL = /\b(?:high|medium|moderate|low|significant|material|residual|cybersecurity|safety)?\s*risk(?:s|y)?\b|\b(?:hazard|threat|blocker|blocking|blocked|roadblock|at risk|off track|on track|behind schedule|ahead of schedule|delay(?:ed|s)?|overdue|partway through|in progress|underway|not (?:yet )?started|target(?:ed)? completion|due (?:by|on)|failed|failure)\b/i;
+const MATERIAL_METRIC_DETAIL = /(?:[$£€]\s*\d|\b\d+(?:[.,]\d+)?\s*%|\b\d+(?:[.,]\d+)?\s+out of\s+\d+(?:[.,]\d+)?\b|\b(?:increase(?:d)?|decrease(?:d)?|improve(?:d)?|reduc(?:e|ed)|rose|fell|dropped|grew)\b[^.]{0,90}\d|\b(?:average|score|rate|volume|total|target|resolution time|satisfaction|ticket volume|item count)\b[^.]{0,90}\d)/i;
+
+function prioritySupportingDetail(value = '') {
+  const text = meetingMinutesAgentText(value, 1600);
+  return PRIORITY_SUPPORTING_DETAIL.test(text) || MATERIAL_METRIC_DETAIL.test(text);
+}
+
+function looksLikeStandaloneHeadingFragment(value = '', topic = '') {
+  const text = meetingMinutesAgentText(value, 300).trim();
+  if (!text || /[.?!]$/.test(text) || /[$£€%\d]/.test(text)) return false;
+  const words = text.match(/[\p{L}][\p{L}'’/-]*/gu) || [];
+  if (words.length < 2 || words.length > 6) return false;
+  const titleCase = words.filter((word) => /^\p{Lu}/u.test(word)).length / words.length >= 0.8;
+  const repeatsTopic = topic && hybridContentTokenOverlap(text, topic) >= 0.8;
+  return titleCase || repeatsTopic;
+}
+
+function removeHeadingFragmentsFromDiscussion(discussion = []) {
+  return (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      next[kind] = (topic[kind] || []).filter((record) =>
+        !looksLikeStandaloneHeadingFragment(record?.text, topic?.topic)).map((record) => ({
+          ...record,
+          supportingDetails: (record.supportingDetails || []).filter((detail) =>
+            completeDiscussionSuggestionText(detail?.text || detail)
+            && !looksLikeStandaloneHeadingFragment(detail?.text || detail, topic?.topic))
+        }));
+    }
+    return next;
+  }).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length);
+}
 
 // Priority facts must read as ordinary minutes, carry evidence and add meaning
 // not already present in a visible row.  This promotes risks and meaningful
@@ -11744,7 +11814,7 @@ function promotePrioritySupportingDetails(discussion = [], limit = 12) {
           const duplicate = visible.some((other) => other !== record
             && hybridContentTokenOverlap(other?.text, value) >= 0.7)
             || hybridContentTokenOverlap(record?.text, value) >= 0.7;
-          if (promoted < limit && readable && PRIORITY_SUPPORTING_DETAIL.test(value)
+          if (promoted < limit && readable && prioritySupportingDetail(value)
             && (detail.evidenceIds || []).length && !duplicate
             && supportingDetailAddsInformation(detail, visible, {})) {
             const row = {
@@ -13052,7 +13122,8 @@ function meetingMinutesAgentSupportingSemanticThreshold() {
 // worker is unavailable, and to no change on any error.
 async function dedupeSupportingDetailsSemantically(discussion = [], options = {}) {
   const topics = Array.isArray(discussion) ? discussion : [];
-  const primaries = flattenHybridDiscussion(topics).map((item) => meetingMinutesAgentText(item.record?.text, 1600));
+  const primaryRecords = flattenHybridDiscussion(topics).map((item) => item.record).filter(Boolean);
+  const primaries = primaryRecords.map((record) => meetingMinutesAgentText(record?.text, 1600));
   const details = [];
   for (const topic of topics) {
     for (const kind of ['points', 'decisions', 'openQuestions']) {
@@ -13063,7 +13134,16 @@ async function dedupeSupportingDetailsSemantically(discussion = [], options = {}
       }
     }
   }
-  if (details.length < 2) return topics;
+  if (!details.length) return topics;
+  // Do this exact, evidence-aware containment check before the optional worker.
+  // It catches the common one-suggestion case and remains effective if the
+  // semantic service is unavailable. Conflicting figures are preserved by
+  // supportingDetailAddsInformation.
+  for (const entry of details) {
+    if (!supportingDetailAddsInformation(entry.record.supportingDetails[entry.index], primaryRecords, {})) {
+      entry.dropDeterministically = true;
+    }
+  }
   let dedupe;
   try {
     dedupe = await duplicateGroups([...primaries, ...details.map((detail) => detail.text)], {
@@ -13072,9 +13152,9 @@ async function dedupeSupportingDetailsSemantically(discussion = [], options = {}
     });
   } catch (error) {
     safeLogError('[meeting-minutes-agent] supporting semantic dedupe skipped', error);
-    return topics;
+    dedupe = { groups: [], semantic: false };
   }
-  const dropped = new Set();
+  const dropped = new Set(details.map((detail, index) => detail.dropDeterministically ? index : -1).filter((index) => index >= 0));
   for (const group of dedupe?.groups || []) {
     const ordered = [...group].sort((left, right) => left - right);
     for (const memberIndex of ordered.slice(1)) {
@@ -15086,7 +15166,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     }
     const priorityDetails = promotePrioritySupportingDetails(finalDiscussion);
     finalDiscussion = removeMinorCommunicationCourtesyDiscussion(
-      limitSupportingDetails(priorityDetails.discussion), draft.sourceUnits
+      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(priorityDetails.discussion)), draft.sourceUnits
     );
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
@@ -16449,7 +16529,7 @@ function withSelection(change, selected, context = null) {
   return next;
 }
 
-const DISCUSSION_PROPOSITION_PREDICATE = /\b(?:am|is|are|was|were|be|been|being|has|have|had|will|would|shall|should|can|could|may|might|must|remain(?:s|ed)?|include(?:s|d)?|require(?:s|d)?|depend(?:s|ed)?|use(?:s|d)?|contain(?:s|ed)?|provide(?:s|d)?|support(?:s|ed)?|cover(?:s|ed)?|continue(?:s|d)?|start(?:s|ed)?|end(?:s|ed)?|need(?:s|ed)?|allow(?:s|ed)?|prevent(?:s|ed)?|indicate(?:s|d)?|show(?:s|ed)?|mean(?:s|t)?|agree(?:s|d)?|decid(?:e|es|ed)|confirm(?:s|ed)?|approv(?:e|es|ed)|identif(?:y|ies|ied)|report(?:s|ed)?|note(?:s|d)?|review(?:s|ed)?|discuss(?:es|ed)|complete(?:s|d)?|block(?:s|ed)?|delay(?:s|ed)?|move(?:s|d)?|plan(?:s|ned)?|schedul(?:e|es|ed)|expect(?:s|ed)?|accept(?:s|ed)?|load(?:s|ed)?|finish(?:es|ed)|fail(?:s|ed)?|pending|underway|available|unresolved)\b/i;
+const DISCUSSION_PROPOSITION_PREDICATE = /\b(?:am|is|are|was|were|be|been|being|has|have|had|will|would|shall|should|can|could|may|might|must|remain(?:s|ed)?|include(?:s|d)?|require(?:s|d)?|depend(?:s|ed)?|use(?:s|d)?|contain(?:s|ed)?|provide(?:s|d)?|support(?:s|ed)?|cover(?:s|ed)?|continue(?:s|d)?|start(?:s|ed)?|end(?:s|ed)?|need(?:s|ed)?|allow(?:s|ed)?|prevent(?:s|ed)?|indicate(?:s|d)?|show(?:s|ed)?|mean(?:s|t)?|agree(?:s|d)?|decid(?:e|es|ed)|confirm(?:s|ed)?|approv(?:e|es|ed)|identif(?:y|ies|ied)|report(?:s|ed)?|note(?:s|d)?|review(?:s|ed)?|discuss(?:es|ed)|complete(?:s|d)?|pass(?:es|ed)?|block(?:s|ed)?|delay(?:s|ed)?|move(?:s|d)?|plan(?:s|ned)?|schedul(?:e|es|ed)|expect(?:s|ed)?|accept(?:s|ed)?|load(?:s|ed)?|finish(?:es|ed)|fail(?:s|ed)?|pending|underway|available|unresolved)\b/i;
 
 function completeDiscussionSuggestionText(value = '') {
   const source = meetingMinutesAgentText(value, 1600).trim();
@@ -17641,6 +17721,9 @@ router.stagedEvaluation = {
   minorCommunicationCourtesy,
   stripMinorCommunicationCourtesy,
   removeMinorCommunicationCourtesyDiscussion,
+  removeHeadingFragmentsFromDiscussion,
+  looksLikeStandaloneHeadingFragment,
+  prioritySupportingDetail,
   echoesPublishedAction,
   preselectDiscussionProposal,
   foldUnownedNearCopies,

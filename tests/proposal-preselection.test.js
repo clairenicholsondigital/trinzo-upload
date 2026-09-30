@@ -11,6 +11,7 @@ const {
   filterIncompleteProposalChanges,
   stripMinorCommunicationCourtesy,
   removeMinorCommunicationCourtesyDiscussion,
+  removeHeadingFragmentsFromDiscussion,
   publicMeetingAgentDraft
 } = api.stagedEvaluation;
 
@@ -161,4 +162,30 @@ test('minor CC apologies do not become minutes while substantive document work r
     'Send Priya the pack for offline review.',
     'Copy Legal on all regulatory correspondence.'
   ]);
+});
+
+test('administrative acknowledgements and off-record requests do not become minutes', () => {
+  const discussion = removeMinorCommunicationCourtesyDiscussion([{ topic: 'Portal access', decisions: [], openQuestions: [], points: [
+    { id: 'p1', text: 'New portal credentials were issued; Gemma acknowledges receipt.', evidenceIds: ['T0200'] },
+    { id: 'p2', text: 'Javier requests a comment off the record.', evidenceIds: ['T0201'] },
+    { id: 'p3', text: 'Acknowledgement of a distribution mistake with apologies and confirmation that Orla will review the QMS manual.', evidenceIds: ['T0202'] },
+    { id: 'p4', text: 'The warehouse acknowledged receipt of 30 cartons.', evidenceIds: ['T0203'] }
+  ] }], []);
+  assert.deepEqual(discussion[0].points.map((row) => row.text), [
+    'New portal credentials were issued.',
+    'Orla will review the QMS manual.',
+    'The warehouse acknowledged receipt of 30 cartons.'
+  ]);
+});
+
+test('short title-shaped rows are removed without suppressing complete status statements', () => {
+  const discussion = removeHeadingFragmentsFromDiscussion([{ topic: 'Sound testing', decisions: [], openQuestions: [], points: [
+    { id: 'title', text: 'Sound Testing Complete', evidenceIds: ['T0300'] },
+    { id: 'status', text: 'Sound testing is complete.', evidenceIds: ['T0301'], supportingDetails: [
+      { id: 'label', text: 'Audio Checks Complete', evidenceIds: ['T0302'] },
+      { id: 'detail', text: 'The final microphone check passed.', evidenceIds: ['T0303'] }
+    ] }
+  ] }]);
+  assert.deepEqual(discussion[0].points.map((row) => row.id), ['status']);
+  assert.deepEqual(discussion[0].points[0].supportingDetails.map((row) => row.id), ['detail']);
 });

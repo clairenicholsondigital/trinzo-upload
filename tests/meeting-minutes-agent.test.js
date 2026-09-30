@@ -131,6 +131,23 @@ test('priority risk and delivery status details become primary minutes before ex
   assert.equal(limited[0].points.slice(1).every((row) => row.supportingDetails.length === 0), true);
 });
 
+test('material performance metrics move from additional details into the minutes', () => {
+  const discussion = [{
+    id: 'topic-1', topic: 'Service performance', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'Service performance was reviewed.', evidenceIds: ['T0100'],
+      supportingDetails: [
+        { id: 'metric', text: 'Ticket volumes decreased 12% month on month; average resolution time improved to 6.2 hours from 7.9; customer satisfaction is 4.4 out of 5.', evidenceIds: ['T0101'] },
+        { id: 'aside', text: 'The team also discussed the usual reporting format.', evidenceIds: ['T0102'] }
+      ]
+    }]
+  }];
+  const promoted = promotePrioritySupportingDetails(discussion);
+  assert.equal(promoted.promoted, 1);
+  assert.equal(promoted.discussion[0].points[1].id, 'metric');
+  assert.deepEqual(promoted.discussion[0].points[0].supportingDetails.map((row) => row.id), ['aside']);
+});
+
 test('proposal decisions resolve only their linked review flags', () => {
   const acceptedChange = {
     id: 'change-accepted', type: 'add',
@@ -2619,6 +2636,16 @@ test('supporting details that restate a primary row or each other semantically a
     { id: 'q1', text: 'Alpha.', evidenceIds: ['T0001'], supportingDetails: [{ id: 'd1', text: 'Beta gamma delta.', evidenceIds: ['T0001'] }, { id: 'd2', text: 'Epsilon zeta eta.', evidenceIds: ['T0001'] }] }
   ], decisions: [], openQuestions: [] }], { vectors: null });
   assert.equal(untouched[0].points[0].supportingDetails.length, 2);
+});
+
+test('one additional detail repeating its primary is removed without needing a semantic match', async () => {
+  const discussion = [{ topic: 'Design review', points: [
+    { id: 'p1', text: 'The design owner is necessary to fully assess issues, including risk management files.', evidenceIds: ['T0400'], supportingDetails: [
+      { id: 'd1', text: 'The design owner is required to assess the risk management files fully.', evidenceIds: ['T0400'] }
+    ] }
+  ], decisions: [], openQuestions: [] }];
+  const result = await dedupeSupportingDetailsSemantically(discussion, { vectors: null });
+  assert.deepEqual(result[0].points[0].supportingDetails, []);
 });
 
 test('a material edit to discussion, steer or attendees marks existing Actions and Summary outdated on the server', () => {
