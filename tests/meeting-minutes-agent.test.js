@@ -61,6 +61,7 @@ const {
   compactDiscussionPropositions,
   consolidateSupportingDetails,
   promotePrioritySupportingDetails,
+  promoteAllDiscussionDetails,
   limitSupportingDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
@@ -146,6 +147,25 @@ test('material performance metrics move from additional details into the minutes
   assert.equal(promoted.promoted, 1);
   assert.equal(promoted.discussion[0].points[1].id, 'metric');
   assert.deepEqual(promoted.discussion[0].points[0].supportingDetails.map((row) => row.id), ['aside']);
+});
+
+test('the reversible experiment promotes every surviving additional detail into discussion', () => {
+  const discussion = [{
+    id: 'topic-1', topic: 'Audit planning', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'The audit scope was reviewed.', evidenceIds: ['T0200'],
+      supportingDetails: [
+        { id: 'detail-1', text: 'The planning meeting is scheduled for Wednesday.', evidenceIds: ['T0201'] },
+        { id: 'detail-2', text: 'The standards list will follow the confirmed scope.', evidenceIds: ['T0202'] }
+      ]
+    }]
+  }];
+  const result = promoteAllDiscussionDetails(discussion);
+  assert.equal(result.promoted, 2);
+  assert.deepEqual(result.discussion[0].points.map((row) => row.id), ['main', 'detail-1', 'detail-2']);
+  assert.deepEqual(result.discussion[0].points[0].supportingDetails, []);
+  assert.deepEqual(result.discussion[0].points.slice(1).map((row) => row.simulationParentId), ['main', 'main']);
+  assert.equal(discussion[0].points[0].supportingDetails.length, 2, 'the input remains untouched');
 });
 
 test('proposal decisions resolve only their linked review flags', () => {

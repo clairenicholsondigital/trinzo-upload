@@ -11764,6 +11764,48 @@ function prioritySupportingDetail(value = '') {
   return PRIORITY_SUPPORTING_DETAIL.test(text) || MATERIAL_METRIC_DETAIL.test(text);
 }
 
+function includeAllDiscussionDetailsExperiment() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_INCLUDE_ALL_DISCUSSION_DETAILS || '').trim());
+}
+
+// Reversible experiment: make every surviving additional detail a normal
+// discussion point. The source parent is recorded so a later rollback can
+// mechanically put these rows back without regenerating or guessing. Existing
+// publication, evidence, fragment and administration safeguards still run.
+function promoteAllDiscussionDetails(discussion = []) {
+  const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: (topic.points || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
+    decisions: (topic.decisions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
+    openQuestions: (topic.openQuestions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] }))
+  }));
+  let promoted = 0;
+  for (const topic of result) {
+    const additions = [];
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      for (const record of topic[kind] || []) {
+        for (const detail of record.supportingDetails || []) {
+          const text = meetingMinutesAgentText(detail?.text, 1600);
+          if (!text || !(detail.evidenceIds || []).length) continue;
+          additions.push({
+            ...detail,
+            id: detail.id || `included-detail-${record.id || 'row'}-${promoted + 1}`,
+            text,
+            evidenceIds: [...new Set(detail.evidenceIds || [])].slice(0, 8),
+            supportingDetails: [],
+            simulationSource: 'supporting_detail',
+            simulationParentId: record.id || ''
+          });
+          promoted += 1;
+        }
+        record.supportingDetails = [];
+      }
+    }
+    if (additions.length) topic.points.push(...additions);
+  }
+  return { discussion: result, promoted };
+}
+
 function looksLikeStandaloneHeadingFragment(value = '', topic = '') {
   const text = meetingMinutesAgentText(value, 300).trim();
   if (!text || /[.?!]$/.test(text) || /[$£€%\d]/.test(text)) return false;
@@ -15165,12 +15207,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }));
     }
     const priorityDetails = promotePrioritySupportingDetails(finalDiscussion);
+    const includedDetails = includeAllDiscussionDetailsExperiment()
+      ? promoteAllDiscussionDetails(priorityDetails.discussion)
+      : { discussion: priorityDetails.discussion, promoted: 0 };
     finalDiscussion = removeMinorCommunicationCourtesyDiscussion(
-      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(priorityDetails.discussion)), draft.sourceUnits
+      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(includedDetails.discussion)), draft.sourceUnits
     );
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
       promoted: priorityDetails.promoted
+    }));
+    if (includedDetails.promoted) console.log(JSON.stringify({
+      event: 'meeting_agent_all_discussion_details_included', journeyId: draft.draftId,
+      promoted: includedDetails.promoted
     }));
     const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
@@ -17724,6 +17773,8 @@ router.stagedEvaluation = {
   removeHeadingFragmentsFromDiscussion,
   looksLikeStandaloneHeadingFragment,
   prioritySupportingDetail,
+  includeAllDiscussionDetailsExperiment,
+  promoteAllDiscussionDetails,
   echoesPublishedAction,
   preselectDiscussionProposal,
   foldUnownedNearCopies,
