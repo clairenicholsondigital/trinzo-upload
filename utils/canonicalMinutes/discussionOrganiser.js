@@ -980,11 +980,16 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
   // break or looking tired. They are neither minutes nor supporting context,
   // even when an AI has rewritten them into a grammatical sentence.
   topics = removePersonalAsides(topics);
-  topics = demoteUnreadyRows(topics, index);
+  // The all-details experiment has already made an explicit publication
+  // choice. Its final organisation pass may consolidate and order those rows,
+  // but must not quietly turn accepted rows back into reviewer suggestions.
+  if (options.preserveVisibleRows !== true) topics = demoteUnreadyRows(topics, index);
   topics = await consolidateTopics(topics, index, options);
   topics = await mergeRestatedRows(topics, index, options);
-  topics = dropVerbatimSupporting(topics, index);
-  topics = rehomeSupportingDetails(topics, index);
+  if (options.preserveVisibleRows !== true) {
+    topics = dropVerbatimSupporting(topics, index);
+    topics = rehomeSupportingDetails(topics, index);
+  }
   topics = sortByEvidence(topics, index);
   const after = { topics: topics.length, rows: topics.reduce((sum, topic) => sum + topicRows(topic).length, 0) };
   return { discussion: topics, before, after };

@@ -11806,6 +11806,89 @@ function promoteAllDiscussionDetails(discussion = []) {
   return { discussion: result, promoted };
 }
 
+function discussionStructureDiagnostics(discussion = [], options = {}) {
+  const oversizedPointCount = Math.max(6, Number(options.oversizedPointCount || 10));
+  const singletonSimilarity = Math.min(1, Math.max(0.4, Number(options.singletonSimilarity || 0.55)));
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic, index) => ({
+    index,
+    topic: meetingMinutesAgentText(topic?.topic || 'Discussion', 240),
+    pointCount: flattenHybridDiscussion([topic]).length
+  }));
+  const oversizedSections = topics.filter((topic) => topic.pointCount > oversizedPointCount);
+  const suspiciousSingletons = [];
+  for (const topic of topics.filter((item) => item.pointCount === 1)) {
+    const nearest = topics.filter((candidate) => candidate.index !== topic.index)
+      .map((candidate) => ({
+        topic: candidate.topic,
+        similarity: hybridTokenOverlap(topic.topic, candidate.topic)
+      }))
+      .sort((left, right) => right.similarity - left.similarity)[0];
+    if (nearest && nearest.similarity >= singletonSimilarity) {
+      suspiciousSingletons.push({
+        topic: topic.topic,
+        possibleNeighbour: nearest.topic,
+        similarity: Number(nearest.similarity.toFixed(2))
+      });
+    }
+  }
+  return {
+    topicCount: topics.length,
+    visiblePointCount: topics.reduce((sum, topic) => sum + topic.pointCount, 0),
+    oversizedSections,
+    suspiciousSingletons
+  };
+}
+
+async function finalisePromotedDiscussion(discussion = [], options = {}) {
+  let result = Array.isArray(discussion) ? discussion : [];
+  let moved = 0;
+  let organiser = null;
+  const topicLabels = Array.isArray(options.topicLabels) ? options.topicLabels : [];
+  if (topicLabels.some(Boolean)) {
+    const refiled = regroupDiscussionBySegments(
+      result,
+      options.sourceUnits || [],
+      options.topicSegments || [],
+      topicLabels
+    );
+    result = refiled.discussion;
+    moved = refiled.moved;
+  }
+  if (options.organise === true) {
+    organiser = await organiseDiscussionForReview(result, options.sourceUnits || [], {
+      // A second pass sees the finished body. Keep its merge bar deliberately
+      // conservative: rows may move only between near-equivalent labels, and
+      // restatements still need the organiser's evidence/content agreement.
+      mergeSimilarity: 0.85,
+      adjacentSimilarity: 0.92,
+      labelSimilarity: 0.6,
+      mergeRestatements: true,
+      preserveVisibleRows: options.includeAllDetails === true,
+      onRestatements: options.onRestatements
+    });
+    result = organiser.discussion;
+  }
+  let rePromoted = 0;
+  if (options.includeAllDetails === true) {
+    const included = promoteAllDiscussionDetails(result);
+    result = included.discussion;
+    rePromoted = included.promoted;
+  }
+  result = removePersonalAsides(result);
+  result = shapeDiscussion(result, options.people || []).discussion;
+  result = await finaliseDiscussionForPublication(result, { sourceUnits: options.sourceUnits || [] });
+  const bodyDedupe = dedupeDiscussionBody(result, options.people || []);
+  result = bodyDedupe.discussion;
+  return {
+    discussion: result,
+    moved,
+    rePromoted,
+    organiser: organiser ? { before: organiser.before, after: organiser.after } : null,
+    dropped: bodyDedupe.dropped,
+    diagnostics: discussionStructureDiagnostics(result)
+  };
+}
+
 function looksLikeStandaloneHeadingFragment(value = '', topic = '') {
   const text = meetingMinutesAgentText(value, 300).trim();
   if (!text || /[.?!]$/.test(text) || /[$£€%\d]/.test(text)) return false;
@@ -15207,12 +15290,34 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }));
     }
     const priorityDetails = promotePrioritySupportingDetails(finalDiscussion);
-    const includedDetails = includeAllDiscussionDetailsExperiment()
+    const includeAllDetails = includeAllDiscussionDetailsExperiment();
+    const includedDetails = includeAllDetails
       ? promoteAllDiscussionDetails(priorityDetails.discussion)
       : { discussion: priorityDetails.discussion, promoted: 0 };
+    const postPromotion = (priorityDetails.promoted || includedDetails.promoted)
+      ? await finalisePromotedDiscussion(includedDetails.discussion, {
+        sourceUnits: draft.sourceUnits,
+        topicSegments,
+        topicLabels,
+        people: meetingAgentPeopleNames(draft.sourceUnits),
+        organise: meetingMinutesAgentDiscussionOrganiseEnabled(),
+        includeAllDetails,
+        onRestatements: (merges) => console.log(JSON.stringify({
+          event: 'meeting_agent_post_promotion_restatements', journeyId: draft.draftId, merges
+        }))
+      })
+      : {
+        discussion: includedDetails.discussion,
+        moved: 0,
+        rePromoted: 0,
+        organiser: null,
+        dropped: [],
+        diagnostics: discussionStructureDiagnostics(includedDetails.discussion)
+      };
     finalDiscussion = removeMinorCommunicationCourtesyDiscussion(
-      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(includedDetails.discussion)), draft.sourceUnits
+      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(postPromotion.discussion)), draft.sourceUnits
     );
+    const structureDiagnostics = discussionStructureDiagnostics(finalDiscussion);
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
       promoted: priorityDetails.promoted
@@ -15220,6 +15325,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     if (includedDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_all_discussion_details_included', journeyId: draft.draftId,
       promoted: includedDetails.promoted
+    }));
+    console.log(JSON.stringify({
+      event: 'meeting_agent_post_promotion_editorial', journeyId: draft.draftId,
+      promoted: priorityDetails.promoted + includedDetails.promoted,
+      moved: postPromotion.moved,
+      rePromoted: postPromotion.rePromoted,
+      organiser: postPromotion.organiser,
+      deduped: postPromotion.dropped.length,
+      diagnostics: structureDiagnostics
     }));
     const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
@@ -15270,6 +15384,14 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
+          postPromotionEditorial: {
+            promoted: priorityDetails.promoted + includedDetails.promoted,
+            moved: postPromotion.moved,
+            rePromoted: postPromotion.rePromoted,
+            organiser: postPromotion.organiser,
+            deduped: postPromotion.dropped.length,
+            diagnostics: structureDiagnostics
+          },
           telemetry: meetingAgentExecutionTelemetry(measuredProvenance),
           refereeRoute,
           refereeSufficiency: compactSufficiency,
@@ -17775,6 +17897,8 @@ router.stagedEvaluation = {
   prioritySupportingDetail,
   includeAllDiscussionDetailsExperiment,
   promoteAllDiscussionDetails,
+  discussionStructureDiagnostics,
+  finalisePromotedDiscussion,
   echoesPublishedAction,
   preselectDiscussionProposal,
   foldUnownedNearCopies,

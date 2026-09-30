@@ -62,6 +62,8 @@ const {
   consolidateSupportingDetails,
   promotePrioritySupportingDetails,
   promoteAllDiscussionDetails,
+  discussionStructureDiagnostics,
+  finalisePromotedDiscussion,
   limitSupportingDetails,
   enrichDiscussionEvidenceFromDispositions,
   reconstructMissingRefereeDiscussion,
@@ -166,6 +168,67 @@ test('the reversible experiment promotes every surviving additional detail into 
   assert.deepEqual(result.discussion[0].points[0].supportingDetails, []);
   assert.deepEqual(result.discussion[0].points.slice(1).map((row) => row.simulationParentId), ['main', 'main']);
   assert.equal(discussion[0].points[0].supportingDetails.length, 2, 'the input remains untouched');
+});
+
+test('the post-promotion editorial pass removes finished-body restatements and action recaps', async () => {
+  const discussion = [
+    {
+      id: 'topic-budget', topic: 'Photography budget', decisions: [], openQuestions: [],
+      points: [
+        { id: 'budget-1', text: 'The photography budget is approximately £8,000.', evidenceIds: ['T0300'], supportingDetails: [] },
+        { id: 'budget-2', text: 'The budget for photography is approximately £8k.', evidenceIds: ['T0300'], supportingDetails: [], simulationSource: 'supporting_detail' }
+      ]
+    },
+    {
+      id: 'topic-recap', topic: 'Action summary and next steps', decisions: [], openQuestions: [],
+      points: [{ id: 'recap-1', text: 'Gemma summarised the actions and next steps.', evidenceIds: ['T0301'], supportingDetails: [], simulationSource: 'supporting_detail' }]
+    }
+  ];
+  const result = await finalisePromotedDiscussion(discussion, { organise: false, people: ['Gemma Rourke'] });
+  assert.equal(result.discussion.length, 1);
+  assert.equal(result.discussion[0].points.length, 1);
+  assert.match(result.discussion[0].points[0].text, /photography budget/i);
+  assert.ok(result.dropped.some((item) => item.because === 'same wording'));
+});
+
+test('discussion structure diagnostics report oversized and closely related singleton sections without changing them', () => {
+  const rows = Array.from({ length: 11 }, (_, index) => ({
+    id: `row-${index}`, text: `Material project fact number ${index + 1}.`, evidenceIds: [`T${index + 1}`]
+  }));
+  const discussion = [
+    { topic: 'Contract renewal timing', points: rows, decisions: [], openQuestions: [] },
+    { topic: 'Contract renewal', points: [{ id: 'single', text: 'The renewal remains under review.', evidenceIds: ['T0200'] }], decisions: [], openQuestions: [] }
+  ];
+  const result = discussionStructureDiagnostics(discussion);
+  assert.equal(result.oversizedSections.length, 1);
+  assert.equal(result.oversizedSections[0].topic, 'Contract renewal timing');
+  assert.equal(result.suspiciousSingletons.length, 1);
+  assert.equal(discussion[0].points.length, 11, 'diagnostics are read-only');
+});
+
+test('the post-promotion organiser cannot put accepted details back into suggestions', async () => {
+  const discussion = [{
+    id: 'topic-1', topic: 'Delivery planning', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'The delivery plan remains in preparation.', evidenceIds: ['T0400'],
+      supportingDetails: [{
+        id: 'detail', text: 'The delivery date remains dependent on supplier confirmation.', evidenceIds: ['T0401']
+      }]
+    }]
+  }];
+  const result = await finalisePromotedDiscussion(discussion, {
+    organise: true,
+    includeAllDetails: true,
+    sourceUnits: [
+      { id: 'T0400', text: 'The delivery plan remains in preparation.' },
+      { id: 'T0401', text: 'We have not got the supplier confirmation yet, so the date is still dependent on that.' }
+    ]
+  });
+  const records = result.discussion.flatMap((topic) => [
+    ...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])
+  ]);
+  assert.equal(records.flatMap((record) => record.supportingDetails || []).length, 0);
+  assert.ok(records.some((record) => /supplier confirmation/i.test(record.text)));
 });
 
 test('proposal decisions resolve only their linked review flags', () => {
