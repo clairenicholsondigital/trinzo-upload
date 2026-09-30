@@ -11151,7 +11151,11 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const include = includedSections(draft);
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
   const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
-  const discussion = (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
+  const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(draft.discussion, draft.sourceUnits);
+  const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
+    .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
+    .filter(Boolean);
+  const discussion = publicationDiscussion.map((topic) => ({
     topic: topic?.topic || 'Discussion',
     points: [
       ...(Array.isArray(topic?.points) ? topic.points : []).map((item) => item?.text || item),
@@ -11161,7 +11165,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     decisions: [],
     openQuestions: []
   }));
-  const actions = (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
+  const actions = publicationActions.map((action) => ({
     owner: (Array.isArray(action?.owners) ? action.owners : []).join(', ') || 'Not stated',
     action: action?.action || '',
     deadline: meetingAgentTimingLabel(action?.timing)
@@ -11169,17 +11173,17 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
   const minutes = { details, ...publication };
   if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
-  minutes.supportingDetails = (Array.isArray(draft.discussion) ? draft.discussion : []).flatMap((topic) =>
+  minutes.supportingDetails = publicationDiscussion.flatMap((topic) =>
     [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
       (record?.supportingDetails || []).map((detail) => ({ topic: topic?.topic || 'Discussion', text: detail?.text || '' })))).filter((detail) => detail.text);
   const evidenceIds = new Set();
-  for (const topic of Array.isArray(draft.discussion) ? draft.discussion : []) {
+  for (const topic of publicationDiscussion) {
     for (const record of [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])]) {
       for (const id of record?.evidenceIds || []) evidenceIds.add(id);
       for (const detail of record?.supportingDetails || []) for (const id of detail?.evidenceIds || []) evidenceIds.add(id);
     }
   }
-  for (const action of Array.isArray(draft.actions) ? draft.actions : []) {
+  for (const action of publicationActions) {
     for (const id of action?.evidenceIds || []) evidenceIds.add(id);
   }
   minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
@@ -11190,14 +11194,20 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
-  const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal);
+  const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(publicFields.discussion, draft.sourceUnits);
+  const visibleActions = (Array.isArray(publicFields.actions) ? publicFields.actions : [])
+    .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
+    .filter(Boolean);
+  const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal, draft.sourceUnits || []);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
-    [...(publicFields.discussion || []), ...(publicFields.actions || [])],
+    [...visibleDiscussion, ...visibleActions],
     visibleProposal
   );
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
+    discussion: visibleDiscussion,
+    actions: visibleActions,
     pendingProposal: visibleProposal,
     reviewFlags: visibleReviewFlags
   });
@@ -11662,6 +11672,50 @@ function isVagueReconstructedAction(value = '') {
     || /^(?:plan|address|handle|manage|resolve|sort out|deal with)\s+(?:the\s+)?(?:timeline|situation|issue|matter|arrangements?|logistics?|availability|constraint)(?:\s+(?:around|regarding|for)\s+(?:the\s+)?(?:recorded\s+)?(?:availability\s+)?constraint)?$/.test(source)
     || /^(?:ensure|make sure)\s+(?:that\s+)?(?:everything|things|items)\s+(?:is|are)\s+(?:ready|in place)$/.test(source)
     || vagueReferences >= 3;
+}
+
+const MINOR_COPY_COURTESY = /\b(?:cc(?:'d|ed|ing)?|copy|copied|copying|include|add)\b[^.]{0,100}\b(?:email|mail|correspondence|thread|recipient|her|him|them|you)\b/i;
+const COURTESY_CORRECTION = /\b(?:sorry|apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|this time|don['’]?t worry|do not worry)\b/i;
+const STRONG_COURTESY_CORRECTION = /\b(?:apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|don['’]?t worry|do not worry)\b/i;
+
+function minorCommunicationCourtesy(record = {}, sourceUnits = []) {
+  const wording = meetingMinutesAgentText(record?.action || record?.text, 1600);
+  if (!wording || !/(?:\bcc\b|\bcopy|\bcopied|\bcopying|\bapolog|\bsorry|\bmistake)/i.test(wording)) return false;
+  const units = normaliseSourceUnits(sourceUnits);
+  const indexes = new Set((record.evidenceIds || []).map((id) => units.findIndex((unit) => unit.id === id)).filter((index) => index >= 0));
+  const citedRows = [...indexes].sort((a, b) => a - b).map((index) => units[index].text);
+  const passageIndexes = new Set([...indexes].flatMap((index) => [index - 2, index - 1, index, index + 1, index + 2])
+    .filter((index) => index >= 0 && index < units.length));
+  const passageRows = [...passageIndexes].sort((a, b) => a - b).map((index) => units[index].text);
+  const passage = passageRows.join(' ');
+  const citedCopyingRemark = citedRows.some((text) => MINOR_COPY_COURTESY.test(text));
+  const correctionInCopyingRemark = citedRows.some((text) => MINOR_COPY_COURTESY.test(text) && COURTESY_CORRECTION.test(text));
+  return citedCopyingRemark && MINOR_COPY_COURTESY.test(`${wording} ${passage}`)
+    && (correctionInCopyingRemark || STRONG_COURTESY_CORRECTION.test(passage));
+}
+
+function stripMinorCommunicationCourtesy(record = {}, sourceUnits = []) {
+  if (!minorCommunicationCourtesy(record, sourceUnits)) return record;
+  const field = record.action != null ? 'action' : 'text';
+  const value = meetingMinutesAgentText(record[field], 1600);
+  if (/^\s*(?:apologise|apologize|say sorry|cc|copy|include|add)\b/i.test(value)) return null;
+  const cleaned = value.replace(/\s*,?\s+(?:and|then)\s+(?:cc|copy|include|add)\b[^.;]{0,180}[.]?$/i, '')
+    .replace(/[\s,;:-]+$/, '').trim();
+  if (!cleaned || cleaned === value) return null;
+  return { ...record, [field]: /[.?!]$/.test(cleaned) ? cleaned : `${cleaned}.` };
+}
+
+function removeMinorCommunicationCourtesyDiscussion(discussion = [], sourceUnits = []) {
+  return (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      next[kind] = (topic[kind] || []).filter((record) => !minorCommunicationCourtesy(record, sourceUnits)).map((record) => ({
+        ...record,
+        supportingDetails: (record.supportingDetails || []).filter((detail) => !minorCommunicationCourtesy(detail, sourceUnits))
+      }));
+    }
+    return next;
+  }).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length);
 }
 
 const PRIORITY_SUPPORTING_DETAIL = /\b(?:high|medium|moderate|low|significant|material|residual|cybersecurity|safety)?\s*risk(?:s|y)?\b|\b(?:hazard|threat|blocker|blocking|blocked|roadblock|at risk|off track|on track|behind schedule|ahead of schedule|delay(?:ed|s)?|overdue|partway through|in progress|underway|not (?:yet )?started|target(?:ed)? completion|due (?:by|on)|failed|failure)\b/i;
@@ -15031,7 +15085,9 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       }));
     }
     const priorityDetails = promotePrioritySupportingDetails(finalDiscussion);
-    finalDiscussion = limitSupportingDetails(priorityDetails.discussion);
+    finalDiscussion = removeMinorCommunicationCourtesyDiscussion(
+      limitSupportingDetails(priorityDetails.discussion), draft.sourceUnits
+    );
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
       promoted: priorityDetails.promoted
@@ -15664,7 +15720,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   // Later passes (lifecycle, answered, salvage) can add a second wording of a
   // commitment after the merge above, so the finished list is read once more.
   const finalActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final'))
-    .filter((record) => !isVagueReconstructedAction(record?.action));
+    .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
+    .filter((record) => record && !isVagueReconstructedAction(record?.action));
   const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
@@ -16435,7 +16492,7 @@ function cleanDiscussionProposalTopic(topic = {}) {
 // explicit AI edits, completeness audits and legacy drafts loaded from disk.
 // Removal suggestions remain visible; additions and edits must contain a
 // complete record rather than a heading, label or dangling phrase.
-function filterIncompleteProposalChanges(proposal = null) {
+function filterIncompleteProposalChanges(proposal = null, sourceUnits = []) {
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
   const stage = proposal.stage === 'discussion' ? 'discussion' : 'actions';
   const changes = [];
@@ -16443,7 +16500,8 @@ function filterIncompleteProposalChanges(proposal = null) {
     if (change?.type === 'remove') { changes.push(change); continue; }
     if (!change?.after) continue;
     if (stage === 'actions') {
-      if (completeActionSuggestionText(change.after.action)) changes.push(change);
+      const after = stripMinorCommunicationCourtesy(change.after, sourceUnits);
+      if (after && completeActionSuggestionText(after.action)) changes.push({ ...change, after });
       continue;
     }
     const after = change.after?.topic
@@ -16489,7 +16547,7 @@ function echoesPublishedAction(published = {}, proposal = {}) {
 }
 
 function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
-  proposal = filterIncompleteProposalChanges(proposal);
+  proposal = filterIncompleteProposalChanges(proposal, sourceUnits);
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
   const removedTargets = new Set(proposal.changes.filter((change) => change.type === 'remove')
     .map((change) => change.before).filter(Boolean));
@@ -17403,8 +17461,14 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
 router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, async (req, res) => {
   try {
     const draft = normaliseMeetingAgentMinuteNumbers(await loadOwnedMeetingAgentDraft(req));
+    const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(draft.discussion, draft.sourceUnits);
+    const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
+      .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
+      .filter(Boolean);
     const exportDraft = normaliseMeetingAgentKnownTermsDeep({
       ...draft,
+      discussion: publicationDiscussion,
+      actions: publicationActions,
       ...applyIncludedSections(draft, { executiveSummary: draft.executiveSummary, meetingObjectives: draft.meetingObjectives }),
       details: sanitiseMeetingAgentDetails(draft.details),
       reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
@@ -17574,6 +17638,9 @@ router.stagedEvaluation = {
   filterIncompleteProposalChanges,
   completeActionSuggestionText,
   completeDiscussionSuggestionText,
+  minorCommunicationCourtesy,
+  stripMinorCommunicationCourtesy,
+  removeMinorCommunicationCourtesyDiscussion,
   echoesPublishedAction,
   preselectDiscussionProposal,
   foldUnownedNearCopies,

@@ -8,7 +8,10 @@ const {
   preselectActionProposal,
   preselectDiscussionProposal,
   preselectRequestedProposal,
-  filterIncompleteProposalChanges
+  filterIncompleteProposalChanges,
+  stripMinorCommunicationCourtesy,
+  removeMinorCommunicationCourtesyDiscussion,
+  publicMeetingAgentDraft
 } = api.stagedEvaluation;
 
 const units = [
@@ -119,4 +122,43 @@ test('proposal boundary removes heading fragments but keeps concise complete rec
   ] });
   assert.deepEqual(discussion.changes.map((change) => change.id), ['complete-topic', 'remove']);
   assert.deepEqual(discussion.changes[0].after.points.map((row) => row.text), ['The residual cybersecurity risk remains high.']);
+});
+
+test('minor CC apologies do not become minutes while substantive document work remains', () => {
+  const courtesyUnits = [
+    { id: 'T0100', sequence: 100, speaker: 'Sam', text: 'We can send Priya the pack for offline review.', classification: 'keep' },
+    { id: 'T0101', sequence: 101, speaker: 'Sam', text: "I'll copy her this time.", classification: 'keep' },
+    { id: 'T0102', sequence: 102, speaker: 'Chair', text: "Don't worry about it; it was only the email.", classification: 'keep' }
+  ];
+  const combined = {
+    action: 'Send Priya the pack for offline review and copy her on the correspondence.',
+    owners: ['Sam'], evidenceIds: ['T0100', 'T0101']
+  };
+  assert.equal(stripMinorCommunicationCourtesy(combined, courtesyUnits).action,
+    'Send Priya the pack for offline review.');
+  assert.equal(stripMinorCommunicationCourtesy({
+    action: 'Copy Priya on the email.', owners: ['Sam'], evidenceIds: ['T0101']
+  }, courtesyUnits), null);
+
+  const proposal = filterIncompleteProposalChanges({ stage: 'actions', changes: [
+    { id: 'combined', type: 'add', after: combined },
+    { id: 'courtesy', type: 'add', after: { action: 'Copy Priya on the email.', owners: ['Sam'], evidenceIds: ['T0101'] } }
+  ] }, courtesyUnits);
+  assert.deepEqual(proposal.changes.map((change) => change.after.action), ['Send Priya the pack for offline review.']);
+
+  const discussion = removeMinorCommunicationCourtesyDiscussion([{ topic: 'Correspondence', decisions: [], openQuestions: [], points: [
+    { text: 'Sam apologised for not copying Priya on the email.', evidenceIds: ['T0101'] },
+    { text: 'Priya will review the document pack offline.', evidenceIds: ['T0100'] }
+  ] }], courtesyUnits);
+  assert.deepEqual(discussion[0].points.map((row) => row.text), ['Priya will review the document pack offline.']);
+
+  const published = publicMeetingAgentDraft({
+    sourceUnits: courtesyUnits,
+    discussion: [],
+    actions: [combined, { action: 'Copy Legal on all regulatory correspondence.', owners: ['Sam'], evidenceIds: ['T0100'] }]
+  });
+  assert.deepEqual(published.actions.map((row) => row.action), [
+    'Send Priya the pack for offline review.',
+    'Copy Legal on all regulatory correspondence.'
+  ]);
 });
