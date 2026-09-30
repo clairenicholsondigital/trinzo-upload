@@ -8498,7 +8498,7 @@ const MEETING_AGENT_OBJECTIVE_STYLE = 'Write each objective as one plain aim wit
 
 // A day spoken without its month was published with the meeting's month
 // ("away the 14th to the 17th" became "14th-17th June"); context meant July.
-const MEETING_AGENT_UNSPOKEN_MONTH_RULE = 'Never add a month, year or weekday to a date that the speakers did not say. The meeting date is not evidence of which month a spoken day belongs to. When the day is spoken without its month, keep it as spoken and write [month to confirm] after it - "away 9th-12th [month to confirm]".';
+const MEETING_AGENT_UNSPOKEN_MONTH_RULE = 'Never add a month, year or weekday to a date that the speakers did not say. The meeting date is not evidence of which month a spoken day belongs to. Exception: standard English may carry the month only on the end of a range; when the first day is later than the second, "27th through to 7th August" means "27th July–7th August". Otherwise, when the day is spoken without its month, keep it as spoken and write [month to confirm] after it - "away 9th-12th [month to confirm]".';
 // An off-hand "I'm not a football person" was minuted as a participant's
 // attitude to football.
 const MEETING_AGENT_SMALL_TALK_RULE = 'Leave out small talk, jokes, personal tastes and attitudes (sport, weather, holidays, how someone feels about something off-topic) unless they change the work, its timing or its logistics. Keep the practical consequence and drop the aside - "traffic may be heavy on the day of the marathon", not who does or does not enjoy running.';

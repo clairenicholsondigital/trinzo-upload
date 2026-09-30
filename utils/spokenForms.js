@@ -109,6 +109,46 @@ function expandEllipticalDateRanges(value) {
   });
 }
 
+// Reuse the same English date-range rule when a generated minute has already
+// guessed (or blanked) the first month. The cited evidence remains the source
+// of truth: only a range which the formatter can derive from that evidence is
+// allowed to replace the generated range. This keeps the publication formatter
+// and the discussion-grounding guard from applying contradictory policies.
+function alignEllipticalDateRangesWithEvidence(value, evidence = '') {
+  const source = String(value || '');
+  const formattedEvidence = normaliseDatePhrases(evidence).text;
+  const canonicalPattern = new RegExp(String.raw`\b(\d{1,2})(?:st|nd|rd|th)\s+(${MONTH})\s*[–—-]\s*(\d{1,2})(?:st|nd|rd|th)\s+(${MONTH})\b`, 'gi');
+  const canonicalRanges = [];
+  let match;
+  while ((match = canonicalPattern.exec(formattedEvidence))) {
+    const startDay = Number(match[1]);
+    const endDay = Number(match[3]);
+    const startMonth = MONTH_NAMES[monthIndex(match[2])];
+    const endMonth = MONTH_NAMES[monthIndex(match[4])];
+    if (!startDay || !endDay || !startMonth || !endMonth) continue;
+    canonicalRanges.push({
+      startDay,
+      endDay,
+      endMonth,
+      text: `${ordinalLabel(startDay)} ${startMonth}–${ordinalLabel(endDay)} ${endMonth}`
+    });
+  }
+  let text = source;
+  const applied = [];
+  for (const range of canonicalRanges) {
+    const separator = String.raw`(?:through(?:\s+to)?|until|to|[-–—])`;
+    const anyMonth = MONTH;
+    const start = String.raw`(?:${anyMonth}\s+)?(?:the\s+)?${range.startDay}(?:st|nd|rd|th)?(?:\s+(?:${anyMonth}|\[month to confirm\]))?`;
+    const endMonth = range.endMonth.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const end = String.raw`(?:(?:${endMonth})\s+(?:the\s+)?${range.endDay}(?:st|nd|rd|th)?|(?:the\s+)?${range.endDay}(?:st|nd|rd|th)?\s+(?:of\s+)?${endMonth})`;
+    const generatedPattern = new RegExp(String.raw`\b${start}\s*${separator}\s*${end}\b`, 'i');
+    if (!generatedPattern.test(text)) continue;
+    text = text.replace(generatedPattern, range.text);
+    applied.push(range.text);
+  }
+  return { text, applied };
+}
+
 // Day and month names are proper nouns wherever they appear, so "09:30 thursday" is wrong
 // independently of where it sits in the string. This used to be fixed by accident: the
 // unanchored capitaliser reached past "09:30" and capitalised the first letter it found.
@@ -167,4 +207,10 @@ function normaliseDatePhrasesDeep(value) {
   return value;
 }
 
-module.exports = { expandSpokenContractions, normaliseDatePhrases, normaliseDatePhrasesDeep, CONTRACTIONS };
+module.exports = {
+  expandSpokenContractions,
+  normaliseDatePhrases,
+  normaliseDatePhrasesDeep,
+  alignEllipticalDateRangesWithEvidence,
+  CONTRACTIONS
+};

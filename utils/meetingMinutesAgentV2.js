@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
 const { convertSpokenNumbers } = require('./spokenNumbers');
+const { alignEllipticalDateRangesWithEvidence } = require('./spokenForms');
 const {
   isRoutineMeetingAdministrationText,
   removeRoutineMeetingAdministrationSentences
@@ -4834,7 +4835,19 @@ function monthHeardNear(month, units = [], evidenceIds = []) {
 
 function stripUnstatedMonths(value = '', units = [], evidenceIds = []) {
   const removed = [];
-  let result = String(value || '');
+  const evidence = evidenceWindowUnits(units, evidenceIds, 3, 3)
+    .map((unit) => String(unit.text || ''))
+    .join(' ');
+  const aligned = alignEllipticalDateRangesWithEvidence(value, evidence);
+  // Protect only ranges derived by the shared formatter from the cited
+  // evidence. Other unspoken months still pass through the conservative guard.
+  const protectedRanges = [];
+  let result = aligned.text;
+  for (const range of aligned.applied) {
+    const marker = `\uE000${protectedRanges.length}\uE001`;
+    result = result.replace(range, marker);
+    protectedRanges.push({ marker, range });
+  }
   const replace = (pattern, dayIndex, monthIndex) => {
     result = result.replace(pattern, (...match) => {
       const whole = match[0];
@@ -4855,6 +4868,9 @@ function stripUnstatedMonths(value = '', units = [], evidenceIds = []) {
     return `${day} [month to confirm]`;
   });
   replace(MONTH_THEN_DAY, 2, 1);
+  for (const protectedRange of protectedRanges) {
+    result = result.replace(protectedRange.marker, protectedRange.range);
+  }
   return { text: result, removed };
 }
 

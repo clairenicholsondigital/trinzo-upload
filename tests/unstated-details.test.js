@@ -40,6 +40,22 @@ test('a month that was said, or implied by "next month", is kept', () => {
   assert.equal(stripUnstatedMonths('The 9th may slip.', units, ['T0001']).removed.length, 0, '"may" as a verb is not May');
 });
 
+test('a month safely implied by a cross-month range uses the shared formatter', () => {
+  const rangeUnits = normaliseSourceUnits([
+    { id: 'T0100', speaker: 'Chair', text: 'Report writing runs from the 27th through to the 7th of August.', classification: 'keep' }
+  ]);
+  for (const generated of [
+    'Report writing runs from June 27th to August 7th.',
+    'Report writing runs from 27th [month to confirm] to August 7th.',
+    'Report writing runs from 27th through to the 7th of August.'
+  ]) {
+    assert.deepEqual(stripUnstatedMonths(generated, rangeUnits, ['T0100']), {
+      text: 'Report writing runs from 27th July–7th August.',
+      removed: []
+    });
+  }
+});
+
 test('discussion rows with an unstated month are rewritten and flagged', () => {
   const discussion = [{
     topic: 'Scheduling',
