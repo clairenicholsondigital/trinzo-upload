@@ -54,6 +54,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
+const { normalisePresentationCurrency } = require('../utils/canonicalMinutes/textNormalisation');
 const { clearMiniLMProfileMemoryCache } = require('../utils/canonicalMinutes/minilm');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
@@ -11543,12 +11544,31 @@ async function loadOwnedMeetingAgentDraft(req, options = {}) {
 }
 
 async function saveMeetingAgentDraft(draft, req, changes = {}) {
-  const merged = { ...draft, ...changes };
+  const persistedChanges = normaliseMeetingAgentDraftChanges(changes);
+  const merged = { ...draft, ...persistedChanges };
   return updateMeetingMinutesAgentDraft(draft.draftId, req.authUser?.userId, draft.revision, {
     title: sanitiseMeetingAgentDetails(merged.details).meetingTitle || draft.title,
-    status: changes.status || draft.status,
+    status: persistedChanges.status || draft.status,
     payload: meetingAgentDraftPayload(merged)
   });
+}
+
+// The hybrid background pipeline writes these fields directly to the Library;
+// it does not pass through clientReadyPresentation(). Keep the persisted,
+// reviewer-visible fields consistent without rewriting transcript evidence or
+// internal model/provenance data.
+function normaliseMeetingAgentDraftChanges(changes = {}) {
+  const visibleFields = [
+    'discussion', 'actions', 'executiveSummary', 'meetingObjectives',
+    'pendingProposal', 'reviewFlags'
+  ];
+  const normalised = { ...changes };
+  for (const field of visibleFields) {
+    if (Object.prototype.hasOwnProperty.call(normalised, field)) {
+      normalised[field] = normalisePresentationCurrency(normalised[field]);
+    }
+  }
+  return normalised;
 }
 
 function hybridRecordText(record = {}) {
@@ -18089,6 +18109,7 @@ router.stagedEvaluation = {
   normaliseMeetingAgentPassCache,
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,
+  normaliseMeetingAgentDraftChanges,
   normaliseAgentDiscussion,
   normaliseAgentActions,
   meetingAgentStageInputFingerprint,

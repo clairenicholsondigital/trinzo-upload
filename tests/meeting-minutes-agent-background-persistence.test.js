@@ -9,7 +9,8 @@ const {
   persistMeetingAgentBackgroundStage,
   meetingAgentActionPrimaryPromptForDraft,
   publicMeetingAgentDraft,
-  normaliseMeetingAgentGeneration
+  normaliseMeetingAgentGeneration,
+  normaliseMeetingAgentDraftChanges
 } = require('../routes/api').stagedEvaluation;
 
 function baseDraft() {
@@ -141,6 +142,19 @@ test('published date ranges expand an omitted month without rewriting transcript
   assert.equal(published.discussion[0].points[0].text, 'Testing runs from 27th July–7th August.');
   assert.equal(published.actions[0].timing.wording, '27th July–7th August');
   assert.equal(published.sourceUnits[0].text, 'It is the 27th through to 7th August.');
+});
+
+test('saved Library draft changes normalise currency before persistence', () => {
+  const changes = normaliseMeetingAgentDraftChanges({
+    discussion: [{ topic: 'Repairs', points: [{ text: 'The tap will cost eight pounds.' }] }],
+    actions: [{ action: 'Approve twenty five pounds for materials.' }],
+    executiveSummary: 'The total budget is 50 pounds.',
+    sourceUnits: [{ text: 'The tap will cost eight pounds.' }]
+  });
+  assert.equal(changes.discussion[0].points[0].text, 'The tap will cost £8.');
+  assert.equal(changes.actions[0].action, 'Approve £25 for materials.');
+  assert.equal(changes.executiveSummary, 'The total budget is £50.');
+  assert.equal(changes.sourceUnits[0].text, 'The tap will cost eight pounds.');
 });
 
 const results = {
