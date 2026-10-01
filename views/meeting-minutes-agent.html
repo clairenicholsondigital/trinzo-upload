@@ -65,8 +65,7 @@
 .meeting-agent-page .field>span,
 .meeting-agent-page .record-section-head h3,
 .meeting-agent-page .actions-table th,
-.meeting-agent-page .flag-kind,
-.meeting-agent-page .proposal-value-label{
+.meeting-agent-page .flag-kind{
   font-size:var(--fs-cap);font-weight:var(--fw-bold);letter-spacing:.06em;
   text-transform:uppercase;color:var(--muted)}
 .meeting-agent-page .muted{color:var(--muted);font-size:var(--fs-sm)}
@@ -697,7 +696,6 @@
 .meeting-agent-page .flag-target>span{font-size:var(--fs-cap);font-weight:var(--fw-bold);color:var(--accent-700)}
 .meeting-agent-page .flag-target blockquote{margin:0;color:var(--heading);font-size:var(--fs-sm);font-weight:var(--fw-bold);line-height:1.45}
 .meeting-agent-page .flag-target p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.4}
-.meeting-agent-page .flag-target.is-suggestion{border:1px solid var(--brand-200);background:var(--brand-50)}
 .meeting-agent-page .flag-target .compact{justify-self:start}
 .meeting-agent-page .flag-review-reason{margin-top:.45rem;padding:.45rem .1rem 0;border-top:1px solid var(--border)}
 .meeting-agent-page .flag-review-reason>summary{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;width:max-content;max-width:100%;cursor:pointer;color:var(--accent-700);font-size:var(--fs-sm);font-weight:var(--fw-bold);list-style:none}
@@ -727,8 +725,8 @@
 .meeting-agent-page .review-evidence .evidence-row{margin:.25rem 0}
 .meeting-agent-page .review-route-missing{display:grid;gap:.15rem;padding:.55rem .65rem;border-radius:var(--radius-sm);background:var(--soft);color:var(--muted);font-size:var(--fs-sm)}
 
-/* ------------------------------------------------------------ proposal -- */
-.meeting-agent-page .proposal{margin:.85rem 0 0;padding-top:.8rem;border-top:1px solid var(--border)}
+/* Proposal changes are applied automatically; only source-check warnings remain visible. */
+.meeting-agent-page .proposal{display:none}
 .meeting-agent-page .proposal-header{
   display:flex;align-items:center;justify-content:space-between;gap:1rem;
   flex-wrap:wrap;padding-bottom:.55rem}
@@ -942,7 +940,7 @@
   .meeting-agent-page.has-draft{padding-bottom:7rem}
   .meeting-agent-page.has-draft.final-complete{padding-bottom:.6rem}
   /* Give the mobile bar two deliberate rows. Previously the action buttons
-     were vertically centred against the combined Saved + suggestions stack,
+     were vertically centred against the combined Saved + checks stack,
      which left them floating awkwardly between the two lines. */
   .meeting-agent-page .save-strip{
     display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
@@ -974,7 +972,7 @@
   .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions button{
     width:auto;min-width:4.5rem;white-space:nowrap}
   /* Final review already contains its own Back and Export controls. When the
-     fixed bar has no history action left, fit it to Saved + suggestions
+     fixed bar has no history action left, fit it to Saved + checks
      instead of preserving an empty document-actions column. */
   .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))){
     grid-template-columns:max-content;width:max-content;max-width:calc(100% - 1rem);justify-content:start}
@@ -1058,14 +1056,6 @@
   .meeting-agent-page .seg{display:flex;width:100%;min-width:0}
   .meeting-agent-page .seg label{flex:1 1 0;min-width:0}
   .meeting-agent-page .seg span{padding:.3rem .25rem;text-align:center;overflow:hidden;text-overflow:ellipsis}
-  .meeting-agent-page .proposal-footer{display:grid;grid-template-columns:1fr;justify-content:stretch}
-  .meeting-agent-page .proposal-footer>*{width:100%;margin-right:0}
-  .meeting-agent-page .proposal-detail>summary{
-    grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:.3rem .45rem;padding:.15rem 0}
-  .meeting-agent-page .proposal-kind{grid-column:1;grid-row:1;justify-self:start}
-  .meeting-agent-page .proposal-summary{
-    grid-column:1;grid-row:2;overflow:visible;text-overflow:clip;white-space:normal;line-height:1.35}
-  .meeting-agent-page .proposal-chevron{grid-column:2;grid-row:1/3;align-self:center}
   .meeting-agent-page .screen-actions>*{width:100%}
   .meeting-agent-page .final-actions .divider,
   .meeting-agent-page .final-actions .spacer{display:none}
@@ -1134,7 +1124,7 @@
   <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span></span></div>
 
   <div class="workflow-utilities">
-    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">A few details are worth a quick source check. They may already be right.</p><div id="flagList" class="flag-list"></div><section id="proposalPanel" class="proposal" hidden><div class="proposal-header"><div class="proposal-heading"><h3>Choose changes to apply</h3><p class="muted">Tick the changes you want. Open an item to check the evidence. Unticked items stay here.</p></div></div><div id="proposalChanges"></div><div class="proposal-footer"><span id="proposalSelectionCount" class="muted"></span><button id="rejectProposal" class="secondary" type="button">Dismiss all suggestions</button><button id="acceptSelectedProposal" class="button" type="button">Apply selected</button><button id="acceptAllProposal" type="button" hidden>Apply all changes</button></div></section></div></details>
+    <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">A few details are worth a quick source check. They may already be right.</p><div id="flagList" class="flag-list"></div></div></details>
   </div>
 
   <p id="workflowStatus" class="notice" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" hidden></p>
@@ -1154,14 +1144,14 @@
       <h2>Transcript uploaded</h2>
       <p id="uploadConfirmationDetail"></p>
       <div id="uploadConfirmationPending" hidden>
-        <p>The agent is reading the transcript and creating your draft. This page will update when it is ready.</p>
+        <p>It is being processed in the background now. This page will update when the draft is ready.</p>
       </div>
       <div id="uploadConfirmationReady" hidden>
         <p>The next screens take you through the minutes in order. Each one is prepared in the background while you work on the one before it.</p>
         <ol>
           <li><strong>Details</strong> &mdash; check the title, date, location and who was there.</li>
           <li><strong>Discussion</strong> &mdash; what was said, grouped by subject, each line linked to the transcript.</li>
-          <li><strong>Actions</strong> &mdash; who committed to what and by when, with anything uncertain offered as a suggestion.</li>
+          <li><strong>Actions</strong> &mdash; who committed to what and by when, based on the transcript.</li>
           <li><strong>Summary</strong> &mdash; objectives and an executive summary.</li>
           <li><strong>Review</strong> &mdash; the finished minutes, editable in place, then export.</li>
         </ol>
@@ -1266,7 +1256,7 @@
   <dialog id="regenerationDialog" class="confirmation-dialog" aria-labelledby="regenerationTitle">
     <form method="dialog">
       <h2 id="regenerationTitle">Regenerate this section?</h2>
-      <p id="regenerationMessage">Your current edits will remain. New results will arrive as suggestions, and nothing will change until you apply them.</p>
+      <p id="regenerationMessage">Your current edits will remain while the new results are prepared, then the latest result will be applied automatically.</p>
       <div class="dialog-actions"><button class="secondary" value="cancel" type="submit">Cancel</button><button id="confirmRegeneration" class="button" value="confirm" type="submit">Regenerate</button></div>
     </form>
   </dialog>

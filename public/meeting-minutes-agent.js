@@ -32,6 +32,7 @@
   var previewReturnStep = 4;
   var editVersion = 0;
   var rendering = false;
+  var automaticProposalInFlight = false;
   var fileInput = document.getElementById('transcriptFile');
   var uploadZone = document.getElementById('uploadZone');
   var detailsEditor = document.getElementById('detailsEditor');
@@ -560,8 +561,7 @@
     // to Discussion rather than showing an empty screen.
     if (state.currentStep === 1) state.currentStep = 2;
     // The review queue is shared by every workflow screen. Close it when the
-    // reviewer moves on so the next screen starts clean; the persistent
-    // suggestions control remains available to reopen it at any time.
+    // reviewer moves on so the next screen starts clean.
     if (leavingStep !== state.currentStep) {
       var reviewPanel = document.getElementById('reviewFlags');
       if (reviewPanel) reviewPanel.open = false;
@@ -1053,7 +1053,7 @@
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length);
-      setStatus('Transcript prepared. Check the meeting details before continuing.', false, 'details');
+      setStatus('Transcript uploaded. Processing continues in the background.', false, 'details');
     } catch (error) {
       hideUploadConfirmation();
       uploadZone.hidden = false;
@@ -1529,7 +1529,7 @@
       };
     }
     // A missed-content warning can describe an Action that deliberately has
-    // not entered the register yet. Route to the pending suggestion instead of
+    // not entered the register yet. Route it to the generated-change record instead of
     // pretending there ought to be a current Action to edit.
     var proposed = proposalChangeForFlag(flag);
     if (proposed) {
@@ -1563,15 +1563,12 @@
   }
 
   function reviewQueueCounts() {
-    // A proposal's generated review flag is bookkeeping for persistence. The
-    // proposal itself is the one decision the reviewer needs to see, so do not
-    // count the same suggested change again as a separate warning.
+    // Generated changes are applied automatically. Only genuine source-check
+    // warnings remain in the reviewer-facing queue.
     var flags = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) {
       return flag.status === 'open' && !proposalChangeForFlag(flag);
     }).length;
-    var proposal = state.draft && state.draft.pendingProposal;
-    var suggestions = proposal && Array.isArray(proposal.changes) ? proposal.changes.length : 0;
-    return { flags: flags, suggestions: suggestions, total: flags + suggestions };
+    return { flags: flags, total: flags };
   }
 
   function updateReviewQueueSummary() {
@@ -1579,11 +1576,10 @@
     var panel = document.getElementById('reviewFlags');
     panel.hidden = counts.total === 0;
     document.getElementById('flagCount').textContent = counts.flags
-      ? counts.flags + ' check' + (counts.flags === 1 ? '' : 's') + (counts.suggestions ? ' · ' + counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : '')
-      : counts.suggestions ? counts.suggestions + ' suggestion' + (counts.suggestions === 1 ? '' : 's') : 'Review complete';
+      ? counts.flags + ' check' + (counts.flags === 1 ? '' : 's')
+      : 'Review complete';
     updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
-    // With only suggestions queued, the panel heading already says what to do.
     if (intro) {
       intro.hidden = !counts.flags;
       intro.textContent = 'A few details are worth a quick source check. They may already be right; open a minutes item only if you want to change it, then mark it checked.';
@@ -1652,14 +1648,13 @@
         : 'Transcript detail to consider';
       var body = '';
       if (candidateText) {
-        body += '<div class="flag-target' + (target && target.proposal ? ' is-suggestion' : '') + (!target ? ' transcript-candidate' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span><blockquote>' + escapeHtml(candidateText) + '</blockquote>';
+        body += '<div class="flag-target' + (!target ? ' transcript-candidate' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span><blockquote>' + escapeHtml(candidateText) + '</blockquote>';
       }
       if (target) {
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
-        body += (candidateText ? '' : '<div class="flag-target' + (target.proposal ? ' is-suggestion' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span>')
-          + (target.proposal ? '<p>This has not been added yet. Open it to choose whether to add it or leave it out.</p>' : '')
-          + '<button class="' + (target.proposal ? 'button' : 'secondary') + ' compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.proposal ? 'Review and decide →' : 'Open in minutes') + '</button></div>';
+        body += (candidateText ? '' : '<div class="flag-target"><span>' + escapeHtml(candidateLabel) + '</span>')
+          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">Open in minutes</button></div>';
       } else if (candidateText) {
         body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
       } else {
@@ -1682,7 +1677,7 @@
       var evidence = '<details class="review-evidence" data-keep-open="' + escapeHtml(disclosureKey(flag.evidenceIds, 'flag-' + flag.id)) + '"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
         + (evidenceLines ? evidenceLines + ' line' + (evidenceLines === 1 ? '' : 's') : 'none linked')
         + '</span></summary><div class="review-evidence-body">' + evidenceHtml(flag.evidenceIds) + '</div></details>';
-      return '<div class="flag review-queue-item' + (target && target.proposal ? ' suggestion-route' : '') + '"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
+      return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
     }).join('');
     restoreDisclosures(document.getElementById('flagList'));
     updateReviewQueueSummary();
@@ -1720,35 +1715,9 @@
   }
 
   function renderProposal() {
-    var proposal = state.draft && state.draft.pendingProposal;
-    var panel = document.getElementById('proposalPanel');
-    var wasHidden = panel.hidden;
-    panel.hidden = !proposal || !(proposal.changes || []).length;
-    if (panel.hidden) { updateReviewQueueSummary(); return; }
-    var changeLabels = { add:'New', modify:'Edit', remove:'Removal' };
-    document.getElementById('proposalChanges').innerHTML = proposal.changes.map(function (change) {
-      // The row summary already shows the proposed text, so the expanded view
-      // only adds what the summary cannot: the earlier wording, the reason and
-      // the evidence.
-      var content = '';
-      if (change.before && change.after) content += '<p class="proposal-before"><span>Was:</span> ' + escapeHtml(proposalRecord(change.before)) + '</p>';
-      if (change.reviewContext && change.reviewContext.reason) content += '<p class="proposal-rationale">' + escapeHtml(change.reviewContext.reason) + '</p>';
-      var links = '';
-      if (change.reviewContext && (change.reviewContext.evidenceIds || []).length) links += evidenceBlock(change.reviewContext.evidenceIds, String(change.id || ''));
-      var target = proposalTarget(change, proposal.stage);
-      if (target) links += '<button class="secondary compact proposal-target" data-view-review-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(target.selector) + '" data-target-step="' + target.stage + '" type="button">View current item</button>';
-      if (links) content += '<div class="proposal-links">' + links + '</div>';
-      var semanticLabel=proposal.stage==='discussion' ? discussionProposalLabel(change) : '';
-      var kindClass={add:' proposal-kind-add',modify:' proposal-kind-modify',remove:' proposal-kind-remove'}[change.type] || '';
-      var summary = proposalRecord(change.after || change.before);
-      return '<div id="' + escapeHtml(proposalDomId(change)) + '" class="proposal-change review-queue-item"><input type="checkbox" data-proposal-change="' + escapeHtml(change.id) + '"' + (change.selected === true ? ' checked' : '') + ' aria-label="Select this suggested change"><details class="proposal-detail"><summary><span class="proposal-kind' + kindClass + '">' + escapeHtml(semanticLabel || changeLabels[change.type] || 'Change') + '</span><span class="proposal-summary">' + escapeHtml(summary) + '</span><span class="proposal-chevron">›</span></summary><div class="proposal-content">' + content + '</div></details></div>';
-    }).join('');
-    updateProposalSelection();
+    // Kept as a compatibility no-op for saved drafts created by older builds.
+    // Pending changes are applied by applyPendingProposalAutomatically().
     updateReviewQueueSummary();
-    // The queue stays collapsed when it first gains items, matching renderFlags
-    // above: this runs after it, so opening here quietly overrode that and the
-    // The panel stays closed until the reviewer opens the warnings or suggestions.
-    if (wasHidden) document.getElementById('reviewFlags').open = false;
   }
 
   function updateProposalSelection() {
@@ -2022,7 +1991,36 @@
       && !pendingGenerationEdits && !hasTransientEditorState();
   }
 
-  function adoptDraft(draft) {
+  async function applyPendingProposalAutomatically() {
+    if (automaticProposalInFlight || !state.draft) return;
+    var proposal = state.draft.pendingProposal;
+    if (!proposal || !Array.isArray(proposal.changes) || !proposal.changes.length) return;
+    automaticProposalInFlight = true;
+    var proposalStage = proposal.stage || currentStageName();
+    draftWritesInFlight += 1;
+    try {
+      setSaveStatus('Applying the latest generated changes...', 'generating');
+      var payload = await withBackgroundMerge(function () {
+        return jsonRequest(draftUrl('/proposal'), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({revision: state.draft.revision, decision: 'accept', acceptAll: true, changeIds: []})
+        });
+      });
+      adoptDraft(payload.draft, {skipAutomaticProposal: true});
+      if (payload.draft && payload.draft.lastUndo) showUndoToast(payload.draft.lastUndo.label);
+      setStatus(proposalStage === 'actions' ? 'Actions updated automatically.' : 'The latest generated changes were applied automatically.', false, proposalStage);
+    } catch (error) {
+      // Keep the draft visible if the automatic merge is temporarily blocked;
+      // the warning is actionable without exposing the old proposal controls.
+      setStatus('The latest generated changes could not be applied automatically. ' + error.message, true, proposalStage);
+    } finally {
+      automaticProposalInFlight = false;
+      endDraftWrite();
+    }
+  }
+
+  function adoptDraft(draft, options) {
     if (!draft) return;
     var replacingExistingDraft = Boolean(state.draft);
     // Only the upload itself shows the confirmation (prepareFile re-shows it
@@ -2049,6 +2047,9 @@
       setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
     } else {
       setSaveStatus(savedStatusText(draft.updatedAt), 'saved');
+    }
+    if (!(options && options.skipAutomaticProposal) && state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) {
+      window.setTimeout(applyPendingProposalAutomatically, 0);
     }
   }
 
@@ -2235,17 +2236,10 @@
     return Math.min(MAX_STEP, furthest);
   }
 
-  // What a finished stage has to say for itself. Only mentions suggestions when
-  // there are suggestions: a prompt to "check any proposed additions" above a
-  // count of zero reads as a tool describing someone else's draft.
+  // What a finished stage has to say for itself.
   function stageReadyText(stage) {
-    var proposal = state.draft && state.draft.pendingProposal;
-    var suggestions = proposal && Array.isArray(proposal.changes) ? proposal.changes.length : 0;
-    var suffix = suggestions
-      ? ' ' + suggestions + ' suggestion' + (suggestions === 1 ? '' : 's') + ' to check.'
-      : '';
-    if (stage === 'discussion') return 'Discussion ready.' + suffix;
-    if (stage === 'actions') return 'Actions ready.' + suffix;
+    if (stage === 'discussion') return 'Discussion ready.';
+    if (stage === 'actions') return 'Actions ready.';
     return '';
   }
 
@@ -2272,12 +2266,12 @@
     var regenerationCopy = {
       discussion: {
         title: 'Regenerate discussion?',
-        message: 'Your current discussion stays visible while the agent works. Anything you edited remains unchanged; newly generated differences arrive as suggestions for you to apply or dismiss.',
+        message: 'Your current discussion stays visible while the agent works. Anything you edited remains unchanged; the latest generated result will be applied automatically when ready.',
         confirm: 'Regenerate discussion'
       },
       actions: {
         title: 'Regenerate actions?',
-        message: 'Your current action list stays visible while the agent works. Anything you edited remains unchanged; newly generated differences arrive as suggestions for you to apply or dismiss.',
+        message: 'Your current action list stays visible while the agent works. Anything you edited remains unchanged; the latest generated result will be applied automatically when ready.',
         confirm: 'Regenerate actions'
       },
       summary: {
@@ -2378,7 +2372,7 @@
         } else {
           var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
           setStatus(keptEdits
-            ? 'Your edited Actions were kept. The regenerated Actions are shown as proposed changes: accept the ones you want.'
+            ? 'Your edited Actions were kept. The regenerated Actions will be applied automatically.'
             : state.draft.qualityNotice || stageReadyText(activeStage), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
         generationPollKey = '';
@@ -2410,7 +2404,8 @@
         }
       }
       adoptDraft(payload.draft);
-      if (instruction) { renderProposal(); setStatus('Review the proposed changes. Nothing has been applied yet.', false, stage); }
+      if (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) await applyPendingProposalAutomatically();
+      if (instruction) { renderProposal(); setStatus('The latest generated changes will be applied automatically.', false, stage); }
       else {
         showStep(STAGE_STEP[stage] || 2, { scroll: true });
         setStatus(stage === 'discussion' ? stageReadyText('discussion') : 'Action draft generated. Running the separate missed-action check next.', false, stage);
@@ -2440,7 +2435,8 @@
         }
       }
       adoptDraft(payload.draft);
-      setStatus(payload.proposal ? 'The completeness check found proposed actions. Review them before applying.' : 'The completeness check found no additional supported actions.', false, 'actions');
+      if (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) await applyPendingProposalAutomatically();
+      setStatus(payload.proposal ? 'The completeness check found additional supported actions. Applying them automatically.' : 'The completeness check found no additional supported actions.', false, 'actions');
     } catch (error) { setStatus((automatic ? 'The action draft is available, but the completeness check failed: ' : '') + error.message, true, 'actions'); }
     finally { setBusy(false); endDraftWrite(); }
   }
@@ -2459,9 +2455,9 @@
       adoptDraft(payload.draft);
       if (payload.draft && payload.draft.lastUndo) showUndoToast(payload.draft.lastUndo.label);
       var remaining = payload.draft && payload.draft.pendingProposal && (payload.draft.pendingProposal.changes || []).length;
-      setStatus(decision === 'reject' ? 'All remaining suggestions were dismissed.'
-        : remaining ? 'Selected changes applied. ' + remaining + ' unchecked suggestion' + (remaining === 1 ? ' remains' : 's remain') + ' in the review queue.'
-          : 'Selected agent changes applied.', false, proposalStage);
+      setStatus(decision === 'reject' ? 'The generated changes were dismissed.'
+        : remaining ? 'The selected generated changes were applied.'
+          : 'The generated changes were applied.', false, proposalStage);
     } catch (error) { setStatus(error.message, true, proposalStage); }
     finally { setBusy(false); endDraftWrite(); }
   }
@@ -2541,7 +2537,7 @@
     var detail = document.getElementById('uploadConfirmationDetail');
     var count = Number(unitCount || 0);
     detail.textContent = preparing
-      ? (fileName ? '"' + fileName + '" has been uploaded.' : 'The transcript has been uploaded.')
+      ? 'Yes, okay, I\'ve uploaded it.'
       : (fileName ? '"' + fileName + '" was read successfully' : 'The transcript was read successfully')
         + (count ? ', with ' + count + ' passage' + (count === 1 ? '' : 's') + ' of speech ready to work from.' : '.');
     var pending = document.getElementById('uploadConfirmationPending');
@@ -3331,16 +3327,6 @@
       return;
     }
     var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); var decisionLabel=button.dataset.flagStatus==='dismissed'?'Review item marked not needed':button.dataset.flagStatus==='corrected'?'Review note saved and item resolved':'Review item resolved'; queueReviewDecision(decisionLabel);
-  });
-  document.getElementById('acceptAllProposal').addEventListener('click', function () { reviewProposal('accept',true); });
-  document.getElementById('acceptSelectedProposal').addEventListener('click', function () { reviewProposal('accept',false); });
-  document.getElementById('rejectProposal').addEventListener('click', function () { reviewProposal('reject',false); });
-  document.getElementById('proposalChanges').addEventListener('change', function (event) {
-    if (event.target.matches('[data-proposal-change]')) updateProposalSelection();
-  });
-  document.getElementById('proposalChanges').addEventListener('click', function (event) {
-    var targetButton = event.target.closest('[data-view-review-target]');
-    if (targetButton) openReviewTarget(targetButton);
   });
   document.getElementById('openFinalReview').addEventListener('click', function () { readEditors(); activeFinalEdit=null; renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Click any sentence, owner or date to edit it here.',false,'review'); });
   document.getElementById('reviewQueueToggle').addEventListener('click', function () {
