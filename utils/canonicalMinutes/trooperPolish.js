@@ -2,6 +2,7 @@
 
 const fetch = require('node-fetch');
 const { clean } = require('./evidence');
+const { normalisePresentationCurrency } = require('./textNormalisation');
 const { deadlineFrom } = require('./stages');
 const { minutesEnglishFaults, repairMechanicalFaults, contentSet } = require('../minutesEnglish');
 const { numericFactsOf } = require('../spokenNumbers');
@@ -325,6 +326,7 @@ function clientReadyPresentation(payload) {
       return null;
     }).filter(Boolean);
   }
+  base.screens = normalisePresentationCurrency(base.screens);
   const existingFlags = Array.isArray(base.validationFlags) ? base.validationFlags : [];
   const retainedActionReviewCandidates = stage === 'actions'
     ? retainedForReview.map((item) => item.candidate).filter(Boolean)

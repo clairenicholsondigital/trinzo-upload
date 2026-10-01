@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildMeetingSpine, usableHeading } = require('../utils/canonicalMinutes/meetingSpine');
+const { normaliseUkCurrency } = require('../utils/canonicalMinutes/textNormalisation');
+const { clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 
 function evidence(events) {
   return {
@@ -40,4 +42,30 @@ test('topic heading gate rejects schedule fragments and conversational question 
   assert.equal(usableHeading('Like, as the team is developing big'), false);
   assert.equal(usableHeading('Just to, just to know'), false);
   assert.equal(usableHeading('Training, document access and confidentiality'), true);
+});
+
+test('topic heading gate rejects generic meeting-closing labels', () => {
+  for (const heading of [
+    'Meeting closing remarks', 'Closing remarks', 'Closing comments', 'Meeting close',
+    'Final remarks', 'Closing wrap-up', 'Wrap-up discussion'
+  ]) assert.equal(usableHeading(heading), false, heading);
+  assert.equal(usableHeading('Closing remarks on the audit findings'), true);
+  assert.equal(usableHeading('Closing the supplier contract'), true);
+});
+
+test('currency wording is consistently presented as UK pound amounts', () => {
+  assert.equal(normaliseUkCurrency('Ken will buy it for eight pounds.'), 'Ken will buy it for £8.');
+  assert.equal(normaliseUkCurrency('The fee is twenty five pounds per plot.'), 'The fee is £25 per plot.');
+  assert.equal(normaliseUkCurrency('The budget is 50 pounds.'), 'The budget is £50.');
+  assert.equal(normaliseUkCurrency('The invoice is GBP 6.50.'), 'The invoice is £6.50.');
+  assert.equal(normaliseUkCurrency('Eight people joined.'), 'Eight people joined.');
+});
+
+test('client-ready staged screens apply currency normalisation to generated prose', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'summary',
+    screens: { summary: { executiveSummary: 'The repair will cost eight pounds.', objectives: ['Approve the £50 show budget.'] } }
+  });
+  assert.equal(result.screens.summary.executiveSummary, 'The repair will cost £8.');
+  assert.deepEqual(result.screens.summary.objectives, ['Approve the £50 show budget.']);
 });

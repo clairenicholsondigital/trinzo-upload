@@ -4,7 +4,7 @@ const { clean } = require('./evidence');
 const { canStandAloneAsMinutesEvidence, canHeadlineTopic } = require('./publishability');
 
 const DAY_ONLY = /^(?:(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?[,/ &-]*)+$/i;
-const GENERIC_TOPIC = /^(?:risks?|plans? and timelines?|scope and requirements?|roles? and responsibilities?|operations? and processes?|product behaviour and design|actions? and ownership)$/i;
+const GENERIC_TOPIC = /^(?:risks?|plans? and timelines?|scope and requirements?|roles? and responsibilities?|operations? and processes?|product behaviour and design|actions? and ownership|(?:the\s+)?meeting\s+(?:closing\s+)?remarks?|closing\s+(?:remarks?|comments?|discussion|summary)|final\s+remarks?|meeting\s+close|closing\s+wrap[- ]?up|wrap[- ]?up(?:\s+(?:remarks?|discussion))?)$/i;
 const PRIMARY_CUES = /\b(?:purpose|aim|need to|needs? to|must|prepare|preparation|build|develop|agree|confirm|finalise|finalize|complete|audit|procedure|qms|technical file|submission|working session)\b/i;
 const CONSEQUENCE_CUES = /\b(?:action|decision|agree|confirm|need to|must|follow[- ]?up|deadline|due|risk|block|dependency|outstanding)\b/i;
 
