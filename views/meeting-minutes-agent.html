@@ -1267,6 +1267,14 @@
       <div class="dialog-actions"><button class="secondary" value="cancel" type="submit">Stay here</button><button id="confirmNewTranscript" class="button" type="button">Choose another transcript</button></div>
     </form>
   </dialog>
+  <dialog id="duplicateUploadDialog" class="confirmation-dialog" aria-labelledby="duplicateUploadTitle">
+    <form method="dialog">
+      <h2 id="duplicateUploadTitle">A similar transcript is already in the Library</h2>
+      <p id="duplicateUploadMessage">A transcript with the same filename and file size is already saved.</p>
+      <p><a id="duplicateUploadLink" class="secondary" href="#" target="_blank" rel="noopener">Open the existing meeting minutes in a new tab</a></p>
+      <div class="dialog-actions"><button id="duplicateUploadCancel" class="secondary" value="cancel" type="submit">Cancel upload</button><button id="duplicateUploadProceed" class="button" value="proceed" type="submit">Upload anyway</button></div>
+    </form>
+  </dialog>
   <div id="undoToast" class="undo-toast" role="status" aria-live="polite" hidden><span id="undoToastMessage"></span><button id="undoToastButton" class="secondary" type="button">Undo</button></div>
 </main>
 </body>

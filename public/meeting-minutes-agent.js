@@ -1047,6 +1047,35 @@
     uploadZone.hidden = true;
     setBusy(true, 'Reading the Word document and preparing the transcript...');
     try {
+      var duplicateCheck = {duplicates: []};
+      try {
+        var duplicateController = new AbortController();
+        var duplicateTimer = window.setTimeout(function () { duplicateController.abort(); }, 1500);
+        try {
+          duplicateCheck = await jsonRequest('/api/meeting-minutes-agent/check-duplicate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({fileName: file.name, fileSize: file.size}),
+            signal: duplicateController.signal
+          });
+        } finally {
+          window.clearTimeout(duplicateTimer);
+        }
+      } catch (duplicateError) {
+        // The duplicate check is a convenience guard, not a reason to block a
+        // valid upload if an older deployment or a transient request failure
+        // leaves the check endpoint unavailable.
+        duplicateCheck = {duplicates: []};
+      }
+      if (duplicateCheck.duplicates && duplicateCheck.duplicates.length) {
+        var proceed = await confirmDuplicateUpload(duplicateCheck.duplicates[0]);
+        if (!proceed) {
+          uploadZone.hidden = false;
+          fileInput.value = '';
+          setStatus('Duplicate upload cancelled.', false);
+          return;
+        }
+      }
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
@@ -1059,6 +1088,24 @@
       setStatus(error.message, true);
     }
     finally { setBusy(false); }
+  }
+
+  function confirmDuplicateUpload(duplicate) {
+    var dialog = document.getElementById('duplicateUploadDialog');
+    var message = document.getElementById('duplicateUploadMessage');
+    var link = document.getElementById('duplicateUploadLink');
+    if (!dialog || !message || !link) return Promise.resolve(true);
+    var title = String(duplicate.title || 'an existing meeting');
+    message.textContent = '“' + String(duplicate.fileName || 'This transcript') + '” matches an existing Library item: ' + title + '.';
+    link.href = duplicate.resumeUrl || '/jobs';
+    return new Promise(function (resolve) {
+      function complete() {
+        dialog.removeEventListener('close', complete);
+        resolve(dialog.returnValue === 'proceed');
+      }
+      dialog.addEventListener('close', complete);
+      dialog.showModal();
+    });
   }
 
   function recordDomId(kind, id, fallback) {

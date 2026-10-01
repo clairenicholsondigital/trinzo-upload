@@ -19,6 +19,7 @@ const {
 } = require('../utils/copilot');
 
 const { extractTextFromUpload } = require('../utils/transcript');
+const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
 const {
   assertStagedSourceIdentity,
   assertStagedTranscriptHash
@@ -16160,6 +16161,23 @@ async function startInitialMeetingAgentProcessing(draft, req) {
   return saved;
 }
 
+router.post('/meeting-minutes-agent/check-duplicate', requireAuth, async (req, res) => {
+  try {
+    const fileName = String(req.body?.fileName || '').trim();
+    const fileSize = Number(req.body?.fileSize);
+    if (!fileName || !Number.isSafeInteger(fileSize) || fileSize < 0) {
+      return res.status(400).json({ ok: false, error: 'A transcript filename and size are required.' });
+    }
+    const drafts = await listMeetingMinutesAgentDrafts(req.authUser?.userId, 100);
+    return res.json({
+      ok: true,
+      duplicates: matchingMeetingAgentDrafts(drafts, { fileName, fileSize })
+    });
+  } catch (error) {
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
 router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async (req, res) => {
   const routeStartedAt = Date.now();
   try {
@@ -16207,6 +16225,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       rawTranscript: transcript.text,
       payload: meetingAgentDraftPayload({
         transcriptSha256: crypto.createHash('sha256').update(transcript.text).digest('hex'),
+        uploadSizeBytes: Number(req.file?.size || 0),
         sourceUnits,
         preparedTranscript,
         salientDetails,
