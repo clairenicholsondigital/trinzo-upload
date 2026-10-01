@@ -191,6 +191,12 @@ function isStructuralTopicLabel(value) {
   return words.length > 0 && words.every((word) => STRUCTURAL_TOPIC_WORDS.has(word));
 }
 const ACTION_CATEGORY_TOPIC = /^(?:action(?:\s+(?:items?|points?))?|action\s+items?\s+and\s+priorities|priorities|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?)(?:\s+(?:and|&)\s+(?:priorities|next\s+steps?|follow[- ]?ups?|actions?|tasks?))?$/i;
+// A generated heading can describe a subject and still be only an action
+// bucket, for example "Prioritised software review and testing actions".
+// Keep this broader test separate from ACTION_CATEGORY_TOPIC: a substantive
+// heading containing one of these words must remain publishable unless all of
+// its rows are action-shaped (checked by isActionCategoryTopicCard below).
+const ACTION_SUMMARY_TOPIC = /\b(?:action(?:s)?|priorit(?:y|ies)|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?)\b/i;
 const ACTION_CATEGORY_RECORD = /^(?:(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}){0,3})[,;:]?\s+)?(?:will|shall|must|needs?\s+to|is\s+to|are\s+to|to\s+|please\s+|review\b|confirm\b|update\b|send\b|share\b|prepare\b|complete\b|check\b|test\b|provide\b|follow[- ]?up\b)/i;
 
 // The single gate every topic label passes before a reviewer sees it.
@@ -270,7 +276,7 @@ function isPublishableTopicLabel(value) {
 
 function isActionCategoryTopicCard(card = {}) {
   const topic = clean(card?.topic);
-  if (!ACTION_CATEGORY_TOPIC.test(topic)) return false;
+  if (!ACTION_SUMMARY_TOPIC.test(topic)) return false;
   const records = [
     ...(Array.isArray(card?.points) ? card.points : []),
     ...(Array.isArray(card?.decisions) ? card.decisions : []),

@@ -113,6 +113,27 @@ test('action-category headings do not become discussion topics', () => {
   assert.deepEqual(publishableTopicCards([card]), []);
 });
 
+test('compound action-summary headings are removed only when every row is action-shaped', () => {
+  const actionSummary = {
+    topic: 'Prioritised software review and testing actions',
+    points: [
+      { text: 'Review the software changes against the test evidence.' },
+      { text: 'Confirm the remaining validation tests.' }
+    ],
+    decisions: [],
+    openQuestions: []
+  };
+  assert.equal(isActionCategoryTopicCard(actionSummary), true);
+  assert.deepEqual(publishableTopicCards([actionSummary]), []);
+
+  const factualDiscussion = {
+    ...actionSummary,
+    points: [{ text: 'Software testing evidence included unresolved design risks.' }]
+  };
+  assert.equal(isActionCategoryTopicCard(factualDiscussion), false);
+  assert.deepEqual(publishableTopicCards([factualDiscussion]), [factualDiscussion]);
+});
+
 test('mixed action-category cards retain factual discussion rather than dropping it wholesale', () => {
   const card = {
     topic: 'Action items and priorities',
