@@ -16127,6 +16127,39 @@ function sendMeetingAgentFailure(res, error) {
   });
 }
 
+// The upload response is the hand-off point: once the draft is persisted,
+// start the first minutes stage on the server. This deliberately does not
+// depend on a browser request remaining open; a closed tab can only stop
+// polling, not the queued work itself.
+async function startInitialMeetingAgentProcessing(draft, req) {
+  const stage = 'discussion';
+  const generation = {
+    stage,
+    status: 'running',
+    bootId: MEETING_AGENT_BOOT_ID,
+    startedAt: new Date().toISOString(),
+    pass: meetingMinutesAgentHybridEnabled() ? 'starting' : '',
+    message: meetingMinutesAgentHybridEnabled() ? 'Processing the transcript in the background…' : '',
+    completedPasses: [],
+    callTimings: [],
+    degradedSources: [],
+    error: ''
+  };
+  const saved = await saveMeetingAgentDraft(draft, req, {
+    generation,
+    // Keep the upload acknowledgement visible until the reviewer chooses to
+    // move into the staged workflow. The background stage still advances the
+    // draft when it completes.
+    currentStep: 0,
+    selectedStep: 0
+  });
+  setImmediate(() => {
+    runMeetingAgentBackgroundStage(saved.draftId, req.authUser?.userId, stage)
+      .catch((error) => safeLogError('[meeting-minutes-agent/initial-background] failed', error));
+  });
+  return saved;
+}
+
 router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async (req, res) => {
   const routeStartedAt = Date.now();
   try {
@@ -16189,10 +16222,13 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       })
     });
     const persistenceMs = Date.now() - persistenceStartedAt;
+    const processingStartedAt = Date.now();
+    const processing = await startInitialMeetingAgentProcessing(created, req);
+    const processingStartMs = Date.now() - processingStartedAt;
     const totalElapsedMs = Date.now() - routeStartedAt;
     console.info(JSON.stringify({
       event: 'meeting_agent_preparation', journeyId: created.draftId || '', ok: true,
-      ...preparationPerformance, persistenceMs, totalElapsedMs
+      ...preparationPerformance, persistenceMs, processingStartMs, totalElapsedMs
     }));
     if (meetingMinutesAgentHybridEnabled()) {
       // The cache owns no user-visible state and the draft remains authoritative.
@@ -16214,9 +16250,9 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     }
     return res.json({
       ok: true,
-      draft: publicMeetingAgentDraft(created),
-      resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(created.draftId)}`,
-      performance: { ...preparationPerformance, persistenceMs, totalElapsedMs }
+      draft: publicMeetingAgentDraft(processing.draft),
+      resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(processing.draftId)}`,
+      performance: { ...preparationPerformance, persistenceMs, processingStartMs, totalElapsedMs }
     });
   } catch (error) {
     console.warn(JSON.stringify({

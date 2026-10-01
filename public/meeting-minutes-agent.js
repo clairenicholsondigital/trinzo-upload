@@ -1041,19 +1041,17 @@
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) return setStatus('Choose a Word .docx transcript.', true);
     var form = new FormData(); form.append('file', file);
-    // Acknowledge the upload immediately. Transcript preparation can take a
-    // few seconds and must not leave the reviewer wondering whether the file
-    // selection worked. Library is described here, but only becomes a link
-    // once the server has persisted the resumable draft.
+    // Do not call this an upload until the server has accepted and persisted
+    // it. The confirmation is the durable acknowledgement, not a response to
+    // merely selecting a file in the browser.
     uploadZone.hidden = true;
-    showUploadConfirmation(file.name, 0, true);
     setBusy(true, 'Reading the Word document and preparing the transcript...');
     try {
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
-      showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length);
-      setStatus('Transcript uploaded. Processing continues in the background.', false, 'details');
+      showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length, false, true);
+      setStatus('Transcript uploaded and processing has started in the background.', false, 'details');
     } catch (error) {
       hideUploadConfirmation();
       uploadZone.hidden = false;
@@ -2529,21 +2527,24 @@
   }
 
   /* ------------------------------------------------------------ events */
-  // Shown first as an immediate upload acknowledgement, then updated when
-  // preparation has produced the resumable draft and its next-step guidance.
-  function showUploadConfirmation(fileName, unitCount, preparing) {
+  // Shown only after the server has persisted the upload. The pending state
+  // confirms that server-side processing has started; the ready state is used
+  // when the prepared draft is already available to continue reviewing.
+  function showUploadConfirmation(fileName, unitCount, preparing, processing) {
     var panel = document.getElementById('uploadConfirmation');
     if (!panel) return;
     var detail = document.getElementById('uploadConfirmationDetail');
     var count = Number(unitCount || 0);
     detail.textContent = preparing
-      ? 'Yes, okay, I\'ve uploaded it.'
+      ? 'Uploading the transcript securely...'
+      : processing
+        ? 'Transcript uploaded — processing has started in the background.'
       : (fileName ? '"' + fileName + '" was read successfully' : 'The transcript was read successfully')
         + (count ? ', with ' + count + ' passage' + (count === 1 ? '' : 's') + ' of speech ready to work from.' : '.');
     var pending = document.getElementById('uploadConfirmationPending');
     var ready = document.getElementById('uploadConfirmationReady');
-    if (pending) pending.hidden = !preparing;
-    if (ready) ready.hidden = Boolean(preparing);
+    if (pending) pending.hidden = !(preparing || processing);
+    if (ready) ready.hidden = Boolean(preparing) || Boolean(processing);
     panel.hidden = false;
   }
 

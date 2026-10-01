@@ -279,11 +279,12 @@ function startStubServer() {
   app.get('/static/trinzo-fonts.css', (req, res) => res.type('text/css').send(''));
   app.post('/api/meeting-minutes-agent/prepare', async (req, res) => {
     // Leave a visible preparation window so the upload test can prove that
-    // acknowledgement does not wait for the prepared draft response.
+    // the acknowledgement waits for a server-accepted, persisted draft.
     await new Promise((resolve) => setTimeout(resolve, 500));
     const prepared = baseDraft('prepared', false);
     prepared.currentStep = 0;
     prepared.selectedStep = 0;
+    prepared.generation = { stage: 'discussion', status: 'running', startedAt: new Date().toISOString(), message: 'Processing the transcript in the background…', completedPasses: [] };
     drafts.set('prepared', prepared);
     res.json({ ok: true, draft: prepared, resumeUrl: '/meeting-minutes-agent?draftId=prepared' });
   });
@@ -1315,7 +1316,7 @@ test('unfinished owner text survives a background completion', { timeout: 120000
       name: 'transcript.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       buffer: Buffer.from('stub')
     });
-    await page.waitForFunction(() => /Transcript uploaded\. Processing continues in the background/i.test(document.getElementById('workflowStatus').textContent));
+    await page.waitForFunction(() => /Transcript uploaded and processing has started in the background/i.test(document.getElementById('workflowStatus').textContent));
     // The Focus step used to sit here, and this test stepped through it to check
     // the details prompt cleared. With Focus retired the only way forward is to
     // generate, which is a different subject; what this test protects is the
@@ -2574,8 +2575,7 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     const preparedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/prepare'));
     const longFileName = 'Client_T788_Calderhaven_SW_weekly_checkin_document_with_a_very_long_filename.docx';
     await page.setInputFiles('#transcriptFile', { name: longFileName, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });
-    assert.equal(await page.locator('#uploadConfirmation').isVisible(), true, 'the upload is acknowledged before preparation finishes');
-    assert.match(await page.textContent('#uploadConfirmation'), /Yes, okay, I've uploaded it/i);
+    assert.equal(await page.locator('#uploadConfirmation').isHidden(), true, 'the upload is not acknowledged before the server accepts it');
     const mobileUploadLayout = await page.evaluate(() => {
       const panel = document.getElementById('uploadConfirmation').getBoundingClientRect();
       const detail = document.getElementById('uploadConfirmationDetail');
@@ -2590,22 +2590,19 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     assert.ok(mobileUploadLayout.documentWidth <= mobileUploadLayout.viewportWidth, JSON.stringify(mobileUploadLayout));
     assert.ok(mobileUploadLayout.panelLeft >= 0 && mobileUploadLayout.panelRight <= mobileUploadLayout.viewportWidth, JSON.stringify(mobileUploadLayout));
     assert.ok(mobileUploadLayout.detailOverflow <= 1, JSON.stringify(mobileUploadLayout));
-    assert.equal(await page.locator('#uploadConfirmationPending').isVisible(), true);
-    assert.match(await page.textContent('#uploadConfirmationPending'), /processed in the background/i);
-    assert.doesNotMatch(await page.textContent('#uploadConfirmationPending'), /keep this page open|reopen it from Library/i);
-    assert.equal(await page.locator('#uploadConfirmationReady').isHidden(), true, 'resume links wait until the draft is persisted');
+    assert.equal(await page.locator('#uploadConfirmation').isHidden(), true, 'the confirmation stays hidden while the server is preparing the draft');
     await preparedResponse;
-    await page.waitForFunction(() => !document.getElementById('uploadConfirmationReady').hidden);
+    await page.waitForFunction(() => !document.getElementById('uploadConfirmation').hidden);
+    assert.equal(await page.locator('#uploadConfirmationPending').isVisible(), true);
     const text = await page.textContent('#uploadConfirmation');
     assert.match(text, /Transcript uploaded/);
-    assert.match(text, /was read successfully/i);
-    for (const step of ['Details', 'Discussion', 'Actions', 'Summary', 'Review']) assert.match(text, new RegExp(step));
-    assert.equal(await page.locator('#uploadConfirmation a[href="/jobs"]').count(), 2, 'Library is linked in the text and as a button');
+    assert.match(text, /processing has started in the background/i);
+    assert.match(text, /processed in the background/i);
+    assert.doesNotMatch(text, /keep this page open|reopen it from Library/i);
+    assert.equal(await page.locator('#uploadConfirmationReady').isHidden(), true, 'the next-step guide waits for preparation to finish');
     assert.equal(await page.locator('#detailsEditor').isVisible(), true, 'the details are already there underneath');
 
-    await page.click('#uploadConfirmationContinue');
-    assert.equal(await page.locator('#uploadConfirmation').isHidden(), true);
-    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'meetingTitle');
+    assert.equal(await page.locator('#uploadConfirmationContinue').count(), 1);
 
     // Coming back to the draft from the Library does not show it again.
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=prepared`);
