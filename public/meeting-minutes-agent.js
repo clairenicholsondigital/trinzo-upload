@@ -2364,6 +2364,9 @@
           state.draft.generation = payload.generation;
           if (activeStage === 'actions' && !generationFailed) actionsInvalidatedDuringGeneration = false;
           renderAll();
+          if (activeStage === 'discussion' && state.currentStep === 0 && !generationFailed) {
+            showUploadConfirmation(state.draft.fileName, (state.draft.sourceUnits || []).length, false, false);
+          }
         }
         if (payload.generation && payload.generation.status === 'failed') {
           setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true, activeStage);
