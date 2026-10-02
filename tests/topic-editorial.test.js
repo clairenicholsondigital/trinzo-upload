@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { editorialTopicLabel, editorialTopics, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards } = require('../utils/canonicalMinutes/topicEditorial');
+const { editorialTopicLabel, editorialTopics, isStructuralTopicLabel, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards } = require('../utils/canonicalMinutes/topicEditorial');
 
 function topicFor(text, id = 'topic_1') {
   const evidence = prepareEvidence(`Amina Khan  00:01\n${text}`);
@@ -111,6 +111,15 @@ test('action-category headings do not become discussion topics', () => {
   };
   assert.equal(isActionCategoryTopicCard(card), true);
   assert.deepEqual(publishableTopicCards([card]), []);
+});
+
+test('generic meeting-closing labels are structural, but substantive closing subjects are not', () => {
+  for (const heading of [
+    'Meeting closing remarks', 'Closing remarks', 'Closing comments', 'Meeting close',
+    'Final remarks', 'Closing wrap-up', 'Wrap-up discussion'
+  ]) assert.equal(isStructuralTopicLabel(heading), true, heading);
+  assert.equal(isStructuralTopicLabel('Closing remarks on the audit findings'), false);
+  assert.equal(isStructuralTopicLabel('Closing the supplier contract'), false);
 });
 
 test('compound action-summary headings are removed only when every row is action-shaped', () => {

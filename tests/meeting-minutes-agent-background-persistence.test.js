@@ -98,7 +98,7 @@ test('published minute fields use figures while transcript evidence stays verbat
   draft.discussion = [{
     topic: 'Thirty item review',
     points: [{
-      text: 'Eleven out of ninety checks were complete.',
+      text: 'Eleven out of ninety checks were complete at a cost of about ££25-£30.',
       supportingDetails: [{ text: 'Thirty items remained.' }]
     }],
     decisions: [{ text: 'Order twenty replacement labels.' }],
@@ -114,7 +114,7 @@ test('published minute fields use figures while transcript evidence stays verbat
   assert.equal(published.executiveSummary, '11 out of 90 checks were complete.');
   assert.equal(published.meetingObjectives[0].text, 'Review 30 items.');
   assert.equal(published.discussion[0].topic, '30 item review');
-  assert.equal(published.discussion[0].points[0].text, '11 out of 90 checks were complete.');
+  assert.equal(published.discussion[0].points[0].text, '11 out of 90 checks were complete at a cost of about £25-£30.');
   assert.equal(published.discussion[0].points[0].supportingDetails[0].text, '30 items remained.');
   assert.equal(published.discussion[0].decisions[0].text, 'Order 20 replacement labels.');
   assert.equal(published.discussion[0].openQuestions[0].text, 'Whether 90 checks are sufficient.');

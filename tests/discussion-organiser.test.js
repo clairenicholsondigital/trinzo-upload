@@ -150,6 +150,22 @@ test('the publication boundary formats spoken calendar ordinals in rows and cont
   assert.equal(cleaned[0].points[0].supportingDetails[0].text, 'Louise starts on 14th.');
 });
 
+test('the publication boundary replaces a generic closing heading with its substantive subject', async () => {
+  const cleaned = await finaliseDiscussionForPublication([{
+    id: 'topic-close', topic: 'Meeting closing remarks', decisions: [], openQuestions: [],
+    points: [{
+      id: 'p-close', text: 'The committee agreed to review parking enforcement options next month.',
+      evidenceIds: ['T0001'], supportingDetails: []
+    }]
+  }], { sourceUnits: [{
+    id: 'T0001', speaker: 'Alex Reed', sequence: 1,
+    text: 'We agreed to review parking enforcement options next month.'
+  }] });
+  assert.equal(cleaned.length, 1);
+  assert.notEqual(cleaned[0].topic, 'Meeting closing remarks');
+  assert.match(cleaned[0].topic, /parking|plans|substantive discussion/i);
+});
+
 test('routine meeting technology checks are removed from primary and supporting rows', () => {
   const cleaned = removePersonalAsides([{
     id: 'topic-1', topic: 'Demonstration',

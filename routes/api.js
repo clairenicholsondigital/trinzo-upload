@@ -54,7 +54,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { normalisePresentationCurrency } = require('../utils/canonicalMinutes/textNormalisation');
+const { normalisePresentationCurrency, normaliseUkCurrency } = require('../utils/canonicalMinutes/textNormalisation');
 const { clearMiniLMProfileMemoryCache } = require('../utils/canonicalMinutes/minilm');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
@@ -352,7 +352,12 @@ function meetingAgentObjectives(value) {
 // convertSpokenNumbers is conservative around names, dates, ordinals and bare one-to-nine
 // prose, and is idempotent, so legacy drafts and newly saved drafts can share this path.
 function normaliseMeetingAgentMinuteNumbers(draft = {}) {
-  const numberText = (value) => convertSpokenNumbers(String(value == null ? '' : value)).text;
+  // Currency presentation belongs at the same narrow reviewer-facing boundary
+  // as spoken-number presentation. This also repairs an already-saved draft on
+  // read without rewriting transcript evidence, metadata or provenance.
+  const numberText = (value) => normaliseUkCurrency(
+    convertSpokenNumbers(String(value == null ? '' : value)).text
+  );
   const minuteRecord = (record) => {
     if (typeof record === 'string') return numberText(record);
     if (!record || typeof record !== 'object') return record;
@@ -16724,7 +16729,12 @@ function meetingMinutesPromoteNamedFactsEnabled() {
 }
 
 function meetingMinutesDiscussionActionCandidatesEnabled() {
-  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_CANDIDATES_V1 || '0'));
+  // Discussion rows are only added to the candidate inventory; the ordinary
+  // evidence, commitment and referee gates still decide whether they become a
+  // confirmed action or a reviewer proposal. Keep an explicit off switch for
+  // operational rollback, but make the conservative completeness check the
+  // default for every meeting type.
+  return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_CANDIDATES_V1 || '1'));
 }
 
 function meetingMinutesProposalRecheckEnabled() {

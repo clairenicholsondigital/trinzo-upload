@@ -101,6 +101,14 @@ function startStubServer() {
     if (id !== 'background-conflict') draft.speculation = { stage: 'actions', status: 'preparing' };
     drafts.set(id, draft);
   });
+  const completedEmptyActions = baseDraft('completed-empty-actions', false);
+  completedEmptyActions.actions = [];
+  completedEmptyActions.currentStep = 3;
+  completedEmptyActions.selectedStep = 3;
+  completedEmptyActions.generatedStages = {
+    discussion: '2026-09-16T12:00:00.000Z', actions: '2026-09-16T12:03:00.000Z', summary: ''
+  };
+  drafts.set('completed-empty-actions', completedEmptyActions);
   // The background Actions run found nothing to list (a meeting where nobody
   // takes anything on). It still ran, and the draft says so.
   function finishActionsEmptyInBackground(id) {
@@ -2254,6 +2262,22 @@ async function launchOnDiscussion(port, draftId) {
   return { browser, page, errors };
 }
 
+test('a completed zero-action review is explicit and remains reachable', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'completed-empty-actions');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.match(await page.textContent('#actionsBody'), /No confirmed actions were identified in this meeting\./);
+    assert.equal(await page.locator('[data-step="3"]').isDisabled(), false);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('a stage finished in the background is absorbed instead of warning the reviewer', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -2331,7 +2355,6 @@ test('a background run that found nothing is adopted like any other, not left as
     });
     // The poll handler adopts the revision once the body is parsed.
     await page.waitForTimeout(400);
-
     const conflicts = [];
     page.on('response', (response) => { if (response.status() === 409) conflicts.push(response.url()); });
     await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation today.');

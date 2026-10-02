@@ -1331,6 +1331,16 @@
       return;
     }
     var actions = (state.draft && state.draft.actions) || [];
+    var emptyActionsMessage = (function () {
+      var generation = state.draft && state.draft.generation;
+      if (generation && generation.stage === 'actions' && generation.status === 'failed') {
+        return 'Actions could not be generated. Try again.';
+      }
+      if (stageGeneratedAt(state.draft, 'actions')) {
+        return 'No confirmed actions were identified in this meeting.';
+      }
+      return 'Actions have not been generated yet.';
+    })();
     document.getElementById('actionsBody').innerHTML = actions.map(function (item, index) {
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
       var targetId = recordDomId('action', item.id, index);
@@ -1355,7 +1365,7 @@
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
       return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea></div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
-    }).join('') || '<tr><td colspan="3" class="muted">No actions returned. Check the transcript for commitments.</td></tr>';
+    }).join('') || '<tr><td colspan="3" class="muted">' + escapeHtml(emptyActionsMessage) + '</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
     renderActionReview();
@@ -2291,7 +2301,11 @@
   function stageHasContent(stage) {
     if (!state.draft) return false;
     if (stage === 'discussion') return (state.draft.discussion || []).length > 0;
-    if (stage === 'actions') return (state.draft.actions || []).length > 0;
+    // A completed Actions review with zero confirmed rows is still content:
+    // it unlocks the screen, avoids re-running extraction, and lets the empty
+    // state explain that the result was intentional rather than a failure.
+    if (stage === 'actions') return (state.draft.actions || []).length > 0
+      || Boolean(stageGeneratedAt(state.draft, 'actions'));
     if (stage === 'summary') return Boolean(String(state.draft.executiveSummary || '').trim() || (state.draft.meetingObjectives || []).length);
     return false;
   }

@@ -47,7 +47,10 @@ function normaliseUkCurrency(value) {
   const formatRange = (_match, first, separator, second) => separator.toLowerCase() === 'to'
     ? `£${first} to £${second}`
     : `£${first}${separator}£${second}`;
-  text = text.replace(/(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*£\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
+  // Consume an existing symbol on the first endpoint as well as adding one
+  // when it is absent. Otherwise "££25-£30" is collapsed to "£25-£30" above,
+  // then this range pass sees "25-£30" and prefixes a second symbol.
+  text = text.replace(/(?:£\s*)?(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*£\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
   text = text.replace(/£\s*(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
   return text;
 }
