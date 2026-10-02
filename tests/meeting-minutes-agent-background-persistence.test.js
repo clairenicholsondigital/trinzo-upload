@@ -146,12 +146,12 @@ test('published date ranges expand an omitted month without rewriting transcript
 
 test('saved Library draft changes normalise currency before persistence', () => {
   const changes = normaliseMeetingAgentDraftChanges({
-    discussion: [{ topic: 'Repairs', points: [{ text: 'The tap will cost eight pounds.' }] }],
+    discussion: [{ topic: 'Repairs', points: [{ text: 'The tap will cost eight pounds, and the fee will rise from 25 to £30.' }] }],
     actions: [{ action: 'Approve twenty five pounds for materials.' }],
     executiveSummary: 'The total budget is 50 pounds.',
     sourceUnits: [{ text: 'The tap will cost eight pounds.' }]
   });
-  assert.equal(changes.discussion[0].points[0].text, 'The tap will cost £8.');
+  assert.equal(changes.discussion[0].points[0].text, 'The tap will cost £8, and the fee will rise from £25 to £30.');
   assert.equal(changes.actions[0].action, 'Approve £25 for materials.');
   assert.equal(changes.executiveSummary, 'The total budget is £50.');
   assert.equal(changes.sourceUnits[0].text, 'The tap will cost eight pounds.');

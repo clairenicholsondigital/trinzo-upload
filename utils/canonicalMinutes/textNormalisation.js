@@ -38,6 +38,11 @@ function normaliseUkCurrency(value) {
     const numeric = numberWordsToValue(amount);
     return numeric == null ? _match : `£${numeric}`;
   });
+  // If the second amount already carries the currency symbol, carry it back to
+  // the first amount too: "25 to £30" -> "£25 to £30". This is deliberately
+  // limited to an explicitly monetary range so ordinary numeric ranges remain
+  // untouched.
+  text = text.replace(/\b(\d+(?:\.\d{1,2})?)\s+(to|[-–—])\s+£\s*(\d+(?:\.\d{1,2})?)\b/gi, '£$1 $2 £$3');
   text = text.replace(/(?:£\s*)?(\d+(?:\.\d{1,2})?)\s+pounds?\b/gi, '£$1');
   text = text.replace(/\b(?:GBP|gbp)\s*(\d+(?:\.\d{1,2})?)\b/g, '£$1');
   return text;
