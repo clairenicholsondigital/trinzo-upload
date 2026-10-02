@@ -123,6 +123,23 @@ test('published minute fields use figures while transcript evidence stays verbat
   assert.equal(published.sourceUnits[0].text, 'Eleven out of ninety checks were complete.');
 });
 
+test('existing Library drafts hide generated assignment recaps but retain manual cards', () => {
+  const draft = baseDraft();
+  const recap = {
+    topic: 'Summary of individual action assignments',
+    points: [{ text: 'Plans include completing the review, checking the specification and updating the risk file.' }],
+    decisions: [], openQuestions: []
+  };
+  draft.discussion = [
+    { id: 'generated-recap', ...recap },
+    { id: 'manual-topic-1', ...recap },
+    { id: 'substantive', topic: 'Risk documentation', points: [{ text: 'The risk file lacks a frequency rationale.' }] }
+  ];
+
+  const published = publicMeetingAgentDraft(draft);
+  assert.deepEqual(published.discussion.map((topic) => topic.id), ['manual-topic-1', 'substantive']);
+});
+
 test('published date ranges expand an omitted month without rewriting transcript evidence', () => {
   const draft = baseDraft();
   draft.executiveSummary = 'The review runs from 27th through to 7th August.';

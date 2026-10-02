@@ -143,6 +143,26 @@ test('compound action-summary headings are removed only when every row is action
   assert.deepEqual(publishableTopicCards([factualDiscussion]), [factualDiscussion]);
 });
 
+test('assignment summaries expressed as planned-work lists are action categories', () => {
+  const assignmentSummary = {
+    topic: 'Summary of individual assignments',
+    points: [{
+      text: 'Plans include completing the review, checking the specification and updating the risk file.'
+    }],
+    decisions: [],
+    openQuestions: []
+  };
+  assert.equal(isActionCategoryTopicCard(assignmentSummary), true);
+  assert.deepEqual(publishableTopicCards([assignmentSummary]), []);
+
+  const factualDiscussion = {
+    ...assignmentSummary,
+    points: [{ text: 'The assignment process includes a documented independent approval step.' }]
+  };
+  assert.equal(isActionCategoryTopicCard(factualDiscussion), false);
+  assert.deepEqual(publishableTopicCards([factualDiscussion]), [factualDiscussion]);
+});
+
 test('mixed action-category cards retain factual discussion rather than dropping it wholesale', () => {
   const card = {
     topic: 'Action items and priorities',

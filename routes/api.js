@@ -78,7 +78,7 @@ const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck')
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { convertSpokenNumbers } = require('../utils/spokenNumbers');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
-const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
+const { isPublishableTopicLabel, isActionCategoryTopicCard, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { normaliseDomainTermsDeep, applyTranscriptPhraseCorrections } = require('../utils/domainTerms');
@@ -11153,6 +11153,17 @@ function meetingAgentDraftPayload(draft = {}) {
   };
 }
 
+// Older Library drafts predate the current generated-discussion gate. Apply the
+// same narrow action-bucket test when presenting them so an action recap does
+// not remain visible forever merely because it was saved by an earlier run.
+// Explicitly manual/reviewer-authored cards remain the reviewer's own content.
+function removeGeneratedActionCategoryDiscussion(discussion = []) {
+  return (Array.isArray(discussion) ? discussion : []).filter((topic) =>
+    isReviewerAuthored(topic)
+      || /^manual-topic-/.test(String(topic?.id || ''))
+      || !isActionCategoryTopicCard(topic));
+}
+
 function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const details = sanitiseMeetingAgentDetails(draft.details);
@@ -11160,7 +11171,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
   const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
   const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(
-    removeHeadingFragmentsFromDiscussion(draft.discussion), draft.sourceUnits
+    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(draft.discussion)), draft.sourceUnits
   );
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
@@ -11205,7 +11216,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
   const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
-    removeHeadingFragmentsFromDiscussion(publicFields.discussion), draft.sourceUnits
+    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(publicFields.discussion)), draft.sourceUnits
   );
   const visibleActions = (Array.isArray(publicFields.actions) ? publicFields.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))

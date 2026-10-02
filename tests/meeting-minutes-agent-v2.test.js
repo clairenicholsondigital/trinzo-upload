@@ -876,6 +876,20 @@ test('generated action-category discussion buckets are removed at normalisation'
   assert.deepEqual(result.discussion, []);
 });
 
+test('generated assignment recaps expressed as planned-work lists are removed at normalisation', () => {
+  const units = normaliseSourceUnits([
+    { id: 'T0811', speaker: 'Priya', text: 'I will complete the review and update the risk file.', classification: 'keep' }
+  ]);
+  const result = normaliseAgentResult({ discussion: [{
+    topic: 'Summary of individual action assignments',
+    points: [{
+      text: 'Plans include completing the review, checking the specification and updating the risk file.',
+      evidenceIds: ['T0811']
+    }]
+  }] }, units, 'discussion');
+  assert.deepEqual(result.discussion, []);
+});
+
 test('technical behaviour receives a protected discussion-candidate signal', () => {
   const units = normaliseSourceUnits([
     { id: 'T0820', speaker: 'Priya', text: 'The device does not retain the previous software setting.', classification: 'keep' }
