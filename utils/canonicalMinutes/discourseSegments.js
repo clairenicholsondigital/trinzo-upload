@@ -26,9 +26,14 @@ const SHIFT_MARKER = new RegExp([
   OPENER + String.raw`(?:\w+\s+){0,3}(?:moving|move|let'?s move|we(?:'ll)? move|we can move|shall we move) on\b`,
   OPENER + String.raw`(?:(?:going|coming|to go) )?back to\b(?! (?:you|me|us|him|her|them|normal|that|it|the same))`,
   OPENER + String.raw`(?:\w+\s+){0,4}(?:the )?(?:next|second|third|fourth|other|last|final) (?:one|thing|item|point|question|topic|bit|area)s?\b`,
+  OPENER + String.raw`(?:the\s+)?first\s+(?:thing|item|point|question|topic)\b`,
   OPENER + String.raw`(?:one more thing|another thing|the other thing|anything else|any other business|aob)\b`,
   OPENER + String.raw`(?:in terms of|in relation to|on the \w+ (?:side|front))\b`,
-  OPENER + String.raw`(?:\w+,\s*)?(?:how are we (?:getting on|doing) (?:with|on)|what(?:'s| is) the (?:status|position|latest) (?:on|with)|where are we (?:with|on))\b`
+  OPENER + String.raw`(?:\w+,\s*)?(?:how are we (?:getting on|doing) (?:with|on)|what(?:'s| is) the (?:status|position|latest) (?:on|with)|where are we (?:with|on))\b`,
+  String.raw`^\s*(?:right[,;:]?\s+)?(?:now[,;:]\s+|while\s+we(?:['’]?re|\s+are)\s+on\b[^,;:]{0,50}[,;:]\s+)(?:the\s+)?[a-z0-9]`,
+  String.raw`^\s*(?:oh[,;:]?\s+)?(?:can|could|may)\s+i\s+(?:raise|bring\s+up|ask\s+about)\b`,
+  String.raw`^\s*(?:okay[,;:]?\s+|right[,;:]?\s+)?go\s+on\s+then[,;:]?\s+(?:do|with|on)\b`,
+  String.raw`^\s*(?:okay[,;:]?\s+|right[,;:]?\s+)?(?:the\s+)?(?:big|main)\s+one\b`
 ].join('|'), 'i');
 
 const text = (value, max = 4000) => String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
@@ -62,7 +67,11 @@ async function discourseSegments(units = [], options = {}) {
   if (n < 8) return n ? [{ start: 0, end: n, ids: rows.map((r) => r.id), hard: false }] : [];
   const k = Number(options.blockSize || 6);
   const minLen = Number(options.minSegment || 5);
-  const target = Math.max(Number(options.minSegments || 5),
+  // Two is a floor, not a quota for agenda cards. The former floor of five
+  // forced short or single-subject meetings into several tiny passages even
+  // when the embedding valleys were weak. Explicit chairing markers can still
+  // create as many real sections as the conversation contains.
+  const target = Math.max(Number(options.minSegments || 2),
     Math.min(Number(options.maxSegments || 14), Math.round(n / Number(options.unitsPerSegment || 16))));
 
   const hard = new Set();

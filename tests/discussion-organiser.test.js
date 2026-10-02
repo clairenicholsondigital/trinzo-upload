@@ -10,7 +10,7 @@ const {
   removePersonalAsides, normaliseDecisionTopicHeadings,
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
-  consolidatePartialOverlapRows, finaliseDiscussionForPublication
+  consolidatePartialOverlapRows, balanceDiscussionTopics, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -100,8 +100,10 @@ test('formal cover and safety arrangements are not mistaken for personal asides'
 test('brief social reporting is filtered without suppressing material updates', () => {
   assert.equal(isPeripheralAside('Morgan mentioned bringing produce to the community show.'), true);
   assert.equal(isPeripheralAside('Sam joked about the weather before the meeting.'), true);
+  assert.equal(isPeripheralAside('Saturday was noted as a significant day, involving the tap, shed and vegetables.'), true);
   assert.equal(isPeripheralAside('Morgan mentioned that the validation report remains blocked by supplier approval.'), false);
   assert.equal(isPeripheralAside('Sam mentioned the audit requirement and will send the evidence tomorrow.'), false);
+  assert.equal(isPeripheralAside('Tuesday was noted as a significant day because the compliance report must be delivered.'), false);
 });
 
 test('routine meeting technology checks are filtered without suppressing substantive controls', () => {
@@ -561,6 +563,105 @@ test('topics are consolidated by evidence adjacency and label similarity without
   assert.ok(software.points.some((r) => r.id === 'p2'), 'adjacent software topics merge');
   assert.ok(!labels.includes('Discussion'), 'generic label does not survive');
   assert.equal(merged[0].points.some((r) => r.id === 'p3') || merged[0].points.some((r) => r.id === 'p5'), true, 'earliest evidence first');
+});
+
+test('hard agenda transitions split overloaded cards, re-home stray rows and merge related small cards', () => {
+  const localUnits = [
+    { id: 'B01', text: 'First thing, the water supply.' },
+    { id: 'B02', text: 'The broken tap needs replacement.' },
+    { id: 'B03', text: 'Go on then, do the fence.' },
+    { id: 'B04', text: 'The boundary fence has fallen.' },
+    { id: 'B05', text: 'The council has not repaired it.' },
+    { id: 'B06', text: 'Right, the big one.' },
+    { id: 'B07', text: 'Plot fees need to increase.' },
+    { id: 'B08', text: 'The water bill has doubled.' },
+    { id: 'B09', text: 'The fee will fund repairs.' },
+    { id: 'B10', text: "While we're on you, the waiting list." },
+    { id: 'B11', text: 'Three plots are vacant.' },
+    { id: 'B12', text: 'Eleven people are waiting.' },
+    { id: 'B13', text: 'The top three will be contacted.' },
+    { id: 'B14', text: 'Now, the annual show.' },
+    { id: 'B15', text: 'The show is on 13 September.' },
+    { id: 'B16', text: 'The schedule will be published.' },
+    { id: 'B17', text: 'A prize budget was requested.' },
+    { id: 'B18', text: 'Can I raise the shed?' },
+    { id: 'B19', text: 'The shed lock was forced.' },
+    { id: 'B20', text: 'The break-ins remain a risk.' }
+  ];
+  const discussion = [
+    { id: 'water', topic: 'Water supply repair', points: [{ id: 'w1', text: 'The broken tap needs replacement.', evidenceIds: ['B02'] }], decisions: [], openQuestions: [] },
+    { id: 'mixed', topic: 'Plot fee increase and council fence liability', points: [
+      { id: 'f1', text: 'The boundary fence has fallen.', evidenceIds: ['B04'] },
+      { id: 'f2', text: 'The council has not repaired it.', evidenceIds: ['B05'] },
+      { id: 'p1', text: 'Plot fees need to increase.', evidenceIds: ['B07'] },
+      { id: 'p2', text: 'The water bill has doubled.', evidenceIds: ['B08'] },
+      { id: 'p3', text: 'The fee will fund repairs.', evidenceIds: ['B09'] },
+      { id: 'l1', text: 'Three plots are vacant.', evidenceIds: ['B11'] },
+      { id: 'l2', text: 'Eleven people are waiting.', evidenceIds: ['B12'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'show', topic: 'Annual show scheduling', points: [
+      { id: 'l3', text: 'The top three people will be contacted.', evidenceIds: ['B13'] },
+      { id: 's1', text: 'The show is on 13 September.', evidenceIds: ['B15'] },
+      { id: 's2', text: 'The schedule will be published.', evidenceIds: ['B16'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'prizes', topic: 'Show prize budget approval', points: [{ id: 's3', text: 'A prize budget was requested.', evidenceIds: ['B17'] }], decisions: [], openQuestions: [] },
+    { id: 'shed', topic: 'Shed security', points: [{ id: 'h1', text: 'The shed lock was forced.', evidenceIds: ['B19'] }], decisions: [], openQuestions: [] },
+    { id: 'risk', topic: 'Risks and dependencies', points: [{ id: 'h2', text: 'The break-ins remain a risk.', evidenceIds: ['B20'] }], decisions: [], openQuestions: [] }
+  ];
+
+  const balanced = balanceDiscussionTopics(discussion, localUnits);
+  assert.deepEqual(balanced.map((topic) => topic.topic), [
+    'Water supply repair', 'Fence', 'Plot fee increase',
+    'Waiting list', 'Annual show scheduling', 'Shed security'
+  ]);
+  const waiting = balanced.find((topic) => topic.topic === 'Waiting list');
+  assert.deepEqual(waiting.points.map((row) => row.id), ['l1', 'l2', 'l3']);
+  const show = balanced.find((topic) => topic.topic === 'Annual show scheduling');
+  assert.deepEqual(show.points.map((row) => row.id), ['s1', 's2', 's3']);
+  assert.deepEqual(balanced.flatMap((topic) => topic.points).map((row) => row.id).sort(),
+    ['f1', 'f2', 'h1', 'h2', 'l1', 'l2', 'l3', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'w1']);
+});
+
+test('topic balancing never moves or renames a reviewer-authored card', () => {
+  const localUnits = [
+    { id: 'R01', text: 'First thing, budgets.' },
+    { id: 'R02', text: 'The budget was approved.' },
+    { id: 'R03', text: 'Now, delivery.' },
+    { id: 'R04', text: 'Delivery remains on schedule.' }
+  ];
+  const card = {
+    id: 'manual-topic-1', topic: 'My combined review', reviewerAuthored: true,
+    points: [
+      { id: 'r1', text: 'The budget was approved.', evidenceIds: ['R02'] },
+      { id: 'r2', text: 'Delivery remains on schedule.', evidenceIds: ['R04'] }
+    ], decisions: [], openQuestions: []
+  };
+  const balanced = balanceDiscussionTopics([card], localUnits);
+  assert.equal(balanced.length, 1);
+  assert.equal(balanced[0].topic, 'My combined review');
+  assert.deepEqual(balanced[0].points.map((row) => row.id), ['r1', 'r2']);
+});
+
+test('topic balancing does not merge distinct small topics on generic label words alone', () => {
+  const localUnits = [
+    { id: 'G01', text: 'First thing, registrations.' },
+    { id: 'G02', text: 'The US registration entry must be updated.' },
+    { id: 'G03', text: 'The registration owner will confirm it.' },
+    { id: 'G04', text: 'Now, product instructions.' },
+    { id: 'G05', text: 'The instructions for use need an exemption rationale.' },
+    { id: 'G06', text: 'The product is Class I.' }
+  ];
+  const balanced = balanceDiscussionTopics([
+    { id: 'registration', topic: 'Regulatory data registration', points: [
+      { id: 'g1', text: 'The US registration entry must be updated.', evidenceIds: ['G02'] },
+      { id: 'g2', text: 'The registration owner will confirm it.', evidenceIds: ['G03'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'ifu', topic: 'Instructions for use regulatory requirements', points: [
+      { id: 'g3', text: 'The instructions for use need an exemption rationale.', evidenceIds: ['G05'] },
+      { id: 'g4', text: 'The product is Class I.', evidenceIds: ['G06'] }
+    ], decisions: [], openQuestions: [] }
+  ], localUnits);
+  assert.deepEqual(balanced.map((topic) => topic.id), ['registration', 'ifu']);
 });
 
 test('an explicit hard topic cap remains available to legacy callers', async () => {

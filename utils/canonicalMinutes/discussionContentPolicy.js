@@ -20,6 +20,11 @@ const OPERATIONAL_IMPACT = /\b(?:putting|creating|causing|affecting|threatening|
 // about in any particular transcript.
 const OVERT_SOCIAL_REPORTING = /\b(?:joked|quipped|chatted)\b/i;
 const INCIDENTAL_ACTIVITY_REPORTING = /\b(?:mentioned|remarked|recalled)\b.{0,90}\b(?:bringing|taking|wearing|eating|drinking|weather|holiday|weekend|hobb(?:y|ies))\b/i;
+// Generated prose can turn a closing joke or list into an apparently formal
+// observation ("Saturday was noted as a significant day..."). A vague report
+// about a notable day/week is still social context unless it also carries a
+// concrete decision, consequence or work-product fact.
+const VAGUE_OCCASION_REPORTING = /\b(?:was|were)\s+(?:noted|described|characterised|characterized)\s+as\s+(?:a\s+)?(?:big|busy|important|significant)\s+(?:day|week|occasion|moment)\b/i;
 const MATERIAL_CONTENT = /\b(?:agreed|decided|approved|rejected|confirmed|committed|assigned|action(?:ed)?|will|shall|must|required|needs?\s+to|follow[- ]?up|outstanding|unresolved|blocked|dependency|deadline|target|risk|issue|problem|impact|affect(?:s|ed|ing)?|because|therefore|cost|budget|invoice|order|client|customer|supplier|audit|compliance|test|report|document|evidence|plan|procedure|policy|requirement|design|specification|review|schedule|delivery)\b/i;
 
 // Routine checks that everyone can see or hear shared meeting material are
@@ -54,7 +59,8 @@ function isPersonalAside(value) {
 function isPeripheralAside(value) {
   const wording = valueText(value);
   if (!wording || wording.split(/\s+/).length > 28
-    || (!OVERT_SOCIAL_REPORTING.test(wording) && !INCIDENTAL_ACTIVITY_REPORTING.test(wording))) return false;
+    || (!OVERT_SOCIAL_REPORTING.test(wording) && !INCIDENTAL_ACTIVITY_REPORTING.test(wording)
+      && !VAGUE_OCCASION_REPORTING.test(wording))) return false;
   return !MATERIAL_CONTENT.test(wording);
 }
 

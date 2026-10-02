@@ -34,9 +34,23 @@ test('the chair\'s agenda language marks a subject change; ordinary "back to" do
   assert.ok(SHIFT_MARKER.test('Okay, back to last week and the follow-up actions.'));
   assert.ok(SHIFT_MARKER.test('So the next one was around the review of the IEC standard.'));
   assert.ok(SHIFT_MARKER.test('Okay, and then where is my other questions? Second question is around the fan logic.'));
+  assert.ok(SHIFT_MARKER.test('First thing, the broken tap by the gate.'));
+  assert.ok(SHIFT_MARKER.test("While we're on you, the waiting list."));
+  assert.ok(SHIFT_MARKER.test('Now, the annual show.'));
+  assert.ok(SHIFT_MARKER.test('Can I raise the shed?'));
+  assert.ok(SHIFT_MARKER.test('Go on then, do the fence.'));
+  assert.ok(SHIFT_MARKER.test('Right, the big one.'));
   assert.ok(!SHIFT_MARKER.test('I went back to Colm yesterday.'));
   assert.ok(!SHIFT_MARKER.test("Two a week is roughly the run rate, so we're back to normal."));
   assert.ok(!SHIFT_MARKER.test('Nearly all of this comes back to that.'));
+});
+
+test('short coherent meetings are not forced into five artificial passages', async () => {
+  const coherent = Array.from({ length: 24 }, (_, index) => unit(index + 1, 'Alex',
+    index < 12 ? `Validation evidence item ${index + 1}.` : `Supplier contract item ${index + 1}.`));
+  const encode = async (texts) => texts.map((value) => /Validation/i.test(value) ? [1, 0] : [0, 1]);
+  const segments = await discourseSegments(coherent, { encode, unitsPerSegment: 16, blockSize: 3 });
+  assert.equal(segments.length, 2);
 });
 
 test('segments cut at the hard markers, with even spacing when no embeddings are available', async () => {

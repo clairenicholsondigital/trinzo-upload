@@ -68,6 +68,7 @@ const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = r
 const {
   organiseDiscussionForReview,
   removePersonalAsides,
+  balanceDiscussionTopics,
   finaliseDiscussionForPublication,
   repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
@@ -8913,7 +8914,7 @@ function meetingAgentTopicLabelRuleEnabled() {
 // the per-record labels as they were. The rule text must stay byte-identical
 // to tests/fixtures/topic-naming-rule-v1.txt. Off unless
 // MEETING_MINUTES_AGENT_TOPIC_SEGMENTS_V1 is on.
-const MEETING_AGENT_TOPIC_NAMING_RULE = 'TOPIC LABELS. Each anchor here is one passage of the meeting. The topic field names the single main subject of that passage: a short noun phrase of two to five words with no verb and no "and" joining two subjects ("Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking"). It never describes what happened to the subject, so not "Clarification on probability bands" or "Confirmation of lack of procedure". Never use a heading that names the document or meeting structure, such as "Meeting agenda", "Agenda", "Meeting minutes" or "General discussion"; name the actual subject discussed. Where a passage touches two subjects, name the one it spends most words on. Use the same label word for word only when a later passage is plainly the same subject continued; otherwise give it its own label.';
+const MEETING_AGENT_TOPIC_NAMING_RULE = 'TOPIC LABELS. Each anchor here is one passage of the meeting. The topic field names the single main subject of that passage: a short noun phrase of two to five words with no verb and no "and" joining two subjects ("Risk management plan", "Language support", "Marshal recruitment", "Festival order", "Visitor parking"). It never describes what happened to the subject, so not "Clarification on probability bands" or "Confirmation of lack of procedure". Never use a heading that names the document, meeting structure or an abstract filing category, such as "Meeting agenda", "Meeting minutes", "General discussion", "Risks and dependencies", "Plans and timelines" or "Roles and responsibilities"; name the actual subject discussed. Where a passage touches two subjects, name the one it spends most words on. Use the same label word for word only when a later passage is plainly the same subject continued; otherwise give it its own label.';
 function meetingAgentTopicSegmentsEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TOPIC_SEGMENTS_V1 || '0'));
 }
@@ -11170,8 +11171,11 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const include = includedSections(draft);
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
   const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
+  const balancedDiscussion = balanceDiscussionTopics(
+    removePersonalAsides(draft.discussion), draft.sourceUnits
+  );
   const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(
-    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(draft.discussion)), draft.sourceUnits
+    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
   );
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
@@ -11215,8 +11219,11 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
+  const balancedDiscussion = balanceDiscussionTopics(
+    removePersonalAsides(publicFields.discussion), draft.sourceUnits
+  );
   const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
-    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(publicFields.discussion)), draft.sourceUnits
+    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
   );
   const visibleActions = (Array.isArray(publicFields.actions) ? publicFields.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
