@@ -33,18 +33,22 @@ function numberWordsToValue(value) {
 
 function normaliseUkCurrency(value) {
   let text = String(value || '');
-  const wordAmount = new RegExp(`\\b(${NUMBER_WORD}(?:[- ]+${NUMBER_WORD})?|${NUMBER_WORD}\\s+hundred(?:\\s+and\\s+${NUMBER_WORD})?)\\s+pounds?\\b`, 'gi');
+  const wordAmount = new RegExp(`\\b(${NUMBER_WORD}(?:[- ]+${NUMBER_WORD})?|${NUMBER_WORD}\\s+hundred(?:\\s+and\\s+${NUMBER_WORD})?)(?:[- ]+)pounds?\\b`, 'gi');
   text = text.replace(wordAmount, (_match, amount) => {
     const numeric = numberWordsToValue(amount);
     return numeric == null ? _match : `£${numeric}`;
   });
-  // If the second amount already carries the currency symbol, carry it back to
-  // the first amount too: "25 to £30" -> "£25 to £30". This is deliberately
-  // limited to an explicitly monetary range so ordinary numeric ranges remain
-  // untouched.
-  text = text.replace(/\b(\d+(?:\.\d{1,2})?)\s+(to|[-–—])\s+£\s*(\d+(?:\.\d{1,2})?)\b/gi, '£$1 $2 £$3');
   text = text.replace(/(?:£\s*)?(\d+(?:\.\d{1,2})?)\s+pounds?\b/gi, '£$1');
   text = text.replace(/\b(?:GBP|gbp)\s*(\d+(?:\.\d{1,2})?)\b/g, '£$1');
+  // A generated range can mix a bare first endpoint with a marked second endpoint
+  // ("25 to £30"), or duplicate the symbol while applying a second normalisation pass
+  // ("££25"). Repair only currency-marked ranges so ordinary numeric ranges are unchanged.
+  text = text.replace(/£\s*£+/g, '£');
+  const formatRange = (_match, first, separator, second) => separator.toLowerCase() === 'to'
+    ? `£${first} to £${second}`
+    : `£${first}${separator}£${second}`;
+  text = text.replace(/(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*£\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
+  text = text.replace(/£\s*(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
   return text;
 }
 

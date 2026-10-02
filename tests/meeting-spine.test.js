@@ -58,6 +58,10 @@ test('currency wording is consistently presented as UK pound amounts', () => {
   assert.equal(normaliseUkCurrency('The fee is twenty five pounds per plot.'), 'The fee is £25 per plot.');
   assert.equal(normaliseUkCurrency('The budget is 50 pounds.'), 'The budget is £50.');
   assert.equal(normaliseUkCurrency('The invoice is GBP 6.50.'), 'The invoice is £6.50.');
+  assert.equal(normaliseUkCurrency('The fee is 25 to £30.'), 'The fee is £25 to £30.');
+  assert.equal(normaliseUkCurrency('The fee is £25–30.'), 'The fee is £25–£30.');
+  assert.equal(normaliseUkCurrency('The fee is ££25.'), 'The fee is £25.');
+  assert.equal(normaliseUkCurrency('The annual fee is a thirty-pound charge.'), 'The annual fee is a £30 charge.');
   assert.equal(normaliseUkCurrency('Eight people joined.'), 'Eight people joined.');
 });
 
