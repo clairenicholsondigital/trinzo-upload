@@ -1365,7 +1365,7 @@
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
       return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea></div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
-    }).join('') || '<tr><td colspan="3" class="muted">' + escapeHtml(emptyActionsMessage) + '</td></tr>';
+    }).join('') || '<tr class="empty-actions-row"><td colspan="3" class="muted">' + escapeHtml(emptyActionsMessage) + '</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
     renderActionReview();

@@ -10,7 +10,7 @@ const {
   removePersonalAsides, normaliseDecisionTopicHeadings,
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
-  consolidatePartialOverlapRows, balanceDiscussionTopics, finaliseDiscussionForPublication
+  consolidatePartialOverlapRows, removeShortTopicEchoes, balanceDiscussionTopics, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -104,6 +104,26 @@ test('brief social reporting is filtered without suppressing material updates', 
   assert.equal(isPeripheralAside('Morgan mentioned that the validation report remains blocked by supplier approval.'), false);
   assert.equal(isPeripheralAside('Sam mentioned the audit requirement and will send the evidence tomorrow.'), false);
   assert.equal(isPeripheralAside('Tuesday was noted as a significant day because the compliance report must be delivered.'), false);
+});
+
+test('short transcript topic echoes are removed without suppressing concise facts or reviewer text', () => {
+  const localUnits = [
+    { id: 'S01', text: 'The visitor parking situation.' },
+    { id: 'S02', text: 'Risk remains high.' },
+    { id: 'S03', text: 'Which parking option?' }
+  ];
+  const cleaned = removeShortTopicEchoes([{
+    id: 'parking', topic: 'Visitor parking enforcement challenges',
+    points: [
+      { id: 'echo', text: 'The visitor parking situation.', evidenceIds: ['S01'] },
+      { id: 'fact', text: 'Risk remains high.', evidenceIds: ['S02'] },
+      { id: 'manual', text: 'Visitor parking situation', evidenceIds: ['S01'], reviewerAuthored: true }
+    ], decisions: [], openQuestions: [
+      { id: 'question', text: 'Which parking option?', evidenceIds: ['S03'] }
+    ]
+  }], localUnits);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['fact', 'manual']);
+  assert.deepEqual(cleaned[0].openQuestions.map((row) => row.id), ['question']);
 });
 
 test('routine meeting technology checks are filtered without suppressing substantive controls', () => {

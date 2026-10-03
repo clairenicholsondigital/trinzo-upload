@@ -68,6 +68,7 @@ const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = r
 const {
   organiseDiscussionForReview,
   removePersonalAsides,
+  removeShortTopicEchoes,
   balanceDiscussionTopics,
   finaliseDiscussionForPublication,
   repairStructuralTopicHeadings
@@ -11172,7 +11173,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
   const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
   const balancedDiscussion = balanceDiscussionTopics(
-    removePersonalAsides(draft.discussion), draft.sourceUnits
+    removeShortTopicEchoes(removePersonalAsides(draft.discussion), draft.sourceUnits), draft.sourceUnits
   );
   const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(
     removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
@@ -11220,7 +11221,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
   const balancedDiscussion = balanceDiscussionTopics(
-    removePersonalAsides(publicFields.discussion), draft.sourceUnits
+    removeShortTopicEchoes(removePersonalAsides(publicFields.discussion), draft.sourceUnits), draft.sourceUnits
   );
   const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
     removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits

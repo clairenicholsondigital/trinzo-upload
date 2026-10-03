@@ -2269,7 +2269,16 @@ test('a completed zero-action review is explicit and remains reachable', { timeo
     const launched = await launchPage(port, 'completed-empty-actions');
     browser = launched.browser;
     const { page, errors } = launched;
+    await page.setViewportSize({ width: 390, height: 844 });
     assert.match(await page.textContent('#actionsBody'), /No confirmed actions were identified in this meeting\./);
+    const emptyLayout = await page.locator('#actionsBody .empty-actions-row').evaluate((row) => {
+      const cell = row.querySelector('td');
+      const rowBox = row.getBoundingClientRect();
+      const cellBox = cell.getBoundingClientRect();
+      return { rowWidth: rowBox.width, cellWidth: cellBox.width, rowHeight: rowBox.height };
+    });
+    assert.ok(emptyLayout.cellWidth >= emptyLayout.rowWidth * 0.9, JSON.stringify(emptyLayout));
+    assert.ok(emptyLayout.rowHeight < 100, JSON.stringify(emptyLayout));
     assert.equal(await page.locator('[data-step="3"]').isDisabled(), false);
     assert.deepEqual(errors, []);
   } finally {

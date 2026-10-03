@@ -169,6 +169,32 @@ function notClientReady(record, index) {
   return isVerbatimUnit(value, index, record.evidenceIds) || isConversational(value);
 }
 
+// A transcript heading can arrive as a technically valid discussion
+// candidate even though it says nothing beyond the topic itself: for example
+// "The visitor parking situation." Keep the rule deliberately narrow. It
+// applies only to generated points that are exact short transcript copies,
+// contain no predicate, and substantially echo their card heading. Decisions,
+// questions, reviewer wording and concise facts such as "Risk remains high"
+// remain untouched.
+const SHORT_TOPIC_PREDICATE = /\b(?:is|are|was|were|be|been|being|has|have|had|do|does|did|can|could|may|might|must|shall|should|will|would|need(?:s|ed)?|require(?:s|d)?|remain(?:s|ed)?|become(?:s)?|became|seem(?:s|ed)?|appear(?:s|ed)?|agree(?:s|d)?|approve(?:s|d)?|confirm(?:s|ed)?|decide(?:s|d)?|resolve(?:s|d)?|reject(?:s|ed)?|report(?:s|ed)?|identify|identifies|identified|raise(?:s|d)?|note(?:s|d)?|discuss(?:es|ed)?|review(?:s|ed)?|increase(?:s|d)?|decrease(?:s|d)?|fail(?:s|ed)?|pass(?:es|ed)?|change(?:s|d)?|continue(?:s|d)?|cost(?:s|ed)?|include(?:s|d)?|cover(?:s|ed)?|apply|applies|applied|support(?:s|ed)?|allow(?:s|ed)?|prevent(?:s|ed)?|cause(?:s|d)?|affect(?:s|ed)?)\b/i;
+
+function removeShortTopicEchoes(topics = [], sourceUnits = []) {
+  const index = unitIndex(sourceUnits);
+  const normal = (value) => text(value).toLowerCase().replace(/[’]/g, "'")
+    .replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return (Array.isArray(topics) ? topics : []).map(cloneTopic).map((topic) => {
+    if (reviewerTopic(topic)) return topic;
+    const points = (topic.points || []).filter((record) => {
+      const value = text(record?.text);
+      if (record?.reviewerAuthored || contentTokens(value).size > 3 || SHORT_TOPIC_PREDICATE.test(value)
+        || overlap(value, topic?.topic) < 0.5) return true;
+      const cited = (record.evidenceIds || []).map((id) => index.byId.get(text(id, 30))).filter(Boolean);
+      return !cited.some((unit) => normal(unit.text) === normal(value));
+    });
+    return { ...topic, points };
+  }).filter((topic) => reviewerTopic(topic) || topicRows(topic).length > 0);
+}
+
 // ---------------------------------------------------------------------------
 // 2. Row typing
 // ---------------------------------------------------------------------------
@@ -1256,6 +1282,7 @@ async function prepareRestatementVectors(topics = [], options = {}) {
 
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   let topics = removeNonContentAsides(discussion);
+  topics = removeShortTopicEchoes(topics, options.sourceUnits || []);
   const people = [...new Set([
     ...(Array.isArray(options.people) ? options.people : []),
     ...(Array.isArray(options.sourceUnits) ? options.sourceUnits.map((unit) => unit?.speaker) : [])
@@ -1423,6 +1450,7 @@ module.exports = {
   splitIndependentClauses,
   partialOverlapCandidates,
   consolidatePartialOverlapRows,
+  removeShortTopicEchoes,
   balanceDiscussionTopics,
   finaliseDiscussionForPublication,
   unitIndex

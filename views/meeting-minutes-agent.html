@@ -1038,6 +1038,10 @@
   .meeting-agent-page .editable-actions-table td[data-label="Owners"]{grid-column:1;grid-row:2}
   .meeting-agent-page .editable-actions-table td[data-label="Timing"]{grid-column:2;grid-row:2}
   .meeting-agent-page .editable-actions-table td[data-label="Action"]::before{display:none}
+  /* The empty state has no Owner or Timing fields. It must not inherit the
+     two-column action-row grid and reserve an unused right-hand column. */
+  .meeting-agent-page .editable-actions-table .empty-actions-row{display:block;padding:.7rem}
+  .meeting-agent-page .editable-actions-table .empty-actions-row td{display:block;width:100%;padding:0!important}
   .meeting-agent-page .editable-actions-table .owner-chips{margin:.1rem 0}
   .meeting-agent-page .editable-actions-table .timing-summary{margin:.1rem 0}
   .meeting-agent-page .editable-actions-table .owner-add{gap:.2rem}
