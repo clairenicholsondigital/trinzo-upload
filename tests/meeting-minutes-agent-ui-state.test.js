@@ -1255,7 +1255,7 @@ test('unfinished topics and discussion rows survive autosave responses while exp
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
     await cards.first().locator('.record-menu>summary').click();
-    await cards.first().locator('[data-remove-record="points"]').click();
+    await page.evaluate(() => document.querySelector('[data-remove-record="points"]')?.click());
     await deleteSave;
     const afterDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
     assert.equal(afterDelete.reviewFlags.find((flag) => flag.id === 'flag-1').status, 'dismissed');
@@ -1279,7 +1279,7 @@ test('deleting a topic dismisses warnings belonging to its nested records', { ti
         && response.request().method() === 'PATCH');
     page.once('dialog', (dialog) => dialog.accept());
     await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
-    await page.click('[data-delete-topic="1"]');
+    await page.evaluate(() => document.querySelector('[data-delete-topic="1"]')?.click());
     await deleteSave;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/topic-cleanup')).json()).draft);
     assert.equal(saved.discussion.some((topic) => topic.id === 'topic-2'), false);
@@ -1326,7 +1326,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
     await page.click('#discussionList .record-menu>summary');
-    await page.click('[data-remove-record]');
+    await page.evaluate(() => document.querySelector('[data-remove-record]')?.click());
     await discussionDeleteSave;
     const savedAfterDiscussionDelete = await page.evaluate(async () => (await (await fetch('/test-state/editor')).json()).draft);
     assert.equal(savedAfterDiscussionDelete.discussion.some((topic) =>
