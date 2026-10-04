@@ -8,9 +8,11 @@
   // resolve to the right screen.
   var MAX_STEP = 5;
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
-  var GENERATION_POLL_MS = 1000;
+  var GENERATION_POLL_MS = 3000;
+  var GENERATION_RETRY_MS = 8000;
   var generationTimer = null;
   var prewarmTimer = null;
+  var generationPollController = null;
   var completedGenerationNotice = null;
   var saveTimer = null;
   var savePending = false;
@@ -33,6 +35,7 @@
   var editVersion = 0;
   var rendering = false;
   var automaticProposalInFlight = false;
+  var uploadedDraftId = '';
   var fileInput = document.getElementById('transcriptFile');
   var uploadZone = document.getElementById('uploadZone');
   var detailsEditor = document.getElementById('detailsEditor');
@@ -655,7 +658,8 @@
 
   function generationRunning(stage) {
     var generation = state.draft && state.draft.generation;
-    return Boolean(generation && generation.status === 'running' && (!stage || generation.stage === stage));
+    return Boolean(generation && ['queued', 'running', 'retrying'].includes(generation.status)
+      && (!stage || generation.stage === stage));
   }
 
   function generationPhaseStatus(generation, phase) {
@@ -870,8 +874,9 @@
   var backgroundSettlePolls = 0;
   var BACKGROUND_SETTLE_POLLS = 10;
 
-  function pollActionPrewarm() {
+  function pollActionPrewarm(immediate) {
     clearTimeout(prewarmTimer);
+    if (document.hidden) return;
     if (!state.draft || generationRunning()) return;
     if (backgroundWorkPreparing()) backgroundSettlePolls = BACKGROUND_SETTLE_POLLS;
     else if (backgroundSettlePolls > 0) backgroundSettlePolls -= 1;
@@ -897,7 +902,7 @@
       } catch (error) {
         prewarmTimer = window.setTimeout(pollActionPrewarm, 5000);
       }
-    }, GENERATION_POLL_MS);
+    }, immediate ? 0 : GENERATION_POLL_MS);
   }
 
   // Reaching an empty Summary screen is itself the request to prepare the
@@ -1077,6 +1082,7 @@
         }
       }
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
+      uploadedDraftId = String(payload.draft && payload.draft.draftId || '');
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length, false, true);
@@ -2083,7 +2089,10 @@
     if (!replacingExistingDraft) hideUploadConfirmation();
     rememberPendingActions();
     rememberPendingDiscussion();
-    document.getElementById('reloadDraft').hidden = true;
+    var reload = document.getElementById('reloadDraft');
+    reload.hidden = true;
+    delete reload.dataset.progressCheck;
+    reload.textContent = 'Reload saved version';
     state.draft = restorePendingActions(restorePendingDiscussion(draft));
     // Responses to saves and background work must not navigate the reviewer.
     // On the initial load, restore the separately persisted selected screen;
@@ -2094,7 +2103,10 @@
     }
     renderAll();
     // A reload in the middle of a run must not look dead.
-    if (generationRunning()) pollGeneration();
+    if (generationRunning()) {
+      generationPollKey = [state.draft.draftId, state.draft.generation.stage, state.draft.generation.startedAt].join('|');
+      pollGeneration(true);
+    }
     else pollActionPrewarm();
     if (generationRunning()) {
       setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
@@ -2369,23 +2381,49 @@
     finally { endDraftWrite(); }
   }
 
-  function pollGeneration() {
+  function showProgressCheck(error, stage) {
+    var reload = document.getElementById('reloadDraft');
+    if (reload) {
+      reload.hidden = false;
+      reload.dataset.progressCheck = 'true';
+      reload.textContent = 'Check progress';
+    }
+    setStatus('Progress could not be checked just now. It will be checked again automatically.', true, stage);
+  }
+
+  function clearProgressCheck() {
+    var reload = document.getElementById('reloadDraft');
+    if (!reload || reload.dataset.progressCheck !== 'true') return;
+    reload.hidden = true;
+    delete reload.dataset.progressCheck;
+    reload.textContent = 'Reload saved version';
+  }
+
+  function pollGeneration(immediate) {
     clearTimeout(generationTimer);
-    if (!state.draft || !generationRunning()) return;
+    if (generationPollController) {
+      generationPollController.abort();
+      generationPollController = null;
+    }
+    if (document.hidden || !state.draft || !generationRunning()) return;
     generationTimer = window.setTimeout(async function () {
-      if (!state.draft) return;
+      if (!state.draft || document.hidden) return;
       var expectedDraftId = state.draft.draftId;
       var expectedGeneration = state.draft.generation || {};
       var expectedKey = [expectedDraftId, expectedGeneration.stage, expectedGeneration.startedAt].join('|');
+      var controller = new AbortController();
+      generationPollController = controller;
       try {
-        var payload = await jsonRequest(draftUrl('/generation'));
+        var payload = await jsonRequest(draftUrl('/generation'), {signal: controller.signal});
+        if (generationPollController === controller) generationPollController = null;
+        clearProgressCheck();
         var currentGeneration = state.draft && state.draft.generation;
         var currentKey = [state.draft && state.draft.draftId, currentGeneration && currentGeneration.stage, currentGeneration && currentGeneration.startedAt].join('|');
-        if (!state.draft || state.draft.draftId !== expectedDraftId || (generationPollKey && currentKey !== expectedKey)) return;
+        if (!state.draft || state.draft.draftId !== expectedDraftId || currentKey !== expectedKey) return;
         var activeStage = (state.draft.generation && state.draft.generation.stage) || 'discussion';
         state.draft.generation = payload.generation;
         if (payload.speculation !== undefined) state.draft.speculation = payload.speculation;
-        if (payload.generation && payload.generation.status === 'running') {
+        if (payload.generation && ['queued', 'running', 'retrying'].includes(payload.generation.status)) {
           setSaveStatus(generationSaveText(), pendingGenerationEdits ? 'waiting' : 'generating');
           setStatus(payload.generation.message || 'The agent is checking the prepared transcript…', false, activeStage);
           renderGenerationProgress();
@@ -2400,7 +2438,9 @@
           var completedDraft = payload.draft;
           completedDraft.details = localDraft.details;
           completedDraft.steer = localDraft.steer;
-          if (activeStage !== 'discussion') completedDraft.discussion = localDraft.discussion;
+          if (activeStage !== 'discussion' || (pendingGenerationEdits && (localDraft.discussion || []).length)) {
+            completedDraft.discussion = localDraft.discussion;
+          }
           if (activeStage !== 'actions') completedDraft.actions = localDraft.actions;
           if (activeStage !== 'summary') {
             completedDraft.executiveSummary = localDraft.executiveSummary;
@@ -2425,8 +2465,9 @@
           state.draft.generation = payload.generation;
           if (activeStage === 'actions' && !generationFailed) actionsInvalidatedDuringGeneration = false;
           renderAll();
-          if (activeStage === 'discussion' && state.currentStep === 0 && !generationFailed) {
-            showUploadConfirmation(state.draft.fileName, (state.draft.sourceUnits || []).length, false, false);
+          if (activeStage === 'discussion' && state.currentStep === 0 && !generationFailed
+            && String(state.draft.draftId || '') === uploadedDraftId) {
+            showUploadConfirmation(state.draft.fileName, (state.draft.sourceUnits || []).length, false, false, true);
           }
         }
         if (payload.generation && payload.generation.status === 'failed') {
@@ -2443,8 +2484,14 @@
         if (saveAfterGeneration) scheduleSave();
         else if (hasTransientEditorState()) setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
         else setSaveStatus(savedStatusText(state.draft.updatedAt), 'saved');
-      } catch (error) { setStatus(error.message, true, expectedGeneration.stage); }
-    }, GENERATION_POLL_MS);
+      } catch (error) {
+        if (generationPollController === controller) generationPollController = null;
+        if (error.name === 'AbortError') return;
+        if (!state.draft || state.draft.draftId !== expectedDraftId) return;
+        showProgressCheck(error, expectedGeneration.stage);
+        generationTimer = window.setTimeout(function () { pollGeneration(true); }, GENERATION_RETRY_MS);
+      }
+    }, immediate ? 0 : GENERATION_POLL_MS);
   }
 
   async function runAgent(stage, instruction) {
@@ -2583,9 +2630,13 @@
     finally { setBusy(false); }
   }
 
+  function fetchSavedDraft(draftId, options) {
+    return jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId), options);
+  }
+
   async function loadDraft(draftId) {
     setBusy(true, 'Loading your saved draft...');
-    try { var payload = await jsonRequest('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId)); adoptDraft(payload.draft); setStatus('', false); }
+    try { var payload = await fetchSavedDraft(draftId); adoptDraft(payload.draft); setStatus('', false); }
     catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }
@@ -2594,12 +2645,14 @@
   // Shown only after the server has persisted the upload. The pending state
   // confirms that server-side processing has started; the ready state is used
   // when the prepared draft is already available to continue reviewing.
-  function showUploadConfirmation(fileName, unitCount, preparing, processing) {
+  function showUploadConfirmation(fileName, unitCount, preparing, processing, discussionReady) {
     var panel = document.getElementById('uploadConfirmation');
     if (!panel) return;
     var detail = document.getElementById('uploadConfirmationDetail');
     var count = Number(unitCount || 0);
-    detail.textContent = preparing
+    detail.textContent = discussionReady
+      ? 'Discussion is ready. Actions are being prepared.'
+      : preparing
       ? 'Uploading the transcript securely...'
       : processing
         ? 'Transcript uploaded — processing has started in the background.'
@@ -2609,6 +2662,8 @@
     var ready = document.getElementById('uploadConfirmationReady');
     if (pending) pending.hidden = !(preparing || processing);
     if (ready) ready.hidden = Boolean(preparing) || Boolean(processing);
+    var continueButton = document.getElementById('uploadConfirmationContinue');
+    if (continueButton) continueButton.textContent = discussionReady ? 'Review discussion' : 'Check the meeting details';
     panel.hidden = false;
   }
 
@@ -2619,6 +2674,10 @@
 
   document.getElementById('uploadConfirmationContinue').addEventListener('click', function () {
     hideUploadConfirmation();
+    if (stageHasContent('discussion')) {
+      showStep(STAGE_STEP.discussion, { scroll: true });
+      return;
+    }
     var title = document.getElementById('meetingTitle');
     if (title) { title.focus({ preventScroll: true }); title.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   });
@@ -3428,7 +3487,14 @@
     }
   });
   document.getElementById('reloadDraft').addEventListener('click', function () {
-    if (state.draft) loadDraft(state.draft.draftId);
+    if (!state.draft) return;
+    if (this.dataset.progressCheck === 'true' && generationRunning()) {
+      this.hidden = true;
+      delete this.dataset.progressCheck;
+      pollGeneration(true);
+      return;
+    }
+    loadDraft(state.draft.draftId);
   });
   document.getElementById('downloadWord').addEventListener('click', function () { downloadExport('docx'); });
   document.getElementById('downloadPdf').addEventListener('click', function () { downloadExport('pdf'); });
@@ -3509,6 +3575,24 @@
     if (delivered) return;
     event.preventDefault();
     event.returnValue = '';
+  });
+
+  window.addEventListener('pagehide', function () {
+    clearTimeout(generationTimer);
+    clearTimeout(prewarmTimer);
+    if (generationPollController) generationPollController.abort();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    clearTimeout(generationTimer);
+    clearTimeout(prewarmTimer);
+    if (document.hidden) {
+      if (generationPollController) generationPollController.abort();
+      return;
+    }
+    if (!state.draft) return;
+    if (generationRunning()) pollGeneration(true);
+    else pollActionPrewarm(true);
   });
 
   var requestedDraft = new URLSearchParams(window.location.search).get('draftId');

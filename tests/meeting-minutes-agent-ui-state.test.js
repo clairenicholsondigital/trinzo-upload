@@ -280,6 +280,8 @@ function startStubServer() {
   const patchBodies = new Map();
   const reviewHistory = new Map();
   const redoHistory = new Map();
+  let preparedGenerationChecks = 0;
+  let actionCompletionChecks = 0;
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
@@ -292,6 +294,7 @@ function startStubServer() {
     const prepared = baseDraft('prepared', false);
     prepared.currentStep = 0;
     prepared.selectedStep = 0;
+    prepared.discussion = [];
     prepared.generation = { stage: 'discussion', status: 'running', startedAt: new Date().toISOString(), message: 'Processing the transcript in the background…', completedPasses: [] };
     drafts.set('prepared', prepared);
     res.json({ ok: true, draft: prepared, resumeUrl: '/meeting-minutes-agent?draftId=prepared' });
@@ -423,7 +426,26 @@ function startStubServer() {
   });
   app.get('/api/meeting-minutes-agent/drafts/:id/generation', (req, res) => {
     let draft = drafts.get(req.params.id);
+    if (req.params.id === 'prepared' && draft.generation) {
+      preparedGenerationChecks += 1;
+      if (preparedGenerationChecks === 1) {
+        return res.status(503).json({ ok: false, error: 'Temporary progress-check failure.' });
+      }
+      draft = {
+        ...draft, revision: draft.revision + 1, updatedAt: new Date().toISOString(),
+        generation: null,
+        speculation: { stage: 'actions', status: 'preparing' },
+        generatedStages: { discussion: new Date().toISOString(), actions: '', summary: '' },
+        discussion: baseDraft('prepared-result', false).discussion
+      };
+      drafts.set(req.params.id, draft);
+      return res.json({ ok: true, generation: null, speculation: draft.speculation, draft });
+    }
     if (req.params.id === 'actions-completing' && draft.generation) {
+      actionCompletionChecks += 1;
+      if (actionCompletionChecks === 1) {
+        return res.json({ ok: true, generation: draft.generation, actionsPrewarm: null });
+      }
       draft = {
         ...draft, revision: draft.revision + 1, updatedAt: new Date().toISOString(),
         generation: null, staleStages: [],
@@ -2640,6 +2662,44 @@ test('a fresh upload is confirmed, explains the next screens, and points at the 
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=prepared`);
     await page.waitForFunction(() => !document.getElementById('detailsEditor').hidden);
     assert.equal(await page.locator('#uploadConfirmation').isHidden(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('an uploaded draft synchronises in place after a failed progress check without losing edits', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(30000);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent`);
+    await page.setInputFiles('#transcriptFile', {
+      name: 'T761.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: Buffer.from('PK')
+    });
+    await page.waitForFunction(() => !document.getElementById('uploadConfirmation').hidden);
+
+    // A transient status failure must leave the draft alone, expose a manual
+    // retry and keep checking without starting another generation request.
+    await page.waitForFunction(() => document.getElementById('reloadDraft').textContent === 'Check progress');
+    await page.fill('#meetingTitle', 'Reviewer-edited T761 title');
+
+    await page.waitForFunction(() => document.querySelectorAll('#discussionList [data-record-field]').length > 0);
+    assert.equal(await page.inputValue('#meetingTitle'), 'Reviewer-edited T761 title');
+    assert.match(await page.textContent('#uploadConfirmationDetail'), /Discussion is ready\. Actions are being prepared\./i);
+    assert.equal(await page.textContent('#uploadConfirmationContinue'), 'Review discussion');
+    assert.equal(await page.locator('#reloadDraft').isHidden(), true);
+
+    await page.click('#uploadConfirmationContinue');
+    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true);
+    assert.match(await page.textContent('#discussionList'), /revised report is ready for circulation/i);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
