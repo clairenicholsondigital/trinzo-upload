@@ -1,5 +1,6 @@
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -42,6 +43,43 @@ class ShortRepliesTest(unittest.TestCase):
     def test_long_or_substantive_turns_are_not_short_replies(self):
         rows = staged.short_reply_rows("Adil Kauim   4:20I think the study is going well.\n", "t.txt")
         self.assertEqual(rows, [])
+
+    def test_remote_embeddings_are_batched_and_keep_input_order(self):
+        import numpy as np
+
+        class FakeBackend:
+            available = True
+            model_name = "sentence-transformers/all-MiniLM-L6-v2"
+
+            def __init__(self):
+                self.batch_sizes = []
+
+            def encode_many(self, texts):
+                self.batch_sizes.append(len(texts))
+                return {
+                    staged.usefulness.compact(text): [float(text.rsplit(" ", 1)[-1]), 1.0]
+                    for text in texts
+                }
+
+        backend = FakeBackend()
+        texts = [f"Meeting sentence {index}" for index in range(130)]
+        matrix = staged.remote_embedding_matrix(texts, backend.model_name, np, backend=backend)
+
+        self.assertEqual(backend.batch_sizes, [130])
+        self.assertEqual(matrix.shape, (130, 2))
+        self.assertEqual(matrix[0].tolist(), [0.0, 1.0])
+        self.assertEqual(matrix[-1].tolist(), [129.0, 1.0])
+
+    def test_incompatible_worker_model_uses_local_fallback(self):
+        class FakeBackend:
+            available = True
+            model_name = "different-model"
+
+        with mock.patch.dict("os.environ", {"MINUTES_MINILM_WORKER_URL": "http://worker"}):
+            matrix = staged.remote_embedding_matrix(
+                ["Meeting sentence"], "expected-model", object(), backend=FakeBackend()
+            )
+        self.assertIsNone(matrix)
 
 
 if __name__ == "__main__":

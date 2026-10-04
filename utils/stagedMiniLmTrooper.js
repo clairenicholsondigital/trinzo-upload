@@ -8,10 +8,10 @@ const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const MODEL = path.join(ROOT, 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
 
-function runJson(script, args, timeoutMs) {
+function runJson(script, args, timeoutMs, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.PYTHON_BIN || 'python3', [path.join(ROOT, 'scripts', script), ...args], {
-      cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe']
+      cwd: ROOT, env: { ...process.env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe']
     });
     let stdout = '';
     let stderr = '';
@@ -93,7 +93,16 @@ async function denoiseMiniLmFile(rawPath, options = {}) {
   const prepared = await runJson('staged_simplified_minilm.py', [rawPath, '--model', process.env.STAGED_SIMPLIFIED_MINILM_MODEL || MODEL,
     '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85'),
     ...(options.keepShortReplies ? ['--keep-short-replies'] : [])],
-  Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000));
+  Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000), {
+    // The worker keeps the same MiniLM model resident. Reusing it avoids a
+    // fresh Torch/model load for every upload, which can take several minutes
+    // when the VPS is under memory pressure. The Python script still falls
+    // back to its previous local-model path if the worker is unavailable.
+    MINUTES_MINILM_WORKER_URL: process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767',
+    // A full real-world transcript is faster as one model batch than as many
+    // small calls, but can take over a minute on this host under contention.
+    MINUTES_MINILM_WORKER_TIMEOUT_SECONDS: process.env.MINUTES_MINILM_WORKER_TIMEOUT_SECONDS || '150'
+  });
   const removedRatio = Number(prepared.totalUnitCount || 0)
     ? Number(prepared.removedUnitCount || 0) / Number(prepared.totalUnitCount) : 1;
   if (!prepared.ok || prepared.keptUnitCount < 3 || String(prepared.preparedTranscript || '').length < 100 || removedRatio > 0.55) {

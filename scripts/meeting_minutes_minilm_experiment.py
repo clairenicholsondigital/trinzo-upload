@@ -138,8 +138,9 @@ class MiniLMBackend:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
+            timeout_seconds = max(5, int(os.environ.get("MINUTES_MINILM_WORKER_TIMEOUT_SECONDS", "30") or "30"))
             try:
-                with urllib.request.urlopen(request, timeout=30) as response:
+                with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                     result = json.loads(response.read().decode("utf-8"))
             except Exception as exc:  # pragma: no cover - exercised in real envs
                 self.reason = f"Remote MiniLM encode failed: {exc}"

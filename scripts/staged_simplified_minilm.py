@@ -4,10 +4,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 
 import meeting_minutes_usefulness_classifier as usefulness
+
+
+# SentenceTransformer handles a full meeting much more efficiently as one
+# model batch. This still bounds unusually large transcripts while the caller
+# gives each worker request its own contention-aware transport deadline.
+REMOTE_EMBED_BATCH_SIZE = 512
+
+
+def remote_embedding_matrix(texts: list[str], model_name: str, np_module, backend=None):
+    """Use the resident MiniLM worker when it exposes the classifier's model.
+
+    Upload preparation used to instantiate SentenceTransformer for every file.
+    On a busy VPS that duplicates the already-running worker's model and can
+    spend the entire request budget loading swapped model pages. Keep batches
+    bounded so one large transcript does not monopolise the worker request.
+    Returning ``None`` preserves the former local-model fallback.
+    """
+    worker_url = os.environ.get("MINUTES_MINILM_WORKER_URL", "").strip()
+    if backend is None:
+        if not worker_url:
+            return None
+        from meeting_minutes_minilm_experiment import MiniLMBackend
+        backend = MiniLMBackend.load(enabled=True, prefer_remote=True)
+    if not backend.available or backend.model_name != model_name:
+        return None
+
+    vectors = []
+    for start in range(0, len(texts), REMOTE_EMBED_BATCH_SIZE):
+        batch = texts[start:start + REMOTE_EMBED_BATCH_SIZE]
+        encoded = backend.encode_many(batch)
+        for text in batch:
+            # MiniLMBackend keys remote results with normalize_text_fragment,
+            # which compacts whitespace but deliberately preserves case.
+            key = usefulness.compact(text)
+            vector = encoded.get(key)
+            if not isinstance(vector, list) or not vector:
+                return None
+            vectors.append(vector)
+    return np_module.asarray(vectors)
 
 
 def clean_speech_text(text: str) -> str:
@@ -94,7 +134,9 @@ def main() -> int:
     parser.add_argument("--keep-short-replies", action="store_true")
     args = parser.parse_args()
 
-    joblib, _np, SentenceTransformer, *_unused = usefulness.load_dependencies()
+    import joblib
+    import numpy as np
+
     bundle = joblib.load(args.model)
     path = Path(args.transcript)
     raw_text = usefulness.read_transcript_file(path)
@@ -105,18 +147,37 @@ def main() -> int:
         print(json.dumps({"ok": False, "reason": "no_speaker_units"}))
         return 0
 
-    embedder = SentenceTransformer(bundle["embedding_model"])
-    matrix = embedder.encode(
-        [row["text"] for row in rows], normalize_embeddings=True,
-        convert_to_numpy=True, show_progress_bar=False,
-    )
+    texts = [row["text"] for row in rows]
+    matrix = remote_embedding_matrix(texts, bundle["embedding_model"], np)
+    embedding_source = "worker" if matrix is not None else ""
+    if matrix is None and not os.environ.get("MINUTES_MINILM_WORKER_URL", "").strip():
+        # Development and recovery path when no compatible worker is running.
+        # Importing sentence-transformers lazily keeps the normal upload path
+        # from loading a second copy of Torch and the embedding model.
+        from sentence_transformers import SentenceTransformer
+        embedder = SentenceTransformer(bundle["embedding_model"])
+        matrix = embedder.encode(
+            texts, normalize_embeddings=True,
+            convert_to_numpy=True, show_progress_bar=False,
+        )
+        embedding_source = "local"
     classifier = bundle["classifier"]
-    probabilities = classifier.predict_proba(matrix)
+    # If the configured resident worker is temporarily unavailable, fail open
+    # with the deterministic labels used to train this classifier. Uploads
+    # must not fail merely because the optional noise-removal pass is busy.
+    probabilities = classifier.predict_proba(matrix) if matrix is not None else None
+    if probabilities is None:
+        embedding_source = "heuristic_fallback"
     classified = []
-    for sequence, (row, probs) in enumerate(zip(rows, probabilities), 1):
-        best = int(probs.argmax())
-        predicted = str(classifier.classes_[best])
-        confidence = float(probs[best])
+    for sequence, row in enumerate(rows, 1):
+        if probabilities is None:
+            predicted, _reason = usefulness.bootstrap_label(row["text"])
+            confidence = 1.0
+        else:
+            probs = probabilities[sequence - 1]
+            best = int(probs.argmax())
+            predicted = str(classifier.classes_[best])
+            confidence = float(probs[best])
         effective = "uncertain" if predicted == "remove" and confidence < args.remove_threshold else predicted
         if usefulness.FORCE_REMOVE_NOISE.search(row["text"]):
             effective = "remove"
@@ -140,6 +201,7 @@ def main() -> int:
         "ok": True,
         "model": str(args.model),
         "embeddingModel": bundle["embedding_model"],
+        "embeddingSource": embedding_source,
         "rawLength": len(raw_text),
         "preparedLength": len(prepared),
         "removedUnitCount": len(classified) - len(kept),
