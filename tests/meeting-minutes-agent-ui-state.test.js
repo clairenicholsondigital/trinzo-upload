@@ -585,29 +585,26 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     await page.click('#omittedDetailsPanel .evidence-toggle');
     // Opening the nested disclosure can coincide with the autosave re-render
     // above. Measure only after the replacement node has completed layout.
-    await page.waitForFunction(() => {
+    const desktopOmittedLayoutHandle = await page.waitForFunction(() => {
       const detail = document.querySelector('#omittedDetailsPanel .omitted-detail');
-      if (!detail) return false;
+      if (!detail) return null;
       const copy = detail.querySelector('.omitted-detail-copy')?.getBoundingClientRect();
+      const button = detail.querySelector('[data-promote-supporting]')?.getBoundingClientRect();
       const disclosure = detail.querySelector('.omitted-detail-actions>details')?.getBoundingClientRect();
+      const panel = detail.querySelector('.evidence-panel')?.getBoundingClientRect();
       const outer = detail.getBoundingClientRect();
-      return Boolean(copy && disclosure && outer.width
-        && copy.width > outer.width * 0.9 && disclosure.width > outer.width * 0.9);
-    });
-    const desktopOmittedLayout = await page.locator('#omittedDetailsPanel .omitted-detail').evaluate((detail) => {
-      const copy = detail.querySelector('.omitted-detail-copy').getBoundingClientRect();
-      const button = detail.querySelector('[data-promote-supporting]').getBoundingClientRect();
-      const disclosure = detail.querySelector('.omitted-detail-actions>details').getBoundingClientRect();
-      const panel = detail.querySelector('.evidence-panel').getBoundingClientRect();
-      const outer = detail.getBoundingClientRect();
-      return {
+      if (!copy || !button || !disclosure || !panel || !outer.width) return null;
+      const layout = {
         copyUsesRow: copy.width > outer.width * 0.9,
         controlsBelowCopy: button.top >= copy.bottom - 1,
         transcriptUsesRow: disclosure.width > outer.width * 0.9,
         panelInsideCard: panel.left >= outer.left - 1 && panel.right <= outer.right + 1,
         overflow: detail.scrollWidth - detail.clientWidth
       };
+      return layout.copyUsesRow && layout.controlsBelowCopy && layout.transcriptUsesRow
+        && layout.panelInsideCard && layout.overflow === 0 ? layout : null;
     });
+    const desktopOmittedLayout = await desktopOmittedLayoutHandle.jsonValue();
     assert.deepEqual(desktopOmittedLayout, {
       copyUsesRow: true, controlsBelowCopy: true, transcriptUsesRow: true, panelInsideCard: true, overflow: 0
     });
