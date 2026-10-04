@@ -989,6 +989,23 @@ function relativeExactDate(wording, meetingDate) {
   // "later today", "by end of day", "close of play".
   if (/\b(?:today|tonight|this (?:morning|afternoon|evening|lunchtime)|later today|(?:by )?(?:the )?end of (?:the )?day|close of (?:play|business)|eod|cob)\b/.test(value)) return meetingDate;
   if (/\btomorrow\b/.test(value)) return isoDateOffset(meetingDate, 1);
+  // A stated calendar date outranks the weekday that happens to introduce it.
+  // Previously "Tuesday 3rd November" stopped at "Tuesday" and became the
+  // next Tuesday after the meeting.  The later support check then accepted
+  // that wrong value because it called this same resolver.  Read the explicit
+  // date first so weekday inference is only a fallback.
+  const explicitCalendarDate = statedCalendarDate(value, meetingDate);
+  if (explicitCalendarDate) {
+    // Preserve the established spoken-ordinal rule: when someone names a
+    // month already passed, it denotes that month next year. Numeric dates
+    // retain their literal year so the existing past-date validator can flag
+    // them rather than silently moving them.
+    const spokenMonthDate = /\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[ -]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirtieth|thirty[ -]?first)\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(value);
+    if (spokenMonthDate && explicitCalendarDate < meetingDate) {
+      return `${Number(explicitCalendarDate.slice(0, 4)) + 1}${explicitCalendarDate.slice(4)}`;
+    }
+    return explicitCalendarDate;
+  }
   const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   // A weekday nested inside a relational phrase is context, not necessarily
   // the event date. "The weekend before Monday" must remain useful wording; it
@@ -996,7 +1013,11 @@ function relativeExactDate(wording, meetingDate) {
   const relationalWeekday = /\b(?:weekend|day|week)\s+(?:before|after|following|prior to)\s+(?:this |next )?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|\b(?:before|after|following|prior to)\s+(?:the )?(?:this |next )?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(value);
   if (relationalWeekday) return '';
   const named = weekdays.findIndex((day) => new RegExp(`\\b(?:this |next )?${day}\\b`).test(value));
-  if (named >= 0) {
+  // "Tuesday the thirteenth" is a day of the month, not merely the next
+  // Tuesday.  Let the ordinal block below resolve it.  The lookahead keeps
+  // nouns such as "the first review" out of date handling.
+  const spokenDayAlongsideWeekday = /\b(?:the\s+)(?:twenty[ -]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirty[ -]?(?:first|second)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b(?=\s*(?:$|[,.;:]|at\b|by\b))/i.test(value);
+  if (named >= 0 && !spokenDayAlongsideWeekday) {
     const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
     let offset = (named - current + 7) % 7;
     if (/\bnext\s+/.test(value)) offset = offset === 0 ? 7 : offset + 7;
@@ -1136,12 +1157,15 @@ function statedCalendarDate(wording = '', meetingDate = '') {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return '';
   const value = String(wording || '').toLowerCase();
   const month = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-  const dayFirst = value.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${month}\\b(?:,?\\s+(\\d{4}))?`));
+  const spokenOrdinal = '(?:twenty[ -]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirty[ -]?(?:first|second)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)';
+  const dayFirst = value.match(new RegExp(`\\b(?:the\\s+)?(\\d{1,2}(?:st|nd|rd|th)?|${spokenOrdinal})\\s+(?:of\\s+)?${month}\\b(?:,?\\s+(\\d{4}))?`));
   const monthFirst = value.match(new RegExp(`\\b${month}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?:,?\\s+(\\d{4}))?`));
   const found = dayFirst ? { day: dayFirst[1], month: dayFirst[2], year: dayFirst[3] } : monthFirst ? { day: monthFirst[2], month: monthFirst[1], year: monthFirst[3] } : null;
   if (!found) return '';
   const monthIndex = SHORT_MONTHS.indexOf(found.month.slice(0, 3)) + 1;
-  const day = Number(found.day);
+  const dayToken = String(found.day || '').toLowerCase()
+    .replace(/^(\d{1,2})(?:st|nd|rd|th)$/i, '$1').replace(/\s+/g, '-');
+  const day = Number(dayToken) || ORDINAL_DAY_WORDS[dayToken];
   if (!monthIndex || !day || day > 31) return '';
   const [meetingYear] = meetingDate.split('-').map(Number);
   let year = found.year ? Number(found.year) : meetingYear;
@@ -1318,7 +1342,7 @@ const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will 
 const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|consider|considering|possible|potentially|it would be good|worth thinking)\b/i;
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
-const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share)\b/i;
+const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share|put\s+away\s+(?:the\s+|this\s+|that\s+)?(?:on[- ]screen\s+)?(?:pdf|pdf\s+copy|document\s+copy)|close\s+(?:the\s+|this\s+|that\s+)?(?:browser\s+)?(?:tab|window)\s*(?:now|for\s+now)?)\b/i;
 // A short first-person "quickly/briefly/just share" line is often the chair
 // moving the meeting along, rather than work that remains after the call. Keep
 // this separate from ACTION_ADMIN_PATTERN: a normal "share the report" remains
@@ -1390,6 +1414,23 @@ function isDecisionResolutionCommitment(value) {
   return !/\?\s*$/.test(source) && !/^\s*(?:who|what|when|where|why|how|do|does|did|is|are|can|could|would|will|anything)\b/i.test(source);
 }
 
+function actionNegatedByEvidence(action, evidence) {
+  const source = text(evidence, 15000);
+  if (!source) return false;
+  const actionTokens = contentTokens(action).slice(0, 12);
+  const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
+  const predicateWords = [...new Set(predicateGroups.flat())];
+  const actionObjectWords = new Set(actionTokens.filter((token) => !ACTION_VERB_GROUPS.flat().includes(token)));
+  return source.split(/(?<=[.!?;])\s+|\n+/).some((clause) => {
+    const hasSharedObject = contentTokens(clause).some((token) => actionObjectWords.has(token));
+    if (!hasSharedObject) return false;
+    return predicateWords.some((verb) => new RegExp(
+      `\\b(?:will not|won't|shall not|do not|don't|must not|should not|cannot|can't|(?:is|are|was|were|we're|they're)\\s+not|neither\\b[^.;]{0,60}\\b(?:is|are|was|were)?\\s*(?:authorised|authorized)|not\\s+(?:authorised|authorized)\\s+to)\\b(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,8}\\s+${verb}(?:s|ed|ing)?\\b`, 'i'
+    ).test(clause) || (predicateGroups.some((group) => group.includes('confirm'))
+      && /\bleave\b[^.;]{0,60}\bunconfirmed\b/i.test(clause)));
+  });
+}
+
 function actionEvidenceDisposition(action, evidence) {
   const source = text(evidence, 15000);
   // A leaving remark grounds no work. Guard on the action too so a genuine
@@ -1398,12 +1439,7 @@ function actionEvidenceDisposition(action, evidence) {
     && !/\b(?:send|email|order|book|confirm|ring|call|contact|arrange|prepare|review|update|write|share|forward|submit)\b/i.test(action)) return 'meeting_admin';
   if (!source) return 'unclear';
   if (isMeetingAdminShare(action, source)) return 'meeting_admin';
-  const actionTokens = contentTokens(action).slice(0, 12);
-  const predicateGroups = ACTION_VERB_GROUPS.filter((group) => actionTokens.some((token) => group.includes(token)));
-  const predicateWords = [...new Set(predicateGroups.flat())];
-  const directlyNegatedPredicate = predicateWords.some((verb) => new RegExp(
-    `\\b(?:will not|won't|shall not|not going to)\\b(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,6}\\s+${verb}(?:s|ed|ing)?\\b`, 'i'
-  ).test(source));
+  const directlyNegatedPredicate = actionNegatedByEvidence(action, source);
   // Negation belongs to its clause. An availability constraint such as “I
   // won't be around” can be the reason another person must plan or reschedule;
   // it must not reject every action in the surrounding evidence window.
@@ -5709,6 +5745,7 @@ module.exports = {
   resolveEvidence,
   normaliseActions,
   actionEvidenceDisposition,
+  actionNegatedByEvidence,
   actionCandidateInventory,
   addressedRequestAcceptedAhead,
   actionCommitmentThreadInventory,

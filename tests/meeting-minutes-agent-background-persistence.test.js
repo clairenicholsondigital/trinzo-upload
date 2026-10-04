@@ -75,6 +75,19 @@ test('successful recovered stages do not expose internal degradation warnings', 
   assert.equal(Object.prototype.hasOwnProperty.call(publicDraft, 'qualityState'), false);
 });
 
+test('persisted stage completion supersedes a stale generation marker', () => {
+  const draft = baseDraft();
+  draft.generation = {
+    stage: 'discussion', status: 'failed', startedAt: '2026-09-16T10:00:00.000Z',
+    error: 'timeout exceeded when trying to connect'
+  };
+  draft.qualityState = { discussion: { completedAt: '2026-09-16T10:05:00.000Z' } };
+  assert.equal(publicMeetingAgentDraft(draft).generation, null);
+
+  draft.generation.startedAt = '2026-09-16T10:10:00.000Z';
+  assert.equal(publicMeetingAgentDraft(draft).generation.status, 'failed', 'a newer failure remains visible');
+});
+
 test('existing drafts cannot expose raw action prose as a timing value', () => {
   const draft = baseDraft();
   draft.actions = [{

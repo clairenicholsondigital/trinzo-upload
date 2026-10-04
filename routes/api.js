@@ -216,6 +216,7 @@ const {
   mergeGroundedObjectiveRecords,
   evidenceSupportScore,
   actionEvidenceDisposition,
+  actionNegatedByEvidence,
   groundedExecutiveSummary,
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
   applyTimingClauseChecks,
@@ -11250,7 +11251,14 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.executiveSummary = normaliseDatePhrasesDeep(safe.executiveSummary);
   safe.meetingObjectives = normaliseDatePhrasesDeep(safe.meetingObjectives);
   safe.details = sanitiseMeetingAgentDetails(safe.details);
-  safe.generation = publicMeetingAgentGeneration(meetingAgentGenerationState(safe.generation));
+  const generation = meetingAgentGenerationState(safe.generation);
+  const completedAt = generation ? meetingAgentStageGeneratedAt(draft, generation.stage) : '';
+  // A stale failed/running marker must not outlive a successfully persisted
+  // result for the same attempt. This changes presentation state only; it does
+  // not start, cancel or repeat any generation work.
+  const supersededGeneration = generation && completedAt && generation.startedAt
+    && new Date(completedAt).getTime() >= new Date(generation.startedAt).getTime();
+  safe.generation = supersededGeneration ? null : publicMeetingAgentGeneration(generation);
   safe.actionsPrewarm = meetingAgentActionsPrewarmState(draft);
   safe.speculation = meetingAgentSpeculationState(draft);
   // When each stage was last run. The tab uses this to tell "run and found
@@ -11701,6 +11709,28 @@ function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed
   actions.sort((left, right) => firstEvidence(left) - firstEvidence(right)
     || String(left.action || '').localeCompare(String(right.action || '')));
   return { actions, restored, eligibleCount };
+}
+
+// Nothing which has survived the evidence, timing and lifecycle checks may be
+// lost merely because a later presentation deduper decides that two related
+// deliverables sound alike.  This is deliberately not an extractor: it can
+// only restore a row already present in the approved, display-eligible set,
+// and only when no strict equivalent remains in the finished list.
+function reconcileFinalApprovedActions(published = [], approved = []) {
+  const actions = [...(Array.isArray(published) ? published : [])];
+  const restored = [];
+  for (const record of Array.isArray(approved) ? approved : []) {
+    const represented = actions.some((existing) => strictActionDeliverableMatch(record, existing)
+      && strictActionDeliverableMatch(existing, record));
+    if (represented) continue;
+    actions.push(record);
+    restored.push(record);
+  }
+  const firstEvidence = (record) => Math.min(...(record.evidenceIds || [])
+    .map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
+  actions.sort((left, right) => firstEvidence(left) - firstEvidence(right)
+    || String(left.action || '').localeCompare(String(right.action || '')));
+  return { actions, restored };
 }
 
 function isVagueReconstructedAction(value = '') {
@@ -16042,6 +16072,25 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       checked: finalLifecycleCheckedCount, withheld: finalLifecycleWithheldCount, rejected: lifecycle.rejected
     }));
   }
+  // A later model or merge can produce an affirmative task from an evidence
+  // window whose settled instruction is explicitly negative (for example,
+  // "do not choose or book a transfer"). Recheck the finished lifecycle set
+  // with the deterministic, object-matched polarity rule before presentation.
+  const contradictedActions = timingChecked.actions.filter((action) => {
+    const evidence = surroundingEvidence(draft.sourceUnits, action.evidenceIds || [])
+      .map((unit) => `${unit.speaker}: ${unit.text}`).join('\n');
+    return actionNegatedByEvidence(action.action, evidence);
+  });
+  if (contradictedActions.length) {
+    timingChecked = {
+      ...timingChecked,
+      actions: timingChecked.actions.filter((action) => !contradictedActions.includes(action))
+    };
+    console.log(JSON.stringify({
+      event: 'meeting_agent_action_polarity_veto', journeyId: draft.draftId,
+      removed: contradictedActions.map((action) => meetingMinutesAgentText(action.action, 180))
+    }));
+  }
   // Earlier dedupe passes run before timing, completeness and lifecycle checks,
   // which can rewrite two variants into the same finished action. Reconcile the
   // finished rows before they reach the editable Actions screen, carrying all
@@ -16053,6 +16102,16 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   }));
   const actionsBeforeDisplayDedupe = participantNormalisedActions.length;
   const splitRows = splitCompoundActionList(participantNormalisedActions, draft.draftId);
+  // Apply only the narrow final eligibility filters here. The ordinary display
+  // dedupers below may merge wording, but this set remains the survival
+  // authority for distinct lifecycle-approved deliverables.
+  const displayEligibleApproved = applyPresenterAidGate(splitRows, details.meetingType).actions
+    .map((record) => ({
+      ...record,
+      action: normalisePublishedParticipantReference(record?.action, actionPeople)
+    }))
+    .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
+    .filter((record) => record && !isVagueReconstructedAction(record?.action));
   // The completeness, answered and lifecycle checks rewrite wording after the
   // earlier fold ran, which can leave an unowned paraphrase beside the owned
   // action it restates. Fold once more on what the reviewer will actually see.
@@ -16078,13 +16137,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   traceOwners('presenterAidGate(final)', presenterAidGate.actions, draft.draftId);
   // Later passes (lifecycle, answered, salvage) can add a second wording of a
   // commitment after the merge above, so the finished list is read once more.
-  const finalActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final'))
+  const finalDedupedActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final'))
     .map((record) => ({
       ...record,
       action: normalisePublishedParticipantReference(record?.action, actionPeople)
     }))
     .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
     .filter((record) => record && !isVagueReconstructedAction(record?.action));
+  const finalSurvival = reconcileFinalApprovedActions(finalDedupedActions, displayEligibleApproved);
+  const finalActions = finalSurvival.actions;
+  if (finalSurvival.restored.length) console.log(JSON.stringify({
+    event: 'meeting_agent_final_action_survival', journeyId: draft.draftId,
+    restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
+  }));
   const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
@@ -16131,6 +16196,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         finalLifecycleCheckedCount,
         finalLifecycleWithheldCount,
         finalLifecycleRejectedCount,
+        finalActionSurvivalRestoredCount: finalSurvival.restored.length,
         actionScreenDuplicateCount,
         acceptedActionEligibleCount: acceptedActionAccounting.eligibleCount,
         acceptedActionRestoredCount: acceptedActionAccounting.restored.length,
@@ -18037,6 +18103,7 @@ router.stagedEvaluation = {
   hybridCandidateDispositions,
   strictActionDeliverableMatch,
   reconcileAcceptedRefereeActions,
+  reconcileFinalApprovedActions,
   dedupeHybridActionRecords,
   actionDeliveryFrame,
   bundleSameRecipientDeliveries,

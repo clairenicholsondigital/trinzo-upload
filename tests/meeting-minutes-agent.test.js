@@ -45,6 +45,7 @@ const {
   hybridCandidateDispositions,
   strictActionDeliverableMatch,
   reconcileAcceptedRefereeActions,
+  reconcileFinalApprovedActions,
   dedupeHybridActionRecords,
   dedupeHybridActionProposals,
   mergePublishedActionEvidence,
@@ -362,6 +363,15 @@ test('accepted strongly grounded referee actions cannot silently disappear', () 
   const candidates = hybridCandidateLedgerFromResult({ actions }, 'primary');
   const reconciled = reconcileAcceptedRefereeActions([actions[0]], actions, [], candidates, units);
   assert.equal(reconciled.eligibleCount, 3);
+  assert.deepEqual(reconciled.restored.map((row) => row.id), ['a2', 'a3']);
+  assert.deepEqual(reconciled.actions.map((row) => row.id), ['a1', 'a2', 'a3']);
+});
+
+test('final presentation dedupe cannot lose distinct lifecycle-approved deliverables', () => {
+  const matrix = { id: 'a1', action: 'Prepare and send the version matrix.', owners: ['Niamh Lynch'], evidenceIds: ['T0100'] };
+  const rationale = { id: 'a2', action: 'Prepare the software selection sample rationale.', owners: ['Niamh Lynch'], evidenceIds: ['T0174'] };
+  const attestation = { id: 'a3', action: 'Finish the revised guidance and return the attestation.', owners: ['Niamh Lynch'], evidenceIds: ['T0186'] };
+  const reconciled = reconcileFinalApprovedActions([matrix], [matrix, rationale, attestation]);
   assert.deepEqual(reconciled.restored.map((row) => row.id), ['a2', 'a3']);
   assert.deepEqual(reconciled.actions.map((row) => row.id), ['a1', 'a2', 'a3']);
 });

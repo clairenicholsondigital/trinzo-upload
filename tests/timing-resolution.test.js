@@ -19,6 +19,13 @@ test('relative timing resolves from the meeting date', () => {
   assert.equal(relativeExactDate('before the next meeting; the seventh', TUESDAY), '2026-04-07', 'earlier day of month means next month');
 });
 
+test('an explicit day outranks an introductory weekday', () => {
+  assert.equal(relativeExactDate('Tuesday the thirteenth, three pm', '2026-10-05'), '2026-10-13');
+  assert.equal(relativeExactDate('Tuesday 3rd November at noon', '2026-10-16'), '2026-11-03');
+  assert.equal(relativeExactDate('Friday the sixth of November', '2026-10-16'), '2026-11-06');
+  assert.equal(relativeExactDate('Tuesday', '2026-10-05'), '2026-10-06', 'a bare weekday remains relative');
+});
+
 test('things that are not dates stay unresolved', () => {
   assert.equal(relativeExactDate('the first batch', TUESDAY), '');
   assert.equal(relativeExactDate('a four-week pilot', TUESDAY), '');
@@ -78,10 +85,9 @@ test('a spelled-out ordinal mid-sentence, a duration or a month-named date is no
   assert.equal(relativeExactDate('on site on the 20th for five days', TUESDAY), '2026-03-20');
   assert.equal(relativeExactDate('for five days', TUESDAY), '');
   assert.equal(relativeExactDate('about two days of test time', TUESDAY), '');
-  // A spoken day with its month IS dated here: statedCalendarDate only reads
-  // the numeric forms ("the 10th of July"), so nothing else would date it.
+  // Explicit numeric and spoken dates are both authoritative here.
   assert.equal(relativeExactDate('the seventh of July', TUESDAY), '2026-07-07');
-  assert.equal(relativeExactDate('the 10th of July', TUESDAY), '');
+  assert.equal(relativeExactDate('the 10th of July', TUESDAY), '2026-07-10');
   assert.equal(relativeExactDate('by the tenth', TUESDAY), '2026-03-10');
 });
 
@@ -94,8 +100,7 @@ test('a span that counts from a condition has no fixed date', () => {
 test('a spoken day with its month becomes a date', () => {
   const { relativeExactDate } = require('../utils/meetingMinutesAgentV2');
   assert.equal(relativeExactDate('for tenth of July', '2026-06-24'), '2026-07-10');
-  // Numeric forms are dated by statedCalendarDate, not here.
-  assert.equal(relativeExactDate('the 10th of July', '2026-06-24'), '');
+  assert.equal(relativeExactDate('the 10th of July', '2026-06-24'), '2026-07-10');
   assert.equal(relativeExactDate('the seventeenth of March', '2026-06-24'), '2027-03-17');
   assert.equal(relativeExactDate('the thirty-second of July', '2026-06-24'), '');
 });

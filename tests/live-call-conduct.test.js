@@ -18,6 +18,8 @@ test('the chair running the call is meeting admin, whole or in pieces', () => {
   assert.equal(V.isLiveCallConduct('Let me just share my screen.'), true);
   assert.equal(V.isLiveCallConduct('We\'ll wait for Priya to join and then make a start.'), true);
   assert.equal(V.isMeetingAdminAction('give it thirty seconds for Dermot and then'), true);
+  assert.equal(V.isMeetingAdminAction('Put away the PDF copy of the tracker from Friday.'), true);
+  assert.equal(V.isMeetingAdminAction('Close the browser tab for now.'), true);
 });
 
 test('a turn that runs the call and still promises something keeps the promise', () => {
@@ -32,7 +34,8 @@ test('planned work that mentions recordings, mutes, cameras and minutes is not c
     'Drop and rejoin the meeting as an attendee with camera and mic off to simulate a participant experience.',
     'Confirm how the alarm LED behaves when the mute button is pressed.',
     'Keep the personal introduction to thirty seconds and answers to approximately thirty seconds during Q&A.',
-    'Give the supplier two weeks to respond before escalating.'
+    'Give the supplier two weeks to respond before escalating.',
+    'Close the quality file after approval.'
   ]) {
     assert.equal(V.isLiveCallConduct(action), false, action);
     assert.equal(V.isMeetingAdminAction(action), false, action);

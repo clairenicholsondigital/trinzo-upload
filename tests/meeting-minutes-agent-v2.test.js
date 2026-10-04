@@ -494,6 +494,17 @@ test('an availability constraint does not reject the planning commitment it expl
   assert.ok(candidate.cueKinds.includes('acceptance'));
 });
 
+test('an affirmative action is rejected when the same object is explicitly prohibited', () => {
+  assert.equal(actionEvidenceDisposition(
+    'Arrange Niamh Lynch’s airport transfer.',
+    'Leave the transfer unconfirmed. Today we are not choosing or booking a transfer. Neither option is authorised as an extra booking.'
+  ), 'rejected');
+  assert.equal(actionEvidenceDisposition(
+    'Send the ticket reference today.',
+    "Please don't send two different addresses. I will send the ticket reference today."
+  ), 'committed', 'a prohibition concerning a different object does not veto the commitment');
+});
+
 test('long availability evidence cannot cause pathological action-classifier backtracking', () => {
   const filler = 'The product classification and standards context were reviewed in detail. '.repeat(120);
   const evidence = `Morgan won't be available next week. ${filler} Alex agreed to provide the classifications and standards pack.`;

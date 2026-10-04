@@ -174,6 +174,8 @@ test('statedCalendarDate reads day and month wording relative to the meeting', (
   assert.equal(statedCalendarDate('by 17th June', '2026-06-22'), '2026-06-17');
   assert.equal(statedCalendarDate('ideally before July 17th', '2026-06-22'), '2026-07-17');
   assert.equal(statedCalendarDate('by 10 January', '2026-12-05'), '2027-01-10');
+  assert.equal(statedCalendarDate('Tuesday the third of November at noon', '2026-10-16'), '2026-11-03');
+  assert.equal(statedCalendarDate('Friday the sixth of November', '2026-10-16'), '2026-11-06');
   assert.equal(statedCalendarDate('by the 17th', '2026-06-22'), '');
   assert.equal(statedCalendarDate('may be done soon', '2026-06-22'), '');
 });
