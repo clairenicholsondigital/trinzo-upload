@@ -583,6 +583,17 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.equal(await page.locator('#omittedDetailsPanel [data-promote-supporting]').textContent(), 'Add to minutes');
     await page.click('#omittedDetailsPanel > .omitted-details-summary');
     await page.click('#omittedDetailsPanel .evidence-toggle');
+    // Opening the nested disclosure can coincide with the autosave re-render
+    // above. Measure only after the replacement node has completed layout.
+    await page.waitForFunction(() => {
+      const detail = document.querySelector('#omittedDetailsPanel .omitted-detail');
+      if (!detail) return false;
+      const copy = detail.querySelector('.omitted-detail-copy')?.getBoundingClientRect();
+      const disclosure = detail.querySelector('.omitted-detail-actions>details')?.getBoundingClientRect();
+      const outer = detail.getBoundingClientRect();
+      return Boolean(copy && disclosure && outer.width
+        && copy.width > outer.width * 0.9 && disclosure.width > outer.width * 0.9);
+    });
     const desktopOmittedLayout = await page.locator('#omittedDetailsPanel .omitted-detail').evaluate((detail) => {
       const copy = detail.querySelector('.omitted-detail-copy').getBoundingClientRect();
       const button = detail.querySelector('[data-promote-supporting]').getBoundingClientRect();
@@ -1412,13 +1423,16 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
     await page.click('#addDiscussion');
     assert.equal(await page.locator('#staleNotice').isHidden(), true, 'a blank topic is not a material edit');
     await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
-    await page.click('[data-delete-topic="1"]');
+    // Autosave can replace the card between Playwright's stability probe and
+    // the click. Dispatch on the current node, as a user click would, instead
+    // of retrying a detached copy for the whole default timeout.
+    await page.evaluate(() => document.querySelector('[data-delete-topic="1"]')?.click());
     assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
     assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
     // Deleting a topic that carries real content still is.
     page.once('dialog', (dialog) => dialog.accept());
     await page.click('#discussionList .discussion-card:first-child .topic-menu>summary');
-    await page.click('[data-delete-topic="0"]');
+    await page.evaluate(() => document.querySelector('[data-delete-topic="0"]')?.click());
     assert.equal(await page.locator('#staleNotice').isVisible(), true);
     assert.match(await page.textContent('#staleStages'), /actions/i);
     assert.deepEqual(errors, []);
@@ -1750,6 +1764,13 @@ test('final minutes edit source records in place and the finishing bar remains a
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Meeting sentence edited');
     await page.click('#finalDocument [data-final-save]');
     await saved;
+    // Playwright sees the network response before the page's promise handler
+    // has adopted and re-rendered it. Wait for that client-side commit before
+    // starting another final-document edit, otherwise the next save can read
+    // the previous rendered value on a busy test host.
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved'
+      && /The final report is ready to circulate/i.test(document.getElementById('finalDocument')?.textContent || ''),
+    null, { timeout: 60000 });
 
     await page.locator('#finalDocument [data-kind="action"][data-field="action"]').first().click();
     const actionEditor = page.locator('#finalDocument tr.final-editor-row [data-final-editor]');
@@ -1790,6 +1811,9 @@ test('final minutes edit source records in place and the finishing bar remains a
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Action owners edited');
     await page.click('#finalDocument [data-final-save]');
     await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved'
+      && /Alex Reed, Sam Okoro/i.test(document.getElementById('finalDocument')?.textContent || ''),
+    null, { timeout: 60000 });
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').first().click();
@@ -1805,6 +1829,9 @@ test('final minutes edit source records in place and the finishing bar remains a
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Action timing edited');
     await page.click('#finalDocument [data-final-save]');
     await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved'
+      && /18 Sept 2026/i.test(document.getElementById('finalDocument')?.textContent || ''),
+    null, { timeout: 60000 });
 
     let stored = await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft);
     assert.equal(stored.discussion[0].points[0].text, 'The final report is ready to circulate.');
@@ -1851,7 +1878,7 @@ test('save and generation panels always show the same leave-safety state', { tim
     await page.click('[data-step="2"]');
     await page.click('#addDiscussion');
     await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
-    await page.click('[data-delete-topic="1"]');
+    await page.evaluate(() => document.querySelector('[data-delete-topic="1"]')?.click());
     const messages = await page.evaluate(() => ({
       save: document.getElementById('saveStatus').textContent,
       generation: document.getElementById('generationLeaveMessage')
@@ -2210,7 +2237,8 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(await page.locator('.export-menu-body').isVisible(), true);
     assert.match(await page.textContent('#saveMinutes'), /Save final minutes/i);
     const finalSave = page.waitForResponse((response) => response.request().method() === 'PATCH'
-      && response.url().endsWith('/api/meeting-minutes-agent/drafts/layout'));
+      && response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
+      && response.request().postDataJSON().status === 'complete');
     await page.click('#saveMinutes');
     const finalSaveResponse = await finalSave;
     assert.equal(finalSaveResponse.request().postDataJSON().status, 'complete');
@@ -2722,6 +2750,9 @@ test('choosing another transcript first saves the current draft and explains how
         && response.request().method() === 'PATCH');
     await page.click('#replaceTranscript');
     await saved;
+    // The response arrives just before the async click handler opens the
+    // confirmation dialog; wait for the user-visible result of that handler.
+    await page.locator('#newTranscriptDialog').waitFor({ state: 'visible' });
 
     assert.equal(await page.locator('#newTranscriptDialog').isVisible(), true);
     assert.equal(await page.textContent('#newTranscriptTitle'), 'Choose another transcript?');
