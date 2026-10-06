@@ -14,6 +14,7 @@ const { editorialTopicLabel, isPublishableTopicLabel, isStructuralTopicLabel } =
 const { normaliseDatePhrases } = require('../spokenForms');
 const { normalisePublishedParticipantReference } = require('../entityNormalization');
 const { SHIFT_MARKER } = require('./discourseSegments');
+const { isReviewerAuthored } = require('./state');
 const {
   isPersonalAside,
   isPeripheralAside,
@@ -109,6 +110,43 @@ function cloneTopic(topic) {
     decisions: (topic?.decisions || []).map(cloneRecord),
     openQuestions: (topic?.openQuestions || []).map(cloneRecord)
   };
+}
+
+// A model can turn chairing mechanics into polished-looking content.  For
+// example, "Can I raise the shed?" / "Go on" became "Ken was invited to
+// raise the issue concerning the communal shed."  The prose alone is a risky
+// deletion signal because "raised a safety concern" is useful content.  The
+// cited turns make the distinction safe: remove a generated row only when its
+// wording is an introduction/handover AND every cited turn is merely an
+// introduction, permission, acknowledgement or transition.
+const FLOOR_MANAGEMENT_SUMMARY = /\b(?:was\s+(?:invited|asked|allowed|given\s+the\s+floor)\s+to|asked\s+(?:if|whether)\s+(?:they|he|she)\s+could|requested\s+permission\s+to)\s+(?:raise|introduce|bring\s+up|discuss|mention|address)\b|\b(?:introduced|raised|brought\s+up)\s+(?:the\s+)?(?:next\s+)?(?:topic|agenda\s+item|subject)\b/i;
+const FLOOR_MANAGEMENT_TURN = [
+  /^(?:(?:okay|ok|right|so|and|then|now|oh)[,;:]?\s*)?(?:can|could|may)\s+(?:i|we)\s+(?:raise|bring\s+up|ask\s+about|move\s+(?:on\s+)?to)\b/i,
+  /^(?:(?:the|that)\s+)?[\p{L}][\p{L}'’ -]{1,80}[,;:]?\s+(?:go\s+on|please\s+continue)\b/iu,
+  /^(?:go\s+on|please\s+continue|carry\s+on|you\s+have\s+the\s+floor)[.!?]*$/i,
+  /^(?:shall|should|can|could)\s+we\s+(?:move\s+(?:on\s+)?to|turn\s+to)\b/i,
+  /^(?:moving|move|turning)\s+(?:on\s+)?to\b/i,
+  /^(?:(?:grand|great|fine|okay|ok|right|yes|yeah)[,; ]+)?(?:thanks?|thank\s+you)?[,.! ]*$/i
+];
+
+function isFloorManagementTurn(value) {
+  const wording = text(value, 500);
+  return Boolean(wording && FLOOR_MANAGEMENT_TURN.some((pattern) => pattern.test(wording)));
+}
+
+function removeFloorManagementRows(topics = [], sourceUnits = []) {
+  const index = unitIndex(sourceUnits);
+  return (Array.isArray(topics) ? topics : []).map(cloneTopic).map((topic) => {
+    if (reviewerTopic(topic)) return topic;
+    for (const kind of ROW_KINDS) {
+      topic[kind] = (topic[kind] || []).filter((record) => {
+        if (isReviewerAuthored(record) || !FLOOR_MANAGEMENT_SUMMARY.test(text(record?.text))) return true;
+        const cited = (record.evidenceIds || []).map((id) => index.byId.get(text(id, 30))).filter(Boolean);
+        return !cited.length || !cited.every((unit) => isFloorManagementTurn(unit?.text));
+      });
+    }
+    return topic;
+  }).filter((topic) => reviewerTopic(topic) || topicRows(topic).length);
 }
 
 function topicRows(topic) {
@@ -418,13 +456,14 @@ function topicSignature(topic) {
   return [text(topic.topic, 120), ...rows].filter(Boolean).join('. ');
 }
 
-const GENERIC_LABEL_TOKEN = new Set(['status', 'update', 'updates', 'plan', 'plans', 'planning', 'review', 'reviews', 'discussion', 'order', 'orders', 'meeting', 'item', 'items', 'point', 'points', 'next', 'steps', 'general', 'overview', 'progress', 'summary', 'recap', 'topic', 'topics', 'issue', 'issues', 'query', 'queries', 'inquiry', 'confirmation', 'commitment', 'requirements', 'timeline', 'timelines', 'management', 'process', 'document', 'documents', 'documentation', 'client', 'regulatory', 'site']);
+const GENERIC_LABEL_TOKEN = new Set(['status', 'update', 'updates', 'plan', 'plans', 'planning', 'review', 'reviews', 'discussion', 'order', 'orders', 'meeting', 'item', 'items', 'point', 'points', 'next', 'steps', 'general', 'overview', 'progress', 'summary', 'recap', 'topic', 'topics', 'issue', 'issues', 'query', 'queries', 'inquiry', 'confirmation', 'commitment', 'requirements', 'timeline', 'timelines', 'management', 'process', 'document', 'documents', 'documentation', 'client', 'regulatory', 'site', 'audit']);
+const GENERIC_LABEL_STEM = new Set([...GENERIC_LABEL_TOKEN].map(stem));
 
 function distinctiveLabelTokens(label) {
   return new Set((text(label).match(/[A-Za-z][A-Za-z0-9'’-]+/g) || [])
     .filter((token) => (token.length >= 3 || /^[A-Z]{2,}$/.test(token)))
     .map((token) => stem(token.toLowerCase()))
-    .filter((token) => !STOP.has(token) && !GENERIC_LABEL_TOKEN.has(token)));
+    .filter((token) => !STOP.has(token) && !GENERIC_LABEL_STEM.has(token)));
 }
 
 function shareDistinctiveToken(left, right) {
@@ -753,6 +792,131 @@ function foldAdjacentGenericTopics(topics, index, maximumRows = 10) {
   return result;
 }
 
+function topicEvidenceGap(left, right, index) {
+  const a = topicRows(left).flatMap(({ record }) => recordSequences(record, index)).filter(Number.isFinite);
+  const b = topicRows(right).flatMap(({ record }) => recordSequences(record, index)).filter(Number.isFinite);
+  if (!a.length || !b.length) return Number.POSITIVE_INFINITY;
+  return Math.min(...a.flatMap((leftSequence) => b.map((rightSequence) => Math.abs(leftSequence - rightSequence))));
+}
+
+function completeTopicSignature(topic) {
+  return [text(topic?.topic, 180), ...topicRows(topic).slice(0, 8).map(({ record }) => text(record?.text, 260))]
+    .filter(Boolean).join('. ');
+}
+
+function sharedDistinctiveCount(left, right) {
+  const a = distinctiveLabelTokens(left); const b = distinctiveLabelTokens(right);
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared;
+}
+
+function sameOrNeighbouringPassage(left, right, positionById, segments, index, maximumGap = 4) {
+  const leftSegment = dominantTopicSegment(left, positionById, segments);
+  const rightSegment = dominantTopicSegment(right, positionById, segments);
+  const gap = topicEvidenceGap(left, right, index);
+  return Number.isFinite(gap) && gap <= maximumGap
+    && (leftSegment < 0 || rightSegment < 0 || Math.abs(leftSegment - rightSegment) <= 1);
+}
+
+// One-line cards are often a fragment of the neighbouring subject.  Absorb a
+// singleton only when its body and heading share a distinctive subject with a
+// larger generated card in the same passage, and that destination is clearly
+// better than every alternative.  This deliberately leaves ambiguous
+// singletons alone instead of satisfying a topic-count target.
+function absorbRelatedSingletonTopics(topics, index, positionById, segments, maximumRows = 8) {
+  const result = [...topics];
+  for (let from = result.length - 1; from >= 0; from -= 1) {
+    const source = result[from];
+    if (reviewerTopic(source) || topicRows(source).length !== 1) continue;
+    const sourceSignature = completeTopicSignature(source);
+    const candidates = result.map((candidate, candidateIndex) => {
+      if (candidateIndex === from || reviewerTopic(candidate) || !topicRows(candidate).length
+        || topicRows(candidate).length + 1 > maximumRows) return null;
+      const candidateSignature = completeTopicSignature(candidate);
+      const shared = sharedDistinctiveCount(sourceSignature, candidateSignature);
+      const headingShared = sharedDistinctiveCount(source?.topic, candidate?.topic);
+      const bodyHeadingShared = sharedDistinctiveCount(topicRows(source)[0]?.record?.text, candidate?.topic);
+      if (!shared || (!headingShared && bodyHeadingShared < 2)) return null;
+      const gap = topicEvidenceGap(source, candidate, index);
+      const nearbyPassage = sameOrNeighbouringPassage(source, candidate, positionById, segments, index, 5);
+      if (!nearbyPassage && !(gap <= 12 && (headingShared >= 2 || shared >= 3))) return null;
+      const lexical = Math.max(overlap(sourceSignature, candidateSignature), overlap(sourceSignature, candidate?.topic));
+      if (topicRows(candidate).length === 1 && (!headingShared || lexical < 0.42 || gap > 4)) return null;
+      return { index: candidateIndex, score: (headingShared * 2) + shared + lexical + (1 / (gap + 1)), gap };
+    }).filter(Boolean).sort((left, right) => right.score - left.score || left.gap - right.gap);
+    if (!candidates.length || (candidates[1] && candidates[0].score - candidates[1].score < 0.2)) continue;
+    mergeInto(result[candidates[0].index], source);
+    result.splice(from, 1);
+  }
+  return result;
+}
+
+// A decision sometimes arrives as its own one-line card even though a nearby
+// generated card contains the discussion of exactly that subject.  Join it
+// only on a distinctive shared subject, close evidence and an unambiguous best
+// destination.  The decision remains typed as a decision.
+function mergeDecisionOnlyTopics(topics, index, positionById, segments, maximumRows = 10) {
+  const result = [...topics];
+  for (let from = result.length - 1; from >= 0; from -= 1) {
+    const source = result[from];
+    const rows = topicRows(source);
+    if (reviewerTopic(source) || !source.decisions?.length || source.points?.length
+      || source.openQuestions?.length || rows.length > 2) continue;
+    const sourceSignature = completeTopicSignature(source);
+    const candidates = result.map((candidate, candidateIndex) => {
+      if (candidateIndex === from || reviewerTopic(candidate) || !topicRows(candidate).length
+        || topicRows(candidate).length + rows.length > maximumRows) return null;
+      const candidateSignature = completeTopicSignature(candidate);
+      const shared = sharedDistinctiveCount(sourceSignature, candidateSignature);
+      const headingShared = sharedDistinctiveCount(source?.topic, candidate?.topic);
+      const bodyHeadingShared = Math.max(...rows.map(({ record }) => sharedDistinctiveCount(record?.text, candidate?.topic)));
+      if (!shared || (!headingShared && bodyHeadingShared < 2)) return null;
+      const gap = topicEvidenceGap(source, candidate, index);
+      const nearbyPassage = sameOrNeighbouringPassage(source, candidate, positionById, segments, index, 4);
+      if (!nearbyPassage && !(gap <= 12 && (headingShared >= 2 || shared >= 3))) return null;
+      const lexical = Math.max(overlap(sourceSignature, candidateSignature), overlap(sourceSignature, candidate?.topic));
+      return { index: candidateIndex, score: (headingShared * 2) + shared + lexical + (1 / (gap + 1)), gap };
+    }).filter(Boolean).sort((left, right) => right.score - left.score || left.gap - right.gap);
+    if (!candidates.length || (candidates[1] && candidates[0].score - candidates[1].score < 0.2)) continue;
+    mergeInto(result[candidates[0].index], source);
+    result.splice(from, 1);
+  }
+  return result;
+}
+
+// Re-home only an obvious row-level outlier: the row must fit its current
+// generated heading poorly, fit one existing nearby destination strongly, and
+// beat the runner-up by a wide margin.  No card is created and no reviewer
+// content is touched.
+function rehomeObviousOutlierRows(topics, index, positionById, segments, maximumRows = 10) {
+  const result = [...topics];
+  for (let from = 0; from < result.length; from += 1) {
+    const source = result[from];
+    if (reviewerTopic(source) || topicRows(source).length < 3) continue;
+    for (const kind of ROW_KINDS) {
+      for (const record of [...(source[kind] || [])]) {
+        if (isReviewerAuthored(record) || overlap(record?.text, source?.topic) > 0.16) continue;
+        const candidates = result.map((candidate, candidateIndex) => {
+          if (candidateIndex === from || reviewerTopic(candidate) || topicRows(candidate).length < 2
+            || topicRows(candidate).length >= maximumRows
+            || !sameOrNeighbouringPassage({ points: [record], decisions: [], openQuestions: [] }, candidate,
+              positionById, segments, index, 3)) return null;
+          const headingFit = overlap(record?.text, candidate?.topic);
+          const signatureFit = overlap(record?.text, completeTopicSignature(candidate));
+          const fit = Math.max(headingFit, signatureFit);
+          if (headingFit < 0.34 || fit < 0.45 || !shareDistinctiveToken(record?.text, candidate?.topic)) return null;
+          return { index: candidateIndex, score: fit };
+        }).filter(Boolean).sort((left, right) => right.score - left.score);
+        if (!candidates.length || (candidates[1] && candidates[0].score - candidates[1].score < 0.2)) continue;
+        source[kind] = source[kind].filter((item) => item !== record);
+        result[candidates[0].index][kind].push(record);
+      }
+    }
+  }
+  return result.filter((topic) => reviewerTopic(topic) || topicRows(topic).length);
+}
+
 // Balance generated sections without imposing a topic quota. Hard chairing
 // transitions can split an oversized mixed card or re-home a small misplaced
 // tail. Small cards merge only when they share a distinctive subject inside
@@ -761,7 +925,7 @@ function foldAdjacentGenericTopics(topics, index, maximumRows = 10) {
 function balanceDiscussionTopics(topics = [], sourceUnits = [], options = {}) {
   const units = Array.isArray(sourceUnits) ? sourceUnits : [];
   const segments = hardTopicSegments(units);
-  if (segments.length < 2) return (Array.isArray(topics) ? topics : []).map(cloneTopic);
+  if (!segments.length) return (Array.isArray(topics) ? topics : []).map(cloneTopic);
   const positionById = new Map(units.map((unit, position) => [text(unit?.id, 30), position]));
   const index = unitIndex(units);
   const oversized = Math.max(7, Number(options.oversizedRows || 7));
@@ -829,8 +993,19 @@ function balanceDiscussionTopics(topics = [], sourceUnits = [], options = {}) {
     }
   }
   result = result.filter((topic) => topicRows(topic).length || reviewerTopic(topic));
-  result = mergeRelatedSmallTopics(result, index, positionById, segments, Number(options.maximumMergedRows || 8));
-  result = foldAdjacentGenericTopics(result, index, Number(options.maximumGenericMergeRows || 10));
+  // Preserve the older passage boundary for the broader heading-based rules.
+  // The new row/body-based corrections below are safe in a single continuous
+  // passage; the older generic mergers are not, because every topic would
+  // otherwise appear to occupy the same segment.
+  if (segments.length >= 2) {
+    result = mergeRelatedSmallTopics(result, index, positionById, segments, Number(options.maximumMergedRows || 8));
+  }
+  result = mergeDecisionOnlyTopics(result, index, positionById, segments, Number(options.maximumDecisionMergeRows || 10));
+  result = absorbRelatedSingletonTopics(result, index, positionById, segments, Number(options.maximumSingletonMergeRows || 10));
+  result = rehomeObviousOutlierRows(result, index, positionById, segments, Number(options.maximumOutlierDestinationRows || 10));
+  if (segments.length >= 2) {
+    result = foldAdjacentGenericTopics(result, index, Number(options.maximumGenericMergeRows || 10));
+  }
   return sortByEvidence(result, index);
 }
 
@@ -1243,7 +1418,15 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const crossTopicNearby = !sameTopic && adjacentTopics && evidenceGap <= 2
         && compatiblePredicates && semantic >= 0.92 && lexical >= 0.55 && containment >= 0.8;
       const evidenceContainment = compatiblePredicates && sharedEvidence && containment >= 0.84;
-      if (!exact && !evidenceContainment && !sameTopicShared && !sameTopicNearby
+      // Equivalent questions are particularly prone to surviving because one
+      // extraction phrases them as "how" and another as "what".  Numbers,
+      // polarity and uncertainty have already been checked above.  Require
+      // the same question type, close provenance and a strong lexical core;
+      // distinct questions sharing a broad subject remain separate.
+      const equivalentQuestion = left.kind === 'openQuestions' && compatiblePredicates
+        && ((sharedEvidence && lexical >= 0.62)
+          || (sameTopic && evidenceGap <= 2 && lexical >= 0.72));
+      if (!exact && !evidenceContainment && !equivalentQuestion && !sameTopicShared && !sameTopicNearby
         && !crossTopicShared && !crossTopicNearby) continue;
       const merged = mergeRestatementRecords(left.record, right.record);
       left.record = merged;
@@ -1281,7 +1464,8 @@ async function prepareRestatementVectors(topics = [], options = {}) {
 }
 
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
-  let topics = removeNonContentAsides(discussion);
+  let topics = removeFloorManagementRows(discussion, options.sourceUnits || []);
+  topics = removeNonContentAsides(topics);
   topics = removeShortTopicEchoes(topics, options.sourceUnits || []);
   const people = [...new Set([
     ...(Array.isArray(options.people) ? options.people : []),
@@ -1451,6 +1635,7 @@ module.exports = {
   partialOverlapCandidates,
   consolidatePartialOverlapRows,
   removeShortTopicEchoes,
+  removeFloorManagementRows,
   balanceDiscussionTopics,
   finaliseDiscussionForPublication,
   unitIndex

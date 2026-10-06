@@ -10,7 +10,8 @@ const {
   removePersonalAsides, normaliseDecisionTopicHeadings,
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
-  consolidatePartialOverlapRows, removeShortTopicEchoes, balanceDiscussionTopics, finaliseDiscussionForPublication
+  consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
+  balanceDiscussionTopics, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -124,6 +125,23 @@ test('short transcript topic echoes are removed without suppressing concise fact
   }], localUnits);
   assert.deepEqual(cleaned[0].points.map((row) => row.id), ['fact', 'manual']);
   assert.deepEqual(cleaned[0].openQuestions.map((row) => row.id), ['question']);
+});
+
+test('generated floor-management expansions are removed using their evidence, while substantive and reviewer text remain', () => {
+  const localUnits = [
+    { id: 'F01', speaker: 'Wesley', text: 'Grand, thank you.' },
+    { id: 'F02', speaker: 'Ken', text: 'Can I raise the shed?' },
+    { id: 'F03', speaker: 'Barbara', text: 'The communal shed, go on.' },
+    { id: 'F04', speaker: 'Ken', text: 'The shed lock was forced last night.' }
+  ];
+  const cleaned = removeFloorManagementRows([{
+    id: 'shed', topic: 'Shed security', decisions: [], openQuestions: [], points: [
+      { id: 'handover', text: 'Ken was invited to raise the issue concerning the communal shed.', evidenceIds: ['F01', 'F02', 'F03'] },
+      { id: 'fact', text: 'Ken raised a concern that the shed lock was forced.', evidenceIds: ['F04'] },
+      { id: 'manual', text: 'Ken was invited to raise the shed issue.', evidenceIds: ['F01', 'F02'], reviewerAuthored: true }
+    ]
+  }], localUnits);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['fact', 'manual']);
 });
 
 test('routine meeting technology checks are filtered without suppressing substantive controls', () => {
@@ -682,6 +700,77 @@ test('topic balancing does not merge distinct small topics on generic label word
     ], decisions: [], openQuestions: [] }
   ], localUnits);
   assert.deepEqual(balanced.map((topic) => topic.id), ['registration', 'ifu']);
+});
+
+test('topic balancing absorbs only an unambiguous same-subject singleton in the same passage', () => {
+  const localUnits = [
+    { id: 'P01', text: 'Residents are using visitor parking spaces.' },
+    { id: 'P02', text: 'A permit scheme would require enforcement.' },
+    { id: 'P03', text: 'Visitor permits could not cover every household.' }
+  ];
+  const balanced = balanceDiscussionTopics([
+    { id: 'parking-main', topic: 'Visitor parking permits and enforcement', points: [
+      { id: 'p2', text: 'A permit scheme would require active enforcement.', evidenceIds: ['P02'] },
+      { id: 'p3', text: 'Visitor permits could not cover every household.', evidenceIds: ['P03'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'parking-single', topic: 'Visitor parking occupancy issues', points: [
+      { id: 'p1', text: 'Residents are using visitor parking spaces.', evidenceIds: ['P01'] }
+    ], decisions: [], openQuestions: [] }
+  ], localUnits);
+  assert.equal(balanced.length, 1);
+  assert.deepEqual(balanced[0].points.map((row) => row.id), ['p1', 'p2', 'p3']);
+});
+
+test('topic balancing joins a decision-only fragment to its nearby subject card', () => {
+  const localUnits = [
+    { id: 'A01', text: 'The shed alarm costs thirty pounds.' },
+    { id: 'A02', text: 'It can be fitted beside the new lock.' },
+    { id: 'A03', text: 'Agreed, approve the shed alarm purchase.' }
+  ];
+  const balanced = balanceDiscussionTopics([
+    { id: 'alarm-main', topic: 'Shed alarm installation', points: [
+      { id: 'a1', text: 'The shed alarm costs thirty pounds.', evidenceIds: ['A01'] },
+      { id: 'a2', text: 'The alarm can be fitted beside the new lock.', evidenceIds: ['A02'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'alarm-decision', topic: 'Shed alarm purchase approval', points: [], decisions: [
+      { id: 'a3', text: 'The shed alarm purchase was approved.', evidenceIds: ['A03'] }
+    ], openQuestions: [] }
+  ], localUnits);
+  assert.equal(balanced.length, 1);
+  assert.deepEqual(balanced[0].decisions.map((row) => row.id), ['a3']);
+});
+
+test('topic balancing re-homes only a strongly matched obvious outlier row', () => {
+  const localUnits = [
+    { id: 'O01', text: 'The office has six visitor parking spaces.' },
+    { id: 'O02', text: 'Two spaces will be repainted.' },
+    { id: 'O03', text: 'The supplier audit report remains outstanding.' },
+    { id: 'O04', text: 'Supplier audit evidence is due on Friday.' },
+    { id: 'O05', text: 'The supplier audit evidence must include test records.' }
+  ];
+  const balanced = balanceDiscussionTopics([
+    { id: 'parking', topic: 'Office parking arrangements', points: [
+      { id: 'o1', text: 'The office has six visitor parking spaces.', evidenceIds: ['O01'] },
+      { id: 'o2', text: 'Two parking spaces will be repainted.', evidenceIds: ['O02'] },
+      { id: 'o3', text: 'The supplier audit report remains outstanding.', evidenceIds: ['O03'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'audit', topic: 'Supplier audit evidence', points: [
+      { id: 'o4', text: 'Supplier audit evidence is due on Friday.', evidenceIds: ['O04'] },
+      { id: 'o5', text: 'The supplier audit evidence must include test records.', evidenceIds: ['O05'] }
+    ], decisions: [], openQuestions: [] }
+  ], localUnits);
+  assert.deepEqual(balanced.find((topic) => topic.id === 'parking').points.map((row) => row.id), ['o1', 'o2']);
+  assert.deepEqual(balanced.find((topic) => topic.id === 'audit').points.map((row) => row.id), ['o3', 'o4', 'o5']);
+});
+
+test('strongly equivalent open questions with shared evidence collapse without losing provenance', async () => {
+  const discussion = [{ id: 'risk', topic: 'Risk probability rationale', points: [], decisions: [], openQuestions: [
+    { id: 'q1', text: 'How are the probability values in the risk table justified?', evidenceIds: ['Q01'] },
+    { id: 'q2', text: 'How are probability values in the risk table justified?', evidenceIds: ['Q01', 'Q02'] }
+  ] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, { sourceUnits: [], encode: () => null });
+  assert.equal(cleaned[0].openQuestions.length, 1);
+  assert.deepEqual(cleaned[0].openQuestions[0].evidenceIds, ['Q01', 'Q02']);
 });
 
 test('an explicit hard topic cap remains available to legacy callers', async () => {

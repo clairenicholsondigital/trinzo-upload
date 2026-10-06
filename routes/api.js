@@ -11883,20 +11883,32 @@ function promoteAllDiscussionDetails(discussion = []) {
 }
 
 function discussionStructureDiagnostics(discussion = [], options = {}) {
-  const oversizedPointCount = Math.max(6, Number(options.oversizedPointCount || 10));
+  const oversizedPointCount = Math.max(6, Number(options.oversizedPointCount || 8));
   const singletonSimilarity = Math.min(1, Math.max(0.4, Number(options.singletonSimilarity || 0.55)));
-  const topics = (Array.isArray(discussion) ? discussion : []).map((topic, index) => ({
-    index,
-    topic: meetingMinutesAgentText(topic?.topic || 'Discussion', 240),
-    pointCount: flattenHybridDiscussion([topic]).length
-  }));
-  const oversizedSections = topics.filter((topic) => topic.pointCount > oversizedPointCount);
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic, index) => {
+    const rows = flattenHybridDiscussion([topic]);
+    return {
+      index,
+      topic: meetingMinutesAgentText(topic?.topic || 'Discussion', 240),
+      body: rows.map((item) => meetingMinutesAgentText(item.record?.text, 500)).filter(Boolean).join(' '),
+      pointCount: rows.length
+    };
+  });
+  const oversizedSections = topics.filter((topic) => topic.pointCount >= oversizedPointCount)
+    .map(({ body, ...topic }) => topic);
   const suspiciousSingletons = [];
   for (const topic of topics.filter((item) => item.pointCount === 1)) {
     const nearest = topics.filter((candidate) => candidate.index !== topic.index)
       .map((candidate) => ({
         topic: candidate.topic,
-        similarity: hybridTokenOverlap(topic.topic, candidate.topic)
+        // Heading-only comparison missed fragments whose generated title was
+        // unhelpful.  Compare the singleton proposition with the neighbour's
+        // heading and body as well; diagnostics remain read-only.
+        similarity: Math.max(
+          hybridTokenOverlap(topic.topic, candidate.topic),
+          hybridTokenOverlap(topic.body, `${candidate.topic} ${candidate.body}`),
+          hybridTokenOverlap(`${topic.topic} ${topic.body}`, `${candidate.topic} ${candidate.body}`)
+        )
       }))
       .sort((left, right) => right.similarity - left.similarity)[0];
     if (nearest && nearest.similarity >= singletonSimilarity) {

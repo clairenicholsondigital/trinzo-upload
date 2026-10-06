@@ -207,6 +207,26 @@ test('discussion structure diagnostics report oversized and closely related sing
   assert.equal(discussion[0].points.length, 11, 'diagnostics are read-only');
 });
 
+test('discussion structure diagnostics use singleton body content and flag sections from eight rows', () => {
+  const discussion = [
+    {
+      topic: 'Delivery readiness', decisions: [], openQuestions: [],
+      points: Array.from({ length: 8 }, (_, index) => ({
+        id: `delivery-${index}`, text: `Supplier audit evidence item ${index + 1} remains under review.`, evidenceIds: [`D${index}`]
+      }))
+    },
+    {
+      topic: 'Outstanding item', decisions: [], openQuestions: [],
+      points: [{ id: 'single-audit', text: 'The supplier audit evidence remains under review.', evidenceIds: ['D09'] }]
+    }
+  ];
+  const result = discussionStructureDiagnostics(discussion);
+  assert.equal(result.oversizedSections.length, 1);
+  assert.equal(result.oversizedSections[0].pointCount, 8);
+  assert.equal(result.suspiciousSingletons.length, 1);
+  assert.equal(result.suspiciousSingletons[0].possibleNeighbour, 'Delivery readiness');
+});
+
 test('the post-promotion organiser cannot put accepted details back into suggestions', async () => {
   const discussion = [{
     id: 'topic-1', topic: 'Delivery planning', decisions: [], openQuestions: [],
