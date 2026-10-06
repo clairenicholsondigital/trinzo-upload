@@ -59,6 +59,28 @@ test('complementary document handling stays separate for distant evidence', () =
   assert.equal(rows.length, 2);
 });
 
+test('same-origin document workflow variants merge without losing the update or hand-off', () => {
+  const rows = dedupeHybridActionRecords([
+    action('workflow-1', 'Document the control risks and proposed mitigations in the risk matrix and circulate the update to Dana Moss for review.', ['T0030', 'T0031', 'T0032', 'T0033']),
+    action('workflow-1', 'Update the risk plan and related documentation to reflect the selected access-control approach.', ['T0030', 'T0031', 'T0032', 'T0040'])
+  ]);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].action, /update the risk plan/i);
+  assert.match(rows[0].action, /proposed mitigations/i);
+  assert.match(rows[0].action, /circulate the update to Dana Moss/i);
+});
+
+test('same action id does not merge different owners or weakly related document work', () => {
+  assert.equal(dedupeHybridActionRecords([
+    action('workflow-1', 'Update the venue risk register.', ['T0030', 'T0031']),
+    action('workflow-1', 'Update the supplier audit report.', ['T0030', 'T0031'])
+  ]).length, 2);
+  assert.equal(dedupeHybridActionRecords([
+    action('workflow-1', 'Update the venue risk register.', ['T0030', 'T0031']),
+    action('workflow-1', 'Document the venue risk controls in the register.', ['T0030', 'T0031'], { owners: ['Lee Hart'] })
+  ]).length, 2);
+});
+
 test('a named request answered by that person committing is accepted work', () => {
   const { addressedRequestAcceptedAhead, actionCandidateInventory } = require('../utils/meetingMinutesAgentV2');
   const rows = [

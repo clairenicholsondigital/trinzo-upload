@@ -4941,7 +4941,39 @@ function monthHeardNear(month, units = [], evidenceIds = []) {
   return new RegExp(String.raw`\b(?:${month}|${short}\.?)(?![a-z])`).test(heard);
 }
 
-function stripUnstatedMonths(value = '', units = [], evidenceIds = []) {
+// A combined minute can cite the later half of its evidence while omitting the
+// earlier line which states its date. Before displaying "month to confirm",
+// recover only an exact day-and-month which appears elsewhere in a strongly
+// matching transcript window. This never derives a month from the meeting date
+// and deliberately refuses weak/unrelated exact-date matches.
+function exactStatedDateEvidence(value = '', day = '', month = '', units = []) {
+  const dayNumber = String(day || '').match(/^\d{1,2}/)?.[0] || '';
+  const namedMonth = monthNameFor(month);
+  if (!dayNumber || !namedMonth || /(?:-|–|—|\bto\b|\band\b|\buntil\b|\bthrough\b|\bor\b)/i.test(String(day || ''))) return [];
+  const escapedMonth = namedMonth.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exactDate = new RegExp(
+    String.raw`\b(?:${dayNumber}(?:st|nd|rd|th)?\s+(?:of\s+)?${escapedMonth}|${escapedMonth}\s+(?:the\s+)?${dayNumber}(?:st|nd|rd|th)?)\b`,
+    'i'
+  );
+  const context = evidenceContextFor(units);
+  const claimAnchors = resolutionTokens(value).filter((token) => token !== dayNumber && token !== namedMonth);
+  if (claimAnchors.length < 2) return [];
+  let best = null;
+  for (let index = 0; index < context.rows.length; index += 1) {
+    if (!exactDate.test(String(context.rows[index].text || ''))) continue;
+    const start = Math.max(0, index - 3);
+    const end = Math.min(context.rows.length, index + 4);
+    const windowText = context.rows.slice(start, end).map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
+    const windowTokens = new Set(resolutionTokens(windowText));
+    const sharedAnchors = claimAnchors.filter((token) => windowTokens.has(token));
+    const support = evidenceSupportScore(value, windowText);
+    if (sharedAnchors.length < 2 || support < 0.38) continue;
+    if (!best || support > best.support) best = { id: context.rows[index].id, support };
+  }
+  return best ? [best.id] : [];
+}
+
+function stripUnstatedMonths(value = '', units = [], evidenceIds = [], recoveredEvidenceIds = []) {
   const removed = [];
   const evidence = evidenceWindowUnits(units, evidenceIds, 3, 3)
     .map((unit) => String(unit.text || ''))
@@ -4963,6 +4995,11 @@ function stripUnstatedMonths(value = '', units = [], evidenceIds = []) {
       // "the 14th may slip" is a verb, not May.
       if (!month || (month === 'may' && !/^may\b/i.test(match[monthIndex]))) return whole;
       if (monthHeardNear(month, units, evidenceIds)) return whole;
+      const recovered = exactStatedDateEvidence(value, match[dayIndex], month, units);
+      if (recovered.length) {
+        recoveredEvidenceIds.push(...recovered);
+        return whole;
+      }
       removed.push({ day: match[dayIndex], month });
       return `${match[dayIndex]} [month to confirm]`;
     });
@@ -4972,6 +5009,11 @@ function stripUnstatedMonths(value = '', units = [], evidenceIds = []) {
   result = result.replace(DAY_THEN_MONTH_LOOSE, (whole, day, token) => {
     const month = monthNameFor(token);
     if (!month || month === 'may' || monthHeardNear(month, units, evidenceIds)) return whole;
+    const recovered = exactStatedDateEvidence(value, day, month, units);
+    if (recovered.length) {
+      recoveredEvidenceIds.push(...recovered);
+      return whole;
+    }
     removed.push({ day, month });
     return `${day} [month to confirm]`;
   });
@@ -4989,14 +5031,34 @@ function groundUnstatedDiscussionMonths(discussion = [], units = []) {
     const next = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
       next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).map((record) => {
-        const own = stripUnstatedMonths(record?.text, units, record?.evidenceIds || []);
+        const recoveredEvidenceIds = [];
+        const own = stripUnstatedMonths(record?.text, units, record?.evidenceIds || [], recoveredEvidenceIds);
         const removed = [...own.removed];
         const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).map((detail) => {
-          const checked = stripUnstatedMonths(detail?.text, units, detail?.evidenceIds || record?.evidenceIds || []);
+          const recoveredDetailEvidenceIds = [];
+          const checked = stripUnstatedMonths(
+            detail?.text,
+            units,
+            detail?.evidenceIds || record?.evidenceIds || [],
+            recoveredDetailEvidenceIds
+          );
           removed.push(...checked.removed);
-          return checked.removed.length ? { ...detail, text: checked.text } : detail;
+          return checked.removed.length || recoveredDetailEvidenceIds.length
+            ? {
+                ...detail,
+                text: checked.text,
+                evidenceIds: [...new Set([...(detail?.evidenceIds || record?.evidenceIds || []), ...recoveredDetailEvidenceIds])].slice(0, 12)
+              }
+            : detail;
         });
-        if (!removed.length) return record;
+        if (!removed.length) {
+          if (!recoveredEvidenceIds.length) return record;
+          return {
+            ...record,
+            evidenceIds: [...new Set([...(record.evidenceIds || []), ...recoveredEvidenceIds])].slice(0, 12),
+            ...(Array.isArray(record?.supportingDetails) ? { supportingDetails } : {})
+          };
+        }
         const months = [...new Set(removed.map((item) => item.month[0].toUpperCase() + item.month.slice(1)))];
         const flag = normaliseFlag({
           kind: 'timing',
@@ -5008,6 +5070,7 @@ function groundUnstatedDiscussionMonths(discussion = [], units = []) {
         return {
           ...record,
           text: own.text,
+          evidenceIds: [...new Set([...(record.evidenceIds || []), ...recoveredEvidenceIds])].slice(0, 12),
           ...(Array.isArray(record?.supportingDetails) ? { supportingDetails } : {}),
           reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])]
         };

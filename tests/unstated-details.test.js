@@ -40,6 +40,40 @@ test('a month that was said, or implied by "next month", is kept', () => {
   assert.equal(stripUnstatedMonths('The 9th may slip.', units, ['T0001']).removed.length, 0, '"may" as a verb is not May');
 });
 
+test('an exact date omitted from the citations is recovered only from matching transcript context', () => {
+  const dateUnits = normaliseSourceUnits([
+    { id: 'T0200', speaker: 'Chair', text: 'The current devices must be entered in the registry.', classification: 'keep' },
+    { id: 'T0201', speaker: 'Chair', text: 'All existing devices need to be registered by the 28th of November.', classification: 'keep' },
+    ...filler('C', 8),
+    { id: 'T0210', speaker: 'Auditor', text: 'For an audit, a documented registry-entry plan is sufficient while preparation continues.', classification: 'keep' }
+  ]);
+  const discussion = [{
+    topic: 'Device registration',
+    points: [{
+      id: 'p-date',
+      text: 'Existing devices must be registered by 28th November; documented preparation is sufficient for an audit.',
+      evidenceIds: ['T0210'],
+      supportingDetails: []
+    }],
+    decisions: [],
+    openQuestions: []
+  }];
+  const result = groundUnstatedDiscussionMonths(discussion, dateUnits);
+  assert.equal(result.discussion[0].points[0].text, discussion[0].points[0].text);
+  assert.deepEqual(result.discussion[0].points[0].evidenceIds, ['T0210', 'T0201']);
+  assert.equal(result.flags.length, 0);
+
+  const unrelated = normaliseSourceUnits([
+    { id: 'T0300', speaker: 'Chair', text: 'The catering tasting is booked for 28th November.', classification: 'keep' },
+    ...filler('D', 8),
+    { id: 'T0310', speaker: 'Auditor', text: 'The devices need to be registered.', classification: 'keep' }
+  ]);
+  assert.equal(
+    stripUnstatedMonths('Existing devices must be registered by 28th November.', unrelated, ['T0310']).text,
+    'Existing devices must be registered by 28th [month to confirm].'
+  );
+});
+
 test('a month safely implied by a cross-month range uses the shared formatter', () => {
   const rangeUnits = normaliseSourceUnits([
     { id: 'T0100', speaker: 'Chair', text: 'Report writing runs from the 27th through to the 7th of August.', classification: 'keep' }
@@ -47,6 +81,7 @@ test('a month safely implied by a cross-month range uses the shared formatter', 
   for (const generated of [
     'Report writing runs from June 27th to August 7th.',
     'Report writing runs from 27th [month to confirm] to August 7th.',
+    'Report writing runs between the 27th and 7th August.',
     'Report writing runs from 27th through to the 7th of August.'
   ]) {
     assert.deepEqual(stripUnstatedMonths(generated, rangeUnits, ['T0100']), {

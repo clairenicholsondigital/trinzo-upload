@@ -182,6 +182,98 @@ function conflictingActionRecipients(left = {}, right = {}) {
   return Boolean(a.size && b.size && ![...a].some((word) => b.has(word)));
 }
 
+function documentWorkflowRecipient(value = '') {
+  const match = String(value || '').match(/\b(?:circulate|deliver|email|forward|provide|send|share|submit)\b[^.;]{0,120}?\b(?:to|with)\s+(?:the\s+)?(.+?)(?=\s+\b(?:for|by|before|after|so\s+that|in\s+order\s+to)\b|[.;]|$)/i);
+  return new Set(match ? contentTokens(match[1]) : []);
+}
+
+function conflictingDocumentWorkflowRecipients(left = {}, right = {}) {
+  const a = documentWorkflowRecipient(left.action || left.text);
+  const b = documentWorkflowRecipient(right.action || right.text);
+  return Boolean(a.size && b.size && ![...a].some((word) => b.has(word)));
+}
+
+// Two discovery/rewrite legs can retain complementary descriptions of the
+// same document workflow under the same canonical action id: one names the
+// files to update, the other names what to record and whom to send it to.
+// Identity alone is never enough because ordinal ids can recur between model
+// replies. Require the same named owners, substantial shared evidence and a
+// shared document subject, with no conflicting figures, polarity or gate.
+const WORKFLOW_DOCUMENT = /\b(?:brief|checklist|deck|document(?:ation)?|file|form|log|matrix|minutes|plan|record|register|report|schedule|spreadsheet|tracker|workbook)\b/i;
+const WORKFLOW_DEPENDENCY = /\b(?:once|after|when|as soon as|following|until|subject to|pending|dependent on)\b/i;
+
+function exactOwnerKeys(record = {}) {
+  return [...new Set((record.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean))].sort();
+}
+
+function sameCanonicalDocumentWorkflow(left = {}, right = {}) {
+  const leftId = String(left.id || '').trim(); const rightId = String(right.id || '').trim();
+  if (!leftId || leftId !== rightId) return false;
+  const leftOwners = exactOwnerKeys(left); const rightOwners = exactOwnerKeys(right);
+  if (!leftOwners.length || leftOwners.length !== rightOwners.length
+    || leftOwners.some((owner, index) => owner !== rightOwners[index])) return false;
+  const leftEvidence = new Set((left.evidenceIds || []).map(String));
+  const rightEvidence = new Set((right.evidenceIds || []).map(String));
+  const sharedEvidence = [...leftEvidence].filter((id) => rightEvidence.has(id));
+  if (sharedEvidence.length < 2
+    || sharedEvidence.length / Math.min(leftEvidence.size || 1, rightEvidence.size || 1) < 0.5) return false;
+  const leftText = String(left.action || left.text || ''); const rightText = String(right.action || right.text || '');
+  if (!WORKFLOW_DOCUMENT.test(leftText) || !WORKFLOW_DOCUMENT.test(rightText)) return false;
+  if (conflictingDocumentWorkflowRecipients(left, right)) return false;
+  if (WORKFLOW_DEPENDENCY.test(leftText) !== WORKFLOW_DEPENDENCY.test(rightText)) return false;
+  const negative = (value) => /\b(?:no|not|never|cannot|can't|won't|do not|don't)\b/i.test(value);
+  if (negative(leftText) !== negative(rightText)) return false;
+  const figures = (value) => new Set(value.match(/\b\d+(?:\.\d+)?%?\b/g) || []);
+  const leftFigures = figures(leftText); const rightFigures = figures(rightText);
+  if ((leftFigures.size || rightFigures.size)
+    && (leftFigures.size !== rightFigures.size || [...leftFigures].some((figure) => !rightFigures.has(figure)))) return false;
+  const generic = new Set(['add', 'amend', 'capture', 'circulate', 'complete', 'create', 'document', 'draft', 'file', 'prepare',
+    'provide', 'record', 'review', 'revise', 'send', 'share', 'submit', 'the', 'then', 'update']);
+  const a = new Set(contentTokens(leftText).filter((word) => !generic.has(word)));
+  const b = new Set(contentTokens(rightText).filter((word) => !generic.has(word)));
+  // The two legs commonly share only the governing subject (for example,
+  // "risk") because one names the file and the other names the content or
+  // hand-off. The canonical id, exact owners and substantially overlapping
+  // citations above provide the remaining identity evidence.
+  return [...a].some((word) => b.has(word));
+}
+
+const WORKFLOW_DELIVERY_VERB = 'circulate|deliver|email|forward|provide|send|share|submit';
+function documentWorkflowClauses(value = '') {
+  return String(value || '').trim().replace(/[.?!]+$/, '')
+    .split(new RegExp(String.raw`\s*(?:,\s*)?(?:and\s+)?(?=(?:${WORKFLOW_DELIVERY_VERB})\b)`, 'i'))
+    .map((clause) => clause.trim()).filter(Boolean);
+}
+
+function mergeCanonicalDocumentWorkflowWording(left = {}, right = {}) {
+  const rows = [left, right];
+  const updateOpening = /^(?:amend|revise|update)\b/i;
+  const primary = rows.find((record) => updateOpening.test(String(record.action || record.text || ''))) || left;
+  const secondary = primary === left ? right : left;
+  const ordered = [...documentWorkflowClauses(primary.action || primary.text), ...documentWorkflowClauses(secondary.action || secondary.text)];
+  const unique = [];
+  for (const clause of ordered) {
+    const words = new Set(contentTokens(clause));
+    const covered = unique.some((existing) => {
+      const other = new Set(contentTokens(existing));
+      const shared = [...words].filter((word) => other.has(word)).length;
+      return shared / Math.max(1, Math.min(words.size, other.size)) >= 0.8;
+    });
+    if (!covered) unique.push(clause);
+  }
+  const delivery = unique.filter((clause) => new RegExp(`^(?:${WORKFLOW_DELIVERY_VERB})\\b`, 'i').test(clause));
+  const work = unique.filter((clause) => !delivery.includes(clause));
+  const clauses = [...work, ...delivery];
+  if (clauses.length < 2 || clauses.length > 4) return String(primary.action || primary.text || '');
+  const lowerLead = (value) => value.charAt(0).toLowerCase() + value.slice(1);
+  let merged = clauses[0];
+  clauses.slice(1).forEach((clause, index) => {
+    const isLastDelivery = index === clauses.length - 2 && delivery.includes(clause);
+    merged += `${isLastDelivery ? ', then ' : ', '}${lowerLead(clause)}`;
+  });
+  return `${merged.replace(/[.?!]+$/, '')}.`;
+}
+
 // Questions about whether the very same activity should happen are not commitments to do
 // that activity. This is deliberately structural: the repeated verb and necessity phrase
 // must both be present, so an ordinary review that happens to mention another review is
@@ -317,6 +409,8 @@ module.exports = {
   mergeComplementaryDocumentWording,
   sameContactPurposeDeliverable,
   sameReciprocalContactDeliverable,
+  sameCanonicalDocumentWorkflow,
+  mergeCanonicalDocumentWorkflowWording,
   circularMetaAction,
   actionClauses,
   conflictingActionRecipients

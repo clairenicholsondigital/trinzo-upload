@@ -13,7 +13,7 @@ function clean(value) {
 // ...", "Dan takes responsibility to ...". The name must belong to a speaker or
 // someone the meeting mentions, so "Need to order ..." or "Agreement to supply
 // ..." is never read as a person.
-const ASSIGNMENT_PREDICATE = String.raw`(?:will|shall|is\s+to|is\s+going\s+to|to\s+(?!be\b)|takes\s+(?:responsibility|ownership)|has\s+taken\s+(?:responsibility|ownership)|is\s+responsible\s+for|agreed\s+to|confirmed\s+(?:to|for|on)|will\s+take\s+over|aims\s+to|committed\s+to|is\s+assigned|was\s+assigned|handles|owns)`;
+const ASSIGNMENT_PREDICATE = String.raw`(?:will|shall|is\s+to|is\s+going\s+to|to\s+(?!be\b)|takes\s+(?:responsibility|ownership)|has\s+taken\s+(?:responsibility|ownership)|is\s+responsible\s+for|agreed\s+to|confirmed\s+(?:to|for|on)|will\s+take\s+over|aims\s+to|committed\s+to|(?:is|was|has\s+been)\s+prioriti[sz]ed\s+to|(?:is|was|has\s+been)\s+tasked\s+(?:to|with)|(?:is|was)\s+expected\s+to|is\s+assigned|was\s+assigned|handles|owns)`;
 
 // What makes a statement a group decision rather than one person's task.
 const GROUP_DECISION = /\b(?:the (?:team|group|committee|meeting|board)|everyone|all agreed|we agreed|agreed that|decided that|approved|signed off|instead of|rather than|not to|chosen|choose|opted|rule|policy|in favour)\b/i;
@@ -321,6 +321,34 @@ function discussionPointMatchesAction(point = {}, action = {}, people = []) {
   return bodyOverlap(pointText, actionText) >= 0.58;
 }
 
+// The Discussion and Actions writers can describe the same hand-off from
+// opposite ends: "Priya will contact the supplier to understand the codes"
+// versus "Send the codes to the supplier for review".  The ordinary wording
+// threshold intentionally remains strict.  This narrower fallback is allowed
+// only where the row starts with the accepted Action's owner, both records cite
+// the exact same source line, and at least three non-trivial subject words
+// agree.  The caller also requires one unique candidate, so a source line that
+// contains two separate assignments cannot silently lose either one.
+function discussionPointMatchesActionByProvenance(point = {}, action = {}, people = []) {
+  const pointText = clean(point?.text);
+  const actionText = clean(action?.action || action?.text);
+  const owners = (Array.isArray(action?.owners) ? action.owners : [action?.owner]).map(clean).filter(Boolean);
+  if (!pointText || !actionText || !owners.length || !isSinglePersonAssignment(pointText, owners)) return false;
+  const sharedEvidence = (point.evidenceIds || []).some((id) => (action.evidenceIds || []).includes(id));
+  if (!sharedEvidence) return false;
+  const pointFigures = bodyFigures(pointText);
+  const actionFigures = bodyFigures(actionText);
+  if ((pointFigures.size || actionFigures.size) && !sameValueSet(pointFigures, actionFigures)) return false;
+  const pointNegative = /\b(?:no|not|never|cannot|can't|won't|wouldn't|declin\w*|reject\w*|refus\w*)\b/i.test(pointText);
+  const actionNegative = /\b(?:no|not|never|cannot|can't|won't|wouldn't|declin\w*|reject\w*|refus\w*)\b/i.test(actionText);
+  if (pointNegative !== actionNegative || bodyOverlap(pointText, actionText) < 0.4) return false;
+  const peopleTokens = new Set((Array.isArray(people) ? people : []).flatMap((person) => bodyTokens(person)));
+  const actionTokens = new Set(bodyTokens(actionText).filter((token) => !peopleTokens.has(token)));
+  const sharedSubjectTokens = [...new Set(bodyTokens(pointText))]
+    .filter((token) => !peopleTokens.has(token) && actionTokens.has(token));
+  return sharedSubjectTokens.length >= 3;
+}
+
 // Discussion is available before Actions, so action-shaped context remains
 // visible at that stage.  Once the accepted action register exists, remove
 // only a generated point which strictly duplicates one of those actions.
@@ -331,10 +359,14 @@ function removeDiscussionActionDuplicates(discussion = [], actions = [], people 
     const next = { ...topic };
     next.points = (topic?.points || []).filter((point) => {
       if (point?.reviewerAuthored) return true;
-      const match = (Array.isArray(actions) ? actions : []).find((action) =>
+      const candidates = Array.isArray(actions) ? actions : [];
+      const match = candidates.find((action) =>
         discussionPointMatchesAction(point, action, people));
-      if (!match) return true;
-      dropped.push({ pointId: point?.id || '', actionId: match?.id || '', text: clean(point?.text).slice(0, 200) });
+      const provenanceMatches = match ? [] : candidates.filter((action) =>
+        discussionPointMatchesActionByProvenance(point, action, people));
+      const acceptedMatch = match || (provenanceMatches.length === 1 ? provenanceMatches[0] : null);
+      if (!acceptedMatch) return true;
+      dropped.push({ pointId: point?.id || '', actionId: acceptedMatch?.id || '', text: clean(point?.text).slice(0, 200) });
       return false;
     });
     return next;
@@ -350,6 +382,7 @@ module.exports = {
   dedupeDiscussionBody,
   removeDiscussionActionDuplicates,
   discussionPointMatchesAction,
+  discussionPointMatchesActionByProvenance,
   announcesActions,
   RECAP_TITLE
 };

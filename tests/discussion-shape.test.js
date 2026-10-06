@@ -38,6 +38,59 @@ test('accepted actions remove only strict generated assignment duplicates from d
   assert.deepEqual(result.dropped.map((item) => item.pointId), ['generated']);
 });
 
+test('same-owner assignments with the same evidence are removed across complementary action wording', () => {
+  const discussion = [{
+    id: 'calibration', topic: 'Calibration records', decisions: [], openQuestions: [], points: [{
+      id: 'generated',
+      text: 'Priya Shah will contact the supplier to understand the additional calibration codes for the equipment record.',
+      evidenceIds: ['T0040']
+    }]
+  }];
+  const actions = [{
+    id: 'action-1',
+    action: 'Send the calibration codes to the supplier for review and response.',
+    owners: ['Priya Shah'],
+    evidenceIds: ['T0040', 'T0041']
+  }];
+  const result = removeDiscussionActionDuplicates(discussion, actions, people);
+  assert.equal(result.discussion.length, 0);
+  assert.deepEqual(result.dropped.map((item) => item.actionId), ['action-1']);
+});
+
+test('passive prioritisation wording is treated as an assignment only when one action matches', () => {
+  const discussion = [{
+    id: 'diagnostics', topic: 'Diagnostic records', decisions: [], openQuestions: [], points: [{
+      id: 'generated',
+      text: 'Priya Shah is prioritised to provide the calibration codes to the supplier for documentation review.',
+      evidenceIds: ['T0040']
+    }]
+  }];
+  const actions = [{
+    id: 'action-1', action: 'Provide the calibration codes to the supplier for documentation review.',
+    owners: ['Priya Shah'], evidenceIds: ['T0040']
+  }];
+  const result = removeDiscussionActionDuplicates(discussion, actions, people);
+  assert.equal(result.discussion.length, 0);
+  assert.equal(result.dropped[0].actionId, 'action-1');
+});
+
+test('a provenance match stays in discussion when two accepted actions are plausible', () => {
+  const discussion = [{
+    id: 'calibration', topic: 'Calibration records', decisions: [], openQuestions: [], points: [{
+      id: 'generated',
+      text: 'Priya Shah will contact the supplier to understand the additional calibration codes for the equipment record.',
+      evidenceIds: ['T0040']
+    }]
+  }];
+  const actions = [
+    { id: 'action-1', action: 'Send the calibration codes to the supplier for review and response.', owners: ['Priya Shah'], evidenceIds: ['T0040'] },
+    { id: 'action-2', action: 'Document the calibration codes received from the supplier in the review file.', owners: ['Priya Shah'], evidenceIds: ['T0040'] }
+  ];
+  const result = removeDiscussionActionDuplicates(discussion, actions, people);
+  assert.deepEqual(result.discussion[0].points.map((item) => item.id), ['generated']);
+  assert.equal(result.dropped.length, 0);
+});
+
 test('a collective monitoring commitment leaves discussion only when the accepted Action matches it', () => {
   const point = row('collective', 'The committee agreed to monitor the theft risk as an ongoing issue.');
   const discussion = [{ id: 'risk', topic: 'Theft risk', points: [point], decisions: [], openQuestions: [] }];

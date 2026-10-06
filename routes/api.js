@@ -75,7 +75,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
+const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { convertSpokenNumbers } = require('../utils/spokenNumbers');
@@ -11724,8 +11724,10 @@ function reconcileFinalApprovedActions(published = [], approved = []) {
   const actions = [...(Array.isArray(published) ? published : [])];
   const restored = [];
   for (const record of Array.isArray(approved) ? approved : []) {
-    const represented = actions.some((existing) => strictActionDeliverableMatch(record, existing)
-      && strictActionDeliverableMatch(existing, record));
+    const represented = actions.some((existing) => (strictActionDeliverableMatch(record, existing)
+      && strictActionDeliverableMatch(existing, record))
+      || (sameCanonicalDocumentWorkflow(record, existing)
+        && sameOrNestedActionDeliverable(record, existing)));
     if (represented) continue;
     actions.push(record);
     restored.push(record);
@@ -12571,7 +12573,12 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     let complementaryDuplicate = null;
     let documentWorkflowDuplicate = null;
+    let canonicalDocumentWorkflowDuplicate = null;
     const duplicate = merged.find((existing) => {
+      if (sameCanonicalDocumentWorkflow(record, existing)) {
+        canonicalDocumentWorkflowDuplicate = existing;
+        return true;
+      }
       const conventional = !distinctActionDeliverables(record, existing)
         && hybridCandidateMatchesRecord(candidate, existing)
         && hybridCandidateMatchesRecord({ recordType: 'action', text: existing.action, evidenceIds: existing.evidenceIds, record: existing }, record);
@@ -12628,6 +12635,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     }
     if (documentWorkflowDuplicate === duplicate) {
       preferred = { ...preferred, action: mergeDocumentDeliveryWorkflow(record, duplicate) };
+    }
+    if (canonicalDocumentWorkflowDuplicate === duplicate) {
+      preferred = { ...preferred, action: mergeCanonicalDocumentWorkflowWording(record, duplicate) };
     }
     // Never let the vaguer "figure out a way to ..." wording win.
     if (wayToParaphraseOf(preferred, preferred === record ? duplicate : record)) {

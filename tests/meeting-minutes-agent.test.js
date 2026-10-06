@@ -416,6 +416,15 @@ test('final presentation dedupe cannot lose distinct lifecycle-approved delivera
   assert.deepEqual(reconciled.actions.map((row) => row.id), ['a1', 'a2', 'a3']);
 });
 
+test('final survival does not restore source variants already represented by a merged document workflow', () => {
+  const first = { id: 'workflow-1', action: 'Document the control risks and proposed mitigations in the risk matrix and circulate the update to Dana Moss for review.', owners: ['Sam Carter'], evidenceIds: ['T0030', 'T0031', 'T0032', 'T0033'] };
+  const second = { id: 'workflow-1', action: 'Update the risk plan and related documentation to reflect the selected access-control approach.', owners: ['Sam Carter'], evidenceIds: ['T0030', 'T0031', 'T0032', 'T0040'] };
+  const [merged] = dedupeHybridActionRecords([first, second]);
+  const reconciled = reconcileFinalApprovedActions([merged], [first, second]);
+  assert.equal(reconciled.actions.length, 1);
+  assert.equal(reconciled.restored.length, 0);
+});
+
 test('material pass impact attributes final contribution to the exact referee call', () => {
   const impact = meetingAgentMaterialPassImpact([
     { candidateId: 'p1', sourcePass: 'primary', disposition: 'publish' },

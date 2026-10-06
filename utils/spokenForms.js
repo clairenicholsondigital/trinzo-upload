@@ -141,9 +141,18 @@ function alignEllipticalDateRangesWithEvidence(value, evidence = '') {
     const start = String.raw`(?:${anyMonth}\s+)?(?:the\s+)?${range.startDay}(?:st|nd|rd|th)?(?:\s+(?:${anyMonth}|\[month to confirm\]))?`;
     const endMonth = range.endMonth.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const end = String.raw`(?:(?:${endMonth})\s+(?:the\s+)?${range.endDay}(?:st|nd|rd|th)?|(?:the\s+)?${range.endDay}(?:st|nd|rd|th)?\s+(?:of\s+)?${endMonth})`;
+    // A writer may recast "27th through to 7th August" as "between the
+    // 27th and 7th August".  It is the same elliptical range, and the cited
+    // evidence has already supplied the canonical dates above.
+    const betweenPattern = new RegExp(String.raw`\bbetween\s+${start}\s+and\s+${end}\b`, 'i');
     const generatedPattern = new RegExp(String.raw`\b${start}\s*${separator}\s*${end}\b`, 'i');
-    if (!generatedPattern.test(text)) continue;
-    text = text.replace(generatedPattern, range.text);
+    if (betweenPattern.test(text)) {
+      text = text.replace(betweenPattern, `from ${range.text}`);
+    } else if (generatedPattern.test(text)) {
+      text = text.replace(generatedPattern, range.text);
+    } else {
+      continue;
+    }
     applied.push(range.text);
   }
   return { text, applied };
