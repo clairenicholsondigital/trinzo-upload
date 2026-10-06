@@ -198,6 +198,12 @@ const ACTION_CATEGORY_TOPIC = /^(?:action(?:\s+(?:items?|points?))?|action\s+ite
 // its rows are action-shaped (checked by isActionCategoryTopicCard below).
 const ACTION_SUMMARY_TOPIC = /\b(?:action(?:s)?|assignments?|priorit(?:y|ies)|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?)\b/i;
 const ACTION_CATEGORY_RECORD = /^(?:(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}){0,3})[,;:]?\s+)?(?:will|shall|must|needs?\s+to|is\s+to|are\s+to|to\s+|please\s+|review\b|confirm\b|update\b|send\b|share\b|prepare\b|complete\b|check\b|test\b|provide\b|follow[- ]?up\b|(?:the\s+)?(?:plans?|assignments?|tasks?|next\s+steps?)\s+(?:include|involve|cover)\s+[a-z][a-z'’-]*ing\b)/i;
+// Action recaps are sometimes written as reported speech rather than an
+// imperative list: "Jacqui stated that David would...". That grammatical
+// wrapper must not let a generated assignments/next-steps bucket back into
+// Discussion. Require both a named reporting frame and explicit future or
+// assigned work; a factual report under a substantive heading is unaffected.
+const REPORTED_ACTION_CATEGORY_RECORD = /^(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}){0,3})\s+(?:stated|reported|noted|confirmed|said|explained|summari[sz]ed|recapped)\s+that\b[\s\S]*\b(?:will|would|shall|must|needs?\s+to|(?:is|are|was|were)\s+to|plans?\s+to|planned\s+to|intends?\s+to|intended\s+to|agreed\s+to|committed\s+to)\b/i;
 
 // The single gate every topic label passes before a reviewer sees it.
 //
@@ -282,7 +288,8 @@ function isActionCategoryTopicCard(card = {}) {
     ...(Array.isArray(card?.decisions) ? card.decisions : []),
     ...(Array.isArray(card?.openQuestions) ? card.openQuestions : [])
   ].map((item) => clean(typeof item === 'string' ? item : item?.text)).filter(Boolean);
-  return records.length > 0 && records.every((record) => ACTION_CATEGORY_RECORD.test(record));
+  return records.length > 0 && records.every((record) =>
+    ACTION_CATEGORY_RECORD.test(record) || REPORTED_ACTION_CATEGORY_RECORD.test(record));
 }
 
 // Applied at the point the discussion is returned, so it covers every card

@@ -163,6 +163,28 @@ test('assignment summaries expressed as planned-work lists are action categories
   assert.deepEqual(publishableTopicCards([factualDiscussion]), [factualDiscussion]);
 });
 
+test('reported-speech assignment recaps remain action categories', () => {
+  const recap = {
+    topic: 'Summary of individual action assignments and next steps',
+    points: [
+      { text: 'Jacqui Fox stated that David Didsbury would send the debug command letters for review.' },
+      { text: "Jacqui Fox reported that Andrew Kane's main focus was to complete the language review and start testing." }
+    ],
+    decisions: [],
+    openQuestions: []
+  };
+  assert.equal(isActionCategoryTopicCard(recap), true);
+  assert.deepEqual(publishableTopicCards([recap]), []);
+
+  const factualReport = {
+    ...recap,
+    topic: 'Language support limitations',
+    points: [{ text: 'Jacqui Fox reported that five languages had already been added to the code.' }]
+  };
+  assert.equal(isActionCategoryTopicCard(factualReport), false);
+  assert.deepEqual(publishableTopicCards([factualReport]), [factualReport]);
+});
+
 test('mixed action-category cards retain factual discussion rather than dropping it wholesale', () => {
   const card = {
     topic: 'Action items and priorities',

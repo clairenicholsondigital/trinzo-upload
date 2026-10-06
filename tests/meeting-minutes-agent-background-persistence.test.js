@@ -153,6 +153,25 @@ test('existing Library drafts hide generated assignment recaps but retain manual
   assert.deepEqual(published.discussion.map((topic) => topic.id), ['manual-topic-1', 'substantive']);
 });
 
+test('existing Library drafts hide reported-speech action recaps but retain reviewer-authored cards', () => {
+  const draft = baseDraft();
+  const recap = {
+    topic: 'Summary of individual action assignments and next steps',
+    points: [{
+      text: 'Jacqui Fox stated that David Didsbury would send the debug command letters for review.'
+    }],
+    decisions: [], openQuestions: []
+  };
+  draft.discussion = [
+    { id: 'generated-reported-recap', ...recap },
+    { id: 'reviewer-reported-recap', ...recap, reviewerAuthored: true },
+    { id: 'substantive', topic: 'Debug command documentation', points: [{ text: 'The command letters were not yet documented.' }] }
+  ];
+
+  const published = publicMeetingAgentDraft(draft);
+  assert.deepEqual(published.discussion.map((topic) => topic.id), ['reviewer-reported-recap', 'substantive']);
+});
+
 test('published date ranges expand an omitted month without rewriting transcript evidence', () => {
   const draft = baseDraft();
   draft.executiveSummary = 'The review runs from 27th through to 7th August.';
