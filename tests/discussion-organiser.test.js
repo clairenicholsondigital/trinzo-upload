@@ -773,6 +773,63 @@ test('strongly equivalent open questions with shared evidence collapse without l
   assert.deepEqual(cleaned[0].openQuestions[0].evidenceIds, ['Q01', 'Q02']);
 });
 
+test('a distant same-topic restatement collapses only with matching claim shape and entities', async () => {
+  const sourceUnits = Array.from({ length: 30 }, (_, index) => ({ id: `D${String(index + 1).padStart(2, '0')}`, text: `Turn ${index + 1}` }));
+  const discussion = [{ id: 'parking', topic: 'Parking bay enforcement', decisions: [], openQuestions: [], points: [
+    { id: 'early', text: 'Marked parking bays are ineffective without active enforcement.', evidenceIds: ['D01'] },
+    { id: 'later', text: 'The marked parking bays remain ineffective unless active enforcement is provided.', evidenceIds: ['D30'] }
+  ] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, {
+    sourceUnits,
+    encode: (values) => values.map(() => [1, 0])
+  });
+  assert.equal(cleaned[0].points.length, 1);
+  assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['D01', 'D30']));
+});
+
+test('partial-overlap consolidation can join a bounded pair around one untouched row', async () => {
+  const sourceUnits = [
+    { id: 'S01', text: 'The permit scheme needs active enforcement to work.' },
+    { id: 'S02', text: 'Repainting the signs will cost two hundred pounds.' },
+    { id: 'S03', text: 'The permit scheme will only work with active enforcement.' }
+  ];
+  const discussion = [{ id: 'parking', topic: 'Parking controls', decisions: [], openQuestions: [], points: [
+    { id: 'first', text: 'The permit scheme will only work with active enforcement.', evidenceIds: ['S01'] },
+    { id: 'middle', text: 'Repainting the signs will cost £200.', evidenceIds: ['S02'] },
+    { id: 'last', text: 'The permit scheme will only work with active enforcement in place.', evidenceIds: ['S03'] }
+  ] }];
+  const vectorByText = new Map(discussion[0].points.map((record) => [record.text, [1, 0]]));
+  const consolidated = await consolidatePartialOverlapRows(discussion, {
+    sourceUnits,
+    restatementVectorByText: vectorByText,
+    rewritePartialOverlaps: async (candidates) => candidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      consolidate: true,
+      rows: [{ text: 'The permit scheme will only work with active enforcement.' }]
+    }))
+  });
+  assert.deepEqual(consolidated[0].points.map((record) => record.id), ['first', 'middle']);
+  assert.equal(consolidated[0].points[0].text, 'The permit scheme will only work with active enforcement.');
+  assert.deepEqual(consolidated[0].points[0].evidenceIds, ['S01', 'S03']);
+});
+
+test('topic balancing can re-home an unmistakable distant outlier to one existing subject', () => {
+  const sourceUnits = Array.from({ length: 12 }, (_, index) => ({ id: `R${String(index + 1).padStart(2, '0')}`, text: `Turn ${index + 1}` }));
+  const balanced = balanceDiscussionTopics([
+    { id: 'travel', topic: 'Office travel logistics', decisions: [], openQuestions: [], points: [
+      { id: 'r1', text: 'The train arrives at nine in the morning.', evidenceIds: ['R01'] },
+      { id: 'r2', text: 'The hotel is beside the station.', evidenceIds: ['R02'] },
+      { id: 'outlier', text: 'The supplier audit evidence package remains outstanding.', evidenceIds: ['R03'] }
+    ] },
+    { id: 'audit', topic: 'Supplier audit evidence package', decisions: [], openQuestions: [], points: [
+      { id: 'r11', text: 'Supplier audit evidence package records are due on Friday.', evidenceIds: ['R11'] },
+      { id: 'r12', text: 'The supplier audit evidence package includes test records.', evidenceIds: ['R12'] }
+    ] }
+  ], sourceUnits);
+  assert.deepEqual(balanced.find((topic) => topic.id === 'travel').points.map((record) => record.id), ['r1', 'r2']);
+  assert.deepEqual(balanced.find((topic) => topic.id === 'audit').points.map((record) => record.id), ['outlier', 'r11', 'r12']);
+});
+
 test('an explicit hard topic cap remains available to legacy callers', async () => {
   const topics = [1, 3, 5, 7].map((sequence, i) => ({
     topic: `Distinct subject ${i + 1}`,

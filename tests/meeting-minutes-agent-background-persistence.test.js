@@ -310,6 +310,20 @@ test('unrelated newer reviewer edits survive a generated stage save', () => {
   assert.equal(saved.actions[0].action, 'Generated action');
 });
 
+test('actions may remove a strict discussion duplicate only while discussion is unchanged', () => {
+  const source = baseDraft();
+  const generatedDiscussion = [{ topic: 'Generated discussion', points: [{ id: 'P1', text: 'Context remains.' }] }];
+  const resultChanges = { ...results.actions.changes, discussion: generatedDiscussion };
+  const unchanged = meetingAgentStagePersistenceChanges(source, structuredClone(source), 'actions', resultChanges);
+  assert.deepEqual(unchanged.changes.discussion, generatedDiscussion);
+
+  const reviewerDiscussion = [{ topic: 'Reviewer discussion', points: [{ id: 'P2', text: 'Keep this edit.' }] }];
+  const fresh = { ...structuredClone(source), discussion: reviewerDiscussion };
+  const edited = meetingAgentStagePersistenceChanges(source, fresh, 'actions', resultChanges);
+  assert.deepEqual(edited.conflictFields, []);
+  assert.equal(Object.prototype.hasOwnProperty.call(edited.changes, 'discussion'), false);
+});
+
 test('same-stage newer reviewer edits are protected and reported', async () => {
   const source = baseDraft();
   let state = { ...structuredClone(source), revision: 2, discussion: [{ topic: 'Reviewer discussion' }] };

@@ -10,7 +10,12 @@
 // fallback. Record ids, evidence ids and review-flag links are preserved.
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
-const { editorialTopicLabel, isPublishableTopicLabel, isStructuralTopicLabel } = require('./topicEditorial');
+const {
+  editorialTopicLabel,
+  isPublishableTopicLabel,
+  isStructuralTopicLabel,
+  normaliseMetaTopicHeadings
+} = require('./topicEditorial');
 const { normaliseDatePhrases } = require('../spokenForms');
 const { normalisePublishedParticipantReference } = require('../entityNormalization');
 const { SHIFT_MARKER } = require('./discourseSegments');
@@ -899,16 +904,25 @@ function rehomeObviousOutlierRows(topics, index, positionById, segments, maximum
         if (isReviewerAuthored(record) || overlap(record?.text, source?.topic) > 0.16) continue;
         const candidates = result.map((candidate, candidateIndex) => {
           if (candidateIndex === from || reviewerTopic(candidate) || topicRows(candidate).length < 2
-            || topicRows(candidate).length >= maximumRows
-            || !sameOrNeighbouringPassage({ points: [record], decisions: [], openQuestions: [] }, candidate,
-              positionById, segments, index, 3)) return null;
+            || topicRows(candidate).length >= maximumRows) return null;
           const headingFit = overlap(record?.text, candidate?.topic);
           const signatureFit = overlap(record?.text, completeTopicSignature(candidate));
           const fit = Math.max(headingFit, signatureFit);
-          if (headingFit < 0.34 || fit < 0.45 || !shareDistinctiveToken(record?.text, candidate?.topic)) return null;
+          const distinctive = sharedDistinctiveCount(record?.text, candidate?.topic);
+          const nearby = sameOrNeighbouringPassage(
+            { points: [record], decisions: [], openQuestions: [] }, candidate,
+            positionById, segments, index, 3
+          );
+          // Interleaved meetings can return to the same subject much later.
+          // Permit a distant re-home only when the destination heading itself
+          // carries at least two distinctive terms from the row and the fit is
+          // substantially stronger than the nearby rule requires.
+          if (nearby) {
+            if (headingFit < 0.34 || fit < 0.45 || distinctive < 1) return null;
+          } else if (headingFit < 0.5 || fit < 0.6 || distinctive < 2) return null;
           return { index: candidateIndex, score: fit };
         }).filter(Boolean).sort((left, right) => right.score - left.score);
-        if (!candidates.length || (candidates[1] && candidates[0].score - candidates[1].score < 0.2)) continue;
+        if (!candidates.length || (candidates[1] && candidates[0].score - candidates[1].score < 0.25)) continue;
         source[kind] = source[kind].filter((item) => item !== record);
         result[candidates[0].index][kind].push(record);
       }
@@ -1034,7 +1048,7 @@ function normaliseDecisionTopicHeadings(topics = []) {
 // contributed. Reviewer-authored headings remain authoritative.
 function repairStructuralTopicHeadings(topics = [], sourceUnits = []) {
   const evidence = { events: Array.isArray(sourceUnits) ? sourceUnits : [] };
-  return (Array.isArray(topics) ? topics : []).map((topic) => {
+  const repaired = (Array.isArray(topics) ? topics : []).map((topic) => {
     const current = text(topic?.topic, 220);
     if (!isStructuralTopicLabel(current) || topic?.reviewerAuthored || topic?.confirmedTopic) return topic;
     const rows = topicRows(topic).map(({ record }) => record).filter((record) => text(record?.text));
@@ -1050,6 +1064,7 @@ function repairStructuralTopicHeadings(topics = [], sourceUnits = []) {
     }
     return { ...topic, topic: 'Discussion' };
   });
+  return normaliseMetaTopicHeadings(repaired);
 }
 
 function valueSet(value, pattern) {
@@ -1269,6 +1284,39 @@ function partialOverlapCandidates(topics = [], options = {}) {
       claimed.add(rowIndex); claimed.add(rowIndex + 1);
       rowIndex += 1;
     }
+    // A short, unrelated point can sit between a statement and its refined
+    // restatement. Offer that bounded shape to the same no-loss editor without
+    // moving or consuming the intervening point.
+    for (let rowIndex = 0; rowIndex < rows.length - 2; rowIndex += 1) {
+      if (claimed.has(rowIndex) || claimed.has(rowIndex + 1) || claimed.has(rowIndex + 2)) continue;
+      const group = [rows[rowIndex], rows[rowIndex + 2]];
+      if (group.some((record) => record?.reviewerAuthored)
+        || rowEvidenceGap(group[0], group[1], index) > 6
+        || !rowsClaimCompatible(group[0], group[1])
+        || !rowPredicatesCompatible(group[0], group[1])
+        || !sameSet(claimNamedEntities(group[0]?.text), claimNamedEntities(group[1]?.text))) continue;
+      const lexical = clauseOverlap(group[0]?.text, group[1]?.text);
+      const containment = rowContainment(group[0], group[1]);
+      const leftVector = options.restatementVectorByText?.get(text(group[0]?.text));
+      const rightVector = options.restatementVectorByText?.get(text(group[1]?.text));
+      const semantic = leftVector && rightVector ? cosine(leftVector, rightVector) : 0;
+      if (!((semantic >= 0.9 && lexical >= 0.48 && containment >= 0.65)
+        || (lexical >= 0.78 && containment >= 0.82))) continue;
+      const rowIndexes = [rowIndex, rowIndex + 2];
+      const ids = group.map((record) => text(record?.id, 160));
+      candidates.push({
+        candidateId: `overlap:${text(topic?.id || topic?.topic, 100)}:${ids.join(':') || rowIndex}`,
+        topicIndex,
+        rowIndex,
+        rowIndexes,
+        topic: text(topic?.topic, 220),
+        rows: group.map((record) => ({
+          id: text(record?.id, 160), text: text(record?.text), evidenceIds: [...(record?.evidenceIds || [])]
+        }))
+      });
+      claimed.add(rowIndex); claimed.add(rowIndex + 1); claimed.add(rowIndex + 2);
+      rowIndex += 2;
+    }
   });
   return candidates.slice(0, Math.max(1, Number(options.maximumPartialOverlapCandidates || 8)));
 }
@@ -1282,6 +1330,14 @@ function consolidationNamesAndAcronyms(value) {
   return new Set((String(value || '').match(/\b[A-Z][A-Za-z0-9'’-]*\b/g) || [])
     .map((token) => token.replace(/[’']s$/i, ''))
     .filter((token) => !ignored.has(token)));
+}
+
+function claimNamedEntities(value) {
+  const source = String(value || '');
+  const ignored = new Set(['A', 'An', 'The', 'It', 'This', 'That', 'These', 'Those']);
+  return new Set([...(source.matchAll(/\b[A-Z][A-Za-z0-9'’-]*\b/g))]
+    .filter((match) => !ignored.has(match[0]) && (match.index > 0 || /^[A-Z0-9]{2,}$/.test(match[0])))
+    .map((match) => match[0].replace(/[’']s$/i, '')));
 }
 
 function validPartialOverlapRewrite(candidate, proposedRows) {
@@ -1320,7 +1376,10 @@ async function consolidatePartialOverlapRows(topics = [], options = {}) {
     const proposed = result?.consolidate === true ? result.rows : null;
     if (!validPartialOverlapRewrite(candidate, proposed)) continue;
     const rows = cloned[candidate.topicIndex]?.points || [];
-    const originals = rows.slice(candidate.rowIndex, candidate.rowIndex + candidate.rows.length);
+    const indexes = Array.isArray(candidate.rowIndexes)
+      ? candidate.rowIndexes
+      : candidate.rows.map((_, offset) => candidate.rowIndex + offset);
+    const originals = indexes.map((index) => rows[index]).filter(Boolean);
     if (originals.length !== candidate.rows.length
       || originals.some((record, index) => text(record?.id, 160) !== candidate.rows[index].id)) continue;
     const evidenceIds = [...new Set(originals.flatMap((record) => record.evidenceIds || []))];
@@ -1334,7 +1393,12 @@ async function consolidatePartialOverlapRows(topics = [], options = {}) {
       reviewFlagIds,
       supportingDetails: index === 0 ? supportingDetails : []
     }));
-    rows.splice(candidate.rowIndex, candidate.rows.length, ...replacements);
+    if (Array.isArray(candidate.rowIndexes)) {
+      rows[indexes[0]] = replacements[0];
+      for (const index of indexes.slice(1).sort((left, right) => right - left)) rows.splice(index, 1);
+    } else {
+      rows.splice(candidate.rowIndex, candidate.rows.length, ...replacements);
+    }
     applied += 1;
   }
   if (applied && typeof options.onPartialOverlapConsolidated === 'function') {
@@ -1418,6 +1482,18 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const crossTopicNearby = !sameTopic && adjacentTopics && evidenceGap <= 2
         && compatiblePredicates && semantic >= 0.92 && lexical >= 0.55 && containment >= 0.8;
       const evidenceContainment = compatiblePredicates && sharedEvidence && containment >= 0.84;
+      // A conclusion can be stated early and reiterated much later under the
+      // same subject.  Evidence distance alone must not preserve a duplicate,
+      // but the distant route is intentionally much stricter than the local
+      // routes: the named entities must agree and one wording must mostly
+      // contain the other.
+      const sameNamedEntities = sameSet(
+        claimNamedEntities(left.record.text),
+        claimNamedEntities(right.record.text)
+      );
+      const sameTopicDistant = compatiblePredicates && sameTopic && sameNamedEntities
+        && containment >= 0.84
+        && ((semantic >= 0.92 && lexical >= 0.5) || lexical >= 0.84);
       // Equivalent questions are particularly prone to surviving because one
       // extraction phrases them as "how" and another as "what".  Numbers,
       // polarity and uncertainty have already been checked above.  Require
@@ -1427,6 +1503,7 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
         && ((sharedEvidence && lexical >= 0.62)
           || (sameTopic && evidenceGap <= 2 && lexical >= 0.72));
       if (!exact && !evidenceContainment && !equivalentQuestion && !sameTopicShared && !sameTopicNearby
+        && !sameTopicDistant
         && !crossTopicShared && !crossTopicNearby) continue;
       const merged = mergeRestatementRecords(left.record, right.record);
       left.record = merged;

@@ -61,6 +61,7 @@ const {
   mergeHybridDiscussionTopics,
   compactDiscussionPropositions,
   consolidateSupportingDetails,
+  prioritySupportingDetail,
   promotePrioritySupportingDetails,
   promoteAllDiscussionDetails,
   discussionStructureDiagnostics,
@@ -133,6 +134,25 @@ test('priority risk and delivery status details become primary minutes before ex
   const limited = limitSupportingDetails(promoted.discussion, 1, 2);
   assert.equal(limited[0].points[0].supportingDetails.length, 1);
   assert.equal(limited[0].points.slice(1).every((row) => row.supportingDetails.length === 0), true);
+});
+
+test('explicit no-decision and deferral outcomes are promoted from supporting detail', () => {
+  assert.equal(prioritySupportingDetail('No final option was selected during the meeting.'), true);
+  assert.equal(prioritySupportingDetail('The decision was deferred until the enforcement costs are available.'), true);
+  const discussion = [{
+    id: 'topic-1', topic: 'Parking controls', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'Several parking-control approaches were considered.', evidenceIds: ['T0050'],
+      supportingDetails: [
+        { id: 'no-decision', text: 'No final option was selected during the meeting.', evidenceIds: ['T0051'] },
+        { id: 'deferred', text: 'The decision was deferred until the enforcement costs are available.', evidenceIds: ['T0052'] },
+        { id: 'minor', text: 'The examples were discussed in a different order.', evidenceIds: ['T0053'] }
+      ]
+    }]
+  }];
+  const promoted = promotePrioritySupportingDetails(discussion);
+  assert.ok(promoted.promoted >= 1);
+  assert.ok(promoted.discussion[0].points.slice(1).some((row) => ['no-decision', 'deferred'].includes(row.id)));
 });
 
 test('material performance metrics move from additional details into the minutes', () => {

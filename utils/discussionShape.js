@@ -268,11 +268,76 @@ function dedupeDiscussionBody(discussion = [], people = []) {
   };
 }
 
+function sameValueSet(left, right) {
+  if (left.size !== right.size) return false;
+  for (const value of left) if (!right.has(value)) return false;
+  return true;
+}
+
+function evidenceDistance(left = [], right = []) {
+  const sequence = (id) => Number(String(id || '').match(/\d+/)?.[0]);
+  const a = left.map(sequence).filter(Number.isFinite);
+  const b = right.map(sequence).filter(Number.isFinite);
+  if (!a.length || !b.length) return Number.POSITIVE_INFINITY;
+  return Math.min(...a.flatMap((x) => b.map((y) => Math.abs(x - y))));
+}
+
+function namedPeopleIn(value, people = []) {
+  const source = clean(value).toLowerCase();
+  return (Array.isArray(people) ? people : []).filter((person) => {
+    const full = clean(person).toLowerCase();
+    const first = full.split(/\s+/)[0];
+    return full && (source.includes(full) || (first.length >= 3 && new RegExp(`\\b${escapeName(first)}\\b`, 'i').test(source)));
+  });
+}
+
+function discussionPointMatchesAction(point = {}, action = {}, people = []) {
+  const pointText = clean(point?.text);
+  const actionText = clean(action?.action || action?.text);
+  if (!pointText || !actionText || !isAssignmentLine(pointText, people)) return false;
+  const pointFigures = bodyFigures(pointText);
+  const actionFigures = bodyFigures(actionText);
+  if ((pointFigures.size || actionFigures.size) && !sameValueSet(pointFigures, actionFigures)) return false;
+  const pointNegative = /\b(?:no|not|never|cannot|can't|won't|wouldn't|declin\w*|reject\w*|refus\w*)\b/i.test(pointText);
+  const actionNegative = /\b(?:no|not|never|cannot|can't|won't|wouldn't|declin\w*|reject\w*|refus\w*)\b/i.test(actionText);
+  if (pointNegative !== actionNegative) return false;
+  const mentioned = namedPeopleIn(pointText, people);
+  const owners = (Array.isArray(action?.owners) ? action.owners : [action?.owner]).map(clean).filter(Boolean);
+  if (mentioned.length && owners.length && !mentioned.some((person) =>
+    owners.some((owner) => owner.toLowerCase() === person.toLowerCase()))) return false;
+  const sharedEvidence = (point.evidenceIds || []).some((id) => (action.evidenceIds || []).includes(id));
+  if (!sharedEvidence && evidenceDistance(point.evidenceIds || [], action.evidenceIds || []) > 2) return false;
+  return bodyOverlap(pointText, actionText) >= 0.58;
+}
+
+// Discussion is available before Actions, so action-shaped context remains
+// visible at that stage.  Once the accepted action register exists, remove
+// only a generated point which strictly duplicates one of those actions.
+// Decisions, open questions and reviewer-authored rows are never touched.
+function removeDiscussionActionDuplicates(discussion = [], actions = [], people = []) {
+  const dropped = [];
+  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    const next = { ...topic };
+    next.points = (topic?.points || []).filter((point) => {
+      if (point?.reviewerAuthored) return true;
+      const match = (Array.isArray(actions) ? actions : []).find((action) =>
+        discussionPointMatchesAction(point, action, people));
+      if (!match) return true;
+      dropped.push({ pointId: point?.id || '', actionId: match?.id || '', text: clean(point?.text).slice(0, 200) });
+      return false;
+    });
+    return next;
+  }).filter((topic) => (topic.points || []).length || (topic.decisions || []).length || (topic.openQuestions || []).length);
+  return { discussion: topics, dropped };
+}
+
 module.exports = {
   isSinglePersonAssignment,
   isAssignmentLine,
   shapeDiscussion,
   dedupeDiscussionBody,
+  removeDiscussionActionDuplicates,
+  discussionPointMatchesAction,
   announcesActions,
   RECAP_TITLE
 };

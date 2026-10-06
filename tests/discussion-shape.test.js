@@ -3,7 +3,11 @@
 // Generic cases only: none of these sentences come from the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { shapeDiscussion, isSinglePersonAssignment } = require('../utils/discussionShape');
+const {
+  shapeDiscussion,
+  isSinglePersonAssignment,
+  removeDiscussionActionDuplicates
+} = require('../utils/discussionShape');
 const api = require('../routes/api');
 const { foldUnownedNearCopies } = api.stagedEvaluation;
 
@@ -17,6 +21,34 @@ test('one person taking on work is an assignment, not a decision; group choices 
   assert.equal(isSinglePersonAssignment('It was agreed that banners will be printed instead of flyers.', people), false);
   assert.equal(isSinglePersonAssignment('The budget increase was approved and signed off.', people), false);
   assert.equal(isSinglePersonAssignment('Need to order forty chairs for the hall.', people), false, 'not a person');
+});
+
+test('accepted actions remove only strict generated assignment duplicates from discussion', () => {
+  const discussion = [{
+    id: 'supplier', topic: 'Supplier evidence', decisions: [], openQuestions: [], points: [
+      { id: 'generated', text: 'Priya Shah will send the supplier evidence package by Friday.', evidenceIds: ['T0040'] },
+      { id: 'manual', text: 'Priya Shah will send the supplier evidence package by Friday.', evidenceIds: ['T0040'], reviewerAuthored: true },
+      { id: 'rationale', text: 'The supplier evidence package is required before the audit can begin.', evidenceIds: ['T0041'] }
+    ]
+  }];
+  const actions = [{ id: 'action-1', action: 'Send the supplier evidence package by Friday.', owners: ['Priya Shah'], evidenceIds: ['T0040'] }];
+  const result = removeDiscussionActionDuplicates(discussion, actions, people);
+  assert.deepEqual(result.discussion[0].points.map((item) => item.id), ['manual', 'rationale']);
+  assert.deepEqual(result.dropped.map((item) => item.pointId), ['generated']);
+});
+
+test('discussion assignments remain when owner, figures or evidence do not strictly match an action', () => {
+  const discussion = [{
+    id: 'orders', topic: 'Orders', decisions: [], openQuestions: [], points: [
+      { id: 'different-owner', text: 'Priya Shah will order 30 chairs.', evidenceIds: ['T0100'] },
+      { id: 'different-count', text: 'Tom Ellis will order 40 chairs.', evidenceIds: ['T0100'] },
+      { id: 'distant-evidence', text: 'Tom Ellis will order 30 chairs.', evidenceIds: ['T0200'] }
+    ]
+  }];
+  const actions = [{ id: 'action-1', action: 'Order 30 chairs.', owners: ['Tom Ellis'], evidenceIds: ['T0100'] }];
+  const result = removeDiscussionActionDuplicates(discussion, actions, people);
+  assert.deepEqual(result.discussion[0].points.map((item) => item.id), ['different-owner', 'different-count', 'distant-evidence']);
+  assert.equal(result.dropped.length, 0);
 });
 
 test('assignment decisions become points and a pure recap topic is folded away', () => {

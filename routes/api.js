@@ -281,7 +281,11 @@ const {
   clearMeetingMinutesAgentV2MemoryCaches,
   mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
-const { shapeDiscussion, dedupeDiscussionBody } = require('../utils/discussionShape');
+const {
+  shapeDiscussion,
+  dedupeDiscussionBody,
+  removeDiscussionActionDuplicates
+} = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
 const { normaliseKeptActionIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
 const { includedSections, summaryStageIsEmpty, applyIncludedSections } = require('../utils/includedSections');
@@ -11832,7 +11836,7 @@ function removeMinorCommunicationCourtesyDiscussion(discussion = [], sourceUnits
   }).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length);
 }
 
-const PRIORITY_SUPPORTING_DETAIL = /\b(?:high|medium|moderate|low|significant|material|residual|cybersecurity|safety)?\s*risk(?:s|y)?\b|\b(?:hazard|threat|blocker|blocking|blocked|roadblock|at risk|off track|on track|behind schedule|ahead of schedule|delay(?:ed|s)?|overdue|partway through|in progress|underway|not (?:yet )?started|target(?:ed)? completion|due (?:by|on)|failed|failure)\b/i;
+const PRIORITY_SUPPORTING_DETAIL = /\b(?:high|medium|moderate|low|significant|material|residual|cybersecurity|safety)?\s*risk(?:s|y)?\b|\b(?:hazard|threat|blocker|blocking|blocked|roadblock|at risk|off track|on track|behind schedule|ahead of schedule|delay(?:ed|s)?|overdue|partway through|in progress|underway|not (?:yet )?started|target(?:ed)? completion|due (?:by|on)|failed|failure)\b|\b(?:no|not)\s+(?:final\s+)?(?:decision|agreement|option|solution)\s+(?:was\s+)?(?:made|reached|agreed|selected|chosen)\b|\b(?:decision|choice|issue|matter|discussion)\s+(?:was\s+)?(?:deferred|postponed|parked)\b/i;
 const MATERIAL_METRIC_DETAIL = /(?:[$£€]\s*\d|\b\d+(?:[.,]\d+)?\s*%|\b\d+(?:[.,]\d+)?\s+out of\s+\d+(?:[.,]\d+)?\b|\b(?:increase(?:d)?|decrease(?:d)?|improve(?:d)?|reduc(?:e|ed)|rose|fell|dropped|grew)\b[^.]{0,90}\d|\b(?:average|score|rate|volume|total|target|resolution time|satisfaction|ticket volume|item count)\b[^.]{0,90}\d)/i;
 
 function prioritySupportingDetail(value = '') {
@@ -16168,9 +16172,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
     ...unresolvedStrongCandidateFlags
   ]), isUsefulMeetingAgentReviewFlag);
+  const discussionActionDedupe = removeDiscussionActionDuplicates(
+    draft.discussion,
+    actionFlagState.content.actions,
+    actionPeople
+  );
+  if (discussionActionDedupe.dropped.length) console.log(JSON.stringify({
+    event: 'meeting_agent_discussion_action_dedupe', journeyId: draft.draftId,
+    dropped: discussionActionDedupe.dropped
+  }));
   return {
     changes: {
       actions: actionFlagState.content.actions,
+      ...(discussionActionDedupe.dropped.length ? { discussion: discussionActionDedupe.discussion } : {}),
       pendingProposal: (() => {
         // Later checks (lifecycle, answered, completed) add their own
         // suggestions after the proposal was first filtered, so the same-thing
@@ -16209,6 +16223,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         finalLifecycleWithheldCount,
         finalLifecycleRejectedCount,
         finalActionSurvivalRestoredCount: finalSurvival.restored.length,
+        discussionActionDuplicateCount: discussionActionDedupe.dropped.length,
         actionScreenDuplicateCount,
         acceptedActionEligibleCount: acceptedActionAccounting.eligibleCount,
         acceptedActionRestoredCount: acceptedActionAccounting.restored.length,
@@ -16698,7 +16713,11 @@ function publicMeetingAgentGeneration(generation) {
 
 function meetingAgentStageContentFields(stage) {
   if (stage === 'discussion') return ['discussion', 'meetingObjectives'];
-  if (stage === 'actions') return ['actions', 'pendingProposal'];
+  // The Actions pass may remove a generated Discussion point only when the
+  // finished accepted action register strictly duplicates it. Persistence
+  // applies that optional cleanup only if Discussion was not edited while the
+  // pass was running.
+  if (stage === 'actions') return ['actions', 'pendingProposal', 'discussion'];
   if (stage === 'summary') return ['executiveSummary', 'meetingObjectives'];
   return [];
 }
@@ -17379,6 +17398,9 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
         ? preselectActionProposal({ ...diff, changes: combined, source: 'regeneration' }, current, fresh.sourceUnits || [])
         : null;
       delete changes.actions;
+      // The generated action register was not applied, so it cannot justify
+      // removing a corresponding row from the reviewer's Discussion.
+      delete changes.discussion;
       // Flags raised on rows that were not applied would point at nothing.
       const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
       incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));

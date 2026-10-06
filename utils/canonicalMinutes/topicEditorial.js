@@ -197,6 +197,8 @@ const ACTION_CATEGORY_TOPIC = /^(?:action(?:\s+(?:items?|points?))?|action\s+ite
 // heading containing one of these words must remain publishable unless all of
 // its rows are action-shaped (checked by isActionCategoryTopicCard below).
 const ACTION_SUMMARY_TOPIC = /\b(?:action(?:s)?|assignments?|priorit(?:y|ies)|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?)\b/i;
+const META_TOPIC_PREFIX = /^(?:(?:brief\s+)?(?:summary|overview|recap)\s+of\s+)(?:(?:the|current|key|main|overall)\s+)*/i;
+const META_TOPIC_SUFFIX = /\s+(?:(?:and|&)\s+)?(?:current\s+)?(?:priorities|next\s+steps?|follow[- ]?ups?|actions?|tasks?)$/i;
 const ACTION_CATEGORY_RECORD = /^(?:(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]{1,30}){0,3})[,;:]?\s+)?(?:will|shall|must|needs?\s+to|is\s+to|are\s+to|to\s+|please\s+|review\b|confirm\b|update\b|send\b|share\b|prepare\b|complete\b|check\b|test\b|provide\b|follow[- ]?up\b|(?:the\s+)?(?:plans?|assignments?|tasks?|next\s+steps?)\s+(?:include|involve|cover)\s+[a-z][a-z'’-]*ing\b)/i;
 // Action recaps are sometimes written as reported speech rather than an
 // imperative list: "Jacqui stated that David would...". That grammatical
@@ -292,6 +294,27 @@ function isActionCategoryTopicCard(card = {}) {
     ACTION_CATEGORY_RECORD.test(record) || REPORTED_ACTION_CATEGORY_RECORD.test(record));
 }
 
+// Generated headings sometimes describe the document structure instead of the
+// subject: "Summary of parking control options" or "Summary of current
+// software review and testing priorities".  Keep the card and every row, but
+// remove that editorial scaffolding when a useful multi-word subject remains.
+// Reviewer-authored labels are never rewritten.
+function normaliseMetaTopicLabel(value) {
+  const original = clean(value);
+  if (!original) return original;
+  let normalised = original.replace(META_TOPIC_PREFIX, '').trim();
+  const withoutSuffix = normalised.replace(META_TOPIC_SUFFIX, '').trim();
+  const subjectWords = withoutSuffix.match(/[\p{L}\p{N}][\p{L}\p{N}'’/-]*/gu) || [];
+  if (withoutSuffix !== normalised && subjectWords.length >= 2) normalised = withoutSuffix;
+  if (!normalised || normalised === original) return original;
+  return normalised.charAt(0).toUpperCase() + normalised.slice(1);
+}
+
+function normaliseMetaTopicHeadings(cards = []) {
+  return (Array.isArray(cards) ? cards : []).map((card) =>
+    isReviewerAuthored(card) ? card : { ...card, topic: normaliseMetaTopicLabel(card?.topic) });
+}
+
 // Applied at the point the discussion is returned, so it covers every card
 // whatever produced it. A topic the reviewer confirmed themselves is theirs to
 // word however they like and is never second-guessed here.
@@ -352,4 +375,6 @@ function editorialTopics(topics, evidence, maximum = 8) {
 
 module.exports = {
   labelIsTurnDerived,
-  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isStructuralTopicLabel, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards };
+  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel,
+  labelIsClientReady, isStructuralTopicLabel, isPublishableTopicLabel, isActionCategoryTopicCard,
+  normaliseMetaTopicLabel, normaliseMetaTopicHeadings, publishableTopicCards };

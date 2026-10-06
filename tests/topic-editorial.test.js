@@ -3,7 +3,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { editorialTopicLabel, editorialTopics, isStructuralTopicLabel, isPublishableTopicLabel, isActionCategoryTopicCard, publishableTopicCards } = require('../utils/canonicalMinutes/topicEditorial');
+const {
+  editorialTopicLabel, editorialTopics, isStructuralTopicLabel, isPublishableTopicLabel,
+  isActionCategoryTopicCard, normaliseMetaTopicLabel, normaliseMetaTopicHeadings,
+  publishableTopicCards
+} = require('../utils/canonicalMinutes/topicEditorial');
 
 function topicFor(text, id = 'topic_1') {
   const evidence = prepareEvidence(`Amina Khan  00:01\n${text}`);
@@ -30,6 +34,18 @@ test('editorial labels prefer specific technical workstreams over generic timing
 
   const traceability = topicFor('The 17 changes between software versions need traceability to their location within the code.');
   assert.equal(editorialTopicLabel(traceability.topic, traceability.evidence), 'Software change traceability');
+});
+
+test('generated meta headings become neutral subjects without changing reviewer headings', () => {
+  assert.equal(normaliseMetaTopicLabel('Summary of parking control options'), 'Parking control options');
+  assert.equal(normaliseMetaTopicLabel('Summary of current software review and testing priorities'), 'Software review and testing');
+  assert.equal(normaliseMetaTopicLabel('Project priorities'), 'Project priorities');
+  const cards = normaliseMetaTopicHeadings([
+    { topic: 'Overview of the supplier audit evidence' },
+    { topic: 'Summary of current launch priorities', reviewerAuthored: true }
+  ]);
+  assert.equal(cards[0].topic, 'Supplier audit evidence');
+  assert.equal(cards[1].topic, 'Summary of current launch priorities');
 });
 
 test('editorial labels treat alarm bells as warning-sign language, not literal device alarms', () => {
