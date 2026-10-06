@@ -44,6 +44,16 @@ const RECAP_TITLE = /\b(?:recap|summary of (?:the )?(?:key\s+)?(?:actions?|actio
 // "Action assigned: ...", "Key next steps include ...", "Plan to ...".
 const ASSIGNMENT_LINE = /(?:^|[;:.]\s*)(?:actions?\s+assigned|key\s+(?:next\s+steps|actions)\s+include|next\s+steps\s+include|plan\s+to\b)/i;
 
+// A collective can take on future work without a named individual: "The
+// committee agreed to monitor the risk".  This is intentionally not used to
+// classify Discussion on its own.  It only permits removal after the finished
+// Actions register contains the same evidence-backed commitment.
+const COLLECTIVE_COMMITMENT = /^(?:the\s+)?(?:team|group|committee|board|meeting|project\s+team|working\s+group|we)\s+(?:agreed|committed|resolved|decided)\s+to\s+(?:monitor|review|assess|check|track|follow(?:\s+up)?|update|prepare|complete|send|share|provide|investigate|confirm|arrange|schedule|contact|raise|develop|create|deliver|test|resolve|implement|maintain|record|report)\b/i;
+
+function isExplicitCollectiveCommitment(text) {
+  return COLLECTIVE_COMMITMENT.test(clean(text));
+}
+
 // Anywhere in the line, a person from this meeting given work: "..., Andrew to
 // check the spec and Rebecca to update the risk files".
 function namesSomeoneWithWork(text, people = []) {
@@ -294,7 +304,8 @@ function namedPeopleIn(value, people = []) {
 function discussionPointMatchesAction(point = {}, action = {}, people = []) {
   const pointText = clean(point?.text);
   const actionText = clean(action?.action || action?.text);
-  if (!pointText || !actionText || !isAssignmentLine(pointText, people)) return false;
+  if (!pointText || !actionText
+    || (!isAssignmentLine(pointText, people) && !isExplicitCollectiveCommitment(pointText))) return false;
   const pointFigures = bodyFigures(pointText);
   const actionFigures = bodyFigures(actionText);
   if ((pointFigures.size || actionFigures.size) && !sameValueSet(pointFigures, actionFigures)) return false;
@@ -334,6 +345,7 @@ function removeDiscussionActionDuplicates(discussion = [], actions = [], people 
 module.exports = {
   isSinglePersonAssignment,
   isAssignmentLine,
+  isExplicitCollectiveCommitment,
   shapeDiscussion,
   dedupeDiscussionBody,
   removeDiscussionActionDuplicates,

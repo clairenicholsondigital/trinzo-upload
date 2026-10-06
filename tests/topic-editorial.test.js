@@ -179,6 +179,18 @@ test('assignment summaries expressed as planned-work lists are action categories
   assert.deepEqual(publishableTopicCards([factualDiscussion]), [factualDiscussion]);
 });
 
+test('administrative modifiers do not turn a pure action bucket into a discussion subject', () => {
+  for (const topic of [
+    'Individual action assignments',
+    'Agreed action items',
+    'Outstanding follow-ups'
+  ]) {
+    assert.equal(isPublishableTopicLabel(topic), false, topic);
+  }
+  assert.equal(isPublishableTopicLabel('Software testing actions'), true,
+    'a substantive subject is not rejected merely because it ends in actions');
+});
+
 test('reported-speech assignment recaps remain action categories', () => {
   const recap = {
     topic: 'Summary of individual action assignments and next steps',

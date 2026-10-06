@@ -857,6 +857,51 @@ function absorbRelatedSingletonTopics(topics, index, positionById, segments, max
   return result;
 }
 
+// Lexical matching above remains the first and safest route.  A generated
+// singleton can nevertheless describe the same subject in different language
+// (for example a legal-manufacturer fact beside a regulatory-responsibility
+// section).  Use the already-prepared semantic vectors only as a narrow
+// fallback: one shared distinctive anchor, close evidence, a substantial
+// destination and one clearly best semantic match are all required.
+function absorbSemanticSingletonTopics(topics, sourceUnits = [], options = {}, maximumRows = 10) {
+  const vectorByText = options.restatementVectorByText;
+  if (!(vectorByText instanceof Map)) return topics;
+  const units = Array.isArray(sourceUnits) ? sourceUnits : [];
+  const segments = hardTopicSegments(units);
+  const positionById = new Map(units.map((unit, position) => [text(unit?.id, 30), position]));
+  const index = unitIndex(units);
+  const result = (Array.isArray(topics) ? topics : []).map(cloneTopic);
+  const signatures = new Map(result.map((topic) => [topic, completeTopicSignature(topic)]));
+  for (let from = result.length - 1; from >= 0; from -= 1) {
+    const source = result[from];
+    if (reviewerTopic(source) || topicRows(source).length !== 1) continue;
+    const sourceSignature = signatures.get(source) || completeTopicSignature(source);
+    const sourceVector = vectorByText.get(sourceSignature);
+    if (!sourceVector) continue;
+    const sourceRow = topicRows(source)[0]?.record;
+    const candidates = result.map((candidate, candidateIndex) => {
+      if (candidateIndex === from || reviewerTopic(candidate) || topicRows(candidate).length < 2
+        || topicRows(candidate).length + 1 > maximumRows) return null;
+      const candidateSignature = signatures.get(candidate) || completeTopicSignature(candidate);
+      const candidateVector = vectorByText.get(candidateSignature);
+      if (!candidateVector) return null;
+      const headingShared = sharedDistinctiveCount(source?.topic, candidate?.topic);
+      const bodyHeadingShared = sharedDistinctiveCount(sourceRow?.text, candidate?.topic);
+      const shared = sharedDistinctiveCount(sourceSignature, candidateSignature);
+      if (shared < 1 || (!headingShared && !bodyHeadingShared && shared < 2)) return null;
+      if (!sameOrNeighbouringPassage(source, candidate, positionById, segments, index, 5)) return null;
+      const semantic = cosine(sourceVector, candidateVector);
+      if (semantic < 0.92) return null;
+      const gap = topicEvidenceGap(source, candidate, index);
+      return { index: candidateIndex, semantic, gap };
+    }).filter(Boolean).sort((left, right) => right.semantic - left.semantic || left.gap - right.gap);
+    if (!candidates.length || (candidates[1] && candidates[0].semantic - candidates[1].semantic < 0.04)) continue;
+    mergeInto(result[candidates[0].index], source);
+    result.splice(from, 1);
+  }
+  return sortByEvidence(result, index);
+}
+
 // A decision sometimes arrives as its own one-line card even though a nearby
 // generated card contains the discussion of exactly that subject.  Join it
 // only on a distinctive shared subject, close evidence and an unambiguous best
@@ -1188,6 +1233,29 @@ function rowsClaimCompatible(left, right) {
   return true;
 }
 
+// A consolidation may safely combine an unquantified statement with a more
+// specific quantified one.  Conflicting quantified statements remain outside
+// the editor entirely, while the output validator below must preserve the
+// union of every figure that was supplied.
+function rowsConsolidationCompatible(left, right) {
+  const leftNumbers = valueSet(left?.text, ROW_NUMBER);
+  const rightNumbers = valueSet(right?.text, ROW_NUMBER);
+  if (leftNumbers.size && rightNumbers.size && !sameSet(leftNumbers, rightNumbers)) return false;
+  const leftNegative = ROW_NEGATION.test(text(left?.text));
+  const rightNegative = ROW_NEGATION.test(text(right?.text));
+  if (leftNegative !== rightNegative) {
+    const negativeText = text(leftNegative ? left?.text : right?.text)
+      .replace(/\b(?:no|not|never|cannot|can['’]?t|won['’]?t|wouldn['’]?t)\b/gi, '');
+    const affirmativeText = text(leftNegative ? right?.text : left?.text);
+    // Near-identical affirmative/negative claims are a contradiction, not two
+    // facets.  A negative scope qualifier about a different object may still
+    // accompany a positive description and is preserved by the output gate.
+    if (clauseOverlap(negativeText, affirmativeText) >= 0.55) return false;
+  }
+  if (ROW_UNCERTAINTY.test(text(left?.text)) !== ROW_UNCERTAINTY.test(text(right?.text))) return false;
+  return true;
+}
+
 function rowContainment(left, right) {
   const a = contentTokens(left?.text); const b = contentTokens(right?.text);
   if (Math.min(a.size, b.size) < 5) return 0;
@@ -1263,13 +1331,15 @@ function partialOverlapCandidates(topics = [], options = {}) {
       const group = rows.slice(rowIndex, rowIndex + 2);
       if (group.some((record) => record?.reviewerAuthored)
         || rowEvidenceGap(group[0], group[1], index) > 4
-        || !rowsClaimCompatible(group[0], group[1])
+        || !rowsConsolidationCompatible(group[0], group[1])
         || !rowPredicatesCompatible(group[0], group[1])) continue;
       const lexical = clauseOverlap(group[0]?.text, group[1]?.text);
+      const sharedSubject = sharedDistinctiveCount(group[0]?.text, group[1]?.text);
       const leftVector = options.restatementVectorByText?.get(text(group[0]?.text));
       const rightVector = options.restatementVectorByText?.get(text(group[1]?.text));
       const semantic = leftVector && rightVector ? cosine(leftVector, rightVector) : 0;
-      if (!((semantic >= 0.84 && lexical >= 0.38) || lexical >= 0.68)) continue;
+      const complementaryFacets = semantic >= 0.9 && lexical >= 0.18 && sharedSubject >= 2;
+      if (!((semantic >= 0.84 && lexical >= 0.38) || lexical >= 0.68 || complementaryFacets)) continue;
       const ids = group.map((record) => text(record?.id, 160));
       const candidateId = `overlap:${text(topic?.id || topic?.topic, 100)}:${ids.join(':') || rowIndex}`;
       candidates.push({
@@ -1523,7 +1593,10 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
 
 async function prepareRestatementVectors(topics = [], options = {}) {
   const values = [...new Set((Array.isArray(topics) ? topics : [])
-    .flatMap((topic) => topicRows(topic).map(({ record }) => text(record?.text)))
+    .flatMap((topic) => [
+      ...topicRows(topic).map(({ record }) => text(record?.text)),
+      completeTopicSignature(topic)
+    ])
     .filter(Boolean))];
   if (values.length < 2) return { ...options, restatementVectorsPrepared: true, restatementVectorByText: null };
   try {
@@ -1566,6 +1639,7 @@ async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   topics = repairStructuralTopicHeadings(topics, options.sourceUnits || []);
   topics = normaliseDecisionTopicHeadings(topics);
   const preparedOptions = await prepareRestatementVectors(topics, options);
+  topics = absorbSemanticSingletonTopics(topics, options.sourceUnits || [], preparedOptions);
   topics = await dedupeAdjacentRestatements(topics, preparedOptions);
   topics = await dedupeGlobalRestatements(topics, preparedOptions);
   topics = await consolidatePartialOverlapRows(topics, preparedOptions);
@@ -1711,6 +1785,7 @@ module.exports = {
   splitIndependentClauses,
   partialOverlapCandidates,
   consolidatePartialOverlapRows,
+  absorbSemanticSingletonTopics,
   removeShortTopicEchoes,
   removeFloorManagementRows,
   balanceDiscussionTopics,

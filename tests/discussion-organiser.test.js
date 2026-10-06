@@ -11,7 +11,7 @@ const {
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
   consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
-  balanceDiscussionTopics, finaliseDiscussionForPublication
+  balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -452,6 +452,72 @@ test('strong adjacent two-row restatements can use the guarded consolidation edi
   });
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].rows.length, 2);
+});
+
+test('evidence-near complementary facets of one subject reach the no-loss consolidation editor', () => {
+  const examples = [
+    [
+      'The design owner is required to fully follow up on concerns because information is limited without them.',
+      'The design owner is necessary to fully assess issues, including the risk management files.'
+    ],
+    [
+      'The audit is a normal full compliance audit with findings and ratings, not an assessment audit, and there is no AI component in the devices.',
+      'The audit is a routine full compliance audit to 21 CFRs, MDSAP and MDR, with prior reports informing the focus on software development.'
+    ],
+    [
+      'The proposal was that pressing the mute button would cause all indicators to ramp slowly off and on.',
+      'The proposal was for the LED to remain solid at low priority, flash slowly at medium priority and flash quickly at high priority when not pressed.'
+    ]
+  ];
+  for (const [indexValue, pair] of examples.entries()) {
+    const sourceUnits = pair.map((value, offset) => ({
+      id: `T${indexValue}${offset}`, sequence: offset + 1, text: value
+    }));
+    const discussion = [{ id: `topic-${indexValue}`, topic: 'Shared subject', decisions: [], openQuestions: [], points:
+      pair.map((value, offset) => ({ id: `row-${offset}`, text: value, evidenceIds: [`T${indexValue}${offset}`] })) }];
+    const restatementVectorByText = new Map(pair.map((value) => [value, [1, 0]]));
+    assert.equal(partialOverlapCandidates(discussion, { sourceUnits, restatementVectorByText }).length, 1);
+  }
+});
+
+test('complementary-facet discovery still refuses affirmative and negative versions of one claim', () => {
+  const pair = ['The release plan was approved.', 'The release plan was not approved.'];
+  const sourceUnits = pair.map((value, offset) => ({ id: `T000${offset}`, sequence: offset, text: value }));
+  const discussion = [{ id: 'release', topic: 'Release plan', decisions: [], openQuestions: [], points:
+    pair.map((value, offset) => ({ id: `row-${offset}`, text: value, evidenceIds: [`T000${offset}`] })) }];
+  const restatementVectorByText = new Map(pair.map((value) => [value, [1, 0]]));
+  assert.equal(partialOverlapCandidates(discussion, { sourceUnits, restatementVectorByText }).length, 0);
+});
+
+test('semantic singleton fallback absorbs only one clearly best nearby generated destination', () => {
+  const sourceUnits = [
+    { id: 'T0010', sequence: 10, text: 'The regulatory responsibilities were reviewed.' },
+    { id: 'T0011', sequence: 11, text: 'Manufacturing responsibilities remain with the legal manufacturer.' },
+    { id: 'T0012', sequence: 12, text: 'The site is the legal manufacturer of devices made in Penang.' },
+    { id: 'T0013', sequence: 13, text: 'The audit timetable was confirmed.' }
+  ];
+  const topics = [
+    { id: 'regulatory', topic: 'Manufacturing responsibilities', decisions: [], openQuestions: [], points: [
+      { id: 'r1', text: 'The regulatory responsibilities were reviewed.', evidenceIds: ['T0010'] },
+      { id: 'r2', text: 'Manufacturing responsibilities remain with the legal manufacturer.', evidenceIds: ['T0011'] }
+    ] },
+    { id: 'singleton', topic: 'Legal manufacturer status', decisions: [], openQuestions: [], points: [
+      { id: 's1', text: 'The site is the legal manufacturer of devices made in Penang.', evidenceIds: ['T0012'] }
+    ] },
+    { id: 'schedule', topic: 'Audit timetable', decisions: [], openQuestions: [], points: [
+      { id: 'a1', text: 'The audit timetable was confirmed.', evidenceIds: ['T0013'] },
+      { id: 'a2', text: 'The opening meeting remains scheduled.', evidenceIds: ['T0013'] }
+    ] }
+  ];
+  const signature = (topic) => [topic.topic, ...topic.points.map((point) => point.text)].join('. ');
+  const restatementVectorByText = new Map([
+    [signature(topics[0]), [1, 0]],
+    [signature(topics[1]), [0.98, 0.02]],
+    [signature(topics[2]), [0, 1]]
+  ]);
+  const merged = absorbSemanticSingletonTopics(topics, sourceUnits, { restatementVectorByText });
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged.find((topic) => topic.id === 'regulatory').points.map((point) => point.id), ['r1', 'r2', 's1']);
 });
 
 test('overlap consolidation fails closed when a figure or polarity is lost', async () => {

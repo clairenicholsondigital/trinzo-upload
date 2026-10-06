@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   shapeDiscussion,
   isSinglePersonAssignment,
+  isExplicitCollectiveCommitment,
   removeDiscussionActionDuplicates
 } = require('../utils/discussionShape');
 const api = require('../routes/api');
@@ -35,6 +36,22 @@ test('accepted actions remove only strict generated assignment duplicates from d
   const result = removeDiscussionActionDuplicates(discussion, actions, people);
   assert.deepEqual(result.discussion[0].points.map((item) => item.id), ['manual', 'rationale']);
   assert.deepEqual(result.dropped.map((item) => item.pointId), ['generated']);
+});
+
+test('a collective monitoring commitment leaves discussion only when the accepted Action matches it', () => {
+  const point = row('collective', 'The committee agreed to monitor the theft risk as an ongoing issue.');
+  const discussion = [{ id: 'risk', topic: 'Theft risk', points: [point], decisions: [], openQuestions: [] }];
+  assert.equal(isExplicitCollectiveCommitment(point.text), true);
+  assert.equal(removeDiscussionActionDuplicates(discussion, [], people).discussion[0].points.length, 1,
+    'classification alone never removes the point');
+
+  const matching = [{ id: 'action-1', action: 'Monitor the theft risk as an ongoing issue.', owners: [], evidenceIds: ['T0001'] }];
+  const removed = removeDiscussionActionDuplicates(discussion, matching, people);
+  assert.equal(removed.discussion.length, 0);
+  assert.equal(removed.dropped.length, 1);
+
+  const unrelated = [{ id: 'action-2', action: 'Monitor the supplier delivery risk.', owners: [], evidenceIds: ['T0001'] }];
+  assert.equal(removeDiscussionActionDuplicates(discussion, unrelated, people).discussion[0].points.length, 1);
 });
 
 test('discussion assignments remain when owner, figures or evidence do not strictly match an action', () => {

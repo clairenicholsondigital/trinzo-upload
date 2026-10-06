@@ -190,7 +190,10 @@ function isStructuralTopicLabel(value) {
     .filter((word) => !STRUCTURAL_TOPIC_CONNECTORS.has(word));
   return words.length > 0 && words.every((word) => STRUCTURAL_TOPIC_WORDS.has(word));
 }
-const ACTION_CATEGORY_TOPIC = /^(?:action(?:\s+(?:items?|points?))?|action\s+items?\s+and\s+priorities|priorities|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?|assignments?)(?:\s+(?:and|&)\s+(?:priorities|next\s+steps?|follow[- ]?ups?|actions?|tasks?|assignments?))?$/i;
+// Pure action buckets are document structure, not discussion subjects.  Permit
+// only administrative modifiers before the category so a real subject such as
+// "Software testing actions" is not rejected by its final word.
+const ACTION_CATEGORY_TOPIC = /^(?:(?:individual|agreed|confirmed|assigned|outstanding|remaining)\s+)*(?:action(?:\s+(?:items?|points?|assignments?))?|action\s+items?\s+and\s+priorities|priorities|next\s+steps?|follow[- ]?ups?|to[- ]?dos?|tasks?|assignments?)(?:\s+(?:and|&)\s+(?:priorities|next\s+steps?|follow[- ]?ups?|actions?|tasks?|assignments?))?$/i;
 // A generated heading can describe a subject and still be only an action
 // bucket, for example "Prioritised software review and testing actions".
 // Keep this broader test separate from ACTION_CATEGORY_TOPIC: a substantive
