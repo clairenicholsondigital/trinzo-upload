@@ -3675,7 +3675,9 @@ async function listMeetingMinutesAgentDraftPage(userId, options = {}) {
   await ensureMeetingMinutesAgentDraftSchema();
   const limit = Math.min(Math.max(Number(options.limit) || 10, 1), 50);
   const offset = Math.min(Math.max(Number(options.offset) || 0, 0), 100000);
-  const search = String(options.search || '').trim().slice(0, 200);
+  // Escape LIKE wildcards so a search for "_" or "%" matches those characters
+  // rather than every draft.
+  const search = String(options.search || '').trim().slice(0, 200).replace(/[\\%_]/g, (char) => `\\${char}`);
   const status = ['draft', 'review', 'complete'].includes(String(options.status || '').toLowerCase())
     ? String(options.status).toLowerCase()
     : '';

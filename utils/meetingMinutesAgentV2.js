@@ -881,7 +881,7 @@ function discussionTopicItems(candidate = {}) {
   });
 }
 
-function normaliseDiscussion(candidate = {}, units = []) {
+function normaliseDiscussion(candidate = {}, units = [], options = {}) {
   const topics = discussionTopicItems(candidate).slice(0, 80).map((item, index) => {
     const topic = text(item?.topic, 220) || 'Discussion';
     return {
@@ -894,7 +894,11 @@ function normaliseDiscussion(candidate = {}, units = []) {
   }).filter((item) => item.points.length || item.decisions.length || item.openQuestions.length);
   const merged = [];
   for (const topic of topics) {
-    const existing = merged.find((item) => tokenOverlap(comparisonText(item.topic), comparisonText(topic.topic)) >= 0.82);
+    // A reviewer's save keeps their topics as they arranged them: two cards
+    // both still called "New topic", or "Project" beside "Project timeline",
+    // are separate topics until the reviewer merges them.
+    const existing = options.mergeTopics === false ? null
+      : merged.find((item) => tokenOverlap(comparisonText(item.topic), comparisonText(topic.topic)) >= 0.82);
     if (!existing) { merged.push(topic); continue; }
     existing.points = dedupePointList([...existing.points, ...topic.points]);
     existing.decisions = dedupePointList([...existing.decisions, ...topic.decisions]);
@@ -5264,7 +5268,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   // reviewer is the human check on the agent, so their entry is flagged for
   // confirmation but never silently reverted.
   const enforceEvidence = options.enforceEvidence !== false;
-  const discussion = normaliseDiscussion(candidate, units);
+  const discussion = normaliseDiscussion(candidate, units, options);
   const actions = normaliseActions(candidate, units, options);
   const objectives = normalisePointList(candidate.objectives, units, 'objective');
   const executiveSummary = normaliseExecutiveSummary(candidate.executiveSummary);
