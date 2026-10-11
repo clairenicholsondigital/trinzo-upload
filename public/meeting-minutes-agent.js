@@ -1158,6 +1158,22 @@
       + '</select></label>';
   }
 
+  // "Move to" works with a tap, so moving a row between topics does not
+  // depend on drag and drop, which phones do not support.
+  function moveRecordControl(row, topicIndex) {
+    var discussion = (state.draft && state.draft.discussion) || [];
+    var others = discussion.map(function (other, otherIndex) {
+      return otherIndex === topicIndex ? null : { index: otherIndex, topic: other.topic || 'Untitled topic' };
+    }).filter(Boolean);
+    if (!others.length) return '';
+    return '<label class="merge-topic move-record-topic"><span>Move to topic</span><select data-move-record-topic="' + escapeHtml(row.field) + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" aria-label="Move this item to another topic">'
+      + '<option value="">Choose a topic…</option>'
+      + others.map(function (other) {
+        return '<option value="' + other.index + '">' + escapeHtml(other.topic.slice(0, 60)) + '</option>';
+      }).join('')
+      + '</select></label>';
+  }
+
   function discussionPropositions(topic, topicIndex) {
     var labels = { points: 'Discussion', decisions: 'Decision', openQuestions: 'Open question' };
     var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
@@ -1166,7 +1182,7 @@
     return '<div class="record-section proposition-section"><div class="record-list proposition-list">' + (rows.map(function (row) {
       var label = labels[row.field];
       var targetId = recordDomId('discussion', row.item.id, topicIndex + '-' + row.field + '-' + row.itemIndex);
-      var actions = (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="secondary quiet" data-move-record-new-topic="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to new topic</button><button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button>';
+      var actions = moveRecordControl(row, topicIndex) + (rows.length > 1 ? '<button class="secondary quiet" data-demote-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to context</button>' : '') + '<button class="secondary quiet" data-move-record-new-topic="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Move to new topic</button><button class="delete quiet" data-remove-record="' + row.field + '" data-topic-index="' + topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Remove</button>';
       var grip = '<button type="button" class="record-grip" draggable="true"'
         + ' data-record-grip="' + topicIndex + '" data-grip-field="' + row.field + '" data-grip-index="' + row.itemIndex + '"'
         + ' aria-label="Reorder this ' + escapeHtml(label.toLowerCase()) + '. Drag, or use the arrow keys."'
@@ -1182,11 +1198,21 @@
   function renderDiscussion() {
     if (generationRunning('discussion')) {
       document.getElementById('omittedDetailsReview').innerHTML = '';
+      document.getElementById('discussionListBar').innerHTML = '';
       document.getElementById('discussionList').innerHTML = '<div class="generation-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>';
       return;
     }
     var discussion = (state.draft && state.draft.discussion) || [];
     document.getElementById('omittedDetailsReview').innerHTML = omittedDetailsPanel(discussion);
+    var allCollapsed = discussion.length > 0 && discussion.every(function (topic, index) {
+      return Boolean(discussionEditorState.collapsedTopics[String(topic.id || ('topic-' + index))]);
+    });
+    // Collapsing every card leaves a short list of topic titles: the quickest
+    // way to see the shape of the minutes and rename topics, above all on a phone.
+    var listBar = discussion.length > 1
+      ? '<div class="discussion-list-bar"><span class="muted">' + discussion.length + ' topics</span><button class="secondary quiet compact" data-toggle-all-topics="' + (allCollapsed ? 'expand' : 'collapse') + '" type="button">' + (allCollapsed ? 'Expand all' : 'Collapse all') + '</button></div>'
+      : '';
+    document.getElementById('discussionListBar').innerHTML = listBar;
     document.getElementById('discussionList').innerHTML = discussion.map(function (topic, index) {
       var topicId = String(topic.id || ('topic-' + index));
       var collapsed = Boolean(discussionEditorState.collapsedTopics[topicId]);
@@ -2917,6 +2943,18 @@
   });
 
   document.getElementById('discussionScreen').addEventListener('click', function (event) {
+    var toggleAll=event.target.closest('[data-toggle-all-topics]');
+    if(toggleAll){
+      var collapseAll=toggleAll.dataset.toggleAllTopics==='collapse';
+      (state.draft.discussion||[]).forEach(function(topic,index){
+        discussionEditorState.collapsedTopics[String(topic.id||('topic-'+index))]=collapseAll;
+      });
+      readDiscussion();
+      renderDiscussion();
+      var nextToggle=document.querySelector('[data-toggle-all-topics]');
+      if(nextToggle)nextToggle.focus({preventScroll:true});
+      return;
+    }
     var toggle=event.target.closest('[data-toggle-topic]');
     if(toggle){
       var toggleId=toggle.dataset.toggleTopic;
@@ -3230,6 +3268,25 @@
     // and it is one undoable step.
     queueReviewDecision('Topics merged');
     setStatus('Merged into "' + (target.topic || 'Untitled topic') + '".', false, 'discussion');
+  });
+
+  document.getElementById('discussionList').addEventListener('change', function (event) {
+    var select = event.target.closest('[data-move-record-topic]');
+    if (!select || !select.value) return;
+    var from = { topic: Number(select.dataset.topicIndex), field: select.dataset.moveRecordTopic, index: Number(select.dataset.itemIndex) };
+    var into = Number(select.value);
+    var target = ((state.draft && state.draft.discussion) || [])[into];
+    if (!target || into === from.topic) return;
+    var record = (((state.draft.discussion[from.topic] || {})[from.field]) || [])[from.index];
+    var pending = record && record.id && discussionEditorState.pendingRecords[record.id];
+    if (pending) pending.topicId = target.id;
+    // Show where the row went, or it vanishes into a closed card.
+    var targetId = String(target.id || ('topic-' + into));
+    delete discussionEditorState.collapsedTopics[targetId];
+    if (!moveDiscussionRecord(from, { topic: into, field: null, index: null })) return;
+    markDownstreamStale();
+    markUndoStep('move discussion item', '');
+    setStatus('Moved to "' + (target.topic || 'Untitled topic') + '".', false, 'discussion');
   });
 
   document.getElementById('actionsBody').addEventListener('change', function (event) {

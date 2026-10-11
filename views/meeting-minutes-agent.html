@@ -423,6 +423,11 @@
 .meeting-agent-page .topic-menu-popover .delete{width:100%}
 .meeting-agent-page .merge-topic{display:grid;gap:.25rem;margin-bottom:.4rem}
 .meeting-agent-page .merge-topic span{color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .record-menu-popover>.move-record-topic{margin-bottom:0}
+.meeting-agent-page .record-menu-popover>.move-record-topic select{width:100%;min-width:0;box-sizing:border-box}
+.meeting-agent-page .discussion-list-bar{
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-top:.6rem;font-size:var(--fs-cap)}
+.meeting-agent-page .discussion-list-bar>.secondary{padding:.3rem .55rem}
 .meeting-agent-page .merge-topic select{width:100%;max-width:15rem}
 .meeting-agent-page .record-section{padding:.55rem .65rem .65rem}
 .meeting-agent-page .record-section+.record-section{border-top:1px solid var(--border)}
@@ -1021,6 +1026,8 @@
   .meeting-agent-page .proposition-row .proposition-kind{grid-column:1;grid-row:1}
   .meeting-agent-page .proposition-row textarea{display:block;width:100%;box-sizing:border-box}
   .meeting-agent-page .proposition-row .record-menu{position:absolute;top:.35rem;right:.35rem}
+  .meeting-agent-page .record-menu-popover>.move-record-topic select{min-height:44px}
+  .meeting-agent-page .discussion-list-bar>.secondary{min-height:44px}
   /* Keep omitted transcript details readable on narrow screens. Their review
      controls used to reserve a fixed right-hand column, squeezing longer
      details down to one or two words per line. */
@@ -1207,6 +1214,7 @@
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. You will preview them before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
       <div id="omittedDetailsReview"></div>
+      <div id="discussionListBar"></div>
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>

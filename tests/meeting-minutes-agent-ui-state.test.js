@@ -748,6 +748,35 @@ test('a discussion record moves within its topic and across topics', { timeout: 
   }
 });
 
+test('a discussion record moves to another topic from its menu, and every topic collapses at once', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'topic-cleanup');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+
+    const firstText = await page.inputValue('.discussion-card:nth-child(1) [data-record-field]');
+    const secondCardCount = await page.locator('.discussion-card:nth-child(2) [data-record-field]').count();
+    await page.click('.discussion-card:nth-child(1) .record-menu>summary');
+    await page.selectOption('.discussion-card:nth-child(1) [data-move-record-topic]', '1');
+    assert.equal(await page.locator('.discussion-card:nth-child(2) [data-record-field]').count(), secondCardCount + 1);
+    assert.equal(await page.locator('.discussion-card:nth-child(2) [data-record-field]').last().inputValue(), firstText);
+
+    await page.click('[data-toggle-all-topics]');
+    assert.equal(await page.locator('.discussion-card.is-collapsed').count(), await page.locator('.discussion-card').count());
+    assert.equal((await page.textContent('[data-toggle-all-topics]')).trim(), 'Expand all');
+    await page.click('[data-toggle-all-topics]');
+    assert.equal(await page.locator('.discussion-card.is-collapsed').count(), 0);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('the workflow has five steps and Details leads straight to generating', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
