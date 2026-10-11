@@ -11,7 +11,9 @@ const {
   repairStructuralTopicHeadings, mergeExactTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
   consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
-  balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication
+  balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication,
+  discussionTopicArrangementInput, validateDiscussionTopicArrangement,
+  applyDiscussionTopicArrangement
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 
 // Turn-level units in transcript order; ids carry the order.
@@ -32,6 +34,95 @@ const cloneVectors = (signatures) => signatures.map((signature) => {
   // Deterministic stand-in for MiniLM: software topics point one way, risk topics another.
   const s = signature.toLowerCase();
   return [/\b(?:software|language|alarm|code)\b/.test(s) ? 1 : 0, /\b(?:risk|feedback|comments)\b/.test(s) ? 1 : 0, /\b(?:tracker|procedure|christina)\b/.test(s) ? 1 : 0];
+});
+
+test('global topic arrangement can split mixed cards and join related records without editing them', () => {
+  const localUnits = [
+    { id: 'A01', text: 'The hotel is reserved.' },
+    { id: 'A02', text: 'Morgan is leading the visit.' },
+    { id: 'A10', text: 'The working day starts at eight thirty.' },
+    { id: 'A11', text: 'A site walkthrough is required.' },
+    { id: 'A20', text: 'Preparation begins next Monday.' }
+  ];
+  const discussion = [
+    { id: 'mixed-one', topic: 'Accommodation and key dates', points: [
+      { id: 'hotel', text: 'The hotel is reserved.', evidenceIds: ['A01'], reviewFlagIds: ['f1'] },
+      { id: 'lead', text: 'Morgan will lead the visit.', evidenceIds: ['A02'] },
+      { id: 'prep', text: 'Preparation begins next Monday.', evidenceIds: ['A20'] }
+    ], decisions: [], openQuestions: [] },
+    { id: 'mixed-two', topic: 'Site access and schedule', points: [
+      { id: 'hours', text: 'The proposed working day starts at 08:30.', evidenceIds: ['A10'] },
+      { id: 'walk', text: 'A site walkthrough is required.', evidenceIds: ['A11'] }
+    ], decisions: [], openQuestions: [] }
+  ];
+  const input = discussionTopicArrangementInput(discussion, localUnits);
+  const arrangement = { groups: [
+    { topic: 'Accommodation', recordIds: ['hotel'] },
+    { topic: 'Audit team', recordIds: ['lead'] },
+    { topic: 'Audit schedule', recordIds: ['hours', 'prep'] },
+    { topic: 'Site walkthrough', recordIds: ['walk'] }
+  ] };
+  assert.equal(validateDiscussionTopicArrangement(arrangement, input), null);
+  const result = applyDiscussionTopicArrangement(discussion, arrangement, localUnits, { input });
+  assert.equal(result.applied, true);
+  assert.deepEqual(result.discussion.map((topic) => topic.topic),
+    ['Accommodation', 'Audit team', 'Audit schedule', 'Site walkthrough']);
+  const schedule = result.discussion.find((topic) => topic.topic === 'Audit schedule');
+  assert.deepEqual(schedule.points.map((record) => record.id), ['hours', 'prep']);
+  const hotel = result.discussion.find((topic) => topic.topic === 'Accommodation').points[0];
+  assert.equal(hotel.text, 'The hotel is reserved.');
+  assert.deepEqual(hotel.evidenceIds, ['A01']);
+  assert.deepEqual(hotel.reviewFlagIds, ['f1']);
+  assert.deepEqual(result.diagnostics, {
+    beforeTopics: 2, afterTopics: 4, eligibleRecords: 5,
+    movedRecords: 5, splitTopics: 2, combinedTopics: 1, lockedTopics: 0
+  });
+});
+
+test('global topic arrangement excludes a card containing reviewer-authored content', () => {
+  const discussion = [
+    { id: 'manual-topic-1', topic: 'My review structure', reviewerAuthored: true, points: [
+      { id: 'manual-row', text: 'Keep this exactly here.', evidenceIds: ['T0001'], reviewerAuthored: true }
+    ], decisions: [], openQuestions: [] },
+    { id: 'generated', topic: 'Delivery', points: [
+      { id: 'generated-row', text: 'Delivery is due Friday.', evidenceIds: ['T0002'] }
+    ], decisions: [], openQuestions: [] }
+  ];
+  const input = discussionTopicArrangementInput(discussion, [
+    { id: 'T0001', text: 'Keep this exactly here.' }, { id: 'T0002', text: 'Delivery is due Friday.' }
+  ]);
+  assert.deepEqual(input.records.map((record) => record.recordId), ['generated-row']);
+  const result = applyDiscussionTopicArrangement(discussion, {
+    groups: [{ topic: 'Delivery date', recordIds: ['generated-row'] }]
+  }, [], { input });
+  const locked = result.discussion.find((topic) => topic.id === 'manual-topic-1');
+  assert.equal(locked.topic, 'My review structure');
+  assert.deepEqual(locked.points.map((record) => record.id), ['manual-row']);
+});
+
+test('global topic arrangement fails closed for missing, duplicate, unknown and oversized assignments', () => {
+  const discussion = [{ id: 'one', topic: 'Delivery', points: [
+    { id: 'a', text: 'Delivery is due Friday.', evidenceIds: ['T0001'] },
+    { id: 'b', text: 'Packing starts Thursday.', evidenceIds: ['T0002'] }
+  ], decisions: [], openQuestions: [] }];
+  const input = discussionTopicArrangementInput(discussion, []);
+  const invalid = [
+    { groups: [{ topic: 'Delivery dates', recordIds: ['a'] }] },
+    { groups: [{ topic: 'Delivery dates', recordIds: ['a', 'a', 'b'] }] },
+    { groups: [{ topic: 'Delivery dates', recordIds: ['a', 'b', 'unknown'] }] },
+    { groups: [{ topic: 'Delivery dates', recordIds: ['a', 'b'] }] }
+  ];
+  assert.match(validateDiscussionTopicArrangement(invalid[0], input).message, /omitted/);
+  assert.equal(validateDiscussionTopicArrangement(invalid[0], input).retryable, true);
+  assert.match(validateDiscussionTopicArrangement(invalid[1], input).message, /more than once/);
+  assert.match(validateDiscussionTopicArrangement(invalid[2], input).message, /unknown/);
+  assert.match(validateDiscussionTopicArrangement(invalid[3], input, { maximumRows: 1 }).message, /record limit/);
+  const fallback = applyDiscussionTopicArrangement(discussion, invalid[0], [], { input });
+  assert.equal(fallback.applied, false);
+  assert.equal(fallback.discussion[0].topic, 'Delivery');
+  assert.deepEqual(fallback.discussion[0].points.map((record) => ({
+    id: record.id, text: record.text, evidenceIds: record.evidenceIds
+  })), discussion[0].points);
 });
 
 test('closure clauses are stripped from row wording', () => {

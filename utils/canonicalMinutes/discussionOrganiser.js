@@ -712,6 +712,164 @@ function reviewerTopic(topic) {
     || /^manual-topic-/.test(String(topic?.id || '')));
 }
 
+// A final topic arranger may change only the editorial filing of generated
+// records.  It never receives authority over the records themselves: the
+// model returns a partition of existing ids and this function reconstructs
+// every topic from the original objects.  Reviewer-owned cards are withheld
+// from the request and remain byte-for-byte authoritative.
+function discussionTopicArrangementInput(discussion = [], sourceUnits = []) {
+  const index = unitIndex(sourceUnits);
+  const topics = (Array.isArray(discussion) ? discussion : []).map(cloneTopic);
+  const lockedTopicIndexes = new Set();
+  const records = [];
+  const seenIds = new Set();
+  let invalidReason = '';
+  topics.forEach((topic, topicIndex) => {
+    const rows = topicRows(topic);
+    const locked = reviewerTopic(topic) || rows.some(({ record }) => isReviewerAuthored(record));
+    if (locked) {
+      lockedTopicIndexes.add(topicIndex);
+      return;
+    }
+    rows.forEach(({ kind, record }) => {
+      const recordId = text(record?.id, 180);
+      if (!recordId) invalidReason = invalidReason || 'A generated discussion record has no stable id.';
+      else if (seenIds.has(recordId)) invalidReason = invalidReason || `Generated discussion record ${recordId} is duplicated.`;
+      else seenIds.add(recordId);
+      records.push({
+        recordId,
+        currentTopic: text(topic?.topic, 220),
+        recordType: kind === 'decisions' ? 'decision' : kind === 'openQuestions' ? 'open_question' : 'discussion_point',
+        text: text(record?.text, 1600),
+        evidenceIds: [...(record?.evidenceIds || [])].map((id) => text(id, 40)).filter(Boolean),
+        evidenceOrder: earliest(record, index),
+        _topicIndex: topicIndex,
+        _kind: kind,
+        _record: record
+      });
+    });
+  });
+  return { topics, records, lockedTopicIndexes, invalidReason };
+}
+
+function topicArrangementError(message, code = 'invalid_topic_arrangement', retryable = false) {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = 502;
+  error.retryable = retryable;
+  return error;
+}
+
+function validateDiscussionTopicArrangement(arrangement, input, options = {}) {
+  if (input?.invalidReason) return topicArrangementError(input.invalidReason);
+  const records = Array.isArray(input?.records) ? input.records : [];
+  const expected = new Set(records.map((record) => record.recordId));
+  const groups = Array.isArray(arrangement?.groups) ? arrangement.groups : null;
+  if (!groups) return topicArrangementError('The topic arranger did not return a groups array.', 'invalid_topic_arrangement', true);
+  if (!records.length) return groups.length ? topicArrangementError('The topic arranger returned groups for an empty input.') : null;
+  if (!groups.length) return topicArrangementError('The topic arranger returned no groups.', 'invalid_topic_arrangement', true);
+  const maximumRows = Math.max(1, Number(options.maximumRows || 8));
+  const labels = new Set();
+  const assigned = new Set();
+  for (const group of groups) {
+    const label = text(group?.topic, 220);
+    const key = normalisedTopicMergeKey(label);
+    if (!label || !isPublishableTopicLabel(label)) return topicArrangementError(`The topic arranger returned an unusable heading: ${label || '(blank)'}.`, 'invalid_topic_arrangement', true);
+    if (labels.has(key)) return topicArrangementError(`The topic arranger returned the heading ${label} more than once.`, 'invalid_topic_arrangement', true);
+    labels.add(key);
+    const recordIds = Array.isArray(group?.recordIds)
+      ? group.recordIds.map((id) => text(id, 180)).filter(Boolean) : [];
+    if (!recordIds.length) return topicArrangementError(`The topic ${label} contains no records.`, 'invalid_topic_arrangement', true);
+    if (recordIds.length > maximumRows) return topicArrangementError(`The topic ${label} exceeds the ${maximumRows}-record limit.`, 'invalid_topic_arrangement', true);
+    for (const recordId of recordIds) {
+      if (!expected.has(recordId)) return topicArrangementError(`The topic arranger returned unknown record ${recordId}.`, 'invalid_topic_arrangement', true);
+      if (assigned.has(recordId)) return topicArrangementError(`The topic arranger assigned ${recordId} more than once.`, 'invalid_topic_arrangement', true);
+      assigned.add(recordId);
+    }
+  }
+  const missing = [...expected].filter((recordId) => !assigned.has(recordId));
+  if (missing.length) return topicArrangementError(`The topic arranger omitted ${missing.length} record(s).`, 'invalid_topic_arrangement', true);
+  return null;
+}
+
+function applyDiscussionTopicArrangement(discussion = [], arrangement = {}, sourceUnits = [], options = {}) {
+  const input = options.input || discussionTopicArrangementInput(discussion, sourceUnits);
+  const error = validateDiscussionTopicArrangement(arrangement, input, options);
+  if (error) return { discussion: (Array.isArray(discussion) ? discussion : []).map(cloneTopic), applied: false, error, diagnostics: null };
+  if (!input.records.length) return {
+    discussion: input.topics, applied: false, error: null,
+    diagnostics: { beforeTopics: input.topics.length, afterTopics: input.topics.length, movedRecords: 0, splitTopics: 0, combinedTopics: 0 }
+  };
+  const index = unitIndex(sourceUnits);
+  const byId = new Map(input.records.map((record) => [record.recordId, record]));
+  const usedTopicIds = new Set();
+  const arranged = [];
+  const sourceDestinations = new Map();
+  const recordDestinations = new Map();
+  const destinationSourceCounts = new Map();
+  for (const group of arrangement.groups) {
+    const members = group.recordIds.map((recordId) => byId.get(text(recordId, 180))).filter(Boolean);
+    const sourceCounts = new Map();
+    members.forEach((member) => sourceCounts.set(member._topicIndex, (sourceCounts.get(member._topicIndex) || 0) + 1));
+    const sourceIndexes = [...sourceCounts.keys()];
+    const hostIndex = [...sourceCounts.entries()].sort((left, right) => right[1] - left[1]
+      || earliest(members.find((member) => member._topicIndex === left[0])?._record, index)
+        - earliest(members.find((member) => member._topicIndex === right[0])?._record, index))[0][0];
+    const host = input.topics[hostIndex] || {};
+    let id = text(host.id, 180);
+    if (!id || usedTopicIds.has(id)) id = `topic-arranged-${members[0].recordId}`.slice(0, 220);
+    usedTopicIds.add(id);
+    const topic = {
+      ...host,
+      id,
+      topic: text(group.topic, 220),
+      points: [], decisions: [], openQuestions: []
+    };
+    delete topic.reviewerAuthored;
+    delete topic.confirmedTopic;
+    for (const member of members) {
+      topic[member._kind].push(member._record);
+      if (!sourceDestinations.has(member._topicIndex)) sourceDestinations.set(member._topicIndex, new Set());
+      const destinationKey = normalisedTopicMergeKey(group.topic);
+      sourceDestinations.get(member._topicIndex).add(destinationKey);
+      recordDestinations.set(member.recordId, destinationKey);
+    }
+    destinationSourceCounts.set(normalisedTopicMergeKey(group.topic), sourceIndexes.length);
+    topic.mergedTopicIds = [...new Set([
+      ...(topic.mergedTopicIds || []),
+      ...sourceIndexes.map((topicIndex) => input.topics[topicIndex]?.id)
+    ].filter(Boolean))].filter((topicId) => topicId !== topic.id);
+    if (!topic.mergedTopicIds.length) delete topic.mergedTopicIds;
+    arranged.push(topic);
+  }
+  input.topics.forEach((topic, topicIndex) => {
+    if (input.lockedTopicIndexes.has(topicIndex)) arranged.push(topic);
+  });
+  const combinedTopics = arrangement.groups.filter((group) => new Set(group.recordIds
+    .map((recordId) => byId.get(text(recordId, 180))?._topicIndex).filter(Number.isInteger)).size > 1).length;
+  const splitTopics = [...sourceDestinations.values()].filter((destinations) => destinations.size > 1).length;
+  // Renaming a card without changing its membership is editorial polish, not a
+  // moved record. Count only records involved in a real split or combination.
+  const movedRecords = input.records.filter((record) =>
+    (sourceDestinations.get(record._topicIndex)?.size || 0) > 1
+      || (destinationSourceCounts.get(recordDestinations.get(record.recordId)) || 0) > 1).length;
+  const output = sortByEvidence(arranged, index);
+  return {
+    discussion: output,
+    applied: true,
+    error: null,
+    diagnostics: {
+      beforeTopics: input.topics.length,
+      afterTopics: output.length,
+      eligibleRecords: input.records.length,
+      movedRecords,
+      splitTopics,
+      combinedTopics,
+      lockedTopics: input.lockedTopicIndexes.size
+    }
+  };
+}
+
 function hardTopicSegments(sourceUnits = []) {
   const units = Array.isArray(sourceUnits) ? sourceUnits : [];
   if (!units.length) return [];
@@ -1840,6 +1998,9 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
 
 module.exports = {
   organiseDiscussionForReview,
+  discussionTopicArrangementInput,
+  validateDiscussionTopicArrangement,
+  applyDiscussionTopicArrangement,
   mergeRestatedRows,
   stripClosure,
   isPersonalAside,

@@ -67,6 +67,9 @@ const { normaliseAttendeeReferences, normalisePublishedParticipantReference } = 
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const {
   organiseDiscussionForReview,
+  discussionTopicArrangementInput,
+  validateDiscussionTopicArrangement,
+  applyDiscussionTopicArrangement,
   removePersonalAsides,
   removeShortTopicEchoes,
   balanceDiscussionTopics,
@@ -8693,6 +8696,12 @@ function meetingMinutesAgentGlobalDiscussionRefereeEnabled() {
   ));
 }
 
+function meetingMinutesAgentGlobalTopicArrangerEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(
+    process.env.MEETING_MINUTES_AGENT_GLOBAL_TOPIC_ARRANGER_V1 || '0'
+  ));
+}
+
 function meetingMinutesAgentPromoteMaterialSupportingEnabled() {
   return /^(?:1|true|yes|on)$/i.test(String(
     process.env.MEETING_MINUTES_AGENT_PROMOTE_MATERIAL_SUPPORTING_V1 || '0'
@@ -8966,6 +8975,47 @@ function meetingMinutesAgentTopicNamingPrompt({ transcript, details, anchors = [
     }))
   };
   return `[DISCUSSION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
+}
+
+function meetingMinutesAgentTopicArrangementPrompt({ discussion = [], sourceUnits = [] }) {
+  const input = discussionTopicArrangementInput(discussion, sourceUnits);
+  const records = input.records.map((record) => ({
+    recordId: record.recordId,
+    currentTopic: record.currentTopic,
+    recordType: record.recordType,
+    text: record.text,
+    evidenceIds: record.evidenceIds,
+    evidenceOrder: Number.isFinite(record.evidenceOrder) ? record.evidenceOrder : null
+  }));
+  return [
+    'TOPIC_ARRANGEMENT',
+    'You are arranging an already approved set of meeting-minutes discussion records into coherent editorial topics.',
+    'Return JSON only: {"groups":[{"topic":"Concise client-ready heading","recordIds":["record-id"]}]}.',
+    'Every supplied recordId must appear exactly once. Do not invent, omit, duplicate, rewrite, split or combine records.',
+    'Group by the concrete subject, workstream or outcome that each record concerns across the whole meeting, even when related records occurred far apart.',
+    'Split mixed current headings when their records concern different subjects. Combine records from different current headings only when they concern the same real subject.',
+    'Treat calendar dates, phases, start and finish times, working hours and deadlines as parts of one schedule when they govern the same event or workstream. Do not create a timing singleton when it clearly fits that schedule.',
+    'A schedule is narrower than the whole event or project. Keep team membership, accommodation, travel, technical content and other operational subjects outside the schedule unless the record itself is primarily about timing.',
+    'Do not create a broad heading that joins distinct subjects merely to avoid singletons.',
+    'A shared person, date, budget, meeting type or generic word such as update, planning, audit, risk, process or review is not by itself a shared subject.',
+    'Keep legitimate specialist subjects separate. Do not force a target number of groups and do not create umbrella or catch-all headings.',
+    'Avoid singleton groups when the record is plainly a facet of an existing concrete subject, but retain a singleton when no other record concerns its subject.',
+    'Prefer an existing heading when it accurately covers the complete resulting group; otherwise write a concise specific noun-phrase heading.',
+    'Each group may contain at most 8 records. Headings must describe content, not document structure, actions lists or conversation mechanics.',
+    `There are exactly ${records.length} supplied recordIds. Check that the returned groups contain exactly ${records.length} recordId entries before responding.`,
+    `EXPECTED_RECORD_IDS=${JSON.stringify(records.map((record) => record.recordId))}`,
+    `RECORDS_JSON=${JSON.stringify(records)}`
+  ].join('\n');
+}
+
+function meetingMinutesAgentTopicArrangementRepairPrompt({ originalPrompt, result, error }) {
+  return [
+    originalPrompt,
+    'ACCOUNTING_REPAIR',
+    `The previous response failed validation: ${meetingMinutesAgentText(error?.message, 300)}`,
+    'Return the complete corrected JSON object only. Preserve sound groupings, but fix every omission, duplicate, unknown id, empty group, duplicate heading or size violation.',
+    `PREVIOUS_RESPONSE=${JSON.stringify(result || {})}`
+  ].join('\n');
 }
 
 function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anchors = [], steer }) {
@@ -10197,11 +10247,15 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.actionResults);
+    const isTopicArrangementResult = options.responseKind === 'topic_arrangement'
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.groups);
     const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
-      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult || isTimingCheckResult) {
+      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult
+      || isTopicArrangementResult || isTimingCheckResult) {
       structured = candidate;
       break;
     }
@@ -10228,6 +10282,8 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.anchorResults);
   const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
     && Array.isArray(parsedResult?.actionResults);
+  const topicArrangement = options.responseKind === 'topic_arrangement'
+    && Array.isArray(parsedResult?.groups);
   const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
@@ -10235,6 +10291,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
       && !flatDiscussionDiscovery
       && !anchoredDiscussionDiscovery
       && !anchoredActionDiscovery
+      && !topicArrangement
       && (!Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)))) {
     const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
     error.statusCode = 502;
@@ -11202,9 +11259,10 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const include = includedSections(draft);
   const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
   const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
-  const balancedDiscussion = balanceDiscussionTopics(
-    removeShortTopicEchoes(removePersonalAsides(draft.discussion), draft.sourceUnits), draft.sourceUnits
-  );
+  const cleanedDiscussion = removeShortTopicEchoes(removePersonalAsides(draft.discussion), draft.sourceUnits);
+  const balancedDiscussion = Number(draft.qualityState?.discussion?.topicArrangementVersion || 0) >= 1
+    ? cleanedDiscussion
+    : balanceDiscussionTopics(cleanedDiscussion, draft.sourceUnits);
   const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(
     removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
   );
@@ -11250,9 +11308,10 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 function publicMeetingAgentDraft(draft = {}, options = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
-  const balancedDiscussion = balanceDiscussionTopics(
-    removeShortTopicEchoes(removePersonalAsides(publicFields.discussion), draft.sourceUnits), draft.sourceUnits
-  );
+  const cleanedDiscussion = removeShortTopicEchoes(removePersonalAsides(publicFields.discussion), draft.sourceUnits);
+  const balancedDiscussion = Number(draft.qualityState?.discussion?.topicArrangementVersion || 0) >= 1
+    ? cleanedDiscussion
+    : balanceDiscussionTopics(cleanedDiscussion, draft.sourceUnits);
   const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
     removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
   );
@@ -15503,6 +15562,57 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     finalDiscussion = removeMinorCommunicationCourtesyDiscussion(
       removeHeadingFragmentsFromDiscussion(limitSupportingDetails(postPromotion.discussion)), draft.sourceUnits
     );
+    let topicArrangement = {
+      enabled: meetingMinutesAgentGlobalTopicArrangerEnabled(),
+      applied: false,
+      version: 0,
+      diagnostics: null,
+      fallbackReason: ''
+    };
+    if (topicArrangement.enabled) {
+      const arrangementInput = discussionTopicArrangementInput(finalDiscussion, draft.sourceUnits);
+      const eligibleTopicCount = new Set(arrangementInput.records.map((record) => record.currentTopic)).size;
+      if (arrangementInput.invalidReason) {
+        topicArrangement.fallbackReason = arrangementInput.invalidReason;
+      } else if (arrangementInput.records.length >= 3 || eligibleTopicCount >= 2) {
+        const arrangedResult = await call(
+          'topic-arranger',
+          meetingMinutesAgentTopicArrangementPrompt({ discussion: finalDiscussion, sourceUnits: draft.sourceUnits }),
+          {
+            optional: true,
+            responseKind: 'topic_arrangement',
+            maxAttempts: 2,
+            candidateCount: arrangementInput.records.length,
+            candidateIds: arrangementInput.records.map((record) => record.recordId),
+            validateResult: (result) => validateDiscussionTopicArrangement(result, arrangementInput, { maximumRows: 8 }),
+            repairPrompt: meetingMinutesAgentTopicArrangementRepairPrompt,
+            captureError: (error) => { topicArrangement.fallbackReason = error.message; }
+          }
+        );
+        if (arrangedResult) {
+          const applied = applyDiscussionTopicArrangement(
+            finalDiscussion, arrangedResult, draft.sourceUnits,
+            { input: arrangementInput, maximumRows: 8 }
+          );
+          if (applied.applied) {
+            finalDiscussion = applied.discussion;
+            topicArrangement = {
+              ...topicArrangement,
+              applied: true,
+              version: 1,
+              diagnostics: applied.diagnostics,
+              fallbackReason: ''
+            };
+          } else {
+            topicArrangement.fallbackReason = applied.error?.message || 'The topic arrangement could not be applied.';
+          }
+        }
+      }
+      console.log(JSON.stringify({
+        event: 'meeting_agent_global_topic_arrangement', journeyId: draft.draftId,
+        ...topicArrangement
+      }));
+    }
     const structureDiagnostics = discussionStructureDiagnostics(finalDiscussion);
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
@@ -15570,6 +15680,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
+          topicArrangementVersion: topicArrangement.version,
+          topicArrangement,
           postPromotionEditorial: {
             promoted: priorityDetails.promoted + includedDetails.promoted,
             moved: postPromotion.moved,
@@ -18129,6 +18241,9 @@ router.stagedEvaluation = {
   MEETING_AGENT_DISCUSSION_COVERAGE_RULE,
   MEETING_AGENT_TOPIC_NAMING_RULE,
   meetingMinutesAgentTopicNamingPrompt,
+  meetingMinutesAgentTopicArrangementPrompt,
+  meetingMinutesAgentTopicArrangementRepairPrompt,
+  meetingMinutesAgentGlobalTopicArrangerEnabled,
   meetingAgentTopicSegmentsEnabled,
   meetingAgentTopicLabelRuleEnabled,
   normaliseAnchoredDiscussionDiscovery,
@@ -18146,6 +18261,7 @@ router.stagedEvaluation = {
   meetingAgentExecutionTelemetry,
   meetingAgentPreviewSavedActions,
   meetingAgentFailureClass,
+  askPowerAutomateMeetingMinutesAgentWithRetry,
   meetingAgentResultCounts,
   meetingAgentMaterialPassImpact,
   annotateMeetingAgentPassImpact,
