@@ -17,6 +17,7 @@ const {
   normaliseMetaTopicHeadings
 } = require('./topicEditorial');
 const { normaliseDatePhrases } = require('../spokenForms');
+const { normaliseSentencePresentation } = require('../minutesEnglish');
 const { normalisePublishedParticipantReference } = require('../entityNormalization');
 const { SHIFT_MARKER } = require('./discourseSegments');
 const { isReviewerAuthored } = require('./state');
@@ -1897,7 +1898,32 @@ async function finaliseDiscussionForPublication(discussion = [], options = {}) {
       }))
     }))]))
   }));
-  return topics;
+  return normaliseDiscussionPresentation(topics);
+}
+
+// The final mechanical boundary for generated Discussion prose. Reviewer
+// wording is an explicit lock: neither a reviewer-authored topic nor one of
+// its reviewer-authored rows/details is silently restyled here.
+function normaliseDiscussionPresentation(discussion = []) {
+  return (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
+    const next = { ...topic };
+    for (const kind of ROW_KINDS) {
+      next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).map((record) => {
+        if (isReviewerAuthored(record)) return record;
+        return {
+          ...record,
+          // A missing question mark cannot be inferred mechanically. Preserve
+          // an unpunctuated open question for the semantic/editorial layer;
+          // only declarative point and decision rows receive a full stop.
+          text: normaliseSentencePresentation(record?.text, { terminalPunctuation: kind !== 'openQuestions' }),
+          supportingDetails: (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).map((detail) =>
+            isReviewerAuthored(detail) ? detail : { ...detail, text: normaliseSentencePresentation(detail?.text) })
+        };
+      });
+    }
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2034,6 +2060,7 @@ module.exports = {
   removeShortTopicEchoes,
   removeFloorManagementRows,
   balanceDiscussionTopics,
+  normaliseDiscussionPresentation,
   finaliseDiscussionForPublication,
   unitIndex
 };

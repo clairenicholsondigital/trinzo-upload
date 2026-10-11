@@ -133,6 +133,20 @@ test('a later compound row keeps only its non-overlapping subject', () => {
   ]);
 });
 
+test('a lowercase clause exposed by compound dedupe becomes a standalone sentence', () => {
+  const result = dedupeDiscussionBody([{
+    topic: 'Registration', decisions: [], openQuestions: [],
+    points: [
+      row('mixed', 'The product codes require a leading zero; clarification remains necessary on the registration route.'),
+      row('codes', 'The product codes require a leading zero.')
+    ]
+  }], []);
+  assert.deepEqual(texts(result), [
+    'Clarification remains necessary on the registration route.',
+    'The product codes require a leading zero.'
+  ]);
+});
+
 // A line narrating that somebody summarised the actions is minutes about the
 // minutes: the actions are extracted separately and shown in their own table.
 // Reported from a live transcript as "Gemma summarizes actions:" appearing as

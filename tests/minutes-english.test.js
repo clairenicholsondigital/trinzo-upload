@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { minutesEnglishFaults, repairMechanicalFaults } = require('../utils/minutesEnglish');
+const { minutesEnglishFaults, normaliseSentencePresentation, repairMechanicalFaults } = require('../utils/minutesEnglish');
 
 // The shared "reads as English somebody would write" detectors.
 //
@@ -19,6 +19,29 @@ const { minutesEnglishFaults, repairMechanicalFaults } = require('../utils/minut
 // earlier draft of the rule DID reject them.
 
 const codes = (text, options) => minutesEnglishFaults(text, options).map((fault) => fault.code);
+
+test('generated sentence presentation repairs casing and terminal punctuation without changing words', () => {
+  assert.equal(
+    normaliseSentencePresentation('contingency exists up to the 17th. Niamh aims to front-end the work'),
+    'Contingency exists up to the 17th. Niamh aims to front-end the work.'
+  );
+  assert.equal(
+    normaliseSentencePresentation('The component is complex. threat modelling is managed centrally.'),
+    'The component is complex. Threat modelling is managed centrally.'
+  );
+  assert.equal(normaliseSentencePresentation('there is no claim for AI on this system'),
+    'There is no claim for AI on this system.');
+});
+
+test('generated sentence presentation does not mistake abbreviations, initials or decimals for sentence boundaries', () => {
+  const unchanged = [
+    'The importer should be linked to DITA Inc. in the register.',
+    'Testing was previously completed by U.L. drill testing.',
+    'Dr. smith supplied version 2.4 in advance.',
+    'The reading was 2.4 mm at the checkpoint.'
+  ];
+  for (const value of unchanged) assert.equal(normaliseSentencePresentation(value), value);
+});
 
 test('a speaker restarting a phrase is not writing', () => {
   assert.deepEqual(codes('Get one from the, from the place on Mill Road'), ['phrase_restart']);

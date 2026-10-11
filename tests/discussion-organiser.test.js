@@ -12,9 +12,29 @@ const {
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
   consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
   balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication,
+  normaliseDiscussionPresentation,
   discussionTopicArrangementInput, validateDiscussionTopicArrangement,
   applyDiscussionTopicArrangement
 } = require('../utils/canonicalMinutes/discussionOrganiser');
+
+test('final discussion presentation repairs generated prose but preserves reviewer wording', () => {
+  const generated = { id: 'g1', text: 'status remains open. follow-up is expected', supportingDetails: [
+    { id: 'gd1', text: 'supporting context is available' }
+  ] };
+  const reviewer = { id: 'r1', text: 'reviewer chose this casing', reviewerAuthored: true, supportingDetails: [] };
+  const result = normaliseDiscussionPresentation([{
+    id: 'topic', topic: 'Status', points: [generated, reviewer], decisions: [],
+    openQuestions: [{ id: 'q1', text: 'who owns the next step', supportingDetails: [] }]
+  }]);
+  assert.equal(result[0].points[0].text, 'Status remains open. Follow-up is expected.');
+  assert.equal(result[0].points[0].supportingDetails[0].text, 'Supporting context is available.');
+  assert.equal(result[0].points[1].text, 'reviewer chose this casing');
+  assert.equal(result[0].openQuestions[0].text, 'Who owns the next step');
+
+  const reviewerTopic = { id: 'human-topic', topic: 'Reviewer topic', reviewerAuthored: true,
+    points: [{ id: 'human-row', text: 'leave all of this alone' }], decisions: [], openQuestions: [] };
+  assert.strictEqual(normaliseDiscussionPresentation([reviewerTopic])[0], reviewerTopic);
+});
 
 // Turn-level units in transcript order; ids carry the order.
 const units = [

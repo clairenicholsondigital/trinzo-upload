@@ -1,5 +1,7 @@
 'use strict';
 
+const { normaliseSentencePresentation } = require('./minutesEnglish');
+
 // Shape rules for the minuted discussion that do not depend on any particular
 // meeting. Actions are extracted separately from the transcript, so the body
 // should record what was discussed and decided rather than list who is doing
@@ -220,7 +222,10 @@ function compoundRemainder(compound, atomic) {
   if (!repeated.some(Boolean) || repeated.every(Boolean)) return '';
   const remainder = clauses.filter((_, index) => !repeated[index]).join('. ').replace(/\.{2,}/g, '.').trim();
   if (bodyTokens(remainder).length < 3 || repeatsRow(remainder, atomic)) return '';
-  return /[.!?]$/.test(remainder) ? remainder : `${remainder}.`;
+  // Clause surgery can expose text which used to follow a semicolon or another
+  // sentence. Once it becomes its own row, restore only its presentation
+  // mechanics; never invent an article or otherwise rewrite its meaning.
+  return normaliseSentencePresentation(remainder);
 }
 
 // "Alan to submit the application and check the towpath; Deepa to reorder the

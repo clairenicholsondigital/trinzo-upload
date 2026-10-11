@@ -31,6 +31,43 @@
 
 const clean = (value) => String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
 
+// A full stop is not necessarily a sentence boundary. Keep this deliberately
+// structural and domain-neutral: initials, dotted abbreviations and common
+// titles/company suffixes can all be followed by a lowercase word without the
+// prose being broken ("U.L. testing", "DITA Inc. in Dublin").
+const NON_SENTENCE_PERIOD_WORDS = new Set([
+  'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'vs', 'etc',
+  'inc', 'ltd', 'plc', 'llc', 'co', 'corp', 'dept', 'fig', 'no',
+  'approx', 'est', 'vol', 'rev'
+]);
+
+function periodIsAbbreviation(value, index) {
+  const before = String(value || '').slice(0, index);
+  if (!before || before.endsWith('.')) return true;
+  if (/(?:\b[A-Za-z]\.)+[A-Za-z]$/.test(before)) return true;
+  const word = before.match(/([A-Za-z]+)$/)?.[1] || '';
+  return word.length === 1 || NON_SENTENCE_PERIOD_WORDS.has(word.toLowerCase());
+}
+
+// Presentation-only repair for generated minute sentences. It changes no
+// words or facts: lowercase sentence initials are capitalised and a plain
+// declarative row ending in a letter/number receives its missing full stop.
+// Anything more semantic (adding an article, rewriting a fragment) belongs in
+// a guarded editorial pass rather than a mechanical formatter.
+function normaliseSentencePresentation(value, options = {}) {
+  let text = clean(value);
+  if (!text) return text;
+  const capitalise = (letter) => letter.toUpperCase();
+  text = text.replace(/^([\s‘“'"([{]*)([a-z])/, (_match, opening, letter) => `${opening}${capitalise(letter)}`);
+  text = text.replace(/([.!?])(\s+)([‘“'"([{]*)([a-z])/g,
+    (match, punctuation, spacing, opening, letter, offset, source) => {
+      if (punctuation === '.' && periodIsAbbreviation(source, offset)) return match;
+      return `${punctuation}${spacing}${opening}${capitalise(letter)}`;
+    });
+  if (options.terminalPunctuation !== false && /[\p{L}\p{N}%]$/u.test(text)) text += '.';
+  return text;
+}
+
 // A speaker re-entering the constituent they abandoned: "from the, from the place on Mill
 // Road". The existing single-token rules elsewhere in the codebase are the n=1 case of this
 // same shape; this is the n>=2 case, which nothing detected. Deliberately anchored on
@@ -310,6 +347,7 @@ function repairMechanicalFaults(value, options = {}) {
 module.exports = {
   contentSet,
   minutesEnglishFaults,
+  normaliseSentencePresentation,
   repairMechanicalFaults,
   unresolvedDeixis,
   tautology,

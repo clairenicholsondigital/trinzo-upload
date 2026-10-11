@@ -73,6 +73,7 @@ const {
   removePersonalAsides,
   removeShortTopicEchoes,
   balanceDiscussionTopics,
+  normaliseDiscussionPresentation,
   finaliseDiscussionForPublication,
   repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
@@ -15632,6 +15633,10 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         ...topicArrangement
       }));
     }
+    // Nothing after this boundary is allowed to manufacture or rewrite prose.
+    // Run the idempotent presentation guard after dedupe, detail promotion and
+    // global topic arrangement so every generated row is safe to persist.
+    finalDiscussion = normaliseDiscussionPresentation(finalDiscussion);
     const structureDiagnostics = discussionStructureDiagnostics(finalDiscussion);
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
