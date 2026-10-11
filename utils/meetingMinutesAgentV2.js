@@ -4393,6 +4393,114 @@ function groundRowAttributions(discussion = [], units = []) {
   return { discussion: checked, widened, flags };
 }
 
+// ---- Conflicting exclusive role assignments -------------------------------
+// Discovery passes can each produce a locally plausible role statement while
+// disagreeing about its holder. "A is the lead" and "B is the lead" are
+// contradictory facts, not duplicates. Detect only explicit, singular role
+// assignments in the same finished topic. ASR punctuation can make the source
+// genuinely ambiguous, so this guard warns the reviewer and never guesses a
+// winner or rewrites their wording.
+const EXCLUSIVE_ROLE_QUALIFIER = '(?:audit|project|technical|software|design|workstream|meeting|team)';
+const EXCLUSIVE_ROLE_NOUN = '(?:lead(?:\\s+auditor)?|chair(?:person)?|primary\\s+owner|overall\\s+owner|coordinator)';
+const EXCLUSIVE_ROLE_PATTERN = new RegExp(`\\b(?:(?<qualifier>${EXCLUSIVE_ROLE_QUALIFIER})\\s+)?(?<role>${EXCLUSIVE_ROLE_NOUN})\\b`, 'i');
+const NON_EXCLUSIVE_ROLE_PATTERN = /\b(?:co|joint|deputy|assistant)[ -](?:lead|chair|owner|coordinator)\b/i;
+const HISTORICAL_ROLE_TRANSITION = /\b(?:previously|formerly|prior|last\s+(?:week|month|year|phase)|first\s+phase|until|before\s+the\s+handover|replaced\s+by|handed\s+over\s+to)\b/i;
+const TOPIC_ROLE_QUALIFIER = /\b(audit|project|technical|software|design|workstream|meeting|team)\b/i;
+
+function exclusiveRoleKey(roleMatch, topic = '') {
+  const rawRole = String(roleMatch?.groups?.role || '').toLowerCase().replace(/\s+/g, ' ');
+  const role = /chair/.test(rawRole) ? 'chair'
+    : /owner/.test(rawRole) ? 'owner'
+      : /coordinator/.test(rawRole) ? 'coordinator' : 'lead';
+  let qualifier = String(roleMatch?.groups?.qualifier || '').toLowerCase();
+  if (!qualifier && /lead auditor/.test(rawRole)) qualifier = 'audit';
+  if (!qualifier) qualifier = String(topic).match(TOPIC_ROLE_QUALIFIER)?.[1]?.toLowerCase() || 'general';
+  return `${qualifier}:${role}`;
+}
+
+function explicitExclusiveRoleAssignments(record = {}, topic = {}, people = []) {
+  if (record?.reviewerAuthored === true || topic?.reviewerAuthored === true) return [];
+  const value = text(record?.text, 1600);
+  if (!value) return [];
+  const clauses = value.split(/[.;!?]+|\s*,\s*(?=(?:with|while|whereas|and|but|working)\b)/i)
+    .map((clause) => clause.trim()).filter(Boolean);
+  const assignments = [];
+  for (const clause of clauses) {
+    if (NON_EXCLUSIVE_ROLE_PATTERN.test(clause) || HISTORICAL_ROLE_TRANSITION.test(clause)) continue;
+    const roleMatch = clause.match(EXCLUSIVE_ROLE_PATTERN);
+    if (!roleMatch) continue;
+    // "a lead" is not exclusive. A qualified role or "the lead" is.
+    const roleText = roleMatch[0];
+    const nearbyRole = clause.slice(Math.max(0, roleMatch.index - 8), roleMatch.index + roleText.length);
+    const definite = /\bthe\s+/i.test(nearbyRole) || Boolean(roleMatch.groups?.qualifier)
+      || /lead\s+auditor|primary\s+owner|overall\s+owner/i.test(roleText);
+    if (!definite) continue;
+    const named = people.filter((person) => personIsNamedIn(person, clause));
+    if (named.length !== 1) continue;
+    const roleBeforePerson = new RegExp(`${EXCLUSIVE_ROLE_NOUN}[^,.]{0,60}\\b(?:is|was|will\\s+be|has\\s+been|identified\\s+as|named\\s+as|appointed\\s+as)\\b`, 'i').test(clause);
+    const personBeforeRole = new RegExp(`\\b(?:is|was|will\\s+be|has\\s+been|serves?\\s+as|acts?\\s+as|identified\\s+as|named\\s+as|appointed\\s+as)\\b[^,.]{0,60}${EXCLUSIVE_ROLE_NOUN}`, 'i').test(clause);
+    const leading = /\bleading\b(?!\s+to\b)/i.test(clause);
+    if (!roleBeforePerson && !personBeforeRole && !leading) continue;
+    assignments.push({
+      roleKey: exclusiveRoleKey(roleMatch, topic?.topic),
+      personKey: named[0].parts.join('|'),
+      personLabel: canonicalSpeakerDisplayName(named[0].label),
+      evidenceIds: [...new Set(record?.evidenceIds || [])]
+    });
+  }
+  return assignments;
+}
+
+function flagConflictingDiscussionRoles(discussion = [], units = []) {
+  const people = speakerIdentities(units);
+  const cloned = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    points: (topic?.points || []).map((record) => ({ ...record })),
+    decisions: (topic?.decisions || []).map((record) => ({ ...record })),
+    openQuestions: (topic?.openQuestions || []).map((record) => ({ ...record }))
+  }));
+  const flags = [];
+  const conflicts = [];
+  if (people.length < 2) return { discussion: cloned, flags, conflicts };
+
+  cloned.forEach((topic, topicIndex) => {
+    const assignments = [];
+    for (const kind of ['points', 'decisions']) {
+      (topic?.[kind] || []).forEach((record, rowIndex) => {
+        for (const assignment of explicitExclusiveRoleAssignments(record, topic, people)) {
+          assignments.push({ ...assignment, kind, rowIndex, record });
+        }
+      });
+    }
+    const byRole = new Map();
+    for (const assignment of assignments) {
+      if (!byRole.has(assignment.roleKey)) byRole.set(assignment.roleKey, []);
+      byRole.get(assignment.roleKey).push(assignment);
+    }
+    for (const [roleKey, roleAssignments] of byRole) {
+      const peopleByKey = new Map(roleAssignments.map((assignment) => [assignment.personKey, assignment.personLabel]));
+      if (peopleByKey.size < 2) continue;
+      const roleLabel = roleKey.split(':').join(' ');
+      const personLabels = [...peopleByKey.values()].sort((left, right) => left.localeCompare(right));
+      const evidenceIds = [...new Set(roleAssignments.flatMap((assignment) => assignment.evidenceIds))].slice(0, 8);
+      const flag = normaliseFlag({
+        kind: 'uncertain_fact',
+        message: `Conflicting role assignment: this discussion assigns the same ${roleLabel} role to ${personLabels.join(' and ')}. Confirm the correct role holder against the linked transcript before publishing.`,
+        evidenceIds
+      }, topicIndex);
+      flags.push(flag);
+      for (const assignment of roleAssignments) {
+        assignment.record.reviewFlagIds = [...new Set([...(assignment.record.reviewFlagIds || []), flag.id])];
+      }
+      conflicts.push({
+        topicIndex, role: roleKey, people: personLabels,
+        recordIds: [...new Set(roleAssignments.map((assignment) => text(assignment.record?.id, 80)).filter(Boolean))]
+      });
+    }
+  });
+  return { discussion: cloned, flags, conflicts };
+}
+
 // ---- Named facts belong in the minutes ------------------------------------
 // The exported minutes contain the primary rows only, so a fact left in
 // supporting context never reaches the reader. A context line naming a person
@@ -5889,6 +5997,7 @@ module.exports = {
   turnWindowRows,
   addressedRequestAccepted,
   groundRowAttributions,
+  flagConflictingDiscussionRoles,
   mergeDuplicateCommitments,
   splitExplicitMultiOwnerActions,
   applyChainedTimingRule,

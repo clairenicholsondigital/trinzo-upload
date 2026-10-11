@@ -462,6 +462,59 @@ test('a speaker named only by their surname in the row still counts as supported
   assert.equal(out.flags.length, 0, 'the speaker label supplies the person');
 });
 
+test('conflicting exclusive role assignments are jointly flagged without guessing a winner', () => {
+  const source = [
+    { id: 'T0001', speaker: 'Morgan Reed', text: 'I will prepare the scope and the audit plan.' },
+    { id: 'T0002', speaker: 'Riley Shaw', text: 'I will cover the specialist review in the second week.' }
+  ];
+  const discussion = [{
+    id: 'topic-audit', topic: 'Audit team organisation',
+    points: [
+      { id: 'p1', text: 'The audit lead is identified as Riley.', evidenceIds: ['T0002'], reviewFlagIds: [] },
+      { id: 'p2', text: 'Preparation starts next Monday; Morgan is the lead, working with Riley.', evidenceIds: ['T0001'], reviewFlagIds: [] }
+    ], decisions: [], openQuestions: []
+  }];
+  const out = V.flagConflictingDiscussionRoles(discussion, source);
+  assert.equal(out.conflicts.length, 1);
+  assert.equal(out.flags.length, 1);
+  assert.equal(out.flags[0].kind, 'uncertain_fact');
+  assert.match(out.flags[0].message, /conflicting role assignment/i);
+  assert.deepEqual(out.discussion[0].points.map((row) => row.reviewFlagIds), [[out.flags[0].id], [out.flags[0].id]]);
+  assert.equal(out.discussion[0].points[0].text, discussion[0].points[0].text, 'ambiguous wording is not silently rewritten');
+});
+
+test('different qualified lead roles do not conflict', () => {
+  const source = [
+    { id: 'T0001', speaker: 'Morgan Reed', text: 'I am covering the project.' },
+    { id: 'T0002', speaker: 'Riley Shaw', text: 'I am covering the technical review.' }
+  ];
+  const out = V.flagConflictingDiscussionRoles([{
+    topic: 'Programme roles',
+    points: [
+      { text: 'Morgan is the project lead.', evidenceIds: ['T0001'], reviewFlagIds: [] },
+      { text: 'Riley is the technical lead.', evidenceIds: ['T0002'], reviewFlagIds: [] }
+    ], decisions: [], openQuestions: []
+  }], source);
+  assert.equal(out.conflicts.length, 0);
+  assert.equal(out.flags.length, 0);
+});
+
+test('reviewer-authored role wording is not challenged by the generated-role guard', () => {
+  const source = [
+    { id: 'T0001', speaker: 'Morgan Reed', text: 'I am covering the audit.' },
+    { id: 'T0002', speaker: 'Riley Shaw', text: 'I am covering the specialist review.' }
+  ];
+  const out = V.flagConflictingDiscussionRoles([{
+    topic: 'Audit roles',
+    points: [
+      { text: 'Morgan is the audit lead.', evidenceIds: ['T0001'], reviewFlagIds: [] },
+      { text: 'Riley is the audit lead.', evidenceIds: ['T0002'], reviewFlagIds: [], reviewerAuthored: true }
+    ], decisions: [], openQuestions: []
+  }], source);
+  assert.equal(out.conflicts.length, 0);
+  assert.equal(out.flags.length, 0);
+});
+
 test('a commitment about other work does not make the speaker an owner', () => {
   const V = require('../utils/meetingMinutesAgentV2');
   const units = [

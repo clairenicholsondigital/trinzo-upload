@@ -266,6 +266,7 @@ const {
   splitExplicitMultiOwnerActions,
   applyRequesterOwnerRule,
   groundRowAttributions,
+  flagConflictingDiscussionRoles,
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
@@ -15640,6 +15641,12 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // Run the idempotent presentation guard after dedupe, detail promotion and
     // global topic arrangement so every generated row is safe to persist.
     finalDiscussion = normaliseDiscussionPresentation(finalDiscussion);
+    const roleConflicts = flagConflictingDiscussionRoles(finalDiscussion, draft.sourceUnits);
+    finalDiscussion = roleConflicts.discussion;
+    if (roleConflicts.conflicts.length) console.log(JSON.stringify({
+      event: 'meeting_agent_discussion_role_conflicts', journeyId: draft.draftId,
+      conflicts: roleConflicts.conflicts
+    }));
     const structureDiagnostics = discussionStructureDiagnostics(finalDiscussion);
     if (priorityDetails.promoted) console.log(JSON.stringify({
       event: 'meeting_agent_priority_details_promoted', journeyId: draft.draftId,
@@ -15658,7 +15665,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       deduped: postPromotion.dropped.length,
       diagnostics: structureDiagnostics
     }));
-    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags], isUsefulMeetingAgentReviewFlag);
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
