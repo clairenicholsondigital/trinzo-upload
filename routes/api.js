@@ -14787,7 +14787,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     console.info(JSON.stringify({
       event: 'meeting_agent_topic_segments', journeyId: draft.draftId || '',
       segments: topicSegments.length, labelled: topicLabels.filter(Boolean).length,
-      topicsBefore: before, topicsAfter: regrouped.discussion.length, moved: regrouped.moved
+      topicsBefore: before, topicsAfter: regrouped.discussion.length,
+      moved: regrouped.moved, relinked: regrouped.relinked
     }));
   }
   if (primarySecondResult) {
@@ -15273,7 +15274,8 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
       const refiled = regroupDiscussionBySegments(finalDiscussion, draft.sourceUnits, topicSegments, topicLabels);
       console.info(JSON.stringify({
         event: 'meeting_agent_topic_segments_final', journeyId: draft.draftId || '',
-        topicsBefore: finalDiscussion.length, topicsAfter: refiled.discussion.length, moved: refiled.moved
+        topicsBefore: finalDiscussion.length, topicsAfter: refiled.discussion.length,
+        moved: refiled.moved, relinked: refiled.relinked
       }));
       finalDiscussion = refiled.discussion;
     }

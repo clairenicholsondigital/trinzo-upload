@@ -38,6 +38,122 @@ const SHIFT_MARKER = new RegExp([
 
 const text = (value, max = 4000) => String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
 
+// Topic filing is evidence-led, so a generated row with the wrong citation is
+// otherwise guaranteed to land under the wrong segment even when its wording
+// clearly describes another subject. Repair only distinctive literal facts
+// which are unusually safe to relocate: clock times, dated values, money,
+// percentages and explicit number+unit quantities. The complete signature set
+// must occur in exactly one transcript segment; a one-signature match also
+// needs lexical agreement. Ambiguous and ordinary prose keeps the old path.
+const FILING_STOP_WORDS = new Set([
+  'about', 'after', 'again', 'against', 'also', 'another', 'because', 'before', 'being', 'between',
+  'could', 'from', 'have', 'into', 'itself', 'more', 'other', 'should', 'their', 'there', 'these',
+  'they', 'this', 'those', 'through', 'under', 'until', 'very', 'what', 'when', 'where', 'which',
+  'while', 'with', 'would', 'your'
+]);
+
+function filingStem(value) {
+  let word = String(value || '').toLowerCase();
+  if (word.length > 6 && word.endsWith('ing')) word = word.slice(0, -3);
+  else if (word.length > 5 && word.endsWith('ed')) word = word.slice(0, -2);
+  else if (word.length > 5 && word.endsWith('es')) word = word.slice(0, -2);
+  else if (word.length > 4 && word.endsWith('s')) word = word.slice(0, -1);
+  return word;
+}
+
+function filingTokens(value) {
+  return new Set((String(value || '').toLowerCase().match(/[a-z][a-z'-]{3,}/g) || [])
+    .map(filingStem).filter((word) => word.length >= 4 && !FILING_STOP_WORDS.has(word)));
+}
+
+function normalClockSignature(hour, minute) {
+  return `time:${String(Number(hour)).padStart(2, '0')}:${String(minute || '00').padStart(2, '0')}`;
+}
+
+function filingLiteralSignatures(value) {
+  const source = String(value || '').replace(/\u00a0/g, ' ');
+  const signatures = [];
+  for (const match of source.matchAll(/\b(\d{1,2})(?:[:.](\d{2}))?\s*([ap])\.?\s*m\.?\b/gi)) {
+    signatures.push(normalClockSignature(match[1], match[2]));
+  }
+  // Transcripts often drop the meridiem from a repeated time ("8 AM ...
+  // 8.30"). Keep the clock value useful without attempting to infer AM/PM;
+  // the unique-segment and lexical-agreement gates below remain mandatory.
+  for (const match of source.matchAll(/\b(\d{1,2}):(\d{2})\b/g)) {
+    if (Number(match[1]) <= 23 && Number(match[2]) <= 59) signatures.push(normalClockSignature(match[1], match[2]));
+  }
+  for (const match of source.matchAll(/\b(\d{1,2})\.(\d{2})\b/g)) {
+    const nearby = source.slice(Math.max(0, match.index - 35), Math.min(source.length, match.index + match[0].length + 35));
+    if (!/\b(?:time|start|finish|until|till|hours?|morning|afternoon|evening|[ap]\.?\s*m\.?)\b/i.test(nearby)) continue;
+    if (Number(match[1]) <= 23 && Number(match[2]) <= 59) signatures.push(normalClockSignature(match[1], match[2]));
+  }
+  for (const match of source.matchAll(/(?:£|\$|€)\s*\d+(?:[.,]\d+)?|\b\d+(?:[.,]\d+)?\s*(?:%|percent\b)/gi)) {
+    signatures.push(`value:${match[0].toLowerCase().replace(/\s+/g, '').replace(',', '.')}`);
+  }
+  for (const match of source.matchAll(/\b(?:\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?)\b/gi)) {
+    signatures.push(`date:${match[0].toLowerCase().replace(/(?:st|nd|rd|th)\b/g, '').replace(/\s+/g, ' ')}`);
+  }
+  for (const match of source.matchAll(/\b\d+(?:[.,]\d+)?\s*(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?|items?|documents?|files?|tests?|runs?|alarms?|devices?|products?|samples?|units?|batches?|sites?|languages?)\b/gi)) {
+    signatures.push(`quantity:${match[0].toLowerCase().replace(',', '.').replace(/\s+/g, ' ')}`);
+  }
+  return [...new Set(signatures)];
+}
+
+function intersectionSize(left, right) {
+  let count = 0;
+  for (const value of left) if (right.has(value)) count += 1;
+  return count;
+}
+
+function evidenceNeighbourhoodText(evidenceIds, units, posOf) {
+  const positions = new Set();
+  for (const id of evidenceIds || []) {
+    const position = posOf.get(id);
+    if (position == null) continue;
+    for (let at = Math.max(0, position - 1); at <= Math.min(units.length - 1, position + 1); at += 1) positions.add(at);
+  }
+  return [...positions].sort((a, b) => a - b).map((at) => units[at]?.text || '').join(' ');
+}
+
+function repairEvidenceForSegmentFiling(record, units, segments, posOf) {
+  const signatures = filingLiteralSignatures(record?.text);
+  if (!signatures.length || !(record?.evidenceIds || []).length) return null;
+  const citedText = evidenceNeighbourhoodText(record.evidenceIds, units, posOf);
+  const citedSignatures = new Set(filingLiteralSignatures(citedText));
+  if (signatures.every((signature) => citedSignatures.has(signature))) return null;
+
+  const recordTokens = filingTokens(record.text);
+  const candidates = [];
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+    const segment = segments[segmentIndex];
+    const segmentUnits = units.slice(segment.start, segment.end);
+    const segmentText = segmentUnits.map((unit) => unit?.text || '').join(' ');
+    const segmentSignatures = new Set(filingLiteralSignatures(segmentText));
+    if (!signatures.every((signature) => segmentSignatures.has(signature))) continue;
+    const sharedTokens = intersectionSize(recordTokens, filingTokens(segmentText));
+    if (sharedTokens < (signatures.length === 1 ? 2 : 1)) continue;
+    candidates.push({ segmentIndex, segment, sharedTokens });
+  }
+  if (candidates.length !== 1) return null;
+
+  const { segmentIndex, segment } = candidates[0];
+  const direct = [];
+  for (let at = segment.start; at < segment.end; at += 1) {
+    const unitSignatures = new Set(filingLiteralSignatures(units[at]?.text));
+    if (signatures.some((signature) => unitSignatures.has(signature))) direct.push(at);
+  }
+  if (!direct.length) return null;
+  const evidencePositions = new Set();
+  for (const at of direct) {
+    for (let position = Math.max(segment.start, at - 1); position <= Math.min(segment.end - 1, at + 1); position += 1) {
+      evidencePositions.add(position);
+    }
+  }
+  const evidenceIds = [...evidencePositions].sort((a, b) => a - b)
+    .map((at) => units[at]?.id).filter(Boolean).slice(0, 12);
+  return evidenceIds.length ? { evidenceIds, segmentIndex, signatures } : null;
+}
+
 function meanVector(vectors) {
   const dims = vectors[0].length;
   const out = new Array(dims).fill(0);
@@ -155,22 +271,26 @@ function regroupDiscussionBySegments(discussion = [], units = [], segments = [],
   const segmentOf = (id) => { const p = posOf.get(id); return p == null ? -1 : segments.findIndex((s) => p >= s.start && p < s.end); };
   const topics = new Map();
   let moved = 0;
+  let relinked = 0;
   const kinds = ['points', 'decisions', 'openQuestions'];
   for (const topic of Array.isArray(discussion) ? discussion : []) {
     for (const kind of kinds) {
       for (const record of topic?.[kind] || []) {
+        const repair = repairEvidenceForSegmentFiling(record, units, segments, posOf);
+        const filedRecord = repair ? { ...record, evidenceIds: repair.evidenceIds } : record;
+        if (repair) relinked += 1;
         const votes = new Map();
-        for (const id of record?.evidenceIds || []) { const s = segmentOf(id); if (s >= 0) votes.set(s, (votes.get(s) || 0) + 1); }
+        for (const id of filedRecord?.evidenceIds || []) { const s = segmentOf(id); if (s >= 0) votes.set(s, (votes.get(s) || 0) + 1); }
         const best = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
         const label = best && labels[best[0]] ? labels[best[0]] : text(topic?.topic, 240) || 'Discussion';
         if (best && labels[best[0]] && label !== topic?.topic) moved += 1;
         // Topic-level fields travel with the first topic that feeds a label.
         if (!topics.has(label)) topics.set(label, { ...(topic || {}), id: `topic-${topics.size + 1}`, topic: label, points: [], decisions: [], openQuestions: [] });
-        topics.get(label)[kind].push(record);
+        topics.get(label)[kind].push(filedRecord);
       }
     }
   }
-  return { discussion: [...topics.values()], moved };
+  return { discussion: [...topics.values()], moved, relinked };
 }
 
 module.exports = { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments, SHIFT_MARKER };

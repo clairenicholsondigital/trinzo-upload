@@ -98,6 +98,60 @@ test('records are filed under the segment holding their evidence; unlabelled seg
   assert.equal(out.moved, 3);
 });
 
+test('a uniquely supported quantified row is relinked before segment filing', () => {
+  const auditUnits = [
+    unit(1, 'Chair', 'The preparation pack contains the applicable standards.'),
+    unit(2, 'Auditor', 'The reading and attestation must be completed before the visit.'),
+    unit(3, 'Chair', 'Training access will be provided through the portal.'),
+    unit(4, 'Auditor', 'The preparation allocation is split across two weeks.'),
+    unit(5, 'Chair', 'That concludes the training requirements.'),
+    unit(6, 'Chair', 'We will now cover the on-site timetable.'),
+    unit(7, 'Lead', 'The proposed working day starts at 8.30 a.m.'),
+    unit(8, 'Lead', 'It finishes at 5 p.m., although the site may request a different arrangement.'),
+    unit(9, 'Chair', 'Travel to the facility will be coordinated each morning.'),
+    unit(10, 'Auditor', 'The walkthrough will take place on the first day.')
+  ];
+  const segments = [
+    { start: 0, end: 5, ids: auditUnits.slice(0, 5).map((row) => row.id) },
+    { start: 5, end: 10, ids: auditUnits.slice(5).map((row) => row.id) }
+  ];
+  const discussion = [{
+    id: 'topic-1', topic: 'Training requirements',
+    points: [{
+      id: 'hours', text: 'Proposed working hours are 8:30 AM to 5:00 PM, subject to site agreement.',
+      evidenceIds: ['T0002']
+    }], decisions: [], openQuestions: []
+  }];
+  const out = regroupDiscussionBySegments(discussion, auditUnits, segments, ['Training requirements', 'Audit schedule and logistics']);
+  assert.equal(out.discussion[0].topic, 'Audit schedule and logistics');
+  assert.deepEqual(out.discussion[0].points[0].evidenceIds, ['T0006', 'T0007', 'T0008', 'T0009']);
+  assert.equal(out.relinked, 1);
+});
+
+test('ambiguous literal matches do not change evidence or topic filing', () => {
+  const repeatedUnits = [
+    unit(1, 'Chair', 'The training call runs from 9 a.m. to 5 p.m.'),
+    unit(2, 'Chair', 'The training materials will be sent in advance.'),
+    unit(3, 'Chair', 'The preparation portal remains available.'),
+    unit(4, 'Chair', 'The on-site audit also runs from 9 a.m. to 5 p.m.'),
+    unit(5, 'Chair', 'Transport will be arranged for the audit team.'),
+    unit(6, 'Chair', 'The site walkthrough is included in the timetable.')
+  ];
+  const segments = [
+    { start: 0, end: 3, ids: repeatedUnits.slice(0, 3).map((row) => row.id) },
+    { start: 3, end: 6, ids: repeatedUnits.slice(3).map((row) => row.id) }
+  ];
+  const discussion = [{
+    id: 'topic-1', topic: 'Training requirements',
+    points: [{ id: 'hours', text: 'The working period is 9:00 AM to 5:00 PM.', evidenceIds: ['T0002'] }],
+    decisions: [], openQuestions: []
+  }];
+  const out = regroupDiscussionBySegments(discussion, repeatedUnits, segments, ['Training requirements', 'Audit schedule and logistics']);
+  assert.equal(out.discussion[0].topic, 'Training requirements');
+  assert.deepEqual(out.discussion[0].points[0].evidenceIds, ['T0002']);
+  assert.equal(out.relinked, 0);
+});
+
 test('the naming rule in code is the rule that was measured, and the naming request is a discovery request', () => {
   const fixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'topic-naming-rule-v1.txt'), 'utf8').trim();
   assert.equal(stagedEvaluation.MEETING_AGENT_TOPIC_NAMING_RULE, fixture);
