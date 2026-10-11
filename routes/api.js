@@ -288,7 +288,7 @@ const {
 } = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
 const { normaliseKeptActionIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
-const { includedSections, summaryStageIsEmpty, applyIncludedSections } = require('../utils/includedSections');
+const { includedSections, summaryStageIsEmpty, applyIncludedSections, applyTopicHeadings } = require('../utils/includedSections');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -11211,8 +11211,9 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
     .filter(Boolean);
-  const discussion = publicationDiscussion.map((topic) => ({
+  const discussion = applyTopicHeadings(draft, publicationDiscussion).map((topic) => ({
     topic: topic?.topic || 'Discussion',
+    hideHeading: topic.hideHeading,
     points: [
       ...(Array.isArray(topic?.points) ? topic.points : []).map((item) => item?.text || item),
       ...(Array.isArray(topic?.decisions) ? topic.decisions : []).map((item) => `Decision — ${item?.text || item}`),
@@ -18026,7 +18027,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, a
       .filter(Boolean);
     const exportDraft = normaliseMeetingAgentKnownTermsDeep({
       ...draft,
-      discussion: publicationDiscussion,
+      discussion: applyTopicHeadings(draft, publicationDiscussion),
       actions: publicationActions,
       ...applyIncludedSections(draft, { executiveSummary: draft.executiveSummary, meetingObjectives: draft.meetingObjectives }),
       details: sanitiseMeetingAgentDetails(draft.details),
