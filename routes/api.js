@@ -426,12 +426,25 @@ function meetingAgentObjectiveRecords(value) {
 function meetingAgentGenerationState(generation) {
   if (!generation || generation.status !== 'running') return generation || null;
   const timeoutMs = meetingMinutesAgentHybridEnabled()
-    ? Math.max(300000, Number(process.env.MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS || 420000))
+    // Discussion has a bounded core stage plus a separately bounded final
+    // topic-arrangement pass. Do not report a healthy slow arranger as an
+    // interrupted workflow while that dedicated allowance is still active.
+    ? Math.max(300000, Number(process.env.MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS || 720000))
     : Math.max(10000, Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000)) + 60000;
   const orphaned = generation.bootId !== MEETING_AGENT_BOOT_ID;
   const expired = Date.now() - Number(new Date(generation.startedAt || 0)) > timeoutMs;
   if (!orphaned && !expired) return generation;
   return { ...generation, status: 'failed', error: 'Generation was interrupted. Generate it again.' };
+}
+
+function meetingAgentPassTimingPolicy(callOptions = {}, isRefereeCall = false, stageDeadlineAt = 0, now = Date.now()) {
+  const independentBudgetMs = Math.max(0, Number(callOptions.independentBudgetMs || 0));
+  const deadlineAt = independentBudgetMs
+    ? Number(now) + Math.max(10000, independentBudgetMs)
+    : Number(stageDeadlineAt || 0);
+  const attemptTimeoutMs = Number(callOptions.attemptTimeoutMs
+    || (isRefereeCall ? process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 90000 : 0)) || undefined;
+  return { deadlineAt, attemptTimeoutMs };
 }
 
 function normaliseMeetingAgentGeneration(generation) {
@@ -14516,7 +14529,7 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   };
   const call = async (pass, prompt, callOptions = {}) => {
     const isRefereeCall = callOptions.responseKind === 'referee' || pass === 'referee' || pass.startsWith('referee-');
-    const baseMessage = pass === 'primary' || pass === 'primary-2' ? 'Finding the main points…' : pass === 'recovery' ? `Recovering missed ${stage}…` : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
+    const baseMessage = pass === 'primary' || pass === 'primary-2' ? 'Finding the main points…' : pass === 'recovery' ? `Recovering missed ${stage}…` : pass === 'topic-arranger' ? 'Arranging related discussion topics…' : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
     const promptSha256 = meetingAgentPassCacheKey(prompt);
     const requestId = meetingMinutesAgentText(callOptions.requestId, 160)
       || `${stage}:${pass}:${promptSha256.slice(0, 16)}`;
@@ -14589,16 +14602,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // retry ladder for this pass; successful first responses still make one call.
     const maxAttempts = Math.max(1, Number(callOptions.maxAttempts
       || (isRefereeCall ? 2 : pass === 'primary' ? 3 : 2)));
+    const timingPolicy = meetingAgentPassTimingPolicy(callOptions, isRefereeCall, stageDeadlineAt);
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
-        pass: `${stage}:${pass}`, maxAttempts, deadlineAt: stageDeadlineAt,
+        pass: `${stage}:${pass}`, maxAttempts, deadlineAt: timingPolicy.deadlineAt,
         requestId,
         // Referee calls have repeatedly completed just beyond the former
         // 65-second boundary. Give the structured tool enough time to return
         // instead of turning valid in-flight work into a duplicate request.
-        attemptTimeoutMs: isRefereeCall
-          ? Number(process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 90000)
-          : undefined,
+        attemptTimeoutMs: timingPolicy.attemptTimeoutMs,
         responseKind: callOptions.responseKind,
         transformResult: callOptions.transformResult,
         validateResult: callOptions.validateResult,
@@ -15582,6 +15594,13 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
             optional: true,
             responseKind: 'topic_arrangement',
             maxAttempts: 2,
+            // This pass is deliberately last because it must see every final
+            // row. Give it fresh headroom instead of whatever happens to be
+            // left from discovery/referee/critic work. The five-minute total
+            // remains bounded; each upstream attempt may use at most three
+            // minutes and the existing retry ladder gets one retry.
+            independentBudgetMs: Number(process.env.MEETING_MINUTES_AGENT_TOPIC_ARRANGER_BUDGET_MS || 300000),
+            attemptTimeoutMs: Number(process.env.MEETING_MINUTES_AGENT_TOPIC_ARRANGER_TIMEOUT_MS || 180000),
             candidateCount: arrangementInput.records.length,
             candidateIds: arrangementInput.records.map((record) => record.recordId),
             validateResult: (result) => validateDiscussionTopicArrangement(result, arrangementInput, { maximumRows: 8 }),
@@ -18261,6 +18280,7 @@ router.stagedEvaluation = {
   meetingAgentExecutionTelemetry,
   meetingAgentPreviewSavedActions,
   meetingAgentFailureClass,
+  meetingAgentPassTimingPolicy,
   askPowerAutomateMeetingMinutesAgentWithRetry,
   meetingAgentResultCounts,
   meetingAgentMaterialPassImpact,

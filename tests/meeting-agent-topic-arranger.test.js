@@ -41,3 +41,25 @@ test('topic arrangement prompt asks for a lossless global partition and treats r
   assert.deepEqual(records.map((record) => record.recordId), ['date-row', 'hours-row']);
   assert.deepEqual(records.map((record) => record.evidenceOrder), [1, 2]);
 });
+
+test('topic arranger can receive fresh bounded time after the shared stage budget is exhausted', () => {
+  const stageDeadlineAt = 1_000_000;
+  const now = 1_100_000;
+  const policy = stagedEvaluation.meetingAgentPassTimingPolicy({
+    independentBudgetMs: 300_000,
+    attemptTimeoutMs: 180_000
+  }, false, stageDeadlineAt, now);
+
+  assert.deepEqual(policy, {
+    deadlineAt: 1_400_000,
+    attemptTimeoutMs: 180_000
+  });
+});
+
+test('ordinary passes continue to use the shared stage deadline', () => {
+  const policy = stagedEvaluation.meetingAgentPassTimingPolicy({}, false, 1_000_000, 1_100_000);
+  assert.deepEqual(policy, {
+    deadlineAt: 1_000_000,
+    attemptTimeoutMs: undefined
+  });
+});
