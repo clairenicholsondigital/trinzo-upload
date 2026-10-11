@@ -203,6 +203,26 @@ function repeatsRow(value, kept) {
   return '';
 }
 
+// If a short, single-purpose row overlaps only one separable clause of a
+// longer row, they are not whole-row duplicates. Keep the atomic row and trim
+// just its restatement from the compound row. This preserves both subjects for
+// the later global topic arranger instead of forcing it to file a mixed row
+// under whichever subject dominates the wording.
+function compoundRemainder(compound, atomic) {
+  const compoundTokens = bodyTokens(compound);
+  const atomicTokens = bodyTokens(atomic);
+  if (compoundTokens.length < atomicTokens.length + 4) return '';
+  const clauses = clean(compound).split(/;\s*|(?<=[.!?])\s+|,\s+(?=(?:and|but|while|whereas)\b)/i)
+    .map((part) => clean(part).replace(/^(?:and|but|while|whereas)\s+/i, ''))
+    .filter(Boolean);
+  if (clauses.length < 2) return '';
+  const repeated = clauses.map((clause) => Boolean(repeatsRow(clause, atomic)));
+  if (!repeated.some(Boolean) || repeated.every(Boolean)) return '';
+  const remainder = clauses.filter((_, index) => !repeated[index]).join('. ').replace(/\.{2,}/g, '.').trim();
+  if (bodyTokens(remainder).length < 3 || repeatsRow(remainder, atomic)) return '';
+  return /[.!?]$/.test(remainder) ? remainder : `${remainder}.`;
+}
+
 // "Alan to submit the application and check the towpath; Deepa to reorder the
 // medals and manage social media" - a run-through of several people's jobs,
 // each already minuted on its own line.
@@ -259,14 +279,47 @@ function dedupeDiscussionBody(discussion = [], people = []) {
           dropped.push({ text: value.slice(0, 200), because: 'announces the actions list', kept: '' });
           continue;
         }
+        const recapBecause = recapsSeveralRows(value, kept.map((entry) => entry.text), people);
+        if (recapBecause) {
+          dropped.push({ text: value.slice(0, 200), because: recapBecause, kept: '' });
+          continue;
+        }
         const match = kept.find((entry) => repeatsRow(value, entry.text));
-        const because = match ? repeatsRow(value, match.text)
-          : recapsSeveralRows(value, kept.map((entry) => entry.text), people);
+        if (match) {
+          const keptRemainder = compoundRemainder(match.text, value);
+          if (keptRemainder) {
+            const replacement = {
+              ...match.row,
+              text: keptRemainder,
+              supportingDetails: (match.row?.supportingDetails || []).filter((detail) => !repeatsRow(detail?.text || '', value))
+            };
+            match.container[match.index] = replacement;
+            match.row = replacement;
+            match.text = keptRemainder;
+            dropped.push({ text: value.slice(0, 200), because: 'split from a compound restatement', kept: keptRemainder.slice(0, 120) });
+            kept.push({ text: value, row, container: next[kind], index: next[kind].length });
+            next[kind].push(row);
+            continue;
+          }
+          const currentRemainder = compoundRemainder(value, match.text);
+          if (currentRemainder) {
+            const replacement = {
+              ...row,
+              text: currentRemainder,
+              supportingDetails: (row?.supportingDetails || []).filter((detail) => !repeatsRow(detail?.text || '', match.text))
+            };
+            dropped.push({ text: value.slice(0, 200), because: 'trimmed a compound restatement', kept: match.text.slice(0, 120) });
+            kept.push({ text: currentRemainder, row: replacement, container: next[kind], index: next[kind].length });
+            next[kind].push(replacement);
+            continue;
+          }
+        }
+        const because = match ? repeatsRow(value, match.text) : '';
         if (because) {
           dropped.push({ text: value.slice(0, 200), because, kept: (match?.text || '').slice(0, 120) });
           continue;
         }
-        kept.push({ text: value });
+        kept.push({ text: value, row, container: next[kind], index: next[kind].length });
         next[kind].push(row);
       }
     }

@@ -74,6 +74,27 @@ test('an exact date omitted from the citations is recovered only from matching t
   );
 });
 
+test('exact month recovery ignores an inferred year and an unrelated clause in the generated row', () => {
+  const dateUnits = normaliseSourceUnits([
+    { id: 'T0400', speaker: 'Chair', text: 'Legacy records need to be entered in the compliance portal.', classification: 'keep' },
+    { id: 'T0401', speaker: 'Chair', text: 'All legacy records must be in the portal by the 19th of October this year.', classification: 'keep' },
+    ...filler('E', 8),
+    { id: 'T0410', speaker: 'Reviewer', text: 'For an inspection, showing that migration preparation is underway is sufficient.', classification: 'keep' }
+  ]);
+  const discussion = [{
+    topic: 'Registration', decisions: [], openQuestions: [],
+    points: [{
+      id: 'p-derived-year',
+      text: 'Legacy records must be registered in the compliance portal by 19th October 2028; preparation in progress is sufficient for an inspection.',
+      evidenceIds: ['T0410'], supportingDetails: []
+    }]
+  }];
+  const result = groundUnstatedDiscussionMonths(discussion, dateUnits);
+  assert.equal(result.discussion[0].points[0].text, discussion[0].points[0].text);
+  assert.deepEqual(result.discussion[0].points[0].evidenceIds, ['T0410', 'T0401']);
+  assert.equal(result.flags.length, 0);
+});
+
 test('a month safely implied by a cross-month range uses the shared formatter', () => {
   const rangeUnits = normaliseSourceUnits([
     { id: 'T0100', speaker: 'Chair', text: 'Report writing runs from the 27th through to the 7th of August.', classification: 'keep' }

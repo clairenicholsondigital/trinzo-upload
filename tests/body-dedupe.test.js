@@ -104,6 +104,35 @@ test('one small number in common is not enough to call two rows the same', () =>
   assert.equal(texts(result).length, 2, 'a question and advice about the same thing are different rows');
 });
 
+test('an atomic row survives when it overlaps one clause of a mixed-subject row', () => {
+  const result = dedupeDiscussionBody([{
+    topic: 'Planning', decisions: [], openQuestions: [],
+    points: [
+      row('mixed', 'Morgan arrives on Sunday, the group will share a taxi because parking is limited, and proposed workshop hours are 9:15 AM to 4:45 PM subject to venue approval.'),
+      row('hours', 'Proposed workshop hours are 9:15 AM to 4:45 PM, subject to venue approval.')
+    ]
+  }], []);
+  assert.deepEqual(texts(result), [
+    'Morgan arrives on Sunday, the group will share a taxi because parking is limited.',
+    'Proposed workshop hours are 9:15 AM to 4:45 PM, subject to venue approval.'
+  ]);
+  assert.match(result.dropped[0].because, /compound restatement/);
+});
+
+test('a later compound row keeps only its non-overlapping subject', () => {
+  const result = dedupeDiscussionBody([{
+    topic: 'Planning', decisions: [], openQuestions: [],
+    points: [
+      row('hours', 'Proposed workshop hours are 9:15 AM to 4:45 PM, subject to venue approval.'),
+      row('mixed', 'Morgan arrives on Sunday, the group will share a taxi because parking is limited, and proposed workshop hours are 9:15 AM to 4:45 PM subject to venue approval.')
+    ]
+  }], []);
+  assert.deepEqual(texts(result), [
+    'Proposed workshop hours are 9:15 AM to 4:45 PM, subject to venue approval.',
+    'Morgan arrives on Sunday, the group will share a taxi because parking is limited.'
+  ]);
+});
+
 // A line narrating that somebody summarised the actions is minutes about the
 // minutes: the actions are extracted separately and shown in their own table.
 // Reported from a live transcript as "Gemma summarizes actions:" appearing as

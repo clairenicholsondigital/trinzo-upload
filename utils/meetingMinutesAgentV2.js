@@ -4956,7 +4956,20 @@ function exactStatedDateEvidence(value = '', day = '', month = '', units = []) {
     'i'
   );
   const context = evidenceContextFor(units);
-  const claimAnchors = resolutionTokens(value).filter((token) => token !== dayNumber && token !== namedMonth);
+  // A generated row can join an exact deadline to a later observation (for
+  // example, "due 19 October; showing preparation is enough for an audit").
+  // Search with the clause that owns the date, not the unrelated tail.  Also
+  // ignore a four-digit year for this lookup: speakers commonly say "this
+  // year", and this guard is deciding only whether the named *month* was
+  // spoken.  Letting that derived year participate makes an otherwise exact
+  // day-and-month match score zero.
+  const dateClauses = String(value || '').split(/;|(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean);
+  const dateClaim = (dateClauses.find((part) => {
+    const lower = part.toLowerCase();
+    return new RegExp(String.raw`\b${dayNumber}(?:st|nd|rd|th)?\b`, 'i').test(part)
+      && new RegExp(String.raw`\b${namedMonth}\b`, 'i').test(lower);
+  }) || String(value || '')).replace(/\b(?:19|20)\d{2}\b/g, ' ');
+  const claimAnchors = resolutionTokens(dateClaim).filter((token) => token !== dayNumber && token !== namedMonth);
   if (claimAnchors.length < 2) return [];
   let best = null;
   for (let index = 0; index < context.rows.length; index += 1) {
@@ -4966,7 +4979,7 @@ function exactStatedDateEvidence(value = '', day = '', month = '', units = []) {
     const windowText = context.rows.slice(start, end).map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
     const windowTokens = new Set(resolutionTokens(windowText));
     const sharedAnchors = claimAnchors.filter((token) => windowTokens.has(token));
-    const support = evidenceSupportScore(value, windowText);
+    const support = evidenceSupportScore(dateClaim, windowText);
     if (sharedAnchors.length < 2 || support < 0.38) continue;
     if (!best || support > best.support) best = { id: context.rows[index].id, support };
   }
