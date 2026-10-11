@@ -5610,7 +5610,32 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         const dedupe = await duplicateGroups(flat.map((entry) => entry.text), { threshold: Number(process.env.DISCUSSION_DEDUPE_THRESHOLD || 0.72) });
         const dropKeys = new Set();
         for (const group of dedupe.groups) {
-          for (const memberIndex of group.slice(1)) {
+          const informationScore = (memberIndex) => {
+            const entry = flat[memberIndex];
+            const point = cards[entry.cardIndex].points[entry.pointIndex];
+            const words = new Set(String(entry.text || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || []);
+            const figures = (String(entry.text || '').match(/(?:[$£€]\s*)?\d+(?:[.,]\d+)?(?:\s*%|\s*(?:days?|weeks?|months?|years?))?/g) || []).length;
+            return words.size + figures * 4 + Math.min(12, (point?.evidenceIds || []).length) * 0.25
+              + Math.min(4, (point?.supportingDetails || []).length);
+          };
+          const survivorIndex = [...group].sort((a, b) => informationScore(b) - informationScore(a) || a - b)[0];
+          const survivorEntry = flat[survivorIndex];
+          const survivorPoint = cards[survivorEntry.cardIndex].points[survivorEntry.pointIndex];
+          const mergedPoints = group.map((memberIndex) => {
+            const entry = flat[memberIndex];
+            return cards[entry.cardIndex].points[entry.pointIndex];
+          }).filter((point) => point && typeof point === 'object');
+          if (survivorPoint && typeof survivorPoint === 'object') {
+            survivorPoint.evidenceIds = [...new Set(mergedPoints.flatMap((point) => point.evidenceIds || []))].slice(0, 24);
+            survivorPoint.reviewFlagIds = [...new Set(mergedPoints.flatMap((point) => point.reviewFlagIds || []))].slice(0, 24);
+            survivorPoint.supportingDetails = mergedPoints.flatMap((point) => point.supportingDetails || [])
+              .filter((detail, index, all) => all.findIndex((candidate) => String(candidate?.text || '').toLowerCase() === String(detail?.text || '').toLowerCase()) === index);
+            const mergedFromIds = [...new Set(mergedPoints.flatMap((point) => [point.id, ...(point.mergedFromIds || [])]).filter(Boolean))]
+              .filter((id) => id !== survivorPoint.id);
+            if (mergedFromIds.length) survivorPoint.mergedFromIds = mergedFromIds;
+          }
+          for (const memberIndex of group) {
+            if (memberIndex === survivorIndex) continue;
             const entry = flat[memberIndex];
             dropKeys.add(`${entry.cardIndex}:${entry.pointIndex}`);
           }

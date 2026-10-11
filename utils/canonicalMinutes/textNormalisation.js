@@ -52,6 +52,17 @@ function normaliseUkCurrency(value) {
   // then this range pass sees "25-£30" and prefixes a second symbol.
   text = text.replace(/(?:£\s*)?(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*£\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
   text = text.replace(/£\s*(\d+(?:\.\d{1,2})?)\s*(to|[-–—])\s*(\d+(?:\.\d{1,2})?)/g, formatRange);
+  // In coordinated prices English commonly states the currency once:
+  // "£8 for adults and five for concessions". The second "for" makes this a
+  // pair of prices rather than an arbitrary list of quantities, so carrying
+  // the pound marker is safe without knowing anything about the meeting or
+  // the priced categories.
+  const bareAmount = `(?:\\d+(?:\\.\\d{1,2})?|${NUMBER_WORD}(?:[- ]+${NUMBER_WORD})?)`;
+  const sharedCurrencyPrice = new RegExp(`(£\\d+(?:\\.\\d{1,2})?\\s+for\\s+[^,;.!?]{1,80}?\\s+and\\s+)(${bareAmount})(\\s+for\\s+)`, 'gi');
+  text = text.replace(sharedCurrencyPrice, (_match, prefix, amount, suffix) => {
+    const numeric = /^\d/.test(amount) ? amount : numberWordsToValue(amount);
+    return numeric == null ? _match : `${prefix}£${numeric}${suffix}`;
+  });
   return text;
 }
 

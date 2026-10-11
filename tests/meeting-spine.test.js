@@ -63,7 +63,10 @@ test('currency wording is consistently presented as UK pound amounts', () => {
   assert.equal(normaliseUkCurrency('The fee is ££25.'), 'The fee is £25.');
   assert.equal(normaliseUkCurrency('The fee rose from about ££25-£30.'), 'The fee rose from about £25-£30.');
   assert.equal(normaliseUkCurrency('The annual fee is a thirty-pound charge.'), 'The annual fee is a £30 charge.');
+  assert.equal(normaliseUkCurrency('Tickets are £8 for adults and five for concessions.'), 'Tickets are £8 for adults and £5 for concessions.');
+  assert.equal(normaliseUkCurrency('Entry is £12.50 for members and 15 for non-members.'), 'Entry is £12.50 for members and £15 for non-members.');
   assert.equal(normaliseUkCurrency('Eight people joined.'), 'Eight people joined.');
+  assert.equal(normaliseUkCurrency('The budget covers eight adults and five children.'), 'The budget covers eight adults and five children.');
 });
 
 test('client-ready staged screens apply currency normalisation to generated prose', () => {

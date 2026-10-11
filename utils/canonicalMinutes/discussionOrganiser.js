@@ -117,6 +117,47 @@ function cloneTopic(topic) {
   };
 }
 
+function normalisedTopicMergeKey(value) {
+  return text(value, 220).toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Segmenting and recovery can independently create the same generated topic.
+// Consolidate exact normalised headings before row dedupe so restatements are
+// compared in one subject context. Reviewer-authored structure remains
+// untouched; generated/confirmed headings retain the first card's identity.
+function mergeExactTopicHeadings(topics = []) {
+  const merged = [];
+  const byHeading = new Map();
+  for (const source of Array.isArray(topics) ? topics : []) {
+    const topic = cloneTopic(source);
+    const key = normalisedTopicMergeKey(topic.topic);
+    if (!key || isReviewerAuthored(topic)) {
+      merged.push(topic);
+      continue;
+    }
+    const existing = byHeading.get(key);
+    if (!existing) {
+      byHeading.set(key, topic);
+      merged.push(topic);
+      continue;
+    }
+    for (const kind of ROW_KINDS) existing[kind].push(...topic[kind]);
+    existing.evidenceIds = [...new Set([...(existing.evidenceIds || []), ...(topic.evidenceIds || [])])];
+    existing.reviewFlagIds = [...new Set([...(existing.reviewFlagIds || []), ...(topic.reviewFlagIds || [])])];
+    const mergedTopicIds = [...new Set([
+      ...(existing.mergedTopicIds || []),
+      ...(topic.mergedTopicIds || []),
+      topic.id
+    ].filter(Boolean))].filter((id) => id !== existing.id);
+    if (mergedTopicIds.length) existing.mergedTopicIds = mergedTopicIds;
+  }
+  return merged;
+}
+
 // A model can turn chairing mechanics into polished-looking content.  For
 // example, "Can I raise the shed?" / "Go on" became "Ken was invited to
 // raise the issue concerning the communal shed."  The prose alone is a risky
@@ -1266,6 +1307,21 @@ function rowContainment(left, right) {
   return shared / smaller;
 }
 
+function rowEvidenceContainment(left, right) {
+  const a = new Set(Array.isArray(left?.evidenceIds) ? left.evidenceIds.map(String) : []);
+  const b = new Set(Array.isArray(right?.evidenceIds) ? right.evidenceIds.map(String) : []);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const id of a) if (b.has(id)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
+function explicitlyLinkedSupportingRows(left, right) {
+  const leftId = text(left?.id, 160); const rightId = text(right?.id, 160);
+  const leftParent = text(left?.simulationParentId, 160); const rightParent = text(right?.simulationParentId, 160);
+  return Boolean((leftParent && leftParent === rightId) || (rightParent && rightParent === leftId));
+}
+
 // Generated rows sometimes form an A / A+B / B "overlap sandwich": one
 // compound row repeats a facet from each neighbour. Whole-row dedupe cannot
 // safely see that shape because the compound row also contains real, unique
@@ -1533,7 +1589,9 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
     if (left.removed) continue;
     for (let rightIndex = leftIndex + 1; rightIndex < rows.length; rightIndex += 1) {
       const right = rows[rightIndex];
-      if (right.removed || left.kind !== right.kind
+      const pointDecisionPair = new Set([left.kind, right.kind]).size === 2
+        && [left.kind, right.kind].every((kind) => kind === 'points' || kind === 'decisions');
+      if (right.removed || (left.kind !== right.kind && !pointDecisionPair)
         || left.record.reviewerAuthored || right.record.reviewerAuthored
         || !rowsClaimCompatible(left.record, right.record)) continue;
       const exact = normalisedRestatementText(left.record.text) === normalisedRestatementText(right.record.text);
@@ -1543,6 +1601,8 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const evidenceGap = rowEvidenceGap(left.record, right.record, index);
       const lexical = overlap(left.record.text, right.record.text);
       const containment = rowContainment(left.record, right.record);
+      const evidenceContainment = rowEvidenceContainment(left.record, right.record);
+      const explicitlyLinked = explicitlyLinkedSupportingRows(left.record, right.record);
       const compatiblePredicates = rowPredicatesCompatible(left.record, right.record);
       const semantic = vectors?.[leftIndex] && vectors?.[rightIndex]
         ? cosine(vectors[leftIndex], vectors[rightIndex]) : 0;
@@ -1551,7 +1611,13 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const crossTopicShared = compatiblePredicates && !sameTopic && adjacentTopics && sharedEvidence && semantic >= 0.88 && lexical >= 0.45;
       const crossTopicNearby = !sameTopic && adjacentTopics && evidenceGap <= 2
         && compatiblePredicates && semantic >= 0.92 && lexical >= 0.55 && containment >= 0.8;
-      const evidenceContainment = compatiblePredicates && sharedEvidence && containment >= 0.84;
+      const evidenceBackedRestatement = compatiblePredicates && evidenceContainment >= 0.75 && containment >= 0.68
+        && ((semantic >= 0.8 && lexical >= 0.28) || lexical >= 0.72);
+      const linkedSupportingRestatement = compatiblePredicates && explicitlyLinked && containment >= 0.72
+        && ((semantic >= 0.86 && lexical >= 0.35) || lexical >= 0.62);
+      const crossKindDecisionRestatement = pointDecisionPair && compatiblePredicates
+        && (exact || (evidenceContainment >= 0.75 && containment >= 0.78
+          && ((semantic >= 0.86 && lexical >= 0.4) || lexical >= 0.78)));
       // A conclusion can be stated early and reiterated much later under the
       // same subject.  Evidence distance alone must not preserve a duplicate,
       // but the distant route is intentionally much stricter than the local
@@ -1572,13 +1638,29 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const equivalentQuestion = left.kind === 'openQuestions' && compatiblePredicates
         && ((sharedEvidence && lexical >= 0.62)
           || (sameTopic && evidenceGap <= 2 && lexical >= 0.72));
-      if (!exact && !evidenceContainment && !equivalentQuestion && !sameTopicShared && !sameTopicNearby
-        && !sameTopicDistant
+      if (pointDecisionPair && !crossKindDecisionRestatement) continue;
+      if (!pointDecisionPair && !exact && !evidenceBackedRestatement && !linkedSupportingRestatement
+        && !equivalentQuestion && !sameTopicShared && !sameTopicNearby && !sameTopicDistant
         && !crossTopicShared && !crossTopicNearby) continue;
       const merged = mergeRestatementRecords(left.record, right.record);
-      left.record = merged;
-      left.topic[left.kind][left.rowIndex] = merged;
-      right.removed = true;
+      if (pointDecisionPair) {
+        const decision = left.kind === 'decisions' ? left : right;
+        const point = decision === left ? right : left;
+        const decisionMerged = {
+          ...merged,
+          id: decision.record.id,
+          mergedFromIds: [...new Set([...(merged.mergedFromIds || []), point.record.id].filter(Boolean))]
+            .filter((id) => id !== decision.record.id)
+        };
+        decision.record = decisionMerged;
+        decision.topic.decisions[decision.rowIndex] = decisionMerged;
+        point.removed = true;
+        if (point === left) break;
+      } else {
+        left.record = merged;
+        left.topic[left.kind][left.rowIndex] = merged;
+        right.removed = true;
+      }
     }
   }
   // A merge can put the preferred later record in the earlier array slot, so
@@ -1638,6 +1720,7 @@ async function finaliseDiscussionForPublication(discussion = [], options = {}) {
   topics = balanceDiscussionTopics(topics, options.sourceUnits || []);
   topics = repairStructuralTopicHeadings(topics, options.sourceUnits || []);
   topics = normaliseDecisionTopicHeadings(topics);
+  topics = mergeExactTopicHeadings(topics);
   const preparedOptions = await prepareRestatementVectors(topics, options);
   topics = absorbSemanticSingletonTopics(topics, options.sourceUnits || [], preparedOptions);
   topics = await dedupeAdjacentRestatements(topics, preparedOptions);
@@ -1779,6 +1862,7 @@ module.exports = {
   rehomeSupportingDetails,
   sortByEvidence,
   normaliseDecisionTopicHeadings,
+  mergeExactTopicHeadings,
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements,
   dedupeGlobalRestatements,

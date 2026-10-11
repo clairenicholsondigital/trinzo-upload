@@ -8,7 +8,7 @@ const {
   removeAnsweredQuestionClauses, removeContradictoryResponsibilities,
   isPersonalAside, isPeripheralAside, isRoutineMeetingAdministration,
   removePersonalAsides, normaliseDecisionTopicHeadings,
-  repairStructuralTopicHeadings,
+  repairStructuralTopicHeadings, mergeExactTopicHeadings,
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
   consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
   balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication
@@ -359,7 +359,7 @@ test('global cleanup removes a repeated workflow statement under adjacent topics
   assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['T0039', 'T0040']));
 });
 
-test('global cleanup preserves separate workflow stages, claim types, figures and polarity', async () => {
+test('global cleanup preserves separate workflow stages, figures and polarity while folding a repeated point into its decision', async () => {
   const sourceUnits = [
     { id: 'T0100', sequence: 100, speaker: 'Conor', text: 'Clean the noisy signals.' },
     { id: 'T0101', sequence: 101, speaker: 'Conor', text: 'Match the cleaned signals against Salesforce.' }
@@ -374,8 +374,56 @@ test('global cleanup preserves separate workflow stages, claim types, figures an
       { id: 'negative', text: 'The opportunity plan must not be approved.', evidenceIds: ['T0100'] }
     ], decisions: [{ id: 'decision', text: 'Manually clean noisy signal data.', evidenceIds: ['T0100'] }], openQuestions: []
   }], { sourceUnits, encode: (values) => values.map(() => [1, 0]) });
-  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['clean', 'match', 'three', 'five', 'positive', 'negative']);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['match', 'three', 'five', 'positive', 'negative']);
   assert.deepEqual(cleaned[0].decisions.map((row) => row.id), ['decision']);
+});
+
+test('exact generated topic headings merge after punctuation and spacing normalisation', () => {
+  const merged = mergeExactTopicHeadings([
+    { id: 'risk-a', topic: 'Risk management,', points: [{ id: 'a', text: 'The matrix was reviewed.', evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] },
+    { id: 'risk-b', topic: '  risk-management  ', points: [{ id: 'b', text: 'The controls were reviewed.', evidenceIds: ['T0002'] }], decisions: [], openQuestions: [] }
+  ]);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].points.map((row) => row.id), ['a', 'b']);
+  assert.deepEqual(merged[0].mergedTopicIds, ['risk-b']);
+});
+
+test('explicit supporting-detail children are removed only when the parent contains their claim', async () => {
+  const discussion = [{ id: 'testing', topic: 'Testing status', decisions: [], openQuestions: [], points: [
+    { id: 'parent', text: 'Electrical compliance testing preparation has not started and remains scheduled for July.', evidenceIds: ['T0001', 'T0002'] },
+    { id: 'child', text: 'Electrical compliance testing preparation has not started.', evidenceIds: ['T0001'], simulationSource: 'supporting_detail', simulationParentId: 'parent' },
+    { id: 'distinct-child', text: 'The test equipment must be calibrated before use.', evidenceIds: ['T0003'], simulationSource: 'supporting_detail', simulationParentId: 'parent' }
+  ] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, {
+    encode: (values) => values.map((value) => /calibrated/.test(value) ? [0, 1] : [1, 0])
+  });
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['parent', 'distinct-child']);
+  assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['T0001', 'T0002']));
+});
+
+test('strongly overlapping rows with substantially shared evidence keep the richer wording', async () => {
+  const discussion = [{ id: 'procedure', topic: 'Procedure review', decisions: [], openQuestions: [], points: [
+    { id: 'short', text: 'External review comments were incorporated into the operating procedure.', evidenceIds: ['T0010'] },
+    { id: 'rich', text: 'External review comments were incorporated into the operating procedure, including the updated site-audit controls.', evidenceIds: ['T0010', 'T0011'] }
+  ] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, { encode: (values) => values.map(() => [1, 0]) });
+  assert.equal(cleaned[0].points.length, 1);
+  assert.equal(cleaned[0].points[0].id, 'rich');
+  assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['T0010', 'T0011']));
+});
+
+test('a point that restates a decision is folded into the decision without losing richer rationale', async () => {
+  const discussion = [{ id: 'show', topic: 'Annual show', points: [
+    { id: 'point', text: 'The annual show will be held on Saturday 13 September, allowing the usual preparation period.', evidenceIds: ['T0020', 'T0021'] }
+  ], decisions: [
+    { id: 'decision', text: 'The annual show will be held on Saturday 13 September.', evidenceIds: ['T0020'] }
+  ], openQuestions: [] }];
+  const cleaned = await dedupeGlobalRestatements(discussion, { encode: (values) => values.map(() => [1, 0]) });
+  assert.equal(cleaned[0].points.length, 0);
+  assert.equal(cleaned[0].decisions.length, 1);
+  assert.equal(cleaned[0].decisions[0].id, 'decision');
+  assert.match(cleaned[0].decisions[0].text, /preparation period/);
+  assert.deepEqual(new Set(cleaned[0].decisions[0].evidenceIds), new Set(['T0020', 'T0021']));
 });
 
 test('global cleanup is idempotent', async () => {
