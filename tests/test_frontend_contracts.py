@@ -128,10 +128,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('Review additional details (', client)
         self.assertIn('Add to minutes', client)
         self.assertIn('function restoreDisclosures', client)
-        self.assertIn('<details class="record-add-menu">', client)
-        # The add control is an icon rather than the words "Add item", so its
-        # accessible name and tooltip are the only thing naming it.
-        self.assertIn('aria-label="Add item" title="Add item"', client)
+        # Adding a discussion point is now a visible per-topic action rather
+        # than a nested menu in the topic header.
+        self.assertNotIn('<details class="record-add-menu">', client)
+        self.assertIn('class="secondary quiet compact record-add-point"', client)
+        self.assertIn('data-add-record="points"', client)
+        self.assertIn('Add point</button>', client)
         self.assertIn('#i-plus', client)
         self.assertIn('<symbol id="i-plus"', page)
         # Page-wide, not just .notice: .save-strip and the button classes set
@@ -192,7 +194,7 @@ class FrontendContractTest(unittest.TestCase):
         # wrapping label, so a visually-hidden span saying the same thing named
         # it twice to nobody. The accessible name still has to be there.
         self.assertNotIn('<span class="visually-hidden">Discussion topic</span>', client)
-        self.assertIn('aria-label="Discussion topic"', client)
+        self.assertIn('aria-label="Discussion topic (tap to rename)"', client)
         self.assertIn("points: 'Discussion'", client)
         self.assertIn("decisions: 'Decision'", client)
         self.assertIn("openQuestions: 'Open question'", client)
@@ -203,7 +205,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('Not included in main minutes', client)
         self.assertIn('These details were left out of the draft. Check whether anything should be included.', client)
         self.assertIn('Add to minutes', client)
-        self.assertIn('Move to context', client)
+        self.assertIn('Move to additional details', client)
         self.assertIn('.record-row+.record-row', page)
         self.assertIn('outline:2px solid var(--accent)', page)
         self.assertIn('.actions-table td{', page)
