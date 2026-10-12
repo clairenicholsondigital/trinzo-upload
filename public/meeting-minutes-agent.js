@@ -718,7 +718,10 @@
   function renderGenerationProgressPanel() {
     var panel = document.getElementById('generationProgress');
     if (!panel) return;
-    var generation = state.draft && state.draft.generation;
+    // Only a live run gets the progress panel. A failed or interrupted run
+    // stays on the draft so its error can be shown, but it must not hide the
+    // step's buttons or read as still working.
+    var generation = generationRunning() ? state.draft.generation : null;
     var notice = completedGenerationNotice;
     panel.hidden = !generation && !notice;
     document.body.classList.toggle('generation-active', Boolean(generation));
@@ -1083,6 +1086,7 @@
       }
       var payload = await jsonRequest('/api/meeting-minutes-agent/prepare', { method: 'POST', body: form });
       uploadedDraftId = String(payload.draft && payload.draft.draftId || '');
+      forgetPreviousDraft();
       adoptDraft(payload.draft);
       history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length, false, true);
@@ -1094,6 +1098,21 @@
       setStatus(error.message, true);
     }
     finally { setBusy(false); }
+  }
+
+  // A new upload is a separate draft. Nothing from the one on screen carries
+  // over: not its step (a finished draft would open the new one on Review),
+  // not its unsaved empty rows, not its open editors or notices.
+  function forgetPreviousDraft() {
+    [actionEditorState.pendingRows, actionEditorState.customOwners, actionEditorState.editingOwners,
+      actionEditorState.editingTiming, discussionEditorState.pendingTopics, discussionEditorState.pendingRecords,
+      discussionEditorState.collapsedTopics].forEach(function (bucket) {
+      Object.keys(bucket).forEach(function (key) { delete bucket[key]; });
+    });
+    completedGenerationNotice = null;
+    activeFinalEdit = null;
+    state.draft = null;
+    state.currentStep = 0;
   }
 
   function confirmDuplicateUpload(duplicate) {
@@ -2636,7 +2655,14 @@
 
   async function loadDraft(draftId) {
     setBusy(true, 'Loading your saved draft...');
-    try { var payload = await fetchSavedDraft(draftId); adoptDraft(payload.draft); setStatus('', false); }
+    try {
+      var payload = await fetchSavedDraft(draftId);
+      adoptDraft(payload.draft);
+      // A draft reopened after a failed run says why, rather than looking idle.
+      var failed = state.draft.generation && state.draft.generation.status === 'failed' ? state.draft.generation : null;
+      if (failed) setStatus(failed.error || 'The agent could not finish. Try generating again.', true, failed.stage);
+      else setStatus('', false);
+    }
     catch (error) { setStatus(error.message, true); }
     finally { setBusy(false); }
   }

@@ -11225,6 +11225,8 @@ function meetingAgentDraftPayload(draft = {}) {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     payloadVersion: MEETING_AGENT_PAYLOAD_VERSION,
     transcriptSha256: draft.transcriptSha256 || '',
+    // Kept so a later upload of the same file can be recognised as a duplicate.
+    uploadSizeBytes: Math.max(0, Number(draft.uploadSizeBytes) || 0),
     denoise: draft.denoise || {},
     sourceUnits: normaliseSourceUnits(draft.sourceUnits),
     preparedTranscript: normaliseMeetingAgentKnownTerms(draft.preparedTranscript || ''),
@@ -16693,7 +16695,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       discussion: req.body?.discussion ?? draft.discussion,
       actions: req.body?.actions ?? draft.actions,
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
-    }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false });
+    }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false });
     const pendingProposal = draft.pendingProposal?.stage === 'actions'
       ? rebaseMeetingAgentProposal(draft.pendingProposal, draft.actions || [], normalised.actions, [], { preserveSelection: true })
       : draft.pendingProposal;

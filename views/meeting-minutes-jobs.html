@@ -242,7 +242,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     </nav>
     <div class="library-tools" role="search" aria-label="Filter Library drafts">
       <label for="librarySearch"><span>Search drafts</span><input id="librarySearch" type="search" placeholder="Search meeting title or transcript filename" autocomplete="off" /></label>
-      <label for="libraryStatus"><span>Status</span><select id="libraryStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="review">In review</option><option value="complete">Complete</option></select></label>
+      <label for="libraryStatus"><span>Status</span><select id="libraryStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="complete">Complete</option></select></label>
       <label for="librarySort"><span>Sort by</span><select id="librarySort"><option value="newest" selected>Most recent first</option><option value="oldest">Oldest first</option><option value="title_asc">Meeting title A–Z</option><option value="title_desc">Meeting title Z–A</option></select></label>
     </div>
     <div id="bulkBar" class="bulk-bar" hidden>
@@ -363,9 +363,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       const [, day, month, year] = ukMatch;
       return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
-    const date = new Date(text);
+    const date = new Date(text.replace(/(\d)(st|nd|rd|th)\b/gi, '$1'));
     if (Number.isNaN(date.getTime())) return '';
-    return date.toISOString().slice(0, 10);
+    // "15 June 2026" parses as local midnight; toISOString() would convert it
+    // to UTC and give the 14th anywhere east of Greenwich (UK summer time).
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   function runtime(job) {
@@ -1732,8 +1734,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (event.target.closest('#clearEditedRowsBtn')) {
       if (!window.confirm('Clear all edited rows from this result? Save afterwards only if you want the empty table to persist.')) return;
       latestResultRows = [];
-      const tbody = resultView.querySelector('.minutes-table tbody');
-      if (tbody) tbody.innerHTML = '';
+      // The result is one table per section; clear them all, or the rows
+      // still on screen would be dropped by the next save without warning.
+      resultView.querySelectorAll('.minutes-table tbody').forEach((tbody) => { tbody.innerHTML = ''; });
       setEditStatus('Rows cleared. Save to persist this empty edited table.', 'error');
     }
   });
