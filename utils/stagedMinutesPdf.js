@@ -27,6 +27,23 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+// Escape, then turn web addresses into links. Chromium keeps <a href> as a
+// clickable link in the PDF. Trailing punctuation stays outside the link.
+const URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"]*[^\s<>".,;:!?)\]'’”]/gi;
+
+function linkedHtml(value) {
+  const text = String(value == null ? '' : value);
+  let out = '';
+  let last = 0;
+  for (const match of text.matchAll(URL_PATTERN)) {
+    out += escapeHtml(text.slice(last, match.index));
+    const href = /^www\./i.test(match[0]) ? `https://${match[0]}` : match[0];
+    out += `<a href="${escapeHtml(href)}">${escapeHtml(match[0])}</a>`;
+    last = match.index + match[0].length;
+  }
+  return out + escapeHtml(text.slice(last));
+}
+
 function safeList(value) {
   return (Array.isArray(value) ? value : []).map((item) => clean(item)).filter(Boolean).slice(0, 100);
 }
@@ -40,6 +57,7 @@ function recordTextList(value) {
 function topicRecords(value) {
   return (Array.isArray(value) ? value : []).map((item) => ({
     topic: clean(item?.topic, 'Discussion').slice(0, 1000),
+    hideHeading: item?.hideHeading === true,
     text: clean(item?.text || item?.point || item?.value).slice(0, 5000)
   })).filter((item) => item.text).slice(0, 200);
 }
@@ -69,15 +87,16 @@ function normaliseMinutes(input = {}) {
   const discussionInput = Array.isArray(input.discussion) ? input.discussion : [];
   const discussion = discussionInput.map((item) => ({
     topic: clean(item?.topic, 'Discussion').slice(0, 1000),
+    hideHeading: item?.hideHeading === true,
     points: recordTextList(item?.points || item?.bullets)
   })).filter((item) => item.points.length).slice(0, 100);
   const decisions = topicRecords([
     ...(Array.isArray(input.decisions) ? input.decisions : []),
-    ...discussionInput.flatMap((item) => recordTextList(item?.decisions).map((text) => ({ topic: item?.topic, text })))
+    ...discussionInput.flatMap((item) => recordTextList(item?.decisions).map((text) => ({ topic: item?.topic, hideHeading: item?.hideHeading, text })))
   ]);
   const openQuestions = topicRecords([
     ...(Array.isArray(input.openQuestions) ? input.openQuestions : []),
-    ...discussionInput.flatMap((item) => recordTextList(item?.openQuestions).map((text) => ({ topic: item?.topic, text })))
+    ...discussionInput.flatMap((item) => recordTextList(item?.openQuestions).map((text) => ({ topic: item?.topic, hideHeading: item?.hideHeading, text })))
   ]);
   // Read ONLY from these top-level keys, never from input.summary. The staged
   // tool already POSTs summary:{objectives,executiveSummary} which this renderer
@@ -123,7 +142,17 @@ function normaliseMinutes(input = {}) {
 
 function renderList(items, fallback = 'Not stated') {
   if (!items.length) return `<p>${escapeHtml(fallback)}</p>`;
-  return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+  return `<ul>${items.map((item) => `<li>${linkedHtml(item)}</li>`).join('')}</ul>`;
+}
+
+// A topic whose title is hidden spans both columns. When every title is
+// hidden the Topic column goes, and the section reads as one list.
+function topicTable(rows, contentLabel, cellHtml) {
+  const anyHeading = rows.some((row) => !row.hideHeading);
+  if (!anyHeading) return `<table class="discussion"><thead><tr><th>${escapeHtml(contentLabel)}</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${cellHtml(row)}</td></tr>`).join('')}</tbody></table>`;
+  return `<table class="discussion"><thead><tr><th>Topic</th><th>${escapeHtml(contentLabel)}</th></tr></thead><tbody>${rows.map((row) => row.hideHeading
+    ? `<tr><td colspan="2">${cellHtml(row)}</td></tr>`
+    : `<tr><td>${escapeHtml(row.topic)}</td><td>${cellHtml(row)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function renderStagedMinutesPdfHtml(input = {}) {
@@ -151,7 +180,8 @@ function renderStagedMinutesPdfHtml(input = {}) {
   tr { break-inside:avoid; }
   th, td { border:1px solid #cfdbe4; padding:7px 8px; text-align:left; vertical-align:top; }
   th { color:#445463; background:#eef4f6; font-size:8pt; font-weight:500; text-transform:uppercase; }
-  .discussion th:first-child { width:29%; }
+  .discussion th:first-child:not(:only-child) { width:29%; }
+  a { color:#0563c1; }
   .actions th:first-child { width:20%; }
   .actions th:last-child { width:20%; }
   .evidence-item { break-inside:avoid; margin:0 0 10px; padding:8px 10px; border-left:3px solid #79b1c2; background:#f5f8fa; }
@@ -168,16 +198,14 @@ function renderStagedMinutesPdfHtml(input = {}) {
   ${details.clientAttendees.length ? `<div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', '))}</div>` : ''}
 </section>
 ${meetingObjectives.length ? `<h2>Meeting objectives</h2>${renderList(meetingObjectives)}` : ''}
-${executiveSummary ? `<h2>Executive summary</h2><p>${escapeHtml(executiveSummary)}</p>` : ''}
+${executiveSummary ? `<h2>Executive summary</h2><p>${linkedHtml(executiveSummary)}</p>` : ''}
 <h2>Key discussion points</h2>
-<table class="discussion"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>
-${discussion.length ? discussion.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${renderList(item.points)}</td></tr>`).join('') : '<tr><td>Discussion</td><td>Not stated</td></tr>'}
-</tbody></table>
-${decisions.length ? `<h2>Decisions</h2><table class="discussion"><thead><tr><th>Topic</th><th>Decision</th></tr></thead><tbody>${decisions.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${escapeHtml(item.text)}</td></tr>`).join('')}</tbody></table>` : ''}
-${openQuestions.length ? `<h2>Open questions</h2><table class="discussion"><thead><tr><th>Topic</th><th>Question</th></tr></thead><tbody>${openQuestions.map((item) => `<tr><td>${escapeHtml(item.topic)}</td><td>${escapeHtml(item.text)}</td></tr>`).join('')}</tbody></table>` : ''}
+${discussion.length ? topicTable(discussion, 'Discussion points', (item) => renderList(item.points)) : '<table class="discussion"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody><tr><td>Discussion</td><td>Not stated</td></tr></tbody></table>'}
+${decisions.length ? `<h2>Decisions</h2>${topicTable(decisions, 'Decision', (item) => linkedHtml(item.text))}` : ''}
+${openQuestions.length ? `<h2>Open questions</h2>${topicTable(openQuestions, 'Question', (item) => linkedHtml(item.text))}` : ''}
 <h2>Actions</h2>
 <table class="actions"><thead><tr><th>Owner</th><th>Action</th><th>Due</th></tr></thead><tbody>
-${actions.length ? actions.map((item) => `<tr><td>${escapeHtml(item.owner)}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.deadline)}</td></tr>`).join('') : '<tr><td>Not stated</td><td>No actions recorded.</td><td>Not stated</td></tr>'}
+${actions.length ? actions.map((item) => `<tr><td>${escapeHtml(item.owner)}</td><td>${linkedHtml(item.action)}</td><td>${escapeHtml(item.deadline)}</td></tr>`).join('') : '<tr><td>Not stated</td><td>No actions recorded.</td><td>Not stated</td></tr>'}
 </tbody></table>
 ${evidenceAppendix.length || reviewFlags.length || supportingDetails.length ? `<h2>Evidence appendix</h2>${supportingDetails.length ? `<h2>Supporting context</h2>${supportingDetails.map((item) => `<div class="evidence-item"><strong>${escapeHtml(item.topic)}</strong>${escapeHtml(item.text)}</div>`).join('')}` : ''}${evidenceAppendix.map((item) => `<div class="evidence-item"><strong>${escapeHtml([item.id, item.speaker, item.timestamp].filter(Boolean).join(' · '))}</strong>${escapeHtml(item.text)}</div>`).join('')}${reviewFlags.length ? `<h2>Review notes</h2>${reviewFlags.map((item) => `<p class="review-note"><strong>${escapeHtml(item.status === 'open' ? 'Open' : item.status)}:</strong> ${escapeHtml(item.message)}</p>`).join('')}` : ''}` : ''}
 <p class="footer">Generated by Trinzo meeting minutes workflow. Review and approve before sharing externally.</p>

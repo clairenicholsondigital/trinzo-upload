@@ -23,14 +23,36 @@ function run(value, options = {}) {
   return `<w:r><w:rPr>${bold}${colour}${size}</w:rPr><w:t xml:space="preserve">${xml(value)}</w:t></w:r>`;
 }
 
+// Web addresses typed into the minutes become clickable links. Each link
+// needs a relationship in document.xml.rels, collected in `links` as the body
+// is written. Trailing punctuation stays outside the link.
+const URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"]*[^\s<>".,;:!?)\]'’”]/gi;
+
+function linkedRuns(value, links) {
+  const textValue = String(value == null ? '' : value);
+  if (!links) return run(textValue);
+  let out = '';
+  let last = 0;
+  for (const match of textValue.matchAll(URL_PATTERN)) {
+    if (match.index > last) out += run(textValue.slice(last, match.index));
+    const target = /^www\./i.test(match[0]) ? `https://${match[0]}` : match[0];
+    const id = `rIdLink${links.length + 1}`;
+    links.push({ id, target });
+    out += `<w:hyperlink r:id="${id}" w:history="1"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${xml(match[0])}</w:t></w:r></w:hyperlink>`;
+    last = match.index + match[0].length;
+  }
+  if (last < textValue.length || !out) out += run(textValue.slice(last));
+  return out;
+}
+
 function paragraph(value, style = '', options = {}) {
   const styleXml = style ? `<w:pStyle w:val="${style}"/>` : '';
   const spacing = options.after === 0 ? '<w:spacing w:after="0"/>' : '';
   return `<w:p><w:pPr>${styleXml}${spacing}</w:pPr>${run(value, options)}</w:p>`;
 }
 
-function bullet(value) {
-  return `<w:p><w:pPr><w:pStyle w:val="BodyText"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>${run(value)}</w:p>`;
+function bullet(value, links) {
+  return `<w:p><w:pPr><w:pStyle w:val="BodyText"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>${linkedRuns(value, links)}</w:p>`;
 }
 
 function cell(value, width, options = {}) {
@@ -45,9 +67,9 @@ function timingLabel(timing = {}) {
   return `${prefix}: ${value}`;
 }
 
-function actionTable(actions = []) {
+function actionTable(actions = [], links) {
   const header = `<w:tr>${cell('Action', 5600, { bold: true, shade: 'DCEFF1', colour: '123544' })}${cell('Owner', 1900, { bold: true, shade: 'DCEFF1', colour: '123544' })}${cell('Timing', 1900, { bold: true, shade: 'DCEFF1', colour: '123544' })}</w:tr>`;
-  const rows = actions.map((action) => `<w:tr>${cell(action.action, 5600)}${cell((action.owners || []).join(', ') || 'Not stated', 1900)}${cell(timingLabel(action.timing), 1900)}</w:tr>`).join('');
+  const rows = actions.map((action) => `<w:tr><w:tc><w:tcPr><w:tcW w:w="5600" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr>${linkedRuns(action.action, links)}</w:p></w:tc>${cell((action.owners || []).join(', ') || 'Not stated', 1900)}${cell(timingLabel(action.timing), 1900)}</w:tr>`).join('');
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="B9CBD2"/><w:left w:val="single" w:sz="4" w:color="B9CBD2"/><w:bottom w:val="single" w:sz="4" w:color="B9CBD2"/><w:right w:val="single" w:sz="4" w:color="B9CBD2"/><w:insideH w:val="single" w:sz="4" w:color="D9E3E7"/><w:insideV w:val="single" w:sz="4" w:color="D9E3E7"/></w:tblBorders></w:tblPr>${header}${rows}</w:tbl>`;
 }
 
@@ -86,7 +108,7 @@ function meetingTypeLabel(value = '') {
   return /^\s*webinar rehearsal\s*$/i.test(String(value || '')) ? 'Presentation rehearsal' : value;
 }
 
-function documentBody(draft = {}, includeEvidence = false) {
+function documentBody(draft = {}, includeEvidence = false, links = []) {
   const details = draft.details || {};
   let body = paragraph(details.meetingTitle || draft.title || 'Meeting minutes', 'Title');
   body += paragraph(`Date: ${details.meetingDate ? formatUkDate(details.meetingDate) : 'Not stated'}`, 'Subtitle');
@@ -107,21 +129,21 @@ function documentBody(draft = {}, includeEvidence = false) {
     .filter(Boolean);
   if (objectives.length) {
     body += paragraph('Meeting objectives', 'Heading1');
-    body += objectives.map((item) => bullet(item)).join('');
+    body += objectives.map((item) => bullet(item, links)).join('');
   }
   if (draft.executiveSummary) {
     body += paragraph('Executive summary', 'Heading1');
-    body += paragraph(draft.executiveSummary, 'BodyText');
+    body += `<w:p><w:pPr><w:pStyle w:val="BodyText"/></w:pPr>${linkedRuns(draft.executiveSummary, links)}</w:p>`;
   }
   body += paragraph('Meeting content', 'Heading1');
   for (const topic of draft.discussion || []) {
-    body += paragraph(topic.topic || 'Discussion', 'Heading2');
-    for (const point of topic.points || []) body += bullet(point.text);
-    for (const decision of topic.decisions || []) body += bullet(`Decision — ${decision.text}`);
-    for (const question of topic.openQuestions || []) body += bullet(`Open question — ${question.text}`);
+    if (!topic.hideHeading) body += paragraph(topic.topic || 'Discussion', 'Heading2');
+    for (const point of topic.points || []) body += bullet(point.text, links);
+    for (const decision of topic.decisions || []) body += bullet(`Decision — ${decision.text}`, links);
+    for (const question of topic.openQuestions || []) body += bullet(`Open question — ${question.text}`, links);
   }
   body += paragraph('Actions', 'Heading1');
-  body += (draft.actions || []).length ? actionTable(draft.actions) : paragraph('No actions recorded.', 'BodyText');
+  body += (draft.actions || []).length ? actionTable(draft.actions, links) : paragraph('No actions recorded.', 'BodyText');
   if (includeEvidence) body += evidenceAppendix(draft);
   return body;
 }
@@ -136,14 +158,17 @@ async function generateMeetingMinutesAgentDocx(draft = {}, includeEvidence = fal
     discussion: normaliseDatePhrasesDeep(draft.discussion),
     actions: normaliseDatePhrasesDeep(draft.actions)
   };
+  const links = [];
+  const body = documentBody(draft, includeEvidence, links);
+  const linkRels = links.map((link) => `<Relationship Id="${link.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xml(link.target)}" TargetMode="External"/>`).join('');
   const zip = new JSZip();
   zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`);
   zip.folder('_rels').file('.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
   const word = zip.folder('word');
-  word.file('_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`);
+  word.file('_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>${linkRels}</Relationships>`);
   word.file('styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:spacing w:after="120"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:pPr><w:spacing w:after="180"/></w:pPr><w:rPr><w:b/><w:color w:val="123544"/><w:sz w:val="36"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:pPr><w:spacing w:after="60"/></w:pPr><w:rPr><w:color w:val="53636D"/><w:sz w:val="19"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:spacing w:before="260" w:after="120"/></w:pPr><w:rPr><w:b/><w:color w:val="087F82"/><w:sz w:val="28"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:pPr><w:spacing w:before="180" w:after="80"/></w:pPr><w:rPr><w:b/><w:color w:val="123544"/><w:sz w:val="23"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:rPr><w:b/><w:color w:val="53636D"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="BodyText"><w:name w:val="Body Text"/></w:style></w:styles>`);
   word.file('numbering.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="720"/></w:tabs><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`);
-  word.file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${documentBody(draft, includeEvidence)}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>`);
+  word.file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>`);
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 

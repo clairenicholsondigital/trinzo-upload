@@ -13,7 +13,10 @@ function includedSections(draft = {}) {
   const raw = draft && typeof draft.includeSections === 'object' && draft.includeSections ? draft.includeSections : {};
   return {
     meetingObjectives: raw.meetingObjectives !== false,
-    executiveSummary: raw.executiveSummary !== false
+    executiveSummary: raw.executiveSummary !== false,
+    // Topic titles are headings in the minutes. Off prints the discussion as
+    // one list; a single topic can also hide its own title (topic.hideHeading).
+    topicHeadings: raw.topicHeadings !== false
   };
 }
 
@@ -33,4 +36,14 @@ function applyIncludedSections(draft = {}, values = {}) {
   };
 }
 
-module.exports = { includedSections, summaryStageIsEmpty, applyIncludedSections };
+// Resolve each topic's title for publication: hidden when the reviewer hid
+// that topic's title, or turned titles off for the whole discussion.
+function applyTopicHeadings(draft = {}, discussion = []) {
+  const showAll = includedSections(draft).topicHeadings;
+  return (Array.isArray(discussion) ? discussion : []).map((topic) => ({
+    ...topic,
+    hideHeading: !showAll || topic?.hideHeading === true
+  }));
+}
+
+module.exports = { includedSections, summaryStageIsEmpty, applyIncludedSections, applyTopicHeadings };

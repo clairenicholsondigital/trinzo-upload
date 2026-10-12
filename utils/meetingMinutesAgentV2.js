@@ -887,6 +887,8 @@ function normaliseDiscussion(candidate = {}, units = [], options = {}) {
     return {
       id: text(item?.id, 80) || stableId('topic', topic, index),
       topic,
+      // The reviewer's choice to leave this title out of the minutes.
+      ...(item?.hideHeading === true ? { hideHeading: true } : {}),
       points: dedupePointList(normalisePointList(item?.points, units, `point-${index}`)),
       decisions: dedupePointList(normalisePointList(item?.decisions, units, `decision-${index}`)),
       openQuestions: dedupePointList(normalisePointList(item?.openQuestions, units, `question-${index}`))

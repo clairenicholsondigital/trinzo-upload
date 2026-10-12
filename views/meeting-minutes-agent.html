@@ -423,6 +423,24 @@
 .meeting-agent-page .topic-menu-popover .delete{width:100%}
 .meeting-agent-page .merge-topic{display:grid;gap:.25rem;margin-bottom:.4rem}
 .meeting-agent-page .merge-topic span{color:var(--muted);font-size:var(--fs-cap)}
+.meeting-agent-page .record-menu-popover>.move-record-topic{margin-bottom:0}
+.meeting-agent-page .record-menu-popover>.move-record-topic select{width:100%;min-width:0;box-sizing:border-box}
+.meeting-agent-page .discussion-list-bar{
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-top:.6rem;font-size:var(--fs-cap)}
+.meeting-agent-page .discussion-list-bar>.secondary{padding:.3rem .55rem}
+.meeting-agent-page .topic-headings-switch{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);cursor:pointer}
+.meeting-agent-page .topic-headings-switch input{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--accent)}
+/* A title left out of the minutes stays editable here, but reads as secondary. */
+.meeting-agent-page .discussion-card.is-heading-hidden .card-head{background:var(--surface);border-bottom-color:var(--border)}
+.meeting-agent-page .discussion-card.is-heading-hidden .topic-field textarea{color:var(--muted);font-weight:var(--fw)}
+/* The title is a text field; a faint underline says it can be renamed. */
+.meeting-agent-page .topic-field textarea{text-decoration:underline dotted var(--border-strong);text-underline-offset:.3em}
+.meeting-agent-page .topic-field textarea:focus{text-decoration:none}
+.meeting-agent-page .discussion-card:not(.is-collapsed):not(.is-heading-hidden) .topic-count{visibility:hidden}
+.meeting-agent-page .record-add-point{margin:.15rem .65rem .55rem;padding:.3rem .5rem;color:var(--accent)}
+.meeting-agent-page .record-add-point .ic{width:.9rem;height:.9rem}
+.meeting-agent-page .topic-menu-popover>.secondary{width:100%;justify-content:flex-start;margin-bottom:.3rem}
+.meeting-agent-page .topic-menu-popover>.delete{justify-content:flex-start}
 .meeting-agent-page .merge-topic select{width:100%;max-width:15rem}
 .meeting-agent-page .record-section{padding:.55rem .65rem .65rem}
 .meeting-agent-page .record-section+.record-section{border-top:1px solid var(--border)}
@@ -443,22 +461,6 @@
 .meeting-agent-page .record-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 .meeting-agent-page .add-record{
   width:100%;margin-top:.6rem;border-style:dashed;color:var(--accent);font-weight:var(--fw)}
-.meeting-agent-page .record-add-menu{position:relative}
-.meeting-agent-page .record-add-menu>summary{list-style:none}
-.meeting-agent-page .record-add-menu>summary::-webkit-details-marker{display:none}
-/* Icon-only: the words moved into the tooltip and the accessible name, so the
-   control is squared up rather than left as a narrow rectangle, and stays a
-   comfortable tap target on a phone. */
-.meeting-agent-page .record-add-toggle{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:34px;min-height:34px;padding:0}
-.meeting-agent-page .record-add-menu[open]>.record-add-toggle .ic{transform:rotate(45deg)}
-.meeting-agent-page .record-add-toggle .ic{transition:transform .12s ease}
-.meeting-agent-page .record-add-options{
-  position:absolute;z-index:4;top:calc(100% + .3rem);right:0;display:grid;gap:.3rem;
-  min-width:170px;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);
-  background:var(--surface);box-shadow:var(--shadow-lg)}
-.meeting-agent-page .record-add-options .secondary{justify-content:flex-start;width:100%}
 /* The rail now means something. Every row used to carry the accent, including
    plain points whose kind chip is hidden, so colour said nothing and competed
    with the header. It is kept transparent on points to hold the alignment, and
@@ -917,14 +919,14 @@
   .meeting-agent-page .toolbar{align-items:stretch;gap:.55rem}
   .meeting-agent-page .toolbar h2{flex:1 1 100%;font-size:var(--fs-lg);line-height:1.25}
   .meeting-agent-page .screen-toolbar-actions{
-    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;
-    width:100%;gap:.4rem;min-width:0}
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;
+    width:100%;gap:.35rem;min-width:0}
   .meeting-agent-page .screen-toolbar-actions>*{width:100%;min-width:0}
   .meeting-agent-page .screen-toolbar-actions button,
   .meeting-agent-page .screen-toolbar-actions>details>summary{
     width:100%;min-width:0;white-space:normal;text-align:center}
-  .meeting-agent-page .screen-toolbar-actions>:is(#regenerateDiscussion,#regenerateActions){
-    grid-column:1 / -1}
+  .meeting-agent-page .screen-toolbar-actions button,
+  .meeting-agent-page .screen-toolbar-actions>details>summary{min-height:40px;padding:.35rem .4rem;font-size:var(--fs-sm)}
   .meeting-agent-page .agent-edit-body{
     right:auto;left:0;max-width:calc(100vw - 1.2rem);box-sizing:border-box}
   .meeting-agent-page .review-flags-summary{width:auto;max-width:100%;margin-left:0;justify-content:space-between}
@@ -951,6 +953,10 @@
   .meeting-agent-page .save-strip-actions{
     grid-column:2;grid-row:2;justify-content:flex-end;flex-wrap:wrap;gap:.3rem}
   .meeting-agent-page .save-strip-actions button{min-height:42px;padding:.4rem .5rem}
+  /* With nothing to review, Saved and the buttons share one row, so the bar
+     covers less of the page. */
+  .meeting-agent-page .save-strip:not(:has(#reviewQueueToggle:not([hidden]))):not(:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-status{grid-column:1;grid-row:1}
+  .meeting-agent-page .save-strip:not(:has(#reviewQueueToggle:not([hidden]))):not(:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions{grid-row:1}
   /* Undo/redo adds a third action to the fixed bar. Give all actions a full
      row instead of squeezing a long history label beside the warning chip. */
   .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])){
@@ -989,23 +995,27 @@
   .meeting-agent-page .attendee-chip .move-short{display:inline}
   .meeting-agent-page .attendee-chip .attendee-move{padding:.4rem .55rem}
   .meeting-agent-page .card-head{
-    display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;
-    align-items:center;gap:.25rem .4rem;padding:.4rem .5rem}
+    display:grid;grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:center;gap:0 .3rem;padding:.3rem .4rem}
   /* Two compact rows: collapse + title, then count + actions. The previous
      auto-placement gave the collapse control a row of its own and left the
      count above another mostly empty controls row. */
   .meeting-agent-page .card-head .topic-collapse{grid-column:1;grid-row:1;align-self:start}
   .meeting-agent-page .card-head .topic-field{display:contents}
-  .meeting-agent-page .card-head .topic-field textarea{grid-column:2/-1;grid-row:1;width:100%}
-  .meeting-agent-page .topic-count{grid-column:2;grid-row:2;display:block;margin:0 .35rem}
-  .meeting-agent-page .card-head .record-add-menu{grid-column:3;grid-row:2;justify-self:end}
-  .meeting-agent-page .card-head .topic-menu{grid-column:4;grid-row:2}
+  .meeting-agent-page .card-head .topic-field textarea{grid-column:2;grid-row:1;width:100%}
+  .meeting-agent-page .topic-count{grid-column:2;grid-row:2;display:block;margin:0 .35rem .2rem}
+  .meeting-agent-page .discussion-card:not(.is-collapsed):not(.is-heading-hidden) .topic-count{display:none}
+  .meeting-agent-page .card-head .topic-menu{grid-column:3;grid-row:1;align-self:start}
+  .meeting-agent-page .record-add-point{min-height:44px}
+  /* Dragging needs a mouse; on a phone, rows move with "Move to topic". */
+  .meeting-agent-page .record-grip{display:none}
+  .meeting-agent-page .discussion-list-bar{flex-wrap:wrap}
+  .meeting-agent-page .topic-headings-switch{min-height:44px}
   /* Keep topic actions usable on the narrowest supported phones. The menu
      used to size itself from the select's options, leaving a cramped panel
      that could drift outside the viewport. Give it a predictable viewport-
      bounded width and let every control shrink inside it. */
-  .meeting-agent-page .topic-menu>summary,
-  .meeting-agent-page .record-add-toggle{width:44px;min-width:44px;min-height:44px}
+  .meeting-agent-page .topic-menu>summary{width:44px;min-width:44px;min-height:44px}
   .meeting-agent-page .topic-menu-popover{
     right:-1rem;width:min(18rem,calc(100vw - 2rem));min-width:0;max-width:calc(100vw - 2rem);
     box-sizing:border-box;padding:.55rem}
@@ -1021,6 +1031,8 @@
   .meeting-agent-page .proposition-row .proposition-kind{grid-column:1;grid-row:1}
   .meeting-agent-page .proposition-row textarea{display:block;width:100%;box-sizing:border-box}
   .meeting-agent-page .proposition-row .record-menu{position:absolute;top:.35rem;right:.35rem}
+  .meeting-agent-page .record-menu-popover>.move-record-topic select{min-height:44px}
+  .meeting-agent-page .discussion-list-bar>.secondary{min-height:44px}
   /* Keep omitted transcript details readable on narrow screens. Their review
      controls used to reserve a fixed right-hand column, squeezing longer
      details down to one or two words per line. */
@@ -1207,6 +1219,7 @@
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. You will preview them before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
       <div id="omittedDetailsReview"></div>
+      <div id="discussionListBar"></div>
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>

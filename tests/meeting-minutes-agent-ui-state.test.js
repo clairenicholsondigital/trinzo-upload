@@ -748,6 +748,48 @@ test('a discussion record moves within its topic and across topics', { timeout: 
   }
 });
 
+test('a discussion record moves to another topic from its menu, and every topic collapses at once', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'topic-cleanup');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+
+    const firstText = await page.inputValue('.discussion-card:nth-child(1) [data-record-field]');
+    const secondCardCount = await page.locator('.discussion-card:nth-child(2) [data-record-field]').count();
+    await page.click('.discussion-card:nth-child(1) .record-menu>summary');
+    await page.selectOption('.discussion-card:nth-child(1) [data-move-record-topic]', '1');
+    assert.equal(await page.locator('.discussion-card:nth-child(2) [data-record-field]').count(), secondCardCount + 1);
+    assert.equal(await page.locator('.discussion-card:nth-child(2) [data-record-field]').last().inputValue(), firstText);
+
+    await page.click('[data-toggle-all-topics]');
+    assert.equal(await page.locator('.discussion-card.is-collapsed').count(), await page.locator('.discussion-card').count());
+    assert.equal((await page.textContent('[data-toggle-all-topics]')).trim(), 'Expand all');
+    await page.click('[data-toggle-all-topics]');
+    assert.equal(await page.locator('.discussion-card.is-collapsed').count(), 0);
+
+    // A topic's title can be left out of the minutes, or every title at once.
+    await page.click('.discussion-card:nth-child(1) .topic-menu>summary');
+    await page.click('[data-toggle-topic-heading="0"]');
+    assert.equal(await page.locator('.discussion-card:nth-child(1).is-heading-hidden').count(), 1);
+    await page.uncheck('[data-topic-headings-switch]');
+    assert.equal(await page.locator('.discussion-card.is-heading-hidden').count(), await page.locator('.discussion-card').count());
+    assert.equal(await page.evaluate(() => document.querySelector('[data-topic-headings-switch]').checked), false);
+
+    // A point becomes a decision from its own menu.
+    await page.click('.discussion-card:nth-child(1) .record-menu>summary');
+    await page.click('.discussion-card:nth-child(1) [data-change-kind="decisions"]');
+    assert.equal(await page.locator('.discussion-card:nth-child(1) [data-record-field="decisions"]').count(), 1);
+
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    server.close();
+  }
+});
+
 test('the workflow has five steps and Details leads straight to generating', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -1225,7 +1267,7 @@ test('unfinished topics and discussion rows survive autosave responses while exp
     cards = page.locator('#discussionList .discussion-card');
     assert.equal(await cards.last().locator('[data-topic]').inputValue(), 'New topic in progress');
 
-    await cards.last().locator('.record-add-menu>summary').click();
+    // One tap adds a plain discussion point; there is no kind menu to open first.
     await cards.last().locator('[data-add-record="points"]').click();
     cards = page.locator('#discussionList .discussion-card');
     assert.equal(await cards.last().locator('[data-record-field="points"]').count(), 1);
@@ -1940,7 +1982,8 @@ test('dense layouts give writing space to content rather than repeated controls'
     await page.click('[data-screen="3"] .agent-edit-inline>summary');
 
     await page.click('[data-step="2"]');
-    assert.equal(await page.locator('.discussion-card .card-head .record-add-menu').count(), 1);
+    assert.equal(await page.locator('.discussion-card .card-head .record-add-menu').count(), 0, 'the header no longer carries an add menu');
+    assert.equal(await page.locator('.discussion-card .discussion-card-body .record-add-point').count(), await page.locator('.discussion-card').count());
     const propHeight = await page.locator('.proposition-row').first().evaluate((node) => node.getBoundingClientRect().height);
     // The reorder handle floats in the gutter precisely so it does not push
     // this back over the line.
@@ -2094,17 +2137,17 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const header = card.querySelector('.card-head');
       const collapse = header.querySelector('.topic-collapse').getBoundingClientRect();
       const topicBox = topic.getBoundingClientRect();
-      const count = header.querySelector('.topic-count').getBoundingClientRect();
-      const add = header.querySelector('.record-add-toggle').getBoundingClientRect();
       const menu = header.querySelector('.topic-menu>summary').getBoundingClientRect();
+      const toolbarButtons = Array.from(actions.children).map((node) => node.getBoundingClientRect());
       return {
         titleVisible: topic.scrollHeight <= topic.clientHeight + 1,
         titleWidth: topic.getBoundingClientRect().width,
         cardWidth: card.getBoundingClientRect().width,
         headerHeight: header.getBoundingClientRect().height,
         collapseBesideTitle: collapse.top < topicBox.bottom && collapse.bottom > topicBox.top,
-        countBesideControls: Math.abs((count.top + count.height / 2) - (add.top + add.height / 2)) < 4
-          && Math.abs((count.top + count.height / 2) - (menu.top + menu.height / 2)) < 4,
+        // One header row: collapse, title and the topic menu side by side.
+        menuBesideTitle: menu.top < topicBox.bottom && menu.bottom > topicBox.top,
+        toolbarOneRow: toolbarButtons.every((box) => Math.abs(box.top - toolbarButtons[0].top) < 2),
         kindAboveText: kind.getBoundingClientRect().bottom <= text.getBoundingClientRect().top + 1,
         propositionWidth: proposition.getBoundingClientRect().width,
         propositionTextWidth: text.getBoundingClientRect().width,
@@ -2116,15 +2159,16 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       };
     });
     assert.equal(discussionLayout.titleVisible, true, JSON.stringify(discussionLayout));
-    assert.ok(discussionLayout.titleWidth > discussionLayout.cardWidth * 0.8, JSON.stringify(discussionLayout));
-    assert.ok(discussionLayout.headerHeight < 125, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.titleWidth > discussionLayout.cardWidth * 0.65, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.headerHeight < 100, JSON.stringify(discussionLayout));
     assert.equal(discussionLayout.collapseBesideTitle, true, JSON.stringify(discussionLayout));
-    assert.equal(discussionLayout.countBesideControls, true, JSON.stringify(discussionLayout));
+    assert.equal(discussionLayout.menuBesideTitle, true, JSON.stringify(discussionLayout));
+    assert.equal(discussionLayout.toolbarOneRow, true, JSON.stringify(discussionLayout));
     assert.equal(discussionLayout.kindAboveText, true, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionTextWidth > discussionLayout.propositionWidth * 0.8, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionOverflow <= 1, JSON.stringify(discussionLayout));
     assert.ok(Math.abs(discussionLayout.toolbarWidth - discussionLayout.actionsWidth) < 2, JSON.stringify(discussionLayout));
-    assert.ok(discussionLayout.regenerateWidth > discussionLayout.actionsWidth * 0.9, JSON.stringify(discussionLayout));
+    assert.ok(discussionLayout.regenerateWidth > discussionLayout.actionsWidth * 0.28, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.screenOverflow <= 1, JSON.stringify(discussionLayout));
 
     await page.click('#omittedDetailsPanel>summary');
@@ -2193,7 +2237,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.ok(actionLayout.height < 180, JSON.stringify(actionLayout));
     assert.equal(actionLayout.metaAligned, true, JSON.stringify(actionLayout));
     assert.ok(Math.abs(actionLayout.toolbarWidth - actionLayout.actionsWidth) < 2, JSON.stringify(actionLayout));
-    assert.ok(actionLayout.regenerateWidth > actionLayout.actionsWidth * 0.9, JSON.stringify(actionLayout));
+    assert.ok(actionLayout.regenerateWidth > actionLayout.actionsWidth * 0.28, JSON.stringify(actionLayout));
     assert.ok(actionLayout.screenOverflow <= 1, JSON.stringify(actionLayout));
     assert.match(await page.textContent('#auditActions'), /Check transcript for more actions/i);
     await page.click('#regenerateActions');
