@@ -19,6 +19,7 @@ const {
 const { normaliseDatePhrases } = require('../spokenForms');
 const { normaliseSentencePresentation } = require('../minutesEnglish');
 const { normalisePublishedParticipantReference } = require('../entityNormalization');
+const { isRawTranscriptDiscussionPoint } = require('../stagedEditorial');
 const { SHIFT_MARKER } = require('./discourseSegments');
 const { isReviewerAuthored } = require('./state');
 const {
@@ -116,6 +117,30 @@ function cloneTopic(topic) {
     decisions: (topic?.decisions || []).map(cloneRecord),
     openQuestions: (topic?.openQuestions || []).map(cloneRecord)
   };
+}
+
+// The staged and agent-v2 paths used to maintain separate, incomplete lists
+// of conversational openers.  Apply the shared transcript-voice detector at
+// the publication boundary instead.  Reviewer wording is a lock: only
+// generated rows and details may be removed by this mechanical guard.
+function removeRawGeneratedDiscussionRows(topics = []) {
+  return (Array.isArray(topics) ? topics : []).map(cloneTopic).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
+    for (const kind of ROW_KINDS) {
+      topic[kind] = (topic[kind] || []).filter((record) =>
+        isReviewerAuthored(record) || !isRawTranscriptDiscussionPoint(record?.text))
+        .map((record) => {
+          if (isReviewerAuthored(record)) return record;
+          return {
+            ...record,
+            supportingDetails: (record.supportingDetails || []).filter((detail) =>
+              isReviewerAuthored(detail) || !isRawTranscriptDiscussionPoint(detail?.text))
+          };
+        });
+    }
+    return topic;
+  }).filter((topic) => ROW_KINDS.some((kind) => (topic[kind] || []).length)
+    || isReviewerAuthored(topic));
 }
 
 function normalisedTopicMergeKey(value) {
@@ -1756,6 +1781,7 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const exact = normalisedRestatementText(left.record.text) === normalisedRestatementText(right.record.text);
       const sharedEvidence = rowEvidenceOverlap(left.record, right.record);
       const sameTopic = left.topicIndex === right.topicIndex;
+      if (options.sameTopicOnly === true && !sameTopic) continue;
       const adjacentTopics = Math.abs(left.topicIndex - right.topicIndex) <= 1;
       const evidenceGap = rowEvidenceGap(left.record, right.record, index);
       const lexical = overlap(left.record.text, right.record.text);
@@ -1855,7 +1881,8 @@ async function prepareRestatementVectors(topics = [], options = {}) {
 }
 
 async function finaliseDiscussionForPublication(discussion = [], options = {}) {
-  let topics = removeFloorManagementRows(discussion, options.sourceUnits || []);
+  let topics = removeRawGeneratedDiscussionRows(discussion);
+  topics = removeFloorManagementRows(topics, options.sourceUnits || []);
   topics = removeNonContentAsides(topics);
   topics = removeShortTopicEchoes(topics, options.sourceUnits || []);
   const people = [...new Set([
@@ -2061,6 +2088,7 @@ module.exports = {
   removeFloorManagementRows,
   balanceDiscussionTopics,
   normaliseDiscussionPresentation,
+  removeRawGeneratedDiscussionRows,
   finaliseDiscussionForPublication,
   unitIndex
 };

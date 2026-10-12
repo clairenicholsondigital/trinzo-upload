@@ -191,6 +191,23 @@ test('the reversible experiment promotes every surviving additional detail into 
   assert.equal(discussion[0].points[0].supportingDetails.length, 2, 'the input remains untouched');
 });
 
+test('the include-all experiment rejects raw speech and globally redundant generated details', () => {
+  const discussion = [{
+    id: 'topic-1', topic: 'Production selection', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'Cinderella was selected for this year’s production.', evidenceIds: ['T1'],
+      supportingDetails: [
+        { id: 'raw', text: "Right, so it's decided, we're doing Cinderella this year.", evidenceIds: ['T1'] },
+        { id: 'duplicate', text: 'Cinderella was selected for the production this year.', evidenceIds: ['T1'] },
+        { id: 'distinct', text: 'The performing rights application can now proceed.', evidenceIds: ['T2'] }
+      ]
+    }]
+  }];
+  const result = promoteAllDiscussionDetails(discussion);
+  assert.equal(result.promoted, 1);
+  assert.deepEqual(result.discussion[0].points.map((row) => row.id), ['main', 'distinct']);
+});
+
 test('the post-promotion editorial pass removes finished-body restatements and action recaps', async () => {
   const discussion = [
     {

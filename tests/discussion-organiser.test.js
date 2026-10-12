@@ -12,10 +12,48 @@ const {
   dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
   consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
   balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication,
-  normaliseDiscussionPresentation,
+  normaliseDiscussionPresentation, removeRawGeneratedDiscussionRows,
   discussionTopicArrangementInput, validateDiscussionTopicArrangement,
   applyDiscussionTopicArrangement
 } = require('../utils/canonicalMinutes/discussionOrganiser');
+
+test('the final generated-content boundary removes transcript voice but preserves reviewer wording', () => {
+  const raw = "Right, so it's decided, we're doing Cinderella this year.";
+  const result = removeRawGeneratedDiscussionRows([{
+    id: 'selection', topic: 'Production selection',
+    decisions: [
+      { id: 'generated-raw', text: raw, evidenceIds: ['T1'] },
+      { id: 'formal', text: 'Cinderella was selected for this year’s production.', evidenceIds: ['T1'], supportingDetails: [
+        { id: 'detail-raw', text: 'Well, that is the difficult part done.', evidenceIds: ['T2'] },
+        { id: 'detail-formal', text: 'The selection enables the rights application.', evidenceIds: ['T3'] }
+      ] },
+      { id: 'reviewer-raw', text: raw, evidenceIds: ['T1'], reviewerAuthored: true }
+    ], points: [], openQuestions: []
+  }]);
+  assert.deepEqual(result[0].decisions.map((row) => row.id), ['formal', 'reviewer-raw']);
+  assert.deepEqual(result[0].decisions[0].supportingDetails.map((row) => row.id), ['detail-formal']);
+  assert.equal(result[0].decisions[1].text, raw);
+});
+
+test('the final restatement pass can be restricted to final topic boundaries', async () => {
+  const duplicate = 'The team will manually triage the collected signals.';
+  const discussion = [
+    { topic: 'Signal triage', points: [
+      { id: 'a', text: duplicate, evidenceIds: ['T1'] },
+      { id: 'b', text: duplicate, evidenceIds: ['T1'] }
+    ], decisions: [], openQuestions: [] },
+    { topic: 'Quality checks', points: [
+      { id: 'c', text: duplicate, evidenceIds: ['T1'] }
+    ], decisions: [], openQuestions: [] }
+  ];
+  const result = await dedupeGlobalRestatements(discussion, {
+    sameTopicOnly: true,
+    restatementVectorsPrepared: true,
+    restatementVectorByText: null
+  });
+  assert.equal(result[0].points.length, 1);
+  assert.equal(result[1].points.length, 1, 'the final pass must not merge across arranged topics');
+});
 
 test('final discussion presentation repairs generated prose but preserves reviewer wording', () => {
   const generated = { id: 'g1', text: 'status remains open. follow-up is expected', supportingDetails: [

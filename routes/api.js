@@ -43,7 +43,8 @@ const {
   reshapeStagedDiscussionCardsForHumanMinutes,
   buildStagedValidationFlags,
   normaliseFinalStagedActionCandidate,
-  normaliseAndValidateActionOwner
+  normaliseAndValidateActionOwner,
+  isRawTranscriptDiscussionPoint
 } = require('../utils/stagedEditorial');
 const {
   gateEnabled: transcriptTextGateEnabled,
@@ -74,6 +75,8 @@ const {
   removeShortTopicEchoes,
   balanceDiscussionTopics,
   normaliseDiscussionPresentation,
+  removeRawGeneratedDiscussionRows,
+  dedupeGlobalRestatements,
   finaliseDiscussionForPublication,
   repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
@@ -11963,6 +11966,8 @@ function promoteAllDiscussionDetails(discussion = []) {
     decisions: (topic.decisions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
     openQuestions: (topic.openQuestions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] }))
   }));
+  const visible = result.flatMap((topic) => ['points', 'decisions', 'openQuestions']
+    .flatMap((kind) => topic[kind] || []));
   let promoted = 0;
   for (const topic of result) {
     const additions = [];
@@ -11971,7 +11976,14 @@ function promoteAllDiscussionDetails(discussion = []) {
         for (const detail of record.supportingDetails || []) {
           const text = meetingMinutesAgentText(detail?.text, 1600);
           if (!text || !(detail.evidenceIds || []).length) continue;
-          additions.push({
+          // Include-all exposes useful context, not transcript turns or a
+          // second wording of a fact already visible elsewhere in the draft.
+          // Reviewer-authored wording remains untouched by these generated-
+          // content safeguards.
+          const generated = !isReviewerAuthored(detail);
+          if (generated && (isRawTranscriptDiscussionPoint(text)
+            || !supportingDetailAddsInformation(detail, visible, record))) continue;
+          const promotedDetail = {
             ...detail,
             id: detail.id || `included-detail-${record.id || 'row'}-${promoted + 1}`,
             text,
@@ -11979,7 +11991,9 @@ function promoteAllDiscussionDetails(discussion = []) {
             supportingDetails: [],
             simulationSource: 'supporting_detail',
             simulationParentId: record.id || ''
-          });
+          };
+          additions.push(promotedDetail);
+          visible.push(promotedDetail);
           promoted += 1;
         }
         record.supportingDetails = [];
@@ -12160,7 +12174,7 @@ function promotePrioritySupportingDetails(discussion = [], limit = 12) {
         const retained = [];
         for (const detail of record.supportingDetails || []) {
           const value = meetingMinutesAgentText(detail?.text, 1600);
-          const readable = value && !/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you)\b/i.test(value);
+          const readable = value && !isRawTranscriptDiscussionPoint(value);
           const duplicate = visible.some((other) => other !== record
             && hybridContentTokenOverlap(other?.text, value) >= 0.7)
             || hybridContentTokenOverlap(record?.text, value) >= 0.7;
@@ -13593,8 +13607,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     return topic;
   };
   for (const group of groups) {
-    const clientReady = (item) => !/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you)\b/i
-      .test(String(item.record?.text || ''));
+    const clientReady = (item) => !isRawTranscriptDiscussionPoint(item.record?.text);
     const ordered = [...group].sort((left, right) => (kindRank[right.recordType] || 0) - (kindRank[left.recordType] || 0)
       || Number(clientReady(right)) - Number(clientReady(left))
       || String(right.record?.text || '').length - String(left.record?.text || '').length);
@@ -13707,7 +13720,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       for (const record of [...topic.decisions, ...topic.openQuestions, ...topic.points]) {
         const retained = [];
         for (const detail of record.supportingDetails || []) {
-          const rawSpeech = /^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|we|you)\b/i.test(String(detail?.text || ''));
+          const rawSpeech = isRawTranscriptDiscussionPoint(detail?.text);
           const restatesVisible = visibleRecords.some((visible) => visible !== record
             && hybridContentTokenOverlap(visible?.text, detail?.text) >= 0.42)
             || hybridContentTokenOverlap(record?.text, detail?.text) >= 0.42;
@@ -13751,7 +13764,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   const clientReadyDiscussion = (record) => {
     const value = String(record?.text || '').trim();
     if (!value) return false;
-    if (/^\s*(?:so|yeah|yes|no|okay|ok|well|and|but|i|you|your)\b/i.test(value)) return false;
+    if (isRawTranscriptDiscussionPoint(value)) return false;
     // Direct second-person questions are transcript fragments, not formal
     // propositions. Genuine unresolved matters are retained when expressed as
     // an evidenced declarative question (for example, "Whether access will be
@@ -15637,6 +15650,22 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         ...topicArrangement
       }));
     }
+    // The arranger is intentionally the last structural pass, but it can put
+    // paraphrases from formerly separate topics beside one another.  Run the
+    // existing conservative merge once more within each final topic only;
+    // then apply the shared raw-speech guard to every generated row/detail.
+    // Neither step invents wording or crosses a final topic boundary.
+    const postArrangementRows = flattenHybridDiscussion(finalDiscussion).length;
+    finalDiscussion = await dedupeGlobalRestatements(finalDiscussion, {
+      sourceUnits: draft.sourceUnits,
+      sameTopicOnly: true
+    });
+    finalDiscussion = removeRawGeneratedDiscussionRows(finalDiscussion);
+    const finalBoundaryRows = flattenHybridDiscussion(finalDiscussion).length;
+    if (finalBoundaryRows !== postArrangementRows) console.log(JSON.stringify({
+      event: 'meeting_agent_post_arrangement_dedupe', journeyId: draft.draftId,
+      beforeRows: postArrangementRows, afterRows: finalBoundaryRows
+    }));
     // Nothing after this boundary is allowed to manufacture or rewrite prose.
     // Run the idempotent presentation guard after dedupe, detail promotion and
     // global topic arrangement so every generated row is safe to persist.
@@ -16589,7 +16618,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     }
     return res.json({
       ok: true,
-      draft: publicMeetingAgentDraft(processing.draft),
+      draft: publicMeetingAgentDraft(processing),
       resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(processing.draftId)}`,
       performance: { ...preparationPerformance, persistenceMs, processingStartMs, totalElapsedMs }
     });
