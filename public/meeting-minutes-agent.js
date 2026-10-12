@@ -102,7 +102,7 @@
     if (undo) {
       undo.hidden = !state.draft.lastUndo;
       var undoLabel = state.draft.lastUndo ? 'Undo: ' + formatReviewDecisionLabel(state.draft.lastUndo.label) : 'Undo';
-      undo.innerHTML = '<span class="wide-label">' + escapeHtml(undoLabel) + '</span><span class="narrow-label">' + (finalReview ? 'Undo' : 'Undo last change') + '</span>';
+      undo.innerHTML = '<svg class="ic narrow-icon" aria-hidden="true"><use href="#i-undo"/></svg><span class="wide-label">' + escapeHtml(undoLabel) + '</span><span class="narrow-label">Undo</span>';
       undo.setAttribute('aria-label', undoLabel);
       undo.title = state.draft.lastUndo ? undoLabel : '';
     }
@@ -110,7 +110,7 @@
     if (redo) {
       redo.hidden = !state.draft.lastRedo;
       var redoLabel = state.draft.lastRedo ? 'Redo: ' + formatReviewDecisionLabel(state.draft.lastRedo.label) : 'Redo';
-      redo.innerHTML = '<span class="wide-label">' + escapeHtml(redoLabel) + '</span><span class="narrow-label">Redo last change</span>';
+      redo.innerHTML = '<svg class="ic narrow-icon" aria-hidden="true"><use href="#i-redo"/></svg><span class="wide-label">' + escapeHtml(redoLabel) + '</span><span class="narrow-label">Redo</span>';
       redo.setAttribute('aria-label', redoLabel);
       redo.title = state.draft.lastRedo ? redoLabel : '';
     }
@@ -536,6 +536,16 @@
     var ownerKey = String((record && record.id) || '');
     return '<details class="record-menu"><summary class="secondary quiet" aria-label="Item options">•••</summary><div class="record-menu-popover"><span class="record-menu-label">' + sourceLabel + '</span>' + evidenceBlock(record.evidenceIds, ownerKey) + actions + '</div></details>';
   }
+
+  // Heights measured before the web font loads, or at another width, are a
+  // few pixels short and leave a scrollbar beside the text. Measure again.
+  var regrowTimer = 0;
+  function scheduleRegrow() {
+    clearTimeout(regrowTimer);
+    regrowTimer = setTimeout(function () { autoGrow(document.querySelector('[data-screen].active') || document); }, 120);
+  }
+  window.addEventListener('resize', scheduleRegrow);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleRegrow);
 
   function autoGrow(root) {
     (root || document).querySelectorAll('textarea').forEach(function (area) {
