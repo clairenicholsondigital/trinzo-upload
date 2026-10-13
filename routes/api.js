@@ -12157,8 +12157,11 @@ function removeHeadingFragmentsFromDiscussion(discussion = []) {
 // Priority facts must read as ordinary minutes, carry evidence and add meaning
 // not already present in a visible row.  This promotes risks and meaningful
 // delivery status out of the optional drawer without inventing or rewriting
-// anything.  A ceiling protects unusually repetitive risk workshops.
-function promotePrioritySupportingDetails(discussion = [], limit = 12) {
+// anything. Keep both a whole-draft and per-topic ceiling: risk-heavy technical
+// meetings can otherwise turn every elaboration containing "risk", "underway"
+// or a target date back into a primary row after the referee condensed it. Any
+// detail which is not promoted remains attached to its parent for review.
+function promotePrioritySupportingDetails(discussion = [], limit = 6, maxPerTopic = 2) {
   const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
     ...topic,
     points: (topic.points || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
@@ -12166,19 +12169,27 @@ function promotePrioritySupportingDetails(discussion = [], limit = 12) {
     openQuestions: (topic.openQuestions || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] }))
   }));
   const visible = result.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  const totalLimit = Math.max(0, Number(limit) || 0);
+  const topicLimit = Math.max(0, Number(maxPerTopic) || 0);
   let promoted = 0;
   for (const topic of result) {
     const additions = [];
+    let promotedInTopic = 0;
     for (const kind of ['decisions', 'openQuestions', 'points']) {
       for (const record of topic[kind] || []) {
         const retained = [];
         for (const detail of record.supportingDetails || []) {
           const value = meetingMinutesAgentText(detail?.text, 1600);
           const readable = value && !isRawTranscriptDiscussionPoint(value);
+          // This is deliberately a little broader than the final publication
+          // deduper. A related detail can stay nested without information loss;
+          // promoting it and hoping a later pass removes it is what caused the
+          // discussion sections to expand again.
           const duplicate = visible.some((other) => other !== record
-            && hybridContentTokenOverlap(other?.text, value) >= 0.7)
-            || hybridContentTokenOverlap(record?.text, value) >= 0.7;
-          if (promoted < limit && readable && prioritySupportingDetail(value)
+            && hybridContentTokenOverlap(other?.text, value) >= 0.58)
+            || hybridContentTokenOverlap(record?.text, value) >= 0.58;
+          if (promoted < totalLimit && promotedInTopic < topicLimit
+            && readable && prioritySupportingDetail(value)
             && (detail.evidenceIds || []).length && !duplicate
             && supportingDetailAddsInformation(detail, visible, {})) {
             const row = {
@@ -12191,6 +12202,7 @@ function promotePrioritySupportingDetails(discussion = [], limit = 12) {
             additions.push(row);
             visible.push(row);
             promoted += 1;
+            promotedInTopic += 1;
           } else retained.push(detail);
         }
         record.supportingDetails = retained;
@@ -15650,15 +15662,15 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
         ...topicArrangement
       }));
     }
-    // The arranger is intentionally the last structural pass, but it can put
-    // paraphrases from formerly separate topics beside one another.  Run the
-    // existing conservative merge once more within each final topic only;
-    // then apply the shared raw-speech guard to every generated row/detail.
-    // Neither step invents wording or crosses a final topic boundary.
+    // The arranger is intentionally the last structural pass, but it can split
+    // paraphrases which previously shared a card across newly generated topic
+    // boundaries. Run the existing conservative whole-draft merge once more;
+    // its figure, polarity, uncertainty, predicate and provenance checks still
+    // protect genuinely distinct claims. Then apply the shared raw-speech guard
+    // to every generated row/detail. Neither step invents wording.
     const postArrangementRows = flattenHybridDiscussion(finalDiscussion).length;
     finalDiscussion = await dedupeGlobalRestatements(finalDiscussion, {
-      sourceUnits: draft.sourceUnits,
-      sameTopicOnly: true
+      sourceUnits: draft.sourceUnits
     });
     finalDiscussion = removeRawGeneratedDiscussionRows(finalDiscussion);
     const finalBoundaryRows = flattenHybridDiscussion(finalDiscussion).length;

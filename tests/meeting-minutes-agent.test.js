@@ -136,6 +136,41 @@ test('priority risk and delivery status details become primary minutes before ex
   assert.equal(limited[0].points.slice(1).every((row) => row.supportingDetails.length === 0), true);
 });
 
+test('priority detail promotion is capped per topic and leaves the remaining evidence nested', () => {
+  const details = [
+    { id: 'risk', text: 'The unresolved interface defect remains a material risk to release.', evidenceIds: ['T002'] },
+    { id: 'status', text: 'Electrical compliance testing is on track for completion next Thursday.', evidenceIds: ['T003'] },
+    { id: 'delay', text: 'Delivery of the venue drawings is behind schedule.', evidenceIds: ['T004'] },
+    { id: 'decision', text: 'The budget decision was deferred until revised forecasts arrive.', evidenceIds: ['T005'] }
+  ];
+  const discussion = [{
+    id: 'topic-1', topic: 'Supplier risks', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'The supplier position was reviewed.', evidenceIds: ['T001'],
+      supportingDetails: details
+    }]
+  }];
+  const promoted = promotePrioritySupportingDetails(discussion);
+  assert.equal(promoted.promoted, 2);
+  assert.deepEqual(promoted.discussion[0].points.slice(1).map((row) => row.id), ['risk', 'status']);
+  assert.deepEqual(promoted.discussion[0].points[0].supportingDetails.map((row) => row.id), ['delay', 'decision']);
+});
+
+test('priority detail promotion keeps a near-restatement nested beneath its primary point', () => {
+  const discussion = [{
+    id: 'topic-1', topic: 'USB cybersecurity', decisions: [], openQuestions: [],
+    points: [{
+      id: 'main', text: 'The USB cybersecurity risk assessment remains in progress.', evidenceIds: ['T0100'],
+      supportingDetails: [{
+        id: 'detail', text: 'Cybersecurity risk assessment work for USB access remains in progress.', evidenceIds: ['T0101']
+      }]
+    }]
+  }];
+  const promoted = promotePrioritySupportingDetails(discussion);
+  assert.equal(promoted.promoted, 0);
+  assert.deepEqual(promoted.discussion[0].points[0].supportingDetails.map((row) => row.id), ['detail']);
+});
+
 test('explicit no-decision and deferral outcomes are promoted from supporting detail', () => {
   assert.equal(prioritySupportingDetail('No final option was selected during the meeting.'), true);
   assert.equal(prioritySupportingDetail('The decision was deferred until the enforcement costs are available.'), true);
