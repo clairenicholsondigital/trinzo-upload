@@ -76,6 +76,8 @@ const {
   balanceDiscussionTopics,
   normaliseDiscussionPresentation,
   removeRawGeneratedDiscussionRows,
+  dedupeAdjacentRestatements,
+  demoteContainedPrimaryRows,
   dedupeGlobalRestatements,
   finaliseDiscussionForPublication,
   repairStructuralTopicHeadings
@@ -15669,6 +15671,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
     // protect genuinely distinct claims. Then apply the shared raw-speech guard
     // to every generated row/detail. Neither step invents wording.
     const postArrangementRows = flattenHybridDiscussion(finalDiscussion).length;
+    finalDiscussion = await dedupeAdjacentRestatements(finalDiscussion, {
+      sourceUnits: draft.sourceUnits
+    });
+    finalDiscussion = await demoteContainedPrimaryRows(finalDiscussion, {
+      sourceUnits: draft.sourceUnits,
+      onPrimaryDemotions: (demotions) => console.log(JSON.stringify({
+        event: 'meeting_agent_post_arrangement_primary_demotions', journeyId: draft.draftId,
+        count: demotions.length,
+        reasons: demotions.reduce((counts, demotion) => ({
+          ...counts, [demotion.reason]: (counts[demotion.reason] || 0) + 1
+        }), {})
+      }))
+    });
     finalDiscussion = await dedupeGlobalRestatements(finalDiscussion, {
       sourceUnits: draft.sourceUnits
     });

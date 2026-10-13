@@ -1301,6 +1301,7 @@ const DECISION_HEADING_PREFIX = /^decision\s*(?:(?:on|about|regarding|concerning
 const ROW_NUMBER = /\b(?:\d+(?:[.,]\d+)?%?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million)\b/gi;
 const ROW_NEGATION = /\b(?:no|not|never|cannot|can['’]?t|won['’]?t|wouldn['’]?t|declin(?:e|ed)|reject(?:ed)?|refus(?:e|ed))\b/i;
 const ROW_UNCERTAINTY = /\b(?:uncertain(?:ty)?|unsure|possibly|perhaps|maybe|might|could|not sure|not yet)\b/i;
+const PRIMARY_DEMOTION_UNCERTAINTY = /\b(?:uncertain(?:ty)?|unsure|possibly|perhaps|maybe|might|could|may\s+(?:be|have|need|require|remain|result|include|involve|allow|indicate|suggest|affect|change|occur|happen|proceed|use|apply|become)|not sure|not yet)\b/i;
 
 function normaliseDecisionTopicHeadings(topics = []) {
   return (Array.isArray(topics) ? topics : []).map((topic) => {
@@ -1426,6 +1427,156 @@ async function dedupeAdjacentRestatements(topics = [], options = {}) {
     rows.splice(candidate.index - 1, 2, mergeRestatementRecords(candidate.left, candidate.right));
   }
   return cloned;
+}
+
+function directionalClaimCoverage(source, target) {
+  const sourceTokens = contentTokens(source?.text);
+  const targetTokens = contentTokens(target?.text);
+  if (sourceTokens.size < 4 || !targetTokens.size) return 0;
+  let shared = 0;
+  for (const token of sourceTokens) if (targetTokens.has(token)) shared += 1;
+  return shared / sourceTokens.size;
+}
+
+function primaryRowCanBeDemoted(record = {}) {
+  return !isReviewerAuthored(record)
+    && !(record.supportingDetails || []).some((detail) => isReviewerAuthored(detail))
+    && !(record.reviewFlagIds || []).length;
+}
+
+function appendDemotedPrimary(parent, candidate, representedByDetail = null) {
+  parent.evidenceIds = [...new Set([...(parent.evidenceIds || []), ...(candidate.evidenceIds || [])])].slice(0, 12);
+  parent.reviewFlagIds = [...new Set([...(parent.reviewFlagIds || []), ...(candidate.reviewFlagIds || [])])];
+  parent.mergedFromIds = [...new Set([
+    ...(parent.mergedFromIds || []), candidate.id, ...(candidate.mergedFromIds || [])
+  ].filter(Boolean))].filter((id) => id !== parent.id);
+  const additions = [...(candidate.supportingDetails || [])];
+  if (representedByDetail) {
+    representedByDetail.evidenceIds = [...new Set([
+      ...(representedByDetail.evidenceIds || []), ...(candidate.evidenceIds || [])
+    ])].slice(0, 12);
+  } else {
+    additions.unshift({
+      id: candidate.id,
+      text: candidate.text,
+      evidenceIds: [...new Set(candidate.evidenceIds || [])].slice(0, 12),
+      ...(candidate.mergedFromIds?.length ? { mergedFromIds: [...candidate.mergedFromIds] } : {})
+    });
+  }
+  const details = [...(parent.supportingDetails || []), ...additions].filter((detail) => text(detail?.text));
+  parent.supportingDetails = details.filter((detail, detailIndex) => details.findIndex((other) =>
+    normalisedRestatementText(other?.text) === normalisedRestatementText(detail?.text)) === detailIndex);
+}
+
+// Final topic arrangement can place a generated point beside the decision or
+// fuller point which already represents it. Demote only one-way containment:
+// the shorter claim must add no unsupported figure, disagree on claim shape or
+// carry a reviewer edit/flag. The exact wording and evidence remain available
+// as supporting context, so this reduces reviewer clutter without data loss.
+async function demoteContainedPrimaryRows(topics = [], options = {}) {
+  const cloned = (Array.isArray(topics) ? topics : []).map(cloneTopic);
+  const index = unitIndex(options.sourceUnits || []);
+  const values = [...new Set(cloned.flatMap((topic) => topicRows(topic).flatMap(({ record }) => [
+    text(record?.text), ...(record?.supportingDetails || []).map((detail) => text(detail?.text))
+  ])).filter(Boolean))];
+  let vectorByText = null;
+  try {
+    const encode = typeof options.encode === 'function' ? options.encode : (input) => encodeViaWorker(input, {});
+    const vectors = values.length > 1 ? await encode(values) : null;
+    if (Array.isArray(vectors)) vectorByText = new Map(values.map((value, valueIndex) => [value, vectors[valueIndex]]));
+  } catch { vectorByText = null; }
+  const similarity = (left, right) => {
+    const leftVector = vectorByText?.get(text(left?.text));
+    const rightVector = vectorByText?.get(text(right?.text));
+    return leftVector && rightVector ? cosine(leftVector, rightVector) : 0;
+  };
+  const closeEvidence = (left, right) => rowEvidenceOverlap(left, right)
+    || rowEvidenceGap(left, right, index) <= 2;
+  const compatible = (candidate, retained) => {
+    if (!rowsConsolidationCompatible(candidate, retained)
+      || !rowPredicatesCompatible(candidate, retained)) return false;
+    // Demotion hides a primary row by default, so use a stricter polarity
+    // boundary than the rewrite editor: even a scoped negative stays visible.
+    if (ROW_NEGATION.test(text(candidate?.text)) !== ROW_NEGATION.test(text(retained?.text))) return false;
+    if (PRIMARY_DEMOTION_UNCERTAINTY.test(text(candidate?.text))
+      !== PRIMARY_DEMOTION_UNCERTAINTY.test(text(retained?.text))) return false;
+    // A quantified row must never be hidden beneath an unquantified one. The
+    // reverse is safe because the fuller visible row preserves the figure.
+    const candidateNumbers = valueSet(candidate?.text, ROW_NUMBER);
+    const retainedNumbers = valueSet(retained?.text, ROW_NUMBER);
+    if (candidateNumbers.size && !retainedNumbers.size) return false;
+    return true;
+  };
+  const strongContainment = (candidate, retained, detailShadow = false) => {
+    if (!compatible(candidate, retained)) return false;
+    const exact = normalisedRestatementText(candidate?.text) === normalisedRestatementText(retained?.text);
+    if (exact) return true;
+    if (!closeEvidence(candidate, retained)) return false;
+    const coverage = directionalClaimCoverage(candidate, retained);
+    const lexical = clauseOverlap(candidate?.text, retained?.text);
+    const semantic = similarity(candidate, retained);
+    const evidenceContainment = rowEvidenceContainment(candidate, retained);
+    return detailShadow
+      ? (coverage >= 0.68 && lexical >= 0.65)
+        || (semantic >= 0.78 && coverage >= 0.5 && lexical >= 0.42)
+      : (coverage >= 0.76 && lexical >= 0.6)
+        || (semantic >= 0.72 && coverage >= 0.32 && lexical >= 0.32)
+        || (evidenceContainment >= 0.75 && lexical >= 0.45)
+        || (rowEvidenceOverlap(candidate, retained) && semantic >= 0.65
+          && coverage >= 0.3 && lexical >= 0.38);
+  };
+  const demotions = [];
+  for (const topic of cloned) {
+    const allRows = () => ROW_KINDS.flatMap((kind) => (topic[kind] || [])
+      .map((record, rowIndex) => ({ kind, rowIndex, record })));
+    // First remove a visible echo of context which is already preserved under
+    // another row. Decisions are considered before ordinary points.
+    for (let pointIndex = (topic.points || []).length - 1; pointIndex >= 0; pointIndex -= 1) {
+      const candidate = topic.points[pointIndex];
+      if (!primaryRowCanBeDemoted(candidate)) continue;
+      let match = null;
+      for (const parentEntry of allRows().sort((left, right) =>
+        Number(right.kind === 'decisions') - Number(left.kind === 'decisions'))) {
+        if (parentEntry.record === candidate || isReviewerAuthored(parentEntry.record)) continue;
+        const detail = (parentEntry.record.supportingDetails || []).find((item) => {
+          if (isReviewerAuthored(item)) return false;
+          // A point can echo the combination of a primary outcome and its
+          // rationale even when neither sentence covers it alone.
+          const represented = {
+            text: `${text(parentEntry.record?.text)} ${text(item?.text)}`,
+            evidenceIds: [...new Set([...(parentEntry.record.evidenceIds || []), ...(item.evidenceIds || [])])]
+          };
+          return strongContainment(candidate, represented, true);
+        });
+        if (detail) { match = { parent: parentEntry.record, detail }; break; }
+      }
+      if (!match) continue;
+      appendDemotedPrimary(match.parent, candidate, match.detail);
+      topic.points.splice(pointIndex, 1);
+      demotions.push({ reason: 'represented_by_supporting_detail', topic: text(topic.topic), id: text(candidate.id) });
+    }
+    // Then demote only a strongly contained generated point into the fuller
+    // point or decision beside it. Different process stages remain separate.
+    for (let pointIndex = (topic.points || []).length - 1; pointIndex >= 0; pointIndex -= 1) {
+      const candidate = topic.points[pointIndex];
+      if (!primaryRowCanBeDemoted(candidate)) continue;
+      const informationWeight = (record) => contentTokens(record?.text).size
+        + (record?.supportingDetails || []).reduce((sum, detail) => sum + (contentTokens(detail?.text).size * 0.5), 0);
+      const candidateWeight = informationWeight(candidate);
+      const destinations = allRows().filter((entry) => entry.record !== candidate
+        && !isReviewerAuthored(entry.record)
+        && (entry.kind === 'decisions' || informationWeight(entry.record) >= candidateWeight))
+        .sort((left, right) => Number(right.kind === 'decisions') - Number(left.kind === 'decisions')
+          || informationWeight(right.record) - informationWeight(left.record));
+      const destination = destinations.find((entry) => strongContainment(candidate, entry.record, false));
+      if (!destination) continue;
+      appendDemotedPrimary(destination.record, candidate);
+      topic.points.splice(pointIndex, 1);
+      demotions.push({ reason: 'contained_primary', topic: text(topic.topic), id: text(candidate.id) });
+    }
+  }
+  if (demotions.length && typeof options.onPrimaryDemotions === 'function') options.onPrimaryDemotions(demotions);
+  return cloned.filter((topic) => topicRows(topic).length || topic.reviewerAuthored || topic.confirmedTopic);
 }
 
 function normalisedRestatementText(value) {
@@ -2079,6 +2230,7 @@ module.exports = {
   mergeExactTopicHeadings,
   repairStructuralTopicHeadings,
   dedupeAdjacentRestatements,
+  demoteContainedPrimaryRows,
   dedupeGlobalRestatements,
   splitIndependentClauses,
   partialOverlapCandidates,

@@ -9,7 +9,7 @@ const {
   isPersonalAside, isPeripheralAside, isRoutineMeetingAdministration,
   removePersonalAsides, normaliseDecisionTopicHeadings,
   repairStructuralTopicHeadings, mergeExactTopicHeadings,
-  dedupeAdjacentRestatements, dedupeGlobalRestatements, partialOverlapCandidates,
+  dedupeAdjacentRestatements, demoteContainedPrimaryRows, dedupeGlobalRestatements, partialOverlapCandidates,
   consolidatePartialOverlapRows, removeShortTopicEchoes, removeFloorManagementRows,
   balanceDiscussionTopics, absorbSemanticSingletonTopics, finaliseDiscussionForPublication,
   normaliseDiscussionPresentation, removeRawGeneratedDiscussionRows,
@@ -53,6 +53,64 @@ test('the final restatement pass can be restricted to final topic boundaries', a
   });
   assert.equal(result[0].points.length, 1);
   assert.equal(result[1].points.length, 1, 'the final pass must not merge across arranged topics');
+});
+
+test('a generated point already represented by retained supporting context is demoted without losing evidence', async () => {
+  const discussion = [{
+    id: 'fees', topic: 'Annual fees', openQuestions: [],
+    decisions: [{
+      id: 'decision', text: 'The annual fee will increase from £25 to £30.', evidenceIds: ['T10'],
+      supportingDetails: [{
+        id: 'rationale', text: 'The extra income will be ringfenced for water and fence repairs.', evidenceIds: ['T11']
+      }]
+    }],
+    points: [{
+      id: 'echo', text: 'The committee agreed that extra income will be ringfenced for water and fence repairs.',
+      evidenceIds: ['T11', 'T12'], supportingDetails: []
+    }]
+  }];
+  const cleaned = await demoteContainedPrimaryRows(discussion, {
+    sourceUnits: [{ id: 'T10' }, { id: 'T11' }, { id: 'T12' }],
+    encode: async (values) => values.map(() => [1, 0])
+  });
+  assert.equal(cleaned[0].points.length, 0);
+  assert.deepEqual(cleaned[0].decisions[0].evidenceIds, ['T10', 'T11', 'T12']);
+  assert.deepEqual(cleaned[0].decisions[0].supportingDetails.map((detail) => detail.id), ['rationale']);
+  assert.deepEqual(cleaned[0].decisions[0].supportingDetails[0].evidenceIds, ['T11', 'T12']);
+  assert.deepEqual(cleaned[0].decisions[0].mergedFromIds, ['echo']);
+});
+
+test('a strongly contained generated point becomes supporting context beneath the fuller point', async () => {
+  const discussion = [{
+    id: 'alarms', topic: 'Alarm changes', decisions: [], openQuestions: [],
+    points: [
+      { id: 'full', text: 'The alarm code changes were reviewed by the clinical team and approved for field deployment.', evidenceIds: ['T20', 'T21'], supportingDetails: [] },
+      { id: 'echo', text: 'The alarm changes received clinical review and were approved for deployment.', evidenceIds: ['T21'], supportingDetails: [] }
+    ]
+  }];
+  const cleaned = await demoteContainedPrimaryRows(discussion, {
+    sourceUnits: [{ id: 'T20' }, { id: 'T21' }],
+    encode: async (values) => values.map(() => [1, 0])
+  });
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['full']);
+  assert.deepEqual(cleaned[0].points[0].supportingDetails.map((detail) => detail.id), ['echo']);
+  assert.deepEqual(cleaned[0].points[0].evidenceIds, ['T20', 'T21']);
+});
+
+test('primary demotion preserves reviewer rows and incompatible quantities, polarity and uncertainty', async () => {
+  const rows = [
+    { id: 'reviewer', text: 'Testing covers 20 devices.', evidenceIds: ['T30'], reviewerAuthored: true, supportingDetails: [] },
+    { id: 'different-figure', text: 'Testing covers 30 devices.', evidenceIds: ['T30'], supportingDetails: [] },
+    { id: 'negative', text: 'Testing is not approved for 30 devices.', evidenceIds: ['T30'], supportingDetails: [] },
+    { id: 'uncertain', text: 'Testing may be approved for 30 devices.', evidenceIds: ['T30'], supportingDetails: [] }
+  ];
+  const cleaned = await demoteContainedPrimaryRows([{
+    id: 'testing', topic: 'Testing', points: rows, decisions: [], openQuestions: []
+  }], {
+    sourceUnits: [{ id: 'T30' }],
+    encode: async (values) => values.map(() => [1, 0])
+  });
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), rows.map((row) => row.id));
 });
 
 test('final discussion presentation repairs generated prose but preserves reviewer wording', () => {
