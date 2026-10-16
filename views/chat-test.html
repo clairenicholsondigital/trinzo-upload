@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trinzo Copilot Chat Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 2rem; }
+    .container { max-width: 920px; margin: 0 auto; }
+    .card { background: #111827; border-radius: 18px; padding: 1.5rem; border: 1px solid #334155; }
+    h1 { margin-top: 0; }
+    .small { font-size: 0.9rem; color: #94a3b8; }
+    .link { color: #7dd3fc; }
+    #chatLog { background: #020617; padding: 1rem; border-radius: 12px; min-height: 260px; border: 1px solid #1e293b; overflow-y: auto; }
+    .msg { margin-bottom: 0.8rem; white-space: pre-wrap; }
+    .user { color: #67e8f9; }
+    .bot { color: #86efac; }
+    .err { color: #fca5a5; }
+    textarea { width: 100%; min-height: 90px; margin-top: 1rem; background: #020617; border: 1px solid #334155; border-radius: 12px; color: #fff; padding: 0.8rem; }
+    button { margin-top: 0.7rem; background: #14b8a6; border: none; color: #04111d; padding: 0.8rem 1.2rem; border-radius: 12px; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Copilot chat test</h1>
+      <p class="small">Use this local page to test back-and-forth messages with your configured Direct Line agent.</p>
+      <p class="small"><a class="link" href="/">← Back to transcript tools</a></p>
+
+      <div id="chatLog"></div>
+      <textarea id="promptInput" placeholder="Type a message to your agent..."></textarea>
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+<script>
+const chatLog = document.getElementById('chatLog');
+const promptInput = document.getElementById('promptInput');
+const sendBtn = document.getElementById('sendBtn');
+
+function addMessage(role, text, cls) {
+  const line = document.createElement('div');
+  line.className = `msg ${cls || ''}`;
+  line.innerHTML = `<strong>${role}:</strong> ${text}`;
+  chatLog.appendChild(line);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+async function sendMessage() {
+  const prompt = promptInput.value.trim();
+  if (!prompt) return;
+
+  addMessage('You', prompt, 'user');
+  promptInput.value = '';
+  sendBtn.disabled = true;
+
+  try {
+    const response = await fetch('/api/copilot-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      addMessage('Error', data.error || 'Request failed', 'err');
+    } else {
+      const messages = Array.isArray(data.botMessages) ? data.botMessages : [];
+      if (!messages.length) {
+        addMessage('Bot', '[No message returned]', 'bot');
+      } else {
+        messages.forEach(msg => addMessage('Bot', msg, 'bot'));
+      }
+    }
+  } catch (error) {
+    addMessage('Error', String(error), 'err');
+  } finally {
+    sendBtn.disabled = false;
+    promptInput.focus();
+  }
+}
+
+promptInput.addEventListener('keydown', function (event) {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    sendMessage();
+  }
+});
+</script>
+</body>
+</html>
