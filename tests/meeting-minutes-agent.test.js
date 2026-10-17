@@ -96,9 +96,7 @@ const {
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,
   normaliseMeetingAgentPassCache,
-  meetingAgentPassCacheKey,
-  normaliseAgentDiscussion,
-  normaliseAgentActions
+  meetingAgentPassCacheKey
 } = api.stagedEvaluation;
 
 test('bare status reassurance is consolidated into a fuller context item about the same subject', () => {
@@ -2645,17 +2643,6 @@ test('action audit is explicitly limited to uncovered candidate windows', () => 
   assert.match(prompt, /UNCOVERED ACTION CANDIDATE EVIDENCE WINDOWS TO RECHECK/);
   assert.match(prompt, /candidate-uncovered/);
   assert.ok(prompt.endsWith(transcript));
-});
-
-test('agent discussion and action payloads are bounded and normalised', () => {
-  assert.deepEqual(normaliseAgentDiscussion({ discussion: [
-    { topic: '  Launch   status ', points: ['  Date remained fixed.  ', '', null] },
-    { topic: 'Empty', points: [] }
-  ] }), [{ topic: 'Launch status', points: ['Date remained fixed.'] }]);
-  assert.deepEqual(normaliseAgentActions({ actions: [
-    { action: '  Repair   labels ', owner: null, deadline: ' Friday ' },
-    { action: '', owner: 'Nobody', deadline: '' }
-  ] }), [{ action: 'Repair labels', owner: '', deadline: 'Friday' }]);
 });
 
 test('a reviewer steer prioritises without licensing invention, and never displaces the transcript', () => {

@@ -727,54 +727,6 @@
 .meeting-agent-page .review-evidence .evidence-row{margin:.25rem 0}
 .meeting-agent-page .review-route-missing{display:grid;gap:.15rem;padding:.55rem .65rem;border-radius:var(--radius-sm);background:var(--soft);color:var(--muted);font-size:var(--fs-sm)}
 
-/* Proposal changes are applied automatically; only source-check warnings remain visible. */
-.meeting-agent-page .proposal{display:none}
-.meeting-agent-page .proposal-header{
-  display:flex;align-items:center;justify-content:space-between;gap:1rem;
-  flex-wrap:wrap;padding-bottom:.55rem}
-.meeting-agent-page .proposal-heading{min-width:0}
-.meeting-agent-page .proposal-heading h3{margin:0 0 .1rem;font-size:var(--fs-lg)}
-.meeting-agent-page #proposalChanges{
-  border:1px solid var(--border);border-radius:var(--radius-sm);
-  background:var(--surface);overflow:hidden}
-.meeting-agent-page .proposal-change{
-  display:grid;grid-template-columns:auto minmax(0,1fr);gap:.6rem;
-  align-items:start;padding:.45rem .65rem}
-.meeting-agent-page .proposal-change>input{margin-top:.55rem}
-.meeting-agent-page .proposal-change+.proposal-change{border-top:1px solid var(--border)}
-.meeting-agent-page .proposal-change:hover{background:var(--soft)}
-.meeting-agent-page .proposal-detail{min-width:0}
-.meeting-agent-page .proposal-detail>summary{
-  display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.55rem;
-  min-height:36px;cursor:pointer;list-style:none}
-.meeting-agent-page .proposal-detail>summary::-webkit-details-marker{display:none}
-.meeting-agent-page .proposal-kind{
-  padding:.15rem .5rem;border:1px solid var(--info-border);
-  border-radius:var(--radius-pill);white-space:nowrap;
-  background:var(--info-bg);color:var(--info-text);
-  font-size:var(--fs-cap);font-weight:var(--fw-bold)}
-.meeting-agent-page .proposal-kind-add{
-  border-color:var(--ok-border);background:var(--ok-bg);color:var(--ok-text)}
-.meeting-agent-page .proposal-kind-modify{
-  border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-text)}
-.meeting-agent-page .proposal-kind-remove{
-  border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger-text)}
-.meeting-agent-page .proposal-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--heading);font-size:var(--fs-sm);font-weight:var(--fw-bold)}
-.meeting-agent-page .proposal-chevron{color:var(--muted);font-size:var(--fs-lg);transition:transform .15s ease}
-.meeting-agent-page .proposal-detail[open] .proposal-chevron{transform:rotate(90deg)}
-.meeting-agent-page .proposal-content{min-width:0;padding:.45rem 0 .2rem}
-.meeting-agent-page .proposal-change pre{
-  margin:0;padding:.35rem .5rem;border-radius:var(--radius-sm);background:var(--soft);
-  font-family:inherit;font-size:var(--fs-sm);line-height:1.45;white-space:pre-wrap}
-.meeting-agent-page .proposal-before{margin:0 0 .35rem;color:var(--muted);font-size:var(--fs-sm);line-height:1.45}
-.meeting-agent-page .proposal-before span{font-weight:var(--fw-bold)}
-.meeting-agent-page .proposal-rationale{margin:0 0 .45rem;color:var(--text);font-size:var(--fs-sm);line-height:1.45}
-.meeting-agent-page .proposal-links{display:flex;align-items:flex-start;gap:.5rem;flex-wrap:wrap}
-.meeting-agent-page .proposal-footer{
-  position:sticky;bottom:.5rem;display:flex;align-items:center;justify-content:flex-end;gap:.5rem;
-  margin-top:.65rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:var(--radius-sm);
-  background:var(--surface);box-shadow:var(--shadow-lg)}
-.meeting-agent-page .proposal-footer>.muted{margin-right:auto}
 .meeting-agent-page .confirmation-dialog{
   width:min(520px,calc(100vw - 2rem));padding:0;border:1px solid var(--border);
   border-radius:var(--radius);color:var(--text);box-shadow:var(--shadow-lg)}
@@ -1210,14 +1162,14 @@
         <textarea id="meetingSteer" rows="4" aria-label="What matters most from this meeting" placeholder="e.g. Focus on the MDSAP readiness pack and anything blocking the submission date. Keep the translation workstream together."></textarea>
         <p class="steer-hint">It never lets the agent state something the transcript does not support, and nothing supported is dropped just because you did not mention it. Leave it blank to work from the transcript alone.</p>
       </div></details>
-      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="toSteer" class="button" type="button" hidden>Continue</button><button id="startDiscussion" class="button" type="button"><span data-stage-advance-label>Generate discussion</span><svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+      <div class="screen-actions"><button id="replaceTranscript" class="secondary" type="button">Choose another transcript</button><button id="startDiscussion" class="button" type="button"><span data-stage-advance-label>Generate discussion</span><svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
     </div>
   </section>
 
   <!-- ================================================== 2 - discussion -->
   <section id="discussionScreen" class="panel screen" data-screen="2">
     <div class="paper">
-      <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. You will preview them before anything is applied.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Preview changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
+      <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Apply changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
       <div id="omittedDetailsReview"></div>
       <div id="discussionListBar"></div>
       <div id="discussionList"></div>
@@ -1229,13 +1181,13 @@
   <!-- ===================================================== 2 - actions -->
   <section class="panel screen" data-screen="3">
     <div class="paper">
-      <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. You will preview them before anything is applied.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Preview changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button><button id="regenerateActions" class="secondary quiet" type="button" title="Ask the agent to draft the actions again from the transcript.">Regenerate</button></div></div>
+      <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Apply changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button><button id="regenerateActions" class="secondary quiet" type="button" title="Ask the agent to draft the actions again from the transcript.">Regenerate</button></div></div>
       <div id="actionReviewBar" class="action-review-bar" role="status" aria-live="polite" hidden></div>
       <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
       <details id="removedActionsPanel" class="removed-actions" hidden><summary id="removedActionsSummary">Removed actions</summary><div id="removedActionsList"></div></details>
     </div>
     <p class="prewarm-notice" data-speculation-notice="summary" role="status" hidden></p>
-    <div class="screen-actions"><button class="secondary" data-back="2" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to discussion</button><button id="auditActions" class="secondary" type="button" hidden title="Review the transcript again for additional actions.">Check transcript for more actions</button><button id="toSummary" class="button" type="button">Summary and objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
+    <div class="screen-actions"><button class="secondary" data-back="2" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to discussion</button><button id="toSummary" class="button" type="button">Summary and objectives<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></button></div>
   </section>
 
   <!-- ======================================= 4 - summary and objectives -->

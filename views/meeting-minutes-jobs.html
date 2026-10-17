@@ -37,7 +37,6 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .jobs th { background:#0b1530; color:var(--muted); font-size:.86rem; }
 .jobs tr { background:#071126; }
 .jobs tr:hover { background:#0b1730; }
-.jobs .col-select { width:3.5rem; }
 .jobs .col-meeting { width:40%; }
 .jobs .col-started { width:18%; }
 .jobs .col-status { width:17%; }
@@ -51,11 +50,6 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .library-pagination { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; margin:.85rem 1.25rem 0; }
 .library-pagination-actions { display:flex; align-items:center; gap:.5rem; }
 .library-page-label { min-width:7rem; text-align:center; color:var(--muted); }
-.bulk-bar { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; margin:.85rem 0 0; padding:.55rem .65rem; border:1px solid var(--border); border-radius:10px; background:var(--soft); color:var(--text); }
-.bulk-bar label { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); font-size:.9rem; cursor:pointer; }
-.bulk-bar input, .job-select { accent-color:var(--accent); }
-.bulk-bar button { padding:.42rem .65rem; font-size:.86rem; }
-.bulk-count { color:var(--muted); font-size:.86rem; min-width:5.5rem; }
 .status { display:inline-flex; padding:.25rem .55rem; border-radius:999px; border:1px solid var(--border); font-weight:700; font-size:.82rem; }
 .status.running { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
 .status.completed, .status.complete { color:#bbf7d0; border-color:#166534; background:#052e1b; }
@@ -68,9 +62,6 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .staged-step-list { display:grid; gap:.5rem; }
 .staged-step { display:flex; align-items:center; justify-content:space-between; gap:.75rem; border:1px solid var(--border); border-radius:10px; padding:.65rem .75rem; background:#081227; }
 .staged-step.current { border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
-.progress { min-width:160px; }
-.track { height:9px; border-radius:999px; background:#061022; border:1px solid var(--border); overflow:hidden; margin:.35rem 0; }
-.fill { height:100%; background:linear-gradient(90deg,#17D0C4,#67e8f9); border-radius:999px; }
 pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; }
 .summary-item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
@@ -158,8 +149,6 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .row-edit-modal-actions { display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
 .result-section { margin-top:1rem; }
 .result-section h3 { margin:.1rem 0 .6rem; font-size:1rem; color:#dbeafe; }
-.result-section ul { margin:.35rem 0 0; padding-left:1.25rem; }
-.result-section li { margin:.4rem 0; line-height:1.45; }
 .result-table-section { margin-top:1.1rem; }
 .result-table-section h3 { margin:.1rem 0 .55rem; font-size:1rem; color:#dbeafe; }
 .result-table-section .minutes-table-wrap { margin-top:0; }
@@ -245,12 +234,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       <label for="libraryStatus"><span>Status</span><select id="libraryStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="complete">Complete</option></select></label>
       <label for="librarySort"><span>Sort by</span><select id="librarySort"><option value="newest" selected>Most recent first</option><option value="oldest">Oldest first</option><option value="title_asc">Meeting title A–Z</option><option value="title_desc">Meeting title Z–A</option></select></label>
     </div>
-    <div id="bulkBar" class="bulk-bar" hidden>
-      <label><input id="selectAllJobs" type="checkbox" /> Select all</label>
-      <span id="bulkCount" class="bulk-count">0 selected</span>
-      <button id="archiveSelectedBtn" class="secondary" type="button" disabled>Archive selected</button>
-      <button id="archiveAllBtn" class="secondary" type="button">Archive all</button>
-    </div>
     <div id="message" class="message" hidden></div>
     <div id="listView"></div>
     <div id="libraryPagination" class="library-pagination" aria-live="polite">
@@ -299,11 +282,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const resultJson = document.getElementById('resultJson');
   const retryBtn = document.getElementById('retryBtn');
   const cancelBtn = document.getElementById('cancelBtn');
-  const bulkBar = document.getElementById('bulkBar');
-  const selectAllJobs = document.getElementById('selectAllJobs');
-  const bulkCount = document.getElementById('bulkCount');
-  const archiveSelectedBtn = document.getElementById('archiveSelectedBtn');
-  const archiveAllBtn = document.getElementById('archiveAllBtn');
   const librarySearch = document.getElementById('librarySearch');
   const libraryStatus = document.getElementById('libraryStatus');
   const librarySort = document.getElementById('librarySort');
@@ -322,12 +300,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   let editDirty = false;
   let editFocused = false;
   let timer = null;
-  let visibleJobs = [];
   let libraryPage = 1;
   let libraryTotal = 0;
   const libraryPageSize = 10;
   let librarySearchTimer = null;
-  const selectedJobs = new Set();
+  let libraryRequestVersion = 0;
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -399,14 +376,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     localStorage.setItem('stagedMeetingMinutesJobs', JSON.stringify(drafts));
   }
 
-  function archiveStagedDrafts(jobIds) {
-    const ids = new Set(jobIds.map(String));
-    const drafts = readStagedDrafts().map((draft) => ids.has(String(draft.jobId))
-      ? { ...draft, archivedAt: new Date().toISOString() }
-      : draft);
-    localStorage.setItem('stagedMeetingMinutesJobs', JSON.stringify(drafts));
-  }
-
   // The staged review's screens were renumbered when the Summary stage was removed, and a
   // draft saved before that still records the old index. A draft saved since names the
   // stage it was left on, and a stage name survives a renumbering, so it decides; an index
@@ -459,14 +428,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function isStagedJob(job) {
     return job && (job.jobType === 'staged_meeting_minutes_review' || job.jobType === 'staged_meeting_minutes_stage');
-  }
-
-  function isLocalStagedDraft(job) {
-    return job && job.jobType === 'staged_meeting_minutes_review';
-  }
-
-  function isMeetingAgentDraft(job) {
-    return job && job.jobType === 'meeting_minutes_agent_draft';
   }
 
   function isStaleStagedJob(job) {
@@ -809,19 +770,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       <section class="result-section objectives-editor">
         <h3>Meeting objectives</h3>
         <textarea data-edit-field="meta" data-meta-field="meetingObjectives" placeholder="One objective per line">${escapeHtml(joinLines(values))}</textarea>
-      </section>
-    `;
-  }
-
-  function renderListSection(title, values) {
-    const output = resultOutput(latestResultPayload);
-    if (output.humanEdited && Array.isArray(output.editedRows)) return '';
-    const items = asArray(values).map((value) => cleanText(typeof value === 'string' ? value : firstDefined(value?.text, value?.summary, value?.topic, value?.decision, value?.discussionPoint, ''))).filter(Boolean);
-    if (!items.length) return '';
-    return `
-      <section class="result-section">
-        <h3>${escapeHtml(title)}</h3>
-        <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
       </section>
     `;
   }
@@ -1243,17 +1191,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     autosaveTimer = setTimeout(() => saveEditedResult(true), 1000);
   }
 
-  function renderProgress(job) {
-    const pct = Math.max(0, Math.min(100, Number(job.progressPercent || 0)));
-    return `
-      <div class="progress">
-        <div>${pct}% · ${escapeHtml(friendlyLabel(job.stage || job.status || 'queued'))}</div>
-        <div class="track"><div class="fill" style="width:${pct}%"></div></div>
-        <small class="muted">${escapeHtml(job.statusMessage || '')}</small>
-      </div>
-    `;
-  }
-
   function jobTypeLabel(job) {
     const type = String(job.jobType || '').toLowerCase();
     if (type === 'staged_meeting_minutes_review') return 'Staged meeting minutes';
@@ -1298,21 +1235,16 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderJobs(jobs) {
-    visibleJobs = jobs;
-    selectedJobs.clear();
-    updateBulkControls();
     if (!jobs.length) {
       const filtered = librarySearch.value.trim() || libraryStatus.value;
       listView.innerHTML = `<p class="muted">${filtered ? 'No drafts match your current filters.' : 'No Library drafts yet.'}</p>`;
       return;
     }
-    const showBulkSelection = jobs.some(canArchive);
     listView.innerHTML = `
       <div class="jobs-table-wrap">
         <table class="jobs">
           <thead>
             <tr>
-              ${showBulkSelection ? '<th class="col-select" aria-label="Select"></th>' : ''}
               <th class="col-meeting">Meeting</th>
               <th class="col-started">Started</th>
               <th class="col-status">Status</th>
@@ -1325,20 +1257,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
               const generationStage = friendlyLabel(job.generation?.stage || job.stage || 'minutes');
               return `
               <tr>
-                ${showBulkSelection ? `<td class="col-select" data-label="Select"><input class="job-select" type="checkbox" data-select-job="${escapeHtml(job.jobId)}" aria-label="Select ${escapeHtml(jobTitle(job))}" ${canArchive(job) ? '' : 'disabled'} /></td>` : ''}
                 <td class="col-meeting" data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong></td>
                 <td class="col-started" data-label="Started">${escapeHtml(formatDate(job.createdAt))}</td>
                 <td class="col-status" data-label="Status">${generating
                   ? `<span class="status running" role="status"><span class="generation-spinner" aria-hidden="true"></span>Generating</span><br><small class="muted">${escapeHtml(generationStage)} in progress</small>`
                   : `<span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}`}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td class="col-actions" data-label="Actions"><div class="library-action-group">
-                  ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a>${libraryDeleteButton('data-delete-staged', job.jobId)}` : ''}
-                  ${isMeetingAgentDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">${generating ? 'View progress' : job.status === 'complete' ? 'Open final minutes' : 'Resume'}</a>${libraryDeleteButton('data-delete-agent-draft', job.draftId)}` : ''}
-                  ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button resume-staged" href="${escapeAttribute(job.resumeUrl)}">Resume staged review <span aria-hidden="true">›</span></a>` : ''}
-                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
-                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
-                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
-                  ${!isStagedJob(job) && !isMeetingAgentDraft(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? libraryDeleteButton('data-delete', job.jobId, 'Delete job') : ''}
+                  <a class="button" href="${escapeAttribute(job.resumeUrl)}">${generating ? 'View progress' : job.status === 'complete' ? 'Open final minutes' : 'Resume'}</a>${libraryDeleteButton('data-delete-agent-draft', job.draftId)}
                 </div>
                 </td>
               </tr>`;
@@ -1347,45 +1272,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         </table>
       </div>
     `;
-  }
-
-  function canArchive(job) {
-    return Boolean(job) && !isMeetingAgentDraft(job);
-  }
-
-  function updateBulkControls() {
-    const eligible = visibleJobs.filter(canArchive);
-    const selectedCount = [...selectedJobs].filter((id) => eligible.some((job) => String(job.jobId) === id)).length;
-    bulkBar.hidden = !eligible.length;
-    bulkCount.textContent = `${selectedCount} selected`;
-    archiveSelectedBtn.disabled = selectedCount === 0;
-    archiveAllBtn.disabled = eligible.length === 0;
-    selectAllJobs.checked = eligible.length > 0 && selectedCount === eligible.length;
-    selectAllJobs.indeterminate = selectedCount > 0 && selectedCount < eligible.length;
-  }
-
-  async function archiveJobs(jobs, allFinished = false) {
-    if (!jobs.length) return;
-    const prompt = allFinished
-      ? 'Archive every staged meeting-minutes item in Library?'
-      : `Archive ${jobs.length} selected item${jobs.length === 1 ? '' : 's'}?`;
-    if (!window.confirm(`${prompt} They will be hidden, not deleted.`)) return;
-    const localIds = jobs.filter(isLocalStagedDraft).map((job) => job.jobId);
-    const serverIds = jobs.filter((job) => !isLocalStagedDraft(job)).map((job) => job.jobId);
-    try {
-      if (serverIds.length || allFinished) {
-        await fetchJson('/api/jobs/archive', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(allFinished ? { archiveAll: true } : { jobIds: serverIds })
-        });
-      }
-      if (localIds.length) archiveStagedDrafts(localIds);
-      setMessage(`${jobs.length} item${jobs.length === 1 ? '' : 's'} archived.`, 'success');
-      await loadList();
-    } catch (error) {
-      setMessage(error.message || 'Could not archive the selected items.', 'error');
-    }
   }
 
   function summaryItem(label, value) {
@@ -1560,6 +1446,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   // resolve here, so a direct link to a queued job of another tool keeps working.
   async function loadList() {
     if (resultOnly) return;
+    const requestVersion = ++libraryRequestVersion;
     updateQueueTabs();
     const params = new URLSearchParams({
       limit: String(libraryPageSize),
@@ -1570,7 +1457,16 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     params.set('sort', librarySort.value || 'newest');
     if (search) params.set('search', search);
     if (status) params.set('status', status);
-    const agentPayload = await fetchJson(`/api/meeting-minutes-agent/drafts?${params.toString()}`);
+    let agentPayload;
+    try {
+      agentPayload = await fetchJson(`/api/meeting-minutes-agent/drafts?${params.toString()}`);
+    } catch (error) {
+      if (requestVersion !== libraryRequestVersion) return;
+      throw error;
+    }
+    // Filters, pagination and polling can overlap. Only the newest request may
+    // replace the visible rows, count or page; an old response is no longer relevant.
+    if (requestVersion !== libraryRequestVersion) return;
     libraryTotal = Number(agentPayload.pagination?.total || 0);
     const totalPages = Math.max(1, Math.ceil(libraryTotal / libraryPageSize));
     if (libraryPage > totalPages) {
@@ -1608,12 +1504,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   async function refresh() {
+    const listRequest = loadList();
+    const requestVersion = libraryRequestVersion;
     try {
-      await loadList();
-      await loadDetail();
-      setMessage('', '');
+      await Promise.all([listRequest, loadDetail()]);
+      if (requestVersion === libraryRequestVersion) setMessage('', '');
     } catch (error) {
-      setMessage(error.message || 'Could not refresh jobs.', 'error');
+      if (requestVersion === libraryRequestVersion) setMessage(error.message || 'Could not refresh jobs.', 'error');
     }
   }
 
@@ -1644,19 +1541,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   listView.addEventListener('click', (event) => {
-    const retry = event.target.closest('[data-retry]');
-    const cancel = event.target.closest('[data-cancel]');
-    const deleteButton = event.target.closest('[data-delete]');
-    const deleteStagedButton = event.target.closest('[data-delete-staged]');
     const deleteAgentDraftButton = event.target.closest('[data-delete-agent-draft]');
-    if (retry) act('retry', retry.dataset.retry);
-    if (cancel) act('cancel', cancel.dataset.cancel);
-    if (deleteButton) deleteJob(deleteButton.dataset.delete);
-    if (deleteStagedButton) {
-      if (!window.confirm('Remove this staged review draft from this browser?')) return;
-      deleteStagedDraft(deleteStagedButton.dataset.deleteStaged);
-      refresh();
-    }
     if (deleteAgentDraftButton) {
       if (!window.confirm('Delete this Meeting Minutes Agent draft and its stored transcript?')) return;
       fetchJson(`/api/meeting-minutes-agent/drafts/${encodeURIComponent(deleteAgentDraftButton.dataset.deleteAgentDraft)}`, { method: 'DELETE' })
@@ -1664,23 +1549,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         .catch((error) => setMessage(error.message || 'Could not delete the agent draft.', 'error'));
     }
   });
-  listView.addEventListener('change', (event) => {
-    const checkbox = event.target.closest('[data-select-job]');
-    if (!checkbox) return;
-    const id = String(checkbox.dataset.selectJob);
-    if (checkbox.checked) selectedJobs.add(id);
-    else selectedJobs.delete(id);
-    updateBulkControls();
-  });
-  selectAllJobs.addEventListener('change', () => {
-    selectedJobs.clear();
-    if (selectAllJobs.checked) visibleJobs.filter(canArchive).forEach((job) => selectedJobs.add(String(job.jobId)));
-    listView.querySelectorAll('[data-select-job]').forEach((checkbox) => { checkbox.checked = selectedJobs.has(String(checkbox.dataset.selectJob)); });
-    updateBulkControls();
-  });
-  archiveSelectedBtn.addEventListener('click', () => archiveJobs(visibleJobs.filter((job) => selectedJobs.has(String(job.jobId)))));
-  archiveAllBtn.addEventListener('click', () => archiveJobs(visibleJobs.filter(canArchive), true));
   librarySearch.addEventListener('input', () => {
+    libraryRequestVersion += 1;
     clearTimeout(librarySearchTimer);
     librarySearchTimer = setTimeout(() => {
       libraryPage = 1;
@@ -1771,6 +1641,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   if (resultOnly) {
     listPanel.hidden = true;
+    // The list is hidden on result links, but request errors must remain visible.
+    listPanel.after(message);
     document.title = activeJobId ? `Job result #${activeJobId}` : 'Job result';
   }
   refresh();

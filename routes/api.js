@@ -459,7 +459,7 @@ function normaliseMeetingAgentGeneration(generation) {
   const status = ['running', 'failed'].includes(generation.status) ? generation.status : null;
   if (!status) return null;
   return {
-    stage: MEETING_AGENT_STAGE_STEP[generation.stage] ? generation.stage : 'discussion',
+    stage: Object.hasOwn(MEETING_AGENT_STAGE_STEP, generation.stage) ? generation.stage : 'discussion',
     status,
     bootId: meetingMinutesAgentText(generation.bootId, 80),
     startedAt: meetingMinutesAgentText(generation.startedAt, 40),
@@ -8532,30 +8532,6 @@ function meetingMinutesAgentText(value, maxLength = 600) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, maxLength);
 }
 
-function normaliseAgentDiscussion(candidate) {
-  return (Array.isArray(candidate?.discussion) ? candidate.discussion : [])
-    .slice(0, 80)
-    .map((item) => ({
-      topic: meetingMinutesAgentText(item?.topic, 180) || 'Discussion',
-      points: (Array.isArray(item?.points) ? item.points : [])
-        .map((point) => meetingMinutesAgentText(point, 1200))
-        .filter(Boolean)
-        .slice(0, 30)
-    }))
-    .filter((item) => item.points.length);
-}
-
-function normaliseAgentActions(candidate) {
-  return (Array.isArray(candidate?.actions) ? candidate.actions : [])
-    .slice(0, 200)
-    .map((item) => ({
-      action: meetingMinutesAgentText(item?.action, 1200),
-      owner: meetingMinutesAgentText(item?.owner, 180),
-      deadline: meetingMinutesAgentText(item?.deadline, 180)
-    }))
-    .filter((item) => item.action);
-}
-
 const MEETING_AGENT_OBJECTIVE_STYLE = 'Write each objective as one plain aim with one leading verb and the concrete subject the meeting named - "Agree the site audit travel arrangements", "Confirm who completes the auditor training". Never pair near-synonymous verbs ("plan and prepare", "review and assess"), never repeat the verb as a noun ("prepare ... preparation activities"), and never pad with generic tails such as "including various activities", "and related matters" or "as needed". If two aims are genuinely separate, write two objectives.';
 
 // A day spoken without its month was published with the meeting's month
@@ -10973,14 +10949,7 @@ function meetingAgentStageInputFingerprint(draft = {}, stage = '') {
     steer: meetingMinutesAgentText(draft.steer, 4000),
     salientDetails: Array.isArray(draft.salientDetails) ? draft.salientDetails : []
   };
-  if (stage === 'actions' || stage === 'summary') input.upstream = meetingAgentUpstreamFingerprint(draft);
-  if (stage === 'summary') {
-    input.actions = (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
-      action: meetingMinutesAgentText(action?.action, 1600),
-      owners: Array.isArray(action?.owners) ? action.owners.map((owner) => meetingMinutesAgentText(owner, 120)) : [],
-      timing: action?.timing || null
-    }));
-  }
+  if (stage === 'actions' || stage === 'summary') input.upstream = meetingAgentUpstreamFingerprint(draft, stage);
   return crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }
 
@@ -11095,7 +11064,10 @@ async function persistUntouchedSpeculation(draftId, userId, stage, result, finge
       if (meetingAgentStageInputFingerprint(fresh, stage) !== fingerprint) return false;
       // Never move the reviewer: the stage they are on is their business.
       const { currentStep: _step, selectedStep: _selected, ...changes } = result.changes || {};
-      const saved = await saveMeetingAgentDraft(fresh, { authUser: { userId } }, changes);
+      const saved = await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
+        ...changes,
+        staleStages: meetingAgentStaleStagesAfterGeneration(fresh, fresh, stage, changes)
+      });
       console.info(JSON.stringify({
         event: 'meeting_agent_speculation_persisted', journeyId: draftId, stage,
         revision: saved?.revision || null
@@ -16698,12 +16670,17 @@ router.get('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, re
 });
 
 // What Actions and the Summary are derived from: the discussion's wording and
-// structure, the steer, and who was in the room (owners are chosen from the
-// attendee lists). Ids, flags and evidence are left out so a re-normalised but
-// unchanged draft does not read as an edit.
-function meetingAgentUpstreamFingerprint(draft = {}) {
+// structure including supporting details, the steer, and who was in the room
+// (owners are chosen from the attendee lists). The Summary also reads Actions.
+// Ids, flags and evidence are left out so a re-normalised but unchanged draft
+// does not read as an edit.
+function meetingAgentUpstreamFingerprint(draft = {}, stage = 'actions') {
   const rows = (kind, topic) => (Array.isArray(topic?.[kind]) ? topic[kind] : [])
-    .map((record) => meetingMinutesAgentText(record?.text, 1600));
+    .map((record) => ({
+      text: meetingMinutesAgentText(record?.text, 1600),
+      supportingDetails: (Array.isArray(record?.supportingDetails) ? record.supportingDetails : [])
+        .map((detail) => meetingMinutesAgentText(detail?.text, 1600))
+    }));
   const details = draft.details || {};
   return JSON.stringify({
     discussion: (Array.isArray(draft.discussion) ? draft.discussion : []).map((topic) => ({
@@ -16715,7 +16692,18 @@ function meetingAgentUpstreamFingerprint(draft = {}) {
       ...(Array.isArray(details.internalAttendees) ? details.internalAttendees : []),
       '|',
       ...(Array.isArray(details.clientAttendees) ? details.clientAttendees : [])
-    ].map((name) => meetingMinutesAgentText(name, 120))
+    ].map((name) => meetingMinutesAgentText(name, 120)),
+    ...(stage === 'summary' ? {
+      actions: (Array.isArray(draft.actions) ? draft.actions : []).map((action) => ({
+        action: meetingMinutesAgentText(action?.action, 1600),
+        owners: (Array.isArray(action?.owners) ? action.owners : []).map((owner) => meetingMinutesAgentText(owner, 120)),
+        timing: {
+          kind: meetingMinutesAgentText(action?.timing?.kind, 40),
+          wording: meetingMinutesAgentText(action?.timing?.wording, 220),
+          exactDate: meetingMinutesAgentText(action?.timing?.exactDate, 40)
+        }
+      }))
+    } : {})
   });
 }
 
@@ -16725,20 +16713,20 @@ function meetingAgentUpstreamFingerprint(draft = {}) {
 // flight, so the ordinary "edit the discussion, look at the actions" flow
 // produced no warning at all.
 function meetingAgentDerivedStaleStages(previous = {}, next = {}) {
-  if (meetingAgentUpstreamFingerprint(previous) === meetingAgentUpstreamFingerprint(next)) return [];
-  const stale = [];
-  if (Array.isArray(previous.actions) && previous.actions.length) stale.push('actions');
-  if (meetingMinutesAgentText(previous.executiveSummary, 20000)) stale.push('summary');
-  return stale;
+  return ['actions', 'summary'].filter((stage) => meetingAgentStageHasContent(previous, stage)
+    && meetingAgentStageInputFingerprint(previous, stage) !== meetingAgentStageInputFingerprint(next, stage));
 }
 
 // A completed run clears its own stage, unless the content that stage is
 // derived from changed while it was running: those edits are newer than the
 // output, so the output is already outdated.
-function meetingAgentStaleStagesAfterGeneration(fresh = {}, sourceDraft = {}, stage = '') {
-  const current = Array.isArray(fresh.staleStages) ? fresh.staleStages : [];
+function meetingAgentStaleStagesAfterGeneration(fresh = {}, sourceDraft = {}, stage = '', changes = {}) {
+  const current = [...new Set([
+    ...(Array.isArray(fresh.staleStages) ? fresh.staleStages : []),
+    ...meetingAgentDerivedStaleStages(fresh, { ...fresh, ...changes })
+  ])];
   const upstreamChangedDuringRun = ['actions', 'summary'].includes(stage)
-    && meetingAgentUpstreamFingerprint(fresh) !== meetingAgentUpstreamFingerprint(sourceDraft);
+    && meetingAgentStageInputFingerprint(fresh, stage) !== meetingAgentStageInputFingerprint(sourceDraft, stage);
   if (upstreamChangedDuringRun) return [...new Set([...current, stage])];
   return current.filter((value) => value !== stage);
 }
@@ -16801,7 +16789,8 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       staleStages: [...new Set([
         ...(draft.staleStages || []),
         ...meetingAgentDerivedStaleStages(draft, {
-          discussion: normalised.discussion, steer: req.body?.steer ?? draft.steer, details
+          ...draft, discussion: normalised.discussion, actions: normalised.actions,
+          steer: req.body?.steer ?? draft.steer, details
         })
       ])],
       currentStep: furthestStep,
@@ -17700,7 +17689,7 @@ async function persistMeetingAgentBackgroundStage(options = {}) {
             return {
               ...regeneration.changes,
               reviewFlags: regeneration.reviewFlags,
-              staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage),
+              staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage, regeneration.changes),
               currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
               generation: null
             };
@@ -17842,7 +17831,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
 router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth, async (req, res) => {
   try {
     const stage = String(req.body?.stage || '').trim().toLowerCase();
-    if (!MEETING_AGENT_STAGE_STEP[stage]) {
+    if (!Object.hasOwn(MEETING_AGENT_STAGE_STEP, stage)) {
       return res.status(400).json({ ok: false, error: 'Choose discussion, actions or summary.' });
     }
     const draft = await loadOwnedMeetingAgentDraft(req);
@@ -17935,7 +17924,7 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
 router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => {
   try {
     const stage = String(req.body?.stage || '').trim().toLowerCase();
-    if (!MEETING_AGENT_STAGE_STEP[stage]) {
+    if (!Object.hasOwn(MEETING_AGENT_STAGE_STEP, stage)) {
       return res.status(400).json({ ok: false, error: 'Choose discussion, actions or summary.' });
     }
     const instruction = meetingMinutesAgentText(req.body?.instruction, 4000);
@@ -17966,7 +17955,7 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...result.changes,
       reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
-      staleStages: (draft.staleStages || []).filter((value) => value !== stage),
+      staleStages: meetingAgentStaleStagesAfterGeneration(draft, draft, stage, result.changes),
       currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
     });
     return res.json({ ok: true, stage, draft: publicMeetingAgentDraft(saved) });
@@ -18087,6 +18076,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     }, index));
     const saved = await saveMeetingAgentDraft(draft, req, {
       actions: reconciledActions,
+      staleStages: [...new Set([
+        ...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, { ...draft, actions: reconciledActions })
+      ])],
       pendingProposal: (() => {
         const finalProposal = removePublishedActionProposalDuplicates(proposal, reconciledActions);
         return finalProposal.changes.length ? preselectActionProposal(finalProposal, reconciledActions, draft.sourceUnits) : null;
@@ -18135,14 +18128,25 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     // it can remove an untouched action or even the addition just selected.
     const after = applyProposal(before, proposal, [...acceptedIdSet]);
     const remainingProposal = rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
+    const unacceptedChanges = (proposal.changes || []).filter((change) => !acceptedIdSet.has(change.id));
     const history = [...(draft.changeHistory || []), {
       id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,
       label: `${acceptedIdSet.size} suggestion${acceptedIdSet.size === 1 ? '' : 's'} applied`,
       acceptedChangeIds: [...acceptedIdSet], before, after, acceptedAt: new Date().toISOString(),
-      beforeState: meetingAgentReviewSnapshot(draft)
+      // Undo restores the old content without queueing the consumed changes
+      // for automatic application again. Redo retains the applied snapshot.
+      beforeState: {
+        ...meetingAgentReviewSnapshot(draft),
+        pendingProposal: unacceptedChanges.length ? { ...proposal, changes: unacceptedChanges } : null
+      }
     }].slice(-30);
+    const contentChanges = proposal.stage === 'discussion' ? { discussion: after } : { actions: after };
     const saved = await saveMeetingAgentDraft(draft, req, {
-      ...(proposal.stage === 'discussion' ? { discussion: after } : { actions: after }),
+      ...contentChanges,
+      staleStages: [...new Set([
+        ...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, { ...draft, ...contentChanges })
+      ])],
       pendingProposal: remainingProposal,
       changeHistory: history,
       reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [...acceptedIdSet], [])
@@ -18212,6 +18216,22 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
           ...(latest.stage === 'discussion' ? { discussion: latest.before || [] } : { actions: latest.before || [] }),
           pendingProposal: null
         };
+    // Old history entries restore only one content stage. Their downstream
+    // output remains in place, so it must be reviewed against the restored text.
+    // Full snapshots already include the matching content and stale markers.
+    if (!latest.beforeState || typeof latest.beforeState !== 'object') {
+      restored.staleStages = [...new Set([
+        ...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, { ...draft, ...restored })
+      ])];
+    }
+    // Older proposal history snapshots still carry the accepted changes.
+    // Filter those too, while keeping any suggestions the reviewer left open.
+    if (latest.type === 'ai_proposal' && restored.pendingProposal) {
+      const consumed = new Set(latest.acceptedChangeIds || []);
+      const changes = (restored.pendingProposal.changes || []).filter((change) => !consumed.has(change.id));
+      restored.pendingProposal = changes.length ? { ...restored.pendingProposal, changes } : null;
+    }
     const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory: history, redoHistory });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
@@ -18484,8 +18504,6 @@ router.stagedEvaluation = {
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,
   normaliseMeetingAgentDraftChanges,
-  normaliseAgentDiscussion,
-  normaliseAgentActions,
   meetingAgentStageInputFingerprint,
   meetingAgentStageHasContent,
   meetingAgentNextSpeculativeStage,

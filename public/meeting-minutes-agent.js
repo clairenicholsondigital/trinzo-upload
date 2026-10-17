@@ -1807,52 +1807,6 @@
     updateReviewQueueSummary();
   }
 
-  function proposalRecord(value) {
-    if (!value) return 'Removed';
-    if (value.action) return value.action + (value.owners && value.owners.length ? ' - ' + value.owners.join(', ') : '');
-    return value.topic || value.text || JSON.stringify(value);
-  }
-
-  function discussionProposalLabel(change) {
-    if (!change || !change.before || !change.after) return '';
-    function counts(topic) {
-      var records=['points','decisions','openQuestions'].flatMap(function(field){return (topic[field]||[]);});
-      return { core:records.length, supporting:records.reduce(function(total,item){return total+(item.supportingDetails||[]).length;},0) };
-    }
-    var before=counts(change.before), after=counts(change.after);
-    if(after.core<before.core && after.supporting>before.supporting) return 'Proposed merge or move to context';
-    if(after.core>before.core && after.supporting<before.supporting) return 'Proposed promotion to minutes';
-    if(after.core>before.core+1) return 'Proposed split';
-    if(after.core<before.core) return 'Proposed merge';
-    return '';
-  }
-
-  function proposalTarget(change, stage) {
-    var record = change && (change.before || change.after);
-    if (!record || !record.id || change.type === 'add') return null;
-    var rows = stage === 'discussion' ? (state.draft.discussion || []) : (state.draft.actions || []);
-    var index = rows.findIndex(function (candidate) { return candidate.id === record.id; });
-    if (index < 0) return null;
-    return stage === 'discussion'
-      ? { stage: 2, elementId: recordDomId('topic', record.id, index), selector: '[data-topic]' }
-      : { stage: 3, elementId: recordDomId('action', record.id, index), selector: '[data-action]' };
-  }
-
-  function renderProposal() {
-    // Kept as a compatibility no-op for saved drafts created by older builds.
-    // Pending changes are applied by applyPendingProposalAutomatically().
-    updateReviewQueueSummary();
-  }
-
-  function updateProposalSelection() {
-    var boxes = Array.from(document.querySelectorAll('[data-proposal-change]'));
-    var selected = boxes.filter(function (box) { return box.checked; }).length;
-    var count = document.getElementById('proposalSelectionCount');
-    var apply = document.getElementById('acceptSelectedProposal');
-    if (count) count.textContent = selected + ' of ' + boxes.length + ' selected';
-    if (apply) { apply.textContent = 'Apply selected'; apply.disabled = selected === 0; }
-  }
-
   function formatUkDate(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return value || '';
     return new Intl.DateTimeFormat('en-GB', {day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(value + 'T00:00:00Z'));
@@ -1996,7 +1950,7 @@
     detailsEditor.hidden = !state.draft;
     document.getElementById('saveStrip').hidden = !state.draft;
     if (state.draft) {
-      renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags(); renderProposal();
+      renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags();
       renderActionsPrewarm();
       var activeGenerationStage = state.draft.generation && state.draft.generation.status === 'running'
         ? state.draft.generation.stage : '';
@@ -2012,7 +1966,6 @@
         regenerateDiscussion: Boolean(activeGenerationStage),
         regenerateActions: Boolean(activeGenerationStage),
         applyActionsEdit: Boolean(activeGenerationStage),
-        auditActions: Boolean(activeGenerationStage),
         toSummary: activeGenerationStage === 'actions'
       };
       Object.keys(disabledControls).forEach(function (id) {
@@ -2117,9 +2070,9 @@
   }
 
   async function applyPendingProposalAutomatically() {
-    if (automaticProposalInFlight || !state.draft) return;
+    if (automaticProposalInFlight || !state.draft) return false;
     var proposal = state.draft.pendingProposal;
-    if (!proposal || !Array.isArray(proposal.changes) || !proposal.changes.length) return;
+    if (!proposal || !Array.isArray(proposal.changes) || !proposal.changes.length) return false;
     automaticProposalInFlight = true;
     var proposalStage = proposal.stage || currentStageName();
     draftWritesInFlight += 1;
@@ -2135,10 +2088,12 @@
       adoptDraft(payload.draft, {skipAutomaticProposal: true});
       if (payload.draft && payload.draft.lastUndo) showUndoToast(payload.draft.lastUndo.label);
       setStatus(proposalStage === 'actions' ? 'Actions updated automatically.' : 'The latest generated changes were applied automatically.', false, proposalStage);
+      return true;
     } catch (error) {
       // Keep the draft visible if the automatic merge is temporarily blocked;
       // the warning is actionable without exposing the old proposal controls.
       setStatus('The latest generated changes could not be applied automatically. ' + error.message, true, proposalStage);
+      return false;
     } finally {
       automaticProposalInFlight = false;
       endDraftWrite();
@@ -2560,8 +2515,16 @@
 
   async function runAgent(stage, instruction) {
     if (!state.draft) return false;
+    var applicationWaitMessage = 'Generated changes are still being applied. Try your edit again when they finish.';
+    if (automaticProposalInFlight) { setStatus(applicationWaitMessage, false, stage); return false; }
     try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return false; }
-    setBusy(true, instruction ? 'The agent is preparing a change preview...' : 'The agent is reviewing the prepared transcript...', stage);
+    // Saving can discover a proposal and schedule its automatic application.
+    // Keep this instruction until that earlier revision-changing write settles.
+    if (automaticProposalInFlight || (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length)) {
+      setStatus(applicationWaitMessage, false, stage);
+      return false;
+    }
+    setBusy(true, 'The agent is preparing your requested changes...', stage);
     draftWritesInFlight += 1;
     try {
       var payload; var totalAttempts = agentRetryDelaysSeconds.length + 1;
@@ -2576,62 +2539,14 @@
           if (!(error.code === 'M365_AGENT_USAGE_LIMIT' && error.retryable) || attempt === totalAttempts - 1) throw error;
         }
       }
-      adoptDraft(payload.draft);
-      if (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) await applyPendingProposalAutomatically();
-      if (instruction) { renderProposal(); setStatus('The latest generated changes will be applied automatically.', false, stage); }
-      else {
-        showStep(STAGE_STEP[stage] || 2, { scroll: true });
-        setStatus(stage === 'discussion' ? stageReadyText('discussion') : 'Action draft generated. Running the separate missed-action check next.', false, stage);
-        if (stage === 'actions') await auditActions(true);
-      }
+      adoptDraft(payload.draft, {skipAutomaticProposal: true});
+      if (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) {
+        // This path owns application, so do not also queue it from adoptDraft.
+        // Only a confirmed application can consume the edit instruction.
+        if (await applyPendingProposalAutomatically() !== true) return false;
+      } else setStatus('Your requested changes were applied.', false, stage);
       return true;
     } catch (error) { setStatus(error.message, true, stage); return false; }
-    finally { setBusy(false); endDraftWrite(); }
-  }
-
-  async function auditActions(automatic) {
-    if (!state.draft) return;
-    try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, 'Checking the transcript for missed follow-up actions...', 'actions');
-    draftWritesInFlight += 1;
-    try {
-      var payload; var totalAttempts = agentRetryDelaysSeconds.length + 1;
-      for (var attempt = 0; attempt < totalAttempts; attempt += 1) {
-        if (attempt > 0) await waitForAgentRetry(agentRetryDelaysSeconds[attempt - 1], attempt + 1, totalAttempts, 'actions');
-        try {
-          payload = await withBackgroundMerge(function () {
-            return jsonRequest(draftUrl('/audit-actions'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision})});
-          });
-          break;
-        } catch (error) {
-          if (!(error.code === 'M365_AGENT_USAGE_LIMIT' && error.retryable) || attempt === totalAttempts - 1) throw error;
-        }
-      }
-      adoptDraft(payload.draft);
-      if (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) await applyPendingProposalAutomatically();
-      setStatus(payload.proposal ? 'The completeness check found additional supported actions. Applying them automatically.' : 'The completeness check found no additional supported actions.', false, 'actions');
-    } catch (error) { setStatus((automatic ? 'The action draft is available, but the completeness check failed: ' : '') + error.message, true, 'actions'); }
-    finally { setBusy(false); endDraftWrite(); }
-  }
-
-  async function reviewProposal(decision, acceptAll) {
-    var proposal = state.draft && state.draft.pendingProposal; if (!proposal) return;
-    var proposalStage = proposal.stage || '';
-    var ids = Array.from(document.querySelectorAll('[data-proposal-change]:checked')).map(function (input) { return input.dataset.proposalChange; });
-    try { await saveDraftNow(); } catch (error) { setStatus(error.message, true); return; }
-    setBusy(true, decision === 'reject' ? 'Rejecting proposed changes...' : 'Applying selected changes...', proposalStage);
-    draftWritesInFlight += 1;
-    try {
-      var payload = await withBackgroundMerge(function () {
-        return jsonRequest(draftUrl('/proposal'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:decision,acceptAll:Boolean(acceptAll),changeIds:ids})});
-      });
-      adoptDraft(payload.draft);
-      if (payload.draft && payload.draft.lastUndo) showUndoToast(payload.draft.lastUndo.label);
-      var remaining = payload.draft && payload.draft.pendingProposal && (payload.draft.pendingProposal.changes || []).length;
-      setStatus(decision === 'reject' ? 'The generated changes were dismissed.'
-        : remaining ? 'The selected generated changes were applied.'
-          : 'The generated changes were applied.', false, proposalStage);
-    } catch (error) { setStatus(error.message, true, proposalStage); }
     finally { setBusy(false); endDraftWrite(); }
   }
 
@@ -2810,10 +2725,6 @@
   document.getElementById('clientAttendeeLabelSelect').addEventListener('change', function (event) {
     document.getElementById('clientAttendeeHeading').textContent = event.target.value === 'External' ? 'External' : 'Client';
   });
-  // Kept for drafts saved before the Focus step was removed: the button is
-  // hidden, and its index is skipped rather than renumbered so a stored
-  // currentStep still points at the screen it meant.
-  document.getElementById('toSteer').addEventListener('click', function () { readDetails(); showStep(2, { scroll: true }); });
   document.getElementById('mobileStepSelect').addEventListener('change', function (event) {
     var step = Number(event.target.value);
     if (step === MAX_STEP) { readEditors(); activeFinalEdit=null; renderFinal(); }
@@ -2870,7 +2781,6 @@
     var stage = generation ? generation.stage : completedGenerationNotice && completedGenerationNotice.stage;
     if (stage && STAGE_STEP[stage] != null) showStep(STAGE_STEP[stage], { scroll:true });
   });
-  document.getElementById('auditActions').addEventListener('click', function () { auditActions(false); });
   document.getElementById('applyDiscussionEdit').addEventListener('click', function () { var input=document.getElementById('discussionInstruction'); if (!input.value.trim()) return setStatus('Describe the discussion edits you want.',true,'discussion'); runAgent('discussion',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('addDiscussion').addEventListener('click', function () {
@@ -3568,8 +3478,6 @@
         clearStepNavigationScroll();
         target.scrollIntoView({behavior:'smooth',block:'center'});
         target.classList.add('flag-target-highlight');
-        var detail = target.querySelector('.proposal-detail');
-        if (detail) detail.open = true;
         var editor = target.querySelector(targetButton.dataset.targetSelector || 'textarea,input');
         if (editor && targetButton.dataset.targetSelector === '[data-edit-timing]') {
           editor.click();
@@ -3679,7 +3587,7 @@
       setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
       return;
     }
-    if (event.target.matches('textarea,input,select') && !event.target.closest('[data-final-editor]') && !event.target.matches('[data-proposal-change],#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
+    if (event.target.matches('textarea,input,select') && !event.target.closest('[data-final-editor]') && !event.target.matches('#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
       markUndoStep(undoLabelForField(event.target), undoGroupKeyForField(event.target));
       readEditors();
       rememberPendingActions();
@@ -3692,11 +3600,11 @@
   window.addEventListener('beforeunload', function (event) {
     if (!state.draft) return;
     var saveState = document.getElementById('saveStatus').dataset.state;
-    if (!['dirty','waiting','local-only'].includes(saveState)) return;
-    // Waiting edits cannot safely race progress writes, and an empty manual row
-    // is intentionally client-only. Be honest and let the browser warn instead
-    // of claiming a keepalive request made either state resumable.
-    if (saveState === 'waiting' || saveState === 'local-only') {
+    if (!mustKeepTabOpen(saveState)) return;
+    // Only a dirty, idle draft can attempt a final keepalive save. A request
+    // already in flight may be cancelled on close; a failed save, a pending
+    // operation or an unfinished row needs the browser's leave warning.
+    if (saveState !== 'dirty' || saveInFlight || draftWritesInFlight || pendingGenerationEdits || hasTransientEditorState()) {
       event.preventDefault();
       event.returnValue = '';
       return;

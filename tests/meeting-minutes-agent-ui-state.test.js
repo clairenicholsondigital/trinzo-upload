@@ -198,7 +198,7 @@ function startStubServer() {
       after: { id: 'partial-action-1', action: 'Confirm folder access.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'] },
       beforeIndex: 1, index: 1
     }, {
-      id: 'partial-2', type: 'add', before: null, selected: true,
+      id: 'partial-2', type: 'add', before: null, selected: false,
       after: { id: 'partial-action-2', action: 'Circulate the audit checklist.', owners: ['Alex Reed'], timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'] },
       beforeIndex: 1, index: 1
     }]
@@ -1088,7 +1088,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     assert.match(await page.textContent('#generationPhases'), /Find possible actions.*Finish the draft/s);
     assert.equal(await page.locator('.generation-phase.done').count(), 3);
     assert.equal(await page.locator('.generation-phase.active').count(), 1);
-    for (const selector of ['#addAction', '#applyActionsEdit', '#auditActions', '#toSummary']) {
+    for (const selector of ['#addAction', '#applyActionsEdit', '#toSummary']) {
       const control = page.locator(selector);
       assert.equal((await control.isHidden()) || (await control.isDisabled()), true, `${selector} is unavailable while actions run`);
     }
@@ -1531,137 +1531,200 @@ test('review checks lead with the potential minutes content and keep diagnostic 
   }
 });
 
-test.skip('manual suggestion panel is removed; generated changes are applied automatically', { timeout: 120000 }, async () => {
-  const { server, port } = await startStubServer();
-  let browser;
-  try {
-    const launched = await launchPage(port, 'proposals');
-    browser = launched.browser;
-    const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
-    assert.equal(await page.locator('.proposal-detail').isVisible(), true);
-    assert.equal(await page.locator('.proposal-content').isHidden(), true);
-    assert.match(await page.textContent('.proposal-summary'), /Confirm access to the audit folder/i);
-    assert.match(await page.textContent('#proposalSelectionCount'), /1 of 1 selected/i);
-    assert.equal(await page.textContent('#acceptSelectedProposal'), 'Apply selected');
-    assert.match(await page.textContent('#proposalPanel'), /Unticked items stay/i);
-    await page.click('.proposal-detail>summary');
-    assert.equal(await page.locator('.proposal-content').isVisible(), true);
-    await page.uncheck('[data-proposal-change]');
-    assert.equal(await page.locator('#acceptSelectedProposal').isDisabled(), true);
-    await page.click('[data-step="2"]');
-    assert.equal(await page.locator('#reviewFlags').evaluate((node) => node.open), false, 'the suggestions close between workflow screens');
-    assert.equal(await page.locator('#reviewQueueToggle').getAttribute('aria-expanded'), 'false');
-    await page.click('#reviewQueueToggle');
-    assert.equal(await page.locator('#reviewFlags').evaluate((node) => node.open), true, 'the suggestions remain expandable');
-    assert.deepEqual(errors, []);
-  } finally {
-    if (browser) await browser.close();
-    await new Promise((resolve) => server.close(resolve));
-  }
-});
-
-test.skip('manual suggestion rows are removed; generated changes are applied automatically', { timeout: 120000 }, async () => {
+test('saved generated proposals apply once, confirm linked warnings and remain applied after refresh', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];
+    const applications = [];
     page.on('pageerror', (error) => errors.push(String(error)));
-    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=proposals`);
-    await page.waitForSelector('.proposal-detail', { state: 'attached' });
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
-
-    assert.equal(await page.textContent('.proposal-heading h3'), 'Choose changes to apply');
-    assert.doesNotMatch(await page.textContent('#proposalChanges'), /Suggestion ·/i);
-    assert.match(await page.locator('.proposal-kind').first().textContent(), /New|Edit|Removal/i);
-    assert.equal(await page.locator('.proposal-kind').first().getAttribute('class'), 'proposal-kind proposal-kind-add');
-    assert.equal(await page.locator('#rejectProposal').getAttribute('class'), 'secondary');
-    const layout = await page.locator('.proposal-detail>summary').first().evaluate((node) => {
-      const label = node.querySelector('.proposal-kind').getBoundingClientRect();
-      const summary = node.querySelector('.proposal-summary');
-      const summaryBox = summary.getBoundingClientRect();
-      const screen = document.querySelector('.meeting-agent-page');
-      return {
-        summaryBelowLabel: summaryBox.top >= label.bottom - 1,
-        wraps: getComputedStyle(summary).whiteSpace === 'normal',
-        summaryWeight: getComputedStyle(summary).fontWeight,
-        detailWeight: getComputedStyle(node.parentElement.querySelector('.proposal-content')).fontWeight,
-        pageOverflow: screen.scrollWidth - screen.clientWidth
-      };
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().endsWith('/partial-proposals/proposal')) applications.push(request.postDataJSON());
     });
-    assert.equal(layout.summaryBelowLabel, true, JSON.stringify(layout));
-    assert.equal(layout.wraps, true, JSON.stringify(layout));
-    assert.equal(layout.summaryWeight, '700', JSON.stringify(layout));
-    assert.equal(layout.detailWeight, '400', JSON.stringify(layout));
-    assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
-    await page.locator('.proposal-detail>summary').first().click();
-    // The expanded view must not repeat the text the row summary already shows.
-    const repeated = await page.locator('.proposal-detail').first().evaluate((node) => {
-      const summary = node.querySelector('.proposal-summary').textContent.trim();
-      return node.querySelector('.proposal-content').textContent.includes(summary);
-    });
-    assert.equal(repeated, false);
-    assert.deepEqual(errors, []);
-  } finally {
-    if (browser) await browser.close();
-    await new Promise((resolve) => server.close(resolve));
-  }
-});
-
-test.skip('missing-content proposals are applied automatically', { timeout: 120000 }, async () => {
-  const { server, port } = await startStubServer();
-  let browser;
-  try {
-    const launched = await launchPage(port, 'proposals');
-    browser = launched.browser;
-    const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
-    const suggestion = page.locator('#minutes-proposal-proposal-1');
-    await suggestion.waitFor();
-    assert.equal(await page.locator('.flag').filter({ hasText: 'Confirm access to the audit folder.' }).count(), 0);
-    assert.match(await page.textContent('#proposalPanel'), /choose changes to apply/i);
-    assert.match(await suggestion.textContent(), /Confirm access to the audit folder/i);
-    assert.equal(await page.textContent('#acceptSelectedProposal'), 'Apply selected');
-    assert.deepEqual(errors, []);
-  } finally {
-    if (browser) await browser.close();
-    await new Promise((resolve) => server.close(resolve));
-  }
-});
-
-test.skip('proposal selection is removed; generated changes are applied automatically', { timeout: 120000 }, async () => {
-  const { server, port } = await startStubServer();
-  let browser;
-  try {
-    const launched = await launchPage(port, 'partial-proposals');
-    browser = launched.browser;
-    const { page, errors } = launched;
-    if (!await page.locator('#reviewFlags').evaluate((node) => node.open)) await page.click('#reviewQueueToggle');
-    const boxes = page.locator('[data-proposal-change]');
-    await boxes.nth(1).uncheck();
-    const applied = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/partial-proposals/proposal'));
-    await page.click('#acceptSelectedProposal');
-    await applied;
-    await page.waitForFunction(() => document.querySelectorAll('[data-proposal-change]').length === 1);
-    assert.equal(await page.locator('[data-proposal-change]').count(), 1);
-    assert.equal(await page.locator('[data-proposal-change]').isChecked(), false);
-    assert.match(await page.textContent('.proposal-summary'), /Circulate the audit checklist/i);
-    let saved = await page.evaluate(async () => (await (await fetch('/test-state/partial-proposals')).json()).draft);
-    assert.deepEqual(saved.pendingProposal.changes.map((change) => change.id), ['partial-2']);
-    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-partial-1').status, 'confirmed');
-    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-partial-2').status, 'open');
-
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=partial-proposals`);
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 3);
+    const saved = await page.evaluate(async () => (await (await fetch('/test-state/partial-proposals')).json()).draft);
+    assert.equal(saved.pendingProposal, null);
+    assert.deepEqual(saved.actions.map((action) => action.id), ['action-1', 'partial-action-1', 'partial-action-2']);
+    assert.equal(saved.reviewFlags.filter((flag) => flag.id.startsWith('proposal-review-') && flag.status === 'confirmed').length, 2);
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'open', 'unrelated source checks remain open');
+    assert.deepEqual(applications, [{ revision: 3, decision: 'accept', acceptAll: true, changeIds: [] }]);
+    assert.equal(await page.locator('#undoLastDecision').isVisible(), true);
+    assert.equal(await page.locator('#proposalPanel,[data-proposal-change]').count(), 0);
+    assert.equal(await page.textContent('#applyActionsEdit'), 'Apply changes');
+    assert.equal(await page.textContent('#applyDiscussionEdit'), 'Apply changes');
+    assert.equal(await page.locator('.agent-edit-body').filter({ hasText: 'Generated changes are applied automatically. You can undo them afterwards.' }).count(), 2);
     await page.reload();
-    await page.waitForFunction(() => document.querySelectorAll('[data-proposal-change]').length === 1);
-    assert.equal(await page.locator('[data-proposal-change]').isChecked(), false, 'unchecked state survives refresh');
-    assert.match(await page.textContent('.proposal-summary'), /Circulate the audit checklist/i);
-    saved = await page.evaluate(async () => (await (await fetch('/test-state/partial-proposals')).json()).draft);
-    assert.equal(saved.pendingProposal.changes[0].id, 'partial-2');
-    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-partial-2').status, 'open');
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 3);
+    assert.equal(applications.length, 1, 'refresh cannot apply an already consumed proposal again');
     assert.deepEqual(errors, []);
   } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('failed automatic proposal application preserves the draft and can recover on reload', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.route('**/drafts/proposals/proposal', (route) => route.fulfill({
+      status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporarily unavailable' })
+    }));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=proposals`);
+    await page.waitForFunction(() => document.getElementById('workflowStatus').textContent.includes('could not be applied automatically'));
+    assert.equal(await page.locator('#workflowStatus').isVisible(), true);
+    assert.equal(await page.locator('#actionsBody [data-action]').count(), 1);
+    let saved = await page.evaluate(async () => (await (await fetch('/test-state/proposals')).json()).draft);
+    assert.equal(saved.pendingProposal.changes.length, 1);
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'proposal-review-proposal-1').status, 'open');
+    await page.unroute('**/drafts/proposals/proposal');
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 2);
+    saved = await page.evaluate(async () => (await (await fetch('/test-state/proposals')).json()).draft);
+    assert.equal(saved.pendingProposal, null);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a failed AI edit application keeps its error and the instruction available to retry', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.route('**/api/meeting-minutes-agent/generate', async (route) => {
+      const saved = await (await page.request.get(`http://127.0.0.1:${port}/test-state/editor`)).json();
+      const proposed = await (await page.request.get(`http://127.0.0.1:${port}/test-state/proposals`)).json();
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        ok: true, draft: { ...saved.draft, pendingProposal: proposed.draft.pendingProposal }
+      }) });
+    });
+    await page.route('**/drafts/editor/proposal', (route) => route.fulfill({
+      status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Application unavailable' })
+    }));
+    await page.locator('[data-screen="3"] .agent-edit>summary').click();
+    await page.fill('#actionsInstruction', 'Include the audit folder follow-up.');
+    const application = page.waitForResponse((response) => response.url().endsWith('/editor/proposal'));
+    await page.click('#applyActionsEdit');
+    await application;
+    await page.waitForFunction(() => !document.body.classList.contains('busy'));
+    assert.match(await page.textContent('#workflowStatus'), /could not be applied automatically.*Application unavailable/i);
+    assert.equal(await page.locator('#workflowStatus').evaluate((node) => node.classList.contains('error')), true);
+    assert.equal(await page.inputValue('#actionsInstruction'), 'Include the audit folder follow-up.');
+    assert.equal(await page.locator('#actionsBody [data-action]').count(), 1);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('an AI edit waits for an automatic proposal already in flight and retains its instruction', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  let releaseApplication;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const errors = [];
+    const generations = [];
+    let applications = 0;
+    page.on('pageerror', (error) => errors.push(String(error)));
+    const heldApplication = new Promise((resolve) => { releaseApplication = resolve; });
+    await page.route('**/drafts/proposals/proposal', async (route) => {
+      applications += 1;
+      await heldApplication;
+      await route.continue();
+    });
+    await page.route('**/api/meeting-minutes-agent/generate', async (route) => {
+      generations.push(route.request().postDataJSON());
+      const saved = await (await page.request.get(`http://127.0.0.1:${port}/test-state/proposals`)).json();
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, draft: saved.draft }) });
+    });
+    const applicationStarted = page.waitForRequest((request) => request.url().endsWith('/proposals/proposal'));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=proposals`);
+    await applicationStarted;
+    await page.locator('[data-screen="3"] .agent-edit>summary').click();
+    await page.fill('#actionsInstruction', 'Clarify the report recipient.');
+    await page.click('#applyActionsEdit');
+    // Both the rejected edit and the old erroneous success settle visibly;
+    // no arbitrary sleep is needed to distinguish them.
+    await page.waitForFunction(() => document.getElementById('workflowStatus').textContent.includes('still being applied')
+      || (!document.body.classList.contains('busy') && document.getElementById('actionsInstruction').value === ''));
+    assert.equal(generations.length, 0, 'generation cannot overlap the earlier revision-changing application');
+    assert.equal(applications, 1, 'the active proposal is not submitted again');
+    assert.equal(await page.inputValue('#actionsInstruction'), 'Clarify the report recipient.');
+    assert.match(await page.textContent('#workflowStatus'), /still being applied/i);
+    releaseApplication();
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 2
+      && document.getElementById('saveStatus').dataset.state === 'saved');
+    assert.equal(await page.inputValue('#actionsInstruction'), 'Clarify the report recipient.', 'completion of the earlier proposal cannot consume an unstarted edit');
+    assert.equal(generations.length, 0);
+    assert.equal(applications, 1);
+    await page.click('#applyActionsEdit');
+    await page.waitForFunction(() => document.getElementById('actionsInstruction').value === '');
+    assert.equal(generations.length, 1, 'the same edit can proceed once the earlier application finishes');
+    assert.equal(generations[0].instruction, 'Clarify the report recipient.');
+    assert.equal(applications, 1, 'retry does not reapply the consumed proposal');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (releaseApplication) releaseApplication();
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('leaving warns while a save is in flight or has failed, and stops warning after a confirmed save', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  let releaseSave;
+  try {
+    const launched = await launchPage(port, 'editor');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="0"]');
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'saved');
+    const heldSave = new Promise((resolve) => { releaseSave = resolve; });
+    await page.route('**/drafts/editor', async (route) => {
+      if (route.request().method() === 'PATCH') await heldSave;
+      await route.continue();
+    });
+    const shouldWarn = () => page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    await page.fill('#meetingTitle', 'Unsaved meeting title');
+    await page.click('#replaceTranscript');
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'saving');
+    assert.equal(await shouldWarn(), true, 'an ordinary in-flight PATCH is not guaranteed to finish after the tab closes');
+    releaseSave();
+    await page.locator('#newTranscriptDialog').waitFor({ state: 'visible' });
+    await page.locator('#newTranscriptDialog button[value="cancel"]').click();
+    assert.equal(await shouldWarn(), false, 'a confirmed save is safe to leave');
+    await page.unroute('**/drafts/editor');
+    await page.route('**/drafts/editor', (route) => route.request().method() === 'PATCH'
+      ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Save unavailable' }) })
+      : route.continue());
+    await page.fill('#meetingTitle', 'Still unsaved after failure');
+    await page.click('#replaceTranscript');
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'error');
+    assert.equal(await shouldWarn(), true, 'a failed save must not silently permit losing the reviewer edits');
+    assert.equal(await page.inputValue('#meetingTitle'), 'Still unsaved after failure');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (releaseSave) releaseSave();
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
   }
@@ -2239,7 +2302,6 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.ok(Math.abs(actionLayout.toolbarWidth - actionLayout.actionsWidth) < 2, JSON.stringify(actionLayout));
     assert.ok(actionLayout.regenerateWidth > actionLayout.actionsWidth * 0.28, JSON.stringify(actionLayout));
     assert.ok(actionLayout.screenOverflow <= 1, JSON.stringify(actionLayout));
-    assert.match(await page.textContent('#auditActions'), /Check transcript for more actions/i);
     await page.click('#regenerateActions');
     assert.equal(await page.textContent('#regenerationTitle'), 'Regenerate actions?');
     assert.match(await page.textContent('#regenerationMessage'), /current action list stays visible/i);

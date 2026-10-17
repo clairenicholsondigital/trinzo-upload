@@ -360,21 +360,6 @@ function evidenceSupportScore(claim, evidence) {
   return Math.max(0, (lexical * 0.55) + (materialCoverage * 0.45) - polarityPenalty);
 }
 
-function speakerMentionsSupported(claim, evidence, units = [], suppliedSpeakerTokens = null) {
-  const claimWords = new Set(contentTokens(claim));
-  const evidenceWords = new Set(contentTokens(evidence));
-  const speakers = suppliedSpeakerTokens || [...new Set((Array.isArray(units) ? units : []).map((unit) => text(unit?.speaker, 180)).filter(Boolean))]
-    .map((speaker) => contentTokens(speaker)).filter((tokens) => tokens.length);
-  for (const speakerWords of speakers) {
-    if (!speakerWords.length) continue;
-    const mentioned = speakerWords.length === 1
-      ? claimWords.has(speakerWords[0])
-      : speakerWords.every((word) => claimWords.has(word));
-    if (mentioned && !speakerWords.some((word) => evidenceWords.has(word))) return false;
-  }
-  return true;
-}
-
 const ACTION_VERB_GROUPS = [
   ['send', 'share', 'provide', 'forward', 'circulate', 'email', 'issue', 'deliver', 'submit'],
   ['review', 'check', 'assess', 'inspect', 'evaluate', 'analyse', 'audit'],
@@ -595,10 +580,6 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     weakIds: suppliedScore >= 0.2 || (remappedIds.length && remapBestScore >= 0.28) ? [] : validIds,
     supportScore: bestScore
   });
-}
-
-function evidenceIdsFor(value, units = [], supplied = []) {
-  return resolveEvidence(value, units, supplied).evidenceIds;
 }
 
 // How the meeting was run, not what it decided. These lines are real speech and
