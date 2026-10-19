@@ -86,7 +86,7 @@ const {
   repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
-const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const { mergeCommitmentDuplicates, commitmentDetailsCovered } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const { actionIsLosslesslyCovered, exactActionIdentityConflict, conflictingTimings, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
@@ -9581,15 +9581,23 @@ function meetingMinutesAgentRecoveryPrompt({ stage, transcript, details, current
   ].join('\n\n');
 }
 
-function meetingMinutesAgentRefereeContract(stage, candidates = [], requestId = crypto.randomUUID()) {
+function meetingMinutesAgentRefereeContract(stage, candidates = [], requestId = crypto.randomUUID(), options = {}) {
   const isDiscussion = stage === 'discussion';
-  const supplied = meetingAgentRefereeCandidates(stage, candidates);
-  return {
+  // Select once from discovery. Batches and repairs are exact subsets of that
+  // selection, never another opportunity to cluster away a supplied identity.
+  const copied = structuredClone(candidates);
+  const supplied = options.selected ? copied : meetingAgentRefereeCandidates(stage, copied);
+  const retainedDiscussionTargets = structuredClone(options.retainedDiscussionTargets || []);
+  return Object.freeze({
     requestId,
     stage: isDiscussion ? 'DISCUSSION_REFEREE' : 'ACTION_REFEREE',
-    candidates: supplied,
-    expectedCandidateIds: supplied.map((candidate) => candidate.candidateId)
-  };
+    candidates: Object.freeze(supplied.map((candidate) => Object.freeze(candidate))),
+    expectedCandidateIds: Object.freeze(supplied.map((candidate) => candidate.candidateId)),
+    ...(retainedDiscussionTargets.length ? {
+      retainedDiscussionTargets: Object.freeze(retainedDiscussionTargets.map((target) => Object.freeze(target))),
+      knownDiscussionTargetIds: Object.freeze(retainedDiscussionTargets.map((target) => target.targetId))
+    } : {})
+  });
 }
 
 function compactMeetingAgentRefereeCandidate(candidate = {}) {
@@ -9719,8 +9727,8 @@ function meetingAgentRefereeEvidencePacket(sourceUnits = [], candidates = [], tr
   };
 }
 
-function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [], candidates, requestId }) {
-  const contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId);
+function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [], candidates, requestId,
+  contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId) }) {
   const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, contract.candidates, transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
@@ -9741,8 +9749,8 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
   ].join('\n\n');
 }
 
-function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits = [], candidates, requestId }) {
-  const contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId);
+function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits = [], candidates, requestId,
+  contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId) }) {
   const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, contract.candidates, transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
@@ -9752,6 +9760,11 @@ function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits
     // Without this marker it can interpret a one-candidate repair payload as
     // another ordinary referee run and return an empty/default disposition.
     repairAttempt: true,
+    ...(contract.retainedDiscussionTargets?.length ? {
+      // Reference context only: these valid siblings are not part of the
+      // repair subset and must not be counted or classified again.
+      existingDiscussionTargets: contract.retainedDiscussionTargets
+    } : {}),
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
     candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
@@ -10540,6 +10553,21 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   const dispositionValid = (item) => allowed.has(item?.disposition || item?.classification)
     && Boolean(meetingMinutesAgentText(item?.reason, 500))
     && Array.isArray(item?.evidenceIds);
+  const coreTargets = new Set([
+    ...(contract.knownDiscussionTargetIds || []),
+    ...dispositions.filter((item) => (item.disposition || item.classification) === 'core')
+      .map((item) => refereeDiscussionTargetId(item) || String(item.candidateId || '')),
+    ...flattenHybridDiscussion(result?.discussion || []).map((item) => String(item.record?.id || ''))
+  ].filter(Boolean));
+  const targetValid = (item) => {
+    if (contract.stage !== 'DISCUSSION_REFEREE') return true;
+    const kind = item?.disposition || item?.classification;
+    if (!['merge', 'supporting'].includes(kind)) return true;
+    const target = refereeDiscussionTargetId(item);
+    // Untargeted context can remain supporting. A merge must identify a real
+    // primary target; a typo must trigger the existing subset-repair path.
+    return !target ? kind === 'supporting' : coreTargets.has(target);
+  };
   const counts = new Map();
   for (const disposition of dispositions) {
     const candidateId = meetingMinutesAgentText(disposition?.candidateId, 160);
@@ -10565,6 +10593,9 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   } else if (route === 'structured_prompt' && dispositions.some((item) => !dispositionValid(item))) {
     message = 'The structured evidence referee returned an incomplete or stage-incompatible candidate disposition.';
     code = 'invalid_referee_disposition';
+  } else if (route === 'structured_prompt' && dispositions.some((item) => !targetValid(item))) {
+    message = 'The discussion referee referenced a missing primary target.';
+    code = 'invalid_referee_target';
   } else if (route === 'unknown') {
     message = 'The evidence referee response matched neither the structured Prompt contract nor the connected-agent fallback contract.';
     code = 'invalid_referee_contract';
@@ -10578,8 +10609,12 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   error.unexpectedCandidateIds = unexpected;
   error.validCandidateDispositions = dispositions.filter((item) => {
     const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
-    return expectedIds.includes(candidateId) && counts.get(candidateId) === 1 && dispositionValid(item);
+    return expectedIds.includes(candidateId) && counts.get(candidateId) === 1
+      && dispositionValid(item) && targetValid(item);
   });
+  if (code === 'invalid_referee_target') {
+    error.invalidCandidateIds = dispositions.filter((item) => !targetValid(item)).map((item) => item.candidateId);
+  }
   if (code === 'invalid_referee_disposition') {
     const invalid = dispositions.filter((item) => !dispositionValid(item));
     error.invalidCandidateIds = [...new Set(invalid
@@ -11743,18 +11778,20 @@ function hybridActionType(value = '') {
   if (['automate', 'script'].includes(verb)) return 'automation';
   if (['send', 'share', 'provide', 'forward', 'circulate', 'email', 'issue', 'deliver', 'submit'].includes(verb)) return 'transmission';
   if (['review', 'check', 'assess', 'inspect', 'evaluate', 'analyse', 'audit'].includes(verb)) return 'review';
-  if (['create', 'produce', 'prepare', 'draft', 'develop', 'build', 'write', 'compile'].includes(verb)) return 'creation';
-  if (['update', 'revise', 'amend', 'change', 'edit'].includes(verb)) return 'update';
+  if (['create', 'produce', 'prepare', 'draft', 'develop', 'build', 'write', 'compile', 'document', 'record'].includes(verb)) return 'creation';
+  if (['update', 'revise', 'amend', 'change', 'edit', 'add'].includes(verb)) return 'update';
   if (['complete', 'finish', 'finalise', 'finalize', 'close', 'sign', 'attest'].includes(verb)) return 'completion';
   if (['test', 'verify', 'validate', 'run', 'rerun'].includes(verb)) return 'testing';
   if (['schedule', 'arrange', 'book', 'organise', 'coordinate', 'plan'].includes(verb)) return 'planning';
   return verb;
 }
 
-function hybridActionTypes(value = '') {
+function hybridActionTypes(value = '', { includeDocumentation = false } = {}) {
   const source = meetingMinutesAgentText(value, 1600).toLowerCase();
-  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(ask|confirm|clarify|determine|decide|resolve|figure out|work out|trace|find|identify|investigate|source|fix|repair|remediate|split|separate|divide|classify|categorise|categorize|automate|script|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|update|revise|amend|change|edit|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
-  return new Set([...matches].map((match) => hybridActionType(match[1])).filter(Boolean));
+  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then|to)\s+)(ask|confirm|clarify|determine|decide|resolve|figure out|work out|trace|find|identify|investigate|source|fix|repair|remediate|split|separate|divide|classify|categorise|categorize|automate|script|send|share|provide|forward|circulate|email|issue|deliver|submit|review|check|assess|inspect|evaluate|analyse|audit|create|produce|prepare|draft|develop|build|write|compile|document|record|update|revise|amend|change|edit|add|correct|complete|finish|finalise|finalize|close|sign|attest|test|verify|validate|run|rerun|schedule|arrange|book|organise|coordinate|plan)\b/g);
+  return new Set([...matches]
+    .filter((match) => includeDocumentation || !['add', 'document', 'record'].includes(match[1]))
+    .map((match) => hybridActionType(match[1])).filter(Boolean));
 }
 
 function hybridActionsEquivalent(left = '', right = '') {
@@ -11764,7 +11801,7 @@ function hybridActionsEquivalent(left = '', right = '') {
   return hybridTokenOverlap(left, right) >= 0.55;
 }
 
-function strictActionDeliverableMatch(left = {}, right = {}) {
+function strictActionDeliverableMatch(left = {}, right = {}, options = {}) {
   const leftOwners = (left.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
   const rightOwners = (right.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
   if (leftOwners.length && rightOwners.length && !leftOwners.some((owner) => rightOwners.includes(owner))) return false;
@@ -11773,8 +11810,8 @@ function strictActionDeliverableMatch(left = {}, right = {}) {
   const leftText = meetingMinutesAgentText(left.action, 1600);
   const rightText = meetingMinutesAgentText(right.action, 1600);
   if (leftText.toLowerCase() === rightText.toLowerCase()) return true;
-  const leftTypes = hybridActionTypes(leftText);
-  const rightTypes = hybridActionTypes(rightText);
+  const leftTypes = hybridActionTypes(leftText, options);
+  const rightTypes = hybridActionTypes(rightText, options);
   if (leftTypes.size && rightTypes.size
     && ![...leftTypes].some((type) => rightTypes.has(type))) return false;
   if (!leftTypes.size || !rightTypes.size) {
@@ -11841,8 +11878,10 @@ function reconcileFinalApprovedActions(published = [], approved = []) {
       && !actionContainmentConflict(record, existing)
       && !isReviewerAuthored(existing)
       && (actionIsLosslesslyCovered(record, existing)
-        || (!sameActionText(record, existing) && strictActionDeliverableMatch(record, existing)
-          && strictActionDeliverableMatch(existing, record))
+        || (!sameActionText(record, existing)
+          && strictActionDeliverableMatch(record, existing, { includeDocumentation: true })
+          && strictActionDeliverableMatch(existing, record, { includeDocumentation: true })
+          && commitmentDetailsCovered(record, existing))
         || (!sameActionText(record, existing) && sameCanonicalDocumentWorkflow(record, existing)
           && sameOrNestedActionDeliverable(record, existing)))));
     if (represented) continue;
@@ -12301,6 +12340,14 @@ function publishedActionCoversProposal(published = {}, proposal = {}) {
     || (decisionThroughExecution && contentOverlap >= 0.48);
 }
 
+function meetingAgentCommitmentRecheckNeeded(record = {}, published = []) {
+  return isClientReadyActionWording(record.action) && !isMeetingAdminAction(record.action)
+    // Similarity is not coverage: two reviews can share an owner, citations
+    // and nearly all their words while naming different documents. Uncertain
+    // paraphrases should reach the existing quote check instead of vanishing.
+    && !published.some((existing) => actionIsLosslesslyCovered(record, existing));
+}
+
 function hybridCandidateMatchesRecord(candidate, record) {
   if (record?._recordType && candidate?.recordType && record._recordType !== candidate.recordType) return false;
   const candidateAction = candidate.record || { action: candidate?.text, evidenceIds: candidate?.evidenceIds };
@@ -12514,7 +12561,7 @@ const DOCUMENT_WORKFLOW_VERBS = new Set([
   'complete', 'create', 'draft', 'finalise', 'finalize', 'prepare', 'review', 'revise', 'update'
 ]);
 const DOCUMENT_WORKFLOW_OBJECTS = new Set([
-  'contract', 'deck', 'document', 'file', 'form', 'invoice', 'manual', 'matrix',
+  'checklist', 'contract', 'deck', 'document', 'file', 'form', 'invoice', 'manual', 'matrix',
   'minutes', 'pack', 'plan', 'presentation', 'proposal', 'report', 'schedule',
   'spreadsheet', 'tracker'
 ]);
@@ -12653,6 +12700,7 @@ function documentWorkflowTokens(value = '') {
   const stop = new Set(['a', 'an', 'and', 'before', 'for', 'from', 'in', 'into', 'of', 'on', 'the', 'then', 'to', 'with',
     ...DELIVERY_BUNDLE_VERBS, ...DOCUMENT_WORKFLOW_VERBS, 'updated', 'revised', 'prepared', 'completed']);
   return new Set((meetingMinutesAgentText(value, 1600).toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || [])
+    .filter((word) => !stop.has(word))
     .map((word) => word.replace(/(?:ing|ed|es|s)$/, ''))
     .filter((word) => !stop.has(word)));
 }
@@ -12672,12 +12720,21 @@ function sameDocumentDeliveryWorkflow(left = {}, right = {}) {
   };
   const workTiming = timingSignature(work); const deliveryTiming = timingSignature(delivery);
   if (workTiming && deliveryTiming && workTiming !== deliveryTiming) return false;
-  const a = documentWorkflowTokens(work.action); const b = documentWorkflowTokens(delivery.action);
+  // Compare the documents, not shared project/context wording or the named
+  // recipient. A site visit can require several unrelated deliverables.
+  const a = documentWorkflowTokens(work.action);
+  const b = documentWorkflowTokens(actionDeliveryFrame(delivery).object);
   const shared = [...a].filter((word) => b.has(word));
+  const sharedDocument = [...DOCUMENT_WORKFLOW_OBJECTS]
+    .some((word) => shared.includes(word.replace(/(?:ing|ed|es|s)$/, '')));
+  if (!sharedDocument) return false;
+  // A common document noun and project words still do not identify two
+  // differently qualified reports. Keep qualifiers when proving nesting.
+  if (![...a].every((word) => b.has(word)) && ![...b].every((word) => a.has(word))) return false;
   if (shared.length >= 2) return true;
   const deliveryEvidence = new Set(delivery.evidenceIds || []);
   const sharedEvidence = (work.evidenceIds || []).some((id) => deliveryEvidence.has(id));
-  return sharedEvidence && shared.some((word) => DOCUMENT_WORKFLOW_OBJECTS.has(word));
+  return sharedEvidence && (a.size === 1 || b.size === 1);
 }
 
 function mergeDocumentDeliveryWorkflow(left = {}, right = {}) {
@@ -12831,6 +12888,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       || (preference(record) === preference(duplicate)
         && String(record.action || '').localeCompare(String(duplicate.action || '')) < 0)
       ? record : duplicate;
+    const recordDetailsCovered = commitmentDetailsCovered(record, duplicate);
+    const duplicateDetailsCovered = commitmentDetailsCovered(duplicate, record);
+    if (recordDetailsCovered !== duplicateDetailsCovered) {
+      preferred = recordDetailsCovered ? duplicate : record;
+    }
     if (complementaryDuplicate === duplicate) {
       preferred = { ...preferred, action: mergeComplementaryDocumentWording(record, duplicate) };
     }
@@ -13305,8 +13367,9 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
   for (const [targetId, group] of groups) {
     if (existingIds.has(targetId)) continue;
     const eligible = group.filter((item) => item.kind === 'core');
-    const pool = eligible.length ? eligible : group;
-    const selected = [...pool].sort((left, right) =>
+    // An invalid merge reference is unresolved checking, not permission to
+    // promote its supporting material into a new primary proposition.
+    const selected = [...eligible].sort((left, right) =>
       Number(sourceRank[right.candidate.sourcePass] || 0) - Number(sourceRank[left.candidate.sourcePass] || 0)
       || Number(typeRank[right.candidate.recordType] || 0) - Number(typeRank[left.candidate.recordType] || 0)
       || Number(right.candidate.priority || 0) - Number(left.candidate.priority || 0)
@@ -15111,14 +15174,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const batches = (plan.batches || []).map((batch) => Object.freeze([...(batch || [])]));
     const passProvenanceStart = passProvenance.length;
     const completedPassesStart = completedPasses.length;
-    const executeBatch = async (batchCandidates, batchIndex) => {
+    const executeBatch = async (selectedBatchCandidates, batchIndex) => {
       const globalBatch = plan.mode === 'global';
       const batchLabel = globalBatch ? 'global' : String(batchIndex + 1);
       const batchContract = globalBatch
         ? refereeContract
         : meetingMinutesAgentRefereeContract(
-          stage, batchCandidates, `${refereeContract.requestId}:batch:${batchIndex + 1}`
+          stage, selectedBatchCandidates, `${refereeContract.requestId}:batch:${batchIndex + 1}`, { selected: true }
         );
+      const batchCandidates = batchContract.candidates;
       const initialPass = `referee-${globalBatch ? 'global' : `batch-${batchIndex + 1}`}`;
       const repairPass = `referee-${globalBatch ? 'global-repair' : `repair-${batchIndex + 1}`}`;
       const batchUnresolvedIds = [];
@@ -15129,7 +15193,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           stage, transcript, sourceUnits: draft.sourceUnits, details,
           discussion: stage === 'actions' ? (draft.discussion || []) : [],
           candidates: batchCandidates, allCandidates: suppliedRefereeCandidates,
-          salientDetails, requestId: batchContract.requestId
+          salientDetails, requestId: batchContract.requestId, contract: batchContract
         }), {
           optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: batchContract,
           requestId: batchContract.requestId, candidateCount: batchCandidates.length,
@@ -15153,7 +15217,17 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         // after merge and needlessly triggers the old multi-batch fallback.
         const repairCandidates = meetingAgentRefereeRepairCandidates(batchCandidates, retainedValid);
         const repairContract = meetingMinutesAgentRefereeContract(
-          stage, repairCandidates, `${batchContract.requestId}:repair`
+          stage, repairCandidates, `${batchContract.requestId}:repair`, {
+            selected: true,
+            retainedDiscussionTargets: [
+              ...(batchContract.retainedDiscussionTargets || []),
+              ...retainedValid.filter((item) => (item.disposition || item.classification) === 'core')
+                .map((item) => ({
+                  ...compactMeetingAgentRefereeCandidate(batchCandidates.find((candidate) => candidate.candidateId === item.candidateId)),
+                  targetId: refereeDiscussionTargetId(item) || String(item.candidateId || '')
+                }))
+            ]
+          }
         );
         let repairError = null;
         const repaired = await call(repairPass,
@@ -15161,7 +15235,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             stage, transcript, sourceUnits: draft.sourceUnits, details,
             discussion: stage === 'actions' ? (draft.discussion || []) : [],
             candidates: repairCandidates, allCandidates: suppliedRefereeCandidates,
-            salientDetails, requestId: repairContract.requestId
+            salientDetails, requestId: repairContract.requestId, contract: repairContract
           }), {
             optional: true, maxAttempts: 1, responseKind: 'referee', refereeContract: repairContract,
             requestId: repairContract.requestId, candidateCount: repairCandidates.length,
@@ -16008,13 +16082,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     // quote-verified look: actions the keyword reading vetoed and, when
     // enabled, the model's own proposals. A proposal is published only with a
     // verified commitment quote and a named owner the passage supports.
-    const sameOwner = (left, right) => (left.owners || []).some((owner) => (right.owners || [])
-      .some((other) => String(other).toLowerCase() === String(owner).toLowerCase()));
-    const sharesLine = (left, right) => (left.evidenceIds || []).some((id) => (right.evidenceIds || []).includes(id));
-    // Part of a published action (same owner, same transcript lines) is not new work.
-    const notPublished = (record) => isClientReadyActionWording(record.action) && !isMeetingAdminAction(record.action)
-      && !automatic.some((existing) => hybridActionsEquivalent(record.action, existing.action)
-        || (sameOwner(record, existing) && sharesLine(record, existing)));
+    const notPublished = (record) => meetingAgentCommitmentRecheckNeeded(record, automatic);
     const deterministic = [...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop];
     const covered = [...automatic, ...singleSource, ...critic.actions, ...salvage.actions, ...deterministic, ...agentDeclaredProposals];
     const vetoRecheck = dedupeHybridActionRecords(vetoedModelActions.filter((record) => notPublished(record)
@@ -18533,6 +18601,7 @@ router.stagedEvaluation = {
   effectiveDiscussionRefereeDispositions,
   discussionRefereeSufficiency,
   meetingMinutesAgentRefereeContract,
+  meetingAgentCommitmentRecheckNeeded,
   meetingAgentRefereeEvidencePacket,
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,

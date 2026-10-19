@@ -3869,6 +3869,9 @@ function addressedRequestAccepted(owner, lines = []) {
 // chair taking the work on. True when the named person speaks in the passage
 // only to ask others, never committing themselves.
 const OWNER_REQUESTS_OTHERS = /\b(?:can|could|would|will)\s+you\b|\byou(?:'d|’d|\s+would|\s+need|\s+should|'re|’re|\s+are)\b/i;
+// Needing a completed document is still receiving work, not undertaking it.
+// Keep "need to complete" distinct from "need the completed ...".
+const OWNER_NEEDS_OBJECT = /\bi(?:['’]ll|['’]m\s+going\s+to|\s+(?:will|shall|can|could|would|might|may|am\s+going\s+to))?\s+(?:(?:also|just|really|still)\s+){0,2}(?:need|want|require)\s+(?!\s*to\b)/i;
 function ownerOnlyAsksOthers(owner, lines = []) {
   const names = nameParts(owner);
   const own = lines.filter((line) => nameParts(line?.speaker).some((part) => names.includes(part)));
@@ -3937,7 +3940,8 @@ function ownerTakesItOn(owner, lines = [], actionText = '', people = []) {
     if (accepts && !firstPerson) {
       const requestContext = [lines[index - 2], lines[index - 1]].filter(Boolean)
         .map((row) => String(row.text || '')).join(' ');
-      if (!commitmentIsAboutAction(requestContext, actionText)) continue;
+      if (!names.some((name) => addressedRequestTo(name, requestContext))
+        || !commitmentIsAboutAction(requestContext, actionText)) continue;
       return true;
     }
     if (!contested) return true;
@@ -3985,7 +3989,9 @@ function applyRequesterOwnerRule(actions = [], units = []) {
         return nameParts(line?.speaker).some((part) => person.parts.includes(part))
           && (OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value))
           && !OWNER_REQUESTS_OTHERS.test(value)
+          && !OWNER_NEEDS_OBJECT.test(value)
           && !namesOwner
+          && actionPredicateSupported(action?.action, value)
           && sharedSubjectWords(value, action?.action) >= 2;
       }));
     // Two more positive signs that the work sits with somebody else, both from
