@@ -1118,6 +1118,50 @@ test('a reviewer-visible action register is normalised without being deduplicate
   assert.deepEqual(saved.actions.map((action) => action.id), ['a1', 'a2']);
 });
 
+test('reviewer saves retain authored provenance and the complete visible discussion register', () => {
+  const point = { id: 'p1', text: 'Sam will review the report.', evidenceIds: [], reviewerAuthored: true,
+    supportingDetails: [{ id: 'd1', text: 'Sam joked about the weekend.', reviewerAuthored: true }] };
+  const input = { discussion: [{
+    id: 't1', topic: 'Action items', reviewerAuthored: true, confirmedTopic: true,
+    points: [point, { ...point, id: 'p2' }], decisions: [{ ...point, id: 'decision1' }], openQuestions: []
+  }], actions: [{
+    id: 'a1', action: 'Think about the review options and come back with an idea.',
+    reviewerAuthored: true, owners: [], evidenceIds: []
+  }] };
+  const saved = normaliseAgentResult(input, [], '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true });
+  assert.equal(saved.discussion[0].reviewerAuthored, true);
+  assert.equal(saved.discussion[0].confirmedTopic, true);
+  assert.deepEqual(saved.discussion[0].points.map((row) => row.id), ['p1', 'p2']);
+  assert.equal(saved.discussion[0].decisions[0].id, 'decision1');
+  assert.equal(saved.discussion[0].points[0].reviewerAuthored, true);
+  assert.equal(saved.discussion[0].points[0].supportingDetails[0].reviewerAuthored, true);
+  assert.equal(saved.actions[0].reviewerAuthored, true);
+  assert.equal(saved.actions[0].action, input.actions[0].action);
+  assert.equal(input.discussion[0].points.length, 2, 'normalisation leaves the caller input unchanged');
+});
+
+test('generated records cannot declare themselves reviewer-authored to bypass cleanup', () => {
+  const units = normaliseSourceUnits([{ id: 'T0880', speaker: 'Sam', text: 'I will send the revised report.', classification: 'keep' }]);
+  const result = normaliseAgentResult({
+    discussion: [{ topic: 'Report status', reviewerAuthored: true, confirmedTopic: true,
+      points: [{ text: 'The report is ready.', evidenceIds: ['T0880'], reviewerAuthored: true,
+        supportingDetails: [{ text: 'The revised report is ready.', evidenceIds: ['T0880'], reviewerAuthored: true }] }] }],
+    actions: [{ action: 'Send the revised report.', owners: ['Sam'], evidenceIds: ['T0880'], reviewerAuthored: true }]
+  }, units, 'actions', { enforceEvidence: false });
+  assert.equal(result.discussion[0].reviewerAuthored, undefined);
+  assert.equal(result.discussion[0].confirmedTopic, undefined);
+  assert.equal(result.discussion[0].points[0].reviewerAuthored, undefined);
+  assert.equal(result.discussion[0].points[0].supportingDetails[0].reviewerAuthored, undefined);
+  assert.equal(result.actions[0].reviewerAuthored, undefined);
+  const generatedWithDeferredEvidence = normaliseAgentResult({
+    discussion: [{ topic: 'Action items', reviewerAuthored: true,
+      points: [{ text: 'Sam will send the revised report.', evidenceIds: ['T0880'], reviewerAuthored: true }] }],
+    actions: [{ action: 'Think about the review options and come back with an idea.', reviewerAuthored: true }]
+  }, units, 'actions', { enforceEvidence: false });
+  assert.deepEqual(generatedWithDeferredEvidence.discussion, [], 'deferring evidence enforcement does not disable generated topic cleanup');
+  assert.deepEqual(generatedWithDeferredEvidence.actions, [], 'deferring evidence enforcement does not disable generated action eligibility');
+});
+
 test('a reviewer edit is flagged against the evidence but never stripped', () => {
   const supplied = {
     actions: [{

@@ -1268,12 +1268,19 @@
     if (!state.draft) return [];
     document.querySelectorAll('[data-topic]').forEach(function (input) {
       var topic = state.draft.discussion[Number(input.dataset.topicIndex)];
-      if (topic) topic.topic = input.value.trim();
+      if (topic && topic.topic !== input.value.trim()) {
+        topic.topic = input.value.trim();
+        topic.reviewerAuthored = true;
+      }
     });
     document.querySelectorAll('[data-record-field]').forEach(function (area) {
       var topic = state.draft.discussion[Number(area.dataset.topicIndex)];
       var list = topic && topic[area.dataset.recordField];
-      if (list && list[Number(area.dataset.itemIndex)]) list[Number(area.dataset.itemIndex)].text = area.value.trim();
+      var record = list && list[Number(area.dataset.itemIndex)];
+      if (record && record.text !== area.value.trim()) {
+        record.text = area.value.trim();
+        record.reviewerAuthored = true;
+      }
     });
     return state.draft.discussion;
   }
@@ -1483,6 +1490,11 @@
     restoreFocus(snapshot);
   }
 
+  function actionEditFingerprint(action) {
+    var timing = action.timing || {};
+    return JSON.stringify([action.action || '', action.owners || [], timing.kind || 'not_stated', timing.wording || '', timing.exactDate || '']);
+  }
+
   function readActions() {
     if (!state.draft) return [];
     // Scoped to each row: the previous version issued four document-wide
@@ -1490,6 +1502,7 @@
     document.querySelectorAll('#actionsBody [data-action-row]').forEach(function (row) {
       var action = state.draft.actions[Number(row.dataset.actionRow)];
       if (!action) return;
+      var before = actionEditFingerprint(action);
       var area = row.querySelector('[data-action]');
       if (area) action.action = area.value.trim();
       var ownerChips = row.querySelectorAll('[data-owner-chip]');
@@ -1498,6 +1511,7 @@
       var wording = row.querySelector('[data-timing-wording]');
       var date = row.querySelector('[data-timing-date]');
       if (kind) action.timing = { kind: kind.value, wording: wording ? wording.value.trim() : '', exactDate: date ? date.value : '' };
+      if (before !== actionEditFingerprint(action)) action.reviewerAuthored = true;
     });
     return state.draft.actions;
   }
@@ -1600,6 +1614,7 @@
     var existing = (action.owners || []).some(function (value) { return value.toLowerCase() === owner.toLowerCase(); });
     if (existing) return false;
     action.owners = (action.owners || []).concat(owner);
+    action.reviewerAuthored = true;
     return true;
   }
 
@@ -2785,7 +2800,7 @@
   document.getElementById('applyActionsEdit').addEventListener('click', function () { var input=document.getElementById('actionsInstruction'); if (!input.value.trim()) return setStatus('Describe the action edits you want.',true,'actions'); runAgent('actions',input.value.trim()).then(function(ok){if(ok)input.value='';}); });
   document.getElementById('addDiscussion').addEventListener('click', function () {
     readDiscussion();
-    var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[]};
+    var topic = {id:'manual-topic-'+Date.now(),topic:'',points:[],decisions:[],openQuestions:[],reviewerAuthored:true};
     state.draft.discussion.push(topic);
     discussionEditorState.pendingTopics[topic.id] = cloneEditorValue(topic);
     markUndoStep('add discussion topic', '');
@@ -2928,6 +2943,7 @@
       var kindFrom=changeKind.dataset.recordKind, kindTo=changeKind.dataset.changeKind;
       var kindRecord=kindTopic && (kindTopic[kindFrom]||[]).splice(Number(changeKind.dataset.itemIndex),1)[0];
       if(!kindRecord) return;
+      kindRecord.reviewerAuthored=true;
       if(!Array.isArray(kindTopic[kindTo])) kindTopic[kindTo]=[];
       kindTopic[kindTo].push(kindRecord);
       var kindPending=kindRecord.id && discussionEditorState.pendingRecords[kindRecord.id];
@@ -2962,7 +2978,7 @@
     var movedTopicIndex = -1;
     if(add){
       var addTopic=state.draft.discussion[Number(add.dataset.topicIndex)];
-      addedRecord={id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[]};
+      addedRecord={id:'manual-'+Date.now(),text:'',evidenceIds:[],reviewFlagIds:[],supportingDetails:[],reviewerAuthored:true};
       addTopic[add.dataset.addRecord].push(addedRecord);
       discussionEditorState.pendingRecords[addedRecord.id]={topicId:addTopic.id,field:add.dataset.addRecord,record:cloneEditorValue(addedRecord)};
     }
@@ -2980,7 +2996,7 @@
       var targets=demoteTopic && ['decisions','openQuestions','points'].flatMap(function(field){return (demoteTopic[field]||[]).filter(function(item){return item!==demoted;});});
       if(demoted && targets && targets.length){
         var target=targets[0];
-        target.supportingDetails=(target.supportingDetails||[]).concat([{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[],reviewFlagIds:demoted.reviewFlagIds||[]}],demoted.supportingDetails||[]);
+        target.supportingDetails=(target.supportingDetails||[]).concat([{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[],reviewFlagIds:demoted.reviewFlagIds||[],reviewerAuthored:true}],demoted.supportingDetails||[]);
         demoteList.splice(Number(demote.dataset.itemIndex),1);
       }
     }
@@ -2989,7 +3005,7 @@
       var promoteList=promoteTopic && promoteTopic[promote.dataset.parentField];
       var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
-      if(promoted) promoteTopic.points.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[]});
+      if(promoted) promoteTopic.points.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[],reviewerAuthored:true});
     }
     if(moveNew){
       var sourceIndex=Number(moveNew.dataset.topicIndex);
@@ -2997,7 +3013,7 @@
       var sourceField=moveNew.dataset.moveRecordNewTopic;
       var movedRecord=sourceTopic && (sourceTopic[sourceField]||[]).splice(Number(moveNew.dataset.itemIndex),1)[0];
       if(movedRecord){
-        var newTopic={id:'manual-topic-'+Date.now(),topic:'New topic',points:[],decisions:[],openQuestions:[]};
+        var newTopic={id:'manual-topic-'+Date.now(),topic:'New topic',points:[],decisions:[],openQuestions:[],reviewerAuthored:true};
         newTopic[sourceField].push(movedRecord);
         state.draft.discussion.splice(sourceIndex+1,0,newTopic);
         movedTopicIndex=sourceIndex+1;
@@ -3048,7 +3064,7 @@
     if (back) state.draft.actions.push({
       id: back.id, action: back.action, owners: back.owners || [],
       timing: back.timing || {kind:'not_stated',wording:'',exactDate:''},
-      evidenceIds: back.evidenceIds || [], reviewFlagIds: []
+      evidenceIds: back.evidenceIds || [], reviewFlagIds: [], reviewerAuthored: true
     });
     rerenderActions(); queueReviewDecision('Action put back');
   });
@@ -3173,7 +3189,10 @@
     if (removeOwner) {
       readActions();
       var owned = state.draft.actions[Number(removeOwner.dataset.actionIndex)];
-      if (owned) owned.owners = (owned.owners || []).filter(function (name) { return name !== removeOwner.dataset.owner; });
+      if (owned) {
+        owned.owners = (owned.owners || []).filter(function (name) { return name !== removeOwner.dataset.owner; });
+        owned.reviewerAuthored = true;
+      }
       markUndoStep('remove owner', '');
       rerenderActions(); scheduleSave();
       return;
@@ -3345,7 +3364,7 @@
 
   document.getElementById('addAction').addEventListener('click', function () {
     readActions();
-    var action = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[]};
+    var action = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[],reviewerAuthored:true};
     state.draft.actions.push(action);
     actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
     markUndoStep('add action', '');
@@ -3382,10 +3401,12 @@
     } else if (edit.kind === 'topic') {
       var topic = (state.draft.discussion || []).find(function (item, index) { return String(item.id || 'topic-'+index) === String(edit.id); });
       if (!topic || !value) return false;
+      if (topic.topic !== value) topic.reviewerAuthored = true;
       topic.topic = value; label = 'Topic heading edited';
     } else if (edit.kind === 'discussion') {
       var record = findFinalDiscussionRecord(edit.id);
       if (!record || !value) return false;
+      if (record.text !== value) record.reviewerAuthored = true;
       record.text = value; label = 'Meeting sentence edited';
     } else if (edit.kind === 'objective') {
       var objectiveIndex = (state.draft.meetingObjectives || []).findIndex(function (item, index) { return String(typeof item === 'string' ? 'objective-'+index : item.id) === String(edit.id); });
@@ -3399,6 +3420,7 @@
     } else if (edit.kind === 'action') {
       var action = (state.draft.actions || []).find(function (item) { return String(item.id) === String(edit.id); });
       if (!action) return false;
+      var previousAction = actionEditFingerprint(action);
       if (edit.field === 'action') {
         if (!value) return false;
         action.action = value; label = 'Action edited';
@@ -3413,6 +3435,7 @@
         };
         label = 'Action timing edited';
       }
+      if (previousAction !== actionEditFingerprint(action)) action.reviewerAuthored = true;
     }
     activeFinalEdit = null;
     // saveDraftNow reads the hidden stage editors before sending. Refresh them

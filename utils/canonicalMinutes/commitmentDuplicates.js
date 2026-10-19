@@ -1,5 +1,8 @@
 'use strict';
 
+const { isReviewerAuthored } = require('./state');
+const { actionIsLosslesslyCovered, exactActionIdentityConflict, sameActionText, conflictingTimings, actionContainmentConflict } = require('./actionDuplicateCoverage');
+
 // One commitment written twice. The action list is assembled from two
 // discovery legs, a recovery pass, the referee's reconstruction and the
 // critic, so the same piece of work regularly arrives in two wordings:
@@ -173,7 +176,14 @@ function clauses(value) {
 function commitmentDuplicate(a = {}, b = {}, options = {}) {
   const ta = String(a.action || a.text || ''), tb = String(b.action || b.text || '');
   if (!ta || !tb) return { duplicate: false, reason: 'empty' };
-  if (ta.trim().toLowerCase() === tb.trim().toLowerCase()) return { duplicate: true, reason: 'identical' };
+  if (isReviewerAuthored(a) || isReviewerAuthored(b)) return { duplicate: false, reason: 'reviewer wording' };
+  if (exactActionIdentityConflict(a, b)) return { duplicate: false, reason: 'different owners or timing' };
+  if (conflictingTimings(a, b)) return { duplicate: false, reason: 'different timing' };
+  if (sameActionText(a, b)) return { duplicate: true, reason: 'identical' };
+  if (actionContainmentConflict(a, b)) return { duplicate: false, reason: 'clause scope or responsibility is not preserved' };
+  if (actionIsLosslesslyCovered(a, b) || actionIsLosslesslyCovered(b, a)) {
+    return { duplicate: true, reason: 'complete clause preserved with the same owner and timing' };
+  }
   if (!ownersCompatible(a, b)) return { duplicate: false, reason: 'different owners' };
   if (dependsOn(ta, tb) || dependsOn(tb, ta)) return { duplicate: false, reason: 'one waits on the other' };
   if (conflictingRecipients(ta, tb)) return { duplicate: false, reason: 'different recipients' };
@@ -243,14 +253,19 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
     // file"), the compound is the one that keeps both steps; dropping it for
     // the fuller-looking single step loses the second step for good.
     const steps = (r) => 1 + (String(r.action || '').match(/\b(?:then|after that|followed by|and (?:then )?(?:download|send|share|upload|update|review|confirm|check|put|insert|place|forward|circulate|submit|return|report|book|arrange|schedule|prepare|draft|write|complete|finalise|finalize|issue|raise|log|record|add|remove|test|run|deploy|release|publish|notify|inform|chase|escalate)\b)/gi) || []).length;
-    const [winner, loser] = steps(action) !== steps(existing)
+    const actionCovered = actionIsLosslesslyCovered(action, existing);
+    const existingCovered = actionIsLosslesslyCovered(existing, action);
+    const [winner, loser] = actionCovered !== existingCovered
+      ? (actionCovered ? [existing, action] : [action, existing])
+      : steps(action) !== steps(existing)
       ? (steps(action) > steps(existing) ? [action, existing] : [existing, action])
       : (weight(action) > weight(existing) ? [action, existing] : [existing, action]);
+    const lossless = actionIsLosslesslyCovered(loser, winner);
     kept[at] = { index: winner === action ? index : kept[at].index, record: {
       ...winner,
       owners: winner.owners && winner.owners.length ? winner.owners : (loser.owners || []),
       timing: winner.timing && winner.timing.kind && winner.timing.kind !== 'not_stated' ? winner.timing : (loser.timing || winner.timing),
-      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])].slice(0, 12),
+      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])].slice(0, lossless ? undefined : 12),
       reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
     } };
     merged.push({ removed: String(loser.action || '').slice(0, 160), into: String(winner.action || '').slice(0, 160), reason: verdict.reason });

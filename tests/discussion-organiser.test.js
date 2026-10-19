@@ -334,6 +334,24 @@ test('short transcript topic echoes are removed without suppressing concise fact
   assert.deepEqual(cleaned[0].openQuestions.map((row) => row.id), ['question']);
 });
 
+test('a short generated topic echo stays when it anchors reviewer-authored detail', () => {
+  const detail = { id: 'kept-detail', text: 'The reviewer retained this operational context.', evidenceIds: [], reviewerAuthored: true };
+  const topic = {
+    id: 'storage', topic: 'Asset storage arrangement',
+    points: [
+      { id: 'parent', text: 'The asset storage arrangement.', evidenceIds: ['T0001'], supportingDetails: [detail] },
+      { id: 'generated-only', text: 'The asset storage arrangement.', evidenceIds: ['T0001'],
+        supportingDetails: [{ id: 'generated-detail', text: 'The generated contextual sentence.' }] }
+    ], decisions: [], openQuestions: []
+  };
+  const sourceUnits = [{ id: 'T0001', text: 'The asset storage arrangement.' }];
+  const before = structuredClone(topic);
+  const cleaned = removeShortTopicEchoes([topic], sourceUnits);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['parent']);
+  assert.deepEqual(cleaned[0].points[0].supportingDetails, [detail]);
+  assert.deepEqual(topic, before, 'presentation must not mutate the saved row');
+});
+
 test('generated floor-management expansions are removed using their evidence, while substantive and reviewer text remain', () => {
   const localUnits = [
     { id: 'F01', speaker: 'Wesley', text: 'Grand, thank you.' },
@@ -362,6 +380,31 @@ test('routine meeting technology checks are filtered without suppressing substan
     'The microphone fault delayed the client interview.',
     'Audio recording is required by the evidence procedure.'
   ]) assert.equal(isRoutineMeetingAdministration(wording), false, wording);
+});
+
+test('aside hygiene retains reviewer-authored topics, rows and supporting details', () => {
+  const aside = 'Sam joked about the weekend.';
+  const topics = [{
+    id: 'mixed', topic: 'Context', points: [
+      { id: 'generated', text: aside },
+      { id: 'authored', text: aside, reviewerAuthored: true },
+      { id: 'parent', text: 'The review is scheduled for Monday.', supportingDetails: [
+        { id: 'generated-detail', text: aside }, { id: 'authored-detail', text: aside, reviewerAuthored: true }
+      ] },
+      { id: 'anchoring-parent', text: aside, supportingDetails: [
+        { id: 'edited-context', text: 'The reviewer kept this context deliberately.', reviewerAuthored: true }
+      ] }
+    ], decisions: [], openQuestions: []
+  }, {
+    id: 'authored-topic', topic: 'Reviewer context', confirmedTopic: true,
+    points: [{ id: 'topic-row', text: aside }], decisions: [], openQuestions: []
+  }];
+  const original = JSON.stringify(topics);
+  const cleaned = removePersonalAsides(topics);
+  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['authored', 'parent', 'anchoring-parent']);
+  assert.deepEqual(cleaned[0].points[1].supportingDetails.map((detail) => detail.id), ['authored-detail']);
+  assert.equal(cleaned[1].points[0].text, aside);
+  assert.equal(JSON.stringify(topics), original);
 });
 
 test('generic wrap-up questions are removed without deleting useful clauses beside them', () => {

@@ -765,7 +765,17 @@ function isUsefulReviewFlag(flag = {}) {
   return MATERIAL_UNCERTAINTY_PATTERN.test(normalised.message);
 }
 
-function normalisePoint(value, units, prefix, index) {
+function reviewerProvenance(value, options = {}) {
+  // Only a reviewer-save boundary may carry authorship into persisted rows.
+  // Generated JSON cannot grant itself an exemption from publication checks.
+  if (options.preserveReviewerEdits !== true) return {};
+  return {
+    ...(value?.reviewerAuthored === true ? { reviewerAuthored: true } : {}),
+    ...(value?.confirmedTopic === true ? { confirmedTopic: true } : {})
+  };
+}
+
+function normalisePoint(value, units, prefix, index, options = {}) {
   const candidate = typeof value === 'string' ? { text: value } : (value || {});
   const pointText = text(candidate.text || candidate.point || candidate.value, 1600);
   if (!pointText) return null;
@@ -784,6 +794,7 @@ function normalisePoint(value, units, prefix, index) {
       const detailFlags = [...new Set((Array.isArray(source.reviewFlagIds) ? source.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))];
       return {
         id: text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex),
+        ...reviewerProvenance(source, options),
         text: detailText,
         evidenceIds: detailEvidence.evidenceIds,
         // A context line keeps its flag, so the flag can point at it.
@@ -792,6 +803,7 @@ function normalisePoint(value, units, prefix, index) {
     }).filter(Boolean).slice(0, 50);
   return {
     id: text(candidate.id, 80) || stableId(prefix, pointText, index),
+    ...reviewerProvenance(candidate, options),
     text: pointText,
     evidenceIds: resolved.evidenceIds,
     supportingDetails,
@@ -801,8 +813,8 @@ function normalisePoint(value, units, prefix, index) {
   };
 }
 
-function normalisePointList(values, units, prefix) {
-  return (Array.isArray(values) ? values : []).map((value, index) => normalisePoint(value, units, prefix, index)).filter(Boolean).slice(0, 50);
+function normalisePointList(values, units, prefix, options = {}) {
+  return (Array.isArray(values) ? values : []).map((value, index) => normalisePoint(value, units, prefix, index, options)).filter(Boolean).slice(0, 50);
 }
 
 function recordSimilarity(left, right) {
@@ -863,18 +875,28 @@ function discussionTopicItems(candidate = {}) {
 }
 
 function normaliseDiscussion(candidate = {}, units = [], options = {}) {
+  const reviewerSave = options.preserveReviewerEdits === true;
+  const normaliseRows = (rows, prefix) => {
+    const normalised = normalisePointList(rows, units, prefix, options);
+    return reviewerSave ? normalised : dedupePointList(normalised);
+  };
   const topics = discussionTopicItems(candidate).slice(0, 80).map((item, index) => {
     const topic = text(item?.topic, 220) || 'Discussion';
     return {
       id: text(item?.id, 80) || stableId('topic', topic, index),
+      ...reviewerProvenance(item, options),
       topic,
       // The reviewer's choice to leave this title out of the minutes.
       ...(item?.hideHeading === true ? { hideHeading: true } : {}),
-      points: dedupePointList(normalisePointList(item?.points, units, `point-${index}`)),
-      decisions: dedupePointList(normalisePointList(item?.decisions, units, `decision-${index}`)),
-      openQuestions: dedupePointList(normalisePointList(item?.openQuestions, units, `question-${index}`))
+      points: normaliseRows(item?.points, `point-${index}`),
+      decisions: normaliseRows(item?.decisions, `decision-${index}`),
+      openQuestions: normaliseRows(item?.openQuestions, `question-${index}`)
     };
   }).filter((item) => item.points.length || item.decisions.length || item.openQuestions.length);
+  // Saving the editor is not a fresh selection pass. Preserve the reviewer's
+  // rows and classifications, even when two rows resemble one another or a
+  // heading uses an output category. Generated content still uses the gates below.
+  if (reviewerSave) return topics;
   const merged = [];
   for (const topic of topics) {
     // A reviewer's save keeps their topics as they arranged them: two cards
@@ -5260,8 +5282,8 @@ const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'm
 
 function normaliseActions(candidate = {}, units = [], options = {}) {
   const rows = (Array.isArray(candidate.actions) ? candidate.actions : []).slice(0, 250).map((item, index) => {
-    let action = cleanActionWording(item?.action);
-    if (!action || isIdeaOnlyContemplation(action)) return null;
+    let action = options.preserveReviewerEdits === true ? text(item?.action, 1600) : cleanActionWording(item?.action);
+    if (!action || (options.preserveReviewerEdits !== true && isIdeaOnlyContemplation(action))) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
     const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
     const checks = correctnessChecksEnabled();
@@ -5313,6 +5335,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       ? timingClauseIssue(action, timing, units, evidenceIds) : null;
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
+      ...reviewerProvenance(item, options),
       action,
       owners,
       timing,

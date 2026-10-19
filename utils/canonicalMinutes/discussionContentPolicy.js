@@ -1,5 +1,7 @@
 'use strict';
 
+const { isReviewerAuthored } = require('./state');
+
 // Personal wellbeing and social asides can be true to the transcript without
 // being suitable meeting minutes. Keep this rule semantic and name-agnostic:
 // it is about the kind of statement, not who happened to say it in one file.
@@ -80,12 +82,19 @@ function stripRoutineMeetingAdministration(value) {
 
 function removeNonContentAsides(topics = []) {
   return (Array.isArray(topics) ? topics : []).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
     const cleaned = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
       cleaned[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).flatMap((record) => {
+        // A human may deliberately keep context that the generated-content
+        // policy would omit. Retain its parent too when it anchors edited detail.
+        if (isReviewerAuthored(record)) return [record];
         const recordText = stripRoutineMeetingAdministration(record?.text);
-        if (!recordText || isPersonalAside(recordText) || isPeripheralAside(recordText)) return [];
+        if (!recordText || isPersonalAside(recordText) || isPeripheralAside(recordText)) {
+          return (record?.supportingDetails || []).some(isReviewerAuthored) ? [record] : [];
+        }
         const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).flatMap((detail) => {
+          if (isReviewerAuthored(detail)) return [detail];
           const detailText = stripRoutineMeetingAdministration(detail?.text);
           return !detailText || isPersonalAside(detailText) || isPeripheralAside(detailText)
             ? [] : [{ ...detail, text: detailText }];

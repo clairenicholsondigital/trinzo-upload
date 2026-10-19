@@ -102,7 +102,11 @@ function normaliseMinutes(input = {}) {
   // tool already POSTs summary:{objectives,executiveSummary} which this renderer
   // has always ignored - keying off it would silently grow that tool's PDF by two
   // sections. tests/staged-minutes-pdf.test.js asserts it stays ignored.
-  const executiveSummary = clean(input.executiveSummary, '').slice(0, 4000);
+  // The agent editor allows paragraph breaks. Opt in only from its export
+  // adapter, so the separate staged tool keeps its existing presentation.
+  const executiveSummary = (input.preserveSummaryParagraphs === true
+    ? String(input.executiveSummary ?? '').replace(/\r\n?/g, '\n').trim()
+    : clean(input.executiveSummary, '')).slice(0, 4000);
   const meetingObjectives = (Array.isArray(input.meetingObjectives) ? input.meetingObjectives : [])
     .map((item) => clean(typeof item === 'string' ? item : item?.text, '').slice(0, 400))
     .filter(Boolean)
@@ -198,7 +202,7 @@ function renderStagedMinutesPdfHtml(input = {}) {
   ${details.clientAttendees.length ? `<div><span class="label">${escapeHtml(details.clientAttendeeLabel)} attendees</span>${escapeHtml(details.clientAttendees.join(', '))}</div>` : ''}
 </section>
 ${meetingObjectives.length ? `<h2>Meeting objectives</h2>${renderList(meetingObjectives)}` : ''}
-${executiveSummary ? `<h2>Executive summary</h2><p>${linkedHtml(executiveSummary)}</p>` : ''}
+${executiveSummary ? `<h2>Executive summary</h2><p${input.preserveSummaryParagraphs === true ? ' style="white-space:pre-line"' : ''}>${linkedHtml(executiveSummary)}</p>` : ''}
 <h2>Key discussion points</h2>
 ${discussion.length ? topicTable(discussion, 'Discussion points', (item) => renderList(item.points)) : '<table class="discussion"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody><tr><td>Discussion</td><td>Not stated</td></tr></tbody></table>'}
 ${decisions.length ? `<h2>Decisions</h2>${topicTable(decisions, 'Decision', (item) => linkedHtml(item.text))}` : ''}

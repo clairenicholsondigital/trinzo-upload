@@ -20,6 +20,9 @@ const {
 
 const { extractTextFromUpload } = require('../utils/transcript');
 const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
+const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
+const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
+const { preserveCopiedReviewerContent } = require('../utils/meetingMinutesReviewedAiEdits');
 const {
   assertStagedSourceIdentity,
   assertStagedTranscriptHash
@@ -84,6 +87,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const { actionIsLosslesslyCovered, exactActionIdentityConflict, conflictingTimings, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -11240,19 +11244,22 @@ function meetingAgentDraftPayload(draft = {}) {
 // same narrow action-bucket test when presenting them so an action recap does
 // not remain visible forever merely because it was saved by an earlier run.
 // Explicitly manual/reviewer-authored cards remain the reviewer's own content.
+function hasMeetingAgentReviewerContent(record) {
+  return isReviewerAuthored(record) || ['points', 'decisions', 'openQuestions', 'supportingDetails']
+    .some((kind) => (record?.[kind] || []).some(hasMeetingAgentReviewerContent));
+}
+
 function removeGeneratedActionCategoryDiscussion(discussion = []) {
   return (Array.isArray(discussion) ? discussion : []).filter((topic) =>
-    isReviewerAuthored(topic)
+    hasMeetingAgentReviewerContent(topic)
       || /^manual-topic-/.test(String(topic?.id || ''))
       || !isActionCategoryTopicCard(topic));
 }
 
-function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
+// All output formats start from the same publication content. This is the
+// existing display policy; new generated-text cleanup happens before storage.
+function meetingAgentPublicationContent(draft = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
-  const details = sanitiseMeetingAgentDetails(draft.details);
-  const include = includedSections(draft);
-  const executiveSummary = include.executiveSummary ? normaliseExecutiveSummary(draft.executiveSummary) : '';
-  const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(draft.meetingObjectives) : [];
   const cleanedDiscussion = removeShortTopicEchoes(removePersonalAsides(draft.discussion), draft.sourceUnits);
   const balancedDiscussion = Number(draft.qualityState?.discussion?.topicArrangementVersion || 0) >= 1
     ? cleanedDiscussion
@@ -11263,6 +11270,31 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
     .filter(Boolean);
+  return normaliseMeetingAgentKnownTermsDeep(normaliseDatePhrasesDeep({
+    details: sanitiseMeetingAgentDetails(draft.details),
+    executiveSummary: draft.executiveSummary || '',
+    meetingObjectives: draft.meetingObjectives || [],
+    discussion: repairStructuralTopicHeadings(publicationDiscussion, draft.sourceUnits || []),
+    actions: publicationActions.map((action) => ({ ...action, timing: meetingAgentTimingForPublication(action.timing) }))
+  }));
+}
+
+function meetingAgentDraftForDocx(draft = {}) {
+  const content = meetingAgentPublicationContent(draft);
+  return {
+    ...draft, ...content,
+    discussion: applyTopicHeadings(draft, content.discussion),
+    ...applyIncludedSections(draft, content),
+    reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
+  };
+}
+
+function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
+  const content = meetingAgentPublicationContent(draft);
+  const { details, discussion: publicationDiscussion, actions: publicationActions } = content;
+  const include = includedSections(draft);
+  const executiveSummary = include.executiveSummary ? content.executiveSummary : '';
+  const meetingObjectives = include.meetingObjectives ? meetingAgentObjectives(content.meetingObjectives) : [];
   const discussion = applyTopicHeadings(draft, publicationDiscussion).map((topic) => ({
     topic: topic?.topic || 'Discussion',
     hideHeading: topic.hideHeading,
@@ -11280,7 +11312,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     deadline: meetingAgentTimingLabel(action?.timing)
   }));
   const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
-  const minutes = { details, ...publication };
+  const minutes = { details, ...publication, preserveSummaryParagraphs: true };
   if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
   minutes.supportingDetails = publicationDiscussion.flatMap((topic) =>
     [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
@@ -11301,18 +11333,10 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
-  draft = normaliseMeetingAgentMinuteNumbers(draft);
+  const publication = meetingAgentPublicationContent(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
-  const cleanedDiscussion = removeShortTopicEchoes(removePersonalAsides(publicFields.discussion), draft.sourceUnits);
-  const balancedDiscussion = Number(draft.qualityState?.discussion?.topicArrangementVersion || 0) >= 1
-    ? cleanedDiscussion
-    : balanceDiscussionTopics(cleanedDiscussion, draft.sourceUnits);
-  const visibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
-    removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
-  );
-  const visibleActions = (Array.isArray(publicFields.actions) ? publicFields.actions : [])
-    .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
-    .filter(Boolean);
+  const visibleDiscussion = publication.discussion;
+  const visibleActions = publication.actions;
   const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal, draft.sourceUnits || []);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
@@ -11321,19 +11345,12 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   );
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
+    ...publication,
     discussion: visibleDiscussion,
     actions: visibleActions,
     pendingProposal: visibleProposal,
     reviewFlags: visibleReviewFlags
   });
-  safe.discussion = normaliseDatePhrasesDeep(repairStructuralTopicHeadings(safe.discussion, draft.sourceUnits || []));
-  safe.actions = normaliseDatePhrasesDeep((Array.isArray(safe.actions) ? safe.actions : []).map((action) => ({
-    ...action,
-    timing: meetingAgentTimingForPublication(action?.timing)
-  })));
-  safe.executiveSummary = normaliseDatePhrasesDeep(safe.executiveSummary);
-  safe.meetingObjectives = normaliseDatePhrasesDeep(safe.meetingObjectives);
-  safe.details = sanitiseMeetingAgentDetails(safe.details);
   const generation = meetingAgentGenerationState(safe.generation);
   const completedAt = generation ? meetingAgentStageGeneratedAt(draft, generation.stage) : '';
   // A stale failed/running marker must not outlive a successfully persisted
@@ -11802,11 +11819,32 @@ function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed
 function reconcileFinalApprovedActions(published = [], approved = []) {
   const actions = [...(Array.isArray(published) ? published : [])];
   const restored = [];
+  const representedReviewerOccurrences = new Set();
   for (const record of Array.isArray(approved) ? approved : []) {
-    const represented = actions.some((existing) => (strictActionDeliverableMatch(record, existing)
-      && strictActionDeliverableMatch(existing, record))
-      || (sameCanonicalDocumentWorkflow(record, existing)
-        && sameOrNestedActionDeliverable(record, existing)));
+    if (isReviewerAuthored(record)) {
+      // Generation boundaries clone rows. Match each unchanged reviewer row to
+      // one visible occurrence, not object identity or a possibly repeated ID.
+      // Two deliberately identical reviewer entries therefore remain two.
+      const index = actions.findIndex((existing, at) => !representedReviewerOccurrences.has(at)
+        && isReviewerAuthored(existing) && sameActionPresentation(record, existing));
+      if (index >= 0) {
+        representedReviewerOccurrences.add(index);
+      } else {
+        representedReviewerOccurrences.add(actions.length);
+        actions.push(record);
+        restored.push(record);
+      }
+      continue;
+    }
+    const represented = actions.some((existing) => existing === record || (!exactActionIdentityConflict(record, existing)
+      && !conflictingTimings(record, existing)
+      && !actionContainmentConflict(record, existing)
+      && !isReviewerAuthored(existing)
+      && (actionIsLosslesslyCovered(record, existing)
+        || (!sameActionText(record, existing) && strictActionDeliverableMatch(record, existing)
+          && strictActionDeliverableMatch(existing, record))
+        || (!sameActionText(record, existing) && sameCanonicalDocumentWorkflow(record, existing)
+          && sameOrNestedActionDeliverable(record, existing)))));
     if (represented) continue;
     actions.push(record);
     restored.push(record);
@@ -11887,6 +11925,7 @@ function minorCommunicationCourtesy(record = {}, sourceUnits = []) {
 }
 
 function stripMinorCommunicationCourtesy(record = {}, sourceUnits = []) {
+  if (hasMeetingAgentReviewerContent(record)) return record;
   const field = record.action != null ? 'action' : 'text';
   const value = meetingMinutesAgentText(record[field], 1600);
   let cleaned = stripAdministrativeAsideText(value);
@@ -11904,6 +11943,7 @@ function stripMinorCommunicationCourtesy(record = {}, sourceUnits = []) {
 
 function removeMinorCommunicationCourtesyDiscussion(discussion = [], sourceUnits = []) {
   return (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
     const next = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
       next[kind] = (topic[kind] || []).map((record) => stripMinorCommunicationCourtesy(record, sourceUnits))
@@ -12114,14 +12154,15 @@ function looksLikeStandaloneHeadingFragment(value = '', topic = '') {
 
 function removeHeadingFragmentsFromDiscussion(discussion = []) {
   return (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
     const next = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
       next[kind] = (topic[kind] || []).filter((record) =>
-        !looksLikeStandaloneHeadingFragment(record?.text, topic?.topic)).map((record) => ({
+        hasMeetingAgentReviewerContent(record) || !looksLikeStandaloneHeadingFragment(record?.text, topic?.topic)).map((record) => ({
           ...record,
           supportingDetails: (record.supportingDetails || []).filter((detail) =>
-            completeDiscussionSuggestionText(detail?.text || detail)
-            && !looksLikeStandaloneHeadingFragment(detail?.text || detail, topic?.topic))
+            isReviewerAuthored(record) || isReviewerAuthored(detail) || (completeDiscussionSuggestionText(detail?.text || detail)
+            && !looksLikeStandaloneHeadingFragment(detail?.text || detail, topic?.topic)))
         }));
     }
     return next;
@@ -12560,6 +12601,7 @@ function stableActionEvidence(records = [], limit = 24) {
 function bundleSameRecipientDeliveries(records = []) {
   const groups = new Map();
   (Array.isArray(records) ? records : []).forEach((record, index) => {
+    if (isReviewerAuthored(record)) return;
     const frame = actionDeliveryFrame(record);
     const owners = exactActionOwners(record);
     if (!frame || !owners.length) return;
@@ -12570,6 +12612,11 @@ function bundleSameRecipientDeliveries(records = []) {
   const replacements = new Map(); const removed = new Set();
   for (const group of groups.values()) {
     if (group.length < 2 || group.length > 6) continue;
+    // Two dated occurrences of the same instruction are distinct. Bundling
+    // their displayed timing words could conceal different exact dates or turn
+    // a target into a deadline after the duplicate guard kept them separate.
+    if (group.some(({ record }, index) => group.slice(index + 1)
+      .some(({ record: other }) => exactActionIdentityConflict(record, other)))) continue;
     const items = group.map(({ record, frame }) => deliveryBundleItem(record, frame)).filter(Boolean);
     if (items.length !== group.length || items.some((item) => item.split(/\s+/).length > 55)) continue;
     const [first] = group;
@@ -12676,7 +12723,19 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     let complementaryDuplicate = null;
     let documentWorkflowDuplicate = null;
     let canonicalDocumentWorkflowDuplicate = null;
+    let losslessPreferred = null;
     const duplicate = merged.find((existing) => {
+      if (isReviewerAuthored(record) || isReviewerAuthored(existing)
+        || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)
+        || actionContainmentConflict(record, existing)) return false;
+      const recordCovered = actionIsLosslesslyCovered(record, existing);
+      const existingCovered = actionIsLosslesslyCovered(existing, record);
+      if (recordCovered || existingCovered) {
+        losslessPreferred = recordCovered && !existingCovered ? existing
+          : existingCovered && !recordCovered ? record
+          : preference(record) > preference(existing) ? record : existing;
+        return true;
+      }
       if (sameCanonicalDocumentWorkflow(record, existing)) {
         canonicalDocumentWorkflowDuplicate = existing;
         return true;
@@ -12726,6 +12785,16 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     });
     if (!duplicate) {
       merged.push(record);
+      continue;
+    }
+    if (losslessPreferred) {
+      // Keep the whole instruction, regardless of which extraction has more
+      // citations. Reconciliation can verify the same complete-clause proof on
+      // the final wording, so no removed-ID allowlist can hide later text loss.
+      const evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(record.evidenceIds || [])])];
+      const reviewFlagIds = [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])];
+      Object.assign(duplicate, losslessPreferred, { evidenceIds: evidenceIds.sort((left, right) =>
+        Number(String(left).match(/\d+/)?.[0] || Infinity) - Number(String(right).match(/\d+/)?.[0] || Infinity)), reviewFlagIds });
       continue;
     }
     let preferred = preference(record) > preference(duplicate)
@@ -14511,6 +14580,10 @@ async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = 
 }
 
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
+  return cleanGeneratedMeetingAgentResult(await generateHybridMeetingAgentStageRaw(draft, stage, options), stage);
+}
+
+async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const transcript = String(draft.preparedTranscript || '').trim();
   const details = sanitiseMeetingAgentDetails(draft.details);
   const salientDetails = draft.salientDetails || [];
@@ -16743,11 +16816,15 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     const details = sanitiseMeetingAgentDetails(req.body?.details || draft.details);
     // A save carries the reviewer's edits: flag what the evidence does not
     // support, but never strip it back out from under them.
+    const reviewerContent = markMeetingAgentReviewerEdits(publicMeetingAgentDraft(draft), {
+      ...(Array.isArray(req.body?.discussion) ? { discussion: req.body.discussion } : {}),
+      ...(Array.isArray(req.body?.actions) ? { actions: req.body.actions } : {})
+    });
     const normalised = normaliseAgentResult({
-      discussion: req.body?.discussion ?? draft.discussion,
-      actions: req.body?.actions ?? draft.actions,
+      discussion: reviewerContent.discussion ?? draft.discussion,
+      actions: reviewerContent.actions ?? draft.actions,
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
-    }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false });
+    }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true });
     const pendingProposal = draft.pendingProposal?.stage === 'actions'
       ? rebaseMeetingAgentProposal(draft.pendingProposal, draft.actions || [], normalised.actions, [], { preserveSelection: true })
       : draft.pendingProposal;
@@ -16860,6 +16937,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId/source/:unitId', requireAut
 // background worker runs the identical path. The steer is always read from the
 // draft, never the request body, for the same reason.
 async function generateMeetingAgentStage(draft, stage, instruction) {
+  return cleanGeneratedMeetingAgentResult(await generateMeetingAgentStageRaw(draft, stage, instruction), stage);
+}
+
+async function generateMeetingAgentStageRaw(draft, stage, instruction) {
   const transcript = String(draft.preparedTranscript || '').trim();
   if (transcript.length < 100) {
     const error = new Error('Prepare a transcript before asking the agent.');
@@ -16906,9 +16987,10 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
       replaceCoverageFlags: true
     };
   }
-  const normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage, {
+  let normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage, {
     meetingDate: sanitiseMeetingAgentDetails(draft.details).meetingDate
   });
+  if (instruction) normalised = preserveCopiedReviewerContent(draft, parsed, normalised, stage);
   normalised.reviewFlags = normalised.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
   // Discussion is generated before Actions, so judging the whole salient-detail
   // inventory against Discussion alone creates omissions by construction. Start
@@ -18052,11 +18134,12 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     }
     // audited rows were already enforced above; the existing register holds the
     // reviewer's edits and must not be re-stripped when the two are merged.
-    rescuedActions = gateTranscriptShapedActions(rescuedActions, draft.sourceUnits, draft.draftId, 'audit_published');
-    const auditedActions = gateTranscriptShapedActions(audited.actions, draft.sourceUnits, draft.draftId, 'audit_found');
+    const cleanAuditActions = (actions) => cleanGeneratedMeetingAgentResult({ changes: { actions } }, 'actions').changes.actions;
+    rescuedActions = cleanAuditActions(gateTranscriptShapedActions(rescuedActions, draft.sourceUnits, draft.draftId, 'audit_published'));
+    const auditedActions = cleanAuditActions(gateTranscriptShapedActions(audited.actions, draft.sourceUnits, draft.draftId, 'audit_found'));
     const publishedBase = [...(draft.actions || []), ...rescuedActions];
     const combined = normaliseAgentResult({
-      actions: [...publishedBase, ...auditedActions, ...declaredProposals]
+      actions: [...publishedBase, ...auditedActions, ...cleanAuditActions(declaredProposals)]
     }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
     const reconciledActions = mergePublishedActionEvidence(publishedBase, combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
@@ -18241,19 +18324,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (r
 
 router.post('/meeting-minutes-agent/drafts/:draftId/export.docx', requireAuth, async (req, res) => {
   try {
-    const draft = normaliseMeetingAgentMinuteNumbers(await loadOwnedMeetingAgentDraft(req));
-    const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(draft.discussion, draft.sourceUnits);
-    const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
-      .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
-      .filter(Boolean);
-    const exportDraft = normaliseMeetingAgentKnownTermsDeep({
-      ...draft,
-      discussion: applyTopicHeadings(draft, publicationDiscussion),
-      actions: publicationActions,
-      ...applyIncludedSections(draft, { executiveSummary: draft.executiveSummary, meetingObjectives: draft.meetingObjectives }),
-      details: sanitiseMeetingAgentDetails(draft.details),
-      reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
-    });
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    const exportDraft = meetingAgentDraftForDocx(draft);
     const buffer = await generateMeetingMinutesAgentDocx(exportDraft, req.body?.includeEvidence === true);
     const filename = docxFilename(exportDraft).replace(/["\\]/g, '');
     res.set({
@@ -18474,6 +18546,9 @@ router.stagedEvaluation = {
   unionActionDiscoveryResults,
   meetingMinutesAgentPrimaryUnionEnabled,
   publicMeetingAgentDraft,
+  meetingAgentPublicationContent,
+  meetingAgentDraftForDocx,
+  meetingAgentDraftForPdf,
   normaliseMeetingAgentGeneration,
   meetingAgentSerialDraftWrite,
   meetingAgentStageContentFields,

@@ -84,6 +84,20 @@ function startStubServer() {
     evidenceIds: ['T0001'], status: 'open', correctionNote: ''
   });
   drafts.set('topic-cleanup', topicCleanup);
+  const reviewerProvenance = baseDraft('reviewer-provenance', false);
+  reviewerProvenance.currentStep = 5;
+  reviewerProvenance.selectedStep = 2;
+  reviewerProvenance.qualityState = { discussion: { topicArrangementVersion: 1 } };
+  reviewerProvenance.discussion.push({
+    id: 'topic-2', topic: 'Annual review', points: [{
+      id: 'discussion-2', text: 'The annual review requires a separate report.', evidenceIds: ['T0001'], supportingDetails: []
+    }], decisions: [], openQuestions: []
+  });
+  reviewerProvenance.actions.push({
+    id: 'action-2', action: 'Prepare the annual review report.', owners: ['Sam Okoro'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
+  });
+  drafts.set('reviewer-provenance', reviewerProvenance);
   const staleActions = baseDraft('stale-actions', false);
   staleActions.staleStages = ['actions'];
   staleActions.currentStep = 2;
@@ -299,7 +313,11 @@ function startStubServer() {
     drafts.set('prepared', prepared);
     res.json({ ok: true, draft: prepared, resumeUrl: '/meeting-minutes-agent?draftId=prepared' });
   });
-  app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: drafts.get(req.params.id) }));
+  function visibleDraft(id, draft) {
+    return id === 'reviewer-provenance'
+      ? require('../routes/api').stagedEvaluation.publicMeetingAgentDraft(draft) : draft;
+  }
+  app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: visibleDraft(req.params.id, drafts.get(req.params.id)) }));
   app.patch('/api/meeting-minutes-agent/drafts/:id', async (req, res) => {
     if (req.params.id === 'navigation') await new Promise((resolve) => setTimeout(resolve, 250));
     const prior = drafts.get(req.params.id);
@@ -336,9 +354,19 @@ function startStubServer() {
         openQuestions: (topic.openQuestions || []).filter((record) => String(record.text || '').trim())
       })).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length)
     };
+    // Exercise the actual save normaliser and read-time publication helpers for
+    // the provenance journey; a plain echo server would conceal lost markers.
+    if (req.params.id === 'reviewer-provenance') {
+      const normalised = require('../utils/meetingMinutesAgentV2').normaliseAgentResult({
+        discussion: next.discussion, actions: next.actions, reviewFlags: next.reviewFlags
+      }, next.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true });
+      next.discussion = normalised.discussion;
+      next.actions = normalised.actions;
+      next.reviewFlags = normalised.reviewFlags;
+    }
     drafts.set(req.params.id, next);
     patchCounts.set(req.params.id, (patchCounts.get(req.params.id) || 0) + 1);
-    res.json({ ok: true, draft: next });
+    res.json({ ok: true, draft: visibleDraft(req.params.id, next) });
   });
   app.post('/api/meeting-minutes-agent/drafts/:id/generate-background', (req, res) => {
     const prior = drafts.get(req.params.id);
@@ -506,6 +534,83 @@ async function launchPage(port, draftId) {
   await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
   return { browser, page, errors };
 }
+
+test('reviewer wording survives stage editing, final editing, save normalisation and reload', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'reviewer-provenance');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const savedState = () => page.evaluate(async () => (await (await fetch('/test-state/reviewer-provenance')).json()).draft);
+    const saveResponse = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/reviewer-provenance')
+      && response.request().method() === 'PATCH');
+    const settled = () => page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+
+    // The generated-content filter would discard this sentence. A reviewer
+    // deliberately entering it must be able to save and see it again.
+    const aside = 'Sam joked about the weekend.';
+    let saved = saveResponse();
+    await page.fill('#minutes-discussion-discussion-1 [data-record-field]', aside);
+    await saved;
+    await settled();
+    let stored = await savedState();
+    assert.equal(stored.discussion[0].points[0].reviewerAuthored, true);
+    assert.equal(stored.discussion[0].reviewerAuthored, undefined, 'editing a row does not mark its untouched topic');
+    assert.equal(stored.discussion[1].points[0].reviewerAuthored, undefined);
+    assert.equal(stored.actions[0].reviewerAuthored, undefined, 'reading hidden editors is not a human edit');
+
+    await page.reload();
+    await page.waitForSelector('#minutes-discussion-discussion-1 [data-record-field]');
+    assert.equal(await page.inputValue('#minutes-discussion-discussion-1 [data-record-field]'), aside);
+
+    saved = saveResponse();
+    await page.fill('[data-topic-index="1"][data-topic]', 'Reviewer context');
+    await saved;
+    await settled();
+    stored = await savedState();
+    assert.equal(stored.discussion[1].reviewerAuthored, true);
+
+    await page.click('[data-step="3"]');
+    const manualAction = 'I will determine a way to send the updated report.';
+    saved = saveResponse();
+    await page.fill('#minutes-action-action-1 [data-action]', manualAction);
+    await saved;
+    await settled();
+    stored = await savedState();
+    assert.equal(stored.actions[0].reviewerAuthored, true);
+    assert.equal(stored.actions[0].action, manualAction, 'save does not run generated-action rewrites on reviewer text');
+    assert.equal(stored.actions[1].reviewerAuthored, undefined);
+
+    await page.click('[data-step="5"]');
+    await page.locator('#finalDocument [data-kind="discussion"][data-record-id="discussion-2"]').click();
+    const finalAside = 'Alex joked about the weather.';
+    await page.fill('#finalDocument [data-final-editor-value]', finalAside);
+    saved = saveResponse();
+    await page.click('#finalDocument [data-final-save]');
+    await saved;
+    await settled();
+
+    await page.locator('#finalDocument [data-kind="action"][data-record-id="action-2"][data-field="action"]').click();
+    const finalAction = 'Consider options for the next review.';
+    await page.fill('#finalDocument [data-final-editor-value]', finalAction);
+    saved = saveResponse();
+    await page.click('#finalDocument [data-final-save]');
+    await saved;
+    await settled();
+    await page.reload();
+    await page.waitForSelector('#finalDocument [data-record-id="action-2"]');
+    assert.match(await page.textContent('#finalDocument'), /Alex joked about the weather/);
+    assert.match(await page.textContent('#finalDocument'), /Consider options for the next review/);
+    stored = await savedState();
+    assert.equal(stored.discussion[1].points[0].reviewerAuthored, true);
+    assert.equal(stored.actions[1].reviewerAuthored, true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 
 test('an internal-only meeting does not reserve an empty client-attendee panel', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();

@@ -292,11 +292,15 @@ function removeShortTopicEchoes(topics = [], sourceUnits = []) {
   const index = unitIndex(sourceUnits);
   const normal = (value) => text(value).toLowerCase().replace(/[’]/g, "'")
     .replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // A generated heading-like row may anchor detail a reviewer deliberately
+  // added or kept. Dropping the parent would discard that human contribution.
+  const hasReviewerText = (record) => isReviewerAuthored(record)
+    || (record?.supportingDetails || []).some(hasReviewerText);
   return (Array.isArray(topics) ? topics : []).map(cloneTopic).map((topic) => {
     if (reviewerTopic(topic)) return topic;
     const points = (topic.points || []).filter((record) => {
       const value = text(record?.text);
-      if (record?.reviewerAuthored || contentTokens(value).size > 3 || SHORT_TOPIC_PREDICATE.test(value)
+      if (hasReviewerText(record) || contentTokens(value).size > 3 || SHORT_TOPIC_PREDICATE.test(value)
         || overlap(value, topic?.topic) < 0.5) return true;
       const cited = (record.evidenceIds || []).map((id) => index.byId.get(text(id, 30))).filter(Boolean);
       return !cited.some((unit) => normal(unit.text) === normal(value));
