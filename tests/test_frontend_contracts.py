@@ -147,7 +147,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("uncertain_fact:'Uncertain detail'", client)
         self.assertIn("if (open.length && wasHidden) panel.open = false", client)
         self.assertIn('function applyPendingProposalAutomatically()', client)
-        self.assertIn('acceptAll: true', client)
+        # Automatic adoption respects each change's selection; accepting every
+        # proposal would also apply uncertain additions and destructive edits.
+        self.assertIn("decision: 'accept', automatic: true, changeIds: []", client)
+        self.assertNotIn('acceptAll: true', client)
         self.assertIn('latest generated changes were applied automatically', client)
         self.assertNotIn('Suggested removal', client)
         self.assertIn('if (reviewPanel) reviewPanel.open = false;', client)

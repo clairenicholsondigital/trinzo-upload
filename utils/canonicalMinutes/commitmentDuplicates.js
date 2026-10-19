@@ -55,6 +55,27 @@ function stem(token) {
 function words(value) {
   return String(value || '').toLowerCase().replace(/(\w)[-\/](\w)/g, '$1 $2').replace(/[’']/g, '').match(/[a-z0-9]{2,}/g) || [];
 }
+// Wording length is not completeness: a verbose review can omit a short,
+// concrete requirement in another version. Compare detail words only after a
+// pair has passed the separate deliverable/ownership/timing checks.
+function commitmentDetailsCovered(part = {}, whole = {}) {
+  const scope = new Set(['not', 'if', 'whether', 'after', 'before', 'once', 'when', 'while', 'until', 'following']);
+  const editingPredicates = new Set(['add', 'amend', 'capture', 'compile', 'create', 'develop', 'document',
+    'draft', 'edit', 'prepare', 'produce', 'record', 'revise', 'rewrite', 'update', 'write']);
+  const detail = (record) => {
+    // Only remove instruction predicates. A "test report" or "review
+    // checklist" contains an essential noun modifier, not another operation.
+    const body = String(record.action || record.text || '')
+      .replace(/^\s*(?:please\s+)?review\s+and\s+(?=(?:update|revise|amend|edit)\b)/i, '')
+      .replace(/^\s*(?:please\s+)?([a-z-]+)\b\s*/i,
+        (match, verb) => editingPredicates.has(verb.toLowerCase()) ? '' : match)
+      .replace(/\b(?:and|then)\s+(?:then\s+)?([a-z-]+)\b(?=\s+(?:a|an|the|this|that|these|those|our|your|their)\b)/gi,
+        (match, verb) => editingPredicates.has(verb.toLowerCase()) ? ' ' : match);
+    return new Set(words(body).filter((word) => !STOP.has(word) || scope.has(word)).map(stem));
+  };
+  const required = detail(part); const present = detail(whole);
+  return required.size > 0 && [...required].every((word) => present.has(word));
+}
 function verbClass(token) {
   const base = stem(token);
   for (const [name, re] of VERB_CLASS) if (re.test(base) || re.test(token)) return name;
@@ -255,8 +276,12 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
     const steps = (r) => 1 + (String(r.action || '').match(/\b(?:then|after that|followed by|and (?:then )?(?:download|send|share|upload|update|review|confirm|check|put|insert|place|forward|circulate|submit|return|report|book|arrange|schedule|prepare|draft|write|complete|finalise|finalize|issue|raise|log|record|add|remove|test|run|deploy|release|publish|notify|inform|chase|escalate)\b)/gi) || []).length;
     const actionCovered = actionIsLosslesslyCovered(action, existing);
     const existingCovered = actionIsLosslesslyCovered(existing, action);
+    const actionDetailsCovered = commitmentDetailsCovered(action, existing);
+    const existingDetailsCovered = commitmentDetailsCovered(existing, action);
     const [winner, loser] = actionCovered !== existingCovered
       ? (actionCovered ? [existing, action] : [action, existing])
+      : actionDetailsCovered !== existingDetailsCovered
+      ? (actionDetailsCovered ? [existing, action] : [action, existing])
       : steps(action) !== steps(existing)
       ? (steps(action) > steps(existing) ? [action, existing] : [existing, action])
       : (weight(action) > weight(existing) ? [action, existing] : [existing, action]);
@@ -273,4 +298,4 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
   return { actions: kept.map((k) => k.record), merged };
 }
 
-module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
+module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
