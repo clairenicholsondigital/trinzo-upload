@@ -588,7 +588,7 @@ test('question deliverable dedupe preserves separate work', () => {
   ]);
 });
 
-test('action dedupe recognises a partial deliverable inside its fuller action', () => {
+test('action dedupe preserves conditional document delivery while recognising a compatible nested task', () => {
   const base = (id, action, evidenceId) => ({
     id, action, owners: ['Alex Green'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [evidenceId]
   });
@@ -601,9 +601,11 @@ test('action dedupe recognises a partial deliverable inside its fuller action', 
   const forward = dedupeHybridActionRecords(structuredClone(records));
   const reverse = dedupeHybridActionRecords(structuredClone(records).reverse());
   assert.deepEqual(forward, reverse);
-  assert.deepEqual(forward.map((record) => record.id), ['contract-pack', 'road-and-towpath']);
-  assert.deepEqual(forward[0].evidenceIds, ['T0010', 'T0011']);
-  assert.deepEqual(forward[1].evidenceIds, ['T0020', 'T0021']);
+  assert.deepEqual(forward.map((record) => record.id), ['contract-only', 'contract-pack', 'road-and-towpath']);
+  assert.match(forward[1].action, /if they can be found/);
+  assert.deepEqual(forward[0].evidenceIds, ['T0010']);
+  assert.deepEqual(forward[1].evidenceIds, ['T0011'], 'unconditional delivery must not be folded into an uncertain condition');
+  assert.deepEqual(forward[2].evidenceIds, ['T0020', 'T0021']);
 });
 
 test('bare contact action merges into its nearby concrete purpose without using transcript vocabulary', () => {
@@ -823,7 +825,7 @@ test('different document-workflow deadlines remain separate', () => {
   assert.equal(rows.length, 2);
 });
 
-test('an exact deliverable with conflicting owners uses a unique explicit self-commitment', () => {
+test('an explicit delivery commitment does not erase a separate completion prerequisite or assign it another owner', () => {
   const rows = [
     { id: 'inferred', action: 'Send the code of conduct to Niamh and require completion before sharing further materials.', owners: ['Stuart Smith'], timing: { kind: 'not_stated' }, evidenceIds: ['T0010'] },
     { id: 'accepted', action: 'Send the code of conduct to Niamh.', owners: ['Jacqui Fox'], timing: { kind: 'not_stated' }, evidenceIds: ['T0020'] }
@@ -833,9 +835,11 @@ test('an exact deliverable with conflicting owners uses a unique explicit self-c
     { id: 'T0020', speaker: 'Jacqui Fox', text: "I'll send the code of conduct to Niamh today." }
   ];
   const merged = dedupeHybridActionRecords(structuredClone(rows), { sourceUnits });
-  assert.equal(merged.length, 1);
-  assert.deepEqual(merged[0].owners, ['Jacqui Fox']);
-  assert.deepEqual(merged[0].evidenceIds, ['T0010', 'T0020']);
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged.find(record => record.id === 'accepted').owners, ['Jacqui Fox']);
+  assert.match(merged.find(record => record.id === 'inferred').action, /require completion before sharing/);
+  assert.deepEqual(merged.find(record => record.id === 'inferred').owners, ['Stuart Smith'],
+    'the delivery speaker does not independently accept enforcing the prerequisite');
   assert.equal(dedupeHybridActionRecords(structuredClone(rows)).length, 2, 'an unsupported owner conflict remains visible');
 });
 
@@ -1829,7 +1833,7 @@ test('rejected cluster releases editorial overflow but not paraphrases or raw wi
   assert.equal(supporting[0].mergeTarget, '');
 });
 
-test('vague reconstructed actions are rejected and implemented deliverables cover equivalent proposals', () => {
+test('vague reconstructed actions are rejected and uncertain delivery wording remains reviewable', () => {
   assert.equal(isVagueReconstructedAction('Plan the timeline around the recorded availability constraint.'), true);
   assert.equal(isVagueReconstructedAction('Speak to the relevant person.'), true);
   assert.equal(isVagueReconstructedAction('Speak with the team as agreed.'), true);
@@ -1846,7 +1850,7 @@ test('vague reconstructed actions are rejected and implemented deliverables cove
   }, {
     action: 'Provide access to the documents through secure transmission or external SharePoint.',
     owners: ['Alex'], evidenceIds: ['T0002']
-  }), true);
+  }), false, 'a secure access method does not prove which of the proposed transmission alternatives was retained');
   assert.equal(publishedActionCoversProposal({
     action: 'Review the software test report.', owners: ['Alex'], evidenceIds: ['T0003']
   }, {
@@ -2130,15 +2134,16 @@ test('candidate dispositions expose publish, proposal and reject outcomes', () =
   assert.deepEqual(dispositions.map((item) => item.disposition), ['publish', 'proposal', 'reject']);
 });
 
-test('hybrid deduplication merges the same compound deliverable but preserves a different action type', () => {
+test('hybrid deduplication preserves differently scoped access decisions and a separate review', () => {
   const rows = dedupeHybridActionRecords([
     { id: 'a1', action: 'Determine whether document access is available and arrange secure transmission.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0002'] },
     { id: 'a2', action: 'Determine whether documents can be shared and arrange secure transmission and external access.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0002', 'T0003'] },
     { id: 'a3', action: 'Review the document access controls.', owners: ['Alex'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0002'] }
   ]);
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows[0].evidenceIds, ['T0001', 'T0002', 'T0003']);
-  assert.equal(rows[1].id, 'a3');
+  assert.equal(rows.length, 3);
+  assert.match(rows.find(record => record.id === 'a1').action, /whether document access is available/);
+  assert.match(rows.find(record => record.id === 'a2').action, /whether documents can be shared/);
+  assert.equal(rows.find(record => record.id === 'a3').action, 'Review the document access controls.');
 });
 
 test('corroborated discussion omitted by the referee is recovered once by proposition', () => {

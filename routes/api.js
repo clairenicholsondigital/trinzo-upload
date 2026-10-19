@@ -86,8 +86,8 @@ const {
   repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
-const { mergeCommitmentDuplicates, commitmentDetailsCovered } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { actionIsLosslesslyCovered, exactActionIdentityConflict, conflictingTimings, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
+const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -12312,32 +12312,9 @@ function isReviewableActionProposal(record = {}, sourceUnits = []) {
 }
 
 function publishedActionCoversProposal(published = {}, proposal = {}) {
-  const publishedOwners = new Set((published.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean));
-  const proposalOwners = new Set((proposal.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean));
-  if (publishedOwners.size && proposalOwners.size
-    && ![...publishedOwners].some((owner) => proposalOwners.has(owner))) return false;
-  const contentOverlap = hybridContentTokenOverlap(published.action, proposal.action);
-  const evidence = new Set(published.evidenceIds || []);
-  const sharedEvidence = (proposal.evidenceIds || []).some((id) => evidence.has(id));
-  const evidenceSequence = (id) => Number(String(id || '').match(/\d+/)?.[0] || NaN);
-  const nearbyEvidence = (proposal.evidenceIds || []).some((proposalId) =>
-    (published.evidenceIds || []).some((publishedId) => {
-      const left = evidenceSequence(proposalId); const right = evidenceSequence(publishedId);
-      return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= 4;
-    }));
-  const publishedTypes = hybridActionTypes(published.action);
-  const proposalTypes = hybridActionTypes(proposal.action);
-  const compatibleType = !publishedTypes.size || !proposalTypes.size
-    || [...publishedTypes].some((type) => proposalTypes.has(type));
-  // A determine-and-implement action covers a differently worded execution
-  // proposal for the same deliverable. It does not collapse ordinary
-  // send/review/test actions merely because they share a noun.
-  const decisionThroughExecution = /\b(?:determine|decide|resolve)\b.{0,80}\b(?:implement|establish|arrange|provide|send|share|prepare)\b/i.test(published.action)
-    || /\b(?:determine|decide|resolve)\b.{0,80}\b(?:implement|establish|arrange|provide|send|share|prepare)\b/i.test(proposal.action);
-  if (!compatibleType && !decisionThroughExecution) return false;
-  return contentOverlap >= 0.58 || (sharedEvidence && contentOverlap >= 0.35)
-    || (nearbyEvidence && contentOverlap >= 0.42)
-    || (decisionThroughExecution && contentOverlap >= 0.48);
+  return hybridCandidateCoveredByRecord({
+    recordType: 'action', text: proposal.action, evidenceIds: proposal.evidenceIds, record: proposal
+  }, published);
 }
 
 function meetingAgentCommitmentRecheckNeeded(record = {}, published = []) {
@@ -12348,6 +12325,8 @@ function meetingAgentCommitmentRecheckNeeded(record = {}, published = []) {
     && !published.some((existing) => actionIsLosslesslyCovered(record, existing));
 }
 
+// A possible relationship is useful for source corroboration, but cannot by
+// itself justify deleting a candidate or claiming its complete publication.
 function hybridCandidateMatchesRecord(candidate, record) {
   if (record?._recordType && candidate?.recordType && record._recordType !== candidate.recordType) return false;
   const candidateAction = candidate.record || { action: candidate?.text, evidenceIds: candidate?.evidenceIds };
@@ -12383,13 +12362,26 @@ function hybridCandidateMatchesRecord(candidate, record) {
   return true;
 }
 
+function hybridCandidateCoveredByRecord(candidate, record) {
+  if (record?._recordType && candidate?.recordType && record._recordType !== candidate.recordType) return false;
+  if (candidate?.recordType !== 'action') return hybridCandidateMatchesRecord(candidate, record);
+  const action = candidate.record || {};
+  const required = {
+    ...action,
+    action: action.action || candidate.text,
+    evidenceIds: action.evidenceIds || candidate.evidenceIds || []
+  };
+  return actionIsSafelyCovered(required, record)
+    || (hybridCandidateMatchesRecord(candidate, record) && commitmentCanBeRepresented(required, record));
+}
+
 function hybridCandidateDispositions(candidates = [], published = [], proposed = [], supporting = []) {
   const publishedRows = Array.isArray(published) ? published : [];
   const proposedRows = Array.isArray(proposed) ? proposed : [];
   return (Array.isArray(candidates) ? candidates : []).map((candidate) => {
-    const publishMatch = publishedRows.find((record) => hybridCandidateMatchesRecord(candidate, record));
-    const proposalMatch = proposedRows.find((record) => hybridCandidateMatchesRecord(candidate, record));
-    const supportingMatch = (Array.isArray(supporting) ? supporting : []).find((record) => hybridCandidateMatchesRecord(candidate, record));
+    const publishMatch = publishedRows.find((record) => hybridCandidateCoveredByRecord(candidate, record));
+    const proposalMatch = proposedRows.find((record) => hybridCandidateCoveredByRecord(candidate, record));
+    const supportingMatch = (Array.isArray(supporting) ? supporting : []).find((record) => hybridCandidateCoveredByRecord(candidate, record));
     const disposition = publishMatch ? 'publish' : proposalMatch ? 'proposal' : supportingMatch ? 'supporting' : 'reject';
     return {
       candidateId: candidate.candidateId,
@@ -12802,6 +12794,12 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
         || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)
         || actionContainmentConflict(record, existing)) return false;
+      // Existing document workflows construct a combined instruction rather
+      // than dropping a step. They may retain one step's additional gate;
+      // conflicting quantities, polarity or two different gates still block.
+      const combinedDocumentWorkflow = sameComplementaryDocumentDeliverable(record, existing)
+        || sameDocumentDeliveryWorkflow(record, existing) || sameCanonicalDocumentWorkflow(record, existing);
+      if (commitmentScopeConflict(record, existing, { allowAdditionalScope: combinedDocumentWorkflow })) return false;
       const recordCovered = actionIsLosslesslyCovered(record, existing);
       const existingCovered = actionIsLosslesslyCovered(existing, record);
       if (recordCovered || existingCovered) {
@@ -12893,6 +12891,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     if (recordDetailsCovered !== duplicateDetailsCovered) {
       preferred = recordDetailsCovered ? duplicate : record;
     }
+    const recordCovered = commitmentCanBeRepresented(record, duplicate);
+    const duplicateCovered = commitmentCanBeRepresented(duplicate, record);
+    if (recordCovered !== duplicateCovered) preferred = recordCovered ? duplicate : record;
     if (complementaryDuplicate === duplicate) {
       preferred = { ...preferred, action: mergeComplementaryDocumentWording(record, duplicate) };
     }
@@ -12905,6 +12906,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     // Never let the vaguer "figure out a way to ..." wording win.
     if (wayToParaphraseOf(preferred, preferred === record ? duplicate : record)) {
       preferred = preferred === record ? duplicate : record;
+    }
+    if (!commitmentClausesRetained(record, preferred) || !commitmentClausesRetained(duplicate, preferred)) {
+      merged.push(record);
+      continue;
     }
     const combinedEvidence = stableEvidence([duplicate, record]);
     const duplicateOwners = duplicate.owners || []; const recordOwners = record.owners || [];
@@ -12957,6 +12962,8 @@ function dedupeHybridActionProposals(records = []) {
     const owners = (record.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
     const types = hybridActionTypes(record.action);
     const duplicate = merged.find((existing) => {
+      if (isReviewerAuthored(record) || isReviewerAuthored(existing)
+        || commitmentScopeConflict(record, existing)) return false;
       const existingOwners = (existing.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
       if (owners.length && existingOwners.length && !owners.some((owner) => existingOwners.includes(owner))) return false;
       const contentOverlap = hybridContentTokenOverlap(record.action, existing.action);
@@ -12972,6 +12979,8 @@ function dedupeHybridActionProposals(records = []) {
       const planningDecisionPair = [...types, ...existingTypes].every((type) => ['planning', 'decision'].includes(type));
       if (types.size && existingTypes.size && !hasCommonType
         && !(planningDecisionPair && sharedEvidence && contentOverlap >= 0.42)) return false;
+      if (!commitmentCanBeRepresented(record, existing)
+        && !commitmentCanBeRepresented(existing, record)) return false;
       return contentOverlap >= 0.56 || (sharedEvidence && contentOverlap >= 0.42)
         || (nearbyEvidence && contentOverlap >= 0.48);
     });
@@ -12979,27 +12988,16 @@ function dedupeHybridActionProposals(records = []) {
       merged.push(record);
       continue;
     }
-    duplicate.evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(record.evidenceIds || [])])].slice(0, 12);
-    duplicate.reviewFlagIds = [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24);
-    if (!(duplicate.owners || []).length && (record.owners || []).length) duplicate.owners = record.owners;
-    if (duplicate.timing?.kind === 'not_stated' && record.timing?.kind !== 'not_stated') duplicate.timing = record.timing;
-    const currentWords = String(duplicate.action || '').split(/\s+/).filter(Boolean).length;
-    const candidateWords = String(record.action || '').split(/\s+/).filter(Boolean).length;
-    const currentScore = Number(isClientReadyActionWording(duplicate.action)) * 100
-      + Math.min(currentWords, 35) - Math.max(0, currentWords - 45) * 2;
-    const candidateScore = Number(isClientReadyActionWording(record.action)) * 100
-      + Math.min(candidateWords, 35) - Math.max(0, candidateWords - 45) * 2;
-    if (candidateScore > currentScore || (candidateScore === currentScore
-      && String(record.action || '').localeCompare(String(duplicate.action || '')) < 0)) {
-      const evidenceIds = duplicate.evidenceIds;
-      const reviewFlagIds = duplicate.reviewFlagIds;
-      const owners = duplicate.owners;
-      const timing = duplicate.timing;
-      Object.assign(duplicate, record, { evidenceIds, reviewFlagIds, owners, timing });
-    }
+    // Select the covering wording before collecting metadata. A longer
+    // sentence or more citations cannot displace an additional work step.
+    const coveringRecord = commitmentCanBeRepresented(duplicate, record)
+      && !commitmentCanBeRepresented(record, duplicate) ? record : duplicate;
+    const evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(record.evidenceIds || [])])];
+    const reviewFlagIds = [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])];
+    Object.assign(duplicate, coveringRecord, { evidenceIds, reviewFlagIds });
     duplicate.evidenceIds = [...new Set(duplicate.evidenceIds || [])]
       .sort((left, right) => Number(String(left).match(/\d+/)?.[0] || Infinity)
-        - Number(String(right).match(/\d+/)?.[0] || Infinity)).slice(0, 12);
+        - Number(String(right).match(/\d+/)?.[0] || Infinity));
   }
   return merged.sort((left, right) => {
     const first = (record) => Math.min(...(record.evidenceIds || []).map((id) => evidenceSequence(id)).filter(Number.isFinite));
@@ -14270,17 +14268,7 @@ function removePublishedActionProposalDuplicates(proposal = {}, published = []) 
     changes: (Array.isArray(proposal?.changes) ? proposal.changes : []).filter((change) => {
       if (change?.type !== 'add' || !change.after?.action) return true;
       if (isPersonalErrandAction(change.after.action)) return false;
-      if (publishedRows.some((record) => publishedActionNamesSameThing(record, change.after))) return false;
-      const candidate = {
-        recordType: 'action', text: change.after.action,
-        evidenceIds: change.after.evidenceIds, record: change.after
-      };
-      return !publishedRows.some((record) => publishedActionCoversProposal(record, change.after)
-        || (hybridCandidateMatchesRecord(candidate, record)
-          && hybridCandidateMatchesRecord({
-            recordType: 'action', text: record.action,
-            evidenceIds: record.evidenceIds, record
-          }, change.after)));
+      return !publishedRows.some((record) => publishedActionCoversProposal(record, change.after));
     })
   };
 }
@@ -16004,16 +15992,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(criticParsed || {}, draft.sourceUnits));
   const criticPromotions = criticConfirmedActionPromotions(
     critic.actions, singleSource, ensemble, draft.sourceUnits, { meetingDate: details.meetingDate }
-  ).filter((record) => !automatic.some((existing) => hybridActionsEquivalent(existing.action, record.action)));
+  ).filter((record) => !automatic.some((existing) => publishedActionCoversProposal(existing, record)));
   if (criticPromotions.length) {
     automatic.push(...criticPromotions);
-    singleSource = singleSource.filter((record) => !criticPromotions.some((promoted) =>
-      hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
-    ));
+    singleSource = singleSource.filter((record) => !criticPromotions.some((promoted) => publishedActionCoversProposal(promoted, record)));
   }
-  const unpromotedCriticActions = critic.actions.filter((record) => !criticPromotions.some((promoted) =>
-    hybridCandidateMatchesRecord({ recordType: 'action', text: promoted.action, evidenceIds: promoted.evidenceIds, record: promoted }, record)
-  ));
+  const unpromotedCriticActions = critic.actions.filter((record) => !criticPromotions.some((promoted) => publishedActionCoversProposal(promoted, record)));
   const salvageCandidates = (fastRefereeAuthoritative ? [] : uncoveredCandidateInventory(
     actionDiscoveryInventory,
     [...automatic, ...critic.actions]
@@ -16055,7 +16039,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     if (sourceInfo.discoverySources.length >= 2 || sourceInfo.explicitDeterministic) salvageAutomatic.push(action);
     else salvageProposal.push(action);
   }
-  automatic.push(...salvageAutomatic.filter((record) => !automatic.some((existing) => hybridActionsEquivalent(existing.action, record.action))));
+  automatic.push(...salvageAutomatic.filter((record) => !automatic.some((existing) => publishedActionCoversProposal(existing, record))));
   const candidateBackstop = corroboratedOmittedActionProposals(
     ensemble, [...refereeActions, ...critic.actions], draft.sourceUnits, { meetingDate: details.meetingDate }
   );
@@ -16086,11 +16070,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const deterministic = [...candidateBackstop, ...strongDiscoveryBackstop, ...processGapBackstop, ...threadBackstop];
     const covered = [...automatic, ...singleSource, ...critic.actions, ...salvage.actions, ...deterministic, ...agentDeclaredProposals];
     const vetoRecheck = dedupeHybridActionRecords(vetoedModelActions.filter((record) => notPublished(record)
-      && (proposalRecheck || !covered.some((existing) => hybridActionsEquivalent(record.action, existing.action)))));
+      && (proposalRecheck || !covered.some((existing) => publishedActionCoversProposal(existing, record)))));
     const poolRecheck = proposalRecheck
       ? dedupeHybridActionRecords([...singleSource, ...unpromotedCriticActions, ...salvageProposal, ...agentDeclaredProposals]
         .filter((record) => (record.owners || []).length && notPublished(record)
-          && !vetoRecheck.some((existing) => hybridActionsEquivalent(record.action, existing.action))))
+          && !vetoRecheck.some((existing) => publishedActionCoversProposal(existing, record))))
       : [];
     const recheck = [...vetoRecheck, ...poolRecheck].slice(0, 24);
     const commitmentItems = commitmentCheckItems(recheck, draft.sourceUnits);
@@ -16117,7 +16101,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const publishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
     .filter((record) => !isVagueReconstructedAction(record.action));
   agentDeclaredProposals = dedupeHybridActionRecords(agentDeclaredProposals)
-    .filter((record) => !publishedActions.some((existing) => hybridCandidateMatchesRecord({
+    .filter((record) => !publishedActions.some((existing) => hybridCandidateCoveredByRecord({
       recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
     }, existing)));
   const proposalCandidates = dedupeHybridActionProposals([
@@ -16133,7 +16117,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     && !isAobPersonalAside(record, draft.sourceUnits)
     && safeAgentProposalPromotion(record, ensemble, draft.sourceUnits));
   automatic.push(...safeProposalPromotions.filter((record) => !automatic.some((existing) =>
-    hybridCandidateMatchesRecord({ recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record }, existing))));
+    hybridCandidateCoveredByRecord({ recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record }, existing))));
   const remainingProposalCandidates = proposalCandidates.filter((record) =>
     !safeProposalPromotions.includes(record) && !isVagueReconstructedAction(record.action)
     && !isAobPersonalAside(record, draft.sourceUnits)
@@ -16209,12 +16193,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean) },
     critic: { materialContributionCount: criticPromotions.length
       + unpromotedCriticActions.filter((record) => proposedRecords.some((proposalRecord) =>
-        hybridCandidateMatchesRecord({
+        hybridCandidateCoveredByRecord({
           recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
         }, proposalRecord))).length },
     salvage: { materialContributionCount: salvageAutomatic.length
       + salvageProposal.filter((record) => proposedRecords.some((proposalRecord) =>
-        hybridCandidateMatchesRecord({
+        hybridCandidateCoveredByRecord({
           recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
         }, proposalRecord))).length }
   });
@@ -18608,6 +18592,7 @@ router.stagedEvaluation = {
   normaliseAgentDeclaredProposals,
   normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
+  hybridCandidateCoveredByRecord,
   hybridCandidateDispositions,
   strictActionDeliverableMatch,
   reconcileAcceptedRefereeActions,

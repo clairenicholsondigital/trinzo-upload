@@ -10,10 +10,11 @@ const {
 const row = (action, owners = [], evidenceIds = ['T0010']) => ({ id: action.slice(0, 12), action, owners, evidenceIds, timing: { kind: 'not_stated' } });
 const add = (after) => ({ id: `change-${after.id}`, type: 'add', before: null, after });
 
-test('a suggestion naming the same specific thing as a published action is dropped', () => {
+test('naming the same thing does not erase an additional location requirement from a suggestion', () => {
   const published = [row('Introduce a batch-coding process so stock can be traced by batch code.', [])];
   const proposal = { changes: [add(row('Set up a system to introduce batch coding and trace stock on the carton.', [], ['T0200']))] };
-  assert.equal(removePublishedActionProposalDuplicates(proposal, published).changes.length, 0);
+  assert.deepEqual(removePublishedActionProposalDuplicates(proposal, published), proposal,
+    'the published process does not retain the proposal requirement to trace stock on the carton');
 });
 
 test('same thing but different owners, or unrelated work, is kept', () => {
@@ -41,14 +42,17 @@ test('an unowned copy with a different verb folds into the owned action', () => 
   assert.equal(kept[0].owners[0], 'Sam');
 });
 
-test('two sides of one check-in become one action with both participants', () => {
+test('a check-in variant retains its additional timing and responsibility', () => {
   const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
   const rows = dedupeHybridActionRecords([
     { id: 'a', action: 'Catch up with Morgan Lee about the audit findings.', owners: ['Alex Kent'], evidenceIds: ['T0020'], timing: { kind: 'not_stated' } },
     { id: 'b', action: 'Check in with Alex Kent next week on the findings.', owners: ['Morgan Lee'], evidenceIds: ['T0029'], timing: { kind: 'not_stated' } }
   ]);
-  assert.equal(rows.length, 1);
-  assert.deepEqual([...rows[0].owners].sort(), ['Alex Kent', 'Morgan Lee']);
+  assert.equal(rows.length, 2);
+  assert.match(rows.find(record => record.id === 'a').action, /audit findings/);
+  assert.match(rows.find(record => record.id === 'b').action, /next week/,
+    'the longer first wording previously erased the second occurrence of timing');
+  assert.deepEqual(rows.map(record => record.owners), [['Alex Kent'], ['Morgan Lee']]);
 });
 
 test('a quantified supporting detail reaches the minutes unless its figures are already visible', () => {

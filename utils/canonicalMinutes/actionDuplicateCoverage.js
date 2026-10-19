@@ -92,6 +92,32 @@ function actionIsLosslesslyCovered(part = {}, whole = {}) {
       && !REPORTED_WORDING.test(clause)));
 }
 
+// A deliberately bounded extension for editing instructions already recognised
+// by the duplicate passes. Only the lead editing predicate can vary; every word
+// naming the object, recipient, quantity, condition or additional operation must
+// survive in the same order. This is directional coverage, not similarity.
+function actionIsSafelyCovered(part = {}, whole = {}) {
+  if (actionIsLosslesslyCovered(part, whole)) return true;
+  if (isReviewerAuthored(part) || isReviewerAuthored(whole)) return false;
+  const owner = ownerKey(part);
+  if (!owner || owner !== ownerKey(whole)) return false;
+  const partTiming = timingKey(part); const wholeTiming = timingKey(whole);
+  if (partTiming && partTiming !== wholeTiming) return false;
+  const imperative = (record) => actionText(record.action).match(/^([a-z-]+)\s+(?:the\s+)?(.+)$/);
+  const requiredInstruction = imperative(part); const retainedInstruction = imperative(whole);
+  if (requiredInstruction && retainedInstruction
+    && requiredInstruction[1] === retainedInstruction[1] && requiredInstruction[2] === retainedInstruction[2]) {
+    const evidence = new Set(part.evidenceIds || []);
+    return (whole.evidenceIds || []).some((id) => evidence.has(id));
+  }
+  const body = (record) => actionText(record.action)
+    .match(/^(?:update|revise|amend|edit)\s+((?:the|a|an|this|that|these|those|our|your|their)\s+.+)$/)?.[1] || '';
+  const required = body(part); const retained = body(whole);
+  if (!required || required !== retained) return false;
+  const evidence = new Set(part.evidenceIds || []);
+  return (whole.evidenceIds || []).some((id) => evidence.has(id));
+}
+
 // A looser downstream comparison must not overturn a refused proof for an
 // otherwise exact clause. It may have been refused because an owner, date,
 // quotation or condition makes the apparent containment unsafe.
@@ -101,6 +127,6 @@ function actionContainmentConflict(left = {}, right = {}) {
 }
 
 module.exports = {
-  actionIsLosslesslyCovered, exactActionIdentityConflict, sameActionText,
+  actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText,
   conflictingTimings, actionContainmentConflict
 };

@@ -6,33 +6,36 @@ const { commitmentDuplicate, mergeCommitmentDuplicates, conflictingRecipients, c
 // Pairs from the 2026-09-27 live runs, labelled against the transcripts.
 const rec = (action, owners, evidenceIds, extra = {}) => ({ action, owners, evidenceIds, timing: { kind: 'not_stated' }, ...extra });
 
-test('the same work in two wordings from the same lines is one commitment, whatever the lead verbs', () => {
+test('related implementation and review wording stays separate without proof that both operations survive', () => {
   const a = rec('Complete implementation of the remaining language support requiring additional font-driver work.', ['Andrew Kane'], ['T0178', 'T0180', 'T0181']);
   const b = rec('Review and resolve the remaining language character-support issues by generating the required font drivers.', ['Andrew Kane'], ['T0178', 'T0181', 'T0182', 'T0180']);
-  assert.equal(commitmentDuplicate(a, b, { cosine: 0.72 }).duplicate, true);
-  assert.equal(commitmentDuplicate(a, b).duplicate, true, 'the nouns alone decide it when no embedding is available');
+  assert.equal(commitmentDuplicate(a, b, { cosine: 0.72 }).duplicate, false);
+  assert.equal(commitmentDuplicate(a, b).duplicate, false, 'shared nouns cannot prove that the review and implementation obligations are interchangeable');
+  assert.deepEqual(mergeCommitmentDuplicates([a, b]).actions, [a, b]);
 });
 
-test('an unowned fragment of an owned compound is folded into it', () => {
+test('an unowned towpath question does not inherit the owner or timing of a compound application task', () => {
   const a = rec('Check if the towpath is open', [], ['T0044']);
   const b = rec('Submit the road-closure application this week and confirm that the towpath has reopened.', ['Alan Pryce'], ['T0040', 'T0044']);
-  assert.equal(commitmentDuplicate(a, b, { cosine: 0.63 }).duplicate, true);
+  assert.equal(commitmentDuplicate(a, b, { cosine: 0.63 }).duplicate, false);
   const out = mergeCommitmentDuplicates([a, b], { cosines: new Map([['0|1', 0.63]]) });
-  assert.equal(out.actions.length, 1);
-  assert.deepEqual(out.actions[0].owners, ['Alan Pryce']);
-  assert.deepEqual(out.actions[0].evidenceIds.sort(), ['T0040', 'T0044']);
+  assert.deepEqual(out.actions, [a, b]);
+  assert.deepEqual(out.actions[0].owners, []);
+  assert.deepEqual(out.merged, []);
 });
 
-test('a clause of a compound that is itself the other action', () => {
+test('a broad chart-colour compound cannot discard exact colours, quantity or Friday timing', () => {
   const a = rec('Restore the three chart colours from grey to the intended blue and orange scheme before Friday.', ['Callum Reid'], ['T0031', 'T0032', 'T0034']);
   const b = rec('Set the chart colours manually and put them back; go to the room on Thursday to check the wifi, lectern availability and handouts.', ['Callum Reid'], ['T0031', 'T0032', 'T0034', 'T0060']);
-  assert.equal(commitmentDuplicate(a, b, { cosine: 0.56 }).duplicate, true);
+  assert.equal(commitmentDuplicate(a, b, { cosine: 0.56 }).duplicate, false);
+  assert.deepEqual(mergeCommitmentDuplicates([a, b]).actions, [a, b]);
 });
 
-test('both waiting on the same thing is one commitment stated twice', () => {
+test('related waiting conditions do not prove identical deliverables or donate a named recipient and owner', () => {
   const a = rec("Send an email to Colm O'Rourke and the review team when the document revisions and responses to comments are finished.", ['Kevin Beattie'], ['T0059', 'T0061']);
   const b = rec('Send the revised documents for review after completing responses and document rewrites arising from feedback.', [], ['T0055', 'T0059', 'T0061']);
-  assert.equal(commitmentDuplicate(a, b, { cosine: 0.65 }).duplicate, true);
+  assert.equal(commitmentDuplicate(a, b, { cosine: 0.65 }).duplicate, false);
+  assert.deepEqual(mergeCommitmentDuplicates([a, b]).actions, [a, b]);
 });
 
 test('two named people are two commitments, however close the wording', () => {
@@ -76,7 +79,7 @@ test('two pieces of work on one file stay apart', () => {
   assert.equal(commitmentDuplicate(a, b, { cosine: 0.55 }).duplicate, false);
 });
 
-test('the merge keeps the fuller record and unions evidence and flags', () => {
+test('the merge keeps the full causative instruction, known timing, evidence and flags', () => {
   const a = rec('Get the glycol chiller serviced before pitching the IPA.', ['Mick Dolan'], ['T0030'], { timing: { kind: 'deadline', wording: 'before the fifteenth' }, reviewFlagIds: ['f1'] });
   const b = rec('Have the glycol chiller serviced before pitching the IPA.', ['Mick Dolan'], ['T0030', 'T0031'], { reviewFlagIds: ['f2'] });
   const out = mergeCommitmentDuplicates([a, b]);
@@ -87,20 +90,19 @@ test('the merge keeps the fuller record and unions evidence and flags', () => {
   assert.equal(out.merged.length, 1);
 });
 
-// Draft 1041: "Load the documents onto Cognidocs for Grace to review and
-// approve" is the first step of "Load the responses ... then download and
-// insert them into the tech file and point the auditor to them". The fuller
-// looking single step (owner, timing, three cited lines) used to win the
-// merge, and the second step vanished from the minutes.
-test('when one action is a step of the other, the compound survives the merge', () => {
+// Retain the original Draft 1041 example. The compound contains additional
+// work and names "responses" rather than "documents". Its relationship to the
+// timed step needs source adjudication; moving "today" onto the whole compound
+// silently dates the download, insertion and auditor hand-off too.
+test('an apparent step preserves both its target and the untimed compound without date donation', () => {
   const step = { id: 's', action: 'Load the documents onto Cognidocs for Grace to review and approve.', owners: ['Rebecca Gill'],
     timing: { kind: 'target', wording: 'today', exactDate: '' }, evidenceIds: ['T0126', 'T0127', 'T0128'], reviewFlagIds: [] };
   const compound = { id: 'c', action: 'Load the responses to the CARs into Cognidocs for Grace to review and approve, then download and insert them into the tech file and point the auditor to them.',
     owners: ['Rebecca Gill'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0127'], reviewFlagIds: [] };
   const { actions, merged } = mergeCommitmentDuplicates([step, compound]);
-  assert.equal(merged.length, 1, 'they are the same work');
-  assert.equal(actions.length, 1);
-  assert.match(actions[0].action, /then download/);
-  assert.equal(actions[0].timing.wording, 'today', 'the step\'s timing is kept on the survivor');
-  assert.deepEqual(actions[0].evidenceIds, ['T0127', 'T0126', 'T0128']);
+  assert.deepEqual(merged, [], 'word overlap does not prove that the step target governs the compound');
+  assert.deepEqual(actions, [step, compound]);
+  assert.equal(actions[0].timing.wording, 'today');
+  assert.equal(actions[1].timing.kind, 'not_stated');
+  assert.match(actions[1].action, /then download/);
 });

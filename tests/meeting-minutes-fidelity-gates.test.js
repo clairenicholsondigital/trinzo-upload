@@ -33,13 +33,16 @@ test('a first-person concrete offer still establishes ownership', () => {
   assert.equal(V.ownerTakesItOn('Christina', lines, 'Place the procedure in a folder for review.', []), true);
 });
 
-test('two variants of the same scheduled event merge with one shared agreement line', () => {
-  const result = V.mergeDuplicateCommitments([
+test('a shared scheduling line does not erase different work, ownership or timing certainty', () => {
+  const actions = [
     { action: 'Schedule another call with the client to continue the review.', owners: ['Jacqui'], timing: { kind: 'target', wording: 'next week' }, evidenceIds: ['T0010', 'T0011'], reviewFlagIds: [] },
     { action: 'Continue the work and look at scheduling another call in the diary.', owners: [], timing: { kind: 'deadline', wording: 'next week' }, evidenceIds: ['T0011', 'T0012'], reviewFlagIds: [] }
-  ]);
-  assert.equal(result.actions.length, 1);
-  assert.equal(result.merged, 1);
+  ];
+  const result = V.mergeDuplicateCommitments(actions);
+  assert.equal(result.merged, 0);
+  assert.deepEqual(result.actions, actions, 'continuing work and an unassigned deadline are not covered by the owned scheduling target');
+  assert.match(result.actions[1].action, /^Continue the work/);
+  assert.deepEqual(result.actions.map(action => action.timing.kind), ['target', 'deadline']);
 });
 
 test('a weekday attached to an earlier review is not the follow-up deadline', () => {

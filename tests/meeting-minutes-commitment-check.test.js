@@ -96,13 +96,17 @@ test('a rescued commitment quote must be about the action it rescues', () => {
   assert.ok(V.commitmentQuoteAboutAction("Janine, and I think Adil, you're involved in that next week", 'Review the proposed mute button change with clinicians.', passage));
 });
 
-test('an owner-less copy of an owned commitment merges into it', () => {
-  const out = V.mergeDuplicateCommitments([
+test('owner-less overlapping work is not assigned or merged without complete coverage', () => {
+  const actions = [
     { action: 'Conduct a follow-up call to review the CAR responses, then load the documents for Grace.', owners: [], timing: { kind: 'not_stated' }, evidenceIds: ['T1', 'T2', 'T3'] },
     { action: 'Conduct the review call, ensure the CAR responses are complete, and load the documents for Grace.', owners: ['Rebecca Gill'], timing: { kind: 'not_stated' }, evidenceIds: ['T1', 'T2', 'T3'] }
-  ]);
-  assert.equal(out.merged, 1);
-  assert.deepEqual(out.actions[0].owners, ['Rebecca Gill']);
+  ];
+  const out = V.mergeDuplicateCommitments(actions);
+  assert.equal(out.merged, 0);
+  assert.deepEqual(out.actions, actions, 'a shared passage does not establish the unknown owner or replace different compound work');
+  assert.match(out.actions[0].action, /then load/);
+  assert.match(out.actions[1].action, /ensure the CAR responses are complete/);
+  assert.deepEqual(out.actions.map(action => action.owners), [[], ['Rebecca Gill']]);
 });
 
 test('sharing a screen during the meeting is meeting admin, not an action', () => {
