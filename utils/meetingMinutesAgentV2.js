@@ -10,6 +10,9 @@ const {
   removeRoutineMeetingAdministrationSentences
 } = require('./meetingAdministration');
 const { isActionCategoryTopicCard } = require('./canonicalMinutes/topicEditorial');
+const { isReviewerAuthored } = require('./canonicalMinutes/state');
+const { actionIsSafelyCovered } = require('./canonicalMinutes/actionDuplicateCoverage');
+const { commitmentCanBeRepresented } = require('./canonicalMinutes/commitmentDuplicates');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -3561,10 +3564,8 @@ function applyChainedTimingRule(actions = [], units = []) {
 }
 
 // ---- Same-commitment duplicates -------------------------------------------
-// Two published actions with the same owners, drawn from mostly the same
-// transcript lines (at least two shared) and describing overlapping work, are
-// one commitment written twice. The one with a timing (else the fuller
-// wording) is kept and takes the other's citations and flags.
+// These existing relation rules nominate possible duplicates. A separate
+// directional retention check below must still protect each obligation.
 const DUPLICATE_STOP = new Set(['with', 'that', 'this', 'then', 'from', 'into', 'their', 'about', 'review', 'ensure', 'complete']);
 function duplicateWords(value) {
   return new Set((String(value || '').toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []).filter((word) => !DUPLICATE_STOP.has(word)));
@@ -3574,16 +3575,11 @@ function schedulingCommitment(value = '') {
 }
 function sameCommitment(left = {}, right = {}) {
   const owners = (record) => (record.owners || []).map((owner) => String(owner).toLowerCase().trim()).sort().join('|');
-  // An owner-less copy of an owned commitment is still the same commitment.
   if ((owners(left) || owners(right)) && owners(left) && owners(right) && owners(left) !== owners(right)) return false;
   if (!owners(left) && !owners(right)) return false;
   const leftIds = new Set(left.evidenceIds || []);
   const rightIds = [...new Set(right.evidenceIds || [])];
   const shared = rightIds.filter((id) => leftIds.has(id)).length;
-  // Referee variants of one scheduled event often retain only the single line
-  // where the call was agreed, so requiring two shared citations preserves a
-  // duplicate. One shared citation plus the same stated timing is sufficient
-  // only for explicit scheduling-shaped actions.
   const timing = (record) => comparisonText(record?.timing?.wording || '').replace(/[^a-z0-9 ]/g, '').trim();
   if (shared >= 1 && schedulingCommitment(left.action) && schedulingCommitment(right.action)
     && timing(left) && timing(left) === timing(right)) return true;
@@ -3592,24 +3588,49 @@ function sameCommitment(left = {}, right = {}) {
   let common = 0; for (const word of a) if (b.has(word)) common += 1;
   return common / Math.max(1, Math.min(a.size, b.size)) >= 0.3;
 }
+
+function coveringActionPair(left, right, related) {
+  let leftCovered = actionIsSafelyCovered(left, right);
+  let rightCovered = actionIsSafelyCovered(right, left);
+  if (!leftCovered && !rightCovered && related) {
+    leftCovered = commitmentCanBeRepresented(left, right);
+    rightCovered = commitmentCanBeRepresented(right, left);
+  }
+  if (!leftCovered && !rightCovered) return null;
+  // Fuller wording breaks a tie only after both directions preserve the work.
+  // It cannot make a longer fragment displace a complete compound or date.
+  return leftCovered && (!rightCovered || text(right.action).length > text(left.action).length)
+    ? [right, left] : [left, right];
+}
+
+function mergeCoveredActionRecords(winner, loser) {
+  const result = {
+    ...winner,
+    evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])],
+    reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
+  };
+  for (const field of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+    if (Array.isArray(winner[field]) || Array.isArray(loser[field])) {
+      result[field] = [...new Set([...(winner[field] || []), ...(loser[field] || [])])];
+    }
+  }
+  for (const field of ['_timingPublicationIssue', '_timingClauseNote']) {
+    if (!result[field] && loser[field]) result[field] = loser[field];
+  }
+  return result;
+}
 function mergeDuplicateCommitments(actions = []) {
   const kept = [];
   let merged = 0;
   for (const action of Array.isArray(actions) ? actions : []) {
-    const index = kept.findIndex((existing) => sameCommitment(existing, action));
+    let pair;
+    const index = kept.findIndex((existing) => {
+      pair = coveringActionPair(existing, action, sameCommitment(existing, action));
+      return Boolean(pair);
+    });
     if (index < 0) { kept.push(action); continue; }
     merged += 1;
-    const existing = kept[index];
-    const timed = (record) => Number(Boolean(record.timing && record.timing.kind !== 'not_stated'))
-      + 2 * Number(Boolean((record.owners || []).length));
-    const [winner, loser] = timed(action) > timed(existing)
-      || (timed(action) === timed(existing) && text(action.action).length > text(existing.action).length)
-      ? [action, existing] : [existing, action];
-    kept[index] = {
-      ...winner,
-      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])].slice(0, 8),
-      reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
-    };
+    kept[index] = mergeCoveredActionRecords(...pair);
   }
   return { actions: kept, merged };
 }
@@ -4644,18 +4665,26 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
   };
   let promoted = 0;
   let quantitiesPromoted = 0;
+  // The loose visible-row comparison deliberately stays unchanged. Applying
+  // it to new promotions could hide a different fact such as approval versus
+  // testing. Only an identical full-text/evidence identity may skip promotion.
+  const promotedIdentities = new Set();
   const checked = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
     const next = { ...topic };
     const additions = [];
     for (const kind of ['points', 'decisions', 'openQuestions']) {
       if (!Array.isArray(topic?.[kind])) continue;
       next[kind] = topic[kind].map((record) => {
+        if (isReviewerAuthored(record)) return record;
         const details = Array.isArray(record?.supportingDetails) ? record.supportingDetails : [];
         if (!details.length) return record;
         const kept = [];
         for (const detail of details) {
           const value = text(detail?.text, 800);
-          const eligible = value && !value.startsWith(SUPERSEDED_LABEL) && (detail.evidenceIds || []).length
+          const identity = JSON.stringify([String(detail?.text || ''), [...new Set(detail?.evidenceIds || [])].sort()]);
+          const eligible = !isReviewerAuthored(detail) && !promotedIdentities.has(identity)
+            && value && !value.startsWith(SUPERSEDED_LABEL) && (detail.evidenceIds || []).length
             && readable(value) && !verbatim(value, detail.evidenceIds);
           const named = eligible && promoted < limit && said(value) && !restates(value);
           // One new figure inside a line that otherwise repeats a visible row is
@@ -4666,6 +4695,7 @@ function promoteNamedFactDetails(discussion = [], units = [], people = [], limit
           const quantified = eligible && !named && quantitiesPromoted < quantityLimit
             && newQuantity(value) && !repeatsVisibleFigures(value);
           if (named || quantified) {
+            promotedIdentities.add(identity);
             additions.push({ id: detail.id || stableId('promoted', value, promoted + quantitiesPromoted), text: value,
               evidenceIds: [...(detail.evidenceIds || [])], reviewFlagIds: [...(detail.reviewFlagIds || [])], supportingDetails: [] });
             if (quantified) {
@@ -5374,24 +5404,19 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
   // Preserve the exact visible register (including two similar rows) so an
   // autosave cannot silently remove an action or make a pending proposal's
   // indexes stale. Generated candidates still use the normal deduper.
-  if (options.dedupeActions === false) return rows;
+  if (options.dedupeActions === false || options.preserveReviewerEdits === true) return rows;
   const merged = [];
   for (const row of rows) {
-    const duplicate = merged.find((existing) => actionSimilarity(existing, row) >= 0.78 && ownersCompatible(existing, row));
-    if (!duplicate) {
+    let pair;
+    const index = merged.findIndex((existing) => {
+      pair = coveringActionPair(existing, row, actionSimilarity(existing, row) >= 0.78 && ownersCompatible(existing, row));
+      return Boolean(pair);
+    });
+    if (index < 0) {
       merged.push(row);
       continue;
     }
-    duplicate.evidenceIds = [...new Set([...duplicate.evidenceIds, ...row.evidenceIds])].slice(0, 8);
-    duplicate._unsupportedEvidenceIds = [...new Set([
-      ...(duplicate._unsupportedEvidenceIds || []),
-      ...(row._unsupportedEvidenceIds || [])
-    ])];
-    duplicate._weakEvidenceIds = [...new Set([...(duplicate._weakEvidenceIds || []), ...(row._weakEvidenceIds || [])])];
-    duplicate.owners = [...new Set([...duplicate.owners, ...row.owners])].slice(0, 12);
-    if (duplicate.timing.kind === 'not_stated' && row.timing.kind !== 'not_stated') duplicate.timing = row.timing;
-    else if (duplicate.timing.kind !== 'not_stated' && row.timing.kind !== 'not_stated'
-      && JSON.stringify(duplicate.timing) !== JSON.stringify(row.timing)) duplicate._timingConflicts.push(row.timing);
+    merged[index] = mergeCoveredActionRecords(...pair);
   }
   return merged;
 }

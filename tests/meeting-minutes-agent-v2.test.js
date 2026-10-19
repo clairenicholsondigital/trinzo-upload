@@ -802,7 +802,7 @@ test('objective records accumulate distinct evidenced aims from later passes', (
   assert.ok(records.some((record) => record.evidenceIds.includes('T2050')));
 });
 
-test('proposal deduplication merges paraphrased deliverables and combines evidence', () => {
+test('proposal deduplication preserves a conditional alternative beside a firm implementation', () => {
   const records = dedupeHybridActionProposals([
     {
       id: 'A1', action: 'Determine and implement a secure method for document access and external SharePoint access.',
@@ -813,8 +813,11 @@ test('proposal deduplication merges paraphrased deliverables and combines eviden
       owners: ['Alex'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2101']
     }
   ]);
-  assert.equal(records.length, 1);
-  assert.deepEqual(records[0].evidenceIds, ['T2100', 'T2101']);
+  assert.equal(records.length, 2);
+  assert.match(records.find(record => record.id === 'A1').action, /Determine and implement/);
+  assert.match(records.find(record => record.id === 'A2').action, /if needed/);
+  assert.deepEqual(records.map(record => record.evidenceIds), [['T2100'], ['T2101']],
+    'a firm implementation must not inherit evidence for a conditional alternative');
 });
 
 test('proposal deduplication preserves distinct predicates from one evidence window', () => {

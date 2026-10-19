@@ -1,7 +1,7 @@
 'use strict';
 
 const { isReviewerAuthored } = require('./state');
-const { actionIsLosslesslyCovered, exactActionIdentityConflict, sameActionText, conflictingTimings, actionContainmentConflict } = require('./actionDuplicateCoverage');
+const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText, conflictingTimings, actionContainmentConflict } = require('./actionDuplicateCoverage');
 
 // One commitment written twice. The action list is assembled from two
 // discovery legs, a recovery pass, the referee's reconstruction and the
@@ -58,20 +58,25 @@ function words(value) {
 // Wording length is not completeness: a verbose review can omit a short,
 // concrete requirement in another version. Compare detail words only after a
 // pair has passed the separate deliverable/ownership/timing checks.
-function commitmentDetailsCovered(part = {}, whole = {}) {
+function commitmentDetailsCovered(part = {}, whole = {}, options = {}) {
   const scope = new Set(['not', 'if', 'whether', 'after', 'before', 'once', 'when', 'while', 'until', 'following']);
+  const qualifiers = new Set(['new', 'current', 'existing', 'remaining', 'additional', 'further', 'other',
+    'required', 'requiring', 'necessary', 'relevant', 'related', 'appropriate', 'any', 'all', 'each',
+    'both', 'some', 'more', 'most', 'our', 'your', 'his', 'her', 'their']);
   const editingPredicates = new Set(['add', 'amend', 'capture', 'compile', 'create', 'develop', 'document',
     'draft', 'edit', 'prepare', 'produce', 'record', 'revise', 'rewrite', 'update', 'write']);
   const detail = (record) => {
     // Only remove instruction predicates. A "test report" or "review
     // checklist" contains an essential noun modifier, not another operation.
-    const body = String(record.action || record.text || '')
+    let body = String(record.action || record.text || '');
+    if (options.preserveLeadingWord !== true) body = body
       .replace(/^\s*(?:please\s+)?review\s+and\s+(?=(?:update|revise|amend|edit)\b)/i, '')
       .replace(/^\s*(?:please\s+)?([a-z-]+)\b\s*/i,
-        (match, verb) => editingPredicates.has(verb.toLowerCase()) ? '' : match)
-      .replace(/\b(?:and|then)\s+(?:then\s+)?([a-z-]+)\b(?=\s+(?:a|an|the|this|that|these|those|our|your|their)\b)/gi,
+        (match, verb) => editingPredicates.has(verb.toLowerCase()) ? '' : match);
+    body = body.replace(/\b(?:and|then)\s+(?:then\s+)?([a-z-]+)\b(?=\s+(?:a|an|the|this|that|these|those|our|your|their)\b)/gi,
         (match, verb) => editingPredicates.has(verb.toLowerCase()) ? ' ' : match);
-    return new Set(words(body).filter((word) => !STOP.has(word) || scope.has(word)).map(stem));
+    return new Set(words(body).filter((word) => !STOP.has(word) || scope.has(word)
+      || (options.preserveLeadingWord === true && qualifiers.has(word))).map(stem));
   };
   const required = detail(part); const present = detail(whole);
   return required.size > 0 && [...required].every((word) => present.has(word));
@@ -188,6 +193,124 @@ function clauses(value) {
   return out.map((c) => c.trim()).filter((c) => c.split(/\s+/).length >= 3);
 }
 
+const QUANTITY = /^(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|both|half|dozen)$/;
+const NEGATION = /\b(?:not|never|without|no|cannot|can't|don't|doesn't|won't|mustn't)\b/i;
+const VERSION_QUALIFIER = /\b(?:new|old|current|existing|previous|former|latest|original)\b/g;
+const EXPLICIT_SCOPE = /\b(?:if|unless|after|before|once|when|until|pending|following|subject to|provided(?: that)?|as soon as|whether|by|during|within|on|at)\b[^.;]*/gi;
+// Only an explicit temporal "by" phrase qualifies. "By Morgan" remains
+// ordinary scope, not a deadline that can be donated to another wording.
+const BY_DEADLINE = /\bby\s+(?=(?:(?:the|this|next)\s+)?(?:\d|monday\b|tuesday\b|wednesday\b|thursday\b|friday\b|saturday\b|sunday\b|today\b|tomorrow\b|tonight\b|noon\b|midday\b|midnight\b|end\b|close\b|first\b|second\b|third\b|fourth\b|fifth\b|sixth\b|seventh\b|eighth\b|ninth\b|tenth\b|eleventh\b|twelfth\b|thirteenth\b|fourteenth\b|fifteenth\b|sixteenth\b|seventeenth\b|eighteenth\b|nineteenth\b|twentieth\b|thirtieth\b|twenty\b|thirty\b))[^.;,]*?(?=\s+(?:and|then|if|unless|after|before|once|when|until|pending|following|subject to|provided|whether)\b|[.;,]|$)/gi;
+function comparisonAction(record = {}) {
+  return String(record.action || record.text || '').normalize('NFKC').toLowerCase()
+    .replace(/[’]/g, "'").replace(/\s+/g, ' ').trim().replace(/[.!;]+$/, '')
+    .replace(/^review\s+and\s+(?=(?:update|revise|amend|edit)\b)/, '');
+}
+function exactOwners(record = {}) {
+  return [...new Set((record.owners || []).map(owner => String(owner).normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()).filter(Boolean))].sort().join('|');
+}
+function deadlineScope(record = {}) {
+  const text = comparisonAction(record);
+  return { deadlines: text.match(BY_DEADLINE) || [], body: text.replace(BY_DEADLINE, '').replace(/\s+/g, ' ').trim() };
+}
+function quantityPhrases(record = {}) {
+  const parts = deadlineScope(record).body.split(/[,;]|\b(?:and|or|then)\b/);
+  return parts.flatMap(part => {
+    const tokens = part.match(/[a-z]+(?:'[a-z]+)?|\d+(?:\.\d+)?/g) || [];
+    return tokens.flatMap((token, index) => QUANTITY.test(token) ? [tokens.slice(index).join(' ')] : []);
+  });
+}
+function sameValues(left, right) {
+  const a = [...left].sort(); const b = [...right].sort();
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+// This guard does not nominate duplicates. It prevents an existing relation
+// matcher from discarding explicit scope merely because its nouns overlap.
+function commitmentScopeConflict(left = {}, right = {}, options = {}) {
+  if (actionIsSafelyCovered(left, right) || actionIsSafelyCovered(right, left)) return false;
+  const a = comparisonAction(left); const b = comparisonAction(right);
+  if (!sameValues(quantityPhrases(left), quantityPhrases(right))) return true;
+  if ((NEGATION.test(a) || NEGATION.test(b)) && a !== b) return true;
+  const leftVersions = new Set(a.match(VERSION_QUALIFIER) || []);
+  const rightVersions = new Set(b.match(VERSION_QUALIFIER) || []);
+  if (leftVersions.size && rightVersions.size && !sameValues(leftVersions, rightVersions)) return true;
+  const leftDeadline = deadlineScope(left); const rightDeadline = deadlineScope(right);
+  if (leftDeadline.deadlines.length && rightDeadline.deadlines.length
+    && !sameValues(leftDeadline.deadlines, rightDeadline.deadlines)) return true;
+  const scopes = value => value.match(EXPLICIT_SCOPE) || [];
+  const leftScopes = scopes(leftDeadline.body); const rightScopes = scopes(rightDeadline.body);
+  if (options.allowAdditionalScope === true && (!leftScopes.length || !rightScopes.length)) return false;
+  return !sameValues(leftScopes, rightScopes);
+}
+function operationKey(verb) {
+  const value = stem(verb);
+  if (/^(?:test|run|rerun|verify|validate)$/.test(verb)) return 'testing';
+  if (/^(?:start|begin|commence|kick|launch)$/.test(verb)) return 'start';
+  if (/^(?:complete|finish|finalise|finalize|close)$/.test(verb)) return 'completion';
+  return verbClass(verb) || `word:${value}`;
+}
+function operationKeys(record = {}) {
+  const source = comparisonAction(record);
+  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then)\s+)([a-z-]+)\b/g);
+  return new Set([...matches].flatMap(match => {
+    const verb = match[1];
+    return match.index === 0 || verbClass(verb) ? [operationKey(verb)] : [];
+  }));
+}
+function instructionBody(record = {}) {
+  return comparisonAction(record).replace(/^(?:please\s+)?[a-z-]+\s+(?:the\s+)?/, '');
+}
+function causativeServiceEquivalent(left = {}, right = {}) {
+  const body = record => comparisonAction(record).match(/^(?:get|have)\s+(.+?\s+[a-z]+ed(?:\s+(?:before|after|by|once|when|at|on|in)\b.*)?)$/)?.[1] || '';
+  const a = body(left); return Boolean(a && a === body(right));
+}
+
+function commitmentClausesRetained(part = {}, whole = {}) {
+  const required = operationKeys(part);
+  const requiredClauses = clauses(comparisonAction(part));
+  if (requiredClauses.length <= 1 || [...required].every(key => key === 'write')) return true;
+  const retainedClauses = clauses(comparisonAction(whole));
+  const used = new Set();
+  for (const clause of requiredClauses) {
+    // Bind each operation's object and recipient together. Pooling the words
+    // from two sends would accept the same objects sent to swapped people.
+    const at = retainedClauses.findIndex((candidate, index) => !used.has(index)
+      && operationKey(leadVerb(clause)) === operationKey(leadVerb(candidate))
+      && commitmentDetailsCovered({ action: instructionBody({ action: clause }) },
+        { action: instructionBody({ action: candidate }) }, { preserveLeadingWord: true }));
+    if (at < 0) return false;
+    used.add(at);
+  }
+  return true;
+}
+// Directional retention only. Callers must first nominate the pair using their
+// existing relation matcher; neither word inclusion nor an embedding is an
+// independent reason to delete an action.
+function commitmentCanBeRepresented(part = {}, whole = {}) {
+  if (actionIsSafelyCovered(part, whole)) return true;
+  if (isReviewerAuthored(part) || isReviewerAuthored(whole)) return false;
+  // The existing bounded review-and-edit wording is one editing workflow.
+  // Other compounds still require the exact clause/timing-scope protection.
+  if (actionContainmentConflict(part, whole) && comparisonAction(part) !== comparisonAction(whole)) return false;
+  const owners = exactOwners(part);
+  if (!owners || owners !== exactOwners(whole) || conflictingTimings(part, whole)) return false;
+  const timed = record => Boolean(record.timing?.kind && record.timing.kind !== 'not_stated');
+  if (timed(part) && !timed(whole)) return false;
+  if (commitmentScopeConflict(part, whole)) return false;
+  if (conflictingRecipients(part.action, whole.action) || conflictingDestinations(part.action, whole.action)) return false;
+  const requiredDeadlines = deadlineScope(part).deadlines;
+  const retainedDeadlines = deadlineScope(whole).deadlines;
+  if (!requiredDeadlines.every(deadline => retainedDeadlines.includes(deadline))) return false;
+  // A deadline for a step cannot become a deadline for a wider workflow even
+  // when another pass copied the same structured timing onto the compound.
+  if ((timed(part) || timed(whole)) && instructionBody(part) !== instructionBody(whole)) return false;
+  if (causativeServiceEquivalent(part, whole)) return true;
+  const required = operationKeys(part); const retained = operationKeys(whole);
+  if (!required.size || ![...required].every(key => retained.has(key))) return false;
+  if (!commitmentClausesRetained(part, whole)) return false;
+  return commitmentDetailsCovered({ ...part, action: instructionBody(part) }, { ...whole, action: instructionBody(whole) },
+    { preserveLeadingWord: true });
+}
+
 /**
  * @param {object} a action record {action, owners, evidenceIds, timing}
  * @param {object} b action record
@@ -201,11 +324,15 @@ function commitmentDuplicate(a = {}, b = {}, options = {}) {
   if (exactActionIdentityConflict(a, b)) return { duplicate: false, reason: 'different owners or timing' };
   if (conflictingTimings(a, b)) return { duplicate: false, reason: 'different timing' };
   if (sameActionText(a, b)) return { duplicate: true, reason: 'identical' };
+  if (commitmentScopeConflict(a, b)) return { duplicate: false, reason: 'different explicit scope' };
   if (actionContainmentConflict(a, b)) return { duplicate: false, reason: 'clause scope or responsibility is not preserved' };
   if (actionIsLosslesslyCovered(a, b) || actionIsLosslesslyCovered(b, a)) {
     return { duplicate: true, reason: 'complete clause preserved with the same owner and timing' };
   }
   if (!ownersCompatible(a, b)) return { duplicate: false, reason: 'different owners' };
+  if (!commitmentCanBeRepresented(a, b) && !commitmentCanBeRepresented(b, a)) {
+    return { duplicate: false, reason: 'the survivor would lose obligation details or operations' };
+  }
   if (dependsOn(ta, tb) || dependsOn(tb, ta)) return { duplicate: false, reason: 'one waits on the other' };
   if (conflictingRecipients(ta, tb)) return { duplicate: false, reason: 'different recipients' };
   if (differentFigures(ta, tb)) return { duplicate: false, reason: 'different figures' };
@@ -274,8 +401,8 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
     // file"), the compound is the one that keeps both steps; dropping it for
     // the fuller-looking single step loses the second step for good.
     const steps = (r) => 1 + (String(r.action || '').match(/\b(?:then|after that|followed by|and (?:then )?(?:download|send|share|upload|update|review|confirm|check|put|insert|place|forward|circulate|submit|return|report|book|arrange|schedule|prepare|draft|write|complete|finalise|finalize|issue|raise|log|record|add|remove|test|run|deploy|release|publish|notify|inform|chase|escalate)\b)/gi) || []).length;
-    const actionCovered = actionIsLosslesslyCovered(action, existing);
-    const existingCovered = actionIsLosslesslyCovered(existing, action);
+    const actionCovered = commitmentCanBeRepresented(action, existing);
+    const existingCovered = commitmentCanBeRepresented(existing, action);
     const actionDetailsCovered = commitmentDetailsCovered(action, existing);
     const existingDetailsCovered = commitmentDetailsCovered(existing, action);
     const [winner, loser] = actionCovered !== existingCovered
@@ -285,12 +412,12 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
       : steps(action) !== steps(existing)
       ? (steps(action) > steps(existing) ? [action, existing] : [existing, action])
       : (weight(action) > weight(existing) ? [action, existing] : [existing, action]);
-    const lossless = actionIsLosslesslyCovered(loser, winner);
+    if (!commitmentCanBeRepresented(loser, winner)) { kept.push({ record: action, index }); return; }
     kept[at] = { index: winner === action ? index : kept[at].index, record: {
       ...winner,
       owners: winner.owners && winner.owners.length ? winner.owners : (loser.owners || []),
       timing: winner.timing && winner.timing.kind && winner.timing.kind !== 'not_stated' ? winner.timing : (loser.timing || winner.timing),
-      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])].slice(0, lossless ? undefined : 12),
+      evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])],
       reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
     } };
     merged.push({ removed: String(loser.action || '').slice(0, 160), into: String(winner.action || '').slice(0, 160), reason: verdict.reason });
@@ -298,4 +425,4 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
   return { actions: kept.map((k) => k.record), merged };
 }
 
-module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
+module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };

@@ -41,6 +41,8 @@ test('true rewordings of one deliverable still merge', () => {
     action('b', 'Send the landlord the signed contract by Friday.', ['T0013'])
   ]);
   assert.equal(rows.length, 1);
+  assert.match(rows[0].action, /by Friday/, 'the retained rewording must keep the known deadline');
+  assert.deepEqual(rows[0].evidenceIds, ['T0012', 'T0013']);
 });
 
 test('complementary send-and-sign wording for one document merges when evidence is adjacent', () => {
@@ -49,6 +51,10 @@ test('complementary send-and-sign wording for one document merges when evidence 
     action('b', 'Sign the access form before the review begins.', ['T0021', 'T0022'])
   ]);
   assert.equal(rows.length, 1);
+  assert.match(rows[0].action, /send/i);
+  assert.match(rows[0].action, /sign/i);
+  assert.match(rows[0].action, /Jordan/);
+  assert.match(rows[0].action, /before the review begins/);
 });
 
 test('complementary document handling stays separate for distant evidence', () => {
@@ -122,16 +128,17 @@ test('a meaningful gate is not discarded when one wording omits it', () => {
     { action: 'Confirm which records can be released.' }));
 });
 
-test('the same meeting described twice merges; different work with a shared noun does not', () => {
+test('meeting variants retain both review purpose and logistics; a shared noun does not establish the same work', () => {
   const { dedupeHybridActionRecords, sameActionApproach } = require('../routes/api').stagedEvaluation;
   const row = (id, text, owners, evidenceIds) => ({ id, action: text, owners, timing: { kind: 'not_stated' }, evidenceIds });
   const merged = dedupeHybridActionRecords([
     row('a', 'Hold a project planning session to review the open items before work begins.', ['Sam Carter', 'Lee Hart'], ['T0001']),
     row('b', 'Hold a project planning session in person at the conference room on Saturday before the Monday start.', ['Sam Carter', 'Lee Hart'], ['T0099'])
   ], {});
-  assert.equal(merged.length, 1);
-  assert.match(merged[0].action, /in person|conference room|Saturday/i,
-    'the consolidated meeting must retain useful location or manner detail');
+  assert.equal(merged.length, 2);
+  assert.match(merged.find(record => record.id === 'a').action, /review the open items/,
+    'the previous single logistical winner erased the meeting purpose');
+  assert.match(merged.find(record => record.id === 'b').action, /conference room on Saturday/);
   assert.equal(dedupeHybridActionRecords([
     row('a', 'Send the standards list to the reviewer.', ['Sam Carter'], ['T0001']),
     row('b', 'Review the standards list and come back with questions.', ['Sam Carter'], ['T0002'])
