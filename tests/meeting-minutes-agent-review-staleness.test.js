@@ -183,3 +183,40 @@ for (const publish of [false, true]) {
     }
   });
 }
+
+test('automatic proposal application preserves unconfirmed work and exposes source checks across undo and redo', async () => {
+  savedDraft = baseDraft();
+  const original = structuredClone(savedDraft.actions[0]);
+  const addition = { ...original, id: 'possible', action: 'Consider a wider building survey.', owners: [], evidenceIds: ['T0001'] };
+  savedDraft.sourceUnits = [{ id: 'T0001', speaker: 'Alex', text: 'We might consider a wider building survey someday.' }];
+  savedDraft.pendingProposal = { stage: 'actions', changes: [
+    { id: 'uncertain-remove', type: 'remove', before: original, beforeIndex: 0, selected: false },
+    { id: 'uncertain-add', type: 'add', after: addition, index: 1, selected: false },
+    { id: 'vetted-edit', type: 'modify', before: original, after: { ...original, action: 'Send the revised report.' }, beforeIndex: 0, selected: true }
+  ] };
+  await invoke('proposal', { decision: 'accept', automatic: true, acceptAll: true });
+  assert.deepEqual(savedDraft.actions.map(row => row.action), ['Send the revised report.']);
+  assert.equal(savedDraft.pendingProposal, null);
+  assert.equal(savedDraft.reviewFlags.filter(flag => flag.status === 'open').length, 2);
+  assert.ok(savedDraft.reviewFlags.every(flag => flag.evidenceIds.length || flag.kind === 'uncertain_fact'));
+  await invoke('undo');
+  assert.deepEqual(savedDraft.actions, [original]);
+  assert.equal(savedDraft.pendingProposal, null, 'undo must not restart automatic adoption');
+  await invoke('redo');
+  assert.equal(savedDraft.pendingProposal, null);
+  assert.equal(savedDraft.actions[0].action, 'Send the revised report.');
+  assert.equal(savedDraft.reviewFlags.filter(flag => flag.status === 'open').length, 2);
+});
+
+test('an entirely uncertain automatic proposal leaves content and dependent stages unchanged', async () => {
+  savedDraft = baseDraft();
+  const original = structuredClone(savedDraft.actions);
+  savedDraft.pendingProposal = { stage: 'actions', changes: [
+    { id: 'uncertain', type: 'remove', before: original[0], beforeIndex: 0, selected: false }
+  ] };
+  await invoke('proposal', { decision: 'accept', automatic: true });
+  assert.deepEqual(savedDraft.actions, original);
+  assert.deepEqual(savedDraft.staleStages, []);
+  assert.equal(savedDraft.pendingProposal, null);
+  assert.equal(savedDraft.reviewFlags[0].status, 'open');
+});

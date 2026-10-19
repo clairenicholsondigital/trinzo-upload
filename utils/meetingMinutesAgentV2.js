@@ -3819,7 +3819,22 @@ function ownerAssignedInMeeting(owner, actionText = '', units = []) {
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
     const value = String(row?.text || '');
-    const context = [value, rows[index + 1]?.text || ''].join(' ');
+    const continuation = [value, rows[index + 1]?.text || ''];
+    // A transcript can split an assignment around a short interjection:
+    // "Morgan, your focus is to resolve those" / "Yes" / "create the pages".
+    // Only bridge an unfinished assignment through acknowledgement-only turns
+    // back to the same speaker. A substantive intervening reply ends the link.
+    if (/\b(?:those|these|that|this|to|the|your|is|are|will|can|should|must)\s*[.!?]*$/i.test(value)) {
+      const acknowledgement = /^(?:(?:yes|yeah|yep|okay|ok|right|sure|understood|mhm|mm)[\s.,!]+)*(?:yes|yeah|yep|okay|ok|right|sure|understood|mhm|mm)[\s.,!]*$/i;
+      for (let next = index + 1; next <= index + 3 && next < rows.length; next += 1) {
+        if (rows[next].speaker === row.speaker) {
+          continuation.push(rows[next].text);
+          break;
+        }
+        if (!acknowledgement.test(String(rows[next].text || '').trim())) break;
+      }
+    }
+    const context = continuation.join(' ');
     const speaksAsOwner = nameParts(row?.speaker).some((part) => names.includes(part));
     if (speaksAsOwner && (OWNER_FIRST_PERSON.test(value) || OWNER_SELF_ASSIGNMENT.test(value))
       && shared([rows[index - 1]?.text || '', context].join(' ')) >= 2) return true;
@@ -5846,11 +5861,24 @@ function buildProposal(stage, before = [], after = []) {
 function applyProposal(before = [], proposal = {}, acceptedIds = []) {
   const accepted = new Set(acceptedIds);
   const rows = Array.isArray(before) ? before : [];
+  // IDs from independent model responses are ordinal labels, not globally
+  // unique identities. Destructive changes require the same editable content;
+  // evidence/flag updates do not make an otherwise unchanged row stale.
+  const reviewShape = (row) => {
+    if (!row || typeof row !== 'object') return row;
+    if (row.action != null) return { action: row.action, owners: [...(row.owners || [])].sort(),
+      timing: { kind: row.timing?.kind || 'not_stated', wording: row.timing?.wording || '', exactDate: row.timing?.exactDate || '' } };
+    return { ...(row.topic != null ? { topic: row.topic, hideHeading: row.hideHeading === true } : { text: row.text }),
+      ...Object.fromEntries(['points', 'decisions', 'openQuestions', 'supportingDetails']
+        .filter(kind => Array.isArray(row[kind])).map(kind => [kind, row[kind].map(reviewShape)])) };
+  };
+  const signature = row => JSON.stringify(reviewShape(row));
+  const targetKey = row => JSON.stringify([text(row?.id, 80), signature(row)]);
   const targetIdCounts = new Map();
   for (const change of proposal.changes || []) {
     if (change.type === 'add') continue;
-    const id = text(change.before?.id, 80);
-    if (id) targetIdCounts.set(id, (targetIdCounts.get(id) || 0) + 1);
+    const key = targetKey(change.before);
+    targetIdCounts.set(key, (targetIdCounts.get(key) || 0) + 1);
   }
   const originalIndex = (change) => (Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0);
   const currentIndex = (change) => {
@@ -5858,8 +5886,9 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
     if (!beforeRecord || typeof beforeRecord !== 'object') return -1;
     const id = text(beforeRecord.id, 80);
     if (id) {
-      const candidates = rows.map((row, index) => text(row?.id, 80) === id ? index : -1).filter((index) => index >= 0);
-      if (targetIdCounts.get(id) > 1) {
+      const candidates = rows.map((row, index) => text(row?.id, 80) === id
+        && signature(row) === signature(beforeRecord) ? index : -1).filter((index) => index >= 0);
+      if (targetIdCounts.get(targetKey(beforeRecord)) > 1 || candidates.length > 1) {
         // Generated lists have historically contained duplicate IDs. When a
         // proposal addressed two such rows and autosave has already removed
         // one, the surviving ID is not proof that the other target remains.
@@ -5869,8 +5898,8 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
       }
       return candidates.length === 1 ? candidates[0] : -1;
     }
-    const serialised = JSON.stringify(beforeRecord);
-    return rows.findIndex((row) => JSON.stringify(row || null) === serialised);
+    const matches = rows.map((row, index) => signature(row) === signature(beforeRecord) ? index : -1).filter(index => index >= 0);
+    return matches.length === 1 ? matches[0] : -1;
   };
   const modified = new Map();
   const removed = new Set();
@@ -5880,7 +5909,8 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
     if (!accepted.has(change.id)) continue;
     if (change.type === 'add') {
       const afterId = text(change.after?.id, 80);
-      if (afterId && rows.some((row) => text(row?.id, 80) === afterId)) continue;
+      if (rows.some((row) => (!afterId || text(row?.id, 80) === afterId)
+        && signature(row) === signature(change.after))) continue;
       const at = Math.max(0, Math.min(rows.length, originalIndex(change)));
       inserted.set(at, [...(inserted.get(at) || []), change.after]);
       continue;

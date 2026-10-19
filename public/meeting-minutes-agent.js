@@ -2097,7 +2097,7 @@
         return jsonRequest(draftUrl('/proposal'), {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({revision: state.draft.revision, decision: 'accept', acceptAll: true, changeIds: []})
+          body: JSON.stringify({revision: state.draft.revision, decision: 'accept', automatic: true, changeIds: []})
         });
       });
       adoptDraft(payload.draft, {skipAutomaticProposal: true});

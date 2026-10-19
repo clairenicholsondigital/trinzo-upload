@@ -7,6 +7,8 @@ const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
 
+const { automaticMeetingAgentProposalReview } = require('../routes/api').stagedEvaluation;
+
 const REPO_ROOT = path.resolve(__dirname, '..');
 const PAGE_PATH = path.join(REPO_ROOT, 'views', 'meeting-minutes-agent.html');
 const CLIENT_PATH = path.join(REPO_ROOT, 'public', 'meeting-minutes-agent.js');
@@ -388,8 +390,9 @@ function startStubServer() {
     const history = reviewHistory.get(req.params.id) || [];
     const proposal = prior.pendingProposal;
     const allIds = (proposal?.changes || []).map((change) => change.id);
+    const automaticReview = req.body.automatic ? automaticMeetingAgentProposalReview(proposal, prior.reviewFlags, prior.actions) : null;
     const accepted = req.body.decision === 'accept'
-      ? new Set(req.body.acceptAll ? allIds : (req.body.changeIds || [])) : new Set();
+      ? new Set(automaticReview ? automaticReview.acceptedIds : req.body.acceptAll ? allIds : (req.body.changeIds || [])) : new Set();
     const rejected = req.body.decision === 'reject' ? new Set(allIds) : new Set();
     const acceptedAdds = (proposal?.changes || []).filter((change) => accepted.has(change.id) && change.type === 'add').map((change) => change.after);
     const remainingChanges = (proposal?.changes || []).filter((change) => !accepted.has(change.id) && !rejected.has(change.id))
@@ -400,8 +403,8 @@ function startStubServer() {
     const next = {
       ...prior,
       actions: [...(prior.actions || []), ...acceptedAdds],
-      pendingProposal: remainingChanges.length ? { ...proposal, changes: remainingChanges } : null,
-      reviewFlags: (prior.reviewFlags || []).map((flag) => {
+      pendingProposal: !automaticReview && remainingChanges.length ? { ...proposal, changes: remainingChanges } : null,
+      reviewFlags: automaticReview ? automaticReview.reviewFlags : (prior.reviewFlags || []).map((flag) => {
         const change = (proposal?.changes || []).find((item) => flag.id === `proposal-review-${item.id}`);
         if (!change || (!accepted.has(change.id) && !rejected.has(change.id))) return flag;
         return { ...flag, status: accepted.has(change.id) ? 'confirmed' : 'dismissed' };
@@ -1636,7 +1639,7 @@ test('review checks lead with the potential minutes content and keep diagnostic 
   }
 });
 
-test('saved generated proposals apply once, confirm linked warnings and remain applied after refresh', { timeout: 120000 }, async () => {
+test('automatic proposals apply vetted changes once and keep uncertain additions as visible checks after refresh', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -1649,20 +1652,22 @@ test('saved generated proposals apply once, confirm linked warnings and remain a
       if (request.method() === 'POST' && request.url().endsWith('/partial-proposals/proposal')) applications.push(request.postDataJSON());
     });
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=partial-proposals`);
-    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 2);
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/partial-proposals')).json()).draft);
     assert.equal(saved.pendingProposal, null);
-    assert.deepEqual(saved.actions.map((action) => action.id), ['action-1', 'partial-action-1', 'partial-action-2']);
-    assert.equal(saved.reviewFlags.filter((flag) => flag.id.startsWith('proposal-review-') && flag.status === 'confirmed').length, 2);
+    assert.deepEqual(saved.actions.map((action) => action.id), ['action-1', 'partial-action-1']);
+    assert.equal(saved.reviewFlags.filter((flag) => flag.id.startsWith('proposal-review-') && flag.status === 'confirmed').length, 1);
     assert.equal(saved.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'open', 'unrelated source checks remain open');
-    assert.deepEqual(applications, [{ revision: 3, decision: 'accept', acceptAll: true, changeIds: [] }]);
+    assert.equal(saved.reviewFlags.find((flag) => flag.id === 'automatic-review-partial-2').status, 'open');
+    assert.match(await page.textContent('#flagList'), /Circulate the audit checklist/);
+    assert.deepEqual(applications, [{ revision: 3, decision: 'accept', automatic: true, changeIds: [] }]);
     assert.equal(await page.locator('#undoLastDecision').isVisible(), true);
     assert.equal(await page.locator('#proposalPanel,[data-proposal-change]').count(), 0);
     assert.equal(await page.textContent('#applyActionsEdit'), 'Apply changes');
     assert.equal(await page.textContent('#applyDiscussionEdit'), 'Apply changes');
     assert.equal(await page.locator('.agent-edit-body').filter({ hasText: 'Generated changes are applied automatically. You can undo them afterwards.' }).count(), 2);
     await page.reload();
-    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action]').length === 2);
     assert.equal(applications.length, 1, 'refresh cannot apply an already consumed proposal again');
     assert.deepEqual(errors, []);
   } finally {

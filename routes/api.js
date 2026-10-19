@@ -9202,16 +9202,16 @@ function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
     rows.push({
       candidateId: crypto.createHash('sha256').update(`${sourcePass}|${item.recordType}|${item.topic}|${item.record?.text || ''}`).digest('hex').slice(0, 20),
       sourcePass, recordType: item.recordType, topic: item.topic || 'Discussion',
-      text: item.record?.text || '', evidenceIds: item.record?.evidenceIds || [], priority: discoveryPriority,
+      text: item.record?.text || '', evidenceIds: [...(item.record?.evidenceIds || [])], priority: discoveryPriority,
       ...(discoveryDisposition ? { dispositionHint: discoveryDisposition } : {}),
-      record: item.record
+      record: structuredClone(item.record)
     });
   }
   for (const action of Array.isArray(result.actions) ? result.actions : []) {
     rows.push({
       candidateId: crypto.createHash('sha256').update(`${sourcePass}|action|${action.action || ''}|${(action.owners || []).join('|')}`).digest('hex').slice(0, 20),
-      sourcePass, recordType: 'action', text: action.action || '', evidenceIds: action.evidenceIds || [], priority: 6,
-      record: action
+      sourcePass, recordType: 'action', text: action.action || '', evidenceIds: [...(action.evidenceIds || [])], priority: 6,
+      record: structuredClone(action)
     });
   }
   for (const objective of Array.isArray(result.objectives) ? result.objectives : []) {
@@ -11932,9 +11932,14 @@ function stripMinorCommunicationCourtesy(record = {}, sourceUnits = []) {
   if (!cleaned) return null;
   if (minorCommunicationCourtesy(record, sourceUnits)) {
     if (/^\s*(?:apologise|apologize|say sorry|cc|copy|include|add)\b/i.test(cleaned)) return null;
+    const onlyCopyingApology = /^[\p{L}\s'’.-]{1,80}\s+apolog(?:ised|ized|ises|izes|ising|izing)\s+for\s+(?:not\s+)?(?:copying|cc['’]?ing)\b[^.!?;]*[.!?]?$/iu.test(cleaned)
+      && !/\b(?:and|then|will|would|shall|should|must)\b/i.test(cleaned);
+    if (onlyCopyingApology) return null;
     const withoutCourtesy = cleaned.replace(/\s*,?\s+(?:and|then)\s+(?:cc|copy|include|add)\b[^.;]{0,180}[.]?$/i, '')
       .replace(/[\s,;:-]+$/, '').trim();
-    if (!withoutCourtesy || withoutCourtesy === cleaned) return null;
+    // An unrecognised courtesy clause is not grounds to delete the substantive
+    // instruction it accompanies. Retain the row when safe separation fails.
+    if (!withoutCourtesy || withoutCourtesy === cleaned) return record;
     cleaned = withoutCourtesy;
   }
   return cleaned === value ? record
@@ -12515,6 +12520,7 @@ const DOCUMENT_WORKFLOW_OBJECTS = new Set([
 ]);
 const DELIVERY_NAME_WORD = String.raw`[A-Z][\p{L}\p{M}'’.-]*`;
 const DELIVERY_NAME = String.raw`${DELIVERY_NAME_WORD}(?:\s+${DELIVERY_NAME_WORD}){0,3}`;
+const DELIVERY_RECIPIENTS = String.raw`${DELIVERY_NAME}(?:\s*,\s*${DELIVERY_NAME})*(?:\s*,?\s+(?:and|&)\s+${DELIVERY_NAME})?`;
 
 function exactActionOwners(record = {}) {
   return [...new Set((record.owners || []).map((owner) => meetingMinutesAgentText(owner, 160).toLowerCase()).filter(Boolean))].sort();
@@ -12535,25 +12541,25 @@ function actionDeliveryFrame(record = {}) {
   const verb = rawVerb.toLowerCase();
   if (!DELIVERY_BUNDLE_VERBS.has(verb)) return null;
   const escapedVerb = rawVerb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  let match = action.match(new RegExp(`^${escapedVerb}\\s+(.+?)\\s+(?:to|with)\\s+(${DELIVERY_NAME})(.*)$`, 'u'));
+  // Parse recipient-first wording before object-first wording: an object's
+  // initial capital is not evidence that it is a recipient's name.
+  let match = action.match(new RegExp(`^${escapedVerb}\\s+(${DELIVERY_RECIPIENTS})\\s+(with\\s+|access\\s+to\\s+)(.+)$`, 'u'));
+  if (match) {
+    const recipient = meetingMinutesAgentText(match[1], 200).trim();
+    let object = meetingMinutesAgentText(match[3], 1000).trim();
+    if (/^access\s+to\s+/i.test(match[2])) object = `access to ${object}`;
+    object = object.replace(/^access to (.+?) securely(?=,|$)/i, 'secure access to $1');
+    return { verb, recipient, recipientKey: recipient.toLowerCase(), object, tail: '' };
+  }
+  match = action.match(new RegExp(`^${escapedVerb}\\s+(.+?)\\s+(?:to|with)\\s+(${DELIVERY_RECIPIENTS})(.*)$`, 'u'));
   if (match) {
     const object = meetingMinutesAgentText(match[1], 1000).trim();
     const recipient = meetingMinutesAgentText(match[2], 200).trim();
     const tail = meetingMinutesAgentText(match[3], 700).trim();
+    if (/^(?:and\b|&|,\s*[A-Z])/u.test(tail)) return null;
     if (object && recipient) return { verb, recipient, recipientKey: recipient.toLowerCase(), object, tail };
   }
-  // "Provide Morgan Lee with/access to ..." puts the recipient before the
-  // object. Keep this explicit to avoid guessing a recipient from arbitrary
-  // capitalised words elsewhere in the action.
-  match = action.match(new RegExp(`^${escapedVerb}\\s+(${DELIVERY_NAME})\\s+(with\\s+|access\\s+to\\s+)(.+)$`, 'u'));
-  if (!match) return null;
-  const recipient = meetingMinutesAgentText(match[1], 200).trim();
-  let object = meetingMinutesAgentText(match[3], 1000).trim();
-  if (/^access\s+to\s+/i.test(match[2])) object = `access to ${object}`;
-  object = object.replace(/^access to (.+?) securely(?=,|$)/i, 'secure access to $1');
-  return recipient && object
-    ? { verb, recipient, recipientKey: recipient.toLowerCase(), object, tail: '' }
-    : null;
+  return null;
 }
 
 function actionTimingClause(record = {}) {
@@ -12605,6 +12611,10 @@ function bundleSameRecipientDeliveries(records = []) {
     const frame = actionDeliveryFrame(record);
     const owners = exactActionOwners(record);
     if (!frame || !owners.length) return;
+    // If both fields already state a dependency in different words, retain
+    // them separately rather than appending a second version of the condition.
+    if (record.timing?.kind === 'dependency' && ACTION_DEPENDENCY_CLAUSE.test(record.action || '')
+      && !String(record.action || '').toLowerCase().includes(String(record.timing.wording || '').toLowerCase())) return;
     const key = `${owners.join('|')}::${frame.recipientKey}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ record, frame, index });
@@ -12617,6 +12627,12 @@ function bundleSameRecipientDeliveries(records = []) {
     // a target into a deadline after the duplicate guard kept them separate.
     if (group.some(({ record }, index) => group.slice(index + 1)
       .some(({ record: other }) => exactActionIdentityConflict(record, other)))) continue;
+    // These are bundles of distinct documents, not a second deduper. Different
+    // qualified versions of the same object need the conservative action checks
+    // above; concatenating them duplicates work and can repeat timing clauses.
+    if (group.some(({ frame }, index) => /;/.test(frame.object)
+      || group.slice(index + 1).some(({ frame: other }) =>
+        hybridContentTokenOverlap(frame.object, other.object) >= 0.5))) continue;
     const items = group.map(({ record, frame }) => deliveryBundleItem(record, frame)).filter(Boolean);
     if (items.length !== group.length || items.some((item) => item.split(/\s+/).length > 55)) continue;
     const [first] = group;
@@ -12718,7 +12734,8 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     ].sort((a, b) => b.score - a.score || a.owner.localeCompare(b.owner));
     return ranked[0]?.score >= 3 && ranked[0].score > (ranked[1]?.score || 0) ? ranked[0].owner : '';
   };
-  for (const record of Array.isArray(records) ? records : []) {
+  for (const original of Array.isArray(records) ? records : []) {
+    const record = structuredClone(original);
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     let complementaryDuplicate = null;
     let documentWorkflowDuplicate = null;
@@ -12736,6 +12753,19 @@ function dedupeHybridActionRecords(records = [], options = {}) {
           : preference(record) > preference(existing) ? record : existing;
         return true;
       }
+      const delivery = actionDeliveryFrame(record);
+      const otherDelivery = actionDeliveryFrame(existing);
+      if (delivery && otherDelivery && (delivery.recipientKey !== otherDelivery.recipientKey
+        || hybridContentTokenOverlap(delivery.object, otherDelivery.object) < 0.5)) return false;
+      const workTypes = hybridActionTypes(record.action);
+      const otherWorkTypes = hybridActionTypes(existing.action);
+      if (workTypes.size && otherWorkTypes.size
+        && ![...workTypes].some(type => otherWorkTypes.has(type))
+        && !sameQuestionCommunicationDeliverable(record, existing)
+        && !sameComplementaryDocumentDeliverable(record, existing)
+        && !sameDocumentDeliveryWorkflow(record, existing)
+        && !sameCanonicalDocumentWorkflow(record, existing)
+        && !wayToParaphraseOf(record, existing) && !wayToParaphraseOf(existing, record)) return false;
       if (sameCanonicalDocumentWorkflow(record, existing)) {
         canonicalDocumentWorkflowDuplicate = existing;
         return true;
@@ -12860,7 +12890,8 @@ function dedupeHybridActionRecords(records = [], options = {}) {
 function dedupeHybridActionProposals(records = []) {
   const merged = [];
   const evidenceSequence = (id) => Number(String(id || '').match(/\d+/)?.[0] || NaN);
-  for (const record of Array.isArray(records) ? records : []) {
+  for (const original of Array.isArray(records) ? records : []) {
+    const record = structuredClone(original);
     const owners = (record.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
     const types = hybridActionTypes(record.action);
     const duplicate = merged.find((existing) => {
@@ -17505,6 +17536,38 @@ function preselectRequestedProposal(proposal) {
   return { ...proposal, changes: proposal.changes.map((change) => ({ ...change, selected: change.selected !== false })) };
 }
 
+// Automatic adoption must respect the same positive checks as proposal review.
+// Consuming uncertain suggestions exposes their source-linked checks instead of
+// quietly applying them or leaving a hidden proposal that runs on every reload.
+function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentRows = []) {
+  const proposed = (proposal.changes || []).filter(change => change.selected === true);
+  const removes = proposed.filter(change => change.type === 'remove');
+  const retained = applyProposal(currentRows, proposal, proposed.filter(change => change.type !== 'remove').map(change => change.id))
+    .filter(row => !removes.some(change => row.id === change.before?.id && sameActionText(row, change.before)));
+  const acceptedIds = proposed.filter(change => change.type !== 'remove' || proposal.stage !== 'actions'
+    || retained.some(row => actionIsLosslesslyCovered(change.before, row))).map(change => change.id);
+  const accepted = new Set(acceptedIds);
+  const uncertain = (proposal.changes || []).filter(change => !accepted.has(change.id));
+  const replacedIds = new Set(uncertain.map(meetingAgentProposalReviewFlagId));
+  const checks = uncertain.map((change, index) => {
+    const record = change.after || change.before || {};
+    const wording = meetingMinutesAgentText(record.action || record.text || record.topic, 1600);
+    const reason = String(change.reviewContext?.reason || 'Check the source before changing the minutes.')
+      .replace(/\b(?:Tick it[^.]*|It stays unless you tick this)\./gi, '').trim();
+    return normaliseMeetingAgentFlag({
+      // This is now a source check, not a link to a consumed proposal. Keep it
+      // open even when there is deliberately no corresponding published item.
+      id: meetingMinutesAgentText(`automatic-review-${change.id || ''}`, 80),
+      kind: change.type === 'add' ? 'possible_missed_follow_up' : 'uncertain_fact',
+      message: `Cannot verify that this AI suggestion should change the minutes; it was not applied. ${wording} ${reason}`,
+      evidenceIds: record.evidenceIds || change.reviewContext?.evidenceIds || []
+    }, index);
+  });
+  return { acceptedIds, reviewFlags: mergeMeetingAgentFlags(
+    resolveMeetingAgentProposalFlags(flags, proposal, acceptedIds, []).filter(flag => !replacedIds.has(flag.id)), checks
+  ) };
+}
+
 function meetingAgentProposalChangeIsVisible(change = {}) {
   if (change?.type !== 'modify') return true;
   const visible = (record = {}) => JSON.stringify([
@@ -18190,7 +18253,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     const decision = String(req.body?.decision || '').toLowerCase();
     if (!['accept', 'reject'].includes(decision)) return res.status(400).json({ ok: false, error: 'Choose accept or reject.' });
     const allIds = (proposal.changes || []).map((change) => change.id);
+    const automaticReview = decision === 'accept' && req.body?.automatic === true
+      ? automaticMeetingAgentProposalReview(proposal, draft.reviewFlags, proposal.stage === 'discussion' ? draft.discussion : draft.actions) : null;
     const acceptedIds = decision === 'reject' ? []
+      : automaticReview ? automaticReview.acceptedIds
       : req.body?.acceptAll === true ? allIds
         : (Array.isArray(req.body?.changeIds) ? req.body.changeIds : []);
     const acceptedIdSet = new Set(acceptedIds.filter((id) => allIds.includes(id)));
@@ -18210,8 +18276,10 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     // complete editable register through generation-time deduplication here:
     // it can remove an untouched action or even the addition just selected.
     const after = applyProposal(before, proposal, [...acceptedIdSet]);
-    const remainingProposal = rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
-    const unacceptedChanges = (proposal.changes || []).filter((change) => !acceptedIdSet.has(change.id));
+    const remainingProposal = automaticReview ? null
+      : rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
+    const unacceptedChanges = automaticReview ? []
+      : (proposal.changes || []).filter((change) => !acceptedIdSet.has(change.id));
     const history = [...(draft.changeHistory || []), {
       id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,
       label: `${acceptedIdSet.size} suggestion${acceptedIdSet.size === 1 ? '' : 's'} applied`,
@@ -18232,7 +18300,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
       ])],
       pendingProposal: remainingProposal,
       changeHistory: history,
-      reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [...acceptedIdSet], [])
+      reviewFlags: automaticReview ? automaticReview.reviewFlags
+        : resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [...acceptedIdSet], [])
     });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
@@ -18571,6 +18640,7 @@ router.stagedEvaluation = {
   reconcileMeetingAgentOrphanFlags,
   meetingAgentReviewSnapshot,
   meetingAgentReviewHistoryEntry,
+  automaticMeetingAgentProposalReview,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,
