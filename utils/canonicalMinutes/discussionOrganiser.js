@@ -22,6 +22,7 @@ const { normalisePublishedParticipantReference } = require('../entityNormalizati
 const { isRawTranscriptDiscussionPoint } = require('../stagedEditorial');
 const { SHIFT_MARKER } = require('./discourseSegments');
 const { isReviewerAuthored } = require('./state');
+const { primaryEvidenceIdsForRecord } = require('./discussionPublication');
 const {
   isPersonalAside,
   isPeripheralAside,
@@ -98,6 +99,12 @@ function recordSequences(record, index) {
 
 function earliest(record, index) {
   const sequences = recordSequences(record, index);
+  return sequences.length ? Math.min(...sequences) : Number.POSITIVE_INFINITY;
+}
+
+function publicationEarliest(record, index) {
+  const sequences = primaryEvidenceIdsForRecord(record, index)
+    .map(id => index.bySequence.get(String(id))).filter(Number.isFinite);
   return sequences.length ? Math.min(...sequences) : Number.POSITIVE_INFINITY;
 }
 
@@ -718,13 +725,15 @@ function rehomeSupportingDetails(topics, index, margin = 2) {
 // ---------------------------------------------------------------------------
 
 function sortByEvidence(topics, index) {
-  const ordered = [...topics].sort((left, right) => {
-    const a = topicWindow(left, index); const b = topicWindow(right, index);
-    return (a ? a.start : Number.POSITIVE_INFINITY) - (b ? b.start : Number.POSITIVE_INFINITY);
-  });
+  const locked = topic => reviewerTopic(topic) || topicRows(topic).some(({ record }) => isReviewerAuthored(record));
+  const first = topic => Math.min(...topicRows(topic).map(({ record }) => publicationEarliest(record, index)));
+  const generated = topics.filter(topic => !locked(topic)).sort((left, right) => first(left) - first(right));
+  let next = 0;
+  const ordered = topics.map(topic => locked(topic) ? topic : generated[next++]);
   for (const topic of ordered) {
+    if (locked(topic)) continue;
     for (const kind of ROW_KINDS) {
-      topic[kind] = [...(topic[kind] || [])].sort((left, right) => earliest(left, index) - earliest(right, index));
+      topic[kind] = [...(topic[kind] || [])].sort((left, right) => publicationEarliest(left, index) - publicationEarliest(right, index));
       for (const record of topic[kind]) {
         record.supportingDetails = [...(record.supportingDetails || [])].sort((left, right) => earliest(left, index) - earliest(right, index));
       }
@@ -772,7 +781,7 @@ function discussionTopicArrangementInput(discussion = [], sourceUnits = []) {
         recordType: kind === 'decisions' ? 'decision' : kind === 'openQuestions' ? 'open_question' : 'discussion_point',
         text: text(record?.text, 1600),
         evidenceIds: [...(record?.evidenceIds || [])].map((id) => text(id, 40)).filter(Boolean),
-        evidenceOrder: earliest(record, index),
+        evidenceOrder: publicationEarliest(record, index),
         _topicIndex: topicIndex,
         _kind: kind,
         _record: record
@@ -873,7 +882,7 @@ function applyDiscussionTopicArrangement(discussion = [], arrangement = {}, sour
     arranged.push(topic);
   }
   input.topics.forEach((topic, topicIndex) => {
-    if (input.lockedTopicIndexes.has(topicIndex)) arranged.push(topic);
+    if (input.lockedTopicIndexes.has(topicIndex)) arranged.splice(Math.min(topicIndex, arranged.length), 0, topic);
   });
   const combinedTopics = arrangement.groups.filter((group) => new Set(group.recordIds
     .map((recordId) => byId.get(text(recordId, 180))?._topicIndex).filter(Number.isInteger)).size > 1).length;

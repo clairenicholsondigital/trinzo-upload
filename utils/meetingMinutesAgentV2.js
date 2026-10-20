@@ -456,6 +456,10 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     return frequency > 0 && frequency <= maximumDistinctiveFrequency;
   });
   const resolutionScore = (windowProfile) => {
+    // Distinctive-word overlap must not bypass the value check performed by
+    // the base scorer. Otherwise a fee/count claim can acquire unrelated
+    // supplier citations even though none contains its numbers.
+    if (claimProfile.values.some((value) => !explicitValuePresent(value, windowProfile.lower))) return 0;
     const base = evidenceSupportScoreFromProfiles(claimProfile, windowProfile);
     if (distinctiveClaimTokens.length < 2) return base;
     const distinctiveCoverage = distinctiveClaimTokens.filter((token) => windowProfile.resolutionTokenSet.has(token)).length / distinctiveClaimTokens.length;
@@ -809,6 +813,10 @@ function normalisePoint(value, units, prefix, index, options = {}) {
     ...reviewerProvenance(candidate, options),
     text: pointText,
     evidenceIds: resolved.evidenceIds,
+    ...(Array.isArray(candidate.primaryEvidenceIds) ? {
+      primaryEvidenceIds: [...new Set(candidate.primaryEvidenceIds)]
+        .filter((id) => evidenceContextFor(units).known.has(id)).slice(0, 12)
+    } : {}),
     supportingDetails,
     reviewFlagIds: [...new Set((Array.isArray(candidate.reviewFlagIds) ? candidate.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))],
     _unsupportedEvidenceIds: resolved.invalidIds,
@@ -2516,6 +2524,76 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
   return [...evidenceIds, best.id].slice(0, 8);
 }
 
+// Noun-heavy turns are useful evidence for the work; short answers often carry
+// its owner, acceptance and timing. Keep those supplied field anchors when
+// lexical remapping prefers a different description of the same work. A timing
+// answer needs a connected owner commitment/when-question exchange, rather than
+// merely being a nearby date belonging to another task.
+function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolvedIds) {
+  const context = evidenceContextFor(units);
+  const subjects = new Set(actionSubjectWords(action));
+  const hasSubject = (value) => [...new Set(contentTokens(value))].filter((word) => subjects.has(word)).length >= 2;
+  const commitmentObjects = (value) => {
+    const generic = new Set(['the', 'and', 'i\'ll', 'will', 'shall', 'can', 'could', 'myself', 'new', 'replacement', 'unit', 'one', 'this', 'that', 'them', 'these', 'those', 'let', 'leave', 'handle', 'take', 'fit', 'pop', 'put']);
+    const operations = new Set(ACTION_VERB_GROUPS.flat());
+    // Timing and its spoken qualification are not another object. Keep any
+    // concrete object named before the time, so a financial-report promise
+    // cannot borrow the valve subject just because it is nearby.
+    const timingAt = String(value).search(CALENDAR_TIMING);
+    const instruction = timingAt >= 0 ? String(value).slice(0, timingAt) : value;
+    return actionSubjectWords(instruction)
+      .filter((word) => !generic.has(word) && !operations.has(word) && !COMMON_SPEECH_WORDS.has(word));
+  };
+  const connectedCommitment = (index) => {
+    const unit = context.rows[index];
+    if (!unit || !speakerIsOwner(unit.speaker, owners)
+      || !OWNER_FIRST_PERSON.test(unit.text) || isHabitualPromise(unit.text)) return false;
+    if (hasSubject(unit.text)) return true;
+    const objects = commitmentObjects(unit.text);
+    // A nearby promise explicitly naming a different object starts another
+    // task; the earlier subject in the surrounding window cannot lend its
+    // identity backwards to that promise or its subsequent timing answer.
+    if (objects.some((word) => !subjects.has(word))) return false;
+    if (objects.length && objects.some((word) => subjects.has(word))) return true;
+    return hasSubject(evidenceWindowText(units, [unit.id], 4));
+  };
+  const timingOnlyAnswer = (unit) => {
+    if (!unit || !hasTimingSignal(unit.text)) return false;
+    const remainder = String(unit.text).replace(new RegExp(CALENDAR_TIMING.source, 'gi'), ' ')
+      .replace(/\b(?:probably|possibly|ideally|around|about|roughly|the|of|at|and|or|yes|yeah|okay|ok)\b/gi, ' ')
+      .replace(/[^a-z]+/gi, '').trim();
+    return !remainder;
+  };
+  const timingAnswer = (index) => {
+    const unit = context.rows[index];
+    const referentialTimedPromise = unit && hasTimingSignal(unit.text)
+      && OWNER_FIRST_PERSON.test(unit.text) && !commitmentObjects(unit.text).length;
+    if (!unit || !speakerIsOwner(unit.speaker, owners) || (!timingOnlyAnswer(unit) && !referentialTimedPromise)) return false;
+    for (let before = index - 1; before >= Math.max(0, index - 3); before -= 1) {
+      const prior = context.rows[before];
+      if (NON_SUBSTANTIVE_TIMING_BRIDGE.test(prior.text)) continue;
+      if (connectedCommitment(before)) return true;
+      if (!ASKS_WHEN.test(prior.text)) return false;
+      for (let at = before - 1; at >= Math.max(0, before - 3); at -= 1) {
+        if (connectedCommitment(at)) return true;
+        if (!NON_SUBSTANTIVE_TIMING_BRIDGE.test(context.rows[at].text)) break;
+      }
+      return false;
+    }
+    return false;
+  };
+  const retained = [...new Set(suppliedIds || [])].filter((id) => {
+    const index = context.indexById.get(id);
+    if (!Number.isInteger(index)) return false;
+    return connectedCommitment(index) || timingAnswer(index);
+  });
+  const unrelatedAnswers = new Set((suppliedIds || []).filter((id) => {
+    const index = context.indexById.get(id);
+    return owners.length && Number.isInteger(index) && timingOnlyAnswer(context.rows[index]) && !timingAnswer(index);
+  }));
+  return [...new Set([...retained, ...(resolvedIds || []).filter((id) => !unrelatedAnswers.has(id))])].slice(0, 8);
+}
+
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action) => {
     let evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
@@ -3187,9 +3265,13 @@ function itemHasExplicitOutstandingEvidence(item = {}) {
 
 const PROMISE_QUOTE = /\b(?:i['’]ll|i\s+will|i['’]m\s+going\s+to|i\s+am\s+going\s+to|i['’]m\s+gonna|let\s+me|i\s+can)\b/i;
 const COMPLETION_QUOTE = /\b(?:done|sent|finished|completed|already|just\s+(?:did|sent|done|booked|added|put)|have\s+(?:sent|done|booked|added|put)|i['’]ve|it['’]s\s+in|that['’]s\s+(?:in|done|sent|booked))\b/i;
+const HABITUAL_PROMISE = /\bi(?:['’]ll\s+(?:always|usually|normally|routinely|generally)|\s+(?:will\s+(?:always|usually|normally|routinely|generally)|(?:always|usually|normally|routinely|generally)\s+will))\b/i;
+function isHabitualPromise(value = '') {
+  return HABITUAL_PROMISE.test(String(value)) && !FUTURE_MARKER.test(String(value));
+}
 function quoteIsOnlyAPromise(quote = '') {
   const value = String(quote || '');
-  return PROMISE_QUOTE.test(value) && !COMPLETION_QUOTE.test(value);
+  return PROMISE_QUOTE.test(value) && !COMPLETION_QUOTE.test(value) && !isHabitualPromise(value);
 }
 
 function applyFinalActionLifecycleResults(actions = [], items = [], results = []) {
@@ -3982,6 +4064,7 @@ function applyRequesterOwnerRule(actions = [], units = []) {
   const rows = context.rows;
   const flags = [];
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    if (isReviewerAuthored(action)) return action;
     const owners = Array.isArray(action?.owners) ? action.owners : [];
     if (!owners.length) return action;
     const cited = [...new Set(action.evidenceIds || [])].map((id) => context.indexById.get(id)).filter(Number.isInteger);
@@ -4862,17 +4945,20 @@ function applyDecisionCheckResults(discussion = [], items = [], results = []) {
 
 // ---- Discussion evidence fidelity ----------------------------------------
 // A row can cite the right passage while reversing a count, condition, cause,
-// responsibility or milestone during compression. Check only higher-risk
-// shapes and accept a correction only when both the generated problem and the
-// correcting transcript words are quoted verbatim.
-const DISCUSSION_FIDELITY_RISK = /\d|;|\b(?:if|unless|whether|before|after|then|because|due to|result(?:s|ed)? in|inform(?:ed|s)|depend(?:s|ed|ent)?|aim(?:s|ed|ing)?|target|deadline|preferred|fallback|hard stop|rollout|on track|tight on time|complete(?:d|ion)?|submission|items?|responsib(?:le|ility)|require(?:d|ment|s)?|must|expected|plan(?:ned)?|working|progress(?:ing|ed)?|minor|major|more substantial|less|more|increase|decrease|the speaker|need to|current|questions? on|questions? about)\b/i;
+// responsibility or milestone during compression. Check generated propositions
+// within the bounded item budget, and accept a correction only when both the
+// generated problem and correcting transcript words are quoted verbatim.
 function discussionFidelityCheckItems(discussion = [], units = []) {
   const items = [];
   (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
+    if (isReviewerAuthored(topic)) return;
     for (const kind of ['points', 'decisions']) {
       (topic?.[kind] || []).forEach((record, rowIndex) => {
         const row = text(record?.text, 1000);
-        if (!row || !DISCUSSION_FIDELITY_RISK.test(row)) return;
+        // A short role/place assertion or a vague cost constraint can be wrong
+        // without containing any former risk keyword or number. Review every
+        // generated proposition within the existing bounded item/batch budget.
+        if (!row || isReviewerAuthored(record)) return;
         // Later turns can explicitly soften or replace an initially firm date.
         // Give the fidelity critic enough forward context to see a preference,
         // contingency or hard stop before it approves the earlier wording.
@@ -4896,7 +4982,9 @@ function discussionFidelityCheckPrompt(items = []) {
     'Look for changed counts, reversed cause/responsibility/direction, a condition rewritten as a requirement, a planning milestone rewritten as completion or rollout, hopes rewritten as commitments, past work rewritten as future work, unsupported certainty, unexplained transcript shorthand, and compressed note fragments that are not clear client-ready sentences.',
     'Also look for added specifics: a date, month, year, weekday, number, name, place, or someone\'s opinion, taste or attitude that no line of the passage states. A day spoken without its month does not tell you the month. An added specific is not a matter of doubt: remove it with "corrected", or choose "uncertain" with issue "added_detail" when the row cannot stand without it.',
     'Small talk, jokes and personal tastes that do not affect the work, its timing or its logistics are not minutes material: choose "uncertain" with issue "small_talk".',
+    'When one row mixes a real operational constraint with a joke or an invented alternative activity, use a source-quoted correction that retains the real constraint and removes the joke. Do not turn humorous alternatives into a contingency plan, or discard genuine transport, access or cost information merely because the exchange was light-hearted.',
     'For enumerated behaviour, preserve every source pairing: do not collapse distinct states, priorities, quantities or outcomes into one generic description.',
+    'When the row asserts a cost, resource or operational constraint, retain the concrete source amount or quantity that explains that same constraint. Do not replace a stated balance or capacity with vague insufficient resources. Add a quantity only when the passage explicitly binds it to that subject; do not borrow a number from a neighbouring topic, convert an estimate to an approved budget, or invent missing facts.',
     'When a later statement qualifies an earlier date for the same work, the later clarification controls. A preferred date and a fallback or hard stop must be preserved together; do not publish the earlier date alone as an unconditional deadline. Correct the row to one current account so a later deduplication pass can remove obsolete restatements.',
     'Do not infer that a current-period condition caused a previous-period result merely because the statements are adjacent. Preserve comparison wording and time direction exactly.',
     'Replace unresolved labels such as "the speaker" only when the passage identifies the person; otherwise choose "uncertain".',
@@ -4942,12 +5030,14 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     replacements.set(key, { ...row, correctedText });
   }
   const flags = [];
+  const withheld = [];
   let corrected = 0;
   let uncertain = 0;
   const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
     const next = { ...topic };
     for (const kind of ['points', 'decisions']) {
       next[kind] = (topic?.[kind] || []).map((record, rowIndex) => {
+        if (isReviewerAuthored(topic) || isReviewerAuthored(record)) return record;
         const key = `${topicIndex}|${kind}|${rowIndex}`;
         const replacement = replacements.get(key);
         const warning = warnings.get(key);
@@ -4991,14 +5081,70 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
         }, flags.length);
         flags.push(flag);
         if (replacement) corrected += 1; else uncertain += 1;
+        const withholdSmallTalk = issue === 'small_talk' && text(result.evidenceQuote, 400)
+          && !hasSupportedOperationalEffect(record.text, items.find((item) => `${item.topicIndex}|${item.kind}|${item.rowIndex}` === key));
+        const withholdUnsupportedAssertion = issue === 'added_detail'
+          && !isCautiousDiscussionClaim(record.text);
+        if (!replacement && (withholdSmallTalk || withholdUnsupportedAssertion)
+          && !hasReviewerAuthoredSupportingDetail(record)) {
+          const description = withholdSmallTalk ? 'conversational aside' : 'unverified assertion';
+          flag.message = `Cannot verify this ${description} as main-minutes content; withheld for source review: "${text(record.text, 700)}". ${text(result.reason, 200)}`;
+          withheld.push({
+            topicId: topic.id || '', topic: topic.topic || '', kind,
+            record: { ...record, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] },
+            issue, reason: text(result.reason, 500), evidenceIds: record.evidenceIds || [], reviewFlagId: flag.id
+          });
+          return null;
+        }
         return replacement
           ? { ...record, text: replacement.correctedText, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] }
           : { ...record, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] };
-      });
+      }).filter(Boolean);
     }
     return next;
   });
-  return { discussion: checked, flags, checked: items.length, corrected, uncertain, rejected };
+  return { discussion: checked, flags, withheld, checked: items.length, corrected, uncertain, rejected };
+}
+
+function hasReviewerAuthoredSupportingDetail(record = {}) {
+  return (record.supportingDetails || []).some((detail) => isReviewerAuthored(detail)
+    || hasReviewerAuthoredSupportingDetail(detail));
+}
+
+function isCautiousDiscussionClaim(value = '') {
+  return /\b(?:may|might|could|possibly|perhaps|reportedly|uncertain|unconfirmed|unclear|unknown|not (?:yet )?(?:confirmed|known|established)|to be (?:confirmed|clarified)|needs? (?:confirmation|clarification))\b/i.test(String(value));
+}
+
+function hasSupportedOperationalEffect(row = '', item = {}) {
+  // A light-hearted exchange may still establish a real travel/access/cost
+  // constraint. Preserve that row for review when both the row and its source
+  // describe the same concrete operational effect; a generic reference to
+  // planning or disruption is not itself such evidence.
+  const effects = [
+    /\b(?:transport(?:ation)?|travel|traffic|journey)\b/i,
+    /\b(?:availability|available|unavailable|capacity)\b/i,
+    /\b(?:costs?|funds|budget|balance|account)\b/i,
+    /\b(?:delays?|delayed|closure|closed)\b/i,
+    /\b(?:access|attendance|safety)\b/i
+  ];
+  const generic = new Set(['potential', 'possible', 'options', 'include', 'includes', 'group', 'team', 'general', 'planning', 'consider', 'regarding', 'because', 'during', 'event', 'local']);
+  const subjects = (value) => new Set(resolutionTokens(value)
+    .filter((word) => !generic.has(word) && !COMMON_SPEECH_WORDS.has(word) && !effects.some((pattern) => pattern.test(word))));
+  const required = subjects(row);
+  const sourceRows = Array.isArray(item?.passageUnits) ? item.passageUnits.map((unit) => unit.text)
+    : String(item?.passage || '').split('\n').filter(Boolean);
+  return sourceRows.some((source, index) => {
+    const matchedEffects = effects.filter((pattern) => pattern.test(row) && pattern.test(source)).length;
+    if (!matchedEffects) return false;
+    // Read one short antecedent for a continuation such as "there may be less
+    // transport available". Do not pool matching words from a 40-line passage
+    // or let an unrelated equipment cost protect a sightseeing remark.
+    const contextual = /^(?:so\b|and\b|but\b|that\b|there\b|it\b)/i.test(String(source).trim())
+      ? sourceRows.slice(Math.max(0, index - 1), index + 1).join(' ') : source;
+    const present = subjects(contextual);
+    const matchedSubjects = [...required].filter((word) => present.has(word)).length;
+    return matchedSubjects >= 2 || (matchedEffects >= 2 && (matchedSubjects >= 1 || !required.size));
+  });
 }
 
 // A generated duration statement must bind its quantity to its subject in the
@@ -5273,8 +5419,29 @@ function actionCompletenessCheckItems(actions = [], units = []) {
     const owners = action.owners || [];
     if (!owners.length || !text(action.action)) return;
     const actionWords = new Set(materialTokens(action.action));
-    const passageUnits = evidenceWindowUnits(units, action.evidenceIds || [], 1, 2).slice(0, 24);
+    const anchorIds = anchorOwnerCommitment(action.action, owners, units, action.evidenceIds || []);
+    // Include the request/antecedent and the actual owner's commitment. A
+    // remapped noun anchor alone can put the omitted outcome just outside the
+    // old one-back/two-forward window and make a real correction unverifiable.
     const ownerLine = (unit) => owners.some((owner) => speakerIsOwner(unit.speaker, [owner]));
+    const context = evidenceContextFor(units);
+    const byId = new Map(context.rows.map((unit) => [unit.id, unit]));
+    const rankedAnchors = [...anchorIds].sort((left, right) => {
+      const rank = (id) => {
+        const unit = byId.get(id);
+        return unit ? Number(ownerLine(unit)) * 4
+          + Number(ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text)) * 2
+          + Math.min(3, materialTokens(unit.text).filter((word) => actionWords.has(word)).length) : 0;
+      };
+      return rank(right) - rank(left);
+    });
+    const wanted = new Set();
+    for (const id of rankedAnchors) {
+      for (const unit of evidenceWindowUnits(units, [id], 2, 5)) {
+        if (wanted.size < 40) wanted.add(unit.id);
+      }
+    }
+    const passageUnits = context.rows.filter((unit) => wanted.has(unit.id));
     const omitted = passageUnits.filter((unit) => ownerLine(unit)
       && (ACTION_COMMITMENT_PATTERN.test(unit.text) || ACTION_CONCRETE_INTENTION_PATTERN.test(unit.text))
       && materialTokens(unit.text).filter((word) => !actionWords.has(word)).length >= 2);
@@ -5343,7 +5510,8 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       resolved.evidenceIds = [];
     }
     const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
-    const evidenceIds = anchorOwnerCommitment(action, owners, units, resolved.evidenceIds);
+    const fieldEvidenceIds = retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds);
+    const evidenceIds = anchorOwnerCommitment(action, owners, units, fieldEvidenceIds);
     const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
     if (options.enforceEvidence !== false && !evidenceIds.length) return null;

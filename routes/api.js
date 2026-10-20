@@ -85,8 +85,12 @@ const {
   finaliseDiscussionForPublication,
   repairStructuralTopicHeadings
 } = require('../utils/canonicalMinutes/discussionOrganiser');
+const {
+  stampPrimaryDiscussionEvidence,
+  isSourceSupportedMaterialDetail
+} = require('../utils/canonicalMinutes/discussionPublication');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
-const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
@@ -11284,6 +11288,28 @@ function hasMeetingAgentReviewerContent(record) {
     .some((kind) => (record?.[kind] || []).some(hasMeetingAgentReviewerContent));
 }
 
+// A source-reviewed exclusion must survive later context promotion and topic
+// regrouping. Match the original wording and evidence, not an ordinal ID which
+// another discovery pass may reuse. Reviewer content remains authoritative.
+function removeWithheldGeneratedDiscussion(discussion = [], withheld = []) {
+  const exclusions = (Array.isArray(withheld) ? withheld : []).filter(item => item?.record?.text);
+  if (!exclusions.length) return discussion;
+  const wording = record => meetingMinutesAgentText(record?.text, 1600).toLowerCase().replace(/[.!?]+$/, '');
+  const blocked = record => exclusions.some(item => wording(item.record) === wording(record)
+    && (item.record.evidenceIds || item.evidenceIds || []).some(id => (record.evidenceIds || []).includes(id)));
+  const cleanRecord = record => {
+    if (isReviewerAuthored(record)) return record;
+    if (blocked(record) && !hasMeetingAgentReviewerContent(record)) return null;
+    return { ...record, supportingDetails: (record.supportingDetails || []).map(cleanRecord).filter(Boolean) };
+  };
+  return (Array.isArray(discussion) ? discussion : []).map(topic => {
+    if (isReviewerAuthored(topic)) return topic;
+    return { ...topic, ...Object.fromEntries(['points', 'decisions', 'openQuestions']
+      .map(kind => [kind, (topic[kind] || []).map(cleanRecord).filter(Boolean)])) };
+  }).filter(topic => hasMeetingAgentReviewerContent(topic)
+    || ['points', 'decisions', 'openQuestions'].some(kind => topic[kind]?.length));
+}
+
 function removeGeneratedActionCategoryDiscussion(discussion = []) {
   return (Array.isArray(discussion) ? discussion : []).filter((topic) =>
     hasMeetingAgentReviewerContent(topic)
@@ -11295,6 +11321,9 @@ function removeGeneratedActionCategoryDiscussion(discussion = []) {
 // existing display policy; new generated-text cleanup happens before storage.
 function meetingAgentPublicationContent(draft = {}) {
   draft = normaliseMeetingAgentMinuteNumbers(draft);
+  draft = { ...draft, discussion: removeWithheldGeneratedDiscussion(
+    draft.discussion, draft.qualityState?.discussion?.fidelityWithheldRows
+  ) };
   const cleanedDiscussion = removeShortTopicEchoes(removePersonalAsides(draft.discussion), draft.sourceUnits);
   const balancedDiscussion = Number(draft.qualityState?.discussion?.topicArrangementVersion || 0) >= 1
     ? cleanedDiscussion
@@ -11873,10 +11902,22 @@ function reconcileFinalApprovedActions(published = [], approved = []) {
       }
       continue;
     }
+    // Use the same directional, lossless variant proof as the final deduper.
+    // If its survivor needs an approved row's extra detail, enrich that single
+    // instruction rather than restoring a second wording of the same task.
+    const variantIndex = actions.findIndex(existing => !sameActionText(existing, record)
+      && reconcileCommitmentVariants(existing, record));
+    if (variantIndex >= 0) {
+      actions[variantIndex] = reconcileCommitmentVariants(actions[variantIndex], record).record;
+      continue;
+    }
     const represented = actions.some((existing) => existing === record || (!exactActionIdentityConflict(record, existing)
       && !conflictingTimings(record, existing)
       && !actionContainmentConflict(record, existing)
       && !isReviewerAuthored(existing)
+      // A loose deliverable match is only a nomination. The published row
+      // must retain this approved instruction's scope and relationships too.
+      && commitmentCanBeRepresented(record, existing)
       && (actionIsLosslesslyCovered(record, existing)
         || (!sameActionText(record, existing)
           && strictActionDeliverableMatch(record, existing, { includeDocumentation: true })
@@ -12220,7 +12261,7 @@ function removeHeadingFragmentsFromDiscussion(discussion = []) {
 // meetings can otherwise turn every elaboration containing "risk", "underway"
 // or a target date back into a primary row after the referee condensed it. Any
 // detail which is not promoted remains attached to its parent for review.
-function promotePrioritySupportingDetails(discussion = [], limit = 6, maxPerTopic = 2) {
+function promotePrioritySupportingDetails(discussion = [], limit = 6, maxPerTopic = 2, sourceUnits = []) {
   const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
     ...topic,
     points: (topic.points || []).map((record) => ({ ...record, supportingDetails: [...(record.supportingDetails || [])] })),
@@ -12232,10 +12273,12 @@ function promotePrioritySupportingDetails(discussion = [], limit = 6, maxPerTopi
   const topicLimit = Math.max(0, Number(maxPerTopic) || 0);
   let promoted = 0;
   for (const topic of result) {
+    if (isReviewerAuthored(topic)) continue;
     const additions = [];
     let promotedInTopic = 0;
     for (const kind of ['decisions', 'openQuestions', 'points']) {
       for (const record of topic[kind] || []) {
+        if (isReviewerAuthored(record)) continue;
         const retained = [];
         for (const detail of record.supportingDetails || []) {
           const value = meetingMinutesAgentText(detail?.text, 1600);
@@ -12248,7 +12291,8 @@ function promotePrioritySupportingDetails(discussion = [], limit = 6, maxPerTopi
             && hybridContentTokenOverlap(other?.text, value) >= 0.58)
             || hybridContentTokenOverlap(record?.text, value) >= 0.58;
           if (promoted < totalLimit && promotedInTopic < topicLimit
-            && readable && prioritySupportingDetail(value)
+            && readable && !isReviewerAuthored(detail)
+            && (prioritySupportingDetail(value) || isSourceSupportedMaterialDetail(detail, sourceUnits))
             && (detail.evidenceIds || []).length && !duplicate
             && supportingDetailAddsInformation(detail, visible, {})) {
             const row = {
@@ -12474,10 +12518,11 @@ function distinctActionDeliverables(left = {}, right = {}) {
 // states it. "Build X and send it to Y" (no comma list) is left whole.
 const COMPOUND_ACTION_VERBS = 'add|agree|arrange|ask|book|brief|build|call|chase|check|circulate|clarify|collect|complete|confirm|contact|create|draft|email|ensure|find|finalise|finalize|fix|follow|forward|get|identify|investigate|let|message|monitor|move|order|organise|organize|prepare|print|produce|provide|put|raise|re-send|re-share|record|remove|replace|request|reschedule|resend|restore|review|revise|run|schedule|send|set|share|sort|speak|start|submit|talk|test|trace|update|upload|write';
 const COMPOUND_SPLIT = new RegExp(String.raw`,\s*(?:and\s+|then\s+|and\s+then\s+)?(?=(?:${COMPOUND_ACTION_VERBS})\b)`, 'i');
-function splitCompoundActionList(actions = [], journeyId = '') {
+function splitCompoundActionList(actions = [], journeyId = '', options = {}) {
   const out = [];
   const splits = [];
   for (const action of Array.isArray(actions) ? actions : []) {
+    if (hasMeetingAgentReviewerContent(action)) { out.push(action); continue; }
     const wording = meetingMinutesAgentText(action?.action, 1600).replace(/[.]+$/, '');
     const firstVerb = new RegExp(String.raw`^(?:${COMPOUND_ACTION_VERBS})\b`, 'i').test(wording);
     const parts = firstVerb ? wording.split(COMPOUND_SPLIT).map((part) => part.trim()).filter(Boolean) : [wording];
@@ -12488,19 +12533,81 @@ function splitCompoundActionList(actions = [], journeyId = '') {
       out.push(action);
       continue;
     }
-    const timingWording = String(action.timing?.wording || '').toLowerCase();
-    const timedIndex = timingWording
-      ? parts.findIndex((part) => part.toLowerCase().includes(timingWording)
-        || hybridContentTokenOverlap(part, timingWording) >= 0.5)
-      : -1;
+    // A date on the original compound is not evidence that every step shares
+    // it. Bind it to a unique explicit clause, or to source wording that names
+    // that step. An unresolved binding remains visible as a review flag.
+    const canonical = value => String(value || '').normalize('NFKC').toLowerCase()
+      .replace(/[’]/g, "'").replace(/[^\p{L}\p{N}' ]/gu, ' ').replace(/\s+/g, ' ').trim();
+    const timingWording = canonical(action.timing?.wording || action.timing?.exactDate);
+    const timingNeedle = timingWording.replace(/^(?:by|on|at|during)\s+/, '');
+    const hasTiming = Boolean(action.timing?.kind && action.timing.kind !== 'not_stated');
+    const timedParts = new Set();
+    if (hasTiming && timingNeedle) {
+      const explicit = parts.map((part, index) => canonical(part).includes(timingNeedle) ? index : -1).filter(index => index >= 0);
+      if (explicit.length === 1) timedParts.add(explicit[0]);
+      const cited = new Set(action.evidenceIds || []);
+      const source = normaliseSourceUnits(options.sourceUnits || []).filter(unit => cited.has(unit.id));
+      const timingTokens = new Set(timingWording.split(' '));
+      const owners = new Set((action.owners || []).flatMap(owner => canonical(owner).split(' ')));
+      const stop = new Set([...NESTED_STOP, 'another', 'related', 'required', 'completed', 'tasks', 'task', 'items', 'steps', 'work']);
+      const words = value => new Set((canonical(value).match(/[\p{L}\p{N}']{3,}/gu) || [])
+        .filter(word => !stop.has(word) && !timingTokens.has(word) && !owners.has(word)));
+      const objects = parts.map(part => words(part.replace(/^\s*\S+\s+/, '')));
+      const distinctive = objects.map((tokens, at) => new Set([...tokens].filter(token =>
+        objects.every((other, index) => index === at || !other.has(token)))));
+      for (const unit of source) {
+        const statement = canonical(unit.text);
+        if (!statement.includes(timingNeedle)) continue;
+        // A refusal, reassignment or later qualification cannot establish the
+        // original compound's deadline for one of its newly separated steps.
+        if (/\b(?:not|never|cannot|can't|won't|instead|except|excluding|unless|but|however|later|rather than)\b/.test(statement)) continue;
+        const sourceWords = words(unit.text);
+        const speakerWords = new Set(canonical(unit.speaker).split(' ').filter(word => word.length > 1));
+        const otherFutureSubject = [...String(unit.text || '').matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:will|shall|must|is\s+going\s+to)\b/g)]
+          .some(match => !/^(?:We|They|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(match[1])
+            && !canonical(match[1]).split(' ').every(word => owners.has(word)));
+        const ownerNamed = (action.owners || []).some(owner => {
+          const name = canonical(owner);
+          const nameWords = name.split(' ').filter(word => word.length > 1);
+          const ownsTurn = name === canonical(unit.speaker)
+            || (nameWords.length >= 2 && nameWords.every(word => speakerWords.has(word)));
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const assignedDirectly = new RegExp(`\\b${escaped}\\s+(?:will|shall|must|is\\s+to)\\b`).test(statement);
+          return !otherFutureSubject && (ownsTurn || assignedDirectly);
+        });
+        if (!ownerNamed) continue;
+        const commonDeadline = /\b(?:both|all|each)(?:\s+(?:of\s+)?(?:these|those|the))?(?:\s+(?:tasks?|items?|steps?|actions?|jobs?|deliverables?))?\s+(?:are|is|will|must|need|needs|should|due|by|before)\b/.test(statement)
+          && !/\b(?:not|never|except|excluding)\b/.test(statement)
+          && objects.every(tokens => [...tokens].some(token => sourceWords.has(token)));
+        if (commonDeadline) { parts.forEach((_, index) => timedParts.add(index)); break; }
+        if (explicit.length) continue;
+        const exactStep = parts.map((part, index) => canonical(part).split(' ').length >= 3
+          && statement.includes(canonical(part)) ? index : -1).filter(index => index >= 0);
+        if (exactStep.length === 1) { timedParts.add(exactStep[0]); continue; }
+        const matches = distinctive.map((tokens, index) => tokens.size
+          && [...tokens].filter(token => sourceWords.has(token)).length >= Math.min(2, tokens.size) ? index : -1)
+          .filter(index => index >= 0);
+        if (matches.length === 1) timedParts.add(matches[0]);
+      }
+    }
+    let timingFlag = null;
+    if (hasTiming && !timedParts.size) {
+      timingFlag = normaliseMeetingAgentFlag({
+        kind: 'timing',
+        message: `The timing "${action.timing?.wording || action.timing?.exactDate}" could not be assigned safely to a step in "${wording}". Confirm which work it concerns.`,
+        evidenceIds: action.evidenceIds || []
+      });
+      if (Array.isArray(options.flags)) options.flags.push(timingFlag);
+    }
     parts.forEach((part, index) => {
       const sentence = `${part.charAt(0).toUpperCase()}${part.slice(1)}.`;
-      const keepsTiming = timedIndex === -1 || timedIndex === index;
+      const keepsTiming = hasTiming && timedParts.has(index);
       out.push({
         ...action,
         id: index === 0 ? action.id : `${action.id}-part${index + 1}`,
         action: sentence,
-        timing: keepsTiming ? action.timing : { kind: 'not_stated', wording: '', exactDate: '' }
+        timing: keepsTiming ? { ...action.timing } : { kind: 'not_stated', wording: '', exactDate: '' },
+        ...(timingFlag ? { reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), timingFlag.id])] } : {})
       });
     });
     splits.push({ from: meetingMinutesAgentText(action.action, 200), parts: parts.length });
@@ -15059,6 +15166,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const vetoedModelActions = [];
   const vetoSink = stage === 'actions' ? { vetoed: vetoedModelActions } : {};
   const primary = normaliseAgentResult(primaryParsed, draft.sourceUnits, stage, { meetingDate: details.meetingDate, ...vetoSink });
+  if (stage === 'discussion') primary.discussion = stampPrimaryDiscussionEvidence(primary.discussion, draft.sourceUnits);
   if (stage === 'discussion' && !flattenHybridDiscussion(primary.discussion).length) {
     degradedSources.push('Primary discussion discovery returned no grounded propositions; deterministic evidence and gap recovery were used without repeating the same request.');
   }
@@ -15495,6 +15603,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     let finalDiscussion = (compactEnabled || structuredReferee)
       ? compactPreview
       : mergeHybridDiscussionTopics(refereeDiscussion, recoveredDiscussion);
+    finalDiscussion = stampPrimaryDiscussionEvidence(finalDiscussion, draft.sourceUnits);
     if (structuredReferee && !completeStructuredReferee && !compactSufficiency.sufficient
       && flattenHybridDiscussion(baselineDiscussion).length) {
       // An incomplete Referee must never bypass the normal evidence/client-
@@ -15581,6 +15690,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     let supersededContextFlags = [];
     let attributionFlags = [];
     let fidelityFlags = [];
+    let fidelityWithheldRows = [];
     if (correctnessChecksEnabled()) {
       // Rows citing an assumption and its correction are rare; those that do
       // not carry the correction's content leave the primary rows.
@@ -15646,9 +15756,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       const fidelityChecked = applyDiscussionFidelityResults(finalDiscussion, fidelityItems, fidelityResults);
       finalDiscussion = fidelityChecked.discussion;
       fidelityFlags = fidelityChecked.flags;
+      fidelityWithheldRows = fidelityChecked.withheld || [];
       console.log(JSON.stringify({
         event: 'meeting_agent_discussion_fidelity', journeyId: draft.draftId,
         checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain,
+        withheld: fidelityWithheldRows.length,
         rejected: fidelityChecked.rejected
       }));
     }
@@ -15711,7 +15823,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         dropped: bodyDedupe.dropped.slice(0, 20)
       }));
     }
-    const priorityDetails = promotePrioritySupportingDetails(finalDiscussion);
+    const priorityDetails = promotePrioritySupportingDetails(finalDiscussion, 6, 2, draft.sourceUnits);
     const includeAllDetails = includeAllDiscussionDetailsExperiment();
     const includedDetails = includeAllDetails
       ? promoteAllDiscussionDetails(priorityDetails.discussion)
@@ -15834,7 +15946,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     // Nothing after this boundary is allowed to manufacture or rewrite prose.
     // Run the idempotent presentation guard after dedupe, detail promotion and
     // global topic arrangement so every generated row is safe to persist.
-    finalDiscussion = normaliseDiscussionPresentation(finalDiscussion);
+    finalDiscussion = normaliseDiscussionPresentation(removeWithheldGeneratedDiscussion(finalDiscussion, fidelityWithheldRows));
     const roleConflicts = flagConflictingDiscussionRoles(finalDiscussion, draft.sourceUnits);
     finalDiscussion = roleConflicts.discussion;
     if (roleConflicts.conflicts.length) console.log(JSON.stringify({
@@ -15908,6 +16020,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
+          fidelityWithheldRows,
           topicArrangementVersion: topicArrangement.version,
           topicArrangement,
           postPromotionEditorial: {
@@ -16484,11 +16597,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     action: normalisePublishedParticipantReference(record?.action, actionPeople)
   }));
   const actionsBeforeDisplayDedupe = participantNormalisedActions.length;
-  const splitRows = splitCompoundActionList(participantNormalisedActions, draft.draftId);
+  const splitTimingFlags = [];
+  const splitRows = splitCompoundActionList(participantNormalisedActions, draft.draftId, {
+    sourceUnits: draft.sourceUnits, flags: splitTimingFlags
+  });
+  const splitOwnership = applyRequesterOwnerRule(splitRows, draft.sourceUnits);
   // Apply only the narrow final eligibility filters here. The ordinary display
   // dedupers below may merge wording, but this set remains the survival
   // authority for distinct lifecycle-approved deliverables.
-  const displayEligibleApproved = applyPresenterAidGate(splitRows, details.meetingType).actions
+  const displayEligibleApproved = applyPresenterAidGate(splitOwnership.actions, details.meetingType).actions
     .map((record) => ({
       ...record,
       action: normalisePublishedParticipantReference(record?.action, actionPeople)
@@ -16499,7 +16616,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   // earlier fold ran, which can leave an unowned paraphrase beside the owned
   // action it restates. Fold once more on what the reviewer will actually see.
   const actionScreenRows = foldUnownedNearCopies(dedupeHybridActionRecords(
-    splitRows, { sourceUnits: draft.sourceUnits }
+    splitOwnership.actions, { sourceUnits: draft.sourceUnits }
   ), draft.draftId);
   const actionScreenDuplicateCount = actionsBeforeDisplayDedupe - actionScreenRows.length;
   if (actionScreenDuplicateCount) console.log(JSON.stringify({
@@ -16534,6 +16651,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
   }));
   const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
+    ...splitTimingFlags,
+    ...splitOwnership.flags,
     ...timingChecked.flags,
     ...critic.reviewFlags.filter(isUsefulMeetingAgentReviewFlag),
     ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
