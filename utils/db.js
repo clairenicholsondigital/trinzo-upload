@@ -2065,6 +2065,9 @@ async function queueProjectUpdateGeneration(payload = {}) {
     skipContext: Boolean(payload.skipContext),
     skipKnowledge: Boolean(payload.skipKnowledge),
     skipStatusDiagnostics: Boolean(payload.skipStatusDiagnostics),
+    minutesDraftId: payload.minutesDraftId ? String(payload.minutesDraftId) : '',
+    minutesDraftRevision: Number(payload.minutesDraftRevision || 0) || null,
+    minutesActions: Array.isArray(payload.minutesActions) ? payload.minutesActions.slice(0, 100) : [],
     queuedBy: payload.queuedBy || '',
     queuedAt: new Date().toISOString()
   };

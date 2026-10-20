@@ -13,6 +13,7 @@ const {
   markGenerationJobFailure
 } = require('./db');
 const { runProjectKnowledgeRetrieval } = require('./knowledge');
+const { applyMinutesActionsToProjectReport } = require('./minutesForProjectUpdate');
 const {
   runPythonTranscriptScript,
   transcriptMetadata,
@@ -156,6 +157,8 @@ async function buildProjectUpdateResultFromTranscript(transcript, options = {}) 
         }
       };
     }
+
+    applyMinutesActionsToProjectReport(result, options.minutesActions);
 
     if (hasDatabaseConfig() && !truthy(options.skipSave)) {
       try {

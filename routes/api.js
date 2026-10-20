@@ -303,6 +303,7 @@ const {
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
 const { normaliseKeptActionIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
 const { includedSections, summaryStageIsEmpty, applyIncludedSections, applyTopicHeadings } = require('../utils/includedSections');
+const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProjectReport } = require('../utils/minutesForProjectUpdate');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
@@ -7776,6 +7777,62 @@ router.delete('/meeting-minutes-final/feedback-submissions/:feedbackId', require
     const deleted = await deleteMeetingMinutesFeedback(req.params.feedbackId);
     if (!deleted) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
     return res.json({ ok: true });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+// "Process once": the meeting is processed by the Meeting Minutes Agent, and
+// the project report is built from those reviewed minutes rather than from a
+// second, separate pass over the raw transcript.
+router.post('/project-update-test/from-minutes', requireAuth, async (req, res) => {
+  try {
+    const draftId = String(req.body?.draftId || '').trim();
+    if (!/^\d+$/.test(draftId)) {
+      return res.status(400).json({ ok: false, success: false, error: 'Choose saved meeting minutes to build the project update from.' });
+    }
+    const projectId = Number(req.body?.projectId || 0) || null;
+    if (!projectId) {
+      return res.status(400).json({ ok: false, success: false, error: 'Choose a project for this update.' });
+    }
+    const draft = await getMeetingMinutesAgentDraft(draftId, req.authUser?.userId);
+    if (!draft) {
+      return res.status(404).json({ ok: false, success: false, error: 'Meeting minutes not found.' });
+    }
+    const minutes = meetingAgentDraftForPdf(draft, false);
+    if (!minutesHaveContent(minutes)) {
+      return res.status(400).json({ ok: false, success: false, error: 'These minutes have no discussion or actions yet. Finish them in the Meeting Minutes Agent first.' });
+    }
+    // Actions travel separately: the analyser reads the discussion for status,
+    // milestones and risks, and the report keeps the minutes' reviewed actions.
+    const minutesText = renderMinutesForProjectUpdate(minutes, { includeActions: false });
+    validateTranscriptText(minutesText);
+    const meetingTitle = minutes.details?.meetingTitle || draft.title || 'Meeting minutes';
+    const queued = await queueProjectUpdateGeneration({
+      transcriptText: minutesText,
+      source: 'meeting-minutes-agent',
+      fileName: draft.fileName || '',
+      meetingTitle,
+      meetingDescription: 'Project update built from Meeting Minutes Agent minutes.',
+      transcriptSha256: crypto.createHash('sha256').update(minutesText).digest('hex'),
+      projectId,
+      projectName: req.body?.projectName || '',
+      periodLabel: req.body?.periodLabel || '',
+      minutesDraftId: draftId,
+      minutesDraftRevision: draft.revision,
+      minutesActions: minutesActionsForProjectReport(minutes.actions),
+      queuedBy: req.authUser?.email || ''
+    });
+    return res.status(202).json({
+      ok: true,
+      success: true,
+      ...queued,
+      minutesDraftId: draftId,
+      statusUrl: `/api/jobs/${queued.jobId}`,
+      resultUrl: `/api/jobs/${queued.jobId}`,
+      jobUrl: `/jobs/${queued.jobId}`,
+      jobsUrl: '/jobs'
+    });
   } catch (error) {
     return sendTestError(res, error);
   }

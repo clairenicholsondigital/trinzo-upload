@@ -203,9 +203,9 @@ test('project workspace labels separate memory, draft reports and evidence', () 
   assert.ok(projectStageMemorySource.includes('data-edit-knowledge'));
   assert.ok(projectStageMemorySource.includes("method: editingItemId ? 'PATCH' : 'POST'"));
   assert.ok(dbSource.includes('i.title, i.content, i.item_type'));
-  assert.ok(projectStageProcessSource.includes('Create draft report'));
+  assert.ok(projectStageProcessSource.includes('Create project update'));
   assert.ok(projectStageProcessSource.includes('Project update meeting'));
-  assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
+  assert.ok(projectStageProcessSource.includes('its evidence comes from these minutes'));
   assert.ok(projectStageInsightsSource.includes('stored project memory'));
   assert.ok(projectStageInsightsSource.includes('milestones, monitored risks, recent reports and stored project memory'));
   assert.ok(projectStageInsightsSource.includes('Ask project context'));
@@ -309,8 +309,11 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('width:fit-content'));
   assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));
   assert.ok(projectStageProcessSource.includes('data-process-panel="meeting" aria-pressed="true">Process meeting</button>'));
-  assert.ok(projectStageProcessSource.includes("queuedEndpoint: '/api/project-update-test/jobs'"));
-  assert.ok(projectStageProcessSource.includes("jobsPageUrl: '/jobs'"));
+  // Process once: the minutes agent processes the transcript and the project
+  // update is queued from the finished minutes.
+  assert.ok(projectStageProcessSource.includes('/meeting-minutes-agent?'));
+  assert.ok(projectStageProcessSource.includes("PW.request('from-minutes'"));
+  assert.ok(projectStageProcessSource.includes("/api/meeting-minutes-agent/drafts?limit=10"));
   assert.ok(projectStageProcessSource.includes('data-process-panel="agenda" aria-pressed="false">Suggested agenda</button>'));
   assert.ok(projectStageProcessSource.includes('data-process-tab-panel="agenda" hidden'));
   assert.ok(projectStageProcessSource.includes('wireProcessSubtabs(container)'));
