@@ -14459,7 +14459,7 @@ function acceptedVisitAssignmentActions(sourceUnits = [], records = [], options 
     // task in the same turn (or a date inside its dependency) is not a visit
     // date. Keep a complete temporal tail, including its qualifiers/bounds.
     const temporalWords = new Set('today tonight tomorrow monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december this next last previous week weeks day days month months year years weekend morning afternoon evening noon midnight early mid late end start of the on at in by before after within until from to or and not no earlier later than probably presumably possibly maybe perhaps hopefully ideally preferably approximately roughly around about if possible all being well least latest first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth twentieth thirtieth one two three four five six seven eight nine ten eleven twelve every each weekly daily monthly am pm utc gmt bst cet cest'.split(' '));
-    const ownClause = String(offered.text || '').split(/[;.!?]|\b(?:and|but|then)\s+(?=(?:I|we|[A-Z][a-z]+)\s+(?:will|shall|can|could|must|need(?:s)? to|have to|am going to|is going to|are going to)|I['’](?:ll|m going to)|we['’]re going to)/i)
+    const ownClause = String(offered.text || '').split(/[;!?]|\.(?!\d)|\b(?:and|but|then)\s+(?=(?:I|we|[A-Z][a-z]+)\s+(?:will|shall|can|could|must|need(?:s)? to|have to|am going to|is going to|are going to)|I['’](?:ll|m going to)|we['’]re going to)/i)
       .map(value => value.trim()).find(value => /^(?:(?:yes|yeah|okay|ok|sure|well|right)[, ]+)*I\s+(?:can|could|would be able to)\s+(?:go|visit|attend)\b/i.test(value));
     const ownOffer = ownClause?.match(offer);
     let tail = meetingMinutesAgentText(ownOffer ? ownClause.slice(ownOffer.index + ownOffer[0].length) : '', 220)
@@ -14768,7 +14768,7 @@ function deferredCommitmentThreadProposal(thread, evidenceUnits = [], resolveSpe
     // The knowledge answer, not any earlier timed task in the thread, owns
     // this proposal's timing. Copy an explicit relation from that same clause;
     // implicit "know then" references remain untimed rather than borrowing a date.
-    const clauses = String(resolution.text || '').split(/[;.!?]|\b(?:and|but|then)\s+(?=(?:I|we|[A-Z][a-z]+)\s+(?:will|shall|can|could|must|need(?:s)? to|have to|am going to|is going to|are going to)|I['’](?:ll|m going to)|we['’]re going to)/i).map(value => value.trim()).filter(Boolean);
+    const clauses = String(resolution.text || '').split(/[;!?]|\.(?!\d)|\b(?:and|but|then)\s+(?=(?:I|we|[A-Z][a-z]+)\s+(?:will|shall|can|could|must|need(?:s)? to|have to|am going to|is going to|are going to)|I['’](?:ll|m going to)|we['’]re going to)/i).map(value => value.trim()).filter(Boolean);
     const knowledge = clauses.find(value => /^(?:(?:so|and|well|yes|yeah|okay|ok)[, ]+)*(?:I|we)\s*(?:['’]ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i.test(value))
       || clauses.find(value => /,\s*so\s+(?:I|we)\s*(?:['’]ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i.test(value));
     let timingWord = '';

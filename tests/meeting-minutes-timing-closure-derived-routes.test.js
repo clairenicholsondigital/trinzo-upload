@@ -105,3 +105,11 @@ test('a deferred dependency tail cannot carry a separate coordinate obligation d
   const positive=deferred([['Chair','Can you share the pump specifications?'],['Morgan','I will know after the catalogue review and approval.']]);
   assert.match(positive[0].timing.wording,/review and approval/i);
 });
+
+
+test('source-clause boundaries preserve decimal clock minutes',()=>{
+  assert.equal(visit('I can go tomorrow at 10.30.')[0].timing.wording,'tomorrow at 10.30');
+  const out=deferred([['Chair','Can you share the pump specifications?'],['Morgan','I will know after the review Wednesday at 10.30.']]);
+  assert.equal(out.length,1);
+  assert.equal(out[0].timing.wording,'After the review Wednesday at 10.30');
+});
