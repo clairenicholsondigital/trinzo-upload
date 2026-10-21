@@ -35,6 +35,11 @@ function markMeetingAgentReviewerEdits(previous = {}, incoming = {}) {
   if (Array.isArray(incoming.actions)) {
     next.actions = markRows(previous.actions, incoming.actions, ['action', 'owners', 'timing']);
   }
+  if (Array.isArray(incoming.meetingObjectives)) {
+    const asRecords = rows => (rows || []).map((row, index) => typeof row === 'string'
+      ? { id: `objective-${index + 1}`, text: row, evidenceIds: [] } : row);
+    next.meetingObjectives = markRows(asRecords(previous.meetingObjectives), asRecords(incoming.meetingObjectives), ['text']);
+  }
   return next;
 }
 

@@ -129,12 +129,18 @@ test('a conversational "actually" that only changes who does something is not a 
   assert.equal(V.laterRevisionUnit(units, ['T0200']), null);
 });
 
-test('the timing-ownership rule is off unless its own flag is set', () => withChecks(() => {
+test('the optional timing-ownership rule is off while independent source uncertainty remains visible', () => withChecks(() => {
   const saved = V.normaliseAgentResult({ actions: [{
     id: 'a1', action: 'Finalize the two code changes to produce a new software version.',
     owners: [], timing: { kind: 'target', wording: 'end of the week' }, evidenceIds: ['T0067', 'T0068']
   }] }, units, 'actions', { meetingDate: '2026-06-17', enforceEvidence: false });
-  assert.ok(!saved.reviewFlags.some((flag) => flag.kind === 'timing'));
+  assert.equal(V.timingClauseChecksEnabled(), false);
+  assert.equal(saved.actions[0].timing.wording, 'end of the week');
+  assert.ok(!saved.reviewFlags.some((flag) => /"end of next week" for this one/.test(flag.message)),
+    'the disabled optional ownership rule must not run');
+  assert.equal(saved.actions[0].timingDecision.status, 'unresolved');
+  assert.ok(saved.reviewFlags.some((flag) => /retained for review/.test(flag.message)),
+    'turning off one optional rule must not hide an independent unresolved source check');
 }));
 
 test('"No," opening a reply is an answer, not a revision', () => {

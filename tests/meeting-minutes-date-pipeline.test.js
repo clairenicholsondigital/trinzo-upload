@@ -8,6 +8,13 @@ const T = require('../utils/meetingMinutesTiming');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const { generateMeetingMinutesAgentDocx } = require('../utils/meetingMinutesAgentDocx');
 
+function assertWorkAndTimingPreservedForReview(result, original, message) {
+  const content = ({ reviewFlagIds: _flags, timingDecision: _decision, ...row }) => row;
+  assert.deepEqual(result.actions.map(content), [content(original)], message);
+  assert.ok(result.flags.length, 'an invalid checker result must now be visible rather than a silent no-op');
+  assert.equal(result.accounting.complete, false);
+}
+
 // Exercise the real persistence and review handlers against a JSON round-trip
 // store. The provider boundary throws if this offline test ever reaches it.
 process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1 = '0';
@@ -165,7 +172,7 @@ test('a source-valid qualification cannot donate another task or owner timing', 
   const result = V.applyTimingCheckResults([original], items, [{ id: items[0].id, verdict: 'qualified', timingQuote: 'Friday',
     stepQuote: 'training pack', qualificationQuote: 'ideally Monday, but Wednesday is the hard stop',
     preferredTiming: 'ideally Monday', fallbackTiming: 'Wednesday' }], options);
-  assert.deepEqual(result.actions, [original]);
+  assertWorkAndTimingPreservedForReview(result, original);
   assert.equal(result.rejected[0].reason, 'qualification_not_bound_to_action');
   const sameOwnerUnits = sourceUnits.map(unit => ({ ...unit, speaker: 'Sam' }));
   const sameOwnerItems = V.timingCheckItems([original], sameOwnerUnits, options);
@@ -173,7 +180,7 @@ test('a source-valid qualification cannot donate another task or owner timing', 
     verdict: 'qualified', timingQuote: 'Friday',
     qualificationQuote: 'ideally Monday, but Wednesday is the hard stop',
     preferredTiming: 'ideally Monday', fallbackTiming: 'Wednesday' }], options);
-  assert.deepEqual(sameOwner.actions, [original], 'the same speaker can introduce a different task');
+  assertWorkAndTimingPreservedForReview(sameOwner, original, 'the same speaker can introduce a different task');
   const singleTurnUnits = [sourceUnits[0], { id: 'T0002', speaker: 'Sam',
     text: 'I will send the inspection report Friday, and for the training pack, ideally Monday, but Wednesday is the hard stop.' }];
   const singleTurnItems = V.timingCheckItems([original], singleTurnUnits, options);
@@ -182,7 +189,7 @@ test('a source-valid qualification cannot donate another task or owner timing', 
       verdict: 'qualified', timingQuote: 'Friday', stepQuote,
       qualificationQuote: 'ideally Monday, but Wednesday is the hard stop',
       preferredTiming: 'ideally Monday', fallbackTiming: 'Wednesday' }], options);
-    assert.deepEqual(singleTurn.actions, [original], 'one transcript turn can contain separate work and timing');
+    assertWorkAndTimingPreservedForReview(singleTurn, original, 'one transcript turn can contain separate work and timing');
   }
   for (const [speaker, work] of [['Jordan', 'the training pack'], ['Sam', 'that training pack'], ['Jordan', 'the inspection report']]) {
     const suffixUnits = [{ id: 'T0001', speaker: 'Chair', text: 'Sam will send the inspection report Friday.' },
@@ -191,7 +198,7 @@ test('a source-valid qualification cannot donate another task or owner timing', 
     const suffix = V.applyTimingCheckResults([original], suffixItems, [{ id: suffixItems[0].id,
       verdict: 'qualified', timingQuote: 'Friday', stepQuote: 'inspection report',
       qualificationQuote: 'Before Friday, ideally Monday', preferredTiming: 'ideally Monday', fallbackTiming: '' }], options);
-    assert.deepEqual(suffix.actions, [original], 'work or a different assignee after the quoted prefix must remain in scope');
+    assertWorkAndTimingPreservedForReview(suffix, original, 'work or a different assignee after the quoted prefix must remain in scope');
   }
   const deicticUnits = [{ id: 'T0001', speaker: 'Sam', text: 'I will send the inspection report Friday.' },
     { id: 'T0002', speaker: 'Sam', text: 'Ideally before Friday, but Monday is the hard stop if needed.' }];
@@ -209,7 +216,7 @@ test('a source-valid qualification cannot donate another task or owner timing', 
   const switched = V.applyTimingCheckResults([original], switchedItems, [{ id: switchedItems[0].id,
     verdict: 'qualified', timingQuote: 'Friday', qualificationQuote: deicticUnits[1].text.slice(0, -1),
     preferredTiming: 'before Friday', fallbackTiming: 'Monday' }], options);
-  assert.deepEqual(switched.actions, [original], 'a date reference after a new owned task does not prove which task it qualifies');
+  assertWorkAndTimingPreservedForReview(switched, original, 'a date reference after a new owned task does not prove which task it qualifies');
 });
 
 test('source-scoped rejection blocks an old sibling but permits explicitly restated new timing evidence', () => {
@@ -237,7 +244,7 @@ test('a verbatim non-calendar replacement still needs the same owned task', () =
   const items = V.timingCheckItems([original], sourceUnits, options);
   const result = V.applyTimingCheckResults([original], items, [{ id: items[0].id, verdict: 'misread',
     timingQuote: 'Friday', correctTiming: 'after approval' }], options);
-  assert.deepEqual(result.actions, [original]);
+  assertWorkAndTimingPreservedForReview(result, original);
   assert.equal(result.rejected[0].reason, 'replacement_not_bound_to_action');
   const validUnits = [sourceUnits[0], { id: 'T0002', speaker: 'Sam',
     text: 'I will send the inspection report after approval.' }];

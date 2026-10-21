@@ -103,7 +103,11 @@ const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { normaliseDomainTermsDeep, applyTranscriptPhraseCorrections } = require('../utils/domainTerms');
 const { normaliseDatePhrasesDeep } = require('../utils/spokenForms');
 const { TIMING_POLICY_VERSION, isValidCalendarDate } = require('../utils/meetingMinutesTiming');
-const { reviewDiscussionCalendarDates } = require('../utils/meetingMinutesDateReview');
+const { reviewMeetingCalendarDates } = require('../utils/meetingMinutesDateReview');
+const { promoteMaterialTimingDetails } = require('../utils/meetingMinutesTemporalPublication');
+const { indexReviewResults } = require('../utils/meetingMinutesReviewAccounting');
+const { summaryTemporalCheckItems, summaryTemporalCheckPrompt, applySummaryTemporalCheckResults } = require('../utils/meetingMinutesTemporalReview');
+const { timedStepCoverage, mergeTimedStepRecovery } = require('../utils/meetingMinutesTimedStepCoverage');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
@@ -356,7 +360,12 @@ function normaliseMeetingAgentPassCache(value) {
 }
 
 function meetingAgentPassCacheKey(prompt) {
-  return crypto.createHash('sha256').update(String(prompt || '')).digest('hex');
+  // Microsoft prompt policies can change without changing a caller's text.
+  // Version these results too, so pre-fix discovery/check responses cannot
+  // bypass the new policy just because the same draft is regenerated warm.
+  return crypto.createHash('sha256').update(JSON.stringify({
+    timingPolicyVersion: TIMING_POLICY_VERSION, prompt: String(prompt || '')
+  })).digest('hex');
 }
 
 // The reviewer's steer is prose they may have laid out in lines or bullets.
@@ -436,6 +445,7 @@ function meetingAgentObjectiveRecords(value) {
     return {
       id: meetingMinutesAgentText(item?.id, 80) || `objective-${index + 1}`,
       text: objective,
+      ...(isReviewerAuthored(item) ? { reviewerAuthored: true } : {}),
       evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean)
     };
   }).filter(Boolean).slice(0, 20);
@@ -8631,7 +8641,7 @@ const MEETING_AGENT_UNSPOKEN_MONTH_RULE = 'Never add a month, year or weekday to
 // An off-hand "I'm not a football person" was minuted as a participant's
 // attitude to football.
 const MEETING_AGENT_SMALL_TALK_RULE = 'Leave out small talk, jokes, personal tastes and attitudes (sport, weather, holidays, how someone feels about something off-topic) unless they change the work, its timing or its logistics. Keep the practical consequence and drop the aside - "traffic may be heavy on the day of the marathon", not who does or does not enjoy running.';
-const MEETING_AGENT_TIMING_RULE = 'Timing precision. Preserve the source timing, its task, conditions and qualifications. A period, approximate aim, duration, range, recurring schedule or unresolved choice is not one exact calendar day. Do not select a range endpoint or invent a day for this/next week. Keep before/after distinct from on/by. Preserve both a preferred timing and its fallback, and apply later qualifications only to the same work. A nearby date for another task or person is not this task\'s date. Keep exactDate empty unless a single calendar date is unambiguously supported. Assess the work separately from its timing: a rejected or uncertain date does not reject an otherwise supported action. Preserve that action with corrected timing or no timing. Calendar calculations are validated by the application; candidate hints and calculated dates are claims to check, not additional source evidence. Never silently move a stated past date into a later month or year.';
+const MEETING_AGENT_TIMING_RULE = 'Timing precision. Preserve the source timing, its task, conditions and qualifications. A period, approximate aim, duration, range, recurring schedule or unresolved choice is not one exact calendar day. Do not select a range endpoint or invent a day for this/next week. Keep before/after distinct from on/by. Preserve stated clock times and time zones; never invent a zone or silently convert them. Preserve both a preferred timing and its fallback, and apply later qualifications only to the same work. A nearby date for another task or person is not this task\'s date. Keep exactDate empty unless a single calendar date is unambiguously supported. Assess the work separately from its timing: a rejected or uncertain date does not reject an otherwise supported action. Preserve that action with corrected timing or no timing. Calendar calculations are validated by the application; candidate hints and calculated dates are claims to check, not additional source evidence. Never silently move a stated past date into a later month or year.';
 const MEETING_AGENT_DISCUSSION_COVERAGE_RULE = 'Discussion coverage. Do not use an action-category heading such as action items, priorities, next steps or follow-ups as a discussion topic. Keep genuine factual discussion under the subject it belongs to, and put actual commitments in actions. Preserve concise statements of a device, system, software or process capability, limitation or behaviour even when they contain no decision, owner or deadline. When a meaningful technical statement is split across adjacent transcript turns or recognition boundaries, use the neighbouring evidence to recover the point before deciding it is incomplete; discard it only when the combined evidence remains non-substantive, conversational or unsupported.';
 
 function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
@@ -10128,13 +10138,13 @@ function meetingAgentActionQualityCandidateBudget(transcript = '', fixedPayload 
 const CLIENT_READY_ACTION_VERBS = new Set(('accept add address agree align analyse analyze apply approve arrange ask assess assign attach attend '
   + 'book brief build buy calculate call capture chase check circulate clarify close collate collect communicate compare compile complete '
   + 'conduct confirm consider consolidate contact continue coordinate correct create cross-check decide define deliver design determine develop '
-  + 'discuss distribute document download draft email engage ensure escalate establish evaluate explore fill finalise finalize finish fix '
+  + 'discuss distribute document download draft email engage ensure escalate establish evaluate explore fill finalise finalize finish fit fix '
   + 'flag focus follow forward gather generate get hold host identify implement include incorporate inform input inspect introduce investigate '
   + 'invite issue launch liaise link list load log map measure meet merge monitor notify obtain order organise organize outline '
   + 'pay perform plan populate prepare present prioritise prioritize procure produce progress provide publish purchase raise '
   + 're-run rerun reconcile record redo refine register reissue remove replace reply report request resend resolve respond restart retest return '
   + 'review revise rework run save schedule scope seek select send set share sign source speak specify split standardise standardize start '
-  + 'store submit summarise summarize supply support switch talk test tidy trace track train transfer translate trial update upload '
+  + 'store submit summarise summarize supply support switch take talk test tidy trace track train transfer translate trial update upload '
   + 'validate verify visit walk write '
   // Everyday imperatives the models also use for real, specific work: "Put the
   // meeting in his diary", "Restore the animation", "Re-share the deck".
@@ -11163,7 +11173,7 @@ function applyStageResultVirtually(draft = {}, stage = '', result = {}) {
   return {
     ...draft,
     ...changes,
-    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
+    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes }),
     staleStages: (Array.isArray(draft.staleStages) ? draft.staleStages : []).filter((value) => value !== stage),
     currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage] || 0, Number(draft.currentStep || 0)),
     generation: null
@@ -11442,9 +11452,12 @@ function meetingAgentPublicationContent(draft = {}) {
   const balancedDiscussion = Number(draft.qualityState?.discussion?.topicArrangementVersion || 0) >= 1
     ? cleanedDiscussion
     : balanceDiscussionTopics(cleanedDiscussion, draft.sourceUnits);
-  const publicationDiscussion = removeMinorCommunicationCourtesyDiscussion(
+  const eligibleDiscussion = removeMinorCommunicationCourtesyDiscussion(
     removeHeadingFragmentsFromDiscussion(removeGeneratedActionCategoryDiscussion(balancedDiscussion)), draft.sourceUnits
   );
+  const publicationDiscussion = promoteMaterialTimingDetails(eligibleDiscussion, draft.sourceUnits || [], {
+    meetingDate: meetingAgentTimingAnchor(draft)
+  }).discussion;
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
     .filter(Boolean);
@@ -11458,9 +11471,8 @@ function meetingAgentPublicationContent(draft = {}) {
   const context = draft.qualityState?.preparation?.dateContext;
   const trustedAnchor = context && ['transcript_header', 'transcript_metadata', 'reviewer'].includes(context.source)
     ? meetingAgentTimingAnchor(draft) : '';
-  const calendarReview = reviewDiscussionCalendarDates(content.discussion, draft.sourceUnits || [], { meetingDate: trustedAnchor });
-  return { ...content, discussion: calendarReview.discussion,
-    reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags || [], calendarReview.flags) };
+  const { flags: calendarFlags, ...calendarContent } = reviewMeetingCalendarDates(content, draft.sourceUnits || [], { meetingDate: trustedAnchor });
+  return { ...calendarContent, reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags || [], calendarFlags) };
 }
 
 function meetingAgentDraftForDocx(draft = {}) {
@@ -11834,7 +11846,8 @@ const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
 function meetingAgentReviewSnapshot(draft = {}) {
   return { ...Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS.map((key) => [
     key, JSON.parse(JSON.stringify(draft[key] == null ? null : draft[key]))
-  ])), meetingDateContext: JSON.parse(JSON.stringify(draft.qualityState?.preparation?.dateContext || null)) };
+  ])), meetingDateContext: JSON.parse(JSON.stringify(draft.qualityState?.preparation?.dateContext || null)),
+    reviewerSummaryHash: draft.qualityState?.summary?.reviewerSummaryHash || '' };
 }
 
 function meetingAgentRestoreReviewSnapshot(snapshot = {}, draft = {}) {
@@ -11844,6 +11857,11 @@ function meetingAgentRestoreReviewSnapshot(snapshot = {}, draft = {}) {
   if (Object.prototype.hasOwnProperty.call(snapshot, 'meetingDateContext')) {
     restored.qualityState = { ...(draft.qualityState || {}), preparation: {
       ...(draft.qualityState?.preparation || {}), dateContext: snapshot.meetingDateContext
+    } };
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, 'reviewerSummaryHash')) {
+    restored.qualityState = { ...(restored.qualityState || draft.qualityState || {}), summary: {
+      ...(draft.qualityState?.summary || {}), reviewerSummaryHash: snapshot.reviewerSummaryHash || ''
     } };
   }
   return restored;
@@ -11859,8 +11877,22 @@ function meetingAgentReviewHistoryEntry(draft = {}, label = 'Review decision') {
   };
 }
 
-function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false) {
-  const prior = replaceCoverage ? existing.filter((flag) => !isMeetingAgentCoverageFlag(flag)) : existing;
+function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false, recheck = {}) {
+  const fields = new Set();
+  const changes = recheck.changes || {};
+  if (recheck.stage === 'summary' && changes.qualityState?.summary?.temporalReview?.complete === true) {
+    for (const field of ['executiveSummary', 'meetingObjectives']) {
+      if (Object.prototype.hasOwnProperty.call(changes, field)) fields.add(field);
+    }
+  }
+  if (recheck.stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'actions')
+    && changes.qualityState?.actions?.timedStepCoverage?.final?.complete === true) fields.add('timedStepCoverage');
+  // Retire stale generated warnings only after an authoritative successful
+  // recheck was actually applied. Reviewer decisions/notes and incomplete
+  // checks retain their previous warnings.
+  const prior = (Array.isArray(existing) ? existing : []).filter(flag =>
+    !(replaceCoverage && isMeetingAgentCoverageFlag(flag))
+    && !(fields.has(flag.temporalField) && meetingAgentFlagUntouched(flag)));
   return mergeMeetingAgentFlags(prior, added);
 }
 
@@ -12093,7 +12125,7 @@ function isVagueReconstructedAction(value = '') {
 }
 
 const MINOR_COPY_COURTESY = /\b(?:cc(?:'d|ed|ing)?|copy|copied|copying|include|add)\b[^.]{0,100}\b(?:email|mail|correspondence|thread|recipient|her|him|them|you)\b/i;
-const COURTESY_CORRECTION = /\b(?:sorry|apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|this time|don['’]?t worry|do not worry)\b/i;
+const COURTESY_CORRECTION = /\b(?:sorry|apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|don['’]?t worry|do not worry)\b/i;
 const STRONG_COURTESY_CORRECTION = /\b(?:apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|don['’]?t worry|do not worry)\b/i;
 const PERSON_NAME_WORD = "[A-Z][\\p{L}'’.-]+";
 const PERSON_NAME = `${PERSON_NAME_WORD}(?:\\s+${PERSON_NAME_WORD}){0,2}`;
@@ -12145,12 +12177,19 @@ function stripMinorCommunicationCourtesy(record = {}, sourceUnits = []) {
   const value = meetingMinutesAgentText(record[field], 1600);
   let cleaned = stripAdministrativeAsideText(value);
   if (!cleaned) return null;
-  if (minorCommunicationCourtesy(record, sourceUnits)) {
-    if (/^\s*(?:apologise|apologize|say sorry|cc|copy|include|add)\b/i.test(cleaned)) return null;
+  const timingWords = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|deadline|by|before|after|within|until|this week|next week|this month|next month)\b/i;
+  const timedCopying = (record.timing?.kind !== 'not_stated' && Boolean(record.timing?.wording || record.timing?.exactDate))
+    || timingWords.test(cleaned)
+    || (Array.isArray(sourceUnits) ? sourceUnits : []).some(unit => (record.evidenceIds || []).includes(unit.id)
+      && String(unit.text || '').split(/[.!?;]/).some(clause => /\b(?:cc|copy|copied|copying|include|add)\b/i.test(clause) && timingWords.test(clause)));
+  if (!timedCopying && minorCommunicationCourtesy(record, sourceUnits)) {
+    // An attachment, named content requirement or separately timed copying
+    // step is substantive work, even beside a genuine copying apology.
+    if (/^\s*(?:apologise|apologize|say sorry|cc|copy)\b/i.test(cleaned)) return null;
     const onlyCopyingApology = /^[\p{L}\s'’.-]{1,80}\s+apolog(?:ised|ized|ises|izes|ising|izing)\s+for\s+(?:not\s+)?(?:copying|cc['’]?ing)\b[^.!?;]*[.!?]?$/iu.test(cleaned)
       && !/\b(?:and|then|will|would|shall|should|must)\b/i.test(cleaned);
     if (onlyCopyingApology) return null;
-    const withoutCourtesy = cleaned.replace(/\s*,?\s+(?:and|then)\s+(?:cc|copy|include|add)\b[^.;]{0,180}[.]?$/i, '')
+    const withoutCourtesy = cleaned.replace(/\s*,?\s+(?:and|then)\s+(?:cc|copy)\b[^.;]{0,180}[.]?$/i, '')
       .replace(/[\s,;:-]+$/, '').trim();
     // An unrecognised courtesy clause is not grounds to delete the substantive
     // instruction it accompanies. Retain the row when safe separation fails.
@@ -14910,6 +14949,52 @@ async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = 
   });
 }
 
+function meetingAgentReviewPacketError(items = [], result, verdicts = []) {
+  const indexed = indexReviewResults(items, result?.results, verdicts);
+  const invalid = [...indexed.states.values()].filter(item => item.status !== 'pending');
+  if (!indexed.malformedPacket && !indexed.unknown.length && !invalid.length) return null;
+  const error = new Error('The timing review did not return one valid result for each supplied item.');
+  error.code = 'invalid_meeting_timing_review_accounting';
+  error.statusCode = 502;
+  error.retryable = true;
+  error.invalidCandidateIds = invalid.map(item => item.id);
+  return error;
+}
+
+function meetingAgentSummaryAuthority(draft) {
+  const publication = meetingAgentPublicationContent(draft);
+  return { discussion: publication.discussion, actions: publication.actions };
+}
+
+function meetingAgentReviewerSummaryHash(draft, value = draft.executiveSummary) {
+  const saved = draft.qualityState?.summary?.reviewerSummaryHash || '';
+  return saved && saved === meetingAgentSummaryTextHash(value) ? saved : '';
+}
+
+function meetingAgentSummaryTextHash(value) {
+  const numbered = normaliseMeetingAgentMinuteNumbers({ executiveSummary: String(value || '') }).executiveSummary;
+  const published = normaliseMeetingAgentKnownTerms(normaliseDatePhrasesDeep(normaliseExecutiveSummary(normalisePresentationCurrency(numbered))));
+  return crypto.createHash('sha256').update(published).digest('hex');
+}
+
+async function verifyMeetingAgentSummaryTiming(draft, values, call) {
+  const authority = meetingAgentSummaryAuthority(draft);
+  const options = { meetingDate: meetingAgentTimingAnchor(draft),
+    summaryReviewerAuthored: Boolean(meetingAgentReviewerSummaryHash(draft, values.executiveSummary)) };
+  const items = summaryTemporalCheckItems(values, authority, draft.sourceUnits || [], options);
+  const batches = [];
+  for (let index = 0; index < items.length; index += 8) batches.push(items.slice(index, index + 8));
+  const results = (await Promise.all(batches.map((batch, index) => call(
+    `critic-summary-timing-${index + 1}`, summaryTemporalCheckPrompt(batch), {
+      optional: true, responseKind: 'correction_check', maxAttempts: 2,
+      independentBudgetMs: 120000, attemptTimeoutMs: 60000,
+      candidateCount: batch.length, candidateIds: batch.map(item => item.id),
+      validateResult: result => meetingAgentReviewPacketError(batch, result, ['supported', 'corrected', 'uncertain'])
+    }
+  )))).flatMap(result => Array.isArray(result?.results) ? result.results : []);
+  return applySummaryTemporalCheckResults(values, items, results, options);
+}
+
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   return cleanGeneratedMeetingAgentResult(await generateHybridMeetingAgentStageRaw(draft, stage, options), stage);
 }
@@ -15106,7 +15191,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       };
     }
     const parsed = await call('summary', meetingMinutesAgentPrompt({
-      stage, transcript, details, current: { discussion: draft.discussion || [], actions: draft.actions || [] }, steer: draft.steer
+      stage, transcript, details, current: meetingAgentSummaryAuthority(draft), steer: draft.steer
     }), {
       candidateCount: flattenHybridDiscussion(draft.discussion || []).length + (draft.actions || []).length
     });
@@ -15119,8 +15204,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         draft.meetingObjectives || [], parsed.meetingObjectives || parsed.objectives || []
       ], draft.sourceUnits)
     });
-    const executiveSummary = summaryValues.executiveSummary;
-    const meetingObjectives = summaryValues.meetingObjectives;
+    const summaryTiming = await verifyMeetingAgentSummaryTiming(draft, summaryValues, call);
+    const executiveSummary = summaryTiming.values.executiveSummary;
+    const meetingObjectives = summaryTiming.values.meetingObjectives;
     const passImpact = meetingAgentMaterialPassImpact([], { summary: {
       materialContributionCount: Number(Boolean(executiveSummary)) + meetingObjectives.length
     } });
@@ -15136,17 +15222,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           stageElapsedMs: Date.now() - stageStartedAt,
           completedAt: new Date().toISOString(),
           passImpact,
+          temporalReview: summaryTiming.accounting,
+          reviewerSummaryHash: meetingAgentReviewerSummaryHash(draft, executiveSummary),
           callPerformance: meetingAgentCallPerformance(measuredProvenance),
           telemetry: meetingAgentExecutionTelemetry(measuredProvenance)
         } }
       },
-      reviewFlags: [], replaceCoverageFlags: false
+      reviewFlags: summaryTiming.flags, replaceCoverageFlags: false
     };
   }
 
   const deterministic = deterministicHybridLedger(draft, stage);
+  const sourceActionCandidates = stage === 'actions' ? actionCandidateInventory(draft.sourceUnits) : [];
   const deterministicActionCandidates = stage === 'actions'
-    ? [...actionCandidateInventory(draft.sourceUnits),
+    ? [...sourceActionCandidates,
       ...(meetingMinutesDiscussionActionCandidatesEnabled()
         ? discussionActionCandidates(draft.discussion || [], draft.sourceUnits,
           [...(sanitiseMeetingAgentDetails(draft.details).internalAttendees || []), ...(sanitiseMeetingAgentDetails(draft.details).clientAttendees || [])])
@@ -15335,9 +15424,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const represented = stage === 'discussion'
     ? [...flattenHybridDiscussion(primary.discussion).map((item) => item.record), ...staged.map((item) => item.record)]
     : [...primary.actions, ...staged.map((item) => item.record)];
-  const recoveryDecision = stage === 'discussion'
+  let recoveryDecision = stage === 'discussion'
     ? discussionRecoveryNeeded(discussionCandidateInventory(draft.sourceUnits), represented)
     : actionRecoveryNeeded(actionDiscoveryInventory, represented);
+  const initialTimedStepCoverage = stage === 'actions'
+    ? timedStepCoverage(sourceActionCandidates, represented, draft.sourceUnits, { meetingDate: timingAnchor }) : null;
+  if (initialTimedStepCoverage) recoveryDecision = mergeTimedStepRecovery(recoveryDecision, initialTimedStepCoverage);
   if (recoveryDecision.needed) {
     const recoveryPrompt = anchoredActionRecovery
       ? meetingMinutesAgentAnchoredActionPrompt({
@@ -15835,6 +15927,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     let attributionFlags = [];
     let fidelityFlags = [];
     let fidelityWithheldRows = [];
+    let fidelityReview = { expected: 0, received: 0, complete: false, disabled: true };
     if (correctnessChecksEnabled()) {
       // Rows citing an assumption and its correction are rare; those that do
       // not carry the correction's content leave the primary rows.
@@ -15890,17 +15983,19 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       finalDiscussion = decisionChecked.discussion;
     }
     if (correctnessChecksEnabled()) {
-      const fidelityItems = discussionFidelityCheckItems(finalDiscussion, draft.sourceUnits);
+      const fidelityItems = discussionFidelityCheckItems(finalDiscussion, draft.sourceUnits, { meetingDate: timingAnchor });
       const fidelityBatches = [];
       for (let index = 0; index < fidelityItems.length; index += 8) fidelityBatches.push(fidelityItems.slice(index, index + 8));
       const fidelityResults = (await Promise.all(fidelityBatches.map((batch, index) => call(
         `critic-discussion-fidelity-${index + 1}`, discussionFidelityCheckPrompt(batch),
-        { optional: true, responseKind: 'correction_check', maxAttempts: 2, candidateCount: batch.length }
+        { optional: true, responseKind: 'correction_check', maxAttempts: 2, candidateCount: batch.length,
+          validateResult: result => meetingAgentReviewPacketError(batch, result, ['supported', 'corrected', 'uncertain']) }
       )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
       const fidelityChecked = applyDiscussionFidelityResults(finalDiscussion, fidelityItems, fidelityResults);
       finalDiscussion = fidelityChecked.discussion;
       fidelityFlags = fidelityChecked.flags;
       fidelityWithheldRows = fidelityChecked.withheld || [];
+      fidelityReview = fidelityChecked.accounting;
       console.log(JSON.stringify({
         event: 'meeting_agent_discussion_fidelity', journeyId: draft.draftId,
         checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain,
@@ -16091,6 +16186,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     // Run the idempotent presentation guard after dedupe, detail promotion and
     // global topic arrangement so every generated row is safe to persist.
     finalDiscussion = normaliseDiscussionPresentation(removeWithheldGeneratedDiscussion(finalDiscussion, fidelityWithheldRows));
+    const materialDeadlines = promoteMaterialTimingDetails(finalDiscussion, draft.sourceUnits, { meetingDate: timingAnchor });
+    finalDiscussion = materialDeadlines.discussion;
     const roleConflicts = flagConflictingDiscussionRoles(finalDiscussion, draft.sourceUnits);
     finalDiscussion = roleConflicts.discussion;
     if (roleConflicts.conflicts.length) console.log(JSON.stringify({
@@ -16165,6 +16262,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
           fidelityWithheldRows,
+          fidelityReview,
+          materialDeadlinePromotionCount: materialDeadlines.promoted,
           topicArrangementVersion: topicArrangement.version,
           topicArrangement,
           postPromotionEditorial: {
@@ -16476,23 +16575,25 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   if (meetingMinutesTimingCheckEnabled()) {
     // The model says which step each timing was spoken for, quoting the
     // passage; applyTimingCheckResults verifies every quote before changing
-    // anything. A failed call leaves the timings exactly as they were.
+    // anything. A failed call preserves the work and leaves explicit unresolved
+    // accounting; independent source-integrity checks still reject proven errors.
     const timingItems = timingCheckItems(timingChecked.actions, draft.sourceUnits, { meetingDate: timingAnchor });
     const timingBatches = [];
     for (let index = 0; index < timingItems.length; index += 8) timingBatches.push(timingItems.slice(index, index + 8));
     const timingResults = (await Promise.all(timingBatches.map((batch, index) => call(
       `critic-timing-${index + 1}`, timingCheckPrompt(batch, timingAnchor),
-      { optional: true, responseKind: 'timing_check', maxAttempts: 2, candidateCount: batch.length }
+      { optional: true, responseKind: 'timing_check', maxAttempts: 2, candidateCount: batch.length,
+        validateResult: result => meetingAgentReviewPacketError(batch, result, ['correct', 'qualified', 'belongs_to_other_step', 'past_event', 'misread', 'uncertain']) }
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
     const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: timingAnchor });
     if (reviewed.rejected.length) console.log(JSON.stringify({
       event: 'meeting_agent_timing_check_rejected', journeyId: draft.draftId, rejected: reviewed.rejected
     }));
-    timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags] };
+    timingChecked = { actions: reviewed.actions, flags: [...timingChecked.flags, ...reviewed.flags], accounting: reviewed.accounting };
     traceOwners('timingCheck', timingChecked.actions, draft.draftId);
   }
   const siblingTiming = reconcileSiblingTimingDecisions(timingChecked.actions, draft.sourceUnits, { meetingDate: timingAnchor });
-  timingChecked = { actions: siblingTiming.actions, flags: [...timingChecked.flags, ...siblingTiming.flags] };
+  timingChecked = { ...timingChecked, actions: siblingTiming.actions, flags: [...timingChecked.flags, ...siblingTiming.flags] };
   if (correctnessChecksEnabled()) {
     const chained = applyChainedTimingRule(timingChecked.actions, draft.sourceUnits, { meetingDate: timingAnchor });
     traceOwners('chained', chained.actions, draft.draftId);
@@ -16505,7 +16606,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     traceOwners('applyRequesterOwnerRule', ownersChecked.actions, draft.draftId);
     const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
     traceOwners('softened', softened.actions, draft.draftId);
-    timingChecked = { actions: softened.actions, flags: [...timingChecked.flags, ...chained.flags, ...(separated.flags || []), ...ownersChecked.flags, ...softened.flags] };
+    timingChecked = { ...timingChecked, actions: softened.actions, flags: [...timingChecked.flags, ...chained.flags, ...(separated.flags || []), ...ownersChecked.flags, ...softened.flags] };
   }
   let actionCompletenessCheckedCount = 0;
   let actionCompletenessCorrectedCount = 0;
@@ -16797,6 +16898,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     meetingDate: timingAnchor, assessments: draft.qualityState?.actions?.timingAssessments || []
   });
   const finalActions = finalTiming.actions;
+  const finalTimedStepCoverage = timedStepCoverage(sourceActionCandidates, finalActions, draft.sourceUnits, { meetingDate: timingAnchor });
+  const timedStepFlags = finalTimedStepCoverage.items.filter(item => item.status !== 'covered').map((item, index) => normaliseMeetingAgentFlag({
+    kind: 'timing', temporalField: 'timedStepCoverage', message: `A source-stated timed step still needs review: "${item.focusText}" (${item.expression}). Confirm that this work and its own timing are represented.`,
+    evidenceIds: [item.focusEvidenceId]
+  }, index));
   if (finalSurvival.restored.length) console.log(JSON.stringify({
     event: 'meeting_agent_final_action_survival', journeyId: draft.draftId,
     restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
@@ -16804,6 +16910,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
     ...splitTimingFlags,
     ...finalTiming.flags,
+    ...timedStepFlags,
     ...finalSiblingTiming.flags,
     ...splitOwnership.flags,
     ...timingChecked.flags,
@@ -16844,6 +16951,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       passCache,
       qualityState: { ...(draft.qualityState || {}), actions: {
         timingPolicyVersion: TIMING_POLICY_VERSION,
+        timingReview: timingChecked.accounting || { expected: 0, received: 0, complete: false, disabled: true },
+        timedStepCoverage: { initial: initialTimedStepCoverage, final: finalTimedStepCoverage },
         timingAssessments: [...finalTiming.assessments, ...proposalTiming.assessments],
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
         completedAt: new Date().toISOString(), passImpact,
@@ -17284,16 +17393,24 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     const dateConfirmedByReviewer = (req.body?.reviewFlags || []).some(flag =>
       flag?.id === 'meeting-date-source-check' && flag.status === 'confirmed'
       && (draft.reviewFlags || []).some(old => old.id === flag.id && old.status === 'open'));
-    const qualityState = dateChanged || dateConfirmedByReviewer ? { ...(draft.qualityState || {}), preparation: {
+    let qualityState = dateChanged || dateConfirmedByReviewer ? { ...(draft.qualityState || {}), preparation: {
       ...(draft.qualityState?.preparation || {}), dateContext: {
         meetingDate: details.meetingDate, source: 'reviewer', timingPolicyVersion: TIMING_POLICY_VERSION
       }
     } } : draft.qualityState;
+    const publishedBeforeSave = publicMeetingAgentDraft(draft);
+    if (typeof req.body?.executiveSummary === 'string'
+      && meetingAgentSummaryTextHash(req.body.executiveSummary) !== meetingAgentSummaryTextHash(publishedBeforeSave.executiveSummary)) {
+      qualityState = { ...(qualityState || {}), summary: { ...(qualityState?.summary || {}),
+        reviewerSummaryHash: meetingAgentSummaryTextHash(req.body.executiveSummary)
+      } };
+    }
     // A save carries the reviewer's edits: flag what the evidence does not
     // support, but never strip it back out from under them.
-    const reviewerContent = markMeetingAgentReviewerEdits(publicMeetingAgentDraft(draft), {
+    const reviewerContent = markMeetingAgentReviewerEdits(publishedBeforeSave, {
       ...(Array.isArray(req.body?.discussion) ? { discussion: req.body.discussion } : {}),
-      ...(Array.isArray(req.body?.actions) ? { actions: req.body.actions } : {})
+      ...(Array.isArray(req.body?.actions) ? { actions: req.body.actions } : {}),
+      ...(Array.isArray(req.body?.meetingObjectives) ? { meetingObjectives: req.body.meetingObjectives } : {})
     });
     const normalised = normaliseAgentResult({
       discussion: reviewerContent.discussion ?? draft.discussion,
@@ -17337,7 +17454,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       discussion: normalised.discussion,
       actions: normalised.actions,
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
-      meetingObjectives: req.body?.meetingObjectives ?? draft.meetingObjectives,
+      meetingObjectives: reviewerContent.meetingObjectives ?? draft.meetingObjectives,
       reviewFlags: reconciledReviewFlags,
       pendingProposal,
       staleStages: [...new Set([
@@ -17431,7 +17548,7 @@ async function generateMeetingAgentStageRaw(draft, stage, instruction) {
   }
   const current = stage === 'discussion' ? { discussion: draft.discussion || [] }
     : stage === 'actions' ? { actions: draft.actions || [] }
-    : { discussion: draft.discussion || [], actions: draft.actions || [] };
+    : meetingAgentSummaryAuthority(draft);
   const prompt = meetingMinutesAgentPrompt({
     stage,
     transcript,
@@ -17450,17 +17567,33 @@ async function generateMeetingAgentStageRaw(draft, stage, instruction) {
     // through normaliseAgentResult. Coverage is recalculated once against the
     // whole draft; model-created summary flags otherwise duplicate issues that
     // are already represented by the evidence-backed records.
-    const changes = {
+    const values = {
       executiveSummary: stripMeetingTitleReferences(groundedExecutiveSummary(parsed.executiveSummary, draft.discussion || [], draft.actions || []), draft.details?.meetingTitle),
       meetingObjectives: groundedObjectiveRecords(parsed.meetingObjectives, draft.sourceUnits)
     };
+    const timingReview = await verifyMeetingAgentSummaryTiming(draft, values, async (pass, prompt, options) => {
+      try {
+        const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
+          ...options, pass: `summary:${pass}`, deadlineAt: Date.now() + 120000
+        });
+        return response.result;
+      } catch (error) {
+        safeLogError('[meeting-minutes-agent] summary timing review incomplete', error);
+        return null;
+      }
+    });
+    const changes = { ...timingReview.values, qualityState: { ...(draft.qualityState || {}), summary: {
+      ...(draft.qualityState?.summary || {}), temporalReview: timingReview.accounting,
+      reviewerSummaryHash: meetingAgentReviewerSummaryHash(draft, timingReview.values.executiveSummary),
+      completedAt: new Date().toISOString()
+    } } };
     return {
       changes,
-      reviewFlags: coverageFlags(draft.salientDetails || [], {
+      reviewFlags: mergeMeetingAgentFlags(timingReview.flags, coverageFlags(draft.salientDetails || [], {
         discussion: draft.discussion || [],
         actions: draft.actions || [],
         ...changes
-      }),
+      })),
       replaceCoverageFlags: true
     };
   }
@@ -18139,6 +18272,9 @@ function reconcileMeetingAgentOrphanFlags(flags = [], records = [], proposal = n
     const id = String(flag.id || '');
     // Meeting metadata belongs to Details, independently of action rows.
     if (id === 'meeting-date-source-check') return flag;
+    // These warnings concern a whole field or a source step which may have
+    // no action row yet. Absence of an action is not evidence of resolution.
+    if (['executiveSummary', 'meetingObjectives', 'timedStepCoverage'].includes(flag.temporalField)) return flag;
     const hasProposal = changes.some((change) => meetingAgentProposalFlagMatchesChange(flag, change));
     if (currentReferences.has(id) || hasProposal || meetingAgentFlagLikelyHasCurrentTarget(flag, records)) return flag;
     const lostSavedTarget = previousReferences.has(id);
@@ -18264,7 +18400,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
     priorFlags = priorFlags.filter((flag) => !(String(flag.id || '').startsWith('proposal-review-')
       && !liveProposalFlagIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
   }
-  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags);
+  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags, { stage, changes });
   const seen = new Set();
   const reviewFlags = merged.filter((flag) => {
     if (!meetingAgentFlagUntouched(flag)) return true;
@@ -18572,7 +18708,7 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
     }
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...result.changes,
-      reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags),
+      reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes: result.changes }),
       staleStages: meetingAgentStaleStagesAfterGeneration(draft, draft, stage, result.changes),
       currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
     });
@@ -18930,6 +19066,10 @@ router.post('/copilot-chat', async (req, res) => {
 router.meetingInsights = { buildMeetingInsights };
 
 router.stagedEvaluation = {
+  meetingAgentReviewerSummaryHash,
+  meetingAgentReviewPacketError,
+  meetingAgentSummaryAuthority,
+  verifyMeetingAgentSummaryTiming,
   runStagedSequenceForEvaluation,
   // The scorecard generates discussion and actions through the same function and the same
   // meeting-type routing as the queued stage, so it measures the pipeline the reviewer sees.
