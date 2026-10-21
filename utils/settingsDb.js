@@ -56,6 +56,21 @@ function validatePerson(input = {}, others = []) {
   return { name, side, spellings };
 }
 
+// Glossary aliases match with spaces/hyphens or no separator, and acronym
+// aliases also match their plural. Reserve those same surfaces when checking
+// edits so two entries cannot rewrite each other's aliases or canonical term.
+function glossaryMatchKeys(entry) {
+  const plural = /[A-Z]$/.test(entry.term) && /^[^a-z]*$/.test(entry.term.replace(/[^A-Za-z]/g, '').slice(1));
+  const surfaces = [
+    { value: entry.term, kind: 'term' },
+    ...(entry.heardAs || []).map((value) => ({ value, kind: 'heard' }))
+  ];
+  return surfaces.flatMap(({ value, kind }) => {
+    const matchKey = key(value).replace(/[\s-]+/g, '');
+    return [{ key: matchKey, kind }, ...(plural ? [{ key: `${matchKey}s`, kind }] : [])];
+  });
+}
+
 function validateTerm(input = {}, others = []) {
   const term = clean(input.term);
   if (!term) throw new SettingsValidationError('Add the term.');
@@ -74,16 +89,22 @@ function validateTerm(input = {}, others = []) {
   }
   const taken = new Map();
   for (const other of others) {
-    taken.set(key(other.term), { owner: other.term, kind: 'term' });
-    for (const item of other.heardAs || []) taken.set(key(item), { owner: other.term, kind: 'heard' });
+    for (const surface of glossaryMatchKeys(other)) {
+      if (!taken.has(surface.key) || surface.kind === 'term') {
+        taken.set(surface.key, { owner: other.term, kind: surface.kind });
+      }
+    }
   }
-  if (taken.get(key(term))?.kind === 'term') throw new SettingsValidationError(`${term} is already in the glossary.`);
-  if (taken.get(key(term))?.kind === 'heard') {
-    throw new SettingsValidationError(`${term} is listed as a wrong spelling of ${taken.get(key(term)).owner}.`);
-  }
-  for (const item of heardAs) {
-    const clash = taken.get(key(item));
-    if (clash) throw new SettingsValidationError(`“${item}” is already used for ${clash.owner}.`);
+  for (const surface of glossaryMatchKeys({ term, heardAs })) {
+    const clash = taken.get(surface.key);
+    if (!clash) continue;
+    if (surface.kind === 'term' && clash.kind === 'term') {
+      throw new SettingsValidationError(`${term} is already in the glossary.`);
+    }
+    if (surface.kind === 'term') {
+      throw new SettingsValidationError(`${term} is listed as a wrong spelling of ${clash.owner}.`);
+    }
+    throw new SettingsValidationError(`A wrong spelling is already used for ${clash.owner}.`);
   }
   return { term, meaning, heardAs };
 }

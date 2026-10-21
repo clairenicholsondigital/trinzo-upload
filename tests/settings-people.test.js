@@ -74,6 +74,15 @@ test('a short, common surname alone is not taken as a listed person', () => {
   for (const name of ['Thomas', 'Ryan', 'Gill', 'Kane']) assert.equal(knownPersonName(name), '', name);
 });
 
+test('a shared surname does not bypass short first-name matching for added people', () => {
+  withPeople([{ name: 'Lena Brennan', side: 'internal', spellings: ['Leena Brennan'] }]);
+  for (const name of ['Lina Brennan', 'Nina Brennan', 'Lena Bronson']) {
+    assert.equal(knownPersonName(name), '', name);
+  }
+  assert.equal(knownPersonName('Leena Brennan'), 'Lena Brennan');
+  assert.equal(knownPersonName('Lena Brenan'), 'Lena Brennan');
+});
+
 test('full-name other spellings are corrected in printed text; directory forms also in the transcript', () => {
   withPeople([{ name: 'Niamh Brennan', side: 'internal', spellings: ['Neve Brennan', 'Brennan, Niamh A'] }]);
   assert.equal(normaliseFixedPersonAliases('Neve Brennan will send it.'), 'Niamh Brennan will send it.');

@@ -169,7 +169,7 @@ function personMatches(tokens, entry) {
   const firstOk = firstNameMatches(first, entry);
   const surnameOk = surnameMatches(last, entry);
   const initialOk = last.length === 1 && last === entry.surnames[0][0];
-  return (firstOk && (surnameOk || initialOk)) || (surnameOk && closeToAny(first, entry.firstNames, 2));
+  return firstOk && (surnameOk || initialOk);
 }
 
 // Returns the person on the People list this name refers to, or null. Accepts

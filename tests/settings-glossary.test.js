@@ -58,3 +58,38 @@ test('the Glossary form rejects unsafe or clashing entries', () => {
     { term: 'MedEnvoy', meaning: 'EU rep', heardAs: ['Med Envoy'] }
   );
 });
+
+test('glossary validation rejects spellings that the correction matcher treats as equivalent', () => {
+  const others = [{ term: 'Cognidocs', heardAs: ['call me docs'] }];
+  for (const spelling of ['call-me-docs', 'callmedocs', 'CALL ME-DOCS']) {
+    assert.throws(
+      () => validateTerm({ term: 'OtherSystem', heardAs: [spelling] }, others),
+      /already used for Cognidocs/,
+      spelling
+    );
+  }
+  assert.throws(
+    () => validateTerm({ term: 'callmedocs' }, others),
+    /wrong spelling of Cognidocs/
+  );
+  assert.throws(
+    () => validateTerm({ term: 'OtherSystem', heardAs: ['cogni docs'] }, others),
+    /already used for Cognidocs/
+  );
+});
+
+test('glossary validation also reserves the plural forms generated for acronym corrections', () => {
+  const others = [{ term: 'CAPA', heardAs: ['Kappa'] }];
+  for (const spelling of ['Kappas', 'CAPAs']) {
+    assert.throws(
+      () => validateTerm({ term: 'OtherTerm', heardAs: [spelling] }, others),
+      /already used for CAPA/,
+      spelling
+    );
+  }
+  assert.throws(() => validateTerm({ term: 'Kappas' }, others), /wrong spelling of CAPA/);
+  assert.throws(
+    () => validateTerm({ term: 'OTHERTERM', heardAs: ['Kappa'] }, [{ term: 'CAPA', heardAs: ['Kappas'] }]),
+    /already used for CAPA/
+  );
+});
