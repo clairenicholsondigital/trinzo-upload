@@ -24,6 +24,10 @@ const sendSchedule = { id: 'x3', action: 'Send out the working session schedule.
   timing: { kind: 'deadline', wording: 'next Wednesday', exactDate: '' }, evidenceIds: ['T0200', 'T0202'], reviewFlagIds: [] };
 const notStated = { id: 'x4', action: 'Follow up with Orla on the approach.', owners: ['Jacqui Fox'],
   timing: { kind: 'deadline', wording: 'not stated', exactDate: '' }, evidenceIds: ['T0200'], reviewFlagIds: [] };
+const directlyTimedSource = [{ id: 'T0001', speaker: 'Sam', text: 'I will send the inspection report today.' }];
+const directlyTimed = { id: 'direct', action: 'Send the inspection report.', owners: ['Sam'],
+  timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] };
+const businessContent = ({ reviewFlagIds: _flags, timingDecision: _decision, ...row }) => row;
 
 test('the prompt routes through the critic pass-through and carries each timed action with its passage', () => {
   const items = V.timingCheckItems([upload, notStated], units);
@@ -75,14 +79,15 @@ test('a verified replacement from the passage is used when the model gives this 
   assert.match(flags[0].message, /Timing changed from "next Wednesday" to "now"/);
 });
 
-test('an invented or paraphrased quote changes nothing', () => {
-  const actions = [upload];
-  const items = V.timingCheckItems(actions, units);
-  const { actions: out, flags } = V.applyTimingCheckResults(actions, items, [{
+test('an invented or paraphrased quote cannot alter source-valid timing and is flagged as unverified', () => {
+  const actions = [directlyTimed];
+  const items = V.timingCheckItems(actions, directlyTimedSource);
+  const result = V.applyTimingCheckResults(actions, items, [{
     id: items[0].id, verdict: 'belongs_to_other_step', timingQuote: 'the call is today', stepQuote: 'a call with Colm about the CARs', correctTiming: ''
   }]);
-  assert.deepEqual(out[0].timing, upload.timing);
-  assert.equal(flags.length, 0);
+  assert.deepEqual(businessContent(result.actions[0]), businessContent(directlyTimed));
+  assert.ok(result.flags.length);
+  assert.equal(result.accounting.complete, false);
 });
 
 test('a verbatim replacement can repair timing when the critic copied the old wording imprecisely', () => {
@@ -102,23 +107,31 @@ test('a verbatim replacement can repair timing when the critic copied the old wo
   assert.equal(result.flags.length, 1);
 });
 
-test('an "other step" that is one of the steps the action names changes nothing', () => {
-  const actions = [walkAndLoad];
-  const items = V.timingCheckItems(actions, units);
+test('an "other step" that is actually this same source-timed work cannot remove its timing', () => {
+  const source = [{ id: 'T0001', speaker: 'Sam', text: 'I will review and approve the inspection report today.' }];
+  const action = { ...directlyTimed, action: 'Review and approve the inspection report.' };
+  const actions = [action];
+  const items = V.timingCheckItems(actions, source);
   const { actions: out, flags } = V.applyTimingCheckResults(actions, items, [{
-    id: items[0].id, verdict: 'belongs_to_other_step', timingQuote: 'We have a call today',
-    stepQuote: 'We have a call today to walk kind of through that and make sure we\'ve got everything where we need to be, especially the response to the cars', correctTiming: ''
+    id: items[0].id, verdict: 'belongs_to_other_step', timingQuote: 'today',
+    stepQuote: 'review and approve the inspection report', correctTiming: ''
   }]);
-  assert.deepEqual(out[0].timing, walkAndLoad.timing);
-  assert.equal(flags.length, 0);
+  assert.deepEqual(businessContent(out[0]), businessContent(action));
+  assert.ok(flags.length);
 });
 
-test('"correct", unknown and missing verdicts leave timings alone; a failed call changes nothing', () => {
-  const actions = [upload, walkAndLoad];
-  const items = V.timingCheckItems(actions, units);
-  const results = [{ id: items[0].id, verdict: 'correct' }, { id: items[1].id, verdict: 'maybe' }];
-  assert.deepEqual(V.applyTimingCheckResults(actions, items, results).actions, actions);
-  assert.deepEqual(V.applyTimingCheckResults(actions, items, []).actions, actions);
+test('valid approval preserves timing while unknown or missing replies preserve work with explicit incomplete accounting', () => {
+  const actions = [directlyTimed];
+  const items = V.timingCheckItems(actions, directlyTimedSource);
+  const valid = V.applyTimingCheckResults(actions, items, [{ id: items[0].id, verdict: 'correct', timingQuote: 'today', stepQuote: 'send the inspection report' }]);
+  assert.deepEqual(businessContent(valid.actions[0]), businessContent(directlyTimed));
+  assert.equal(valid.accounting.complete, true);
+  for (const results of [[{ id: items[0].id, verdict: 'maybe' }], []]) {
+    const result = V.applyTimingCheckResults(actions, items, results);
+    assert.deepEqual(businessContent(result.actions[0]), businessContent(directlyTimed));
+    assert.ok(result.flags.length);
+    assert.equal(result.accounting.complete, false);
+  }
 });
 
 test('the literal "not stated" is cleared to no timing without asking the model', () => {
@@ -134,17 +147,19 @@ test('a save never re-adds a timing that was cleared', () => {
   const saved = V.normaliseAgentResult({ actions: [action] }, units, '', { enforceEvidence: false });
   assert.equal(saved.actions[0].timing.kind, 'not_stated');
   const fresh = V.normaliseAgentResult({ actions: [action] }, units, 'actions', {});
-  assert.equal(fresh.actions[0].timing.wording, 'today');
+  assert.equal(fresh.actions[0].timing.kind, 'not_stated', 'today dates the call, not every later document operation');
+  const directlyDated = [{ id: 'T0001', speaker: 'Rebecca Gill', text: 'I will download the approved documents into the tech file today.' }];
+  const supported = V.normaliseAgentResult({ actions: [action] }, directlyDated, 'actions', {});
+  assert.equal(supported.actions[0].timing.wording, 'today', 'fresh generation still backfills a directly dated owned operation');
 });
 
 test('a misread verdict is ignored when the timing is said word for word', () => {
-  const V = require('../utils/meetingMinutesAgentV2');
-  const units = [{ id: 'T0001', speaker: 'Rebecca Gill', text: 'We have a call today to walk through the responses.' }];
-  const actions = [{ id: 'a1', action: 'Hold a call to walk through the responses.', owners: ['Rebecca Gill'], timing: { kind: 'deadline', wording: 'today', exactDate: '' }, evidenceIds: ['T0001'] }];
-  const items = V.timingCheckItems(actions, units);
+  const actions = [directlyTimed];
+  const items = V.timingCheckItems(actions, directlyTimedSource);
   const out = V.applyTimingCheckResults(actions, items, [{ id: items[0].id, verdict: 'misread', timingQuote: 'today' }], {});
   assert.equal(out.actions[0].timing.wording, 'today');
-  assert.equal(out.flags.length, 0);
+  assert.ok(out.flags.length);
+  assert.equal(out.rejected[0].reason, 'timing_is_verbatim_in_passage');
 });
 
 test('a deadline said about the first step of a chained action leaves the deadline column', () => {
@@ -215,16 +230,18 @@ test('a hedged timing is a target, not a deadline', () => {
   assert.equal(kind('by Friday'), 'deadline');
 });
 
-test('a timing change that only adds a hedge is not made and not explained', () => {
+test('a source-bound qualification is retained even when it only adds a hedge', () => {
   const V = require('../utils/meetingMinutesAgentV2');
   const units = [
-    { id: 'T0001', speaker: 'Jacqui Fox', text: 'Andrew is off, so we will get the symbol issue bottomed out by the end of the week, hopefully.' },
+    { id: 'T0001', speaker: 'Andrew', text: 'I will resolve the language symbol incompatibility issue by the end of the week, hopefully.' },
     { id: 'T0002', speaker: 'Jacqui Fox', text: 'The change request is processing through the review team, the end of this week.' }
   ];
   const actions = [{ id: 'a1', action: 'Resolve the language symbol incompatibility issue.', owners: ['Andrew'], timing: { kind: 'target', wording: 'by the end of the week' }, evidenceIds: ['T0001', 'T0002'] }];
   const items = V.timingCheckItems(actions, units);
   const out = V.applyTimingCheckResults(actions, items, [{ id: items[0].id, verdict: 'belongs_to_other_step', timingQuote: 'the end of this week', stepQuote: 'processing through the review team', correctTiming: 'by the end of the week, hopefully' }], {});
-  assert.equal(out.actions[0].timing.wording, 'by the end of the week');
+  assert.equal(out.actions[0].timing.wording, 'by the end of the week, hopefully');
+  assert.equal(out.actions[0].timing.kind, 'target');
+  assert.equal(out.actions[0].timingDecision.status, 'qualified');
   assert.equal(out.flags.length, 0);
 });
 
@@ -272,8 +289,9 @@ test('a second nearby date cannot qualify a deadline without explicit verbatim c
     qualificationQuote: 'Friday is the fallback', preferredTiming: 'Thursday',
     fallbackTiming: 'Friday'
   }]);
-  assert.deepEqual(result.actions, actions);
-  assert.equal(result.flags.length, 0);
+  assert.deepEqual(result.actions.map(businessContent), actions.map(businessContent));
+  assert.ok(result.flags.length);
+  assert.equal(result.accounting.complete, false);
   assert.equal(result.rejected[0].reason, 'qualification_not_verbatim_or_complete');
 });
 

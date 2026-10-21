@@ -55,7 +55,7 @@ const units = [
 ];
 
 test('"when do you think?" is a when-question, and the asker may settle the answer', () => {
-  const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0043', 'T0045'], { meetingDate: '2026-09-10' });
+  const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0043', 'T0045'], { meetingDate: '2026-09-10', action: 'Draft the justification for the planning module.', owners: ['Dermot Nally'] });
   assert.equal(timing.wording, 'the fifteenth');
   assert.equal(timing.exactDate, '', 'the answer supplies no month; the meeting month is not source evidence');
 });
@@ -63,7 +63,7 @@ test('"when do you think?" is a when-question, and the asker may settle the answ
 test('an asker-settled answer with an explicit month still recovers its calendar date', () => {
   const explicit = units.map(unit => ({ ...unit, text: unit.text.replace(/the fifteenth/g, '15 September') }));
   const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, explicit,
-    ['T0043', 'T0045'], { meetingDate: '2026-09-10' });
+    ['T0043', 'T0045'], { meetingDate: '2026-09-10', action: 'Draft the justification for the planning module.', owners: ['Dermot Nally'] });
   assert.deepEqual(timing, { kind: 'deadline', wording: '15 september', exactDate: '2026-09-15' });
 });
 

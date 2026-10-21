@@ -1569,6 +1569,7 @@
   // the reviewer is never left with a warning that leads nowhere.
   function inferredActionForFlag(flag) {
     if (!flag || !['ownership', 'timing', 'possible_missed_follow_up'].includes(flag.kind)) return null;
+    if (flag.temporalField) return null;
     var message = String(flag.message || '').toLowerCase();
     var ranked = ((state.draft && state.draft.actions) || []).map(function (action, index) {
       var timing = action.timing || {};
@@ -1645,6 +1646,16 @@
   function flagTarget(flag) {
     var flagId = String(flag && flag.id || '');
     if (!flagId || !state.draft) return null;
+    if (flag.temporalField === 'executiveSummary') return {
+      stage: 4, elementId: 'executiveSummary', label: 'Executive summary',
+      text: state.draft.executiveSummary || '', field: 'summary'
+    };
+    if (flag.temporalField === 'meetingObjectives') return {
+      stage: 4, elementId: 'objectivesList', label: 'Meeting objectives',
+      text: (state.draft.meetingObjectives || []).map(function (item) { return typeof item === 'string' ? item : item.text || ''; }).join('; '),
+      field: 'text'
+    };
+    if (flag.temporalField === 'timedStepCoverage') return null;
     if (flagId === 'meeting-date-source-check') return {
       stage: 0, elementId: 'meetingDate', label: 'Meeting date',
       text: (state.draft.details || {}).meetingDate || 'Not stated', field: 'meetingDate'

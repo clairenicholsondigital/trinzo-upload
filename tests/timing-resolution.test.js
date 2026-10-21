@@ -36,20 +36,20 @@ test('the answer to "by when?" supplies an action its timing', () => {
     { id: 'T0003', speaker: 'Chair', text: 'By when?', classification: 'keep' },
     { id: 'T0004', speaker: 'Robin', text: 'Ten days, all being well.', classification: 'keep' }
   ]);
-  const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001', 'T0002'], { meetingDate: TUESDAY });
-  assert.equal(timing.wording, 'ten days');
+  const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001', 'T0002'], { meetingDate: TUESDAY, action: 'Update the supplier list.', owners: ['Robin'] });
+  assert.equal(timing.wording, 'ten days all being well');
   assert.equal(timing.exactDate, '', 'the qualified answer is useful wording, not a firm calendar day');
 });
 
 test('the answer is read from the rows after the question even past the cited window', () => {
   const units = normaliseSourceUnits([
-    { id: 'T0001', speaker: 'Robin', text: "That'd be me, I have the old contracts.", classification: 'keep' },
+    { id: 'T0001', speaker: 'Robin', text: "That'd be me, I will update the supplier list using the old contracts.", classification: 'keep' },
     { id: 'T0002', speaker: 'Chair', text: 'Good.', classification: 'keep' },
     { id: 'T0003', speaker: 'Robin', text: 'Ha, yes.', classification: 'keep' },
     { id: 'T0004', speaker: 'Chair', text: 'By when?', classification: 'keep' },
     { id: 'T0005', speaker: 'Robin', text: 'A fortnight.', classification: 'keep' }
   ]);
-  const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001'], { meetingDate: TUESDAY });
+  const timing = backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0001'], { meetingDate: TUESDAY, action: 'Update the supplier list.', owners: ['Robin'] });
   assert.equal(timing.wording, 'a fortnight');
   assert.equal(timing.exactDate, '', 'a standalone span remains wording without a calendar-day anchor');
 });

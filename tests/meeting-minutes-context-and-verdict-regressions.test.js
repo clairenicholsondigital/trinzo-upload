@@ -109,15 +109,18 @@ test('fidelity includes plain lead, location and resource claims without old ris
   assert.match(V.discussionFidelityCheckPrompt(items), /do not borrow a number/i);
 });
 
-test('fidelity still bounds generated work and excludes reviewer-authored entries', () => {
+test('fidelity accounts for every generated row with bounded context and excludes reviewer-authored entries', () => {
   const source = units([['Iris', 'The laboratory is based in Cork.']]);
   const discussion = [{ topic: 'Facts', points: [
     { text: 'The laboratory is based in Cork.', evidenceIds: ['T0001'], reviewerAuthored: true },
     ...Array.from({ length: 80 }, (_, index) => ({ text: `The laboratory record is ${index}.`, evidenceIds: ['T0001'] }))
   ], decisions: [] }];
   const items = V.discussionFidelityCheckItems(discussion, source);
-  assert.equal(items.length, 48);
+  assert.equal(items.length, 80, 'batching must not silently omit rows after48');
+  assert.equal(new Set(items.map(item => item.id)).size, 80);
+  assert.ok(items.every(item => item.passageUnits.length <= 40));
   assert.ok(items.every(item => item.row !== discussion[0].points[0].text));
+  assert.equal(V.applyDiscussionFidelityResults(discussion, items, []).accounting.expected, 80);
 });
 
 test('quote-validated conversational text is withheld with recoverable original and source', () => {

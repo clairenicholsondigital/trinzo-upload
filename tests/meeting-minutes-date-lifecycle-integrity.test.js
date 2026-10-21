@@ -155,12 +155,17 @@ test('a requester can qualify a read-back date and state a later linked continge
     ? { ...unit, text: 'I will prepare the training pack.' } : unit);
   const switchedItems = V.timingCheckItems([original], switched, options);
   const blocked = V.applyTimingCheckResults([original], switchedItems, [{ ...verdict, id: switchedItems[0].id }], options);
-  assert.deepEqual(blocked.actions, [original], 'a new work item before the contingency breaks the reference');
+  const content = ({ reviewFlagIds: _flags, timingDecision: _decision, ...record }) => record;
+  assert.deepEqual(blocked.actions.map(content), [content(original)], 'a new work item before the contingency breaks the reference');
+  assert.ok(blocked.flags.length);
+  assert.equal(blocked.accounting.complete, false);
   const otherOwner = units.map(unit => unit.id === 'T0004'
     ? { ...unit, text: 'Dana will provide the inspection certificate by the 21st.' } : unit);
   const otherItems = V.timingCheckItems([original], otherOwner, options);
-  assert.deepEqual(V.applyTimingCheckResults([original], otherItems, [{ ...verdict, id: otherItems[0].id }], options).actions,
-    [original], 'a read-back for a named different assignee cannot qualify this owner task');
+  const other = V.applyTimingCheckResults([original], otherItems, [{ ...verdict, id: otherItems[0].id }], options);
+  assert.deepEqual(other.actions.map(content), [content(original)], 'a read-back for a named different assignee cannot qualify this owner task');
+  assert.ok(other.flags.length);
+  assert.equal(other.accounting.complete, false);
 });
 
 test('embedded timing removal cannot consume part of another word', () => {
