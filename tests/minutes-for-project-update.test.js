@@ -58,6 +58,42 @@ test('knows when minutes are still empty', () => {
   assert.equal(minutesHaveContent(minutes), true);
 });
 
+test('an explicit empty reviewed register replaces guesses but legacy calls retain them', () => {
+  const reviewed = { actions: [{ action: 'Generated guess.' }], projectReport: { actions: [{ action: 'Another guess.' }] } };
+  applyMinutesActionsToProjectReport(reviewed, [], { authoritative: true });
+  assert.deepEqual(reviewed.actions, []);
+  assert.deepEqual(reviewed.projectReport.actions, []);
+  assert.equal(reviewed.projectReport.actionsSource, 'meeting_minutes_agent');
+  const legacy = { actions: [{ action: 'Transcript action.' }], projectReport: { actions: [{ action: 'Transcript action.' }] } };
+  const before = structuredClone(legacy);
+  applyMinutesActionsToProjectReport(legacy, [], { authoritative: false });
+  assert.deepEqual(legacy, before);
+});
+
+test('copied actions preserve ratios, clock punctuation and complete timing labels', () => {
+  const actions = minutesActionsForProjectReport([
+    { action: 'Mix at a 1:100 ratio; inspect at 10:30.', owner: 'Sam, Jordan', deadline: 'Target: ideally Friday; fallback Monday' },
+    { action: 'File the report.', owner: 'Sam', deadline: 'Dependent on: approval at 09:45' }
+  ]);
+  assert.equal(actions[0].action, 'Mix at a 1:100 ratio; inspect at 10:30.');
+  assert.equal(actions[0].meetingActionPointOwner, 'Sam, Jordan');
+  assert.equal(actions[0].deadline, 'Target: ideally Friday; fallback Monday');
+  assert.equal(actions[1].deadline, 'Dependent on: approval at 09:45');
+  const fallback = { segments: [], actions: [{ action: 'Unreviewed fallback action.' }] };
+  applyMinutesActionsToProjectReport(fallback, actions, { authoritative: true });
+  assert.deepEqual(fallback.projectReport.actions, actions);
+  assert.deepEqual(fallback.actions, actions);
+});
+
+test('every supported minutes action is carried without a lower project handoff limit', () => {
+  // The minutes normalizer accepts 250 rows; the handoff must not silently
+  // apply its former 100-row cap to an already accepted register.
+  const input = Array.from({ length: 250 }, (_, index) => ({ action: `Review equipment item ${index + 1}.`, owner: 'Sam' }));
+  const actions = minutesActionsForProjectReport(input);
+  assert.equal(actions.length, input.length);
+  assert.equal(actions.at(-1).action, input.at(-1).action);
+});
+
 test('the project-update analyser reads rendered minutes as turns', () => {
   const text = renderMinutesForProjectUpdate(minutes, { includeActions: false });
   const script = `import sys, json\nsys.path.insert(0, ${JSON.stringify(path.join(__dirname, '..', 'scripts'))})\nfrom python_llm import parse_turns\nprint(json.dumps([t.speaker for t in parse_turns(sys.stdin.read())]))`;

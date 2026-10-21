@@ -2058,6 +2058,8 @@ async function queueProjectUpdateGeneration(payload = {}) {
     periodLabel: String(payload.periodLabel || '').slice(0, 200),
     transcriptLength: transcriptText.length,
     transcriptSha256: payload.transcriptSha256 || '',
+    sourceFingerprint: /^[a-f0-9]{64}$/i.test(String(payload.sourceFingerprint || ''))
+      ? String(payload.sourceFingerprint).toLowerCase() : '',
     includeTranscriptMetadata: Boolean(payload.includeTranscriptMetadata),
     skipMiniLM: Boolean(payload.skipMiniLM),
     skipRewrite: Boolean(payload.skipRewrite),
@@ -2067,7 +2069,7 @@ async function queueProjectUpdateGeneration(payload = {}) {
     skipStatusDiagnostics: Boolean(payload.skipStatusDiagnostics),
     minutesDraftId: payload.minutesDraftId ? String(payload.minutesDraftId) : '',
     minutesDraftRevision: Number(payload.minutesDraftRevision || 0) || null,
-    minutesActions: Array.isArray(payload.minutesActions) ? payload.minutesActions.slice(0, 100) : [],
+    minutesActions: Array.isArray(payload.minutesActions) ? payload.minutesActions.slice() : [],
     queuedBy: payload.queuedBy || '',
     queuedAt: new Date().toISOString()
   };
@@ -2908,7 +2910,7 @@ async function ingestApprovedProjectReportVersion({ projectId, reportId, reportV
   }
 }
 
-async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, result }) {
+async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, sourceFingerprint, result }) {
   const report = result?.projectReport || {};
   const segments = Array.isArray(result?.segments) ? result.segments : [];
   const reportMilestones = Array.isArray(report?.milestones) ? report.milestones : [];
@@ -2924,7 +2926,13 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     error.statusCode = 413;
     throw error;
   }
-  const transcriptSha = require('crypto').createHash('sha256').update(transcript, 'utf8').digest('hex');
+  // Minutes-origin callers supply the identity of the complete reviewed
+  // snapshot, including actions that are carried separately from the prose.
+  // Ordinary transcript callers continue to use the transcript's own hash.
+  const suppliedFingerprint = String(sourceFingerprint || '').toLowerCase();
+  const transcriptSha = /^[a-f0-9]{64}$/.test(suppliedFingerprint)
+    ? suppliedFingerprint
+    : require('crypto').createHash('sha256').update(transcript, 'utf8').digest('hex');
 
   const healthValues = ['scope', 'schedule', 'financial', 'resources', 'other_issue_risk'].map((area) => {
     const detail = healthAreas[area] || {};
@@ -3860,6 +3868,7 @@ module.exports = {
   listProjectOptions,
   createProject,
   updateProject,
+  getProjectManagementDetail,
   deleteProject,
   listProjectReports,
   getProjectReportDetail,

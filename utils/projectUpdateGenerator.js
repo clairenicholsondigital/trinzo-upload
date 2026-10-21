@@ -158,7 +158,9 @@ async function buildProjectUpdateResultFromTranscript(transcript, options = {}) 
       };
     }
 
-    applyMinutesActionsToProjectReport(result, options.minutesActions);
+    applyMinutesActionsToProjectReport(result, options.minutesActions, {
+      authoritative: Boolean(options.minutesDraftId)
+    });
 
     if (hasDatabaseConfig() && !truthy(options.skipSave)) {
       try {
@@ -169,6 +171,7 @@ async function buildProjectUpdateResultFromTranscript(transcript, options = {}) 
           fileName: transcript.fileName || null,
           sourceType: transcript.source === 'file' ? 'txt' : 'text',
           transcriptText: transcript.text,
+          sourceFingerprint: options.minutesDraftId ? options.sourceFingerprint : undefined,
           result
         });
         saveOk = Boolean(result.projectReportPersistence?.saved);

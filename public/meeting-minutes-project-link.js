@@ -1,24 +1,21 @@
 // When the Meeting Minutes Agent is opened from a project's Process tab, this
 // shows a small banner that sends the current minutes to that project as a
-// project update ("process once"). It reads the draft id from the URL, which
-// the agent keeps up to date, so it needs nothing from the agent's own code.
+// project update ("process once"). Project context is explicit in this URL;
+// the agent's save bridge flushes the current editors before queuing an update.
 (function () {
   'use strict';
 
   var LINK_KEY = 'trinzo.minutesProjectLink';
 
   function readLink() {
+    // Older versions stored one project for every minutes draft in this tab.
+    // Never let that context attach itself to an unrelated draft.
+    try { sessionStorage.removeItem(LINK_KEY); } catch (_error) { /* URL context still works */ }
     var params = new URLSearchParams(window.location.search);
     var projectId = params.get('projectId');
-    if (projectId && /^\d+$/.test(projectId)) {
-      var fromUrl = { projectId: projectId, projectName: params.get('projectName') || '' };
-      try { sessionStorage.setItem(LINK_KEY, JSON.stringify(fromUrl)); } catch (_error) { /* banner still works for this page */ }
-      return fromUrl;
+    if (projectId && /^[1-9]\d*$/.test(projectId)) {
+      return { projectId: projectId, projectName: params.get('projectName') || '' };
     }
-    try {
-      var stored = JSON.parse(sessionStorage.getItem(LINK_KEY) || 'null');
-      if (stored && /^\d+$/.test(String(stored.projectId || ''))) return stored;
-    } catch (_error) { /* no stored link */ }
     return null;
   }
 
@@ -57,30 +54,49 @@
   if (hero && hero.parentNode) hero.parentNode.insertBefore(banner, hero.nextSibling);
   else document.body.insertBefore(banner, document.body.firstChild);
 
+  var submitting = false;
   function refreshButton() {
-    createButton.disabled = !currentDraftId();
+    createButton.disabled = submitting || !currentDraftId();
+    unlinkButton.disabled = submitting;
     if (!currentDraftId() && !status.textContent) status.textContent = 'Upload a transcript first.';
     else if (currentDraftId() && status.textContent === 'Upload a transcript first.') status.textContent = '';
   }
   refreshButton();
-  setInterval(refreshButton, 2000);
+  var refreshTimer = setInterval(refreshButton, 2000);
 
   unlinkButton.addEventListener('click', function () {
+    if (submitting) return;
     try { sessionStorage.removeItem(LINK_KEY); } catch (_error) { /* nothing stored */ }
+    var url = new URL(window.location.href);
+    url.searchParams.delete('projectId');
+    url.searchParams.delete('projectName');
+    history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    clearInterval(refreshTimer);
     banner.remove();
   });
 
   createButton.addEventListener('click', async function () {
     var draftId = currentDraftId();
-    if (!draftId) return;
-    createButton.disabled = true;
-    status.textContent = 'Queuing the project update from these minutes…';
+    if (!draftId || submitting) return;
+    submitting = true;
+    refreshButton();
+    status.textContent = 'Saving these minutes before creating the project update…';
     try {
+      if (!window.MeetingMinutesAgent || typeof window.MeetingMinutesAgent.saveForProjectUpdate !== 'function') {
+        throw new Error('Reload the minutes before creating the project update.');
+      }
+      var saved = await window.MeetingMinutesAgent.saveForProjectUpdate();
+      var revision = Number(saved && saved.revision);
+      if (!saved || String(saved.id) !== draftId || currentDraftId() !== draftId
+        || !Number.isSafeInteger(revision) || revision < 1) {
+        throw new Error('The open minutes changed. Try again from the minutes you want to use.');
+      }
+      status.textContent = 'Queuing the project update from these saved minutes…';
       var response = await fetch('/api/project-update-test/from-minutes', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draftId: draftId, projectId: link.projectId, projectName: link.projectName || '' })
+        body: JSON.stringify({ draftId: draftId, revision: revision, projectId: link.projectId, projectName: link.projectName || '' })
       });
       var payload = await response.json().catch(function () { return null; });
       if (!response.ok || !payload || payload.ok === false) {
@@ -95,7 +111,8 @@
     } catch (error) {
       status.textContent = error.message || 'Could not create the project update.';
     } finally {
-      createButton.disabled = !currentDraftId();
+      submitting = false;
+      refreshButton();
     }
   });
 })();

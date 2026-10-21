@@ -11,7 +11,6 @@ const MINUTES_LABEL = 'Minutes';
 function cleanLine(value) {
   return String(value == null ? '' : value)
     .replace(/\s+/g, ' ')
-    .replace(/(\d):(\d{2})/g, '$1.$2')
     .trim();
 }
 
@@ -83,7 +82,9 @@ function renderMinutesForProjectUpdate(minutes = {}, options = {}) {
     lines.push(`${label}: Action: I will ${sentence(verb)}${ownerText}${dueText}`);
   }
 
-  return lines.join('\n');
+  // This is a parser transport accommodation, never a transformation of the
+  // authoritative action rows copied to the project report below.
+  return lines.map((line) => line.replace(/(\d):(\d{2})/g, '$1.$2')).join('\n');
 }
 
 // The reviewed actions from the minutes, in the project report's action shape.
@@ -103,17 +104,24 @@ function minutesActionsForProjectReport(actions = []) {
       deadline: deadline && deadline.toLowerCase() !== 'not stated' ? deadline : '',
       source: 'meeting_minutes_agent'
     };
-  }).filter(Boolean).slice(0, 100);
+  }).filter(Boolean);
 }
 
-// Swap in the minutes' actions. Leaves the report alone when the minutes have
-// no actions, so the analyser's output is never emptied by mistake.
-function applyMinutesActionsToProjectReport(result, actions) {
-  const report = result && result.projectReport;
-  const minutesActions = Array.isArray(actions) ? actions : [];
-  if (!report || typeof report !== 'object' || !minutesActions.length) return result;
+// An explicit minutes snapshot owns the whole register, including zero rows.
+// Legacy transcript jobs have no such authority and retain their analyser
+// output. Nonempty two-argument callers keep the original helper contract.
+function applyMinutesActionsToProjectReport(result, actions, options = {}) {
+  const minutesActions = Array.isArray(actions) ? actions : null;
+  const authoritative = options.authoritative === true
+    || (options.authoritative !== false && minutesActions && minutesActions.length > 0);
+  if (!result || typeof result !== 'object' || Array.isArray(result) || !minutesActions || !authoritative) return result;
+  // The legacy fallback produces top-level actions and segments without a
+  // projectReport. It must still retain the reviewed register in both shapes.
+  const report = result.projectReport && typeof result.projectReport === 'object' && !Array.isArray(result.projectReport)
+    ? result.projectReport : (result.projectReport = {});
   report.actions = minutesActions;
   report.actionsSource = 'meeting_minutes_agent';
+  result.actions = minutesActions;
   return result;
 }
 

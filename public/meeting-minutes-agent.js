@@ -1088,7 +1088,13 @@
       uploadedDraftId = String(payload.draft && payload.draft.draftId || '');
       forgetPreviousDraft();
       adoptDraft(payload.draft);
-      history.replaceState(null, '', payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)));
+      var resumeUrl = new URL(payload.resumeUrl || ('/meeting-minutes-agent?draftId=' + encodeURIComponent(state.draft.draftId)), window.location.origin);
+      var projectParams = new URLSearchParams(window.location.search);
+      if (/^[1-9]\d*$/.test(projectParams.get('projectId') || '')) {
+        resumeUrl.searchParams.set('projectId', projectParams.get('projectId'));
+        if (projectParams.get('projectName')) resumeUrl.searchParams.set('projectName', projectParams.get('projectName'));
+      }
+      history.replaceState(null, '', resumeUrl.pathname + resumeUrl.search);
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length, false, true);
       setStatus('Transcript uploaded and processing has started in the background.', false, 'details');
     } catch (error) {
@@ -2318,6 +2324,35 @@
     }).finally(function () { saveInFlight = null; settleStepNavigationScroll(); });
     return saveInFlight;
   }
+
+  // Use the editor's existing revision-guarded save path for the project
+  // handoff, including edits typed while an earlier autosave was in flight.
+  window.MeetingMinutesAgent = {
+    saveForProjectUpdate: async function () {
+      if (!state.draft) throw new Error('Open saved meeting minutes first.');
+      if (activeFinalEdit) throw new Error('Finish or cancel the current minutes edit before creating the project update.');
+      if (hasTransientEditorState()) throw new Error('Finish or remove unfinished rows and owner entries before creating the project update.');
+      if (generationRunning() || draftWritesInFlight || automaticProposalInFlight
+        || (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length)) {
+        throw new Error('Wait for the minutes to finish updating before creating the project update.');
+      }
+      var draftId = String(state.draft.draftId);
+      var version;
+      do {
+        version = editVersion;
+        await saveDraftNow();
+        if (!state.draft || String(state.draft.draftId) !== draftId) throw new Error('The open minutes changed. Try again from the current draft.');
+        if (activeFinalEdit) throw new Error('Finish or cancel the current minutes edit before creating the project update.');
+        if (hasTransientEditorState()) throw new Error('Finish or remove unfinished rows and owner entries before creating the project update.');
+        if (generationRunning() || draftWritesInFlight || automaticProposalInFlight
+          || (state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length)) {
+          throw new Error('Wait for the minutes to finish updating before creating the project update.');
+        }
+      } while (version !== editVersion || savePending || saveQueued || saveInFlight);
+      clearTimeout(saveTimer);
+      return { id: draftId, revision: state.draft.revision };
+    }
+  };
 
   // Kicks a stage off server-side and returns straight away, so the reviewer can
   // read while it runs. The server keeps going even if this tab closes.

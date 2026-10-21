@@ -139,6 +139,7 @@ const {
   updateProjectRisk,
   deleteProjectRisk,
   listProjectOptions,
+  getProjectManagementDetail,
   createProject,
   updateProject,
   deleteProject,
@@ -7800,36 +7801,55 @@ router.post('/project-update-test/from-minutes', requireAuth, async (req, res) =
     if (!/^\d+$/.test(draftId)) {
       return res.status(400).json({ ok: false, success: false, error: 'Choose saved meeting minutes to build the project update from.' });
     }
-    const projectId = Number(req.body?.projectId || 0) || null;
-    if (!projectId) {
+    const projectId = Number(req.body?.projectId);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0) {
       return res.status(400).json({ ok: false, success: false, error: 'Choose a project for this update.' });
+    }
+    const revision = Number(req.body?.revision);
+    if (!Number.isSafeInteger(revision) || revision <= 0) {
+      return res.status(400).json({ ok: false, success: false, error: 'Save the latest minutes before creating the project update.' });
     }
     const draft = await getMeetingMinutesAgentDraft(draftId, req.authUser?.userId);
     if (!draft) {
       return res.status(404).json({ ok: false, success: false, error: 'Meeting minutes not found.' });
     }
+    if (revision !== Number(draft.revision)) {
+      return res.status(409).json({ ok: false, success: false, error: 'These minutes changed after saving. Reload the saved minutes before creating the project update.' });
+    }
+    if (['queued', 'running', 'retrying'].includes(draft.generation?.status)
+      || (draft.pendingProposal?.changes || []).length) {
+      return res.status(409).json({ ok: false, success: false, error: 'Wait for the minutes to finish updating before creating the project update.' });
+    }
+    const project = await getProjectManagementDetail(projectId);
+    if (!project) {
+      return res.status(404).json({ ok: false, success: false, error: 'Selected project was not found.' });
+    }
     const minutes = meetingAgentDraftForPdf(draft, false);
     if (!minutesHaveContent(minutes)) {
       return res.status(400).json({ ok: false, success: false, error: 'These minutes have no discussion or actions yet. Finish them in the Meeting Minutes Agent first.' });
     }
-    // Actions travel separately: the analyser reads the discussion for status,
-    // milestones and risks, and the report keeps the minutes' reviewed actions.
-    const minutesText = renderMinutesForProjectUpdate(minutes, { includeActions: false });
+    // Reviewed actions travel separately. For action-only minutes, also give
+    // the analyser that context rather than analysing just the meeting title.
+    const hasDiscussion = minutesHaveContent({ ...minutes, actions: [] });
+    const minutesText = renderMinutesForProjectUpdate(minutes, { includeActions: !hasDiscussion });
     validateTranscriptText(minutesText);
     const meetingTitle = minutes.details?.meetingTitle || draft.title || 'Meeting minutes';
+    const minutesActions = minutesActionsForProjectReport(minutes.actions);
+    const sourceFingerprint = crypto.createHash('sha256').update(JSON.stringify({ minutesText, minutesActions })).digest('hex');
     const queued = await queueProjectUpdateGeneration({
       transcriptText: minutesText,
       source: 'meeting-minutes-agent',
       fileName: draft.fileName || '',
       meetingTitle,
       meetingDescription: 'Project update built from Meeting Minutes Agent minutes.',
-      transcriptSha256: crypto.createHash('sha256').update(minutesText).digest('hex'),
+      transcriptSha256: sourceFingerprint,
+      sourceFingerprint,
       projectId,
-      projectName: req.body?.projectName || '',
+      projectName: project.projectName,
       periodLabel: req.body?.periodLabel || '',
       minutesDraftId: draftId,
       minutesDraftRevision: draft.revision,
-      minutesActions: minutesActionsForProjectReport(minutes.actions),
+      minutesActions,
       queuedBy: req.authUser?.email || ''
     });
     return res.status(202).json({

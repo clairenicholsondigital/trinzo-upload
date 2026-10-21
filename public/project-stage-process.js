@@ -4,10 +4,10 @@
 (function () {
   const PW = window.ProjectWorkspace;
   const { escapeHtml } = PW;
-  const PROJECT_LINK_KEY = 'trinzo.minutesProjectLink';
 
-  function minutesAgentUrl(ctx) {
+  function minutesAgentUrl(ctx, draftId) {
     const params = new URLSearchParams();
+    if (draftId) params.set('draftId', String(draftId));
     params.set('projectId', String(ctx.projectId));
     if (ctx.project?.projectName) params.set('projectName', ctx.project.projectName);
     return `/meeting-minutes-agent?${params.toString()}`;
@@ -48,17 +48,6 @@
       </div>
     `;
     wireProcessSubtabs(container);
-    const openLink = container.querySelector('#openMinutesAgent');
-    if (openLink) {
-      openLink.addEventListener('click', () => {
-        try {
-          sessionStorage.setItem(PROJECT_LINK_KEY, JSON.stringify({
-            projectId: String(ctx.projectId),
-            projectName: ctx.project?.projectName || ''
-          }));
-        } catch (_error) { /* the URL still carries the project */ }
-      });
-    }
     renderMeetingAgenda(container, ctx);
     renderMinutesDrafts(container, ctx);
   }
@@ -86,8 +75,8 @@
             <h3>${escapeHtml(draft.title || 'Meeting minutes')}</h3>
             <p class="muted">${escapeHtml([draft.stageLabel ? `At ${draft.stageLabel}` : '', draftUpdatedLabel(draft) ? `updated ${draftUpdatedLabel(draft)}` : ''].filter(Boolean).join(', '))}</p>
             <p>
-              <button type="button" class="button" data-create-from-minutes="${escapeHtml(draft.draftId)}">Create project update</button>
-              <a class="button secondary" href="${escapeHtml(draft.resumeUrl || `/meeting-minutes-agent?draftId=${encodeURIComponent(draft.draftId)}`)}">Open minutes</a>
+              <button type="button" class="button" data-create-from-minutes="${escapeHtml(draft.draftId)}" data-minutes-revision="${escapeHtml(draft.revision)}">Create project update</button>
+              <a class="button secondary" href="${escapeHtml(minutesAgentUrl(ctx, draft.draftId))}">Open minutes</a>
             </p>
           </div>
         </article>
@@ -102,27 +91,35 @@
   }
 
   async function createFromMinutes(container, ctx, button) {
+    if (button.dataset.submitting === 'true') return;
     const status = container.querySelector('#fromMinutesStatus');
     const draftId = button.getAttribute('data-create-from-minutes');
+    const revision = Number(button.getAttribute('data-minutes-revision'));
     const setStatus = (html, kind) => {
       if (!status) return;
       status.hidden = false;
       status.className = `status ${kind || ''}`.trim();
       status.innerHTML = html;
     };
+    if (!Number.isSafeInteger(revision) || revision < 1) {
+      setStatus('Reload this project to choose the latest saved minutes.', 'error');
+      return;
+    }
+    button.dataset.submitting = 'true';
     button.disabled = true;
     setStatus('Queuing the project update from these minutes…', 'info');
     try {
       const payload = await PW.request('from-minutes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draftId, projectId: ctx.projectId, projectName: ctx.project?.projectName || '' })
+        body: JSON.stringify({ draftId, revision, projectId: ctx.projectId, projectName: ctx.project?.projectName || '' })
       });
       const jobUrl = payload.jobUrl || `/jobs/${encodeURIComponent(payload.jobId)}`;
       setStatus(`Project update queued. <a href="${escapeHtml(jobUrl)}">Follow it in the Library</a>; the draft report appears under Reports when it is ready.`, 'success');
     } catch (error) {
       setStatus(escapeHtml(error.message || 'Could not create the project update.'), 'error');
     } finally {
+      delete button.dataset.submitting;
       button.disabled = false;
     }
   }
