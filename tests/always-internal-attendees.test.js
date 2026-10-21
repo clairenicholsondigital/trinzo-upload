@@ -20,7 +20,8 @@ test('spelling variants resolve to the always-internal people', () => {
 });
 
 test('different people with similar names are not matched', () => {
-  for (const name of ['Sami', 'Suki', 'Saki Tanaka', 'Advait Kumar', 'Adam Dharma', 'Jacqui Fox', '']) {
+  // Rebecca Gill is on the People list as Client, so she is not internal.
+  for (const name of ['Sami', 'Suki', 'Saki Tanaka', 'Advait Kumar', 'Adam Dharma', 'Rebecca Gill', '']) {
     assert.equal(alwaysInternalAttendeeName(name), '', name);
   }
 });

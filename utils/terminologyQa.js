@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 // Domain terminology lives in one shared dictionary so every staged surface
 // recognises the same terms and corrections.
-const { DOMAIN_TERMS: GLOBAL_TERMS, AUTO_CORRECTIONS } = require('./domainTerms');
+const { DOMAIN_TERMS: GLOBAL_TERMS, autoCorrections } = require('./domainTerms');
 const { findAttendeeTextCorrections } = require('./entityNormalization');
 
 function clean(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
@@ -65,7 +65,7 @@ function termSuggestions(field, terms, learned, scope) {
   const text = clean(field.text); if (!text) return [];
   const tokens = text.match(/\b[A-Za-z][A-Za-z0-9-]{2,15}\b/g) || [];
   const candidates = [];
-  for (const mapping of AUTO_CORRECTIONS) {
+  for (const mapping of autoCorrections()) {
     // Multi-word originals tolerate a hyphen in place of the space ("call-me-docs"),
     // since Teams' own rendering of a mishearing is not stable across runs.
     const escaped = mapping.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[\\s-]+');

@@ -8,6 +8,8 @@ const authRoutes = require('./routes/auth');
 const meetingAgentRoutes = require('./routes/meetingAgent');
 const { createBaselineTestingRouter } = require('./routes/baselineTesting');
 const reviewFeedbackRoutes = require('./routes/reviewFeedback');
+const settingsRoutes = require('./routes/settings');
+const settingsStore = require('./utils/settingsStore');
 const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 
 const app = express();
@@ -71,6 +73,11 @@ app.get('/meeting-minutes-final', authRoutes.requireAuth, (req, res) => {
 app.get('/meeting-minutes-agent', authRoutes.requireAuth, (req, res) => {
   res.set('Cache-Control', 'no-store');
   sendView(res, 'meeting-minutes-agent.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/settings', authRoutes.requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  sendView(res, 'settings.html').catch((error) => res.status(404).send(error.message));
 });
 
 app.get('/insights', authRoutes.requireAuth, (req, res) => {
@@ -210,6 +217,9 @@ app.get('/auth/forgot-password', (req, res) => {
   sendView(res, 'auth-forgot-password.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.use('/api/settings', settingsRoutes);
+// Keeps the Settings page lists (people, glossary) current for the agent.
+app.use('/api', settingsStore.refreshMiddleware);
 app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes);
 app.use('/api/meeting-agent', meetingAgentRoutes);
 app.use('/api/meeting-minutes-agent/testing', createBaselineTestingRouter({
@@ -229,6 +239,9 @@ app.use('/api', (error, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log('Agent listening on port ' + PORT);
+  settingsStore.refresh().then((state) => {
+    console.log(JSON.stringify({ event: 'settings_loaded', source: state.source, people: state.people.length, terms: state.terms.length }));
+  });
   const knowledgeInterval = startProjectKnowledgeEmbedInterval();
   if (knowledgeInterval.started) {
     console.log(JSON.stringify({ event: 'project_knowledge_embed_interval_started', intervalMs: knowledgeInterval.intervalMs }));
