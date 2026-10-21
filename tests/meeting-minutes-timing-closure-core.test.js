@@ -63,6 +63,36 @@ test('a neighbouring call period does not become the review deadline', () => {
   assert.equal(replay.action.timing.wording, '', 'source-bound rejection prevents restoration');
 });
 
+test('contracted or periphrastic HAVE does not donate a scheduled event date to a separate task', () => {
+  for (const opening of ['I have', 'I have got', "I've got", 'I’ve got', "I've", 'I’ve', "We've got", "She's got"]) {
+    const units = [source(`${opening} a meeting with the supplier team Wednesday.`),
+      source('I will provide the supplier documents to Casey Lee.', { id: 'T2' })];
+    const row = action('Wednesday', { action: 'Provide the supplier documents to Casey Lee.', evidenceIds: ['T1', 'T2'] });
+    const result = assess(row, units);
+    assert.equal(result.binding.status, 'unsupported', opening);
+    assert.deepEqual(result.binding.conflictingSourceIds, ['T1'], opening);
+    assert.equal(result.action.action, row.action, opening);
+    assert.equal(result.action.timing.wording, '', opening);
+  }
+});
+
+test('event normalization preserves the actual dated event, independently dated work and unresolved paraphrases', () => {
+  for (const opening of ['I have', 'I have got', "I've got", 'I’ve got', "I've", 'I’ve']) {
+    const meeting = assess(action('Wednesday', { action: 'Meet the supplier team.' }),
+      [source(`${opening} a meeting with the supplier team Wednesday.`)]);
+    assert.equal(meeting.binding.status, 'supported', opening);
+    assert.equal(meeting.action.timing.wording, 'Wednesday', opening);
+    const ownSend = assess(action('Wednesday', { action: 'Provide the supplier documents to Casey Lee.' }),
+      [source(`${opening} a meeting with the supplier team Wednesday, and I'll provide the supplier documents to Casey Lee Wednesday.`)]);
+    assert.equal(ownSend.binding.status, 'supported', opening);
+    assert.equal(ownSend.action.timing.wording, 'Wednesday', opening);
+  }
+  const unclear = action('Wednesday', { action: 'Establish the secure document transfer mechanism.' });
+  const result = assess(unclear, [source("I'll probably sort the upload route Wednesday.")]);
+  assert.equal(result.binding.status, 'unresolved');
+  assert.equal(result.action.timing.wording, 'Wednesday');
+});
+
 test('broad timing is bound to its operation, owner, recipient and document', () => {
   const negatives = [
     { row: action('next week'), text: 'I will draft the inspection report next week.' },

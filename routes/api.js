@@ -106,7 +106,8 @@ const { TIMING_POLICY_VERSION, isValidCalendarDate } = require('../utils/meeting
 const { reviewMeetingCalendarDates } = require('../utils/meetingMinutesDateReview');
 const { promoteMaterialTimingDetails } = require('../utils/meetingMinutesTemporalPublication');
 const { indexReviewResults } = require('../utils/meetingMinutesReviewAccounting');
-const { summaryTemporalCheckItems, summaryTemporalCheckPrompt, applySummaryTemporalCheckResults } = require('../utils/meetingMinutesTemporalReview');
+const { summaryTemporalCheckItems, summaryTemporalCheckPrompt, applySummaryTemporalCheckResults,
+  temporalClaim, temporalMeaningRetained } = require('../utils/meetingMinutesTemporalReview');
 const { timedStepCoverage, mergeTimedStepRecovery } = require('../utils/meetingMinutesTimedStepCoverage');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
@@ -9791,7 +9792,8 @@ function refereeClusterSupportingCandidates(dispositions = [], candidates = []) 
       if (kind === 'reject' && member.clusterRelation !== 'overflow') continue;
       // Members of different clusters can still say the same thing; release
       // each fact once rather than once per cluster.
-      if (result.some((item) => hybridContentTokenOverlap(item.candidate.text, member.text) >= dedupeThreshold)) continue;
+      if (result.some((item) => hybridContentTokenOverlap(item.candidate.text, member.text) >= dedupeThreshold
+        && mayDiscardSupportingDetail(member, item.candidate))) continue;
       result.push({ candidate: member, mergeTarget: targetId, clusterRepresentativeId: candidate.candidateId });
     }
   }
@@ -12490,29 +12492,53 @@ function promotePrioritySupportingDetails(discussion = [], limit = 6, maxPerTopi
   return { discussion: result, promoted };
 }
 
-// Additional details are reviewer context, not a second set of minutes.  Keep
-// them sparse and spread across the draft after semantic consolidation.  Main
-// propositions, decisions, questions and their evidence are never removed.
-function limitSupportingDetails(discussion = [], maxTotal = 12, maxPerRecord = 2) {
+// Ordinary context remains sparse after semantic consolidation. Distinct,
+// evidenced temporal context is not expendable merely because its parent has
+// already used that context budget; it stays collapsed unless independently
+// eligible for publication. Reviewer content also remains authoritative.
+function limitSupportingDetails(discussion = [], maxTotal = 12, maxPerRecord = 2, sourceUnits = []) {
+  const usableIds = new Set(normaliseSourceUnits(sourceUnits)
+    .filter((unit) => unit.classification !== 'remove' || unit.restored === true)
+    .map((unit) => String(unit.id)));
+  const protectedDetails = new Set();
+  const prepare = (record, reviewerTopic) => {
+    const original = record.supportingDetails || [];
+    const reviewerRecord = reviewerTopic || isReviewerAuthored(record);
+    const consolidated = reviewerRecord ? original : consolidateSupportingDetails(record);
+    const details = !reviewerRecord && original.some(isReviewerAuthored)
+      ? original.filter((detail) => isReviewerAuthored(detail) || consolidated.includes(detail))
+      : consolidated;
+    for (const detail of details) {
+      const evidence = Array.isArray(detail.evidenceIds) ? detail.evidenceIds : [];
+      if (reviewerRecord || isReviewerAuthored(detail)
+        || (temporalClaim(detail.text) && !isRawTranscriptDiscussionPoint(detail.text)
+          && evidence.length && evidence.every((id) => usableIds.has(String(id))))) {
+        protectedDetails.add(detail);
+      }
+    }
+    return { ...record, supportingDetails: details };
+  };
   const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
     ...topic,
-    points: (topic.points || []).map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record).slice(0, maxPerRecord) })),
-    decisions: (topic.decisions || []).map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record).slice(0, maxPerRecord) })),
-    openQuestions: (topic.openQuestions || []).map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record).slice(0, maxPerRecord) }))
+    points: (topic.points || []).map((record) => prepare(record, isReviewerAuthored(topic))),
+    decisions: (topic.decisions || []).map((record) => prepare(record, isReviewerAuthored(topic))),
+    openQuestions: (topic.openQuestions || []).map((record) => prepare(record, isReviewerAuthored(topic)))
   }));
   const rows = result.flatMap((topic) => ['decisions', 'openQuestions', 'points']
     .flatMap((kind) => topic[kind] || []));
-  const selected = new Map(rows.map((record) => [record, []]));
+  const ordinary = new Map(rows.map((record) => [record,
+    record.supportingDetails.filter((detail) => !protectedDetails.has(detail)).slice(0, maxPerRecord)]));
+  const selected = new Set(protectedDetails);
   let retained = 0;
   for (let detailIndex = 0; detailIndex < maxPerRecord && retained < maxTotal; detailIndex += 1) {
     for (const record of rows) {
-      const detail = record.supportingDetails?.[detailIndex];
+      const detail = ordinary.get(record)?.[detailIndex];
       if (!detail || retained >= maxTotal) continue;
-      selected.get(record).push(detail);
+      selected.add(detail);
       retained += 1;
     }
   }
-  for (const record of rows) record.supportingDetails = selected.get(record);
+  for (const record of rows) record.supportingDetails = record.supportingDetails.filter((detail) => selected.has(detail));
   return result;
 }
 
@@ -13595,6 +13621,15 @@ function supportingDetailAddsInformation(detail, retained = [], primary = {}) {
       && ![...detailNumbers].some((number) => otherNumbers.has(number));
     if (conflictingQuantity) continue;
     const sharedEvidence = (other?.evidenceIds || []).some((id) => evidence.has(id));
+    // Similarity is symmetric: a short identity/status sentence can share most
+    // of its words with a much richer schedule. It cannot represent that
+    // schedule. For temporal content require directional detail coverage and
+    // retain the complete timing in both directions before discarding a row.
+    // The reverse check also protects a preferred/possible date from being
+    // replaced by an otherwise identical unconditional statement.
+    if (temporalClaim(text)
+      && (covered < 0.8 || !temporalMeaningRetained(text, otherText)
+        || !temporalMeaningRetained(otherText, text))) continue;
     if (statusSubject.size) {
       const subjectCovered = [...statusSubject].filter((token) => otherTokens.has(token)).length / statusSubject.size;
       if (subjectCovered >= 0.8) return false;
@@ -13616,6 +13651,14 @@ function consolidateSupportingDetails(record = {}) {
     if (supportingDetailAddsInformation(detail, retained, record)) retained.push(detail);
   }
   return retained.slice(0, 50);
+}
+
+// Preserve the existing untimed duplicate policy. A similarity match alone
+// cannot discard timed material: its directional content and timing must be
+// represented by the row which would replace it.
+function mayDiscardSupportingDetail(detail, existing) {
+  return !temporalClaim(detail?.text)
+    || !supportingDetailAddsInformation(detail, [], existing);
 }
 
 function refereeDiscussionTargetId(disposition = {}) {
@@ -13965,7 +14008,16 @@ async function dedupeSupportingDetailsSemantically(discussion = [], options = {}
   for (const group of dedupe?.groups || []) {
     const ordered = [...group].sort((left, right) => left - right);
     for (const memberIndex of ordered.slice(1)) {
-      if (memberIndex >= primaries.length) dropped.add(memberIndex - primaries.length);
+      if (memberIndex < primaries.length) continue;
+      const detail = details[memberIndex - primaries.length];
+      const value = detail.record.supportingDetails[detail.index];
+      const represented = ordered.filter((index) => index < memberIndex
+        && (index < primaries.length || !dropped.has(index - primaries.length))).some((index) => {
+        const existing = index < primaries.length ? primaryRecords[index]
+          : details[index - primaries.length].record.supportingDetails[details[index - primaries.length].index];
+        return mayDiscardSupportingDetail(value, existing);
+      });
+      if (represented) dropped.add(memberIndex - primaries.length);
     }
   }
   if (!dropped.size) return topics;
@@ -14057,9 +14109,11 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
         { id: item.record?.id, text: item.record?.text, evidenceIds: item.record?.evidenceIds || [] },
         ...(item.record?.supportingDetails || [])
       ])
-    ].filter((detail) => detail?.text && hybridContentTokenOverlap(detail.text, record.text) < 0.94);
+    ].filter((detail) => detail?.text && (hybridContentTokenOverlap(detail.text, record.text) < 0.94
+      || !mayDiscardSupportingDetail(detail, record)));
     record.supportingDetails = details.filter((detail, index) => details.findIndex((other) =>
-      hybridContentTokenOverlap(other.text, detail.text) >= 0.9) === index).slice(0, 50);
+      hybridContentTokenOverlap(other.text, detail.text) >= 0.9
+        && mayDiscardSupportingDetail(detail, other)) === index).slice(0, 50);
     const topic = topicFor(selected.topic);
     // "Mick to contact the engineer today" is a follow-up, not a decision; the
     // Referee's bucket is otherwise taken verbatim, so keep it visible as a
@@ -14095,7 +14149,8 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       || topics.find((candidate) => hybridTokenOverlap(candidate.topic, item.topic) >= 0.55);
     if (!topic) continue;
     const records = [...topic.decisions, ...topic.openQuestions, ...topic.points];
-    if (!records.length || records.some((record) => hybridContentTokenOverlap(record.text, item.record?.text) >= 0.9)) continue;
+    if (!records.length || records.some((record) => hybridContentTokenOverlap(record.text, item.record?.text) >= 0.9
+      && mayDiscardSupportingDetail(item.record, record))) continue;
     const target = [...records].sort((left, right) => {
       const score = (record) => hybridContentTokenOverlap(record.text, item.record?.text)
         + ((record.evidenceIds || []).some((id) => (item.record?.evidenceIds || []).includes(id)) ? 0.25 : 0);
@@ -14134,7 +14189,8 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     }).sort((left, right) => right.score - left.score);
     if (!ranked[0] || ranked[0].score < 0.24) continue;
     const target = ranked[0].target.record;
-    if (attachedTexts.some((existingText) => hybridContentTokenOverlap(existingText, detailText) >= supportingDedupeThreshold)) continue;
+    if (attachedTexts.some((existingText) => hybridContentTokenOverlap(existingText, detailText) >= supportingDedupeThreshold
+      && mayDiscardSupportingDetail({ text: detailText, evidenceIds: candidate.evidenceIds || [] }, { text: existingText }))) continue;
     const existing = target.supportingDetails || [];
     target.supportingDetails = [...existing, {
       id: candidate.candidateId || candidate.record?.id || `supporting-${target.id}-${existing.length}`,
@@ -16092,8 +16148,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         dropped: [],
         diagnostics: discussionStructureDiagnostics(includedDetails.discussion)
       };
+    const preCapMaterialTiming = promoteMaterialTimingDetails(postPromotion.discussion, draft.sourceUnits, {
+      meetingDate: timingAnchor
+    });
     finalDiscussion = removeMinorCommunicationCourtesyDiscussion(
-      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(postPromotion.discussion)), draft.sourceUnits
+      removeHeadingFragmentsFromDiscussion(limitSupportingDetails(preCapMaterialTiming.discussion, 12, 2, draft.sourceUnits)), draft.sourceUnits
     );
     let topicArrangement = {
       enabled: meetingMinutesAgentGlobalTopicArrangerEnabled(),
@@ -16263,7 +16322,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           supportingDetailCount: supportingRecords.length,
           fidelityWithheldRows,
           fidelityReview,
-          materialDeadlinePromotionCount: materialDeadlines.promoted,
+          materialDeadlinePromotionCount: preCapMaterialTiming.promoted + materialDeadlines.promoted,
           topicArrangementVersion: topicArrangement.version,
           topicArrangement,
           postPromotionEditorial: {

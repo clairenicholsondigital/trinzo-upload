@@ -403,9 +403,16 @@
     const operationAtPosition = (text, group) => group.some(verb => new RegExp(`(?:^|\\b(?:will|shall|must|to|can|could|would|should|i'll|we'll|is|are|am)\\s+)(?:(?:also|just|then|each|be)\\s+){0,2}(?:${verb}(?:s|d|ed|ing)?${verb.endsWith('e') ? `|${verb.slice(0, -1)}ing` : ''})\\b`, 'i').test(text));
     const conflictingWork = text => {
       const terms = referenceTerms(text);
+      // HAVE contractions and the ordinary "have got" construction name
+      // the same scheduled event as "have". Normalize only this event test;
+      // preserve source quotations and all unresolved binding behavior.
+      const eventStatement = canonical(text)
+        .replace(/\b(i|you|we|they)'ve\b/g, '$1 have')
+        .replace(/\b(he|she|it)'s(?=\s+got\b)/g, '$1 has')
+        .replace(/\b(have|has|had)\s+got\b/g, '$1');
       if (/^\s*for\s+(?:the\s+)?/i.test(text) && terms.length && !terms.some(word => objects.includes(word))) return true;
       if (OPERATION_GROUPS.some(group => !hasOperation(row.action, group) && operationAtPosition(text, group))) return true;
-      if (/\b(?:have|hold|arrange|schedule)\s+(?:(?:a|an|another|the|our|team|short|quick)\s+){0,3}(?:meeting|call)\b/i.test(text)
+      if (/\b(?:have|has|had|hold|arrange|schedule)\s+(?:(?:a|an|another|the|our|team|short|quick)\s+){0,3}(?:meeting|call)\b/i.test(eventStatement)
         && !/\b(?:meeting|call)\b/i.test(row.action)) return true;
       const mainWork = String(row.action || '').split(/\b(?:after|once|following|when|until|before|subject to|dependent on)\b/i)[0];
       if (/\b(?:meeting|call)\b[^.;!?]{0,60}\b(?:is|was|will be|on)\b|\b(?:is|was|will be)\b[^.;!?]{0,30}\b(?:meeting|call)\b/i.test(text)

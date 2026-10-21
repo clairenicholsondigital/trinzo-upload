@@ -5640,14 +5640,47 @@ function quantifiedClaimSignatures(value = '') {
       ? String(SIMPLE_NUMBER_WORDS.get(word)) : word).replace(/\s+/g, ' ').trim());
 }
 
+function quantifiedSubjectText(value = '') {
+  // A written compound and its spoken form name the same subject. Leave
+  // numeric ranges intact; this normalization concerns word compounds only.
+  return String(value || '').replace(/(?<=\p{L})[-–—](?=\p{L})/gu, ' ');
+}
+
 function quantifiedClaimSubject(value = '') {
   const source = text(value, 1200);
   const auxiliary = source.match(CLAIM_AUXILIARY);
   if (!auxiliary || auxiliary.index == null || auxiliary.index > 140) return [];
-  return contentTokens(source.slice(0, auxiliary.index))
+  return contentTokens(quantifiedSubjectText(source.slice(0, auxiliary.index)))
     .filter((token) => !CLAIM_SUBJECT_STOP.has(token))
     .map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token)
     .slice(-5);
+}
+
+function locativePresenceDurationBound(value, clause, signature) {
+  const source = text(value, 1200);
+  const auxiliary = source.match(CLAIM_AUXILIARY);
+  if (!auxiliary || auxiliary.index == null) return false;
+  // "Presence" is a grammatical carrier in an otherwise anonymous location
+  // statement. Do not discard an actor, equipment name or other identifying
+  // noun just because the source also mentions that location and quantity.
+  const subject = quantifiedSubjectText(source.slice(0, auxiliary.index)).trim();
+  const location = subject.match(/^(?:the\s+)?((?:on|in|at)\s+(?:(?:the|a|an)\s+)?[\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,2})\s+presence$/iu)?.[1];
+  if (!location) return false;
+  // This narrow equivalence does not decide negation, historical status or
+  // whether a suggested stay became an agreed plan. Leave such cases to the
+  // existing literal-subject/evidence checks instead of certifying by location.
+  const unresolvedStatus = /\b(?:not|never|cannot|can't|won't|no longer|was|were|had|spent|previously|yesterday|last|may|might|could|maybe|possibly|probably|presumably|perhaps|hopefully|ideally|unless|if|proposed|suggested|considering)\b/i;
+  if (unresolvedStatus.test(source) || unresolvedStatus.test(clause)) return false;
+  const canonical = input => quantifiedSubjectText(input).toLowerCase()
+    .replace(/\b(?:the|a|an)\b/g, ' ')
+    .replace(/\b[a-z]+\b/g, word => SIMPLE_NUMBER_WORDS.has(word) ? String(SIMPLE_NUMBER_WORDS.get(word)) : word)
+    .replace(/\s+/g, ' ').trim();
+  const escape = input => input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const place = escape(canonical(location)), quantity = escape(canonical(signature));
+  // Bind the location directly to this duration. Finding the location in a
+  // later clause, or an unrelated duration somewhere in the turn, is unsafe.
+  return new RegExp(`\\b(?:${quantity}\\s+(?:of\\s+)?${place}|${place}\\s+(?:for|over|during)\\s+${quantity})\\b`, 'iu')
+    .test(canonical(clause));
 }
 
 function quantifiedClaimGroundingIssue(record = {}, units = []) {
@@ -5662,18 +5695,19 @@ function quantifiedClaimGroundingIssue(record = {}, units = []) {
   const clauses = [];
   for (const index of citedIndexes) {
     for (let rowIndex = Math.max(0, index - 1); rowIndex < Math.min(rows.length, index + 2); rowIndex += 1) {
-      const rowClauses = String(rows[rowIndex].text || '').split(/(?<=[.!?;])\s+|,\s+(?=(?:and|but|while|whereas)\b)/i);
+      const rowClauses = String(rows[rowIndex].text || '').split(/(?<=[.!?;])\s+|,\s+(?=(?:and|but|while|whereas)\b)|\s+(?:and|but|while|whereas)\s+(?=(?:[\p{L}'’-]+\s+){1,6}(?:is|are|was|were|has|have|had|will|would|can|could|should|must|remains?|became|becomes?)\b)/iu);
       rowClauses.forEach((clause, clauseIndex) => clauses.push({ rowIndex, clauseIndex, text: clause }));
     }
   }
   const uniqueClauses = [...new Map(clauses.map((clause) => [`${clause.rowIndex}:${clause.clauseIndex}`, clause])).values()]
     .sort((left, right) => left.rowIndex - right.rowIndex || left.clauseIndex - right.clauseIndex);
-  const normalisedWords = (value) => new Set(contentTokens(value)
+  const normalisedWords = (value) => new Set(contentTokens(quantifiedSubjectText(value))
     .map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
   const grounded = signatures.every((signature) => uniqueClauses.some((clause, clauseIndex) => {
     if (!quantifiedClaimSignatures(clause.text).includes(signature)) return false;
     const direct = normalisedWords(clause.text);
     if (subject.every((token) => direct.has(token))) return true;
+    if (locativePresenceDurationBound(record.text, clause.text, signature)) return true;
     if (!/\b(?:it|its|they|them|their|those|these)\b/i.test(clause.text) || clauseIndex < 1) return false;
     const preceding = normalisedWords(uniqueClauses[clauseIndex - 1].text);
     return subject.every((token) => preceding.has(token));

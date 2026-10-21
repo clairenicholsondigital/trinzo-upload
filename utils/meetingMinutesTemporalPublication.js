@@ -4,6 +4,9 @@ const crypto = require('node:crypto');
 const Timing = require('./meetingMinutesTiming');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
 const { isRawTranscriptDiscussionPoint } = require('./stagedEditorial');
+const { temporalClaim, temporalMeaningRetained } = require('./meetingMinutesTemporalReview');
+const { timingExpressions } = require('./meetingMinutesTimedStepCoverage');
+const { reviewDiscussionCalendarDates } = require('./meetingMinutesDateReview');
 
 const KINDS = ['points', 'decisions', 'openQuestions'];
 const REQUIREMENT = /\b(?:must|shall|required|requires?|mandatory|deadline|due|needs? to|has to|have to)\b/i;
@@ -15,13 +18,44 @@ const STOP = new Set('the and for with that this those these from into will woul
 const tokens = value => new Set((String(value || '').toLowerCase().match(/[a-z][a-z'-]{2,}/g) || [])
   .filter(word => !STOP.has(word)).map(word => word.replace(/(?:ing|ed|s)$/, '')));
 const canonical = value => String(value || '').toLowerCase().replace(/[’]/g, "'").replace(/[^a-z0-9]+/g, ' ').trim();
+const SCHEDULE = /\b(?:(?:is|are|will be|has been|have been)\s+(?:(?:currently|provisionally|tentatively)\s+)?(?:scheduled|planned|expected)|(?:will|shall|should)\s+(?:start|begin|commence|end|finish|become available|be available)|(?:is|are|will be|should be)\s+(?:available|unavailable))\b/i;
+const UNACCEPTED_SCHEDULE = /\b(?:maybe|perhaps|might|could|suggest(?:s|ed|ion)?|propos(?:e|es|ed|al)|consider(?:ing)?|option|alternative|possible|possibility|what if)\b/i;
+
+// Keep identity, roles, grammar and order intact. These phase verbs are the
+// only lexical alternatives accepted here; broader paraphrases need review.
+const phaseWording = value => canonical(value)
+  .replace(/\b(?:start|begin|commence)\b/g, 'start')
+  .replace(/\b(?:end|finish)\b/g, 'finish');
+
+function supportedScheduledTiming(detail, cited, options) {
+  const value = String(detail.text || '');
+  if (!SCHEDULE.test(value) || UNACCEPTED_SCHEDULE.test(value)) return false;
+  const durations = value.match(/\b(?:for|over|last(?:s)?(?:\s+for)?)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:working|business)\s+)?(?:hours?|days?|weeks?|months?)\b/gi) || [];
+  const expressions = [...new Set([...timingExpressions(value), ...durations])];
+  if (!expressions.length) return false;
+  return cited.some(unit => String(unit.text || '').split(/;|(?<=[.!?])\s+/).some(source => {
+    if (!SCHEDULE.test(source) || UNACCEPTED_SCHEDULE.test(source) || /\?/.test(source)
+      || phaseWording(value) !== phaseWording(source)
+      || !temporalMeaningRetained(value, source, options)) return false;
+    // Use this single carrying clause rather than a window of neighbouring
+    // owners/work. Every stated period/date must bind to the same claim.
+    const sourceUnit = { ...unit, text: source };
+    if (reviewDiscussionCalendarDates([{ points: [detail] }], [sourceUnit], options).flags.length) return false;
+    return expressions.every(expression => Timing.assessTimingSourceBinding({
+      action: value, owners: detail.owners || [], evidenceIds: [unit.id],
+      timing: { kind: 'target', wording: expression, exactDate: '' }
+    }, [sourceUnit], options).status === 'supported');
+  }));
+}
 
 function supportedMaterialTiming(detail, units, options = {}) {
   const value = String(detail?.text || '').trim();
   if (!value || isReviewerAuthored(detail) || isRawTranscriptDiscussionPoint(value) || /\?/.test(value)
-    || !TEMPORAL.test(value) || !REQUIREMENT.test(value)) return false;
+    || !(TEMPORAL.test(value) || temporalClaim(value))) return false;
   const cited = units.filter(unit => (detail.evidenceIds || []).includes(unit.id)
     && (unit.classification !== 'remove' || unit.restored));
+  if (supportedScheduledTiming(detail, cited, options)) return true;
+  if (!REQUIREMENT.test(value)) return false;
   const dates = Timing.explicitCalendarDates(value, options.meetingDate);
   if (!dates.length) return false;
   const binding = Timing.assessTimingSourceBinding({ action: value, owners: [], evidenceIds: detail.evidenceIds || [],

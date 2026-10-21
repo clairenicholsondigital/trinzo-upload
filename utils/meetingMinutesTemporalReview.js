@@ -5,7 +5,7 @@ const { formatTimingLabel, isValidCalendarDate } = require('./meetingMinutesTimi
 const V = require('./meetingMinutesAgentV2');
 
 function temporalClaim(value) {
-  return /\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|monthly|quarterly|annually|(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:st|nd|rd|th)?\s+(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?)|before|after|until|once|when|deadline|target|preferred|fallback|contingency|available|availability)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b/i.test(String(value || ''));
+  return /\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midday|midnight|night|(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:st|nd|rd|th)?\s+(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?)|before|after|within|until|once|when|deadline|target|preferred|fallback|contingency|available|availability)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b/i.test(String(value || ''));
 }
 
 const OP_GROUPS = [
@@ -18,18 +18,66 @@ const OP_GROUPS = [
   ['enter', 'entered', 'record', 'recorded', 'register', 'registered'], ['delete', 'deleted', 'remove', 'removed']
 ];
 const TEMPORAL_WORDS = new Set('today tomorrow yesterday tonight monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december next last previous this every each day days week weeks month months quarter quarters year years hour hours minute minutes early late mid before after once when until by on at within from to due target deadline timing owners stated preferably preferred fallback contingency ideally probably possibly presumably hopefully perhaps maybe try trying hope hoping expected approximately roughly around about'.split(' '));
+for (const word of 'daily weekly fortnightly monthly quarterly annually yearly morning afternoon evening noon midday midnight night middle'.split(' ')) TEMPORAL_WORDS.add(word);
 const canon = value => String(value || '').toLowerCase().replace(/[’]/g, "'").replace(/[–—]/g, '-').replace(/[^\p{L}\p{N}:' +\-]+/gu, ' ').replace(/\s+/g, ' ').trim();
+const WEEKDAY = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
+const MONTH = 'january|february|march|april|may|june|july|august|september|october|november|december';
+const COUNT = '\\d+|one|two|three|four|five|six|seven|eight|nine|ten';
+const TEMPORAL_ANCHOR = `(?:\\d{4}-\\d{2}-\\d{2}|\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?|\\d{1,2}\\s*(?:am|pm)|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${MONTH})(?:\\s+\\d{4})?|(?:${COUNT})\\s+(?:(?:working|business)\\s+)?(?:days?|weeks?|months?|hours?|minutes?)|(?:(?:this|next|last|previous)\\s+)?(?:${WEEKDAY}|weekend|week|month|quarter|year)|${MONTH}|today|tomorrow|tonight|morning|afternoon|evening|noon|midday|midnight|night|(?:end|start|middle)\\s+of\\s+(?:(?:this|next|the)\\s+)?(?:week|month|year))`;
+function temporalFacets(text) {
+  const recurrence = [];
+  const counts = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  const frequencies = { daily: 'day:1', weekly: 'week:1', fortnightly: 'week:2', monthly: 'month:1', quarterly: 'quarter:1', annually: 'year:1', yearly: 'year:1' };
+  const recurring = new RegExp(`\\b(?:every|each)\\s+(?:(other|${COUNT})\\s+)?(${WEEKDAY}|day|week|month|quarter|year)s?\\b(?:\\s+on\\s+(${WEEKDAY})\\b)?|\\b(daily|weekly|fortnightly|monthly|quarterly|annually|yearly)\\b(?:\\s+(?:on\\s+)?(${WEEKDAY})\\b)?|\\b(${WEEKDAY})s\\b`, 'g');
+  let atomsText = text.replace(recurring, (_, count, unit, intervalDay, frequency, frequencyDay, pluralDay) => {
+    const weekday = pluralDay || intervalDay || frequencyDay || (unit && new RegExp(`^(?:${WEEKDAY})$`).test(unit) ? unit : '');
+    const interval = count === 'other' ? 2 : counts[count] || Number(count) || 1;
+    const cadence = frequency ? frequencies[frequency] : `${pluralDay || new RegExp(`^(?:${WEEKDAY})$`).test(unit || '') ? 'week' : unit}:${interval}`;
+    recurrence.push(`${cadence}${weekday ? ':' + weekday : ''}`);
+    return weekday || '';
+  });
+  const nth = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+  const recurringOrdinals = [...text.matchAll(new RegExp(`\\b(first|second|third|fourth|fifth|last|\\d+(?:st|nd|rd|th))\\s+(${WEEKDAY})\\s+of\\s+(?:each|every)\\s+(month|quarter|year)\\b`, 'g'))]
+    .map(match => `${nth[match[1]] || parseInt(match[1], 10) || match[1]}:${match[2]}:${match[3]}`);
+  const ranges = [];
+  atomsText = atomsText.replace(new RegExp(`\\b(?:(within|in|before|after)\\s+)?(${COUNT})\\s*(?:to|or|-)\\s*(${COUNT})\\s+((?:(?:working|business)\\s+)?(?:days?|weeks?|months?|hours?|minutes?))\\b`, 'g'), (_, relation, low, high, unit) => {
+    ranges.push(`${relation || ''}:${counts[low] || Number(low)}:${counts[high] || Number(high)}:${unit.replace(/s$/, '')}`);
+    return '';
+  });
+  const relations = value => [...value.matchAll(new RegExp(`\\b(no later than|not later than|on or before|by|before|after|within|until|from|on)\\s+(?:the\\s+)?(${TEMPORAL_ANCHOR})\\b`, 'g'))]
+    .filter(match => match[1] !== 'on') // A bare Friday already denotes an occurrence on Friday.
+    .map(match => `${/^(?:no later than|not later than|on or before)$/.test(match[1]) ? 'by' : match[1]}:${match[2]}`);
+  const bounds = relations(atomsText);
+  // Ordinary action publication carries timing semantics in its label. A
+  // Deadline: Friday can support "by Friday"; Target: Friday cannot.
+  const deadline = atomsText.match(/\bdeadline\s*:\s*(.+)$/)?.[1];
+  if (deadline && !relations(deadline).length) {
+    const anchor = deadline.match(new RegExp(`\\b(${TEMPORAL_ANCHOR})\\b`))?.[1];
+    if (anchor) bounds.push(`by:${anchor}`);
+  }
+  const anchors = [...text.matchAll(new RegExp(`\\b(${TEMPORAL_ANCHOR})\\b`, 'g'))]
+    .filter(match => !/^(?:morning|afternoon|evening|noon|midday|midnight|night)$/.test(match[0]));
+  const dayparts = [...text.matchAll(/\b(?:morning|afternoon|evening|noon|midday|midnight|night)\b/g)].map(match => {
+    const nearest = anchors.map(anchor => ({ text: anchor[0], distance: Math.min(Math.abs(anchor.index - match.index), Math.abs(anchor.index + anchor[0].length - match.index)) }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    return `${nearest?.text || ''}:${match[0] === 'midday' ? 'noon' : match[0]}`;
+  });
+  const phases = [...text.matchAll(new RegExp(`\\b(early|mid|late|middle)\\s*[- ]\\s*(?:(?:in|of)\\s+)?(${TEMPORAL_ANCHOR})\\b`, 'g'))]
+    .map(match => `${match[1] === 'middle' ? 'mid' : match[1]}:${match[2]}`);
+  return { atomsText, recurrence: [...new Set(recurrence)], recurringOrdinals, ranges, bounds, dayparts, phases };
+}
 function temporalProfile(value) {
-  const text = canon(value).replace(/\b(?:owners|timing|target|deadline|dependent on)\s*:/g, ' ').replace(/\bnot stated\b/g, ' ');
+  const labelled = canon(value).replace(/\b(?:on or before|no later than|not later than)\b/g, 'by'), facets = temporalFacets(labelled);
+  const text = labelled.replace(/\b(?:owners|timing|target|deadline|dependent on)\s*:/g, ' ').replace(/\bnot stated\b/g, ' ');
   // A transcript may omit spaces around a clock or zone ("at10:30BST").
   // Keep these constraints independently of calendar-token matching.
   const clocks = (text.match(/(?<!\d)\d{1,2}:\d{2}(?:\s*(?:am|pm))?(?!\d)|(?<!\d)\d{1,2}\s*(?:am|pm)(?![a-z])/g) || [])
     .map(clock => clock.replace(/\s+/g, ''));
   const zones = (text.match(/(?<![a-z])(?:utc|gmt)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?(?![a-z])|(?<![a-z])(?:bst|cet|cest|est|edt|pst|pdt)(?![a-z])/g) || [])
     .map(zone => zone.replace(/\s+/g, ''));
-  const atoms = text.match(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}(?:\s*(?:am|pm|gmt|bst|utc|cet|cest))?\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:working|business)\s+)?(?:days?|weeks?|months?|quarters?|years?|hours?|minutes?|seconds?)\b|\b\d+(?:st|nd|rd|th)?\b|\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|monthly|quarterly|annually)\b|\b(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year)\b|\b(?:preferred|fallback|contingency|hard stop)\b/g) || [];
+  const atoms = facets.atomsText.match(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}(?:\s*(?:am|pm|gmt|bst|utc|cet|cest))?\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:working|business)\s+)?(?:days?|weeks?|months?|quarters?|years?|hours?|minutes?|seconds?)\b|\b\d+(?:st|nd|rd|th)?\b|\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b|\b(?:this|next|last|previous)\s+(?:day|week|month|quarter|year)\b|\b(?:preferred|fallback|contingency|hard stop)\b/g) || [];
   const dependencies = text.match(/\b(?:before|after|once|until|when|subject to|dependent on)\s+[^.;:]{1,100}/g) || [];
-  return { text, atoms, dependencies, clocks, zones,
+  return { text, atoms, dependencies, clocks, zones, ...Object.fromEntries(['recurrence', 'recurringOrdinals', 'ranges', 'bounds', 'dayparts', 'phases'].map(field => [field, facets[field]])),
     hedged: /\b(?:try|trying|may|might|could|possibly|probably|presumably|perhaps|maybe|ideally|prefer|preferred|preferably|hope|hoping|hopefully|expected|provisional)\b/.test(text),
     negative: /\b(?:not|never|cannot|can't|won't|no longer)\b/.test(text) };
 }
@@ -40,13 +88,14 @@ function temporalMeaningRetained(claim, source, options = {}) {
   const a = temporalProfile(anchoredYears(claim)), b = temporalProfile(anchoredYears(source));
   if (a.negative !== b.negative || b.hedged && !a.hedged) return false;
   if (JSON.stringify(a.clocks) !== JSON.stringify(b.clocks) || JSON.stringify(a.zones) !== JSON.stringify(b.zones)) return false;
+  if (['recurrence', 'recurringOrdinals', 'ranges', 'bounds', 'dayparts', 'phases'].some(field => JSON.stringify(a[field]) !== JSON.stringify(b[field]))) return false;
   let at = 0;
   for (const atom of a.atoms) {
     at = b.atoms.indexOf(atom, at);
     if (at < 0) return false;
     at += 1;
   }
-  if (a.atoms.length && b.atoms.some(atom => !a.atoms.includes(atom))) return false;
+  if (b.atoms.some(atom => !a.atoms.includes(atom))) return false;
   // A dependency is part of the timing, not an expendable prose detail.
   if (b.dependencies.length && !a.dependencies.length) return false;
   for (const dependency of a.dependencies) {
