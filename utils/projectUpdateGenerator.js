@@ -13,6 +13,7 @@ const {
   markGenerationJobFailure
 } = require('./db');
 const { runProjectKnowledgeRetrieval } = require('./knowledge');
+const { applyMinutesActionsToProjectReport } = require('./minutesForProjectUpdate');
 const {
   runPythonTranscriptScript,
   transcriptMetadata,
@@ -157,6 +158,10 @@ async function buildProjectUpdateResultFromTranscript(transcript, options = {}) 
       };
     }
 
+    applyMinutesActionsToProjectReport(result, options.minutesActions, {
+      authoritative: Boolean(options.minutesDraftId)
+    });
+
     if (hasDatabaseConfig() && !truthy(options.skipSave)) {
       try {
         result.projectReportPersistence = await saveProjectUpdateDraft({
@@ -166,6 +171,7 @@ async function buildProjectUpdateResultFromTranscript(transcript, options = {}) 
           fileName: transcript.fileName || null,
           sourceType: transcript.source === 'file' ? 'txt' : 'text',
           transcriptText: transcript.text,
+          sourceFingerprint: options.minutesDraftId ? options.sourceFingerprint : undefined,
           result
         });
         saveOk = Boolean(result.projectReportPersistence?.saved);

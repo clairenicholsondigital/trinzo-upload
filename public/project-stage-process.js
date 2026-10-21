@@ -1,15 +1,24 @@
-// Process stage: the transcript → project-report flow. Reuses the existing
-// buildTranscriptTestPage engine, but the project is fixed by the workspace bar
-// (fixedProjectId), so the tool's own project picker is suppressed.
+// Process stage: "process once". The meeting is processed by the Meeting
+// Minutes Agent (the one central transcript engine), then the project update
+// report is built from those reviewed minutes via /from-minutes.
 (function () {
   const PW = window.ProjectWorkspace;
+  const { escapeHtml } = PW;
+
+  function minutesAgentUrl(ctx, draftId) {
+    const params = new URLSearchParams();
+    if (draftId) params.set('draftId', String(draftId));
+    params.set('projectId', String(ctx.projectId));
+    if (ctx.project?.projectName) params.set('projectName', ctx.project.projectName);
+    return `/meeting-minutes-agent?${params.toString()}`;
+  }
 
   function mount(container, ctx) {
     container.innerHTML = `
       <section class="panel meeting-hero">
         <span class="eyebrow">Project update meeting</span>
         <h1>Capture this update</h1>
-        <p class="intro">Use the agenda below, then paste the meeting notes or transcript to create a reviewed draft report.</p>
+        <p class="intro">Process the meeting once in the Meeting Minutes Agent, then build this project's update from the finished minutes.</p>
       </section>
       <section class="process-subtabs" aria-label="Project update meeting sections">
         <button class="process-subtab active" type="button" data-process-panel="meeting" aria-pressed="true">Process meeting</button>
@@ -17,45 +26,102 @@
       </section>
       <div class="process-subpanel" data-process-tab-panel="meeting">
         <section class="panel">
-          <h2>Create the update</h2>
-          <p class="intro">Paste meeting notes or a transcript. The draft can use project memory as background, but report evidence must come from this update.</p>
+          <h2>1. Write the minutes</h2>
+          <p class="intro">Upload the transcript to the Meeting Minutes Agent and work through Details, Discussion, Actions and Summary. It remembers this project, so you can create the update from its last step.</p>
+          <p><a class="button" id="openMinutesAgent" href="${escapeHtml(minutesAgentUrl(ctx))}">Open the Meeting Minutes Agent</a></p>
         </section>
-        <main id="transcriptTestRoot"></main>
+        <section class="panel">
+          <h2>2. Create the project update from minutes</h2>
+          <p class="intro">Pick the finished minutes for this meeting. The draft report uses project memory as background, but its evidence comes from these minutes.</p>
+          <p id="fromMinutesStatus" class="status" role="status" aria-live="polite" hidden></p>
+          <div id="minutesDraftList" class="empty-state">Loading your recent minutes…</div>
+        </section>
       </div>
       <div class="process-subpanel" data-process-tab-panel="agenda" hidden>
         <section class="panel meeting-agenda-panel">
           <div>
             <h2>Suggested project update agenda</h2>
-            <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then paste the notes/transcript below.</p>
+            <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then process the transcript in the Meeting Minutes Agent.</p>
           </div>
           <div id="meetingAgenda" class="empty-state">Building agenda from project profile…</div>
         </section>
       </div>
     `;
     wireProcessSubtabs(container);
-    container.querySelectorAll('[data-open-stage]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const stage = button.getAttribute('data-open-stage');
-        const tab = document.querySelector(`.stage-tab[data-stage="${stage}"]`);
-        if (tab) tab.click();
-      });
-    });
     renderMeetingAgenda(container, ctx);
-    buildTranscriptTestPage({
-      title: 'Meeting notes or transcript',
-      intro: 'Create a draft project update from this meeting. Review it before approving it as project memory.',
-      buttonText: 'Create draft report',
-      resetButtonText: 'Clear and restart',
-      confirmReset: true,
-      loadingMessage: 'Analysing transcript...',
-      endpoint: '/api/project-update-test',
-      queuedEndpoint: '/api/project-update-test/jobs',
-      jobsPageUrl: '/jobs',
-      projectReportUi: true,
-      fixedProjectId: ctx.projectId,
-      fixedProjectName: ctx.project?.projectName || '',
-      summary: projectUpdateSummary
-    });
+    renderMinutesDrafts(container, ctx);
+  }
+
+  function draftUpdatedLabel(draft) {
+    const value = draft.updatedAt || draft.createdAt;
+    return value ? PW.displayDate(value) : '';
+  }
+
+  async function renderMinutesDrafts(container, ctx) {
+    const target = container.querySelector('#minutesDraftList');
+    if (!target) return;
+    try {
+      const payload = await PW.request('/api/meeting-minutes-agent/drafts?limit=10');
+      const drafts = PW.asArray(payload.drafts);
+      if (!drafts.length) {
+        target.className = 'empty-state';
+        target.innerHTML = 'No minutes yet. Open the Meeting Minutes Agent above to process this meeting first.';
+        return;
+      }
+      target.className = 'minutes-draft-list';
+      target.innerHTML = drafts.map((draft) => `
+        <article class="agenda-step" data-minutes-draft="${escapeHtml(draft.draftId)}">
+          <div>
+            <h3>${escapeHtml(draft.title || 'Meeting minutes')}</h3>
+            <p class="muted">${escapeHtml([draft.stageLabel ? `At ${draft.stageLabel}` : '', draftUpdatedLabel(draft) ? `updated ${draftUpdatedLabel(draft)}` : ''].filter(Boolean).join(', '))}</p>
+            <p>
+              <button type="button" class="button" data-create-from-minutes="${escapeHtml(draft.draftId)}" data-minutes-revision="${escapeHtml(draft.revision)}">Create project update</button>
+              <a class="button secondary" href="${escapeHtml(minutesAgentUrl(ctx, draft.draftId))}">Open minutes</a>
+            </p>
+          </div>
+        </article>
+      `).join('');
+      target.querySelectorAll('[data-create-from-minutes]').forEach((button) => {
+        button.addEventListener('click', () => createFromMinutes(container, ctx, button));
+      });
+    } catch (error) {
+      target.className = 'empty-state';
+      target.textContent = error.message || 'Could not load your minutes.';
+    }
+  }
+
+  async function createFromMinutes(container, ctx, button) {
+    if (button.dataset.submitting === 'true') return;
+    const status = container.querySelector('#fromMinutesStatus');
+    const draftId = button.getAttribute('data-create-from-minutes');
+    const revision = Number(button.getAttribute('data-minutes-revision'));
+    const setStatus = (html, kind) => {
+      if (!status) return;
+      status.hidden = false;
+      status.className = `status ${kind || ''}`.trim();
+      status.innerHTML = html;
+    };
+    if (!Number.isSafeInteger(revision) || revision < 1) {
+      setStatus('Reload this project to choose the latest saved minutes.', 'error');
+      return;
+    }
+    button.dataset.submitting = 'true';
+    button.disabled = true;
+    setStatus('Queuing the project update from these minutes…', 'info');
+    try {
+      const payload = await PW.request('from-minutes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftId, revision, projectId: ctx.projectId, projectName: ctx.project?.projectName || '' })
+      });
+      const jobUrl = payload.jobUrl || `/jobs/${encodeURIComponent(payload.jobId)}`;
+      setStatus(`Project update queued. <a href="${escapeHtml(jobUrl)}">Follow it in the Library</a>; the draft report appears under Reports when it is ready.`, 'success');
+    } catch (error) {
+      setStatus(escapeHtml(error.message || 'Could not create the project update.'), 'error');
+    } finally {
+      delete button.dataset.submitting;
+      button.disabled = false;
+    }
   }
 
   async function renderMeetingAgenda(container, ctx) {
@@ -81,7 +147,7 @@
       `;
     } catch (error) {
       target.className = 'empty-state';
-      target.innerHTML = `Could not build the agenda from the project profile. You can still paste notes and create a draft report.`;
+      target.innerHTML = `Could not build the agenda from the project profile. You can still process the meeting in the Meeting Minutes Agent.`;
     }
   }
 
