@@ -1,6 +1,8 @@
 'use strict';
 
 const { normaliseSentencePresentation } = require('./minutesEnglish');
+const { isReviewerAuthored } = require('./canonicalMinutes/state');
+const { isRawTranscriptDiscussionPoint } = require('./stagedEditorial');
 
 // Shape rules for the minuted discussion that do not depend on any particular
 // meeting. Actions are extracted separately from the transcript, so the body
@@ -407,6 +409,75 @@ function discussionPointMatchesActionByProvenance(point = {}, action = {}, peopl
   return sharedSubjectTokens.length >= 3;
 }
 
+// This dependency-free marker is deliberately conservative. It is not a date
+// resolver: uncertain temporal context stays with its parent for review. Do
+// not import the temporal-review module here (it depends on V2, which imports
+// this module).
+const TIMED_SUPPORT = /\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|before|after|until|once|when|deadline|contingency|fallback|(?:this|next|last|previous|every|each)\s+(?:day|week|weekend|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:working\s+|business\s+)?(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)|may\s+\d{1,2})\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}|\b\d{1,2}\s*(?:am|pm)\b/i;
+const SUPPORT_DATE_OR_DAYPART = /\b(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|morning|afternoon|evening|night|noon|midday|midnight|lunchtime|fortnights?|eod|cob)\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)s\b|\b(?:end of (?:the )?day|close of (?:business|play))\b|\b(?:at|by|before|after)\s+\d{1,2}\.\d{2}(?!\s*(?:%|percent\b|pounds?\b|euros?\b|dollars?\b|usd\b|gbp\b|eur\b))\b|\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b|\b(?:by|before|after|in|during)\s+may\b|\b(?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+(?:of\s+)?may\b/i;
+
+function literalInstruction(value) {
+  const text = clean(value).normalize('NFKC').replace(/[’]/g, "'").replace(/[.!?;]+$/, '').trim();
+  // Only sentence-initial capitalization is presentation. Preserve the case
+  // of units/identifiers and every operation, qualifier and relational word.
+  return text ? text[0].toLowerCase() + text.slice(1) : '';
+}
+
+function detailOwners(record = {}) {
+  return [...new Set((Array.isArray(record.owners) ? record.owners : [record.owner])
+    .map(clean).filter(Boolean))];
+}
+
+function timedSupportingDetailCovered(detail, action, people) {
+  const value = clean(detail?.text);
+  let instruction = value;
+  let owners = detailOwners(detail);
+  const known = [...new Set([...(people || []), ...owners, ...detailOwners(action)].map(clean).filter(Boolean))];
+  const named = known.filter((name) => [name, name.split(/\s+/)[0]].some((form) => form.length >= 3
+    && new RegExp(`^${escapeName(form)}\\s+(?:will|shall|is\\s+to)\\s+`, 'i').test(value)));
+  if (named.length > 1) return false;
+  if (named.length === 1) {
+    const person = named[0];
+    if (owners.length && (owners.length !== 1 || owners[0].toLowerCase() !== person.toLowerCase())) return false;
+    owners = [person];
+    instruction = value.replace(new RegExp(`^(?:${escapeName(person)}|${escapeName(person.split(/\s+/)[0])})\\s+(?:will|shall|is\\s+to)\\s+`, 'i'), '');
+  }
+  const ownerKey = names => names.map(name => name.toLowerCase()).sort().join('|');
+  if (!owners.length || ownerKey(owners) !== ownerKey(detailOwners(action))) return false;
+  if (!(detail.evidenceIds || []).some(id => (action.evidenceIds || []).includes(id))) return false;
+  const requiredTiming = detail.timing || {};
+  const retainedTiming = action.timing || {};
+  if (requiredTiming.wording || requiredTiming.exactDate) {
+    if (['kind', 'wording', 'exactDate'].some(key => clean(requiredTiming[key]) !== clean(retainedTiming[key]))) return false;
+  }
+  // Exact ordered wording is the bounded proof. A date shared by a different
+  // task, or a date attached to a larger compound, cannot cover this child.
+  const required = literalInstruction(instruction);
+  const retained = literalInstruction(action.action || action.text);
+  if (!requiredTiming.wording && !requiredTiming.exactDate) {
+    // Without a source anchor there is no proof that an added ISO date or a
+    // different structured qualifier belongs to this literal timed sentence.
+    if (retainedTiming.exactDate && !required.includes(clean(retainedTiming.exactDate))) return false;
+    const wording = clean(retainedTiming.wording).replace(/[.!?;]+$/, '');
+    if (wording && !(` ${required} `).includes(` ${wording} `)) return false;
+  }
+  if (required && required === retained) return true;
+  const timing = retainedTiming;
+  return Boolean(required && timing.kind && timing.kind !== 'not_stated' && timing.wording
+    && required === literalInstruction(`${clean(action.action || action.text).replace(/[.!?;]+$/, '')} ${clean(timing.wording)}`));
+}
+
+function hasUnrepresentedSupportingTiming(record, actions, people) {
+  return (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).some(detail => {
+    if (isReviewerAuthored(detail) || hasUnrepresentedSupportingTiming(detail, actions, people)) return true;
+    const value = clean(detail?.text);
+    const timing = detail?.timing || {};
+    if (!value || isRawTranscriptDiscussionPoint(value)
+      || !(TIMED_SUPPORT.test(value) || SUPPORT_DATE_OR_DAYPART.test(value) || timing.wording || timing.exactDate)) return false;
+    return !actions.some(action => timedSupportingDetailCovered(detail, action, people));
+  });
+}
+
 // Discussion is available before Actions, so action-shaped context remains
 // visible at that stage.  Once the accepted action register exists, remove
 // only a generated point which strictly duplicates one of those actions.
@@ -414,9 +485,10 @@ function discussionPointMatchesActionByProvenance(point = {}, action = {}, peopl
 function removeDiscussionActionDuplicates(discussion = [], actions = [], people = []) {
   const dropped = [];
   const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    if (isReviewerAuthored(topic)) return topic;
     const next = { ...topic };
     next.points = (topic?.points || []).filter((point) => {
-      if (point?.reviewerAuthored) return true;
+      if (isReviewerAuthored(point)) return true;
       const candidates = Array.isArray(actions) ? actions : [];
       const match = candidates.find((action) =>
         discussionPointMatchesAction(point, action, people));
@@ -424,6 +496,7 @@ function removeDiscussionActionDuplicates(discussion = [], actions = [], people 
         discussionPointMatchesActionByProvenance(point, action, people));
       const acceptedMatch = match || (provenanceMatches.length === 1 ? provenanceMatches[0] : null);
       if (!acceptedMatch) return true;
+      if (hasUnrepresentedSupportingTiming(point, candidates, people)) return true;
       dropped.push({ pointId: point?.id || '', actionId: acceptedMatch?.id || '', text: clean(point?.text).slice(0, 200) });
       return false;
     });

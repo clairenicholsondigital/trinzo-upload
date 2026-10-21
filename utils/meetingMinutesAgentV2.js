@@ -2401,21 +2401,64 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
 // lexical remapping prefers a different description of the same work. A timing
 // answer needs a connected owner commitment/when-question exchange, rather than
 // merely being a nearby date belonging to another task.
-function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolvedIds, timing = {}) {
+function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolvedIds, timing = {}, options = {}) {
   const context = evidenceContextFor(units);
   const subjects = new Set(actionSubjectWords(action));
   const hasSubject = (value) => [...new Set(contentTokens(value))].filter((word) => subjects.has(word)).length >= 2;
   const citationText = value => comparisonText(value).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
   const timingWording = citationText(timing?.wording || '');
+  const timingWords = timingWording.split(' ').filter(Boolean);
+  const orderedTimingWords = value => {
+    const words = citationText(value).split(' ').filter(Boolean);
+    let at = 0;
+    for (const word of timingWords) {
+      at = words.indexOf(word, at);
+      if (at < 0) return false;
+      at += 1;
+    }
+    return timingWords.length > 0;
+  };
+  const timingRelations = value => [...String(value).toLowerCase().matchAll(/\b(?:not before|no earlier than|no later than|not later than|on or before|by|before|after|within|until|once|when|subject to|at least|at most)\b/g)].map(match => match[0]).sort();
+  const timingQualifications = value => [...String(value).toLowerCase().matchAll(/\b(?:hopefully|probably|presumably|possibly|maybe|perhaps|ideally|preferably|roughly|approximately|around|about)\b/g)].map(match => match[0]).sort();
+  const timingFacets = value => [...new Set(citationText(value).split(' ').filter(word => /^(?:\d+|today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|early|late|mid|morning|afternoon|evening|noon|midnight|this|next|every|each|daily|weekly|monthly|yearly|hours?|days?|weeks?|months?|quarters?|years?|am|pm|utc|gmt|bst|cet|cest)$/i.test(word)))].sort();
+  const contradictsNamedOwner = unit => {
+    if (!owners.length) return false;
+    const value = String(unit.text || '');
+    const vocative = value.match(/^\s*(?:And\s+)?([A-Z][\p{L}'’-]+(?:\s+[A-Z][\p{L}'’-]+){0,2})\s*,/u)?.[1];
+    const named = [...value.matchAll(/\b([A-Z][\p{L}'’-]+(?:\s+[A-Z][\p{L}'’-]+){0,2})\s+(?:will|shall|must|to)\s+/gu)].map(match => match[1]);
+    if (vocative && !/^(?:Hopefully|Probably|Presumably|Possibly|Maybe|Perhaps|Ideally|Preferably|Well|Right|Okay|Thanks)$/i.test(vocative)) named.push(vocative);
+    return named.some(name => !/^(?:I|We|They)$/i.test(name) && !speakerIsOwner(name, owners))
+      || /\b(?:I['’]ll|I will|I shall|I am going to)\b/i.test(value) && !speakerIsOwner(unit.speaker, owners);
+  };
   // A chair's recap can carry the actual timing while earlier turns describe
   // the work more fully. Retain a supplied direct quotation of that field
   // before the citation cap; its presence remains provenance, not a verdict
   // that the date/owner/operation is correct (the timing checks still decide).
   const directTimingIds = hasTimingSignal(timing?.wording || '') ? [...new Set(suppliedIds || [])].filter(id => {
     const unit = context.rows[context.indexById.get(id)];
-    return unit && timingWording && citationText(unit.text).includes(timingWording)
+    if (!unit || !timingWording) return false;
+    if (citationText(unit.text).includes(timingWording)
       && actionPredicateSupported(action, unit.text)
-      && contentTokens(unit.text).some(word => subjects.has(word));
+      && contentTokens(unit.text).some(word => subjects.has(word))) return true;
+    // The generated timing may omit intervening work words without changing
+    // its date, qualification or bound. Keep this supplied field source when
+    // all timing words occur in order in one clause naming this operation and
+    // an object of this action. This only retains provenance: the shared
+    // source-binding policy must still verify it or flag it as unresolved.
+    if (contradictsNamedOwner(unit)
+      || /\b(?:not|never|cannot|can't|won't|was|were|had|previously|yesterday|ago|last\s+(?:week|month|year))\b/i.test(unit.text)) return false;
+    const carryingClause = String(unit.text || '').split(/[,;]|(?<=[.!?])\s+/).some(clause => {
+      const timedWork = clause.match(/\bto\s+([^.;!?]+)[.!?]*$/i)?.[1];
+      const workSubjects = actionSubjectWords(timedWork || '').filter(word => !timingWords.includes(word)
+        && !['least', 'most', 'the', 'that', 'this', 'it', 'them', 'those', 'these'].includes(word));
+      return timedWork && workSubjects.length && workSubjects.every(word => subjects.has(word))
+        && orderedTimingWords(clause) && actionPredicateSupported(action, timedWork)
+        && JSON.stringify(timingRelations(clause)) === JSON.stringify(timingRelations(timing.wording))
+        && JSON.stringify(timingQualifications(clause)) === JSON.stringify(timingQualifications(timing.wording))
+        && JSON.stringify(timingFacets(clause)) === JSON.stringify(timingFacets(timing.wording));
+    });
+    if (!carryingClause) return false;
+    return TimingIntegrity.assessTimingSourceBinding({ action, owners, evidenceIds: [id], timing }, units, options).status !== 'unsupported';
   }) : [];
   const commitmentObjects = (value) => {
     const generic = new Set(['the', 'and', 'i\'ll', 'will', 'shall', 'can', 'could', 'myself', 'new', 'replacement', 'unit', 'one', 'this', 'that', 'them', 'these', 'those', 'let', 'leave', 'handle', 'take', 'fit', 'pop', 'put']);
@@ -5976,11 +6019,62 @@ function actionCompletenessCheckPrompt(items = []) {
   ].join('\n\n');
 }
 
+function completenessPreservesOriginalWork(action, corrected) {
+  const first = value => contentTokens(value)[0] || '';
+  const lead = first(action.action), nextLead = first(corrected);
+  const family = ACTION_VERB_GROUPS.find(group => group.includes(lead));
+  if (!lead || (family ? !family.includes(nextLead) : lead !== nextLead)) return false;
+  const temporalScope = /\b(?:before|after|once|when|until|following|subject to|dependent on)\b/i;
+  // Added outcomes may have their own timing. Ignore only that new trailing
+  // scope for identity comparison; the finished compound is checked for timing
+  // separately below. An existing scope must remain in the retained work.
+  const whole = temporalScope.test(action.action) ? corrected : corrected.split(temporalScope)[0];
+  const identity = value => ({ action: value, owners: action.owners || [],
+    evidenceIds: action.evidenceIds || [], timing: { kind: 'not_stated', wording: '', exactDate: '' } });
+  if (!commitmentCanBeRepresented(identity(action.action), identity(whole))) return false;
+  const originalWords = new Set(contentTokens(action.action));
+  const leadingInstruction = value => {
+    for (const match of String(value).matchAll(/\b(?:and|then)\s+(?:then\s+)?([a-z-]+)\b/gi)) {
+      if (ACTION_VERBS.has(match[1].toLowerCase()) || !originalWords.has(match[1].toLowerCase())) return value.slice(0, match.index);
+    }
+    return value;
+  };
+  const originalLead = leadingInstruction(action.action);
+  const correctedLead = leadingInstruction(whole);
+  // A contact's purpose can become an explicit same-owner outcome. The
+  // contacted person remains in the first instruction; the full comparison
+  // above still requires the original purpose/object elsewhere in the result.
+  const directOriginal = ['contact', 'call', 'ring', 'phone', 'speak'].includes(lead)
+    ? originalLead.split(/\babout\b/i)[0] : originalLead;
+  if (!commitmentCanBeRepresented(identity(directOriginal), identity(correctedLead))) return false;
+  const directed = value => [...String(value).matchAll(/\b(to|with|from|into|onto)\s+(.+?)(?=\s+\b(?:for|by|before|after|and|then|so)\b|[.;,]|$)/gi)]
+    .map(match => comparisonText(`${match[1]} ${match[2]}`).replace(/\b(?:the|a|an)\b/g, '').replace(/\s+/g, ' ').trim());
+  const present = directed(correctedLead);
+  return directed(directOriginal).every(relation => present.includes(relation));
+}
+
+function completenessQuoteHasOriginalOwners(item, evidenceQuote) {
+  const owners = item.owners || [];
+  const units = timingItemSourceUnits(item).filter(unit => quotedVerbatim(evidenceQuote, unit.text)
+    || quotedVerbatim(evidenceQuote, `${unit.speaker}: ${unit.text}`));
+  if (!owners.length || !units.length) return false;
+  const namedAssignees = [...String(evidenceQuote).matchAll(/\b([A-Z][\p{L}'’-]+(?:\s+[A-Z][\p{L}'’-]+){0,2})(?:\s+(?:will|shall|must|can|could|should|would|needs?\s+to|has\s+to|is\s+going\s+to|is\s+responsible\s+(?:to|for)|to)\s+|\s*,\s*(?:can|could|would|will)\s+you\s+)/gu)]
+    .map(match => match[1]).filter(name => !/^(?:I|We|They)$/i.test(name));
+  if (namedAssignees.some(name => !speakerIsOwner(name, owners))) return false;
+  // A speaker label alone cannot make narrated work theirs. Require the
+  // quoted clause itself to begin with that speaker taking it on, or an
+  // explicit assignment to the named owner in those same quoted words.
+  const firstPerson = /^(?:(?:and|then|so|well|okay|ok|yes|yeah)[\s,.-]+)*(?:I['’]ll|I\s+(?:will|shall|can|am\s+going\s+to)|let\s+me)\b/i.test(String(evidenceQuote).trim());
+  return owners.every(owner => firstPerson && units.some(unit => speakerIsOwner(unit.speaker, [owner]))
+    || nameParts(owner).some(name => assignsWorkTo(name, evidenceQuote)));
+}
+
 function applyActionCompletenessResults(actions = [], items = [], results = [], options = {}) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const corrections = new Map();
   const rejected = [];
   const flags = [];
+  const unchangedFlags = new Map();
   for (const item of items) {
     if (isReviewerAuthored(actions[item.index])) continue;
     const row = verdicts.get(item.id);
@@ -5997,11 +6091,23 @@ function applyActionCompletenessResults(actions = [], items = [], results = [], 
       rejected.push({ id: item.id, reason: 'invalid_corrected_action' });
       continue;
     }
+    const original = actions[item.index];
+    if (!original || !completenessPreservesOriginalWork(original, corrected)
+      || !completenessQuoteHasOriginalOwners(item, row.evidenceQuote)) {
+      rejected.push({ id: item.id, reason: 'corrected_action_changes_original_work' });
+      const flag = normaliseFlag({ kind: 'uncertain_fact',
+        message: `A suggested action change was not applied because it did not preserve the original work, recipient or owner. Retained: "${text(item.action, 350)}". Check the proposed change against the source: "${text(corrected, 350)}".`,
+        evidenceIds: original?.evidenceIds || [] }, flags.length);
+      flags.push(flag);
+      unchangedFlags.set(item.index, [...(unchangedFlags.get(item.index) || []), flag.id]);
+      continue;
+    }
     corrections.set(item.index, corrected);
   }
   let corrected = 0;
   const checked = (Array.isArray(actions) ? actions : []).map((action, index) => {
-    if (!corrections.has(index)) return action;
+    if (!corrections.has(index)) return unchangedFlags.has(index)
+      ? { ...action, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), ...unchangedFlags.get(index)])] } : action;
     corrected += 1;
     let next = { ...action, action: corrections.get(index) };
     const item = items.find(item => item.index === index);
@@ -6036,7 +6142,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       resolved.evidenceIds = [];
     }
     const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
-    const fieldEvidenceIds = retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds, item?.timing);
+    const fieldEvidenceIds = retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds, item?.timing, options);
     const evidenceIds = anchorOwnerCommitment(action, owners, units, fieldEvidenceIds);
     const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
