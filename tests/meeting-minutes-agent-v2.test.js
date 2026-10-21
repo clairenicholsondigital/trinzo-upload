@@ -172,7 +172,9 @@ test('generated timing rejects raw action sentences and task durations but keeps
 test('generated action text does not repeat a structured date in a different spoken form', () => {
   const units = normaliseSourceUnits([{
     id: 'T0151', speaker: 'Alex Carter', classification: 'keep', confidence: 0.99,
-    text: 'Alex will complete the training attestation by 17th of July before the review starts.'
+    // This positive tests date repetition, with both named operations sourced.
+    // A different operation cannot borrow a date (timing-integrity negatives).
+    text: 'Alex will complete and submit the training attestation by 17th of July before the review starts.'
   }]);
   const result = normaliseAgentResult({ actions: [{
     action: 'Complete and submit the training attestation by the 17th of July before the review starts.',
@@ -1337,7 +1339,7 @@ test('an exact date that breaches a stated limit in the same commitment is remov
   }] }, units, 'actions', { meetingDate: '2026-08-10' });
   assert.equal(result.actions.length, 1);
   assert.deepEqual(result.actions[0].timing, { kind: 'target', wording: 'Monday morning', exactDate: '' });
-  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /before the fifteenth/i.test(flag.message)));
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /conflicts with the timing wording|not supported by source wording/i.test(flag.message)));
 
   // The same commitment with a compliant date is left alone.
   const compliant = normaliseAgentResult({ actions: [{
@@ -1359,7 +1361,7 @@ test('a date earlier than the meeting date is removed and flagged', () => {
     timing: { kind: 'deadline', wording: 'by Friday', exactDate: '2026-08-07' }, evidenceIds: ['T2010']
   }] }, units, 'actions', { meetingDate: '2026-08-10' });
   assert.equal(result.actions[0].timing.exactDate, '');
-  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /earlier than the meeting date/i.test(flag.message)));
+  assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /conflicts with the timing wording|not supported by source wording/i.test(flag.message)));
 });
 
 test('same-day wording in the cited commitment is recovered when the model returned no timing', () => {

@@ -200,7 +200,10 @@ test('a purely conditional timing is a dependency, whatever kind was supplied', 
   const kind = (timing) => V.normaliseAgentResult({ actions: [{ action: 'Send the report.', owners: ['A'], timing, evidenceIds: [] }] }, [], '', { enforceEvidence: false }).actions[0].timing.kind;
   assert.equal(kind({ kind: 'deadline', wording: "as soon as Christina's back" }), 'dependency');
   assert.equal(kind({ kind: 'target', wording: 'once testing completes' }), 'dependency');
-  assert.equal(kind({ kind: 'deadline', wording: 'after the audit on Friday' }), 'deadline');
+  assert.equal(kind({ kind: 'deadline', wording: 'after the audit on Friday' }), 'dependency',
+    'Friday dates the prerequisite audit, not the dependent action');
+  assert.equal(kind({ kind: 'deadline', wording: 'before Friday' }), 'deadline',
+    'a genuine due-date bound remains a deadline');
   assert.equal(kind({ kind: 'deadline', wording: 'as soon as possible' }), 'deadline');
 });
 

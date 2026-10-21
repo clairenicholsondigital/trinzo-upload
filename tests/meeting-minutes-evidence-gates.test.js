@@ -163,9 +163,14 @@ test('a timing-only owner turn survives a short acknowledgement bridge', () => {
     timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
   }], units, { meetingDate: '2026-06-17' });
   assert.deepEqual(action.evidenceIds, ['T0001', 'T0003']);
-  // "This week" now resolves to the Friday of the meeting's week (Wed 17 Jun
-  // -> Fri 19 Jun); the spoken wording is kept alongside it.
-  assert.deepEqual(action.timing, { kind: 'target', wording: 'this week', exactDate: '2026-06-19' });
+  assert.deepEqual(action.timing, { kind: 'target', wording: 'this week', exactDate: '' },
+    'the owner timing answer survives without silently choosing a day inside the week');
+  const fridayUnits = units.map(unit => unit.id === 'T0003' ? { ...unit, text: 'Friday.' } : unit);
+  const [friday] = V.backfillActionCommitmentEvidence([{
+    action: 'Review the manual and raise any questions.', owners: ['Orla Skally'],
+    timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001']
+  }], fridayUnits, { meetingDate: '2026-06-17' });
+  assert.equal(friday.timing.exactDate, '2026-06-19', 'an actual stated weekday still resolves');
 });
 
 test('a timing fragment is not borrowed across a substantive intervening turn', () => {
@@ -475,7 +480,11 @@ test('action completeness can add a quote-verified outcome from the same owner',
   }]);
   assert.equal(result.corrected, 1);
   assert.match(result.actions[0].action, /arrange for the chiller to be serviced/i);
-  assert.deepEqual(result.actions[0].timing, actions[0].timing);
+  assert.equal(result.actions[0].timing.kind, 'not_stated',
+    'the contact-only deadline must not become the deadline for the later servicing outcome');
+  assert.deepEqual(result.actions[0].timingDecision.previousTiming, actions[0].timing);
+  assert.ok(result.flags.some(flag => /today/.test(flag.message) && /expanded work/.test(flag.message)),
+    'the source timing for the original step remains visible for review');
 });
 
 test('action completeness rejects a correction unsupported by its passage', () => {

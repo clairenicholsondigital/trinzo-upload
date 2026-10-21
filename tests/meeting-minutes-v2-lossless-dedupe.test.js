@@ -12,7 +12,8 @@ const row = (id, action, extra = {}) => ({
 const unitsFor = (actions) => V.normaliseSourceUnits(actions.map((action, index) => ({
   id: `T${String(index + 1).padStart(4, '0')}`, sequence: index + 1,
   speaker: action.owners?.[0] || 'Alex Green', classification: 'keep',
-  text: `I will ${action.action.charAt(0).toLowerCase()}${action.action.slice(1)}`
+  // Dated positive fixtures must actually state their date in the source promise.
+  text: `I will ${action.action.charAt(0).toLowerCase()}${action.action.slice(1).replace(/[.!?]$/, '')}${action.timing?.wording ? ` by ${action.timing.wording}` : ''}.`
 })));
 
 test('evidence-enabled normalisation preserves review and sending on the same document', () => {
@@ -47,9 +48,9 @@ for (const [name, left, right] of [
 test('normalisation retains separate owners and independent dated occurrences', () => {
   const action = 'Send the inventory report to Morgan Lee.';
   const actions = [
-    row('alex-first', action, { timing: { kind: 'deadline', wording: '3 November 2026', exactDate: '2026-11-03' } }),
-    row('alex-next', action, { timing: { kind: 'deadline', wording: '10 November 2026', exactDate: '2026-11-10' } }),
-    row('casey-first', action, { owners: ['Casey Patel'], timing: { kind: 'deadline', wording: '3 November 2026', exactDate: '2026-11-03' } })
+    row('alex-first', action, { evidenceIds: ['T0001'], timing: { kind: 'deadline', wording: '3 November 2026', exactDate: '2026-11-03' } }),
+    row('alex-next', action, { evidenceIds: ['T0002'], timing: { kind: 'deadline', wording: '10 November 2026', exactDate: '2026-11-10' } }),
+    row('casey-first', action, { owners: ['Casey Patel'], evidenceIds: ['T0003'], timing: { kind: 'deadline', wording: '3 November 2026', exactDate: '2026-11-03' } })
   ];
   const result = V.normaliseActions({ actions }, unitsFor(actions));
   assert.deepEqual(result.map(value => [value.id, value.owners, value.timing.exactDate]), [
@@ -81,7 +82,7 @@ test('normalisation keeps the dated exact duplicate as winner and does not trunc
   const action = 'Review the inventory report.';
   const units = V.normaliseSourceUnits(Array.from({ length: 12 }, (_, index) => ({
     id: `T${String(index + 1).padStart(4, '0')}`, sequence: index + 1,
-    speaker: 'Alex Green', text: 'I will review the inventory report.', classification: 'keep'
+    speaker: 'Alex Green', text: index === 11 ? 'I will review the inventory report by 3 November 2026.' : 'I will review the inventory report.', classification: 'keep'
   })));
   const actions = [
     row('untimed', action, { evidenceIds: units.slice(0, 6).map(unit => unit.id), reviewFlagIds: ['first-flag'] }),
@@ -94,6 +95,19 @@ test('normalisation keeps the dated exact duplicate as winner and does not trunc
   assert.equal(result[0].timing.exactDate, '2026-11-03');
   assert.deepEqual(new Set(result[0].evidenceIds), new Set(units.map(unit => unit.id)));
   assert.deepEqual(new Set(result[0].reviewFlagIds), new Set(['first-flag', 'second-flag']));
+});
+
+test('a generated unsupported date does not create a separate dated occurrence or win a duplicate', () => {
+  const action = 'Review the inventory report.';
+  const units = V.normaliseSourceUnits([{ id: 'T0001', sequence: 1, speaker: 'Alex Green', text: 'I will review the inventory report.', classification: 'keep' }]);
+  const actions = [
+    row('untimed', action, { evidenceIds: ['T0001'] }),
+    row('unsupported-date', action, { evidenceIds: ['T0001'], timing: { kind: 'deadline', wording: '3 November 2026', exactDate: '2026-11-03' } })
+  ];
+  const result = V.normaliseActions({ actions }, units);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'untimed');
+  assert.deepEqual(result[0].timing, untimed());
 });
 
 test('reviewer-save normalisation preserves intentionally repeated rows', () => {

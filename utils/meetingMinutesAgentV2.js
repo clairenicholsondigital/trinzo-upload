@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const TimingIntegrity = require('./meetingMinutesTiming');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
 const { convertSpokenNumbers } = require('./spokenNumbers');
@@ -148,7 +149,7 @@ function sanitiseDetails(candidate = {}) {
   const allAttendees = names([...suppliedAll, ...internalAttendees, ...clientAttendees]);
   return {
     meetingTitle: text(candidate.meetingTitle, 300),
-    meetingDate: /^\d{4}-\d{2}-\d{2}$/.test(text(candidate.meetingDate, 20)) ? text(candidate.meetingDate, 20) : '',
+    meetingDate: TimingIntegrity.isValidCalendarDate(text(candidate.meetingDate, 20)) ? text(candidate.meetingDate, 20) : '',
     meetingLocation: text(candidate.meetingLocation, 200) || DEFAULT_MEETING_LOCATION,
     meetingType: text(candidate.meetingType, 200),
     clientAttendeeLabel: candidate.clientAttendeeLabel === 'External' ? 'External' : 'Client',
@@ -450,6 +451,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   const { rows, known, indexById } = context;
   const claimTokens = resolutionTokens(value);
   const claimProfile = evidenceScoreProfile(value);
+  const claimedCalendarDate = TimingIntegrity.explicitCalendarDate(value, options.meetingDate);
   const maximumDistinctiveFrequency = Math.max(3, Math.ceil(rows.length * 0.04));
   const distinctiveClaimTokens = claimTokens.filter((token) => {
     const frequency = context.documentFrequency.get(token) || 0;
@@ -459,8 +461,13 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     // Distinctive-word overlap must not bypass the value check performed by
     // the base scorer. Otherwise a fee/count claim can acquire unrelated
     // supplier citations even though none contains its numbers.
-    if (claimProfile.values.some((value) => !explicitValuePresent(value, windowProfile.lower))) return 0;
-    const base = evidenceSupportScoreFromProfiles(claimProfile, windowProfile);
+    const supportedYear = claimedCalendarDate && TimingIntegrity.isValidCalendarDate(options.meetingDate)
+      && /\b(?:this|next) year\b/i.test(windowProfile.value)
+      && TimingIntegrity.explicitCalendarDate(windowProfile.value, options.meetingDate) === claimedCalendarDate
+      ? claimedCalendarDate.slice(0, 4) : '';
+    const scoreProfile = supportedYear ? { ...claimProfile, values: claimProfile.values.filter(value => String(value) !== supportedYear) } : claimProfile;
+    if (scoreProfile.values.some((value) => !explicitValuePresent(value, windowProfile.lower))) return 0;
+    const base = evidenceSupportScoreFromProfiles(scoreProfile, windowProfile);
     if (distinctiveClaimTokens.length < 2) return base;
     const distinctiveCoverage = distinctiveClaimTokens.filter((token) => windowProfile.resolutionTokenSet.has(token)).length / distinctiveClaimTokens.length;
     return (base * 0.25) + (distinctiveCoverage * 0.75);
@@ -475,7 +482,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     return evidenceScoreProfile(indexes.map((index) => context.directTexts[index]).join(' '));
   };
   const suppliedIds = [...new Set((Array.isArray(supplied) ? supplied : []).map((id) => text(id, 30)).filter(Boolean))];
-  const cacheKey = `${options.action ? 'a' : 'p'}|${text(value, 5000)}|${suppliedIds.join(',')}`;
+  const cacheKey = `${TimingIntegrity.TIMING_POLICY_VERSION}|${options.meetingDate || ''}|${options.action ? 'a' : 'p'}|${text(value, 5000)}|${suppliedIds.join(',')}`;
   const cached = context.resolutionCache.get(cacheKey);
   if (cached) return { ...cached, evidenceIds: [...cached.evidenceIds], invalidIds: [...cached.invalidIds], weakIds: [...cached.weakIds] };
   const finish = (result) => {
@@ -485,6 +492,13 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   };
   const invalidIds = suppliedIds.filter((id) => !known.has(id));
   const validIds = suppliedIds.filter((id) => known.has(id));
+  const selectedSuppliedIds = () => {
+    if (!claimedCalendarDate) return validIds.slice(0, 8);
+    const defining = validIds.filter(id => TimingIntegrity.explicitCalendarDate(rows[indexById.get(id)]?.text, options.meetingDate) === claimedCalendarDate);
+    const qualifications = validIds.filter(id => /\b(?:prefer(?:red|ably)?|ideally|fallback|contingency|hard stop|instead)\b/i.test(rows[indexById.get(id)]?.text || '')
+      && defining.some(anchor => Math.abs(indexById.get(id) - indexById.get(anchor)) <= 16));
+    return [...new Set([...defining, ...qualifications, ...validIds])].slice(0, 8);
+  };
   const claimWordSet = claimProfile.tokenSet;
   const speakersSupported = (profile) => context.speakerTokens.every((speakerWords) => {
     const mentioned = speakerWords.length === 1
@@ -536,7 +550,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   // allowing the server to repair clear workstream drift.
   const strongerAlternative = bestScore >= 0.28 && bestScore > suppliedAnchorScore + 0.08;
   if (validIds.length && suppliedScore >= 0.2 && !strongerAlternative) {
-    return finish({ evidenceIds: validIds.slice(0, 8), invalidIds, weakIds: [], supportScore: suppliedScore });
+    return finish({ evidenceIds: selectedSuppliedIds(), invalidIds, weakIds: [], supportScore: suppliedScore });
   }
 
   // When remapping, do not return the three highest-scoring anchors from
@@ -787,7 +801,7 @@ function normalisePoint(value, units, prefix, index, options = {}) {
   const pointText = text(candidate.text || candidate.point || candidate.value, 1600);
   if (!pointText) return null;
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
-  const resolved = resolveEvidence(pointText, units, candidate.evidenceIds);
+  const resolved = resolveEvidence(pointText, units, candidate.evidenceIds, { meetingDate: options.meetingDate });
   if (correctnessChecksEnabled() && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
     && resolved.evidenceIds.length && !uncitedClaimSupported(pointText, resolved, units)) {
     resolved.evidenceIds = [];
@@ -797,7 +811,7 @@ function normalisePoint(value, units, prefix, index, options = {}) {
       const source = typeof detail === 'string' ? { text: detail } : (detail || {});
       const detailText = text(source.text || source.point || source.value, 1600);
       if (!detailText) return null;
-      const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds);
+      const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds, { meetingDate: options.meetingDate });
       const detailFlags = [...new Set((Array.isArray(source.reviewFlagIds) ? source.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))];
       return {
         id: text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex),
@@ -986,227 +1000,19 @@ function normaliseOwnerIdentity(owner, units = []) {
   return displays.find((name, index) => !aliases[index].includes(',')) || displays[0] || raw;
 }
 
-function isoDateOffset(meetingDate, days) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return '';
-  const date = new Date(`${meetingDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-// An ordinal that goes on to name a period is a thing, not a day of the month:
-// "before the first audit week" was dated the 1st, and "the second project
-// month", "the 3rd working day" or "the first morning" read the same way. Up to
-// three describing words may sit between the ordinal and the period noun; a
-// connective ("by the 17th so the week after is free") ends the phrase, so the
-// date there still stands.
-const ORDINAL_PHRASE_WORD = String.raw`(?!(?:and|or|but|so|then|to|the|a|an|at|on|in|by|for|of|when|if|as|with|from|until|before|after|because|is|was|will|we|i|you|he|she|they|it|that|which)\b)[a-z][a-z'’-]*`;
-const ORDINAL_NAMES_A_PERIOD = String.raw`(?:\s+${ORDINAL_PHRASE_WORD}){0,3}\s+(?:hours?|days?|weeks?|weekends?|fortnights?|months?|quarters?|years?|mornings?|afternoons?|evenings?|nights?)\b`;
-
 function relativeExactDate(wording, meetingDate) {
-  const value = text(wording, 220).toLowerCase();
-  if (!value || !meetingDate) return '';
-  // Same-day wording is the meeting's own date: "this afternoon", "tonight",
-  // "later today", "by end of day", "close of play".
-  if (/\b(?:today|tonight|this (?:morning|afternoon|evening|lunchtime)|later today|(?:by )?(?:the )?end of (?:the )?day|close of (?:play|business)|eod|cob)\b/.test(value)) return meetingDate;
-  if (/\btomorrow\b/.test(value)) return isoDateOffset(meetingDate, 1);
-  // A stated calendar date outranks the weekday that happens to introduce it.
-  // Previously "Tuesday 3rd November" stopped at "Tuesday" and became the
-  // next Tuesday after the meeting.  The later support check then accepted
-  // that wrong value because it called this same resolver.  Read the explicit
-  // date first so weekday inference is only a fallback.
-  const explicitCalendarDate = statedCalendarDate(value, meetingDate);
-  if (explicitCalendarDate) {
-    // Preserve the established spoken-ordinal rule: when someone names a
-    // month already passed, it denotes that month next year. Numeric dates
-    // retain their literal year so the existing past-date validator can flag
-    // them rather than silently moving them.
-    const spokenMonthDate = /\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[ -]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirtieth|thirty[ -]?first)\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(value);
-    if (spokenMonthDate && explicitCalendarDate < meetingDate) {
-      return `${Number(explicitCalendarDate.slice(0, 4)) + 1}${explicitCalendarDate.slice(4)}`;
-    }
-    return explicitCalendarDate;
-  }
-  const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  // A weekday nested inside a relational phrase is context, not necessarily
-  // the event date. "The weekend before Monday" must remain useful wording; it
-  // must not be silently converted into Monday's calendar date.
-  const relationalWeekday = /\b(?:weekend|day|week)\s+(?:before|after|following|prior to)\s+(?:this |next )?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|\b(?:before|after|following|prior to)\s+(?:the )?(?:this |next )?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(value);
-  if (relationalWeekday) return '';
-  const named = weekdays.findIndex((day) => new RegExp(`\\b(?:this |next )?${day}\\b`).test(value));
-  // "Tuesday the thirteenth" is a day of the month, not merely the next
-  // Tuesday.  Let the ordinal block below resolve it.  The lookahead keeps
-  // nouns such as "the first review" out of date handling.
-  const spokenDayAlongsideWeekday = /\b(?:the\s+)(?:twenty[ -]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirty[ -]?(?:first|second)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b(?=\s*(?:$|[,.;:]|at\b|by\b))/i.test(value);
-  if (named >= 0 && !spokenDayAlongsideWeekday) {
-    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
-    let offset = (named - current + 7) % 7;
-    if (/\bnext\s+/.test(value)) offset = offset === 0 ? 7 : offset + 7;
-    else if (offset === 0) {
-      // The meeting's own weekday. "Monday morning" said on a Monday means
-      // today far more often than a week hence; the old silent +7 invented a
-      // date that contradicted "before the fifteenth" in the same sentence.
-      // Keep a calendar date only when the wording carries a same-day cue; a
-      // bare weekday stays as wording for the reviewer to resolve.
-      const sameDayCue = /\b(?:this|morning|afternoon|evening|lunchtime|first thing|later|tonight|straight after)\b/.test(value);
-      if (!sameDayCue) return '';
-    }
-    return isoDateOffset(meetingDate, offset);
-  }
-  if (/\bend of (?:this |the )?week\b/.test(value)) {
-    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
-    return isoDateOffset(meetingDate, (5 - current + 7) % 7);
-  }
-  if (/\bend of next week\b/.test(value)) {
-    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
-    return isoDateOffset(meetingDate, ((5 - current + 7) % 7) + 7);
-  }
-  // "This week" / "the remainder of this week": the working week's Friday,
-  // or the meeting day itself when the meeting is already on a weekend.
-  if (/\b(?:(?:the )?(?:rest|remainder) of (?:the |this )?week|this week)\b/.test(value)) {
-    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
-    return current === 0 || current === 6 ? meetingDate : isoDateOffset(meetingDate, 5 - current);
-  }
-  if (/\bnext week\b/.test(value)) {
-    const current = new Date(`${meetingDate}T00:00:00Z`).getUTCDay();
-    // From a weekend, the coming Friday already belongs to "next week".
-    if (current === 0 || current === 6) return isoDateOffset(meetingDate, current === 0 ? 5 : 6);
-    return isoDateOffset(meetingDate, 5 - current + 7);
-  }
-  // A span from the meeting: "two weeks", "a fortnight", "in ten days", "a month".
-  const spanWords = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
-  // "Once the list arrives, a week to review it" counts from the list, not
-  // from the meeting, so a span after a condition has no fixed date.
-  const afterCondition = /\b(?:once|after|when|as soon as|following|from when)\b/.test(value);
-  if (!afterCondition && /\ba fortnight\b|\bfortnight's time\b/.test(value)) return isoDateOffset(meetingDate, 14);
-  // "for five days" / "lasting two weeks" / "over three days" is how long
-  // something takes, not when it is due.
-  const span = value.match(/(?<!\b(?:for|lasting|over|takes?|taking|about|around|roughly)\s+)\b(?:in |within )?(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\s+(days?|weeks?)\b(?!\s+(?:ago|pilot|trial|test|review|programme|program|project|phase|study|period|cycle|sprint|of\s+(?:test|testing|work|effort)))/);
-  if (span && !afterCondition) {
-    const count = spanWords[span[1]] || Number(span[1]);
-    if (count) return isoDateOffset(meetingDate, count * (/^week/.test(span[2]) ? 7 : 1));
-  }
-  // "the tenth of July", "tenth July": a spoken ordinal with its month. The
-  // day-of-month rule below deliberately skips these, so nothing dated them.
-  const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
-    'august', 'september', 'october', 'november', 'december'];
-  const ordinalMonth = value.match(new RegExp(String.raw`\b(?:the\s+)?((?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\s+(?:of\s+)?(${MONTHS.join('|')})\b`, 'i'));
-  if (ordinalMonth) {
-    const spelled = ordinalMonth[1].toLowerCase().replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
-    const day = ORDINAL_DAY_WORDS[spelled];
-    const month = MONTHS.indexOf(ordinalMonth[2].toLowerCase()) + 1;
-    if (day && day <= 31 && month) {
-      const year = Number(meetingDate.slice(0, 4));
-      const candidate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      // A month already past points at next year, not backwards.
-      return candidate >= meetingDate ? candidate
-        : `${year + 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    }
-  }
-  // A day of the month on its own: "the seventh", "by the 17th", "on the 15th".
-  // The next such day on or after the meeting; an earlier day means next month.
-  // A numeric day ("the 17th") is a date wherever it sits; a spelled-out one
-  // ("the second", "the seventh") only when it closes the phrase, is followed
-  // by punctuation or "of <month>", or follows by/on/before/until. Otherwise
-  // "the second Priya starts talking" would read as the 2nd.
-  const WORD_ORDINAL = '(?:twenty|thirty)-?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth';
-  const ordinal = value.match(new RegExp(String.raw`\b(?:on |by |for |before |until )?the (\d{1,2})(?:st|nd|rd|th)?\b(?!\s*-?\s*last\b|\s+(?:week|month|of\s+(?:the\s+)?(?:week|month)))(?!\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december))(?!${ORDINAL_NAMES_A_PERIOD})`))
-    || value.match(new RegExp(String.raw`\b(?:on|by|before|until|no later than)\s+the\s+(${WORD_ORDINAL})\b(?!\s+of\s+[a-z]|\s*-?\s*last\b|\s+(?:week|month|time|round|batch|half|quarter|phase|stage|step|item|point|question|draft|version|session|meeting|call|day|attempt))(?!${ORDINAL_NAMES_A_PERIOD})`))
-    || value.match(new RegExp(String.raw`\bthe\s+(${WORD_ORDINAL})(?=\s*(?:$|[.,;:!?)"'’]))`));
-  if (ordinal) {
-    const token = (ordinal[1] || '').replace(/\s+/g, '-').replace(/^(twenty|thirty)(?!-)/, '$1-');
-    const day = Number(token) || ORDINAL_DAY_WORDS[token];
-    if (day && day <= 31) {
-      const [year, month, meetingDay] = meetingDate.split('-').map(Number);
-      let targetYear = year;
-      let targetMonth = month + (day < meetingDay ? 1 : 0);
-      if (targetMonth > 12) { targetMonth = 1; targetYear += 1; }
-      const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
-      if (day <= lastDay) return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    }
-  }
-  return '';
+  return TimingIntegrity.resolveExactDate(wording, meetingDate);
 }
 
-const ORDINAL_DAY_WORDS = Object.freeze({
-  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
-  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17,
-  eighteenth: 18, nineteenth: 19, twentieth: 20, 'twenty-first': 21, 'twenty-second': 22, 'twenty-third': 23,
-  'twenty-fourth': 24, 'twenty-fifth': 25, 'twenty-sixth': 26, 'twenty-seventh': 27, 'twenty-eighth': 28,
-  'twenty-ninth': 29, thirtieth: 30, 'thirty-first': 31
-});
-const MONTH_WORDS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-const STATED_DAY_BOUND_PATTERN = new RegExp(
-  '\\b(before|by|ahead of|no later than|prior to)\\s+(?:the\\s+)?'
-  + '(\\d{1,2}(?=(?:st|nd|rd|th)\\b)|' + Object.keys(ORDINAL_DAY_WORDS).join('|').replace(/-/g, '[- ]') + ')'
-  + '(?:st|nd|rd|th)?\\b(?:\\s+(?:of\\s+)?(' + MONTH_WORDS.join('|') + '))?'
-  // An ordinal followed by a noun is a thing, not a date: "before the first batch".
-  + '(?!\\s+(?:attempt|batch|brew|call|day|draft|half|hour|item|meeting|month|one|part|pass|phase|point|question|quarter|round|session|stage|step|thing|time|version|week|year)\\b)'
-  // "Before the first audit week" names a week, not the 1st.
-  + '(?!' + ORDINAL_NAMES_A_PERIOD + ')',
-  'i'
-);
-
-// "Monday morning, so it's here before the fifteenth" carries its own outer
-// bound. Returns that bound as an ISO date, whether the bound day itself is
-// allowed ("by", "no later than") or excluded ("before"), and the phrase.
-function statedDayBound(value, meetingDate) {
-  const source = text(value, 4000);
-  if (!source || !/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return null;
-  const match = source.match(STATED_DAY_BOUND_PATTERN);
-  if (!match) return null;
-  const dayToken = match[2].toLowerCase().replace(/\s+/g, '-');
-  const day = Number(dayToken) || ORDINAL_DAY_WORDS[dayToken];
-  if (!day || day > 31) return null;
-  const [meetingYear, meetingMonth, meetingDay] = meetingDate.split('-').map(Number);
-  let year = meetingYear;
-  let month = match[3] ? MONTH_WORDS.indexOf(match[3].toLowerCase()) + 1 : meetingMonth;
-  // A bound day earlier than the meeting day with no month named means next month.
-  if (!match[3] && day < meetingDay) month += 1;
-  if (match[3] && month < meetingMonth) year += 1;
-  if (month > 12) { month = 1; year += 1; }
-  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const inclusive = /^(?:by|no later than)$/i.test(match[1]);
-  return { date, inclusive, phrase: match[0].trim() };
-}
-
-// A day and month written in the timing itself ("by 17th June"). Without a
-// year, a date more than six months before the meeting is taken to mean next
-// year ("by 10 January" in a December meeting).
-const SHORT_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// Parse an explicit calendar day without choosing a future month/year merely
+// because the stated date precedes the meeting.
 function statedCalendarDate(wording = '', meetingDate = '') {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(meetingDate || ''))) return '';
-  const value = String(wording || '').toLowerCase();
-  const month = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-  const spokenOrdinal = '(?:twenty[ -]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirty[ -]?(?:first|second)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)';
-  const dayFirst = value.match(new RegExp(`\\b(?:the\\s+)?(\\d{1,2}(?:st|nd|rd|th)?|${spokenOrdinal})\\s+(?:of\\s+)?${month}\\b(?:,?\\s+(\\d{4}))?`));
-  const monthFirst = value.match(new RegExp(`\\b${month}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?:,?\\s+(\\d{4}))?`));
-  const found = dayFirst ? { day: dayFirst[1], month: dayFirst[2], year: dayFirst[3] } : monthFirst ? { day: monthFirst[2], month: monthFirst[1], year: monthFirst[3] } : null;
-  if (!found) return '';
-  const monthIndex = SHORT_MONTHS.indexOf(found.month.slice(0, 3)) + 1;
-  const dayToken = String(found.day || '').toLowerCase()
-    .replace(/^(\d{1,2})(?:st|nd|rd|th)$/i, '$1').replace(/\s+/g, '-');
-  const day = Number(dayToken) || ORDINAL_DAY_WORDS[dayToken];
-  if (!monthIndex || !day || day > 31) return '';
-  const [meetingYear] = meetingDate.split('-').map(Number);
-  let year = found.year ? Number(found.year) : meetingYear;
-  const iso = (y) => `${y}-${String(monthIndex).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  if (!found.year && iso(year) < meetingDate) {
-    const daysBefore = (Date.parse(`${meetingDate}T00:00:00Z`) - Date.parse(`${iso(year)}T00:00:00Z`)) / 86400000;
-    if (daysBefore > 183) year += 1;
-  }
-  return iso(year);
-}
-
-function timingBoundBreach(timing = {}, source = '', meetingDate = '') {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(timing.exactDate || ''))) return null;
-  const bound = statedDayBound(source, meetingDate);
-  if (!bound) return null;
-  const breached = bound.inclusive ? timing.exactDate > bound.date : timing.exactDate >= bound.date;
-  return breached ? bound : null;
+  return TimingIntegrity.explicitCalendarDate(wording, meetingDate);
 }
 
 function timingFrom(item = {}, options = {}) {
   const supplied = item.timing && typeof item.timing === 'object' ? item.timing : {};
+  if (options.preserveReviewerEdits === true) return TimingIntegrity.normaliseTimingValue(supplied, { mode: 'preserve', reviewerAuthored: true });
   let wording = text(supplied.wording || item.deadline || item.target, 220);
   let kind = ['deadline', 'target', 'dependency', 'not_stated'].includes(supplied.kind) ? supplied.kind : 'not_stated';
   // "As soon as Christina is back" is a condition, not a date: whatever kind
@@ -1224,10 +1030,11 @@ function timingFrom(item = {}, options = {}) {
       : (/\b(?:target|aim|ideally|provisional|expected|this week|next week)\b/i.test(wording) ? 'target' : 'deadline');
   }
   wording = wording.replace(/^(?:target|deadline)\s*:\s*/i, '');
-  const exactDate = /^\d{4}-\d{2}-\d{2}$/.test(text(supplied.exactDate, 20))
-    ? text(supplied.exactDate, 20)
-    : relativeExactDate(wording, options.meetingDate);
-  return { kind: wording || exactDate ? kind : 'not_stated', wording, exactDate };
+  return TimingIntegrity.normaliseTimingValue({ ...supplied, kind, wording }, {
+    meetingDate: options.meetingDate,
+    mode: options.timingMode === 'derive' ? 'derive' : 'preserve',
+    reviewerAuthored: options.preserveReviewerEdits === true
+  });
 }
 
 // A timing column must contain timing. Models occasionally copy a nearby
@@ -1302,8 +1109,9 @@ function timingPublicationIssue(timing = {}) {
 
 function timingForPublication(timing = {}) {
   const cleanTiming = normaliseTimingWording(timing);
+  if (cleanTiming.exactDate && !TimingIntegrity.isValidCalendarDate(cleanTiming.exactDate)) cleanTiming.exactDate = '';
   if (!timingPublicationIssue(cleanTiming)) return cleanTiming;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text(cleanTiming.exactDate, 20))) return { ...cleanTiming, wording: '' };
+  if (TimingIntegrity.isValidCalendarDate(cleanTiming.exactDate)) return { ...cleanTiming, wording: '' };
   return { kind: 'not_stated', wording: '', exactDate: '' };
 }
 
@@ -1312,7 +1120,7 @@ function timingWordingHasMeaning(timing = {}) {
   const kind = cleanTiming.kind;
   const wording = cleanTiming.wording;
   if (kind === 'not_stated') return !wording;
-  if (!wording && /^\d{4}-\d{2}-\d{2}$/.test(text(timing?.exactDate, 20))) return true;
+  if (!wording && TimingIntegrity.isValidCalendarDate(timing?.exactDate)) return true;
   if (!wording) return false;
   if (timingPublicationIssue(cleanTiming)) return false;
   // "if gaps are found during traceability review" arrived labelled a
@@ -2257,7 +2065,19 @@ function answerNamesSubject(lead = '') {
   return contentTokens(String(lead || '').replace(ANSWER_LEAD_FILLER, ' ')).length > 0;
 }
 const UNKNOWN_TIMING_ANSWER = /\b(?:don['’]t know|do not know|no idea|not sure|couldn['’]t say|can['’]t say|hard to say|it depends|could be [^.,;]{1,40} or (?:it )?could be)\b/i;
+function timingRecoveryBlocked(decision = {}) {
+  return ['rejected', 'needs_rebind'].includes(decision?.status)
+    || Boolean(decision?.rejectedWordings?.length || decision?.rejectedExactDates?.length);
+}
+
+function sourceRecoveredTiming(wording, options = {}) {
+  return TimingIntegrity.normaliseTimingValue(timingFrom({ timing: { wording } }, options), {
+    meetingDate: options.meetingDate, mode: 'derive'
+  });
+}
+
 function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {}) {
+  if (timingRecoveryBlocked(options.timingDecision)) return timing;
   if (timing.kind !== 'not_stated') return timing;
   const window = evidenceWindowUnits(units, evidenceIds, 3);
   // The question must sit in the action's exchange; its answer is read from
@@ -2280,7 +2100,7 @@ function backfillAskedTiming(timing, units = [], evidenceIds = [], options = {})
       // "Friday" or "It'll be Friday though" names nothing and is taken as is.
       const lead = spoken.slice(0, phrase.index);
       if (options.action && answerNamesSubject(lead) && !sharesSubjectWord(options.action, spoken)) continue;
-      return timingFrom({ timing: { wording: phrase[0].toLowerCase().replace(/\s+/g, ' ').trim() } }, options);
+      return sourceRecoveredTiming(phrase[0].toLowerCase().replace(/\s+/g, ' ').trim(), options);
     }
   }
   return timing;
@@ -2411,6 +2231,7 @@ function resolveOfferedDateChoice(timing, units = [], evidenceIds = [], options 
 }
 
 function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {}) {
+  if (timingRecoveryBlocked(options.timingDecision)) return timing;
   if (timing.kind !== 'not_stated') return timing;
   for (const unit of evidenceWindowUnits(units, evidenceIds, 0)) {
     const source = String(unit.text || '');
@@ -2424,7 +2245,7 @@ function backfillCitedTiming(timing, units = [], evidenceIds = [], options = {})
     const committed = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source)
       || NAMED_WILL_PATTERN.test(source) || CITED_TIMING_COMMITMENT_CUE.test(source);
     if (!committed) continue;
-    return timingFrom({ timing: { wording: phrase.toLowerCase().replace(/\s+/g, ' ') } }, options);
+    return sourceRecoveredTiming(phrase.toLowerCase().replace(/\s+/g, ' '), options);
   }
   return timing;
 }
@@ -2448,6 +2269,8 @@ function timingOnlyFragment(value = '') {
 }
 
 function adjacentOwnerTiming(action = {}, units = [], evidenceIds = [], options = {}) {
+  if (isReviewerAuthored(action) || timingRecoveryBlocked(action.timingDecision)
+    && TimingIntegrity.assessmentMatches(action, units, options.meetingDate, action.timingDecision)) return null;
   if (!Array.isArray(action.owners) || !action.owners.length || !evidenceIds.length) return null;
   const context = evidenceContextFor(units);
   const citedIndexes = evidenceIds.map((id) => context.indexById.get(id)).filter(Number.isInteger);
@@ -2459,7 +2282,7 @@ function adjacentOwnerTiming(action = {}, units = [], evidenceIds = [], options 
     if (phrase) {
       return {
         evidenceIds: [...new Set([...evidenceIds, unit.id])],
-        timing: timingFrom({ timing: { wording: phrase } }, options)
+        timing: sourceRecoveredTiming(phrase, options)
       };
     }
     if (!NON_SUBSTANTIVE_TIMING_BRIDGE.test(String(unit.text || '').trim())) break;
@@ -2596,6 +2419,8 @@ function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, r
 
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action) => {
+    if (isReviewerAuthored(action) || timingRecoveryBlocked(action.timingDecision)
+      && TimingIntegrity.assessmentMatches(action, units, options.meetingDate, action.timingDecision)) return action;
     let evidenceIds = anchorOwnerCommitment(action?.action, action?.owners || [], units, action?.evidenceIds || []);
     // The rows where the work was accepted (a timing given as the yes, the
     // chair handing it over, the owner answering a when-question) belong in
@@ -2603,7 +2428,9 @@ function backfillActionCommitmentEvidence(actions = [], units = [], options = {}
     // read the cited rows.
     const accepted = acceptanceAroundEvidenceDetail(action, units);
     if (accepted.disposition) evidenceIds = [...new Set([...evidenceIds, ...accepted.evidenceIds])].slice(0, 8);
-    let timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, options), units, evidenceIds, { ...options, action: action?.action }), units, evidenceIds, options);
+    const recoveryOptions = { ...options, action: action?.action,
+      timingDecision: TimingIntegrity.assessmentMatches(action, units, options.meetingDate, action.timingDecision) ? action.timingDecision : null };
+    let timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timingFrom(action, options), units, evidenceIds, recoveryOptions), units, evidenceIds, recoveryOptions), units, evidenceIds, recoveryOptions);
     if (timing.kind === 'not_stated') {
       const adjacent = adjacentOwnerTiming(action, units, evidenceIds, options);
       if (adjacent) ({ evidenceIds, timing } = adjacent);
@@ -2836,6 +2663,7 @@ function laterRevisionUnit(units = [], evidenceIds = []) {
 function applyTimingClauseChecks(actions = [], units = [], options = {}) {
   const flags = [];
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    if (isReviewerAuthored(action)) return action;
     const issue = timingClauseIssue(action.action, action.timing || {}, units, action.evidenceIds || []);
     if (!issue) return action;
     const timing = issue.type === 'reassign'
@@ -2849,7 +2677,10 @@ function applyTimingClauseChecks(actions = [], units = [], options = {}) {
       evidenceIds: action.evidenceIds
     }, flags.length);
     flags.push(flag);
-    return { ...action, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    const rejected = TimingIntegrity.rejectActionTiming(action, units, {
+      meetingDate: options.meetingDate, field: 'all', reason: 'source_step_mismatch'
+    });
+    return { ...rejected, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
   });
   return { actions: checked, flags };
 }
@@ -2934,9 +2765,10 @@ function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacement
 }
 
 // One item per timed action: the action, its timing and the passage it cites.
-function timingCheckItems(actions = [], units = []) {
+function timingCheckItems(actions = [], units = [], options = {}) {
   return (Array.isArray(actions) ? actions : []).map((action, index) => {
-    if (!action?.timing || action.timing.kind === 'not_stated' || !text(action.timing.wording, 220)) return null;
+    if (isReviewerAuthored(action) || !action?.timing || action.timing.kind === 'not_stated'
+      || (!text(action.timing.wording, 220) && !action.timing.exactDate)) return null;
     if (TIMING_NO_VALUE.test(text(action.timing.wording, 220))) return null;
     // A timing is often qualified a few turns after it is first proposed:
     // "ideally before Friday" followed by "Monday is the hard stop if needed".
@@ -2946,9 +2778,12 @@ function timingCheckItems(actions = [], units = []) {
     if (!passageUnits.length) return null;
     return {
       id: `a${index + 1}`, index, action: text(action.action, 600), owners: action.owners || [],
-      timing: text(action.timing.wording, 220),
+      timing: { kind: text(action.timing.kind, 30), wording: text(action.timing.wording, 220), exactDate: text(action.timing.exactDate, 20) },
+      timingDecision: action.timingDecision || null,
+      evidenceIds: [...(action.evidenceIds || [])],
+      meetingDate: options.meetingDate || '',
       passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
-      passageUnits: passageUnits.map((unit) => ({ id: unit.id, text: unit.text }))
+      passageUnits: passageUnits.map((unit) => ({ id: unit.id, speaker: unit.speaker, text: unit.text }))
     };
   }).filter(Boolean);
 }
@@ -2959,16 +2794,18 @@ function timingCheckPrompt(items = [], meetingDate = '') {
     "You check whether each action's timing belongs to that action. Each item gives an action, the timing attached to it, and the transcript passage it was drawn from. The passage is the only authority.",
     `The meeting took place on ${meetingDate || 'an unstated date'}. Do not calculate dates.`,
     'For each item decide one verdict:',
-    `- "correct": the timing was said about this action's own work. When an action names several steps or deliverables, the timing is correct if it was said about ANY of them. Judge only the steps the action names.`,
+    `- "correct": the timing was said about this action's own work, with the same deadline/target/dependency meaning and qualifications. For a compound, quote the particular timed step in stepQuote; a date for one step must never be asserted as applying to every step.`,
     `- "qualified": a LATER statement about this same action changes an earlier firm date into a preference, target, contingency or fallback. Use this only when the passage explicitly connects the timings; merely mentioning another date is not enough.`,
     `- "belongs_to_other_step": the timing was said about a different piece of work: another step in a sequence, another person's task, a related meeting, an approval, a regulatory deadline or a schedule of other events.`,
     '- "past_event": the timing refers to something that has already happened.',
     '- "misread": the timing states a day or date the passage does not support as said (for example a wrong month, or an arrival time used as a meeting time).',
     `For every verdict give timingQuote: the exact words in the passage where the timing was said. For "belongs_to_other_step" also give stepQuote: the exact words naming the other piece of work the timing applies to (that work must not be one of the steps the action names). For any verdict other than "correct" give correctTiming: the exact words in the passage that give THIS action's own timing, or an empty string if the passage gives none.`,
     `For "qualified", also give qualificationQuote: the exact later words that explicitly qualify or replace the earlier timing; preferredTiming: the exact preferred/ideal timing words; and fallbackTiming: the exact contingency or hard-stop timing words, or empty when there is no separate fallback. Do not use "qualified" unless preferredTiming is present verbatim and every non-empty timing field is a contiguous transcript quote.`,
-    'Every quote must be copied verbatim from the passage as one contiguous span of at most 25 words. Never paraphrase a quote. If you are unsure, choose "correct".',
+    'Check the complete timing object, including exactDate-only proposals. Do not calculate or invent an ISO date. A broad week, month, range, bound, preference or fallback must not become a single agreed day. The app verifies calendar derivation independently.',
+    'For "correct", also quote timingQuote and stepQuote from the passage. Keep hedges such as probably, presumably, ideally and hopefully; they are meaningful qualifications, not firm deadlines. An unrelated later date is not a fallback.',
+    'Every quote must be copied verbatim from the passage as one contiguous span of at most 25 words. Never paraphrase a quote. If source-to-step binding is uncertain, return verdict "uncertain" rather than asserting "correct".',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","timingQuote":"","stepQuote":"","correctTiming":"","qualificationQuote":"","preferredTiming":"","fallbackTiming":"","reason":""}]}',
-    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, timing: item.timing, passage: item.passage })))}`
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, timing: item.timing, timingDecision: item.timingDecision, passage: item.passage })))}`
   ].join('\n\n');
 }
 
@@ -2976,18 +2813,183 @@ function timingCheckPrompt(items = [], meetingDate = '') {
 // even when the critic copied the old timing imprecisely: retaining a timing
 // the critic has identified as belonging elsewhere is the more dangerous
 // failure in that case.
+function timingItemSourceUnits(item = {}) {
+  if (Array.isArray(item.passageUnits)) return item.passageUnits;
+  return String(item.passage || '').split('\n').flatMap(line => {
+    const found = line.match(/^\[([^\]]+)\]\s*([^:]+):\s*(.+)$/);
+    return found ? [{ id: found[1], speaker: found[2], text: found[3] }] : [];
+  });
+}
+
+function timingDecisionAfterChange(action, timing, item, options = {}, reason = 'source_timing_review') {
+  const units = timingItemSourceUnits(item);
+  const changed = TimingIntegrity.rejectActionTiming(action, units, {
+    meetingDate: options.meetingDate || item.meetingDate, field: 'all', reason
+  });
+  const next = { ...changed, timing };
+  if (timing?.kind && timing.kind !== 'not_stated') next.timingDecision = {
+    ...changed.timingDecision,
+    ...TimingIntegrity.timingAssessmentKey(next, units, options.meetingDate || item.meetingDate),
+    status: reason === 'source_qualified_timing' ? 'qualified' : 'verified'
+  };
+  return next;
+}
+
+// Verbatim dates can occur beside unrelated work in the same review window.
+// A qualification must either restate this owned instruction, or be a purely
+// temporal follow-up by its owner which explicitly refers to its prior date.
+function qualificationBindsTimingToAction(action, item, row, preferred, fallback, options = {}) {
+  const units = normaliseSourceUnits(timingItemSourceUnits(item));
+  const contains = (source, quote) => quoteText(source).includes(quoteText(quote));
+  const original = units.filter(unit => contains(unit.text, row.timingQuote)
+    && timingBoundToActionSteps({ ...action, evidenceIds: [unit.id],
+      timing: { kind: action.timing.kind, wording: row.timingQuote, exactDate: '' } }, [unit], options));
+  if (!original.length) return false;
+  // All replacement components must belong to the quoted clarification,
+  // rather than being borrowed independently from elsewhere in the window.
+  if (!contains(row.qualificationQuote, preferred)
+    || fallback && !contains(row.qualificationQuote, fallback)) return false;
+  const qualifiers = units.filter(unit => contains(unit.text, row.qualificationQuote));
+  if (row.stepQuote && (!quotedVerbatim(row.stepQuote, item.passage)
+    || !commitmentIsAboutAction(row.stepQuote, action.action))) return false;
+  const referenceDates = [...String(row.timingQuote).matchAll(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|yesterday|\d{1,4}(?:st|nd|rd|th)?|january|february|march|april|may|june|july|august|september|october|november|december)\b/gi)]
+    .map(match => match[0].toLowerCase());
+  return qualifiers.some(unit => {
+    // A single speaker turn may contain two separate instructions. Do not
+    // borrow the operation from before a comma and the date from another
+    // instruction after it.
+    if (String(unit.text).split(/[,;]|(?<=[.!?])\s+/).some(clause => contains(clause, preferred)
+      && timingBoundToActionSteps({ ...action, evidenceIds: [unit.id],
+        timing: { kind: 'target', wording: preferred, exactDate: '' } }, [{ ...unit, text: clause }], options))) return true;
+    if (!speakerIsOwner(unit.speaker, action.owners)
+      || !original.some(prior => units.indexOf(prior) < units.indexOf(unit)
+        && speakerIsOwner(prior.speaker, action.owners)
+        && !units.slice(units.indexOf(prior) + 1, units.indexOf(unit)).some(between =>
+          speakerIsOwner(between.speaker, action.owners)
+            && contentTokens(between.text).some(word => ACTION_VERBS.has(word))
+            && !commitmentIsAboutAction(between.text, action.action)))) return false;
+    if (row.stepQuote && (!quotedVerbatim(row.stepQuote, unit.text)
+      || !commitmentIsAboutAction(row.stepQuote, action.action))) return false;
+    if (!referenceDates.some(value => new RegExp(`\\b${value}\\b`, 'i').test(row.qualificationQuote))) return false;
+    const remainder = String(unit.text)
+      .replace(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|yesterday|january|february|march|april|may|june|july|august|september|october|november|december|\d+(?:st|nd|rd|th)?)\b/gi, ' ')
+      .replace(/\b(?:ideally|preferably|preferred|hopefully|probably|presumably|maybe|possibly|around|approximately|roughly|before|after|by|on|until|within|no|later|than|at|the|end|of|this|next|week|month|year|day|days|hard|stop|deadline|target|fallback|if|needed|necessary|possible|but|and|or|then|is|would|be|it|that|should|could|can|will|we|i|need|to|have|as|a|an|for|instead)\b/gi, ' ')
+      .replace(/[^\p{L}]+/gu, '').trim();
+    return !remainder;
+  });
+}
+
+function replacementTimingSourceIds(action, item, replacement, options = {}) {
+  const sources = normaliseSourceUnits(timingItemSourceUnits(item));
+  const wanted = quoteText(replacement);
+  const subject = new Set(materialTokens(action.action).filter(word => !ACTION_VERBS.has(word)));
+  return sources.filter(unit => String(unit.text).split(/[,;]|(?<=[.!?])\s+/).some(clause => {
+    if (!quoteText(clause).includes(wanted)) return false;
+    if (timingBoundToActionSteps({ ...action, evidenceIds: [unit.id],
+      timing: { kind: 'target', wording: replacement, exactDate: '' } }, [{ ...unit, text: clause }], options)) return true;
+    if (!speakerIsOwner(unit.speaker, action.owners)) return false;
+    const words = new Set(materialTokens(clause));
+    const shared = [...subject].filter(word => words.has(word)).length;
+    const predicate = actionPredicateSupported(action.action, clause);
+    if (subject.size && shared >= Math.min(2, subject.size) && shared / subject.size >= 0.6
+      && (predicate || !contentTokens(clause).some(word => ACTION_VERBS.has(word)))) return true;
+    // An already cited, owned "I'll send that now" can name its deliverable
+    // by reference. An explicit different object is never such a reference.
+    if (!(action.evidenceIds || []).includes(unit.id) || !predicate
+      || !/\b(?:it|that|this|them|those|these)\b/i.test(clause)) return false;
+    const withoutTiming = quoteText(clause).replace(wanted, ' ');
+    return contentTokens(withoutTiming).every(word => ACTION_VERBS.has(word)
+      || ['will', 'shall', 'can', 'should', 'going', 'out', 'then', 'them', 'those', 'these'].includes(word));
+  })).map(unit => unit.id);
+}
+
+function sameTimingWork(left = {}, right = {}) {
+  const owners = row => [...new Set((row.owners || []).map(owner => comparisonText(owner)))].sort().join('|');
+  if (!owners(left) || owners(left) !== owners(right)) return false;
+  const shared = new Set(left.evidenceIds || []);
+  if (!(right.evidenceIds || []).some(id => shared.has(id))) return false;
+  const wording = row => comparisonText(row.action).replace(/[.!;]+$/, '')
+    .replace(/^(?:complete|finish)\s+(?:the\s+)?updates?\s+to\s+/, 'update ')
+    .replace(/^(?:update|revise|amend|edit)\s+(?:the\s+)?/, 'update ');
+  const a = wording(left), b = wording(right);
+  if (a === b) return true;
+  // Mutual retention is much narrower than related work. Do not use a
+  // one-way contained step or overlapping transcript window to erase timing
+  // for a different operation or a larger workflow.
+  const untimed = row => ({ ...row, timing: { kind: 'not_stated', wording: '', exactDate: '' } });
+  return commitmentCanBeRepresented(untimed(left), untimed(right))
+    && commitmentCanBeRepresented(untimed(right), untimed(left));
+}
+
+function reconcileSiblingTimingDecisions(actions = [], units = [], options = {}) {
+  const list = Array.isArray(actions) ? actions : [];
+  const flags = [];
+  const actionsAfter = list.map(action => {
+    if (isReviewerAuthored(action)) return action;
+    const wording = comparisonText(action.timing?.wording || '');
+    const date = action.timing?.exactDate || '';
+    const rejectedSibling = list.find(other => other !== action && !isReviewerAuthored(other)
+      && TimingIntegrity.assessmentMatches(other, units, options.meetingDate, other.timingDecision)
+      && sameTimingWork(action, other)
+      // A shared context line is not the source of a rejected deadline. An
+      // equivalent task may be restated with genuinely new timing evidence.
+      && (other.timingDecision.sourceEvidenceIds || []).length > 0
+      && other.timingDecision.sourceEvidenceIds.every(id => (action.evidenceIds || []).includes(id))
+      && !timingBoundToActionSteps(action, units.filter(unit => (action.evidenceIds || []).includes(unit.id)
+        && !other.timingDecision.sourceEvidenceIds.includes(unit.id)), options)
+      && (date && (other.timingDecision.rejectedExactDates || []).includes(date)
+        || wording && (other.timingDecision.rejectedWordings || []).some(value => comparisonText(value) === wording)));
+    if (!rejectedSibling) return action;
+    const rejectWording = wording && (rejectedSibling.timingDecision.rejectedWordings || [])
+      .some(value => comparisonText(value) === wording);
+    const next = TimingIntegrity.rejectActionTiming(action, units, {
+      meetingDate: options.meetingDate, field: rejectWording ? 'all' : 'exactDate', reason: 'equivalent_work_source_rejection'
+    });
+    const flag = normaliseFlag({ kind: 'timing',
+      message: `The timing for "${text(action.action, 200)}" conflicts with a source-reviewed equivalent instruction; the rejected ${rejectWording ? 'timing' : 'exact date'} is not repeated. Confirm the source timing.`,
+      evidenceIds: [...new Set([...(action.evidenceIds || []), ...(rejectedSibling.evidenceIds || [])])] }, flags.length);
+    flags.push(flag);
+    next.reviewFlagIds = [...new Set([...(next.reviewFlagIds || []), flag.id])];
+    return next;
+  });
+  return { actions: actionsAfter, flags };
+}
+
 function applyTimingCheckResults(actions = [], items = [], results = [], options = {}) {
   const flags = [];
   const rejected = [];
   const byIndex = new Map(items.map((item) => [item.index, item]));
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const checked = (Array.isArray(actions) ? actions : []).map((action, index) => {
+    if (isReviewerAuthored(action)) return action;
     const wording = text(action?.timing?.wording, 220);
     if (action?.timing && action.timing.kind !== 'not_stated' && TIMING_NO_VALUE.test(wording)) {
       return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' } };
     }
     const item = byIndex.get(index);
     const row = item ? verdicts.get(item.id) : null;
+    if (item && (text(action.action, 600) !== item.action
+      || JSON.stringify([...(action.owners || [])].sort()) !== JSON.stringify([...(item.owners || [])].sort())
+      || typeof item.timing === 'object' && JSON.stringify(item.timing) !== JSON.stringify({
+        kind: text(action.timing?.kind, 30), wording: text(action.timing?.wording, 220), exactDate: text(action.timing?.exactDate, 20)
+      }))) {
+      rejected.push({ id: item.id, reason: 'stale_action_snapshot' });
+      return action;
+    }
+    if (row?.verdict === 'correct' && row.timingQuote && row.stepQuote
+      && quotedVerbatim(row.timingQuote, item.passage) && quotedVerbatim(row.stepQuote, item.passage)
+      && actionPredicateSupported(action.action, row.stepQuote) && commitmentIsAboutAction(row.stepQuote, action.action)) {
+      const assessed = TimingIntegrity.assessActionTiming(action, timingItemSourceUnits(item), {
+        meetingDate: options.meetingDate || item.meetingDate
+      });
+      for (const issue of assessed.issues) {
+        const flag = normaliseFlag({ kind: 'timing', message: issue.message,
+          evidenceIds: action.evidenceIds || [] }, flags.length);
+        flags.push(flag);
+        assessed.action.reviewFlagIds = [...new Set([...(assessed.action.reviewFlagIds || []), flag.id])];
+      }
+      return assessed.action;
+    }
     if (!row || !['qualified', 'belongs_to_other_step', 'past_event', 'misread'].includes(row.verdict)) return action;
     if (row.verdict === 'qualified') {
       const timingQuote = quotedVerbatimValidation(row.timingQuote, item.passage);
@@ -3005,6 +3007,10 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
         rejected.push({ id: item.id, verdict: row.verdict, reason: 'qualification_not_verbatim_or_complete' });
         return action;
       }
+      if (!qualificationBindsTimingToAction(action, item, row, preferred, fallback, options)) {
+        rejected.push({ id: item.id, verdict: row.verdict, reason: 'qualification_not_bound_to_action' });
+        return action;
+      }
       const qualifiedWording = fallback
         ? `Preferred: ${preferred}; fallback: ${fallback}`
         : preferred;
@@ -3019,9 +3025,7 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
         return quoteNeedles.some((needle) => value.includes(needle) || needle.includes(value));
       }).map((unit) => unit.id);
       return {
-        ...action,
-        action: replaceEmbeddedTiming(action.action, wording, '', action.timing?.exactDate),
-        timing,
+        ...timingDecisionAfterChange({ ...action, action: replaceEmbeddedTiming(action.action, wording, '', action.timing?.exactDate) }, timing, item, options, 'source_qualified_timing'),
         evidenceIds: [...new Set([...(action.evidenceIds || []), ...addedEvidence])].slice(0, 12)
       };
     }
@@ -3032,6 +3036,11 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
     const replacementIsVerbatim = replacement && quotedVerbatim(replacement, item.passage)
       && quoteText(replacement) !== quoteText(wording)
       && !timingPublicationIssue(timingFrom({ timing: { wording: replacement } }, options));
+    const replacementSourceIds = replacementIsVerbatim ? replacementTimingSourceIds(action, item, replacement, options) : [];
+    if (replacementIsVerbatim && !replacementSourceIds.length) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'replacement_not_bound_to_action' });
+      return action;
+    }
     const timingQuoteCheck = quotedVerbatimValidation(row.timingQuote, item.passage);
     if (!timingQuoteCheck.valid && !replacementIsVerbatim) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: `timing_${timingQuoteCheck.reason}` });
@@ -3084,7 +3093,9 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
       evidenceIds: action.evidenceIds
     }, flags.length);
     flags.push(flag);
-    return { ...action, action: actionText, timing, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    return { ...timingDecisionAfterChange({ ...action, action: actionText,
+      evidenceIds: [...new Set([...(action.evidenceIds || []), ...replacementSourceIds])].slice(0, 12) }, timing, item, options),
+      reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
   });
   return { actions: checked, flags, rejected };
 }
@@ -3594,9 +3605,13 @@ function timingReportedForDifferentActor(action = {}, units = []) {
   return '';
 }
 
-function applyChainedTimingRule(actions = [], units = []) {
+function applyChainedTimingRule(actions = [], units = [], options = {}) {
   const flags = [];
+  const clearTiming = action => TimingIntegrity.rejectActionTiming(action, units, {
+    meetingDate: options.meetingDate, field: 'all', reason: 'source_step_mismatch'
+  });
   const checked = (Array.isArray(actions) ? actions : []).map((action) => {
+    if (isReviewerAuthored(action)) return action;
     const wording = text(action?.timing?.wording, 220).toLowerCase();
     if (!action?.timing || action.timing.kind === 'not_stated' || !wording) return action;
     const earlierStep = timingAttachedToEarlierStep(action, units);
@@ -3607,7 +3622,7 @@ function applyChainedTimingRule(actions = [], units = []) {
         evidenceIds: action.evidenceIds || []
       }, flags.length);
       flags.push(flag);
-      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+      return { ...clearTiming(action), reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
     }
     const reportedForAnother = timingReportedForDifferentActor(action, units);
     if (reportedForAnother) {
@@ -3617,7 +3632,7 @@ function applyChainedTimingRule(actions = [], units = []) {
         evidenceIds: action.evidenceIds || []
       }, flags.length);
       flags.push(flag);
-      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+      return { ...clearTiming(action), reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
     }
     const statement = text(action.action, 1600);
     const marker = statement.match(CHAIN_STEP_MARKER) || statement.match(/,\s+(?:load|download|upload|send|share|submit|return|insert|point|forward)\b/i);
@@ -3632,7 +3647,7 @@ function applyChainedTimingRule(actions = [], units = []) {
         evidenceIds: action.evidenceIds || []
       }, flags.length);
       flags.push(flag);
-      return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+      return { ...clearTiming(action), reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
     }
     const flag = normaliseFlag({
       kind: 'timing',
@@ -3640,7 +3655,7 @@ function applyChainedTimingRule(actions = [], units = []) {
       evidenceIds: action.evidenceIds || []
     }, flags.length);
     flags.push(flag);
-    return { ...action, timing: { kind: 'not_stated', wording: '', exactDate: '' }, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    return { ...clearTiming(action), reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
   });
   return { actions: checked, flags };
 }
@@ -3752,10 +3767,64 @@ function explicitOwnerAssignments(action = {}, units = []) {
   return assignments;
 }
 
-function splitExplicitMultiOwnerActions(actions = [], units = []) {
+function sourceInstructionClauses(value = '') {
+  const verbs = [...new Set(ACTION_VERB_GROUPS.flat())].sort((a, b) => b.length - a.length)
+    .map(verb => verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return String(value).split(new RegExp(`[.;!?]+|[,;]\\s*(?:and\\s+|then\\s+|but\\s+)?(?=(?:${verbs})\\b)|\\s+(?:and|then|but)\\s+(?=(?:(?:I|we)\\s+(?:will|'ll)\\s+)?(?:${verbs})\\b)`, 'i'))
+    .map(clause => clause.trim()).filter(Boolean);
+}
+
+function sourceBindsTimingToStep(step, source, timing, options = {}) {
+  const canonical = value => comparisonText(value).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const sourceTiming = clause => {
+    if (timing.wording && canonical(clause).includes(canonical(timing.wording))) return true;
+    if (!timing.exactDate) return false;
+    return TimingIntegrity.resolveExactDate(clause, options.meetingDate) === timing.exactDate
+      || dateWordingVariants(timing.exactDate).some(phrase => canonical(clause).includes(canonical(phrase)));
+  };
+  const stepWords = new Set(materialTokens(step).filter(word => !ACTION_VERBS.has(word)));
+  const about = clause => {
+    if (!actionPredicateSupported(step, clause)) return false;
+    const words = new Set(materialTokens(clause));
+    const shared = [...stepWords].filter(word => words.has(word)).length;
+    return stepWords.size > 0 && shared >= Math.min(2, stepWords.size)
+      && shared / stepWords.size >= 0.6;
+  };
+  return sourceInstructionClauses(source).some(clause =>
+    !/\b(?:not|never|cannot|can't|won't|instead|except|excluding|unless)\b/i.test(clause)
+      && sourceTiming(clause) && about(clause));
+}
+
+// Rewrites and both splitters use a source-to-operation proof. A date naming
+// one child cannot become the date of a wider instruction or another owner.
+function timingBoundToActionSteps(action = {}, units = [], options = {}) {
+  if (!action.timing || action.timing.kind === 'not_stated') return true;
+  const cited = new Set(action.evidenceIds || []);
+  const source = normaliseSourceUnits(units).filter(unit => cited.has(unit.id));
+  const steps = compoundActionClauses(action.action);
+  const required = steps.length ? steps : [action.action];
+  const owned = unit => {
+    if (!(action.owners || []).length) return false;
+    const lower = comparisonText(unit.text);
+    const otherFutureSubject = [...String(unit.text || '').matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:will|shall|must|is\s+going\s+to)\b/g)]
+      .some(match => !/^(?:We|They|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(match[1])
+        && !(action.owners || []).some(owner => nameParts(match[1]).every(part => nameParts(owner).includes(part))));
+    if (otherFutureSubject) return false;
+    return speakerIsOwner(unit.speaker, action.owners)
+      || (action.owners || []).some(owner => {
+        const name = comparisonText(owner).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`\\b${name}\\s+(?:will|shall|must|is\\s+to|to)\\b`).test(lower);
+      });
+  };
+  return required.every(step => source.some(unit => owned(unit) && sourceBindsTimingToStep(step, unit.text, action.timing, options)));
+}
+
+function splitExplicitMultiOwnerActions(actions = [], units = [], options = {}) {
   let split = 0;
+  const flags = [];
   const output = [];
   for (const action of Array.isArray(actions) ? actions : []) {
+    if (isReviewerAuthored(action)) { output.push(action); continue; }
     const owners = [...new Set((action?.owners || []).filter(Boolean))];
     if (owners.length < 2) { output.push(action); continue; }
     const clauses = owners.length > 1 ? compoundActionClauses(action?.action) : [];
@@ -3769,14 +3838,48 @@ function splitExplicitMultiOwnerActions(actions = [], units = []) {
       output.push(action); continue;
     }
     split += 1;
-    clauses.forEach((clause, index) => output.push({
-      ...action,
-      id: action.id ? `${action.id}-part-${index + 1}` : action.id,
-      action: `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`,
-      owners: [matches[index][0].owner]
-    }));
+    clauses.forEach((clause, index) => {
+      let child = { ...action,
+        id: action.id ? `${action.id}-part-${index + 1}` : action.id,
+        action: `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`,
+        owners: [matches[index][0].owner]
+      };
+      const inheritedTimingMismatch = action.timing?.kind && action.timing.kind !== 'not_stated'
+        && !sourceBindsTimingToStep(clause, matches[index][0].wording, action.timing, options);
+      if (inheritedTimingMismatch) {
+        child = TimingIntegrity.rejectActionTiming(child, units, {
+          meetingDate: options.meetingDate, field: 'all', reason: 'split_step_timing_not_bound'
+        });
+      }
+      if (inheritedTimingMismatch || !action.timing || action.timing.kind === 'not_stated') {
+        const ownPhrases = [...matches[index][0].wording.matchAll(new RegExp(CITED_TIMING_PHRASE.source, 'gi'))]
+          .map(match => match[0]).sort((left, right) => right.length - left.length);
+        const ownTiming = ownPhrases.map(phrase => sourceRecoveredTiming(phrase, options))
+          .find(timing => sourceBindsTimingToStep(clause, matches[index][0].wording, timing, options));
+        if (ownTiming) {
+          const boundPrior = TimingIntegrity.assessmentMatches(child, units, options.meetingDate, child.timingDecision)
+            ? child.timingDecision : {};
+          child.timing = ownTiming;
+          child.timingDecision = { ...boundPrior,
+            ...TimingIntegrity.timingAssessmentKey(child, units, options.meetingDate), status: 'verified',
+            ...(action.timingDecision && !boundPrior.version ? { parentTimingDecision: action.timingDecision } : {}),
+            sourceQuote: matches[index][0].wording, stepQuote: clause };
+        }
+        if (!inheritedTimingMismatch && !ownTiming) { output.push(child); return; }
+        const flag = normaliseFlag({ kind: 'timing',
+          message: !inheritedTimingMismatch
+            ? `The source states "${ownTiming.wording}" for "${child.action}" after the combined instruction was separated. Confirm the timing.`
+            : ownTiming
+            ? `The original timing "${action.timing.wording || action.timing.exactDate}" belongs to a different step; "${ownTiming.wording}" is stated for "${child.action}". Confirm the timing.`
+            : `The original timing "${action.timing.wording || action.timing.exactDate}" was not established for "${child.action}". Confirm this step's timing.`,
+          evidenceIds: child.evidenceIds || [] }, flags.length);
+        flags.push(flag);
+        child.reviewFlagIds = [...new Set([...(child.reviewFlagIds || []), flag.id])];
+      }
+      output.push(child);
+    });
   }
-  return { actions: output, split };
+  return { actions: output, split, flags };
 }
 
 // ---- Requester is not the owner ---------------------------------------------
@@ -5448,7 +5551,9 @@ function actionCompletenessCheckItems(actions = [], units = []) {
     if (!omitted.length) return;
     items.push({
       id: `ac${items.length + 1}`, index, action: text(action.action, 800), owners,
-      passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n')
+      timing: action.timing,
+      passage: passageUnits.map((unit) => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
+      passageUnits: passageUnits.map(unit => ({ id: unit.id, speaker: unit.speaker, text: unit.text }))
     });
   });
   return items.slice(0, 24);
@@ -5466,11 +5571,13 @@ function actionCompletenessCheckPrompt(items = []) {
   ].join('\n\n');
 }
 
-function applyActionCompletenessResults(actions = [], items = [], results = []) {
+function applyActionCompletenessResults(actions = [], items = [], results = [], options = {}) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const corrections = new Map();
   const rejected = [];
+  const flags = [];
   for (const item of items) {
+    if (isReviewerAuthored(actions[item.index])) continue;
     const row = verdicts.get(item.id);
     if (!row || row.verdict !== 'corrected') continue;
     const problem = decisionQuoteValidation(row.problemQuote, item.action);
@@ -5491,9 +5598,23 @@ function applyActionCompletenessResults(actions = [], items = [], results = []) 
   const checked = (Array.isArray(actions) ? actions : []).map((action, index) => {
     if (!corrections.has(index)) return action;
     corrected += 1;
-    return { ...action, action: corrections.get(index) };
+    let next = { ...action, action: corrections.get(index) };
+    const item = items.find(item => item.index === index);
+    const units = timingItemSourceUnits(item);
+    if (action.timing?.kind && action.timing.kind !== 'not_stated'
+      && !timingBoundToActionSteps(next, units, options)) {
+      next = TimingIntegrity.rejectActionTiming(next, units, {
+        meetingDate: options.meetingDate, field: 'all', reason: 'rewritten_action_timing_not_bound'
+      });
+      const flag = normaliseFlag({ kind: 'timing',
+        message: `The timing "${action.timing.wording || action.timing.exactDate}" belonged to the earlier instruction "${text(action.action, 200)}" and was not established for all of the expanded work. Confirm each step's timing.`,
+        evidenceIds: action.evidenceIds || [] }, flags.length);
+      flags.push(flag);
+      next.reviewFlagIds = [...new Set([...(next.reviewFlagIds || []), flag.id])];
+    }
+    return next;
   });
-  return { actions: checked, corrected, checked: items.length, rejected };
+  return { actions: checked, corrected, checked: items.length, rejected, flags };
 }
 
 const COMMITMENT_RECHECK_DISPOSITIONS = new Set(['suggestion', 'status_only', 'meeting_admin', 'unaccepted_request']);
@@ -5503,7 +5624,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     let action = options.preserveReviewerEdits === true ? text(item?.action, 1600) : cleanActionWording(item?.action);
     if (!action || (options.preserveReviewerEdits !== true && isIdeaOnlyContemplation(action))) return null;
     const suppliedIds = (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
-    const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true });
+    const resolved = resolveEvidence(action, units, item?.evidenceIds, { action: true, meetingDate: options.meetingDate });
     const checks = correctnessChecksEnabled();
     if (checks && options.enforceEvidence === false && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
       && resolved.evidenceIds.length && !uncitedClaimSupported(action, resolved, units)) {
@@ -5527,7 +5648,13 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     // Recovery fills gaps in fresh agent output only. A save (enforceEvidence
     // false) carries timings a reviewer or a timing check has already settled,
     // so an empty timing there is deliberate and must stay empty.
-    let timing = timingFrom(item, options);
+    const activeTimingDecision = TimingIntegrity.assessmentMatches({ ...item, action, owners, evidenceIds }, units,
+      options.meetingDate || item.timingDecision?.meetingDate, item.timingDecision) ? item.timingDecision : undefined;
+    const timingOptions = { ...options,
+      timingMode: options.timingMode || (options.enforceEvidence !== false ? 'derive' : 'preserve'),
+      timingDecision: activeTimingDecision
+    };
+    let timing = timingFrom(item, timingOptions);
     let timingShapeIssue = '';
     if (options.enforceEvidence !== false) {
       // Shape is checked before the transcript backfills, not after: a copied
@@ -5537,7 +5664,9 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       timing = normaliseTimingWording(timing);
       timingShapeIssue = timingPublicationIssue(timing);
       if (timingShapeIssue) timing = timingForPublication(timing);
-      timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timing, units, evidenceIds, options), units, evidenceIds, { ...options, action }), units, evidenceIds, options);
+      if (!['rejected', 'needs_rebind'].includes(activeTimingDecision?.status)) {
+        timing = resolveOfferedDateChoice(backfillAskedTiming(backfillCitedTiming(timing, units, evidenceIds, timingOptions), units, evidenceIds, { ...timingOptions, action }), units, evidenceIds, timingOptions);
+      }
       // A generated action should name the work once. Its agreed deadline or
       // target belongs in the structured timing field, where it remains
       // searchable and can be checked independently of the action wording.
@@ -5552,12 +5681,22 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     // Here only a reviewer's own entry is checked, and only flagged.
     const timingClauseNote = timingClauseChecksEnabled() && options.enforceEvidence === false
       ? timingClauseIssue(action, timing, units, evidenceIds) : null;
+    const timingAssessment = TimingIntegrity.assessActionTiming({
+      ...reviewerProvenance(item, options), id: item.id, action, owners, evidenceIds, timing,
+      ...(item.timingDecision ? { timingDecision: item.timingDecision } : {})
+    }, units, {
+      meetingDate: options.meetingDate,
+      reviewerAuthored: options.preserveReviewerEdits === true
+    });
+    timing = timingAssessment.action.timing;
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
       ...reviewerProvenance(item, options),
       action,
       owners,
       timing,
+      ...(timingAssessment.assessment ? { timingDecision: timingAssessment.assessment } : {}),
+      _timingDateIssues: timingAssessment.issues,
       _timingPublicationIssue: timingShapeIssue,
       _timingClauseNote: timingClauseNote,
       evidenceIds,
@@ -5603,6 +5742,26 @@ function normaliseExecutiveSummary(value) {
   return text(value, 3000);
 }
 
+// Last generation boundary: assess existing fields without deriving a date.
+// The durable source-bound assessment also protects proposals/final survival
+// from resurrecting an earlier rejected value.
+function finaliseActionTimings(actions = [], units = [], options = {}) {
+  const flags = [];
+  const assessments = [];
+  const checked = (Array.isArray(actions) ? actions : []).map((row) => {
+    const result = TimingIntegrity.assessActionTiming(row, units, options);
+    if (result.assessment) assessments.push(result.assessment);
+    if (!result.issues.length) return result.action;
+    const rowFlags = result.issues.map(issue => normaliseFlag({
+      kind: 'timing', message: `${issue.message} ${isReviewerAuthored(row) ? 'Confirm the reviewer-entered timing.' : issue.preserveValue ? 'The stated date was retained for review.' : 'The exact date was removed; confirm the retained source wording.'}`,
+      evidenceIds: row.evidenceIds || []
+    }, flags.length));
+    flags.push(...rowFlags);
+    return { ...result.action, reviewFlagIds: [...new Set([...(result.action.reviewFlagIds || []), ...rowFlags.map(flag => flag.id)])] };
+  });
+  return { actions: checked, flags, assessments };
+}
+
 function normaliseAgentResult(candidate = {}, units = [], stage = '', options = {}) {
   // enforceEvidence strips owners and timings the cited passages do not support.
   // That is right for agent output. It is wrong for a reviewer's own edits: the
@@ -5624,6 +5783,15 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   ];
   const unitById = new Map(evidenceContextFor(units).rows.map((unit) => [unit.id, unit]));
   for (const action of actions) {
+    for (const issue of action._timingDateIssues || []) {
+      const flag = normaliseFlag({ kind: 'timing',
+        message: `${issue.message} ${issue.preserveValue ? 'The stated date was retained for review.' : enforceEvidence ? 'The exact date was removed; confirm the retained source wording.' : 'Confirm the timing.'}`,
+        evidenceIds: action.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      action.reviewFlagIds.push(flag.id);
+    }
+    delete action._timingDateIssues;
     const evidenceText = evidenceWindowText(units, action.evidenceIds, 1);
     const unsupportedOwners = action.owners.filter((owner) => !ownerSupportedByEvidence(owner, evidenceText, units)
       && !ownerAssignedInMeeting(owner, action.action, units));
@@ -5667,71 +5835,10 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
         evidenceText.toLowerCase().includes(action.timing.wording.toLowerCase()) ||
         tokenOverlap(action.timing.wording, evidenceText) >= 0.5
       );
-      let exactDateSupported = false;
-      // "by 17th June" in a meeting held on 22 June cannot be a future
-      // deadline: the date was misheard or the month misread.
-      const statedDate = correctnessChecksEnabled() ? statedCalendarDate(action.timing.wording, options.meetingDate) : '';
-      if (statedDate && statedDate < options.meetingDate) {
-        const pastWording = action.timing.wording;
-        if (enforceEvidence) action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
-        const flag = normaliseFlag({
-          kind: 'timing',
-          message: `The date in "${pastWording}" is before the meeting (${options.meetingDate})${enforceEvidence ? ' and has been removed' : ''}; confirm the intended date.`,
-          evidenceIds: action.evidenceIds
-        }, flags.length);
-        flags.push(flag);
-        action.reviewFlagIds.push(flag.id);
-      }
-      if (action.timing.kind !== 'not_stated' && action.timing.exactDate && /^\d{4}-\d{2}-\d{2}$/.test(String(options.meetingDate || ''))
-        && action.timing.exactDate < options.meetingDate) {
-        const pastDate = action.timing.exactDate;
-        if (enforceEvidence) action.timing.exactDate = '';
-        const flag = normaliseFlag({
-          kind: 'timing',
-          message: `The exact date ${pastDate} is earlier than the meeting date and has been removed; confirm the intended timing.`,
-          evidenceIds: action.evidenceIds
-        }, flags.length);
-        flags.push(flag);
-        action.reviewFlagIds.push(flag.id);
-      }
-      // A derived date is only as good as the whole commitment. "Monday
-      // morning" resolved a week out passed the support check while the same
-      // sentence said "before the fifteenth"; that contradiction must surface
-      // to the reviewer, not be published as a confident target.
-      const breach = timingBoundBreach(action.timing, `${action.timing.wording} ${evidenceText}`, options.meetingDate);
-      if (breach) {
-        const breachedDate = action.timing.exactDate;
-        if (enforceEvidence) action.timing.exactDate = '';
-        const flag = normaliseFlag({
-          kind: 'timing',
-          message: `The exact date ${breachedDate} falls ${breach.inclusive ? 'after' : 'on or after'} the stated limit "${breach.phrase}" and has been removed; confirm the intended date.`,
-          evidenceIds: action.evidenceIds
-        }, flags.length);
-        flags.push(flag);
-        action.reviewFlagIds.push(flag.id);
-      }
-      if (action.timing.exactDate) {
-        const [year, month, day] = action.timing.exactDate.split('-');
-        const monthNames = ['', 'jan(?:uary)?', 'feb(?:ruary)?', 'mar(?:ch)?', 'apr(?:il)?', 'may', 'jun(?:e)?', 'jul(?:y)?', 'aug(?:ust)?', 'sep(?:tember)?', 'oct(?:ober)?', 'nov(?:ember)?', 'dec(?:ember)?'];
-        exactDateSupported = new RegExp(`\\b0?${Number(day)}(?:st|nd|rd|th)?\\b[\\s\\S]{0,20}\\b${monthNames[Number(month)]}\\b[\\s\\S]{0,20}\\b${year}\\b`, 'i').test(evidenceText)
-          || evidenceText.includes(action.timing.exactDate);
-        const safelyDerivedDate = wordingSupported ? relativeExactDate(action.timing.wording, options.meetingDate) : '';
-        const evidenceDate = statedCalendarDate(evidenceText, options.meetingDate);
-        exactDateSupported = exactDateSupported
-          || safelyDerivedDate === action.timing.exactDate
-          || evidenceDate === action.timing.exactDate;
-        if (!exactDateSupported) {
-          const unsupportedExactDate = action.timing.exactDate;
-          if (enforceEvidence) action.timing.exactDate = '';
-          const flag = normaliseFlag({
-            kind: 'timing',
-            message: `The exact date ${unsupportedExactDate} was not supported by the cited wording and has been removed; confirm the retained timing wording if needed.`,
-            evidenceIds: action.evidenceIds
-          }, flags.length);
-          flags.push(flag);
-          action.reviewFlagIds.push(flag.id);
-        }
-      }
+      // Exact-date validity and source-to-action binding were assessed above
+      // by the shared policy. Do not re-derive the same date as its own proof,
+      // or erase a genuine source-stated overdue date merely for being past.
+      const exactDateSupported = Boolean(action.timing.exactDate && TimingIntegrity.isValidCalendarDate(action.timing.exactDate));
       if (!wordingSupported && !exactDateSupported) {
         const unsupportedTiming = action.timing.wording || action.timing.exactDate;
         if (enforceEvidence) action.timing = { kind: 'not_stated', wording: '', exactDate: '' };
@@ -6188,6 +6295,7 @@ module.exports = {
   normaliseTimingWording,
   timingPublicationIssue,
   timingForPublication,
+  finaliseActionTimings,
   correctnessChecksEnabled,
   timingClauseIssue,
   applyTimingClauseChecks,
@@ -6233,6 +6341,8 @@ module.exports = {
   flagConflictingDiscussionRoles,
   mergeDuplicateCommitments,
   splitExplicitMultiOwnerActions,
+  timingBoundToActionSteps,
+  reconcileSiblingTimingDecisions,
   applyChainedTimingRule,
   timingAttachedToEarlierStep,
   timingReportedForDifferentActor,

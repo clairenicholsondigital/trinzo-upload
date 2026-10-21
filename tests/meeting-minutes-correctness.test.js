@@ -173,14 +173,15 @@ test('statedCalendarDate reads day and month wording relative to the meeting', (
   const { statedCalendarDate } = require('../utils/meetingMinutesAgentV2');
   assert.equal(statedCalendarDate('by 17th June', '2026-06-22'), '2026-06-17');
   assert.equal(statedCalendarDate('ideally before July 17th', '2026-06-22'), '2026-07-17');
-  assert.equal(statedCalendarDate('by 10 January', '2026-12-05'), '2027-01-10');
+  assert.equal(statedCalendarDate('by 10 January', '2026-12-05'), '2026-01-10', 'do not silently change a past month to next year');
+  assert.equal(statedCalendarDate('by 10 January next year', '2026-12-05'), '2027-01-10');
   assert.equal(statedCalendarDate('Tuesday the third of November at noon', '2026-10-16'), '2026-11-03');
   assert.equal(statedCalendarDate('Friday the sixth of November', '2026-10-16'), '2026-11-06');
   assert.equal(statedCalendarDate('by the 17th', '2026-06-22'), '');
   assert.equal(statedCalendarDate('may be done soon', '2026-06-22'), '');
 });
 
-test('a stated date before the meeting is removed from agent output and flagged', () => {
+test('an unsupported added month is removed without rolling it into another date', () => {
   const previous = process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1;
   process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
   try {
@@ -191,9 +192,9 @@ test('a stated date before the meeting is removed from agent output and flagged'
     ];
     const result = V.normaliseAgentResult({ actions: [{ id: 'a', action: 'Provide the training attestation to Stuart Smith before the audit formally starts.', owners: ['Stuart Smith'], timing: { kind: 'deadline', wording: 'by 17th June' }, evidenceIds: ['T0001', 'T0002'] }] }, units, 'actions', { meetingDate: '2026-06-22' });
     assert.equal(result.actions[0].timing.kind, 'not_stated');
-    assert.ok(result.reviewFlags.some((flag) => /before the meeting/.test(flag.message)));
+    assert.ok(result.reviewFlags.some((flag) => /not supported by source wording/.test(flag.message)));
     const later = V.normaliseAgentResult({ actions: [{ id: 'a', action: 'Provide the training attestation to Stuart Smith before the audit formally starts.', owners: ['Stuart Smith'], timing: { kind: 'deadline', wording: 'by 17th July' }, evidenceIds: ['T0001', 'T0002'] }] }, units, 'actions', { meetingDate: '2026-06-22' });
-    assert.ok(!later.reviewFlags.some((flag) => /before the meeting/.test(flag.message)));
+    assert.equal(later.actions[0].timing.kind, 'not_stated', 'July was not established by the monthless source either');
   } finally {
     if (previous === undefined) delete process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1; else process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = previous;
   }
