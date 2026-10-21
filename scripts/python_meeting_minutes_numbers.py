@@ -13,6 +13,10 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import trinzo_settings_snapshot  # noqa: E402
 
 try:
     from rapidfuzz import fuzz
@@ -5696,7 +5700,7 @@ def derive_public_meeting_objectives(
 
 
 def analyse(text: str) -> dict[str, Any]:
-    config = load_json(MINUTES_CONFIG)
+    config = trinzo_settings_snapshot.apply_people(load_json(MINUTES_CONFIG))
     cleaned_text = clean_transcript_text(text)
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
     meeting_title = normalize_inferred_title(meeting_title)

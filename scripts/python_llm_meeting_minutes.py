@@ -12,6 +12,9 @@ from pathlib import Path
 import sys
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import trinzo_settings_snapshot  # noqa: E402
+
 try:
     from .meeting_minutes_discourse import detect_discourse_patterns
     from .meeting_minutes_patterns import (
@@ -2845,7 +2848,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         "decisionDetails": decision_details,
         "internalEvidence": internal_evidence,
     }
-    glossary = load_glossary(GLOSSARY_CONFIG)
+    glossary = trinzo_settings_snapshot.glossary_or(load_glossary(GLOSSARY_CONFIG))
     return apply_glossary_to_output(template_values, glossary)
 
 
@@ -2868,7 +2871,7 @@ def build_fallback_turns(text: str, analyzer: Any) -> list[Any]:
 
 
 def analyse(text: str) -> dict[str, Any]:
-    config = load_json(MINUTES_CONFIG)
+    config = trinzo_settings_snapshot.apply_people(load_json(MINUTES_CONFIG))
     analyzer = load_analyzer_module()
     turns = parse_speaker_turns(text)
     if not turns:
