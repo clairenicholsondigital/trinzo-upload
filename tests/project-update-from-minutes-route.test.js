@@ -82,16 +82,31 @@ test('rejects invalid identities, stale revisions, unavailable projects and othe
 test('blocks in-progress minutes and pending generated changes, but does not require an arbitrary completion flag', async () => {
   reset();
   for (const status of ['queued', 'running', 'retrying']) {
-    savedDraft.generation = { status, stage: 'actions' };
+    savedDraft.generation = { status, stage: 'actions', bootId: router.stagedEvaluation.MEETING_AGENT_BOOT_ID, startedAt: new Date().toISOString() };
     assert.equal((await request()).statusCode, 409);
   }
   delete savedDraft.generation;
-  savedDraft.pendingProposal = { changes: [{ id: 'pending' }] };
+  savedDraft.pendingProposal = { stage: 'actions', changes: [{ id: 'pending', type: 'add', after: savedDraft.actions[0] }] };
   assert.equal((await request()).statusCode, 409);
   savedDraft.pendingProposal = null;
   savedDraft.status = 'draft';
   assert.equal((await request()).statusCode, 202);
   assert.equal(queued.length, 1);
+});
+
+test('the handoff uses the editor effective generation state for completed or interrupted historical runs', async () => {
+  reset();
+  const now = Date.now();
+  savedDraft.generation = { status: 'running', stage: 'actions', bootId: router.stagedEvaluation.MEETING_AGENT_BOOT_ID,
+    startedAt: new Date(now - 1000).toISOString() };
+  savedDraft.qualityState.actions = { completedAt: new Date(now).toISOString() };
+  assert.equal((await request()).statusCode, 202, 'persisted completion supersedes its leftover running marker');
+  savedDraft.generation.startedAt = new Date(now + 1000).toISOString();
+  assert.equal((await request()).statusCode, 409, 'a newer run is genuinely active');
+  savedDraft.qualityState.actions.completedAt = 'invalid';
+  assert.equal((await request()).statusCode, 409, 'an invalid completion date cannot hide an active run');
+  savedDraft.generation.bootId = 'a-prior-server-boot';
+  assert.equal((await request()).statusCode, 202, 'interrupted work is represented the same way as in the editor');
 });
 
 test('action-only wording, owner, timing and removals participate in source identity', async () => {

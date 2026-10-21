@@ -7816,8 +7816,9 @@ router.post('/project-update-test/from-minutes', requireAuth, async (req, res) =
     if (revision !== Number(draft.revision)) {
       return res.status(409).json({ ok: false, success: false, error: 'These minutes changed after saving. Reload the saved minutes before creating the project update.' });
     }
-    if (['queued', 'running', 'retrying'].includes(draft.generation?.status)
-      || (draft.pendingProposal?.changes || []).length) {
+    const visibleDraft = publicMeetingAgentDraft(draft);
+    if (['queued', 'running', 'retrying'].includes(visibleDraft.generation?.status)
+      || (visibleDraft.pendingProposal?.changes || []).length) {
       return res.status(409).json({ ok: false, success: false, error: 'Wait for the minutes to finish updating before creating the project update.' });
     }
     const project = await getProjectManagementDetail(projectId);
