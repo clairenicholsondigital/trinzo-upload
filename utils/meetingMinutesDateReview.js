@@ -72,7 +72,7 @@ function reviewDiscussionCalendarDates(discussion = [], sourceUnits = [], option
       const visibleDates = dateMentions(record?.text, issue.date);
       if (!visibleDates.some(visible => visible.date && visible.date.slice(5) === issue.date.slice(5)
         && (!visible.explicitYear || visible.date === issue.date))) continue;
-      const key = [issue.weekday, issue.date].join('|');
+      const key = [issue.evidenceId, issue.weekday, issue.date].join('|');
       let flag = flagsByKey.get(key);
       if (!flag) {
         const id = 'flag-source-calendar-' + crypto.createHash('sha1').update(key).digest('hex').slice(0, 14);

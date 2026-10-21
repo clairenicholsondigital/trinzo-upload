@@ -88,12 +88,27 @@ test('neighboring dates are not paired with each other and a parenthetical weekd
   assert.match(result.flags[0].message, /falls on Wednesday/);
 });
 
-test('repeated explicit and unstated-year references to one calendar conflict share one stable warning', () => {
-  const input = discussion('The museum checks are on 17 June 2026.', { evidenceIds: ['T0001', 'T0002'] });
-  const units = [...source('The museum checks are Monday 17 June.'), { id: 'T0002', text: 'That is Monday 17 June 2026.', classification: 'keep' }];
+test('repeated explicit and unstated-year references in the same source share one stable warning', () => {
+  const input = discussion('The museum checks are on 17 June 2026.');
+  const units = source('The museum checks are Monday 17 June. That is Monday 17 June 2026.');
   const result = reviewDiscussionCalendarDates(input, units, { meetingDate: '2026-05-10' });
   assert.equal(result.flags.length, 1);
-  assert.deepEqual(result.flags[0].evidenceIds, ['T0001', 'T0002']);
+  assert.deepEqual(result.flags[0].evidenceIds, ['T0001']);
   assert.doesNotMatch(result.flags[0].message, /without a year/);
   assert.deepEqual(result.discussion[0].points[0].reviewFlagIds, [result.flags[0].id]);
+});
+
+test('independent events in different source turns retain separate calendar-review decisions', () => {
+  const input = [
+    ...discussion('The fire inspection is on 17 June 2026.'),
+    { id: 'grant-topic', topic: 'Grant deadline', points: [{ id: 'grant-date', text: 'The grant deadline is on 17 June 2026.', evidenceIds: ['T0002'], reviewFlagIds: [] }], decisions: [], openQuestions: [] }
+  ];
+  const units = [...source('The fire inspection is Monday 17 June 2026.'),
+    { id: 'T0002', text: 'The grant deadline is Monday 17 June 2026.', classification: 'keep' }];
+  const result = reviewDiscussionCalendarDates(input, units);
+  assert.equal(result.flags.length, 2);
+  assert.notEqual(result.flags[0].id, result.flags[1].id);
+  assert.deepEqual(result.flags.map(flag => flag.evidenceIds), [['T0001'], ['T0002']]);
+  assert.notDeepEqual(result.discussion[0].points[0].reviewFlagIds, result.discussion[1].points[0].reviewFlagIds,
+    'confirming one source date must not also confirm an independently sourced event');
 });
