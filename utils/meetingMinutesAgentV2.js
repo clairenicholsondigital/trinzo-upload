@@ -5646,6 +5646,7 @@ function discussionFidelityCheckItems(discussion = [], units = [], options = {})
         items.push({
           id: `df${items.length + 1}`, topicIndex, kind, rowIndex, path, row,
           meetingDate: options.meetingDate || '',
+          evidenceIds: [...new Set(record.evidenceIds || [])],
           contextCoverage: packet.coverage,
           passage: packet.units.map(unit => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
           passageUnits: packet.units.map(unit => ({ id: unit.id, speaker: unit.speaker, text: unit.text }))
@@ -5664,6 +5665,7 @@ function discussionFidelityCheckItems(discussion = [], units = [], options = {})
 }
 
 function discussionFidelityCheckPrompt(items = []) {
+  const { temporalEvidencePromptInstructions } = require('./meetingMinutesTemporalReview');
   return [
     'DISCUSSION_CRITIC_EVIDENCE_FIDELITY',
     'Each item contains a proposed meeting-minutes sentence and its nearby transcript passage. The passage is the only authority. Check fidelity to what participants said; do not supply outside-domain knowledge.',
@@ -5679,10 +5681,14 @@ function discussionFidelityCheckPrompt(items = []) {
     'Choose "supported", "corrected", or "uncertain". Use "corrected" only when one accurate, complete, client-ready replacement sentence can be written from the passage. Use "uncertain" when the row appears wrong but the passage does not support a safe replacement.',
     'For "corrected", provide problemQuote copied exactly from the proposed row, evidenceQuote copied exactly from the transcript passage, and correctedText. Preserve qualifications and sequence; never merge different people or workstreams. Set issue to "temporal_qualification" only when the evidenceQuote explicitly qualifies or replaces an earlier timing for the same work.',
     'For "supported" rows containing timing, dates, durations, recurrence or dependencies, also provide evidenceQuote: a contiguous source quote of at most 25 words that supports this same work and its temporal meaning. This applies equally to supporting details and open questions. Do not approve a target merely because a neighbouring call has that timetable.',
-    'For "uncertain", provide problemQuote, and evidenceQuote where the passage has one; an added specific has nothing to quote, so leave evidenceQuote empty. Quotes must be contiguous and at most 25 words. If unsure whether meaning changed, choose "supported".',
+    temporalEvidencePromptInstructions(),
+    'For "uncertain", provide problemQuote, and evidenceQuote where the passage has one; an added specific has nothing to quote, so leave evidenceQuote empty. Quotes must be contiguous and at most 25 words. For a temporal row, choose "uncertain" if its work, timing, qualifications or source alignment cannot be established; do not label an unresolved temporal claim supported. For a non-temporal row, if unsure whether meaning changed, choose "supported".',
     'Set issue to "added_detail", "small_talk" or "temporal_qualification" only for those cases and leave it empty otherwise.',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","issue":"","problemQuote":"","evidenceQuote":"","correctedText":"","reason":""}]}',
-    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage })))}`
+    `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, row: item.row, passage: item.passage,
+      evidenceIds: item.evidenceIds || [], sourceRecords: (item.passageUnits || []).map(unit => ({
+        id: unit.id, type: 'discussion', speaker: unit.speaker, text: unit.text
+      })) })))}`
   ].join('\n\n');
 }
 
@@ -5821,6 +5827,7 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     }
   }
   const accepted = [];
+  const temporalBindings = new Map();
   for (const item of mappedItems) {
     const row = indexed.byId.get(item.id);
     if (!row) continue;
@@ -5828,8 +5835,46 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
       indexed.states.set(item.id, { id: item.id, status: 'malformed', reason: 'malformed_fidelity_result' });
       continue;
     }
+    const Temporal = require('./meetingMinutesTemporalReview');
+    const hasTemporalEvidence = Object.prototype.hasOwnProperty.call(row, 'temporalEvidence');
+    if (hasTemporalEvidence && ['supported', 'corrected'].includes(row.verdict)) {
+      const target = row.verdict === 'corrected' ? text(row.correctedText, 1000) : item.row;
+      const source = sourceBySynthetic.get(item.topicIndex);
+      const ownAnchors = new Set(source?.record.evidenceIds || []);
+      const records = (item.passageUnits || []).filter(unit => ownAnchors.has(unit.id))
+        .map(unit => ({ id: unit.id, type: 'discussion', text: unit.text, speaker: unit.speaker }));
+      const shortQuote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
+      const mappedSource = records.find(record => record.id === row.temporalEvidence?.sourceId);
+      if (!shortQuote.valid || !mappedSource
+        || !decisionQuoteValidation(row.evidenceQuote, mappedSource.text, 25).valid) {
+        indexed.states.set(item.id, { id: item.id, status: 'rejected', reason: 'temporal_evidence_quote_not_in_own_source' });
+        continue;
+      }
+      const proof = Temporal.validateTemporalEvidence(target, records, row.temporalEvidence,
+        { meetingDate: item.meetingDate, contextRecords: item.passageUnits || [] });
+      if (!proof.supported) {
+        // These failures occur after source identity and literal witness spans
+        // have been checked. Preserve the established opportunity for an
+        // independently source-bound child to remain visible WITH its timing
+        // warning. Its existing strict retention checks still run below; this
+        // does not turn an unresolved model judgment into verified timing.
+        const temporalBindingUnresolved = ['temporal_source_qualification_not_retained',
+          'temporal_phase_work_not_proved', 'temporal_phase_meaning_not_retained'].includes(proof.reason)
+          && row.temporalEvidence.qualificationQuotes.every(quote => {
+            const at = mappedSource.text.indexOf(quote);
+            return at >= 0 && mappedSource.text.indexOf(quote, at + 1) < 0;
+          });
+        indexed.states.set(item.id, { id: item.id, status: 'rejected', reason: proof.reason || 'temporal_source_binding_not_proved',
+          ...(temporalBindingUnresolved ? { temporalBindingUnresolved: true } : {}) });
+        continue;
+      }
+      temporalBindings.set(item.id, proof.binding);
+      if (row.verdict === 'supported') {
+        indexed.states.set(item.id, { id: item.id, status: 'supported', reason: '', temporalBinding: proof.binding });
+        continue;
+      }
+    }
     if (row.verdict === 'supported') {
-      const Temporal = require('./meetingMinutesTemporalReview');
       if (Temporal.temporalClaim(item.row)) {
         const quote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
         const carrying = quote.valid ? (item.passageUnits || []).filter(unit => quoteText(unit.text).includes(quoteText(row.evidenceQuote))) : [];
@@ -5844,7 +5889,8 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
   const applied = applySourceDiscussionFidelityResults(synthetic, mappedItems, accepted);
   for (const rejected of applied.rejected) indexed.states.set(rejected.id, { ...rejected, status: 'rejected' });
   for (const row of accepted) if (indexed.states.get(row.id)?.status === 'pending') {
-    indexed.states.set(row.id, { id: row.id, status: row.verdict === 'corrected' ? 'corrected' : 'uncertain', reason: text(row.reason, 300) });
+    indexed.states.set(row.id, { id: row.id, status: row.verdict === 'corrected' ? 'corrected' : 'uncertain', reason: text(row.reason, 300),
+      ...(temporalBindings.has(row.id) ? { temporalBinding: temporalBindings.get(row.id) } : {}) });
   }
   const changes = new Map(), flags = [...applied.flags];
   for (const [syntheticIndex, source] of sourceBySynthetic) {
@@ -5866,7 +5912,7 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     const source = sourceByPath.get(JSON.stringify(path));
     if (!source) return 'child_not_independently_reviewed';
     const state = indexed.states.get(source.item.id), verdict = indexed.byId.get(source.item.id);
-    const timingReview = state?.status === 'rejected' && state.reason === 'temporal_source_binding_not_proved'
+    const timingReview = state?.status === 'rejected' && (state.reason === 'temporal_source_binding_not_proved' || state.temporalBindingUnresolved === true)
       && verdict?.verdict === 'supported';
     if (!['supported', 'corrected'].includes(state?.status) && !timingReview) return state?.reason || 'child_fidelity_unresolved';
     if (record._unsupportedEvidenceIds?.length || record._weakEvidenceIds?.length) return 'child_evidence_diagnostics';
@@ -5882,6 +5928,21 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     if (editorial.isRawTranscriptDiscussionPoint(value) || !editorial.finaliseDiscussionPointForMinutes(value)
       || /^(?:it|this|that|these|those|they|he|she|his|her|their|its|which|who|whose)\b|^the\s+(?:former|latter|same|above|following|other)\b/i.test(value)
       || /\b(?:with|for|after|before|once|until|without|on|to|of|about)\s+(?:it|this|that|them|those|these)\s*[.!?]?$/i.test(value)) return 'child_depends_on_parent_context';
+    // A source-bound temporal paraphrase has already passed independent work,
+    // phase and qualification checks. Revalidate its current wording and own
+    // citations before allowing it to stand apart from a withheld parent.
+    if (state.temporalBinding && ['supported', 'corrected'].includes(state.status)) {
+      if (/\b(?:after|before|once|when|until|following|pending|subject to|dependent on)\s+(?:it|this|that|these|those|they|them)\b/i.test(value)) {
+        return 'child_depends_on_parent_context';
+      }
+      const records = passageUnits.filter(unit => anchors.has(unit.id))
+        .map(unit => ({ id: unit.id, type: 'discussion', text: unit.text, speaker: unit.speaker }));
+      const proof = require('./meetingMinutesTemporalReview').validateTemporalEvidence(value, records,
+        verdict?.temporalEvidence, { meetingDate: source.item.meetingDate, contextRecords: passageUnits });
+      const quantityIssue = quantifiedClaimGroundingIssue(record, carrying);
+      if (proof.supported && (!quantityIssue || quantityIssue.unresolved)) return '';
+      return proof.reason || 'child_quantity_not_bound';
+    }
     if (evidenceSupportScore(value, quote) < 0.42 || polarity(value) !== polarity(quote)) return 'child_quote_support_too_low';
     const canonical = input => convertSpokenNumbers(String(input).replace(/([a-z])([A-Z])/g, '$1 $2')).text
       .toLowerCase().replace(/\b(\d+)(?:st|nd|rd|th)\b/g, '$1').replace(/[-–—]/g, ' ');
@@ -5908,7 +5969,8 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
         const sourceWords = wording(unit.text), quoteAt = sourceWords.indexOf(wording(quote));
         if (quoteAt < 0) return false;
         const before = sourceWords.slice(0, quoteAt).trim();
-        return !before || /\b(?:and|but)(?:\s+then)?(?:\s+(?:obviously|also|so|well|just))*$/.test(before);
+        return !before || /^(?:(?:so|then|obviously|also|well|just)\s*){1,6}$/.test(before)
+          || /\b(?:and|but)(?:\s+then)?(?:\s+(?:obviously|also|so|well|just))*$/.test(before);
       });
       if (!mainClause) return 'child_quote_not_independent_source_clause';
       if (/\b(?:proposal|proposed|suggestion|suggested|rejected|declined|disputed|incorrect|false|reported|reportedly|claim|claimed|says|said|asked|whether)\b/.test(fullSource)) return 'child_source_assertion_unresolved';
@@ -5927,7 +5989,8 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
       const subject = quantifiedClaimSubject(value).filter(word => !['and', 'or'].includes(word));
       const quoteWords = (quoted.match(/[\p{L}\p{N}]+/gu) || []).filter((word, index) => index || !['the', 'a', 'an'].includes(word));
       const stem = word => word.length > 4 && word.endsWith('s') ? word.slice(0, -1) : word;
-      const quoteRoot = contentTokens(quoted.replace(/^(?:the|a|an)\s+/, '')).map(stem);
+      const quoteRoot = contentTokens(quoted.replace(/^(?:(?:so|then|obviously|also|well|just)\s+){1,6}/, '')
+        .replace(/^(?:the|a|an)\s+/, '')).map(stem);
       const subjectBound = subject.length && subject.every((word, index) => word === quoteRoot[index]);
       const presenceBound = quantifiedClaimSignatures(value).some(signature => locativePresenceDurationBound(value, quote, signature));
       const grammar = new Set(['the', 'a', 'an', 'and', 'or', 'is', 'are', 'was', 'were', 'will', 'be', 'to', 'of', 'on', 'in', 'at', 'for', 'from', 'between', 'through']);
