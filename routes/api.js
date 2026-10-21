@@ -13752,6 +13752,54 @@ function refereeDiscussionTargetId(disposition = {}) {
     || disposition.primaryId || disposition.coreId, 120);
 }
 
+function exactDiscussionTwinEvidence(candidate = {}, candidates = [], sourceUnits = [], options = {}, rejectedIds = new Set()) {
+  const hasEvidence = (row) => (Array.isArray(row?.evidenceIds) && row.evidenceIds.length)
+    || (Array.isArray(row?.record?.evidenceIds) && row.record.evidenceIds.length);
+  const rejected = (row) => row?.reviewerAuthored === true || row?.record?.reviewerAuthored === true
+    || rejectedIds.has(String(row?.candidateId || ''))
+    || ['reject', 'rejected'].includes(row?.dispositionHint)
+    || row?.record?.discoveryDisposition === 'reject'
+    || [row, row?.record].some(value => value?._unsupportedEvidenceIds?.length || value?._weakEvidenceIds?.length);
+  if (!['discussion_point', 'decision', 'open_question'].includes(candidate.recordType)
+    || typeof candidate.text !== 'string' || !candidate.text || hasEvidence(candidate) || rejected(candidate)
+    || (candidate.record?.text && candidate.record.text !== candidate.text)) return [];
+  // Navigation, presentation and provenance may differ between discovery
+  // passes. Every other field, including any actor, timing, qualification or
+  // explicit transcript-version metadata, must describe the identical claim.
+  const navigation = new Set(['candidateId', 'sourcePass', 'recordType', 'topic', 'text', 'evidenceIds', 'record',
+    'priority', 'sequence', 'context', 'focusText', 'focusEvidenceId', 'dispositionHint', 'kindHints', 'clusterMembers']);
+  const provenance = new Set(['id', 'text', 'evidenceIds', 'reviewFlagIds', 'supportingDetails', 'primaryEvidenceIds', 'discoveryDisposition']);
+  const stable = (value) => Array.isArray(value) ? value.map(stable)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+  const fields = (value, ignored) => Object.fromEntries(Object.entries(value || {}).filter(([key]) => !ignored.has(key)));
+  const claimKey = (row) => JSON.stringify(stable([
+    row.recordType, row.text, fields(row, navigation), fields(row.record, provenance)
+  ]));
+  const key = claimKey(candidate);
+  const twins = (Array.isArray(candidates) ? candidates : []).filter(twin => twin && twin !== candidate
+    && twin.candidateId !== candidate.candidateId && ['primary', 'recovery'].includes(twin.sourcePass)
+    && !rejected(twin) && twin.text === candidate.text
+    && (!twin.record?.text || twin.record.text === twin.text) && claimKey(twin) === key);
+  const requested = (row) => [...new Set((Array.isArray(row.evidenceIds) ? row.evidenceIds : row.record?.evidenceIds || [])
+    .filter(id => typeof id === 'string' && id))];
+  // This is an empty-slot repair, not overflow handling. Do not reorder or
+  // evict existing citations, or truncate a ninth source to make a union fit.
+  const union = [...new Set(twins.flatMap(requested))];
+  if (!union.length || union.length > 8) return [];
+  const validated = new Set();
+  for (const twin of twins) {
+    const supplied = requested(twin);
+    if (!supplied.length) continue;
+    const resolved = resolveEvidence(candidate.text, sourceUnits, supplied, options);
+    // Reuse only surviving supplied evidence. A remap to newly found sources
+    // or an invalid/weak donor is not proof that its original links were valid.
+    if (resolved.invalidIds.length || resolved.weakIds.length || !resolved.evidenceIds.length
+      || resolved.evidenceIds.some(id => !supplied.includes(id))) continue;
+    resolved.evidenceIds.forEach(id => validated.add(id));
+  }
+  return [...validated].sort();
+}
+
 function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [], candidates = [], sourceUnits = [], options = {}) {
   const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
     ...topic,
@@ -13776,6 +13824,8 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
     groups.get(targetId).push({ disposition, kind, candidate });
   }
   const reconstructedTargetIds = [];
+  const rejectedIds = new Set((Array.isArray(dispositions) ? dispositions : [])
+    .filter(item => (item?.disposition || item?.classification) === 'reject').map(item => String(item.candidateId || '')));
   const sourceRank = { primary: 5, recovery: 4, staged: 3, deterministic: 2, unknown: 1 };
   const typeRank = { decision: 3, open_question: 2, discussion_point: 1 };
   for (const [targetId, group] of groups) {
@@ -13793,6 +13843,9 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
       ...(item.candidate.evidenceIds || item.candidate.record?.evidenceIds || []),
       ...(Array.isArray(item.disposition.evidenceIds) ? item.disposition.evidenceIds : [])
     ]))].slice(0, 12);
+    if (!evidenceIds.length) evidenceIds.push(...exactDiscussionTwinEvidence(
+      selected.candidate, candidates, sourceUnits, options, rejectedIds
+    ));
     const record = {
       ...(selected.candidate.record || {}), id: targetId,
       text: selected.candidate.text, evidenceIds, supportingDetails: group
