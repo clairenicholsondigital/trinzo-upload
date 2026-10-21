@@ -2,7 +2,11 @@
 
 const crypto = require('crypto');
 const TimingIntegrity = require('./meetingMinutesTiming');
-const { normaliseFixedPersonAliases } = require('./entityNormalization');
+const {
+  ALWAYS_INTERNAL_PEOPLE,
+  alwaysInternalAttendeeName,
+  normaliseFixedPersonAliases
+} = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
 const { convertSpokenNumbers } = require('./spokenNumbers');
 const { alignEllipticalDateRangesWithEvidence } = require('./spokenForms');
@@ -65,7 +69,8 @@ const COVERAGE_FLAG_MESSAGE = 'Check whether this important transcript detail sh
 const MATERIAL_UNCERTAINTY_PATTERN = /\b(?:ambiguous|ambiguity|unclear wording|conflict(?:ing)?|inconsisten|inaudible|cannot (?:determine|identify|verify)|could not (?:determine|identify|verify)|uncertain (?:wording|reference|identity|value)|multiple (?:possible|plausible)|not (?:clear|clarified) (?:which|whether|who|what))\b/i;
 const KNOWN_INTERNAL_ATTENDEE_KEYS = new Set([
   'colm o’rourke', 'jacqui fox', 'david didsbury', 'conor flynn', 'claire nicholson',
-  'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally'
+  'mark kelleher', 'john-paul hughes', 'jenny gough', 'stuart smith', 'orla skally',
+  ...ALWAYS_INTERNAL_PEOPLE.map((person) => person.name)
 ].map((name) => name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`]/g, "'").toLowerCase()));
 const MDSAP_SPOKEN_FORM = /\b(?:medsap|meds[\s-]*app)\b/i;
 const HALF_HOUR_SPOKEN_FORM = /\bhalf(?:[\s-]+past)?[\s-]+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\b/i;
@@ -118,8 +123,10 @@ function stableId(prefix, value, index = 0) {
 const DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
 
 function sanitiseDetails(candidate = {}) {
+  // Spelling variants of the always-internal people are shown under their proper name.
   const names = (value) => [...new Set((Array.isArray(value) ? value : [])
-    .map((name) => text(name, 180)).filter(Boolean))].slice(0, 100);
+    .map((name) => text(name, 180)).filter(Boolean)
+    .map((name) => alwaysInternalAttendeeName(name) || name))].slice(0, 100);
   const attendeeKey = (name) => text(name, 180).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[’‘`]/g, "'").toLowerCase();
   const suppliedAll = names(candidate.allAttendees || candidate.participants);
@@ -144,6 +151,10 @@ function sanitiseDetails(candidate = {}) {
     else if (!clientAttendees.length) internalAttendees.push(...unassigned);
     else clientAttendees.push(...unassigned);
   }
+  // Some people are always internal, whichever list the transcript, a model or an
+  // earlier save put them in.
+  const alwaysInternal = clientAttendees.filter((name) => alwaysInternalAttendeeName(name));
+  if (alwaysInternal.length) internalAttendees = names([...internalAttendees, ...alwaysInternal]);
   const internalKeys = new Set(internalAttendees.map(attendeeKey));
   clientAttendees = clientAttendees.filter((name) => !internalKeys.has(attendeeKey(name)));
   const allAttendees = names([...suppliedAll, ...internalAttendees, ...clientAttendees]);

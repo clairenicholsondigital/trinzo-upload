@@ -67,7 +67,12 @@ const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, c
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
-const { normaliseAttendeeReferences, normalisePublishedParticipantReference } = require('../utils/entityNormalization');
+const {
+  ALWAYS_INTERNAL_PEOPLE,
+  alwaysInternalAttendeeName,
+  normaliseAttendeeReferences,
+  normalisePublishedParticipantReference
+} = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const {
   organiseDiscussionForReview,
@@ -1204,7 +1209,9 @@ const STAGED_KNOWN_INTERNAL_ATTENDEES = [
   'John-Paul Hughes',
   'Jenny Gough',
   'Stuart Smith',
-  'Orla Skally'
+  'Orla Skally',
+  // Always internal, never client: see ALWAYS_INTERNAL_PEOPLE.
+  ...ALWAYS_INTERNAL_PEOPLE.map((person) => person.name)
 ];
 
 const STAGED_KNOWN_CLIENT_ATTENDEES = [
@@ -1258,6 +1265,10 @@ function normaliseStagedKnownAttendeeAliasesInText(value) {
 function canonicalKnownStagedPersonName(value) {
   const cleaned = cleanStagedGeneratedLine(canonicalStagedAttendeeAlias(value || ''));
   if (!cleaned) return '';
+  // Misspellings and "Surname, First" forms of the always-internal people resolve to
+  // their proper name, so they land in the internal bucket rather than unresolved.
+  const alwaysInternal = alwaysInternalAttendeeName(cleaned);
+  if (alwaysInternal) return alwaysInternal;
   const exact = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(cleaned));
   if (exact?.name) return exact.name;
   if (/^[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+$/.test(cleaned)) {
