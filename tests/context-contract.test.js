@@ -163,9 +163,13 @@ test('dashboard keeps only active tool infrastructure visible', () => {
   assert.ok(!apiSource.includes("router.post('/meeting-minutes-numbers'"));
   assert.ok(!apiSource.includes("router.post('/meeting-minutes-comparison'"));
   assert.ok(!apiSource.includes("router.post('/meeting-minutes-minilm-only'"));
-  assert.ok(dashboardPageSource.includes('Meeting transcript to minutes'));
-  assert.ok(dashboardPageSource.includes('Project Updates'));
-  assert.ok(dashboardPageSource.includes('Open Project Updates'));
+  const tiles = [...dashboardPageSource.matchAll(/<a class="tile" href="([^"]+)">([^<]+)<\/a>/g)]
+    .map((match) => ({ href: match[1], label: match[2] }));
+  assert.deepEqual(tiles, [
+    { href: '/meeting-minutes-agent', label: 'Process meeting transcript' },
+    { href: '/project-update-test?stage=process&amp;projectId=19', label: 'View AI team project' },
+    { href: '/jobs', label: 'View processed meeting minutes' }
+  ]);
   assert.ok(!dashboardPageSource.includes('/project-update-test?stage=reports'));
   assert.ok(!dashboardPageSource.includes('/project-update-test?stage=insights'));
   assert.ok(!dashboardPageSource.includes('Older labs and prototypes'));
