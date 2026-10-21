@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const TimingIntegrity = require('./meetingMinutesTiming');
+const { normaliseSystemTimingIssue, actionTimingIssueFlag } = require('./meetingMinutesTimingFlags');
 const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutesReviewAccounting');
 const { normaliseFixedPersonAliases } = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
@@ -727,13 +728,16 @@ function normaliseFlag(flag = {}, index = 0) {
   const aliasedKind = FLAG_KIND_ALIASES[suppliedKind] || suppliedKind;
   const kind = FLAG_KINDS.has(aliasedKind) ? aliasedKind : 'uncertain_fact';
   const message = text(flag.message || flag.text || 'Review this item against the transcript.', 500);
+  const systemTimingIssue = normaliseSystemTimingIssue(flag.systemTimingIssue);
   return rememberFlag({
-    id: text(flag.id, 80) || stableId('flag', `${kind}|${message}`, index),
+    id: text(flag.id, 80) || (systemTimingIssue ? stableId('flag-timing', JSON.stringify(systemTimingIssue), 0) : stableId('flag', `${kind}|${message}`, index)),
     kind,
     message,
     evidenceIds: [...new Set((Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean))].slice(0, 8),
     status: ['open', 'confirmed', 'corrected', 'dismissed'].includes(flag.status) ? flag.status : 'open',
     correctionNote: text(flag.correctionNote, 500),
+    ...(isReviewerAuthored(flag) ? { reviewerAuthored: true } : {}),
+    ...(systemTimingIssue ? { systemTimingIssue } : {}),
     ...(['executiveSummary', 'meetingObjectives', 'timedStepCoverage'].includes(flag.temporalField)
       ? { temporalField: flag.temporalField } : {})
   });
@@ -3525,13 +3529,10 @@ function applySourceTimingCheckResults(actions = [], items = [], results = [], o
         : row.verdict === 'past_event'
         ? `it refers to something that has already happened ("${text(row.timingQuote, 160)}")`
         : `the transcript does not say this ("${text(row.timingQuote, 160)}")`;
-    const flag = normaliseFlag({
-      kind: 'timing',
-      message: usable
-        ? `Timing changed from "${wording}" to "${replacement}": ${said}. Confirm the timing.`
-        : `Timing "${wording}" removed: ${said}. Confirm whether this action has its own timing.`,
-      evidenceIds: action.evidenceIds
-    }, flags.length);
+    const message = usable
+      ? `Timing changed from "${wording}" to "${replacement}": ${said}. Confirm the timing.`
+      : `Timing "${wording}" removed: ${said}. Confirm whether this action has its own timing.`;
+    const flag = normaliseFlag(actionTimingIssueFlag({ code: usable ? 'timing_value_changed' : 'timing_value_removed' }, action, message), flags.length);
     flags.push(flag);
     return { ...timingDecisionAfterChange({ ...action, action: actionText,
       evidenceIds: [...new Set([...(action.evidenceIds || []), ...replacementSourceIds])].slice(0, 12) }, timing, item, options),
@@ -3598,8 +3599,12 @@ function applyTimingCheckResults(actions = [], items = [], results = [], options
       next = TimingIntegrity.rejectActionTiming(next, sourceUnits, { meetingDate: options.meetingDate || item.meetingDate,
         field: 'all', reason: binding.reason || 'unsupported_timing_binding' });
     }
-    const flag = normaliseFlag({ kind: 'timing',
-      message: `Cannot verify the timing for "${text(action.action, 200)}": ${text(state.reason, 180).replace(/_/g, ' ')}. The work is retained; confirm its timing against the source.`,
+    const removed = binding?.status === 'unsupported' && action.timing?.wording && !next.timing?.wording
+      && (next.timingDecision?.rejectedWordings || []).includes(action.timing.wording);
+    const message = removed
+      ? `Timing "${text(action.timing.wording, 220)}" was removed because its source binding does not support this work and owner. The work is retained; confirm its own timing against the source.`
+      : `Cannot verify the timing for "${text(action.action, 200)}": ${text(state.reason, 180).replace(/_/g, ' ')}. The work is retained; confirm its timing against the source.`;
+    const flag = normaliseFlag({ ...actionTimingIssueFlag({ code: removed ? 'timing_value_removed' : 'timing_check_unresolved' }, action, message),
       evidenceIds: [...new Set([...(action.evidenceIds || []), ...(binding?.sourceEvidenceIds || [])])] }, flags.length);
     flags.push(flag);
     next = { ...next, reviewFlagIds: [...new Set([...(next.reviewFlagIds || []), flag.id])],
@@ -5950,11 +5955,53 @@ function locativePresenceDurationBound(value, clause, signature) {
     .test(canonical(clause));
 }
 
+function quantifiedClaimClauses(value = '') {
+  return String(value || '').split(/(?<=[.!?;])\s+|,\s+(?=(?:and|but|while|whereas)\b)|\s+(?:and|but|while|whereas)\s+(?=(?:[\p{L}'’-]+\s+){1,6}(?:is|are|was|were|has|have|had|will|would|can|could|should|must|remains?|became|becomes?)\b)/iu);
+}
+
+function unresolvedLocativeDuration(claim, clause, signature) {
+  const auxiliary = String(claim).match(CLAIM_AUXILIARY);
+  if (!auxiliary || auxiliary.index == null) return false;
+  const subject = quantifiedSubjectText(claim.slice(0, auxiliary.index)).trim();
+  // A phase can name an otherwise anonymous visit/stay as an audit or another
+  // work type. The location and duration can be proved without claiming that
+  // this extra work identity is proved. Retain it for review, never certify it.
+  const parts = subject.match(/^(?:the\s+)?((?:on|off|in|at)\s+(?:(?:the|a|an)\s+)?[\p{L}][\p{L}'’-]*)\s+([\p{L}][\p{L}'’-]*)$/iu);
+  if (!parts) return false;
+  const unsafeStatus = /\b(?:not|never|cannot|can't|won't|no longer|was|were|had|spent|previously|yesterday|last|may|might|could|maybe|possibly|probably|presumably|perhaps|hopefully|ideally|unless|if|proposed|suggested|considering)\b/i;
+  if (unsafeStatus.test(claim) || unsafeStatus.test(clause)) return false;
+  const canonical = input => quantifiedSubjectText(input).toLowerCase()
+    .replace(/\b(?:the|a|an)\b/g, ' ')
+    .replace(/\b[a-z]+\b/g, word => SIMPLE_NUMBER_WORDS.has(word) ? String(SIMPLE_NUMBER_WORDS.get(word)) : word)
+    .replace(/\s+/g, ' ').trim();
+  const escape = input => input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const source = canonical(clause), place = escape(canonical(parts[1])), quantity = escape(canonical(signature));
+  const bound = source.match(new RegExp(`\\b(?:${quantity}\\s+(?:of\\s+)?${place}|${place}\\s+(?:for|over|during)\\s+${quantity})\\b`, 'iu'));
+  if (!bound) return false;
+  // Do not replace a named actor or another named activity with anonymous
+  // location evidence. The source carrier before this quantity must itself be
+  // grammatical/temporal, rather than a different work or person's duration.
+  const prefix = source.slice(0, bound.index).replace(new RegExp(place, 'giu'), ' ')
+    .replace(/\b\d+(?:st|nd|rd|th)?\b/g, ' ');
+  const carrier = new Set(['we', 'our', 'us', 'so', 'then', 'obviously', 'just', 'being', 'be', 'been', 'are', 'is', 'will', 'shall', 'have', 'has', 'that', 'thats', "that's", 'and', 'to', 'on', 'in', 'at', 'for', 'of', 'it', 'its', "it's", 'spend', 'spending', 'scheduled', 'planned', 'expected', 'during', 'over']);
+  if (!(prefix.match(/[\p{L}][\p{L}'’-]*/gu) || []).every(word => carrier.has(word))) return false;
+  // The duration may be followed by another explicitly signalled phase. An
+  // activity still inside this duration's own clause is identifying evidence,
+  // even when it comes after the quantity rather than before it.
+  const suffix = source.slice(bound.index + bound[0].length).split(/\b(?:and\s+then|then|followed\s+by)\b|[;.!?]/i)[0]
+    .replace(/\b\d+(?:st|nd|rd|th)?\b/g, ' ');
+  const temporalTail = new Set(['on', 'in', 'at', 'for', 'from', 'to', 'through', 'until', 'during', 'over', 'starting', 'start', 'beginning', 'ending', 'end', 'summer', 'winter', 'spring', 'autumn', 'fall',
+    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'morning', 'afternoon', 'evening', 'night']);
+  return (suffix.match(/[\p{L}][\p{L}'’-]*/gu) || []).every(word => temporalTail.has(word));
+}
+
 function quantifiedClaimGroundingIssue(record = {}, units = []) {
   if (!DURATION_CLAIM.test(String(record?.text || ''))) return null;
-  const signatures = quantifiedClaimSignatures(record?.text);
-  const subject = quantifiedClaimSubject(record?.text);
-  if (!signatures.length || subject.length < 2 || !(record?.evidenceIds || []).length) return null;
+  const originalSubject = quantifiedClaimSubject(record?.text);
+  const phases = quantifiedClaimClauses(record?.text).map(phase => ({
+    text: phase, signatures: quantifiedClaimSignatures(phase), subject: quantifiedClaimSubject(phase)
+  })).filter(phase => phase.signatures.length);
+  if (!phases.length || !(record?.evidenceIds || []).length) return null;
   const rows = normaliseSourceUnits(units);
   const indexById = new Map(rows.map((unit, index) => [String(unit.id), index]));
   const citedIndexes = [...new Set((record.evidenceIds || []).map((id) => indexById.get(String(id)))
@@ -5962,45 +6009,68 @@ function quantifiedClaimGroundingIssue(record = {}, units = []) {
   const clauses = [];
   for (const index of citedIndexes) {
     for (let rowIndex = Math.max(0, index - 1); rowIndex < Math.min(rows.length, index + 2); rowIndex += 1) {
-      const rowClauses = String(rows[rowIndex].text || '').split(/(?<=[.!?;])\s+|,\s+(?=(?:and|but|while|whereas)\b)|\s+(?:and|but|while|whereas)\s+(?=(?:[\p{L}'’-]+\s+){1,6}(?:is|are|was|were|has|have|had|will|would|can|could|should|must|remains?|became|becomes?)\b)/iu);
-      rowClauses.forEach((clause, clauseIndex) => clauses.push({ rowIndex, clauseIndex, text: clause }));
+      quantifiedClaimClauses(rows[rowIndex].text).forEach((clause, clauseIndex) => clauses.push({ rowIndex, clauseIndex, text: clause }));
     }
   }
-  const uniqueClauses = [...new Map(clauses.map((clause) => [`${clause.rowIndex}:${clause.clauseIndex}`, clause])).values()]
+  const uniqueClauses = [...new Map(clauses.map(clause => [`${clause.rowIndex}:${clause.clauseIndex}`, clause])).values()]
     .sort((left, right) => left.rowIndex - right.rowIndex || left.clauseIndex - right.clauseIndex);
-  const normalisedWords = (value) => new Set(contentTokens(quantifiedSubjectText(value))
-    .map((token) => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
-  const grounded = signatures.every((signature) => uniqueClauses.some((clause, clauseIndex) => {
-    if (!quantifiedClaimSignatures(clause.text).includes(signature)) return false;
-    const direct = normalisedWords(clause.text);
-    if (subject.every((token) => direct.has(token))) return true;
-    if (locativePresenceDurationBound(record.text, clause.text, signature)) return true;
-    if (!/\b(?:it|its|they|them|their|those|these)\b/i.test(clause.text) || clauseIndex < 1) return false;
-    const preceding = normalisedWords(uniqueClauses[clauseIndex - 1].text);
-    return subject.every((token) => preceding.has(token));
-  }));
-  return grounded ? null : { signatures, subject };
+  const normalisedWords = value => new Set(contentTokens(quantifiedSubjectText(value))
+    .map(token => token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
+  const unresolved = [];
+  for (const phase of phases) {
+    const subject = phase.subject.length >= 2 ? phase.subject : originalSubject;
+    if (subject.length < 2) continue; // Preserve the established narrow gate.
+    for (const signature of phase.signatures) {
+      const carriers = uniqueClauses.filter(clause => quantifiedClaimSignatures(clause.text).includes(signature));
+      const grounded = carriers.some(clause => {
+        const direct = normalisedWords(clause.text);
+        if (subject.every(token => direct.has(token))) return true;
+        if (locativePresenceDurationBound(phase.text, clause.text, signature)) return true;
+        const clauseIndex = uniqueClauses.indexOf(clause);
+        if (!/\b(?:it|its|they|them|their|those|these)\b/i.test(clause.text) || clauseIndex < 1) return false;
+        const preceding = normalisedWords(uniqueClauses[clauseIndex - 1].text);
+        return subject.every(token => preceding.has(token));
+      });
+      if (grounded) continue;
+      if (carriers.some(clause => unresolvedLocativeDuration(phase.text, clause.text, signature))) {
+        unresolved.push({ signature, subject, text: phase.text });
+        continue;
+      }
+      return { signatures: [signature], subject };
+    }
+  }
+  return unresolved.length ? { unresolved: true, signatures: unresolved.map(item => item.signature),
+    subject: unresolved[0].subject, phases: unresolved } : null;
 }
 
 function filterUnsupportedQuantifiedDiscussion(discussion = [], units = []) {
-  const removed = [];
-  const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+  const removed = [], flags = [];
+  const check = record => {
+    const issue = quantifiedClaimGroundingIssue(record, units);
+    if (!issue) return record;
+    if (!issue.unresolved) { removed.push({ id: record.id || '', text: record.text || '', ...issue }); return null; }
+    const flag = normaliseFlag({
+      id: stableId('flag-quantity-binding', record.id || record.text || '', 0),
+      kind: 'uncertain_fact',
+      message: 'The source states this location and duration, but their connection to the named work needs review. Confirm the work and its own duration against the source.',
+      evidenceIds: record.evidenceIds || []
+    });
+    flags.push(flag);
+    return { ...record, reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), flag.id])] };
+  };
+  const topics = (Array.isArray(discussion) ? discussion : []).map(topic => {
     const next = { ...topic };
     for (const kind of ['points', 'decisions', 'openQuestions']) {
-      next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).flatMap((record) => {
-        const issue = quantifiedClaimGroundingIssue(record, units);
-        if (issue) { removed.push({ id: record.id || '', text: record.text || '', ...issue }); return []; }
-        const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).filter((detail) => {
-          const detailIssue = quantifiedClaimGroundingIssue(detail, units);
-          if (detailIssue) removed.push({ id: detail.id || '', text: detail.text || '', ...detailIssue });
-          return !detailIssue;
-        });
-        return [{ ...record, supportingDetails }];
+      next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).flatMap(record => {
+        const kept = check(record);
+        if (!kept) return [];
+        const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).map(check).filter(Boolean);
+        return [{ ...kept, supportingDetails }];
       });
     }
     return next;
-  }).filter((topic) => ['points', 'decisions', 'openQuestions'].some((kind) => (topic?.[kind] || []).length));
-  return { discussion: topics, removed };
+  }).filter(topic => ['points', 'decisions', 'openQuestions'].some(kind => (topic?.[kind] || []).length));
+  return { discussion: topics, removed, flags };
 }
 
 // ---- Unstated months -------------------------------------------------------
@@ -6492,11 +6562,13 @@ function finaliseActionTimings(actions = [], units = [], options = {}) {
     const assessedAction = { ...result.action };
     delete assessedAction._timingRecoveryIssues;
     if (!issues.length) return assessedAction;
-    const rowFlags = issues.map(issue => normaliseFlag({
-      kind: 'timing', message: /^timing_inference_/.test(issue.code) ? issue.message
-        : `${issue.message} ${isReviewerAuthored(row) ? 'Confirm the reviewer-entered timing.' : issue.preserveValue ? 'The stated date was retained for review.' : 'The exact date was removed; confirm the retained source wording.'}`,
-      evidenceIds: row.evidenceIds || []
-    }, flags.length));
+    const rowFlags = issues.map(issue => {
+      const removed = row.timing?.wording && !assessedAction.timing?.wording
+        && (assessedAction.timingDecision?.rejectedWordings || []).includes(row.timing.wording);
+      const message = /^timing_inference_/.test(issue.code) ? issue.message
+        : `${issue.message} ${isReviewerAuthored(row) ? 'Confirm the reviewer-entered timing.' : issue.preserveValue ? 'The stated date was retained for review.' : removed ? 'The unsupported timing was removed; confirm this work’s own timing.' : 'The exact date was removed; confirm the retained source wording.'}`;
+      return normaliseFlag(actionTimingIssueFlag({ code: removed ? 'timing_value_removed' : issue.code }, row, message), flags.length);
+    });
     flags.push(...rowFlags);
     return { ...assessedAction, reviewFlagIds: [...new Set([...(assessedAction.reviewFlagIds || []), ...rowFlags.map(flag => flag.id)])] };
   });
@@ -6525,11 +6597,9 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   const unitById = new Map(evidenceContextFor(units).rows.map((unit) => [unit.id, unit]));
   for (const action of actions) {
     for (const issue of action._timingDateIssues || []) {
-      const flag = normaliseFlag({ kind: 'timing',
-        message: /^timing_inference_/.test(issue.code) ? issue.message
-          : `${issue.message} ${issue.preserveValue ? 'The stated date was retained for review.' : enforceEvidence ? 'The exact date was removed; confirm the retained source wording.' : 'Confirm the timing.'}`,
-        evidenceIds: action.evidenceIds || []
-      }, flags.length);
+      const message = /^timing_inference_/.test(issue.code) ? issue.message
+        : `${issue.message} ${issue.preserveValue ? 'The stated date was retained for review.' : enforceEvidence ? 'The exact date was removed; confirm the retained source wording.' : 'Confirm the timing.'}`;
+      const flag = normaliseFlag(actionTimingIssueFlag(issue, action, message), flags.length);
       flags.push(flag);
       action.reviewFlagIds.push(flag.id);
     }

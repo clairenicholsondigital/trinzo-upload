@@ -11204,7 +11204,7 @@ function applyStageResultVirtually(draft = {}, stage = '', result = {}) {
   return {
     ...draft,
     ...changes,
-    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes }),
+    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes, draft }),
     staleStages: (Array.isArray(draft.staleStages) ? draft.staleStages : []).filter((value) => value !== stage),
     currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage] || 0, Number(draft.currentStep || 0)),
     generation: null
@@ -11924,7 +11924,22 @@ function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCove
   const prior = (Array.isArray(existing) ? existing : []).filter(flag =>
     !(replaceCoverage && isMeetingAgentCoverageFlag(flag))
     && !(fields.has(flag.temporalField) && meetingAgentFlagUntouched(flag)));
-  return mergeMeetingAgentFlags(prior, added);
+  const merged = mergeMeetingAgentFlags(prior, added);
+  if (recheck.stage !== 'actions' || !Array.isArray(changes.actions) || !Array.isArray(recheck.draft?.sourceUnits)) return merged;
+  // A fresh final action pass has removed resolved references already. Recheck
+  // older persisted warnings against that same applied work/source; do not
+  // trust a retirement ID alone or retire a still-referenced live warning.
+  const references = meetingAgentReferencedFlagIds(changes.actions);
+  const checked = require('../utils/meetingMinutesTimingFlags').reconcileActionTimingWarnings(
+    changes.actions, merged, recheck.draft.sourceUnits,
+    { meetingDate: meetingAgentTimingAnchor(recheck.draft), proposals: [changes.pendingProposal, recheck.draft.pendingProposal],
+      otherRecords: [changes.discussion ?? recheck.draft.discussion, changes.meetingObjectives ?? recheck.draft.meetingObjectives] }
+  );
+  const retired = checked.retired.filter(item => !references.has(item.id));
+  if (retired.length) console.log(JSON.stringify({ event: 'meeting_agent_persisted_timing_warning_retired',
+    journeyId: recheck.draft.draftId || '', retired }));
+  const ids = new Set(retired.map(item => item.id));
+  return merged.filter(flag => !ids.has(flag.id));
 }
 
 async function loadOwnedMeetingAgentDraft(req, options = {}) {
@@ -16335,7 +16350,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       deduped: postPromotion.dropped.length,
       diagnostics: structureDiagnostics
     }));
-    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags, ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags,
+      ...(quantifiedGrounding.flags || []), ...(finalQuantifiedGrounding.flags || []),
+      ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
@@ -17030,7 +17047,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     event: 'meeting_agent_final_action_survival', journeyId: draft.draftId,
     restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
   }));
-  const actionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
+  const assembledActionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
     ...splitTimingFlags,
     ...finalTiming.flags,
     ...timedStepFlags,
@@ -17041,6 +17058,17 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     ...(meetingMinutesAgentCompactDiscussionEnabled() ? [] : proposalFlags),
     ...unresolvedStrongCandidateFlags
   ]), isUsefulMeetingAgentReviewFlag);
+  const reconciledTimingWarnings = require('../utils/meetingMinutesTimingFlags').reconcileActionTimingWarnings(
+    assembledActionFlagState.content.actions, assembledActionFlagState.flags, draft.sourceUnits,
+    { meetingDate: timingAnchor, proposals: [proposal, draft.pendingProposal], otherRecords: [draft.discussion, draft.meetingObjectives] }
+  );
+  const actionFlagState = { ...assembledActionFlagState,
+    content: { ...assembledActionFlagState.content, actions: reconciledTimingWarnings.actions },
+    flags: reconciledTimingWarnings.flags };
+  if (reconciledTimingWarnings.retired.length) console.log(JSON.stringify({
+    event: 'meeting_agent_stale_timing_warning_retired', journeyId: draft.draftId,
+    retired: reconciledTimingWarnings.retired
+  }));
   const discussionActionDedupe = removeDiscussionActionDuplicates(
     draft.discussion,
     actionFlagState.content.actions,
@@ -18523,11 +18551,12 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
     priorFlags = priorFlags.filter((flag) => !(String(flag.id || '').startsWith('proposal-review-')
       && !liveProposalFlagIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
   }
-  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags, { stage, changes });
+  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags, { stage, changes, draft: fresh });
   const seen = new Set();
   const reviewFlags = merged.filter((flag) => {
     if (!meetingAgentFlagUntouched(flag)) return true;
-    const key = `${flag.kind}|${meetingMinutesAgentText(flag.message, 500).toLowerCase()}`;
+    const key = flag.systemTimingIssue ? `system-timing|${flag.id}`
+      : `${flag.kind}|${meetingMinutesAgentText(flag.message, 500).toLowerCase()}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -18831,7 +18860,7 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
     }
     const saved = await saveMeetingAgentDraft(draft, req, {
       ...result.changes,
-      reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes: result.changes }),
+      reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes: result.changes, draft }),
       staleStages: meetingAgentStaleStagesAfterGeneration(draft, draft, stage, result.changes),
       currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
     });

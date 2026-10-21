@@ -5,7 +5,7 @@
   else root.MeetingMinutesTiming = api;
 }(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
-  const TIMING_POLICY_VERSION = 3;
+  const TIMING_POLICY_VERSION = 4;
   const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
   const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const ORDINALS = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20, thirtieth: 30 };
@@ -266,8 +266,14 @@
   function roleAndRecipientMatch(row, clause, unit, options) {
     const opts = options || {};
     const value = canonical(clause), ownerWords = (row.owners || []).map(owner => canonical(owner).split(' '));
+    // A relative requirement describes the receiver needing the deliverable,
+    // not a promise to perform the owner's work: "which I will need by...".
+    // Exclude only that receiver prefix from actor checks. "Need to finish"
+    // and any later named/first-person commitment remain ordinary actor cues.
+    const receiverRequirement = String(clause).match(/^\s*(?:which|that)\s+(?:I|we|you|he|she|they|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})(?:\s+(?:(?:will|shall|would)\s+)?|['’]ll\s+)needs?\s+(?:(?:it|this|that|them)\s+)?(?:by|before|after|on|at|within|once|when|until|following)\b/i)?.[0] || '';
     const assigned = [...String(clause).matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})(?:\s+(?:will|shall|must|to|is|are)|['’]s)\s+(?:each\s+)?[a-z]+\b/g)]
       .filter(match => !DAYS.includes(canonical(match[1])) && !MONTHS.includes(canonical(match[1]))
+        && !(receiverRequirement && match.index < receiverRequirement.length)
         && !['that', 'this', 'it', 'there', 'here', 'what', 'who', 'the', 'we', 'he', 'she', 'i', 'you', 'they'].includes(canonical(match[1])));
     if (ownerWords.length && assigned.some(match => {
       const preceding = String(clause).slice(0, match.index).match(/((?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\s*(?:,|and)\s*)+)$/)?.[1] || '';
@@ -300,7 +306,8 @@
       if (addressed && nameMatches(addressed[1], recipient[2])) continue;
       if (!opts.allowMissingRecipient) return false;
     }
-    if (/\b(?:i['’]ll|i will|i can|i am going to)\b/i.test(clause) && ownerWords.length) {
+    const performerClause = receiverRequirement ? String(clause).slice(receiverRequirement.length) : clause;
+    if (/\b(?:i['’]ll|i will|i can|i am going to)\b/i.test(performerClause) && ownerWords.length) {
       const speaker = canonical(unit.speaker).split(' ');
       if (!ownerWords.some(parts => parts.every(part => speaker.includes(part)))) return false;
     }
