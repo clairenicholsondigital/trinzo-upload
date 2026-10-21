@@ -20,6 +20,10 @@ app.use('/api/review-feedback', express.json({ limit: '14mb' }));
 // transcript plus review-data structure); previously 25mb, which let a client
 // buffer a much larger body in memory before any app-level size check ran.
 app.use(express.json({ limit: '4mb' }));
+// The editor and exports use the same date-only and timing presentation rules.
+app.get('/static/meeting-minutes-timing.js', (req, res) => {
+  res.type('application/javascript').sendFile(path.join(__dirname, 'utils', 'meetingMinutesTiming.js'));
+});
 app.use('/static', express.static(path.join(__dirname, 'public')));
 
 async function sendView(res, fileName) {

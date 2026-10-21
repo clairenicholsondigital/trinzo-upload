@@ -292,6 +292,25 @@ function startStubServer() {
     timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: []
   }));
   drafts.set('navigation', navigation);
+  const timingSemantics = baseDraft('timing-semantics', false);
+  timingSemantics.reviewFlags = [];
+  timingSemantics.actions = [
+    { id: 'qualified', action: 'Begin the equipment checks.', owners: ['Alex Reed'], evidenceIds: ['T0001'], reviewFlagIds: [],
+      timing: { kind: 'target', wording: 'presumably early next week', exactDate: '2026-09-21' },
+      timingDecision: { status: 'qualified', version: 1 } },
+    { id: 'fallback', action: 'Complete the briefing.', owners: ['Sam Okoro'], evidenceIds: ['T0001'], reviewFlagIds: [],
+      timing: { kind: 'target', wording: 'Preferred: before departure; fallback: by 25 September', exactDate: '2026-09-25' } },
+    { id: 'bound', action: 'Circulate the inspection report.', owners: ['Alex Reed'], evidenceIds: ['T0001'], reviewFlagIds: [],
+      timing: { kind: 'deadline', wording: 'before 24 September', exactDate: '2026-09-24' } },
+    { id: 'invalid', action: 'Review the supplier response.', owners: ['Sam Okoro'], evidenceIds: ['T0001'], reviewFlagIds: [],
+      timing: { kind: 'target', wording: 'after approval', exactDate: '2026-02-30' },
+      timingDecision: { status: 'invalid_calendar', version: 1 } }
+  ];
+  drafts.set('timing-semantics', timingSemantics);
+  const metadataDateWarning = baseDraft('metadata-date-warning', false);
+  metadataDateWarning.details.meetingDate = '2026-02-30';
+  metadataDateWarning.reviewFlags = [];
+  drafts.set('metadata-date-warning', require('../routes/api').stagedEvaluation.publicMeetingAgentDraft(metadataDateWarning));
   const patchCounts = new Map();
   const patchBodies = new Map();
   const reviewHistory = new Map();
@@ -300,6 +319,7 @@ function startStubServer() {
   let actionCompletionChecks = 0;
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
+  app.get('/static/meeting-minutes-timing.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(REPO_ROOT, 'utils', 'meetingMinutesTiming.js'), 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
   app.get('/static/trinzo.js', (req, res) => res.type('application/javascript').send(''));
   app.get('/static/trinzo-fonts.css', (req, res) => res.type('text/css').send(''));
@@ -1840,6 +1860,39 @@ test('leaving warns while a save is in flight or has failed, and stops warning a
   }
 });
 
+test('a meeting-date source warning opens the Details date field and remains reviewable after reload', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'metadata-date-warning');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    assert.match(await page.textContent('#flagCount'), /1 check/);
+    await page.click('#reviewQueueToggle');
+    assert.match(await page.textContent('.flag-target'), /Meeting date/i);
+    assert.doesNotMatch(await page.textContent('.flag-target'), /Send the revised report/);
+    await page.click('[data-view-flag-target="meetingDate"]');
+    await page.waitForFunction(() => document.querySelector('[data-screen="0"]').classList.contains('active')
+      && document.activeElement?.id === 'meetingDate');
+    assert.equal(await page.inputValue('#meetingDate'), '');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/metadata-date-warning')
+      && response.request().method() === 'PATCH');
+    await page.fill('#meetingDate', '2026-09-16');
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    await page.reload();
+    await page.waitForSelector('#meetingDate');
+    assert.equal(await page.inputValue('#meetingDate'), '2026-09-16');
+    assert.match(await page.textContent('#flagCount'), /1 check/);
+    await page.click('#reviewQueueToggle');
+    assert.equal(await page.locator('[data-view-flag-target="meetingDate"]').isVisible(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('an unlinked timing warning routes to its Action field and resolves when that Action is deleted', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -1851,9 +1904,8 @@ test('an unlinked timing warning routes to its Action field and resolves when th
     assert.match(await page.textContent('.flag-target'), /Complete and sign the training attestation/i);
     await page.click('[data-view-flag-target]');
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
-    // The original-wording field is hidden on the Actions table now, and a
-    // hidden field cannot take focus, so a timing warning routes to the
-    // interpreted date instead - the visible control the warning is about.
+    // A timing warning continues to route directly to the date control while
+    // the source wording is also available for review in the same editor.
     assert.equal(await page.locator('#minutes-action-training-action [data-timing-date]').evaluate((node) => node === document.activeElement), true);
 
     const savedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/unlinked-warning')
@@ -1940,6 +1992,135 @@ test('review objectives keep every mobile bullet aligned to its first line', { t
     assert.ok(layout.rows.every((row) => row.marker.includes('•')), JSON.stringify(layout));
     assert.ok(layout.rows.every((row) => row.textStartsAtTop && row.textIsIndented && row.textUsesWidth), JSON.stringify(layout));
     assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('timing labels retain qualification, fallback and boundary wording in Actions and final minutes', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'timing-semantics');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const actionLabels = await page.locator('#actionsBody [data-edit-timing]').allTextContents();
+    assert.match(actionLabels[0], /presumably early next week \(21 Sept 2026\)/);
+    assert.match(actionLabels[1], /Preferred: before departure; fallback: by 25 September \(25 Sept 2026\)/);
+    assert.match(actionLabels[2], /before 24 September \(24 Sept 2026\)/);
+    assert.equal(actionLabels[3], 'Target: after approval');
+    await page.click('#previewDocument');
+    await page.waitForFunction(() => document.querySelector('[data-screen="5"]').classList.contains('active'));
+    const finalLabels = await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').allTextContents();
+    assert.deepEqual(finalLabels, actionLabels);
+    assert.doesNotMatch(await page.textContent('#finalDocument'), /2 Mar 2026/);
+    await page.click('[data-step="3"]');
+    await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
+    const layout = await page.locator('#actionsBody [data-action-row="0"] .timing-editor').evaluate((editor) => {
+      const wording = editor.querySelector('[data-timing-wording]');
+      const date = editor.querySelector('[data-timing-date]');
+      const label = wording.previousElementSibling;
+      return {
+        wordingWidth: wording.getBoundingClientRect().width,
+        editorWidth: editor.getBoundingClientRect().width,
+        dateBelowWording: date.getBoundingClientRect().top > wording.getBoundingClientRect().bottom,
+        labelVisible: getComputedStyle(label).display !== 'none',
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    assert.ok(layout.wordingWidth >= layout.editorWidth - 2, JSON.stringify(layout));
+    assert.ok(layout.dateBelowWording && layout.labelVisible, JSON.stringify(layout));
+    assert.ok(layout.overflow <= 1, JSON.stringify(layout));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('Actions timing editors preserve unchanged decisions and save explicit reviewer wording without deriving a date', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'timing-semantics');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const saveResponse = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/timing-semantics')
+      && response.request().method() === 'PATCH');
+    const qualified = '#actionsBody [data-action-row="0"]';
+    await page.click(`${qualified} [data-edit-timing]`);
+    assert.equal(await page.locator(`${qualified} [data-timing-wording]`).isVisible(), true);
+    assert.equal(await page.locator(`${qualified} [data-timing-wording]`).inputValue(), 'presumably early next week');
+    let saved = saveResponse();
+    await page.click(`${qualified} [data-finish-timing-edit]`);
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    let stored = await page.evaluate(async () => (await (await fetch('/test-state/timing-semantics')).json()).draft);
+    assert.deepEqual(stored.actions[0].timingDecision, { status: 'qualified', version: 1 });
+    assert.equal(stored.actions[0].reviewerAuthored, undefined);
+
+    // A native date input is blank for an impossible historical date. Merely
+    // opening it must not silently turn that historic value into a manual edit.
+    const invalid = '#actionsBody [data-action-row="3"]';
+    await page.click(`${invalid} [data-edit-timing]`);
+    assert.equal(await page.locator(`${invalid} [data-timing-date]`).inputValue(), '');
+    saved = saveResponse();
+    await page.click(`${invalid} [data-finish-timing-edit]`);
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    stored = await page.evaluate(async () => (await (await fetch('/test-state/timing-semantics')).json()).draft);
+    assert.equal(stored.actions[3].timing.exactDate, '2026-02-30');
+    assert.deepEqual(stored.actions[3].timingDecision, { status: 'invalid_calendar', version: 1 });
+
+    await page.click(`${qualified} [data-edit-timing]`);
+    saved = saveResponse();
+    await page.fill(`${qualified} [data-timing-wording]`, 'Preferred: before dispatch; otherwise after approval');
+    await page.fill(`${qualified} [data-timing-date]`, '');
+    await page.click(`${qualified} [data-finish-timing-edit]`);
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    stored = await page.evaluate(async () => (await (await fetch('/test-state/timing-semantics')).json()).draft);
+    assert.deepEqual(stored.actions[0].timing, { kind: 'target', wording: 'Preferred: before dispatch; otherwise after approval', exactDate: '' });
+    assert.equal(stored.actions[0].reviewerAuthored, true);
+    assert.equal(stored.actions[0].timingDecision, undefined);
+    await page.reload();
+    await page.waitForSelector('#actionsBody [data-edit-timing]');
+    assert.match(await page.locator(`${qualified} [data-edit-timing]`).textContent(), /Preferred: before dispatch; otherwise after approval/);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('final timing edits retain preferred and fallback semantics and clear only an edited timing decision', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'timing-semantics');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('#previewDocument');
+    await page.waitForSelector('#finalDocument [data-kind="action"][data-field="timing"]');
+    await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').first().click();
+    await page.fill('#finalDocument [data-final-timing-wording]', 'Preferably before 24 September; fallback after approval');
+    await page.fill('#finalDocument [data-final-timing-date]', '2026-09-24');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/timing-semantics')
+      && response.request().method() === 'PATCH');
+    await page.click('#finalDocument [data-final-save]');
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    const stored = await page.evaluate(async () => (await (await fetch('/test-state/timing-semantics')).json()).draft);
+    assert.deepEqual(stored.actions[0].timing, { kind: 'target', wording: 'Preferably before 24 September; fallback after approval', exactDate: '2026-09-24' });
+    assert.equal(stored.actions[0].reviewerAuthored, true);
+    assert.equal(stored.actions[0].timingDecision, undefined);
+    assert.deepEqual(stored.actions[3].timingDecision, { status: 'invalid_calendar', version: 1 });
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    assert.match(await page.locator('#finalDocument [data-kind="action"][data-field="timing"]').first().textContent(), /Preferably before 24 September; fallback after approval \(24 Sept 2026\)/);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

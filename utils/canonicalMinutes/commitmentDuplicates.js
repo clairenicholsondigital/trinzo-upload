@@ -223,10 +223,212 @@ function sameValues(left, right) {
   const a = [...left].sort(); const b = [...right].sort();
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
+
+// These comparisons must retain relationships, not just a bag of nouns. Keep
+// single-letter identifiers, relation words and Unicode measurement symbols;
+// the older noun matcher intentionally omits them and is not a coverage proof.
+function orderedDetailWords(value = '') {
+  return (String(value).normalize('NFKC').toLowerCase().replace(/[’']/g, '')
+    .match(/[\p{L}\p{N}]+(?:\.[\p{N}]+)?|[£€$%‰°<>≤≥]/gu) || [])
+    .filter(word => !/^(?:the|an|and)$/.test(word))
+    .map(word => /^(?:from|to|for|of|as|in|on|at|by|over|under|against|between|into|onto|with|without|or|is|are)$/.test(word)
+      || word.length < 3 ? word : stem(word));
+}
+function orderedWithin(required, retained) {
+  let at = 0;
+  for (const token of retained) if (token === required[at]) at += 1;
+  return required.length > 0 && at === required.length;
+}
+function nominalInstructionBody(value = '') {
+  // A single nominal "specification of [object]" can also be written
+  // "[object] specification". Do not reorder any nested relation or clause.
+  const body = String(value);
+  const nominal = body.match(/^([\p{L}]+)\s+of\s+(?:the\s+)?([\p{L}\p{N}\s-]+)$/u);
+  return nominal && !/\b(?:and|or|of|from|to|for|as|in|on|at|by|over|under|against|between|with|without|if|after|before|when|until)\b/.test(nominal[2])
+    ? `${nominal[2]} ${nominal[1]}` : body;
+}
+function protectedMeaningConflict(left = {}, right = {}, options = {}) {
+  const a = comparisonAction(left); const b = comparisonAction(right);
+  // SI prefixes and symbols are case-sensitive (mL is not ML). Check them
+  // before any otherwise valid case-insensitive exact-wording shortcut.
+  const unitNotation = record => [...new Set(String(record.action || record.text || '').normalize('NFKC')
+    .match(/(?<![\p{L}])(?:[yzafpnumcdhkMGTPEZYµμ]?(?:mol|cd|Hz|Pa|Wb|m|g|s|A|K|N|J|W|C|V|F|S|T|H|L|l|B|b))(?![\p{L}])/gu) || [])];
+  const leftUnits = unitNotation(left); const rightUnits = unitNotation(right);
+  if (leftUnits.length && rightUnits.length && !sameValues(leftUnits, rightUnits)) return true;
+  if (a === b) return false;
+  if (actionIsSafelyCovered(left, right) || actionIsSafelyCovered(right, left)) return false;
+  const signatures = record => {
+    const raw = String(record.action || record.text || '').normalize('NFKC');
+    const value = comparisonAction(record);
+    const numbers = '(?:\\d|zero\\b|one\\b|two\\b|three\\b|four\\b|five\\b|six\\b|seven\\b|eight\\b|nine\\b|ten\\b|eleven\\b|twelve\\b|twenty\\b|thirty\\b|forty\\b|fifty\\b|hundred\\b)';
+    const bounds = new RegExp(`\\b(?:up to|at least|at most|more than|less than|fewer than|no more than|no less than|under|over|above|below|approximately|around|about|roughly)\\b(?=\\s+${numbers})|[<>≤≥~]`, 'g');
+    return {
+      units: [...new Set(raw.match(/[£€$%‰]|°\s*[\p{L}]+/gu) || [])],
+      // Preserve the spelling/case of concise identifiers and unit notation.
+      identifiers: [...new Set((raw.match(/[\p{L}\p{N}]+/gu) || []).filter((word, index) => index > 0
+        && (word.length === 1 && /\p{L}/u.test(word) && word !== 'a'
+          || /^[\p{Lu}\p{N}]+$/u.test(word) && /\p{L}/u.test(word)
+          || /^\p{Ll}+\p{Lu}/u.test(word))))],
+      scope: (value.match(/\b(?:except|excluding|other than|apart from)\b[^,;.]*/g) || [])
+        .concat(value.match(/\b(?:all|any|each|both|some|every|only|solely|or|either|alternatively|instead)\b/g) || [], value.match(bounds) || []),
+      polarity: value.match(/\b(?:not|never|without|no|cannot|can't|don't|doesn't|won't|mustn't)\b|\bnon[-\s]/g) || []
+    };
+  };
+  const x = signatures(left); const y = signatures(right);
+  if (Object.keys(x).some(key => key === 'identifiers'
+    ? !x[key].every(value => y[key].includes(value)) && !y[key].every(value => x[key].includes(value))
+    : !sameValues(x[key], y[key]))) return true;
+  // When an instruction binds objects to roles, sources, destinations,
+  // comparisons or project names, shuffled words cannot establish retention.
+  if (options.scopeOnly !== true && options.allowAdditionalScope !== true) {
+    const body = record => orderedDetailWords(nominalInstructionBody(instructionBody(record)));
+    const frameA = instructionFrame(left); const frameB = instructionFrame(right);
+    const normalized = frameA && frameB && frameA.operation === frameB.operation;
+    const required = normalized ? frameA.tokens : body(left); const retained = normalized ? frameB.tokens : body(right);
+    const explicitRelation = /\b(?:from|as|against|between|over|under|inside|outside|above|below|behind|beside|around|near|through|across|beneath|underneath)\b/.test(`${a} ${b}`)
+      || /^(?:fit|install|place|position|connect)\b/.test(a) && /\b(?:in|on|into|onto)\b/.test(`${a} ${b}`);
+    const namedEntities = record => (String(record.action || '').match(/\b[A-Z][a-z’']*\b/g) || []).slice(1);
+    const leftNames = namedEntities(left); const rightNames = namedEntities(right);
+    const leftShared = leftNames.filter(name => rightNames.includes(name));
+    const rightShared = rightNames.filter(name => leftNames.includes(name));
+    if (leftShared.length >= 2 && leftShared.join('|') !== rightShared.join('|')) return true;
+    if ((explicitRelation || sameValues(required, retained))
+      && !orderedWithin(required, retained) && !orderedWithin(retained, required)) return true;
+  }
+  return false;
+}
+
+// A bounded alternate description of one instruction. This is deliberately
+// independent of embedding scores: a shared citation and similar nouns do not
+// authorize removing an operation, recipient, condition, number or date.
+// We only compare a single imperative (or the equivalent document/content
+// construction), retain every detail token, and keep the richer existing text.
+const DOCUMENT_NOUN = '(?:letter|email|memo|report|notice|brief|document|message|note|instructions|announcement|summary)';
+const DOCUMENT_CONTENT_VERB = '(?:explain|describe|detail|document|summarise|summarize)';
+const VARIANT_NEGATION = /\b(?:not|never|without|no|cannot|can't|don't|doesn't|won't|mustn't)\b/i;
+const VARIANT_TEMPORAL_OR_GATE = /\b(?:if|unless|after|before|once|when|until|pending|following|subject to|provided(?: that)?|as soon as|whether|then|otherwise|by|during|within|on|at)\b[^.;]*/gi;
+const RELATIVE_DESCRIPTION = /\b(?:that\s+(?:is|are)\s+|which\s+(?:is|are)\s+)?(?:used|provided|produced|generated|supplied)\s+by\b/gi;
+const COMMUNICATION_VERB = /^(?:write|email|send|share|provide|forward|circulate|submit)\b/;
+const ADDITIONAL_IMPERATIVE = /(?:[,;]\s*(?:and\s+|then\s+)?|\band\s+)(?:add|archive|book|build|circulate|collect|compile|complete|copy|create|delete|deliver|draft|email|file|fix|install|notify|order|prepare|print|publish|record|remove|repair|replace|restore|review|revise|schedule|send|share|submit|test|update|upload|write)\b/i;
+function communicationPresentation(record = {}) {
+  let value = comparisonAction(record);
+  if (!COMMUNICATION_VERB.test(value)) return { value, repeated: false };
+  // These isolated correctness adverbs describe presentation quality, not the
+  // object being requested. Never strip an adjective phrase such as "properly
+  // calibrated sensors", or a substantive modifier such as "securely".
+  value = value.replace(/,\s*(?:properly|correctly|accurately)\s*,\s*/g, ', ');
+  const leadRepeat = /^(?:write|email|send|share|provide|forward|circulate|submit)\s+again\b/.test(value);
+  const recipientRepeat = value.match(/^[a-z-]+\s+to\s+(.+?)\s+again\s*,/);
+  const repeated = leadRepeat || Boolean(recipientRepeat && !/\b(?:about|regarding|concerning|that|which)\b/.test(recipientRepeat[1]));
+  if (repeated) value = value.replace(/\bagain\s*(,?)/, (match, comma) => comma ? ',' : ' ').replace(/\s+/g, ' ').trim();
+  return { value, repeated };
+}
+function communicationRecipient(record = {}) {
+  const value = communicationPresentation(record).value;
+  return COMMUNICATION_VERB.test(value)
+    ? value.match(/^[a-z-]+\s+to\s+(?:the\s+)?(.+?)(?=\s+(?:about|regarding|concerning)\b|,|$)/)?.[1]?.trim() || '' : '';
+}
+function instructionFrame(record = {}) {
+  if (/(?:^|\W)'[^']*\s+[^']*'(?=\W|$)/.test(comparisonAction(record))) return null;
+  const presentation = communicationPresentation(record);
+  const original = presentation.value;
+  if (!original || VARIANT_NEGATION.test(original) || /["“”:]/.test(original)
+    || /\b(?:or|either|alternatively|instead)\b/.test(original) || ADDITIONAL_IMPERATIVE.test(original)) return null;
+  // Reordering compound predicates could attach an object/date to the wrong
+  // step. The existing exact-clause path, not this path, owns compounds.
+  if (clauses(original).slice(1).some(clause => verbClass(leadVerb(clause))) || operationKeys({ action: original }).size !== 1) return null;
+  const verb = leadVerb(original);
+  let operation = /^(?:fit|install)$/.test(verb) ? 'install' : `verb:${verb}`;
+  let body = instructionBody({ action: original });
+  let artifact = '';
+  const writing = original.match(new RegExp(`^(?:draft|write|prepare|create|produce)\\s+(.+?\\b${DOCUMENT_NOUN})\\s+(?:explaining|describing|detailing|documenting|summarising|summarizing)\\s+(.+)$`, 'i'));
+  const content = original.match(new RegExp(`^${DOCUMENT_CONTENT_VERB}\\s+(.+)\\s+in\\s+(.+?\\b${DOCUMENT_NOUN})$`, 'i'));
+  if (writing || content) {
+    operation = 'write-content';
+    artifact = writing ? writing[1] : content[2];
+    body = `${artifact} ${writing ? writing[2] : content[1]}`;
+  }
+  if (!verbClass(verb) && !writing && !content) return null;
+  const stripped = original.replace(RELATIVE_DESCRIPTION, 'described via');
+  const scopes = (stripped.match(VARIANT_TEMPORAL_OR_GATE) || []).map(value => value.replace(/\s+/g, ' ').trim());
+  const tokens = orderedDetailWords(nominalInstructionBody(body));
+  return { original, operation, body, artifact, scopes, tokens, repeated: presentation.repeated };
+}
+function quantityValues(record = {}) {
+  return new Set((comparisonAction(record).match(/[a-z]+|\d+(?:\.\d+)?/g) || []).filter(token => QUANTITY.test(token)));
+}
+function retainedQuantityTransition(part = {}, whole = {}) {
+  const required = quantityValues(part); const retained = quantityValues(whole);
+  if (sameValues(quantityPhrases(part), quantityPhrases(whole))) return true;
+  // An explicit old -> new value is richer than the same instruction naming
+  // only its new value. This is directional; neither competing starting values
+  // nor competing targets can be hidden by the additional context.
+  const transition = record => comparisonAction(record).match(/\bfrom\s+([£€$]?\s*(?:\d+(?:\.\d+)?|[a-z]+))\s+to\s+([£€$]?\s*(?:\d+(?:\.\d+)?|[a-z]+))\b/);
+  if (transition(part)) return false;
+  const changed = transition(whole);
+  if (!changed) return false;
+  const values = changed.slice(1).map(value => value.replace(/[£€$\s]/g, ''));
+  return values.every(value => QUANTITY.test(value)) && required.size === 1 && required.has(values[1])
+    && retained.size === new Set(values).size && values.every(value => retained.has(value));
+}
+function commitmentVariantCovered(part = {}, whole = {}) {
+  if (isReviewerAuthored(part) || isReviewerAuthored(whole)) return false;
+  if (protectedMeaningConflict(part, whole)) return false;
+  const owner = exactOwners(part);
+  if (!owner || owner !== exactOwners(whole) || conflictingTimings(part, whole)) return false;
+  const timed = record => Boolean(record.timing?.kind && record.timing.kind !== 'not_stated');
+  if (timed(part) && !timed(whole)) return false;
+  const evidence = new Set(part.evidenceIds || []);
+  if (!(whole.evidenceIds || []).some(id => evidence.has(id))) return false;
+  const a = instructionFrame(part); const b = instructionFrame(whole);
+  if (!a || !b || a.operation !== b.operation || !sameValues(a.scopes, b.scopes)) return false;
+  if (a.repeated && !b.repeated) return false;
+  const recipient = communicationRecipient(part);
+  const sameCommunicationRecipient = recipient && recipient === communicationRecipient(whole);
+  if (conflictingRecipients(part.action, whole.action)
+    || (!sameCommunicationRecipient && conflictingDestinations(part.action, whole.action))) return false;
+  if (!retainedQuantityTransition(part, whole)) return false;
+  const leftVersions = new Set(a.original.match(VERSION_QUALIFIER) || []);
+  const rightVersions = new Set(b.original.match(VERSION_QUALIFIER) || []);
+  if (leftVersions.size && rightVersions.size && !sameValues(leftVersions, rightVersions)) return false;
+  return a.tokens.length >= 2 && orderedWithin(a.tokens, b.tokens);
+}
+
+function reconcileCommitmentVariants(left = {}, right = {}) {
+  const repeated = communicationPresentation(left).repeated || communicationPresentation(right).repeated;
+  const preserveRepeat = record => {
+    if (!repeated || communicationPresentation(record).repeated || !COMMUNICATION_VERB.test(comparisonAction(record))) return record;
+    return { ...record, action: String(record.action).replace(/^(\s*[a-z-]+)\b/i, '$1 again') };
+  };
+  const completeLeft = preserveRepeat(left); const completeRight = preserveRepeat(right);
+  const leftCovered = commitmentVariantCovered(left, completeRight);
+  const rightCovered = commitmentVariantCovered(right, completeLeft);
+  if (!leftCovered && !rightCovered) return null;
+  const [winner, loser] = leftCovered && (!rightCovered || String(completeRight.action || '').length > String(completeLeft.action || '').length)
+    ? [completeRight, left] : [completeLeft, right];
+  const record = {
+    ...winner,
+    evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(loser.evidenceIds || [])])],
+    reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(loser.reviewFlagIds || [])])]
+  };
+  for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+    if (Array.isArray(winner[key]) || Array.isArray(loser[key])) record[key] = [...new Set([...(winner[key] || []), ...(loser[key] || [])])];
+  }
+  for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+    if (!record[key] && loser[key]) record[key] = loser[key];
+  }
+  return {
+    record,
+    reason: 'one bounded instruction retains every operation, detail, scope and timing',
+    absorbedIds: [loser.id].filter(Boolean)
+  };
+}
 // This guard does not nominate duplicates. It prevents an existing relation
 // matcher from discarding explicit scope merely because its nouns overlap.
 function commitmentScopeConflict(left = {}, right = {}, options = {}) {
+  if (protectedMeaningConflict(left, right, { ...options, scopeOnly: true })) return true;
   if (actionIsSafelyCovered(left, right) || actionIsSafelyCovered(right, left)) return false;
+  if (commitmentVariantCovered(left, right) || commitmentVariantCovered(right, left)) return false;
   const a = comparisonAction(left); const b = comparisonAction(right);
   if (!sameValues(quantityPhrases(left), quantityPhrases(right))) return true;
   if ((NEGATION.test(a) || NEGATION.test(b)) && a !== b) return true;
@@ -243,14 +445,20 @@ function commitmentScopeConflict(left = {}, right = {}, options = {}) {
 }
 function operationKey(verb) {
   const value = stem(verb);
-  if (/^(?:test|run|rerun|verify|validate)$/.test(verb)) return 'testing';
+  if (/^(?:test|run|rerun)$/.test(verb)) return 'testing';
+  if (/^(?:verify|validate)$/.test(verb)) return 'verification';
   if (/^(?:start|begin|commence|kick|launch)$/.test(verb)) return 'start';
   if (/^(?:complete|finish|finalise|finalize|close)$/.test(verb)) return 'completion';
-  return verbClass(verb) || `word:${value}`;
+  if (/^(?:fit|install)$/.test(verb)) return 'installation';
+  if (/^(?:fix|repair)$/.test(verb)) return 'repair';
+  const kind = verbClass(verb);
+  // "Do" is useful for nominating related candidates, but repair, replace,
+  // implement and install are not interchangeable obligations.
+  return kind && kind !== 'do' ? kind : `word:${value}`;
 }
 function operationKeys(record = {}) {
   const source = comparisonAction(record);
-  const matches = source.matchAll(/(?:^|[,;:]\s*|\b(?:and|then)\s+)([a-z-]+)\b/g);
+  const matches = source.matchAll(/(?:^|[,;:]\s*(?:(?:and|then)\s+)*|\b(?:and|then)\s+)([a-z-]+)\b/g);
   return new Set([...matches].flatMap(match => {
     const verb = match[1];
     return match.index === 0 || verbClass(verb) ? [operationKey(verb)] : [];
@@ -286,7 +494,9 @@ function commitmentClausesRetained(part = {}, whole = {}) {
 // existing relation matcher; neither word inclusion nor an embedding is an
 // independent reason to delete an action.
 function commitmentCanBeRepresented(part = {}, whole = {}) {
+  if (protectedMeaningConflict(part, whole)) return false;
   if (actionIsSafelyCovered(part, whole)) return true;
+  if (commitmentVariantCovered(part, whole)) return true;
   if (isReviewerAuthored(part) || isReviewerAuthored(whole)) return false;
   // The existing bounded review-and-edit wording is one editing workflow.
   // Other compounds still require the exact clause/timing-scope protection.
@@ -323,7 +533,13 @@ function commitmentDuplicate(a = {}, b = {}, options = {}) {
   if (isReviewerAuthored(a) || isReviewerAuthored(b)) return { duplicate: false, reason: 'reviewer wording' };
   if (exactActionIdentityConflict(a, b)) return { duplicate: false, reason: 'different owners or timing' };
   if (conflictingTimings(a, b)) return { duplicate: false, reason: 'different timing' };
+  if (!ownersCompatible(a, b)) return { duplicate: false, reason: 'different owners' };
+  if (protectedMeaningConflict(a, b)) return { duplicate: false, reason: 'different explicit scope' };
   if (sameActionText(a, b)) return { duplicate: true, reason: 'identical' };
+  if (reconcileCommitmentVariants(a, b)) {
+    return { duplicate: true, reason: 'one bounded instruction retains every operation, detail, scope and timing' };
+  }
+  if (!ownersCompatible(a, b)) return { duplicate: false, reason: 'different owners' };
   if (commitmentScopeConflict(a, b)) return { duplicate: false, reason: 'different explicit scope' };
   if (actionContainmentConflict(a, b)) return { duplicate: false, reason: 'clause scope or responsibility is not preserved' };
   if (actionIsLosslesslyCovered(a, b) || actionIsLosslesslyCovered(b, a)) {
@@ -395,6 +611,13 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
     const at = kept.findIndex((k) => commitmentDuplicate(k.record, action, { cosine: cosineOf(k.index, index) }).duplicate);
     if (at < 0) { kept.push({ record: action, index }); return; }
     const existing = kept[at].record;
+    const reconciled = reconcileCommitmentVariants(existing, action);
+    if (reconciled) {
+      kept[at] = { index: reconciled.record.id === action.id ? index : kept[at].index, record: reconciled.record };
+      merged.push({ removed: String(reconciled.absorbedIds.includes(action.id) ? action.action : existing.action).slice(0, 160),
+        into: String(reconciled.record.action || '').slice(0, 160), reason: reconciled.reason });
+      return;
+    }
     const verdict = commitmentDuplicate(existing, action, { cosine: cosineOf(kept[at].index, index) });
     // When one action is a step of the other ("Load the documents for Grace
     // to review" inside "Load ... then download and put them in the tech
@@ -425,4 +648,4 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
   return { actions: kept.map((k) => k.record), merged };
 }
 
-module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
+module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, commitmentVariantCovered, reconcileCommitmentVariants, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
