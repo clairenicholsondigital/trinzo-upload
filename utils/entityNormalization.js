@@ -178,11 +178,14 @@ function personMatches(tokens, entry) {
 // misspellings of either part. A name that could be two people matches neither.
 function knownPerson(value) {
   const tokens = personTokens(value);
-  if (!tokens.length || tokens.length > 3) return null;
+  if (!tokens.length) return null;
   const index = knownPeopleIndex();
   const exact = index.exact.get(tokens.join(' '));
   if (exact) return exact;
   if (exact === null) return null;
+  // Registered full names and aliases can be longer; only fuzzy matching is
+  // restricted to short inputs.
+  if (tokens.length > 3) return null;
   const matches = index.people.filter((entry) => personMatches(tokens, entry));
   return matches.length === 1 ? matches[0].person : null;
 }

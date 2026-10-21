@@ -10,6 +10,7 @@ const settingsStore = require('../utils/settingsStore');
 const { DEFAULT_PEOPLE } = require('../utils/settingsDefaults');
 const {
   alwaysInternalAttendeeName,
+  knownPerson,
   knownPersonName,
   normaliseFixedPersonAliases,
   normaliseDirectoryNameSpellings
@@ -68,6 +69,75 @@ test('a first name shared by two listed people matches neither', () => {
   withPeople([{ name: 'Jacqui Byrne', side: 'client', spellings: [] }]);
   assert.equal(knownPersonName('Jacqui'), '');
   assert.equal(knownPersonName('Jacqui Fox'), 'Jacqui Fox');
+});
+
+const SYNTHETIC_SHARED_FIRST_NAME_PEOPLE = [
+  { name: 'Mira Alden', side: 'internal', spellings: ['Miri Alden'] },
+  { name: 'Mira Bennett', side: 'client', spellings: ['Miranda Bennett'] },
+  { name: 'Mira Colton', side: 'internal', spellings: ['Miriam Colton'] },
+  { name: 'Mira Dawson', side: 'client', spellings: ['Mirabel Dawson'] }
+];
+
+for (const count of [2, 3, 4]) {
+  test(`staged lookup keeps a shared first name ambiguous with ${count} listed people`, () => {
+    const people = SYNTHETIC_SHARED_FIRST_NAME_PEOPLE.slice(0, count);
+    settingsStore.setSettings({ people });
+    assert.equal(knownPerson('Mira'), null);
+    for (const name of ['Mira Unknown', 'Mina Unknown']) {
+      const result = extractStagedDetailsFromTranscript(`Attendees: ${name}`, 'synthetic.txt');
+      assert.deepEqual(result.screens.details.internalAttendees, [], name);
+      assert.deepEqual(result.screens.details.clientAttendees, [], name);
+      assert.deepEqual(result.screens.details.allAttendees, [name], name);
+      assert.equal(result.telemetryPreview.attendeeExtraction.unresolvedAffiliationCount, 1, name);
+    }
+    for (const person of people) {
+      for (const form of [person.name, ...person.spellings]) {
+        assert.equal(knownPersonName(form), person.name, form);
+        const details = extractStagedDetailsFromTranscript(`Attendees: ${form}`, 'synthetic.txt').screens.details;
+        assert.deepEqual(details.internalAttendees, person.side === 'internal' ? [person.name] : [], form);
+        assert.deepEqual(details.clientAttendees, person.side === 'client' ? [person.name] : [], form);
+        assert.deepEqual(details.allAttendees, [person.name], form);
+      }
+    }
+  });
+}
+
+test('registered names and other spellings longer than three tokens resolve exactly', () => {
+  const people = [
+    { name: 'Mara Elise Van Linden', side: 'internal', spellings: ['Maria Elise De Linden', 'Marissa Elise Anne Van Linden'] },
+    { name: 'Tessa Marie Anne De Vries', side: 'client', spellings: ['Theresa Marie De Vries'] }
+  ];
+  settingsStore.setSettings({ people });
+  for (const person of people) {
+    for (const form of [person.name, ...person.spellings]) {
+      assert.equal(knownPersonName(form), person.name, form);
+      assert.equal(knownPersonName(`  ${form.toUpperCase().replace(/ /g, '  ')}  `), person.name, form);
+      assert.equal(alwaysInternalAttendeeName(form), person.side === 'internal' ? person.name : '', form);
+    }
+  }
+});
+
+test('unregistered names longer than three tokens do not gain fuzzy matching', () => {
+  settingsStore.setSettings({ people: [
+    { name: 'Mara Elise Van Linden', side: 'internal', spellings: ['Maria Elise De Linden'] }
+  ] });
+  for (const name of ['Mara Elise Van Lindon', 'Mara Other Van Linden', 'Maria Elise De Lindon', 'Mara Elise Anne Van Linden']) {
+    assert.equal(knownPerson(name), null, name);
+    assert.equal(alwaysInternalAttendeeName(name), '', name);
+  }
+});
+
+test('colliding exact long names and aliases stay ambiguous', () => {
+  for (const count of [2, 3, 4]) {
+    settingsStore.setSettings({ people: [
+      { name: 'Mara Elise Van Linden', side: 'internal', spellings: ['Shared Long Alias Name'] },
+      ...SYNTHETIC_SHARED_FIRST_NAME_PEOPLE.slice(0, count - 1).map((person) => ({
+        ...person, spellings: ['Mara Elise Van Linden', 'Shared Long Alias Name']
+      }))
+    ] });
+    assert.equal(knownPerson('Mara Elise Van Linden'), null, `${count} colliding people`);
+    assert.equal(knownPerson('Shared Long Alias Name'), null, `${count} colliding aliases`);
+  }
 });
 
 test('a short, common surname alone is not taken as a listed person', () => {

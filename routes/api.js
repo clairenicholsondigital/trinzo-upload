@@ -1229,8 +1229,7 @@ function stagedPeopleRegistry() {
   for (const person of people) {
     const firstName = stagedKnownAttendeeKey(person.name).split(/\s+/)[0];
     if (!firstName) continue;
-    const existing = personByFirstName.get(firstName);
-    personByFirstName.set(firstName, existing ? null : person.name);
+    personByFirstName.set(firstName, personByFirstName.has(firstName) ? null : person.name);
   }
   // Speaker labels are rewritten silently through these aliases. A spelling
   // that keeps the person's first name ("Rebecca Cuckoo") is left to the
