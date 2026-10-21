@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -393,7 +394,6 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_portable_review_snippet_is_wired_to_authenticated_review_board(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
-        dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
         review_page = (REPO_DIR / "views" / "review-feedback.html").read_text(encoding="utf-8")
         route = (REPO_DIR / "routes" / "reviewFeedback.js").read_text(encoding="utf-8")
         store = (REPO_DIR / "utils" / "reviewFeedbackStore.js").read_text(encoding="utf-8")
@@ -414,7 +414,6 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("app.get('/review-feedback', authRoutes.requireAuth", server)
         self.assertIn("app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes)", server)
         self.assertIn("app.get('/api/review-feedback/summary', reviewFeedbackRoutes.summaryHandler)", server)
-        self.assertIn('href="/review-feedback"', dashboard)
         self.assertIn("?review=1", review_page)
         self.assertIn("/api/review-feedback/screenshots/", review_page)
         self.assertIn("router.post('/'", route)
@@ -465,11 +464,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("var primaryHomeUrl = '/meeting-minutes-agent';", shared_nav)
         self.assertIn("{ href: primaryHomeUrl, label: 'Meeting Minutes Agent' }", shared_nav)
         self.assertIn("{ href: '/jobs', label: 'Library' }", shared_nav)
+        self.assertIn("var aiTeamProjectUrl = '/project-update-test?stage=process&projectId=19';", shared_nav)
+        self.assertIn("{ href: aiTeamProjectUrl, label: 'AI team project' }", shared_nav)
         self.assertIn("reducePrimaryNavigation(nav);", shared_nav)
         self.assertIn("addBrand(nav, primaryHomeUrl);", shared_nav)
         self.assertIn("nav.innerHTML = '';", shared_nav)
 
-    def test_dashboard_only_links_to_feedback_listing_and_matches_final_style(self):
+    def test_dashboard_is_three_simple_tiles_and_matches_final_style(self):
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
         shared_nav = (REPO_DIR / "public" / "trinzo.js").read_text(encoding="utf-8")
@@ -481,8 +482,15 @@ class FrontendContractTest(unittest.TestCase):
 
         self.assertIn("primaryHomeUrl", shared_nav)
         self.assertNotIn("Choose project", shared_nav)
-        self.assertIn('href="/meeting-minutes-feedback"', dashboard)
-        self.assertIn("Open feedback listing", dashboard)
+        tiles = re.findall(r'<a class="tile" href="([^"]+)">([^<]+)</a>', dashboard)
+        self.assertEqual(tiles, [
+            ("/meeting-minutes-agent", "Process meeting transcript"),
+            ("/project-update-test?stage=process&amp;projectId=19", "View AI team project"),
+            ("/jobs", "View processed meeting minutes"),
+        ])
+        self.assertEqual(len(re.findall(r'<a\s', dashboard)), 3)
+        self.assertNotIn('href="/meeting-minutes-feedback"', dashboard)
+        self.assertNotIn('href="/review-feedback"', dashboard)
         self.assertNotIn('href="/"', dashboard)
         self.assertNotIn('href="/review"', dashboard)
         self.assertNotIn('href="/meetings"', dashboard)
@@ -596,7 +604,6 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("requiredEditChart", page)
         self.assertIn("renderRequiredEditChart", page)
         self.assertIn("Benchmark pairs", page)
-        self.assertIn('href="/staged-meeting-minutes/pre-testing"', dashboard)
         self.assertNotIn('href="/staged-meeting-minutes/pre-testing"', staged.split('<nav', 1)[1].split('</nav>', 1)[0])
         self.assertNotIn('href="/staged-meeting-minutes/pre-testing"', analytics.split('<nav', 1)[1].split('</nav>', 1)[0])
 
