@@ -1239,7 +1239,7 @@ test('referee validates the same bounded candidate set placed in its prompt', ()
   assert.equal(meetingAgentDispositionError({ discussion: [], actions: [], candidateDispositions: dispositions }, supplied), null);
 });
 
-test('production referee payload uses cited evidence neighbourhoods and the canonical minimal contract', () => {
+test('production referee payload uses cited evidence neighbourhoods and the bounded date-aware contract', () => {
   const sourceUnits = Array.from({ length: 60 }, (_, index) => ({
     id: `T${String(index + 1).padStart(4, '0')}`,
     sequence: index + 1,
@@ -1275,9 +1275,12 @@ test('production referee payload uses cited evidence neighbourhoods and the cano
   assert.doesNotMatch(payload.preparedTranscript, /\[T0001\]/, 'unrelated transcript material is omitted');
   assert.ok(!JSON.stringify(payload.candidateEnsemble).includes('Duplicated lifecycle context'));
   assert.deepEqual(Object.keys(payload), [
-    'schemaVersion', 'requestId', 'stage', 'expectedCandidateCount',
-    'expectedCandidateIds', 'candidateEnsemble', 'preparedTranscript'
+    'schemaVersion', 'requestId', 'stage', 'timingPolicyVersion', 'meetingDetails', 'expectedCandidateCount',
+    'expectedCandidateIds', 'candidateEnsemble', 'preparedTranscript', 'writingRules'
   ]);
+  assert.ok(payload.timingPolicyVersion);
+  assert.equal(payload.meetingDetails.meetingDate, '');
+  assert.ok(payload.writingRules.some(rule => /range endpoint|preferred timing and its fallback/.test(rule)));
   assert.ok(prompt.length < completeTranscript.length + JSON.stringify(allCandidates).length,
     'the Referee request removes duplicated full-transcript and lifecycle content');
   assert.ok(prompt.length < 30000, 'the compact Referee request stays comfortably below the observed failure range');
@@ -2023,7 +2026,8 @@ test('deferred answers and pending decisions survive as evidence-backed review p
   assert.equal(deferred.length, 1);
   assert.equal(deferred[0].action, 'Confirm whether Morgan Reed will have access to the release files before validation after Wednesday.');
   assert.deepEqual(deferred[0].owners, ['Alex Green']);
-  assert.deepEqual(deferred[0].timing, { kind: 'target', wording: 'After Wednesday', exactDate: '' });
+  assert.deepEqual(deferred[0].timing, { kind: 'dependency', wording: 'After Wednesday', exactDate: '' },
+    'work waiting on a meeting keeps its dependency wording without becoming a target day');
   const alongsideContingentWork = commitmentThreadBackstopProposals([deferredThread], [{
     action: 'Provide secure access to the release files if required.', owners: ['Alex Green'], evidenceIds: ['T0200', 'T0202']
   }], deferredUnits);

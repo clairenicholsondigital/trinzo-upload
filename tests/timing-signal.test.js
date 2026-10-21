@@ -57,7 +57,14 @@ const units = [
 test('"when do you think?" is a when-question, and the asker may settle the answer', () => {
   const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, units, ['T0043', 'T0045'], { meetingDate: '2026-09-10' });
   assert.equal(timing.wording, 'the fifteenth');
-  assert.equal(timing.exactDate, '2026-09-15');
+  assert.equal(timing.exactDate, '', 'the answer supplies no month; the meeting month is not source evidence');
+});
+
+test('an asker-settled answer with an explicit month still recovers its calendar date', () => {
+  const explicit = units.map(unit => ({ ...unit, text: unit.text.replace(/the fifteenth/g, '15 September') }));
+  const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, explicit,
+    ['T0043', 'T0045'], { meetingDate: '2026-09-10' });
+  assert.deepEqual(timing, { kind: 'deadline', wording: '15 september', exactDate: '2026-09-15' });
 });
 
 test('the asker\'s own follow-up question is not an answer', () => {
@@ -93,7 +100,7 @@ test('a copied sentence in the timing column no longer blocks the transcript bac
       owners: ['Dermot Nally'], timing: { kind: 'deadline', wording: 'I\'ll draft that.', exactDate: '' }, evidenceIds: ['T0043', 'T0045']
     }]
   }, units, { meetingDate: '2026-09-10' });
-  assert.deepEqual(action.timing, { kind: 'deadline', wording: 'the fifteenth', exactDate: '2026-09-15' });
+  assert.deepEqual(action.timing, { kind: 'deadline', wording: 'the fifteenth', exactDate: '' });
   // Replaced from the transcript, not removed: no removal flag.
   assert.equal(action._timingPublicationIssue, '');
 });

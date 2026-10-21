@@ -1379,7 +1379,7 @@
     var options = kinds.map(function (pair) {
       return '<option value="' + pair[0] + '"' + (timing.kind === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
     }).join('');
-    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label hidden><span>Original wording</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label class="timing-date-field"><input data-timing-date data-action-index="' + index + '" type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label><button type="button" class="secondary quiet compact" data-finish-timing-edit data-action-id="' + escapeHtml(actionId) + '">Done</button></div>';
+    return '<div class="timing-editor"><select data-timing-kind data-action-index="' + index + '" aria-label="Timing type">' + options + '</select><label><span>As said in the meeting</span><input data-timing-wording data-action-index="' + index + '" value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. this week" aria-label="Original timing wording"></label><label class="timing-date-field"><span>Exact date (optional)</span><input data-timing-date data-action-index="' + index + '" type="date" data-initial-date="' + escapeHtml(timing.exactDate || '') + '" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label><button type="button" class="secondary quiet compact" data-finish-timing-edit data-action-id="' + escapeHtml(actionId) + '">Done</button></div>';
   }
 
   function renderActions() {
@@ -1495,6 +1495,24 @@
     return JSON.stringify([action.action || '', action.owners || [], timing.kind || 'not_stated', timing.wording || '', timing.exactDate || '']);
   }
 
+  function editedTiming(action, kind, wording, dateControl) {
+    var prior = action.timing || {};
+    // A date input cannot represent an invalid historical value. Opening its
+    // editor must not silently clear that value before the reviewer edits it.
+    var date = dateControl ? dateControl.value : '';
+    if (dateControl && !date && dateControl.dataset.initialDate && !dateControl.dataset.dateEdited) {
+      date = dateControl.dataset.initialDate;
+    }
+    var next = Object.assign({}, prior, { kind: kind, wording: wording, exactDate: date });
+    if (JSON.stringify([prior.kind || 'not_stated', prior.wording || '', prior.exactDate || ''])
+      === JSON.stringify([next.kind, next.wording, next.exactDate])) return prior;
+    delete action.timingDecision;
+    return window.MeetingMinutesTiming.normaliseTimingValue(next, {
+      mode: 'preserve', reviewerAuthored: true,
+      meetingDate: ((state.draft || {}).details || {}).meetingDate || ''
+    });
+  }
+
   function readActions() {
     if (!state.draft) return [];
     // Scoped to each row: the previous version issued four document-wide
@@ -1510,7 +1528,7 @@
       var kind = row.querySelector('[data-timing-kind]');
       var wording = row.querySelector('[data-timing-wording]');
       var date = row.querySelector('[data-timing-date]');
-      if (kind) action.timing = { kind: kind.value, wording: wording ? wording.value.trim() : '', exactDate: date ? date.value : '' };
+      if (kind) action.timing = editedTiming(action, kind.value, wording ? wording.value.trim() : '', date);
       if (before !== actionEditFingerprint(action)) action.reviewerAuthored = true;
     });
     return state.draft.actions;
@@ -1621,6 +1639,10 @@
   function flagTarget(flag) {
     var flagId = String(flag && flag.id || '');
     if (!flagId || !state.draft) return null;
+    if (flagId === 'meeting-date-source-check') return {
+      stage: 0, elementId: 'meetingDate', label: 'Meeting date',
+      text: (state.draft.details || {}).meetingDate || 'Not stated', field: 'meetingDate'
+    };
     for (var topicIndex = 0; topicIndex < (state.draft.discussion || []).length; topicIndex += 1) {
       var topic = state.draft.discussion[topicIndex];
       for (var fieldIndex = 0; fieldIndex < 3; fieldIndex += 1) {
@@ -1824,14 +1846,11 @@
 
   function formatUkDate(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return value || '';
-    return new Intl.DateTimeFormat('en-GB', {day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(value + 'T00:00:00Z'));
+    return window.MeetingMinutesTiming.formatCalendarDate(value) || '';
   }
 
   function timingText(timing) {
-    timing = timing || {};
-    if (timing.kind === 'not_stated' || (!timing.wording && !timing.exactDate)) return 'No date agreed';
-    var prefix = timing.kind === 'target' ? 'Target: ' : (timing.kind === 'dependency' ? 'Dependent on: ' : 'Deadline: ');
-    return prefix + (timing.exactDate ? formatUkDate(timing.exactDate) : timing.wording);
+    return window.MeetingMinutesTiming.formatTimingLabel(timing || {}, { emptyLabel: 'No date agreed' });
   }
 
   function timingDisplayText(timing) {
@@ -1874,7 +1893,7 @@
       body = '<span class="final-inline-editor timing"' + editorAttributes + '>'
         + '<label><span class="lbl">Type</span><select data-final-timing-kind aria-label="Timing type"><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option></select></label>'
         + '<label><span class="lbl">As said in the meeting</span><input data-final-timing-wording value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. by Friday, once the report is back" aria-label="Timing as said"></label>'
-        + '<label><span class="lbl">Exact date (optional)</span><input data-final-timing-date type="date" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label>'
+        + '<label><span class="lbl">Exact date (optional)</span><input data-final-timing-date type="date" data-initial-date="' + escapeHtml(timing.exactDate || '') + '" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label>'
         + finalEditButtons() + '</span>';
     } else if (field === 'owners') {
       var selectedOwners = Array.isArray(activeFinalEdit && activeFinalEdit.ownerSelection)
@@ -3428,11 +3447,10 @@
         action.owners = (edit.ownerSelection || action.owners || []).slice();
         label = 'Action owners edited';
       } else if (edit.field === 'timing') {
-        action.timing = {
-          kind: editor.querySelector('[data-final-timing-kind]').value,
-          wording: editor.querySelector('[data-final-timing-wording]').value.trim(),
-          exactDate: editor.querySelector('[data-final-timing-date]').value
-        };
+        action.timing = editedTiming(action,
+          editor.querySelector('[data-final-timing-kind]').value,
+          editor.querySelector('[data-final-timing-wording]').value.trim(),
+          editor.querySelector('[data-final-timing-date]'));
         label = 'Action timing edited';
       }
       if (previousAction !== actionEditFingerprint(action)) action.reviewerAuthored = true;
@@ -3501,7 +3519,8 @@
         clearStepNavigationScroll();
         target.scrollIntoView({behavior:'smooth',block:'center'});
         target.classList.add('flag-target-highlight');
-        var editor = target.querySelector(targetButton.dataset.targetSelector || 'textarea,input');
+        var selector = targetButton.dataset.targetSelector || 'textarea,input';
+        var editor = target.matches(selector) ? target : target.querySelector(selector);
         if (editor && targetButton.dataset.targetSelector === '[data-edit-timing]') {
           editor.click();
           target = document.getElementById(target.id);
@@ -3598,6 +3617,7 @@
 
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
+    if (event.target.matches('[data-timing-date],[data-final-timing-date]')) event.target.dataset.dateEdited = 'true';
     // Inclusion is a document-output choice. It does not alter the meeting
     // evidence or discussion content, so it must not mark downstream Actions
     // as stale merely because the checkboxes live inside Details.
