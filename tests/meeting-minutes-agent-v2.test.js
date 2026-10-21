@@ -1329,7 +1329,7 @@ test('a weekday matching the meeting weekday is not silently pushed a week out',
 
 test('an exact date that breaches a stated limit in the same commitment is removed and flagged', () => {
   const units = normaliseSourceUnits([
-    { id: 'T2001', speaker: 'Ravi', text: "I'll place the full order Monday morning so it's here before the fifteenth.", classification: 'keep' }
+    { id: 'T2001', speaker: 'Ravi', text: "I'll place the full 13 kg hop order Monday morning so it's here before the fifteenth.", classification: 'keep' }
   ]);
   const result = normaliseAgentResult({ actions: [{
     action: 'Place the full 13 kg hop order.',

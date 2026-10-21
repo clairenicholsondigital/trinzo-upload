@@ -2024,10 +2024,10 @@ test('deferred answers and pending decisions survive as evidence-backed review p
   };
   const deferred = commitmentThreadBackstopProposals([deferredThread], [], deferredUnits);
   assert.equal(deferred.length, 1);
-  assert.equal(deferred[0].action, 'Confirm whether Morgan Reed will have access to the release files before validation after Wednesday.');
+  assert.equal(deferred[0].action, 'Confirm whether Morgan Reed will have access to the release files before validation.');
   assert.deepEqual(deferred[0].owners, ['Alex Green']);
-  assert.deepEqual(deferred[0].timing, { kind: 'dependency', wording: 'After Wednesday', exactDate: '' },
-    'work waiting on a meeting keeps its dependency wording without becoming a target day');
+  assert.deepEqual(deferred[0].timing, { kind: 'not_stated', wording: '', exactDate: '' },
+    'the source links knowing the answer to a meeting, but does not give a deadline for confirming the answer; keep the cited proposal without inventing one');
   const alongsideContingentWork = commitmentThreadBackstopProposals([deferredThread], [{
     action: 'Provide secure access to the release files if required.', owners: ['Alex Green'], evidenceIds: ['T0200', 'T0202']
   }], deferredUnits);
