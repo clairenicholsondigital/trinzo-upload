@@ -103,6 +103,7 @@ const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { normaliseDomainTermsDeep, applyTranscriptPhraseCorrections } = require('../utils/domainTerms');
 const { normaliseDatePhrasesDeep } = require('../utils/spokenForms');
 const { TIMING_POLICY_VERSION, isValidCalendarDate } = require('../utils/meetingMinutesTiming');
+const { reviewDiscussionCalendarDates } = require('../utils/meetingMinutesDateReview');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
@@ -208,6 +209,7 @@ const {
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
+  resolveEvidence,
   normaliseFlag: normaliseMeetingAgentFlag,
   coverageFlags,
   surroundingEvidence,
@@ -8551,7 +8553,7 @@ const MEETING_AGENT_UNSPOKEN_MONTH_RULE = 'Never add a month, year or weekday to
 // An off-hand "I'm not a football person" was minuted as a participant's
 // attitude to football.
 const MEETING_AGENT_SMALL_TALK_RULE = 'Leave out small talk, jokes, personal tastes and attitudes (sport, weather, holidays, how someone feels about something off-topic) unless they change the work, its timing or its logistics. Keep the practical consequence and drop the aside - "traffic may be heavy on the day of the marathon", not who does or does not enjoy running.';
-const MEETING_AGENT_TIMING_RULE = 'Timing precision. Preserve the source timing, its task, conditions and qualifications. A period, approximate aim, duration, range, recurring schedule or unresolved choice is not one exact calendar day. Do not select a range endpoint or invent a day for this/next week. Keep before/after distinct from on/by. Preserve both a preferred timing and its fallback, and apply later qualifications only to the same work. A nearby date for another task or person is not this task\'s date. Keep exactDate empty unless a single calendar date is unambiguously supported. Calendar calculations are validated by the application; candidate hints and calculated dates are claims to check, not additional source evidence. Never silently move a stated past date into a later month or year.';
+const MEETING_AGENT_TIMING_RULE = 'Timing precision. Preserve the source timing, its task, conditions and qualifications. A period, approximate aim, duration, range, recurring schedule or unresolved choice is not one exact calendar day. Do not select a range endpoint or invent a day for this/next week. Keep before/after distinct from on/by. Preserve both a preferred timing and its fallback, and apply later qualifications only to the same work. A nearby date for another task or person is not this task\'s date. Keep exactDate empty unless a single calendar date is unambiguously supported. Assess the work separately from its timing: a rejected or uncertain date does not reject an otherwise supported action. Preserve that action with corrected timing or no timing. Calendar calculations are validated by the application; candidate hints and calculated dates are claims to check, not additional source evidence. Never silently move a stated past date into a later month or year.';
 const MEETING_AGENT_DISCUSSION_COVERAGE_RULE = 'Discussion coverage. Do not use an action-category heading such as action items, priorities, next steps or follow-ups as a discussion topic. Keep genuine factual discussion under the subject it belongs to, and put actual commitments in actions. Preserve concise statements of a device, system, software or process capability, limitation or behaviour even when they contain no decision, owner or deadline. When a meaningful technical statement is split across adjacent transcript turns or recognition boundaries, use the neighbouring evidence to recover the point before deciding it is incomplete; discard it only when the combined evidence remains non-substantive, conversational or unsupported.';
 
 function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
@@ -9200,9 +9202,9 @@ function flattenHybridDiscussion(discussion = []) {
   ]);
 }
 
-function meetingAgentCandidateTimingSignature(candidate = {}) {
+function meetingAgentCandidateTimingSignature(candidate = {}, includeKind = true) {
   const timing = (candidate.record || candidate).timing || {};
-  return JSON.stringify([meetingMinutesAgentText(timing.kind, 40).toLowerCase(),
+  return JSON.stringify([...(includeKind ? [meetingMinutesAgentText(timing.kind, 40).toLowerCase()] : []),
     meetingMinutesAgentText(timing.wording, 220).toLowerCase(), meetingMinutesAgentText(timing.exactDate, 20)]);
 }
 
@@ -9388,7 +9390,9 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
     for (const candidate of items) {
       const evidence = new Set(candidate.evidenceIds || []);
       const duplicate = retained.some((existing) => existing.recordType === candidate.recordType
-        && (candidate.recordType !== 'action' || meetingAgentCandidateTimingSignature(existing) === meetingAgentCandidateTimingSignature(candidate))
+        // Different source timing claims need separate adjudication. A model
+        // enum difference for the identical wording/date is still one claim.
+        && (candidate.recordType !== 'action' || meetingAgentCandidateTimingSignature(existing, false) === meetingAgentCandidateTimingSignature(candidate, false))
         && hybridTokenOverlap(existing.text, candidate.text) >= 0.72
         && (candidate.evidenceIds || []).some((id) => (existing.evidenceIds || []).includes(id)));
       if (!duplicate || !evidence.size) retained.push(candidate);
@@ -10744,7 +10748,9 @@ function normaliseStagedCandidateResult(run, draft) {
     timing: { kind: 'not_stated', wording: action?.deadline && action.deadline !== 'Not stated' ? action.deadline : '', exactDate: '' },
     evidenceIds: action?.evidenceIds || []
   }));
-  const discussion = normaliseAgentResult({ discussion: stagedDiscussion }, draft.sourceUnits, 'discussion');
+  const discussion = normaliseAgentResult({ discussion: stagedDiscussion }, draft.sourceUnits, 'discussion', {
+    meetingDate: meetingAgentTimingAnchor(draft)
+  });
   const actions = normaliseAgentResult({ actions: stagedActions }, draft.sourceUnits, 'actions', {
     meetingDate: meetingAgentTimingAnchor(draft)
   });
@@ -11364,13 +11370,19 @@ function meetingAgentPublicationContent(draft = {}) {
   const publicationActions = (Array.isArray(draft.actions) ? draft.actions : [])
     .map((action) => stripMinorCommunicationCourtesy(action, draft.sourceUnits))
     .filter(Boolean);
-  return normaliseMeetingAgentKnownTermsDeep(normaliseDatePhrasesDeep({
+  const content = normaliseMeetingAgentKnownTermsDeep(normaliseDatePhrasesDeep({
     details: sanitiseMeetingAgentDetails(draft.details),
     executiveSummary: draft.executiveSummary || '',
     meetingObjectives: draft.meetingObjectives || [],
     discussion: repairStructuralTopicHeadings(publicationDiscussion, draft.sourceUnits || []),
     actions: publicationActions.map((action) => ({ ...action, timing: meetingAgentTimingForPublication(action.timing) }))
   }));
+  const context = draft.qualityState?.preparation?.dateContext;
+  const trustedAnchor = context && ['transcript_header', 'transcript_metadata', 'reviewer'].includes(context.source)
+    ? meetingAgentTimingAnchor(draft) : '';
+  const calendarReview = reviewDiscussionCalendarDates(content.discussion, draft.sourceUnits || [], { meetingDate: trustedAnchor });
+  return { ...content, discussion: calendarReview.discussion,
+    reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags || [], calendarReview.flags) };
 }
 
 function meetingAgentDraftForDocx(draft = {}) {
@@ -11379,7 +11391,7 @@ function meetingAgentDraftForDocx(draft = {}) {
     ...draft, ...content,
     discussion: applyTopicHeadings(draft, content.discussion),
     ...applyIncludedSections(draft, content),
-    reviewFlags: (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag)
+    reviewFlags: content.reviewFlags
   };
 }
 
@@ -11422,7 +11434,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     for (const id of action?.evidenceIds || []) evidenceIds.add(id);
   }
   minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
-  minutes.reviewFlags = (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag);
+  minutes.reviewFlags = content.reviewFlags;
   return normaliseMeetingAgentKnownTermsDeep(minutes);
 }
 
@@ -11434,7 +11446,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   const visibleActions = publication.actions;
   const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal, draft.sourceUnits || []);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
-    (Array.isArray(publicFields.reviewFlags) ? publicFields.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
+    publication.reviewFlags,
     [...visibleDiscussion, ...visibleActions],
     visibleProposal
   );
@@ -11633,7 +11645,9 @@ function mergeMeetingAgentFlags(existing = [], added = []) {
   for (const raw of [...existing, ...added].filter(isUsefulMeetingAgentReviewFlag)) {
     const flag = normaliseMeetingAgentFlag(raw, byId.size);
     const prior = byId.get(flag.id);
-    byId.set(flag.id, prior && prior.status !== 'open' ? { ...flag, status: prior.status } : flag);
+    byId.set(flag.id, prior && prior.status !== 'open' ? {
+      ...flag, status: prior.status, correctionNote: prior.correctionNote || flag.correctionNote
+    } : flag);
   }
   return [...byId.values()].slice(0, 250);
 }
@@ -13320,7 +13334,7 @@ function criticConfirmedActionPromotions(criticActions = [], singleSource = [], 
   }).actions;
 }
 
-function corroboratedOmittedDiscussionRecords(candidates = [], discussion = [], sourceUnits = []) {
+function corroboratedOmittedDiscussionRecords(candidates = [], discussion = [], sourceUnits = [], options = {}) {
   const unitsById = new Map(normaliseSourceUnits(sourceUnits).map((unit) => [unit.id, unit]));
   const eligible = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
     ['discussion_point', 'decision', 'open_question'].includes(candidate?.recordType)
@@ -13329,7 +13343,14 @@ function corroboratedOmittedDiscussionRecords(candidates = [], discussion = [], 
   ).filter((candidate) => {
     const evidence = (candidate.evidenceIds || []).map((id) => unitsById.get(id)).filter(Boolean)
       .map((unit) => `${unit.speaker || ''}: ${unit.text || ''}`).join(' ');
-    return evidence && evidenceSupportScore(candidate.text, evidence) >= 0.22;
+    if (evidence && evidenceSupportScore(candidate.text, evidence) >= 0.22) return true;
+    // A correctly expanded source year is not an unsupported quantity. Use
+    // the same anchored value proof as normalisation, while still requiring
+    // support from an ID this candidate actually supplied.
+    if (!options.meetingDate) return false;
+    const resolved = resolveEvidence(candidate.text, sourceUnits, candidate.evidenceIds, options);
+    return resolved.supportScore >= 0.22
+      && resolved.evidenceIds.some(id => candidate.evidenceIds.includes(id));
   });
   const represented = flattenHybridDiscussion(discussion);
   const groups = [];
@@ -13384,7 +13405,7 @@ function corroboratedOmittedDiscussionRecords(candidates = [], discussion = [], 
       evidenceIds: [...new Set(candidate.evidenceIds || [])].slice(0, 8)
     });
   }
-  return normaliseAgentResult({ discussion: [...byTopic.values()] }, sourceUnits, 'discussion').discussion;
+  return normaliseAgentResult({ discussion: [...byTopic.values()] }, sourceUnits, 'discussion', options).discussion;
 }
 
 function mergeHybridDiscussionTopics(base = [], additions = []) {
@@ -13486,7 +13507,7 @@ function refereeDiscussionTargetId(disposition = {}) {
     || disposition.primaryId || disposition.coreId, 120);
 }
 
-function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [], candidates = [], sourceUnits = []) {
+function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [], candidates = [], sourceUnits = [], options = {}) {
   const result = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
     ...topic,
     points: [...(topic.points || [])],
@@ -13554,7 +13575,7 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
     reconstructedTargetIds.push(targetId);
   }
   return {
-    discussion: normaliseAgentResult({ discussion: result }, sourceUnits, 'discussion').discussion,
+    discussion: normaliseAgentResult({ discussion: result }, sourceUnits, 'discussion', options).discussion,
     reconstructedTargetIds,
     referencedTargetIds: [...groups.keys()],
     unresolvedTargetIds: [...groups.keys()].filter((id) => !existingIds.has(id))
@@ -13945,7 +13966,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       decisions: item.recordType === 'decision' ? [item.record] : [],
       points: item.recordType === 'discussion_point' ? [item.record] : [],
       openQuestions: item.recordType === 'open_question' ? [item.record] : []
-    })) }, sourceUnits, 'discussion').discussion;
+    })) }, sourceUnits, 'discussion', options).discussion;
     return compactDiscussionPropositions(mergeHybridDiscussionTopics(topics, visibleCore),
       recoveredRows.filter((item) => !recoveredCore.includes(item)).map((item) => ({
         topic: item.topic, points: item.recordType === 'discussion_point' ? [item.record] : [],
@@ -14071,7 +14092,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       && !/^\s*we\s+(?:agreed|decided|confirmed|approved|concluded|will|must|need)/i.test(value)) return false;
     return true;
   };
-  return normaliseAgentResult({ discussion: topics }, sourceUnits, 'discussion').discussion.map((topic) => ({
+  return normaliseAgentResult({ discussion: topics }, sourceUnits, 'discussion', options).discussion.map((topic) => ({
     ...topic,
     points: (topic.points || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
@@ -15585,7 +15606,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         rawRefereeDiscussionDispositions, suppliedRefereeCandidates
       );
     const reconstructed = reconstructMissingRefereeDiscussion(
-      referee.discussion, refereeDiscussionDispositions, ensemble, draft.sourceUnits
+      referee.discussion, refereeDiscussionDispositions, ensemble, draft.sourceUnits, { meetingDate: timingAnchor }
     );
     let refereeDiscussion = reconstructed.discussion;
     const baselineDiscussion = mergeHybridDiscussionTopics(
@@ -15613,7 +15634,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       && reconstructed.unresolvedTargetIds.length === 0;
     const recoveredDiscussion = completeStructuredReferee
       ? []
-      : corroboratedOmittedDiscussionRecords(ensemble, refereeDiscussion, draft.sourceUnits);
+      : corroboratedOmittedDiscussionRecords(ensemble, refereeDiscussion, draft.sourceUnits, { meetingDate: timingAnchor });
     const compactEnabled = meetingMinutesAgentCompactDiscussionEnabled();
     const compactShadowEnabled = !compactEnabled && meetingMinutesAgentCompactDiscussionShadowEnabled();
     const ensembleById = new Map(ensemble.map((candidate) => [candidate.candidateId, candidate]));
@@ -15631,6 +15652,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const structuredReferee = refereeRoute === 'structured_prompt';
     const compactPreview = (compactEnabled || compactShadowEnabled || structuredReferee)
       ? compactDiscussionPropositions(refereeDiscussion, recoveredDiscussion, draft.sourceUnits, {
+        meetingDate: timingAnchor,
         supportingCandidates,
         // The Referee remains authoritative by default. A separately gated
         // deterministic marginal-information pass can recover a genuinely
@@ -15656,7 +15678,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       // directly previously allowed that uncited row into the UI precisely on
       // the degraded path where validation matters most.
       finalDiscussion = (compactEnabled || structuredReferee)
-        ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits)
+        ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits, { meetingDate: timingAnchor })
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }

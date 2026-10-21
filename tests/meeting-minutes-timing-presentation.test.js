@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const JSZip = require('jszip');
 const { generateMeetingMinutesAgentDocx, timingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { formatTimingLabel } = require('../utils/meetingMinutesTiming');
-const { meetingAgentDraftForPdf, publicMeetingAgentDraft } = require('../routes/api').stagedEvaluation;
+const { meetingAgentDraftForDocx, meetingAgentDraftForPdf, publicMeetingAgentDraft } = require('../routes/api').stagedEvaluation;
 
 const timings = [
   { kind: 'target', wording: 'presumably early next week', exactDate: '2026-09-21' },
@@ -70,4 +70,58 @@ test('a historical invalid meeting date remains an open review issue without mut
   assert.match(dateFlag.message, /not a valid calendar date/i);
   assert.deepEqual(draft, original, 'reading a Library draft must not persist or rewrite its metadata');
   assert.equal(visible.qualityState, undefined, 'private date-context provenance stays private');
+});
+
+function sourceCalendarDraft() {
+  return {
+    draftId: 'venue-calendar-review',
+    details: { meetingTitle: 'Venue opening review', meetingDate: '2027-02-10' },
+    sourceUnits: [{ id: 'T0001', speaker: 'Morgan Lee', text: 'The public opening is Sunday the twelfth of March.', classification: 'keep' }],
+    discussion: [{ id: 'venue-topic', topic: 'Public opening',
+      points: [{ id: 'opening-date', text: 'The public opening is on Sunday 12 March.', evidenceIds: ['T0001'], primaryEvidenceIds: ['T0001'], reviewFlagIds: [] }],
+      decisions: [], openQuestions: [] }],
+    actions: [], reviewFlags: [],
+    qualityState: { preparation: { dateContext: { source: 'transcript_header', meetingDate: '2027-02-10', invalid: [], conflict: false } },
+      discussion: { topicArrangementVersion: 1 } }
+  };
+}
+
+test('public and export boundaries retain a linked conditional source-calendar warning without changing the date prose', async () => {
+  const draft = sourceCalendarDraft();
+  const original = JSON.parse(JSON.stringify(draft));
+  const visible = publicMeetingAgentDraft(draft);
+  const record = visible.discussion[0].points[0];
+  assert.equal(record.text, draft.discussion[0].points[0].text);
+  const flag = visible.reviewFlags.find(item => item.id.startsWith('flag-source-calendar-'));
+  assert.ok(flag);
+  assert.equal(flag.status, 'open');
+  assert.match(flag.message, /without a year/);
+  assert.match(flag.message, /confirmed meeting year \(2027\)/);
+  assert.deepEqual(record.reviewFlagIds, [flag.id]);
+  const wordDraft = meetingAgentDraftForDocx(draft);
+  assert.equal(wordDraft.reviewFlags.find(item => item.id === flag.id).status, 'open');
+  const wordXml = await (await JSZip.loadAsync(await generateMeetingMinutesAgentDocx(wordDraft, true)))
+    .file('word/document.xml').async('string');
+  assert.ok(wordXml.includes(record.text));
+  assert.match(wordXml, /without a year/);
+  const pdf = meetingAgentDraftForPdf(draft, true);
+  assert.equal(pdf.reviewFlags.find(item => item.id === flag.id).status, 'open');
+  assert.equal(pdf.discussion[0].points[0], record.text);
+  assert.deepEqual(draft, original, 'public presentation and export must not alter the stored source or draft');
+});
+
+test('source-calendar warnings preserve a reviewer confirmation and abstain when the meeting anchor is conflicting or unknown', () => {
+  const draft = sourceCalendarDraft();
+  const flag = publicMeetingAgentDraft(draft).reviewFlags.find(item => item.id.startsWith('flag-source-calendar-'));
+  const confirmedDraft = { ...draft, reviewFlags: [{ ...flag, status: 'confirmed', correctionNote: 'Confirmed with the venue.' }] };
+  assert.equal(publicMeetingAgentDraft(confirmedDraft).reviewFlags.find(item => item.id === flag.id).status, 'confirmed');
+  assert.equal(publicMeetingAgentDraft(confirmedDraft).reviewFlags.find(item => item.id === flag.id).correctionNote, 'Confirmed with the venue.');
+  assert.equal(meetingAgentDraftForDocx(confirmedDraft).reviewFlags.find(item => item.id === flag.id).status, 'confirmed');
+  assert.equal(meetingAgentDraftForPdf(confirmedDraft, true).reviewFlags.find(item => item.id === flag.id).status, 'confirmed');
+  const conflicting = JSON.parse(JSON.stringify(draft));
+  conflicting.qualityState.preparation.dateContext.conflict = true;
+  assert.deepEqual(publicMeetingAgentDraft(conflicting).reviewFlags, []);
+  assert.deepEqual(meetingAgentDraftForDocx(conflicting).reviewFlags, []);
+  const unknown = { ...draft, qualityState: {} };
+  assert.deepEqual(publicMeetingAgentDraft(unknown).reviewFlags, []);
 });

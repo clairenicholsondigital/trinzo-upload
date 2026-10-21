@@ -462,8 +462,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     // the base scorer. Otherwise a fee/count claim can acquire unrelated
     // supplier citations even though none contains its numbers.
     const supportedYear = claimedCalendarDate && TimingIntegrity.isValidCalendarDate(options.meetingDate)
-      && /\b(?:this|next) year\b/i.test(windowProfile.value)
-      && TimingIntegrity.explicitCalendarDate(windowProfile.value, options.meetingDate) === claimedCalendarDate
+      && TimingIntegrity.explicitCalendarDates(windowProfile.value, options.meetingDate, { requireYearContext: true }).includes(claimedCalendarDate)
       ? claimedCalendarDate.slice(0, 4) : '';
     const scoreProfile = supportedYear ? { ...claimProfile, values: claimProfile.values.filter(value => String(value) !== supportedYear) } : claimProfile;
     if (scoreProfile.values.some((value) => !explicitValuePresent(value, windowProfile.lower))) return 0;
@@ -494,7 +493,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   const validIds = suppliedIds.filter((id) => known.has(id));
   const selectedSuppliedIds = () => {
     if (!claimedCalendarDate) return validIds.slice(0, 8);
-    const defining = validIds.filter(id => TimingIntegrity.explicitCalendarDate(rows[indexById.get(id)]?.text, options.meetingDate) === claimedCalendarDate);
+    const defining = validIds.filter(id => TimingIntegrity.explicitCalendarDates(rows[indexById.get(id)]?.text, options.meetingDate).includes(claimedCalendarDate));
     const qualifications = validIds.filter(id => /\b(?:prefer(?:red|ably)?|ideally|fallback|contingency|hard stop|instead)\b/i.test(rows[indexById.get(id)]?.text || '')
       && defining.some(anchor => Math.abs(indexById.get(id) - indexById.get(anchor)) <= 16));
     return [...new Set([...defining, ...qualifications, ...validIds])].slice(0, 8);
@@ -1055,7 +1054,8 @@ const RAW_TIMING_CLAUSE_START = /^(?:(?:i|we|you|he|she|they|it|there|here)(?:\s
 const TIMING_SIGNAL_EXTRA = /\b(?:fortnight|now|straight away|right away|at once|first thing|close of play|end of play|end of the day|eod|cop|eom|eoy|lunchtime|noon|midday|midnight|o['’]clock|half past|quarter (?:past|to)|hours?|minutes?|[ap]\.?m\.?|q[1-4]|h[12]|sprint|release|launch|go-live|christmas|easter|new year|summer|autumn|winter|spring|during|throughout|while|whilst|ahead of|prior to|in time|ready for|depending on|dependent|depends|decision|outcome|start of|beginning of|middle of|mid-\w+|fortnightly|weekly|monthly|daily)\b/i;
 function hasTimingSignal(wording = '') {
   const value = String(wording || '');
-  return CALENDAR_TIMING.test(value) || DEPENDENCY_TIMING.test(value) || TIMING_SIGNAL_EXTRA.test(value);
+  return CALENDAR_TIMING.test(value) || DEPENDENCY_TIMING.test(value) || TIMING_SIGNAL_EXTRA.test(value)
+    || /\b\d{1,2}(?:st|nd|rd|th)\b/i.test(value);
 }
 
 function normaliseTimingWording(timing = {}) {
@@ -2352,10 +2352,22 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
 // lexical remapping prefers a different description of the same work. A timing
 // answer needs a connected owner commitment/when-question exchange, rather than
 // merely being a nearby date belonging to another task.
-function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolvedIds) {
+function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolvedIds, timing = {}) {
   const context = evidenceContextFor(units);
   const subjects = new Set(actionSubjectWords(action));
   const hasSubject = (value) => [...new Set(contentTokens(value))].filter((word) => subjects.has(word)).length >= 2;
+  const citationText = value => comparisonText(value).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const timingWording = citationText(timing?.wording || '');
+  // A chair's recap can carry the actual timing while earlier turns describe
+  // the work more fully. Retain a supplied direct quotation of that field
+  // before the citation cap; its presence remains provenance, not a verdict
+  // that the date/owner/operation is correct (the timing checks still decide).
+  const directTimingIds = hasTimingSignal(timing?.wording || '') ? [...new Set(suppliedIds || [])].filter(id => {
+    const unit = context.rows[context.indexById.get(id)];
+    return unit && timingWording && citationText(unit.text).includes(timingWording)
+      && actionPredicateSupported(action, unit.text)
+      && contentTokens(unit.text).some(word => subjects.has(word));
+  }) : [];
   const commitmentObjects = (value) => {
     const generic = new Set(['the', 'and', 'i\'ll', 'will', 'shall', 'can', 'could', 'myself', 'new', 'replacement', 'unit', 'one', 'this', 'that', 'them', 'these', 'those', 'let', 'leave', 'handle', 'take', 'fit', 'pop', 'put']);
     const operations = new Set(ACTION_VERB_GROUPS.flat());
@@ -2414,7 +2426,7 @@ function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, r
     const index = context.indexById.get(id);
     return owners.length && Number.isInteger(index) && timingOnlyAnswer(context.rows[index]) && !timingAnswer(index);
   }));
-  return [...new Set([...retained, ...(resolvedIds || []).filter((id) => !unrelatedAnswers.has(id))])].slice(0, 8);
+  return [...new Set([...directTimingIds, ...retained, ...(resolvedIds || []).filter((id) => !unrelatedAnswers.has(id))])].slice(0, 8);
 }
 
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
@@ -2749,7 +2761,7 @@ function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacement
     .filter(Boolean)
     .sort((left, right) => right.length - left.length)
     .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
-  const pattern = new RegExp(`(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?(?:the\\s+)?(?:${candidates.join('|')})`, 'i');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?(?:the\\s+)?(?:${candidates.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
   if (!pattern.test(source)) return source;
   const replacement = String(replacementTiming || '').trim();
   let revised = source.replace(pattern, replacement);
@@ -2835,10 +2847,52 @@ function timingDecisionAfterChange(action, timing, item, options = {}, reason = 
   return next;
 }
 
+function linkedQualificationTiming(action, item, row, preferred, fallback) {
+  if (!row.stepQuote || !quotedVerbatim(row.stepQuote, item.passage)
+    || sharedSubjectWords(row.stepQuote, action.action) < 2) return false;
+  const units = normaliseSourceUnits(timingItemSourceUnits(item));
+  const contains = (source, value) => quoteText(source).includes(quoteText(value));
+  const dates = [...String(action.timing?.wording || '').matchAll(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|\d{1,2}(?:st|nd|rd|th))\b/gi)].map(match => match[0]);
+  const repeatsOldDate = value => dates.some(date => new RegExp(`\\b${date}\\b`, 'i').test(value));
+  const temporalOnly = value => !String(value)
+    .replace(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|january|february|march|april|may|june|july|august|september|october|november|december|\d+(?:st|nd|rd|th)?)\b/gi, ' ')
+    .replace(/\b(?:ideally|preferably|preferred|hopefully|probably|presumably|maybe|possibly|around|approximately|roughly|before|after|by|on|until|within|no|later|than|at|the|end|of|this|next|first|second|week|weeks|month|year|day|days|hard|stop|deadline|target|fallback|contingency|if|not|needed|necessary|possible|but|and|or|then|is|would|be|it|that|should|could|can|will|we|i|need|to|have|as|a|an|for|instead|think|thinking|might|worth|going|rather|do|does|up|just|in|case|about)\b/gi, ' ')
+    .replace(/[^\p{L}]+/gu, '').trim();
+  const switchesWork = unit => /\b(?:i|we|[A-Z][a-z]+)\s+(?:will|shall|must|to)\s+/i.test(unit.text)
+    && contentTokens(unit.text).some(word => ACTION_VERBS.has(word))
+    && sharedSubjectWords(unit.text, action.action) < 2;
+  const differentAssignee = unit => [...String(unit.text).matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:will|shall|must|to)\s+\w+/g)]
+    .some(match => !/^(?:I|We|They)$/.test(match[1]) && !(action.owners || [])
+      .some(owner => nameParts(match[1]).every(part => nameParts(owner).includes(part))));
+  return units.some((unit, index) => {
+    if (!contains(unit.text, row.qualificationQuote) || !contains(row.qualificationQuote, preferred)
+      || !repeatsOldDate(row.qualificationQuote)) return false;
+    // A temporal prefix cannot hide a different instruction or assignee in
+    // the remainder of the very same turn.
+    if (switchesWork(unit) || differentAssignee(unit)
+      || /\bi\s+(?:will|shall|am going to)\s+/i.test(unit.text)
+        && contentTokens(unit.text).some(word => ACTION_VERBS.has(word))
+        && !speakerIsOwner(unit.speaker, action.owners)) return false;
+    const source = quoteText(unit.text), quote = quoteText(row.qualificationQuote);
+    if (!temporalOnly(source.slice(0, source.indexOf(quote)) + quote)) return false;
+    const anchors = units.slice(Math.max(0, index - 3), index);
+    const anchor = [...anchors].reverse().find(prior => sharedSubjectWords(prior.text, action.action) >= 2
+      && repeatsOldDate(prior.text) && !differentAssignee(prior));
+    if (!anchor || units.slice(units.indexOf(anchor) + 1, index).some(switchesWork)) return false;
+    if (!fallback || contains(row.qualificationQuote, fallback)) return true;
+    return units.slice(index + 1, index + 9).some((later, offset) =>
+      later.speaker === unit.speaker && contains(later.text, fallback)
+        && /\b(?:if not|otherwise|fallback|contingency|if need be)\b/i.test(later.text)
+        && temporalOnly(later.text)
+        && !units.slice(index + 1, index + 1 + offset).some(switchesWork));
+  });
+}
+
 // Verbatim dates can occur beside unrelated work in the same review window.
 // A qualification must either restate this owned instruction, or be a purely
 // temporal follow-up by its owner which explicitly refers to its prior date.
 function qualificationBindsTimingToAction(action, item, row, preferred, fallback, options = {}) {
+  if (linkedQualificationTiming(action, item, row, preferred, fallback)) return true;
   const units = normaliseSourceUnits(timingItemSourceUnits(item));
   const contains = (source, quote) => quoteText(source).includes(quoteText(quote));
   const original = units.filter(unit => contains(unit.text, row.timingQuote)
@@ -5631,7 +5685,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       resolved.evidenceIds = [];
     }
     const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
-    const fieldEvidenceIds = retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds);
+    const fieldEvidenceIds = retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds, item?.timing);
     const evidenceIds = anchorOwnerCommitment(action, owners, units, fieldEvidenceIds);
     const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);

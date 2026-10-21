@@ -184,6 +184,15 @@ test('a source-valid qualification cannot donate another task or owner timing', 
       preferredTiming: 'ideally Monday', fallbackTiming: 'Wednesday' }], options);
     assert.deepEqual(singleTurn.actions, [original], 'one transcript turn can contain separate work and timing');
   }
+  for (const [speaker, work] of [['Jordan', 'the training pack'], ['Sam', 'that training pack'], ['Jordan', 'the inspection report']]) {
+    const suffixUnits = [{ id: 'T0001', speaker: 'Chair', text: 'Sam will send the inspection report Friday.' },
+      { id: 'T0002', speaker, text: `Before Friday, ideally Monday, is when I will send ${work}.` }];
+    const suffixItems = V.timingCheckItems([original], suffixUnits, options);
+    const suffix = V.applyTimingCheckResults([original], suffixItems, [{ id: suffixItems[0].id,
+      verdict: 'qualified', timingQuote: 'Friday', stepQuote: 'inspection report',
+      qualificationQuote: 'Before Friday, ideally Monday', preferredTiming: 'ideally Monday', fallbackTiming: '' }], options);
+    assert.deepEqual(suffix.actions, [original], 'work or a different assignee after the quoted prefix must remain in scope');
+  }
   const deicticUnits = [{ id: 'T0001', speaker: 'Sam', text: 'I will send the inspection report Friday.' },
     { id: 'T0002', speaker: 'Sam', text: 'Ideally before Friday, but Monday is the hard stop if needed.' }];
   const deicticItems = V.timingCheckItems([original], deicticUnits, options);

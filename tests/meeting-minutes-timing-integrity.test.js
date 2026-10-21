@@ -114,6 +114,15 @@ test('source assessments cannot attach to an unrelated reused action id', () => 
   assert.equal(result.actions[0].timing.exactDate, '2026-08-06');
 });
 
+test('a previous timing-policy rejection cannot block valid source under the current policy', () => {
+  const source = [{ id: 'T0001', speaker: 'Morgan Taylor', text: 'I will send the supplier questionnaire tomorrow.' }];
+  const original = record({ kind: 'target', wording: 'tomorrow', exactDate: '2026-08-06' });
+  const rejected = T.rejectActionTiming(original, source, { meetingDate: anchor, field: 'all' });
+  const restored = { ...original, timingDecision: { ...rejected.timingDecision, version: T.TIMING_POLICY_VERSION - 1 } };
+  assert.equal(T.assessmentMatches(restored, source, anchor, restored.timingDecision), false);
+  assert.equal(V.finaliseActionTimings([restored], source, { meetingDate: anchor }).actions[0].timing.exactDate, '2026-08-06');
+});
+
 test('the same wording for different owners cannot inherit another person’s rejection', () => {
   const source = [{ id: 'T0001', speaker: 'Chair', text: 'Morgan Taylor and Casey Patel will each send the supplier questionnaire tomorrow.' }];
   const rejected = T.rejectActionTiming(record({ kind: 'target', wording: 'tomorrow', exactDate: '2026-08-06' }), source, { meetingDate: anchor, field: 'exactDate' });
@@ -174,6 +183,52 @@ test('a date on another operation, owner or recipient is not donated to this tas
   }
 });
 
+test('a same-turn referential send promise keeps its date and shortened addressed recipient', () => {
+  const value = record({ kind: 'deadline', wording: 'Today', exactDate: anchor }, { action: 'Send the supplier questionnaire to Casey Patel.' });
+  const source = [
+    { id: 'T0001', speaker: 'Morgan Taylor', text: "I have the supplier questionnaire, so I'll get that over to you today as well, Casey." },
+    { id: 'T0002', speaker: 'Casey Patel', text: 'Thank you.' }
+  ];
+  const result = V.finaliseActionTimings([value], source, { meetingDate: anchor });
+  assert.equal(result.actions[0].timing.exactDate, anchor);
+  assert.equal(result.flags.length, 0);
+  const explicit = [{ ...source[0], text: 'I will send the supplier questionnaire to Casey today.' }, source[1]];
+  assert.equal(V.finaliseActionTimings([value], explicit, { meetingDate: anchor }).actions[0].timing.exactDate, anchor);
+});
+
+test('activity-shaped nouns remain part of the source-bound work object', () => {
+  const value = record({ kind: 'deadline', wording: 'Friday', exactDate: '2026-08-07' }, { action: 'Review the quality of finish.' });
+  const source = [{ id: 'T0001', speaker: 'Morgan Taylor', text: 'I will check the quality of finish Friday.' }];
+  assert.equal(V.finaliseActionTimings([value], source, { meetingDate: anchor }).actions[0].timing.exactDate, '2026-08-07');
+  const otherObject = [{ ...source[0], text: 'I will check the quality of installation Friday.' }];
+  assert.equal(V.finaliseActionTimings([value], otherObject, { meetingDate: anchor }).actions[0].timing.exactDate, '');
+});
+
+test('coordinated nominal activities are not parsed as an extra imperative', () => {
+  const value = record({ kind: 'deadline', wording: 'Friday', exactDate: '2026-08-07' }, { action: 'Review the inspection and maintenance records.' });
+  const source = [{ id: 'T0001', speaker: 'Morgan Taylor', text: 'I will check the inspection and maint records Friday.' }];
+  assert.equal(V.finaliseActionTimings([value], source, { meetingDate: anchor }).actions[0].timing.exactDate, '2026-08-07');
+  for (const action of ['Review the inspection records and archive the maintenance file.', 'Review the inspection and position sensors.']) {
+    const wrongScope = record({ kind: 'deadline', wording: 'Friday', exactDate: '2026-08-07' }, { action });
+    assert.equal(V.finaliseActionTimings([wrongScope], source, { meetingDate: anchor }).actions[0].timing.exactDate, '', action);
+  }
+});
+
+test('referential send timing cannot cross a nearer object, different owner or recipient, or ambiguous name', () => {
+  const value = record({ kind: 'deadline', wording: 'Today', exactDate: anchor }, { action: 'Send the supplier questionnaire to Casey Patel.' });
+  for (const source of [
+    [{ id: 'T0001', speaker: 'Morgan Taylor', text: "I have the supplier questionnaire, but the inspection report is ready, so I'll get that over to you today, Casey." }],
+    [{ id: 'T0001', speaker: 'Jamie Reed', text: "I have the supplier questionnaire, so I'll get that over to you today, Casey." }],
+    [{ id: 'T0001', speaker: 'Morgan Taylor', text: "I have the supplier questionnaire, so I'll get that over to you today, Jamie." }],
+    [{ id: 'T0001', speaker: 'Morgan Taylor', text: 'I will send the supplier questionnaire to Casey Lee today.' }],
+    [{ id: 'T0001', speaker: 'Morgan Taylor', text: "I have the supplier questionnaire, so I'll get that over to you today, Casey." }, { id: 'T0002', speaker: 'Casey Patel', text: 'Okay.' }, { id: 'T0003', speaker: 'Casey Lee', text: 'Okay.' }]
+  ]) {
+    const result = V.finaliseActionTimings([value], source, { meetingDate: anchor });
+    assert.equal(result.actions[0].timing.exactDate, '', source[0].text);
+    assert.ok(result.flags.length);
+  }
+});
+
 test('generated JSON cannot grant itself reviewer authority over an invalid date', () => {
   const source = [{ id: 'T0001', speaker: 'Morgan Taylor', text: 'I will send the supplier questionnaire tomorrow.' }];
   const result = V.normaliseAgentResult({ actions: [record({ kind: 'target', wording: 'tomorrow', exactDate: '2026-02-31' }, { reviewerAuthored: true })] }, source, 'actions', { meetingDate: anchor });
@@ -190,6 +245,18 @@ test('an explicit this-year date supports its year without licensing unrelated n
   assert.deepEqual(V.resolveEvidence('The supplier registration deadline is 28 November 2027.', source, [], { meetingDate: anchor }).evidenceIds, []);
 });
 
+test('a later this-year date is supported without borrowing another date’s year or unrelated quantities', () => {
+  const source = V.normaliseSourceUnits([{ id: 'T0001', speaker: 'Morgan Taylor', text: 'We passed 28 May, but the supplier registration deadline is 28 November this year.' }]);
+  const claim = 'The supplier registration deadline is 28 November 2026.';
+  assert.ok(V.resolveEvidence(claim, source, ['T0001'], { meetingDate: anchor }).evidenceIds.includes('T0001'));
+  assert.ok(V.normaliseAgentResult({ discussion: [{ topic: 'Supplier registration', points: [{ text: claim, evidenceIds: ['T0001'] }] }] }, source, 'discussion', { meetingDate: anchor }).discussion[0].points[0].evidenceIds.includes('T0001'));
+  assert.deepEqual(V.resolveEvidence('There are 2026 supplier registrations.', source, [], { meetingDate: anchor }).evidenceIds, []);
+  assert.deepEqual(V.resolveEvidence('The supplier registration deadline is 28 November 2027.', source, [], { meetingDate: anchor }).evidenceIds, []);
+  const mixed = V.normaliseSourceUnits([{ id: 'T0001', speaker: 'Morgan Taylor', text: 'The inspection is 28 May next year, but the supplier registration deadline is 28 November this year.' }]);
+  assert.deepEqual(T.explicitCalendarDates(mixed[0].text, anchor), ['2027-05-28', '2026-11-28']);
+  assert.deepEqual(V.resolveEvidence('The supplier registration deadline is 28 November 2027.', mixed, [], { meetingDate: anchor }).evidenceIds, []);
+});
+
 test('citation limits retain the supplied defining date and its nearby qualification', () => {
   const source = V.normaliseSourceUnits([
     ...Array.from({ length: 9 }, (_, index) => ({ id: `T${String(index + 1).padStart(4, '0')}`, speaker: 'Chair', text: 'The supplier registration deadline remains a planning concern.' })),
@@ -200,6 +267,31 @@ test('citation limits retain the supplied defining date and its nearby qualifica
   assert.ok(result.evidenceIds.includes('T0010'));
   assert.ok(result.evidenceIds.includes('T0011'));
   assert.ok(result.evidenceIds.length <= 8);
+});
+
+test('action normalisation retains the supplied direct timing line before the citation cap', () => {
+  const source = V.normaliseSourceUnits([
+    { id: 'T0001', speaker: 'Morgan Taylor', text: 'I will start the vibration endurance testing.' },
+    ...Array.from({ length: 10 }, (_, index) => ({ id: `T${String(index + 2).padStart(4, '0')}`, speaker: 'Chair', text: 'The vibration endurance testing remains the next engineering activity.' })),
+    { id: 'T0012', speaker: 'Chair', text: 'Your main focus is the assembly review and the testing, presumably early next week to start the testing at least.' }
+  ]);
+  const value = record({ kind: 'target', wording: 'presumably early next week', exactDate: '' }, { action: 'Start the vibration endurance testing.', evidenceIds: source.map(unit => unit.id) });
+  const result = V.normaliseActions({ actions: [value] }, source, { meetingDate: anchor });
+  assert.equal(result.length, 1);
+  assert.ok(result[0].evidenceIds.includes('T0012'), 'the direct supplied field source is not lost to noun-heavy anchors or the cap');
+  assert.ok(result[0].evidenceIds.length <= 8);
+  assert.equal(result[0].timing.wording, 'presumably early next week');
+  assert.equal(result[0].timing.exactDate, '');
+});
+
+test('retaining a direct timing citation cannot turn a wrong-operation or wrong-owner date into authority', () => {
+  for (const sourceText of ['I will draft the inspection report Friday.', 'Casey Patel will review the inspection report Friday.']) {
+    const source = V.normaliseSourceUnits([{ id: 'T0001', speaker: 'Morgan Taylor', text: sourceText }]);
+    const value = record({ kind: 'deadline', wording: 'Friday', exactDate: '2026-08-07' }, { action: 'Review the inspection report.' });
+    const result = V.normaliseActions({ actions: [value] }, source, { meetingDate: anchor, enforceEvidence: false });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].timing.exactDate, '', sourceText);
+  }
 });
 
 test('reviewer timing remains literal while invalid input is flagged', () => {

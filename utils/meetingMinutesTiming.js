@@ -5,7 +5,7 @@
   else root.MeetingMinutesTiming = api;
 }(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
-  const TIMING_POLICY_VERSION = 1;
+  const TIMING_POLICY_VERSION = 2;
   const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
   const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const ORDINALS = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20, thirtieth: 30 };
@@ -56,6 +56,25 @@
     if (!found.year && /\bnext year\b/.test(value) && year) year += 1;
     const month = MONTHS.findIndex(name => name.slice(0, 3) === found.month.slice(0, 3)) + 1;
     return year ? isoDate(year, month, dayNumber(found.day)) : '';
+  }
+  function explicitCalendarDates(wording, meetingDate, options) {
+    const value = clean(wording), dates = [];
+    const patterns = [
+      /\b\d{4}-\d{2}-\d{2}\b/g,
+      new RegExp(`(?<![a-z-])(?:the\\s+)?(?:\\d{1,2}(?:st|nd|rd|th)?|${ORDINAL_RE})\\s+(?:of\\s+)?${MONTH_RE}\\b(?:,?\\s+\\d{4})?`, 'gi'),
+      new RegExp(`\\b${MONTH_RE}\\s+\\d{1,2}(?:st|nd|rd|th)?\\b(?:,?\\s+\\d{4})?`, 'gi')
+    ];
+    for (const pattern of patterns) {
+      for (const match of value.matchAll(pattern)) {
+        // A year qualifier belongs to its own date, not the first date in an
+        // entire multi-date passage. Keep unrelated numeric gates unchanged.
+        const qualifier = value.slice(match.index + match[0].length).match(/^\s*(?:of\s+)?(?:this|next)\s+year\b/i)?.[0] || '';
+        if (options?.requireYearContext && !/\b\d{4}\b/.test(match[0]) && !qualifier) continue;
+        const date = explicitCalendarDate(`${match[0]}${qualifier}`, meetingDate);
+        if (date) dates.push(date);
+      }
+    }
+    return [...new Set(dates)];
   }
   function classifyTimingWording(wording) {
     const value = canonical(wording).replace(/\bnot later than\b/g, 'by');
@@ -183,9 +202,15 @@
     return { ...row, timing: next, timingDecision: { version: TIMING_POLICY_VERSION, ...timingAssessmentKey(row, units, opts.meetingDate), status: 'rejected', rejectedExactDates, rejectedWordings, previousTiming: { ...timing }, reason: opts.reason || 'unsupported_timing' } };
   }
   const SUBJECT_STOP = new Set(('the and for with from into that this then than their there will would could should have has had been are was were can need needs must shall please complete finish finalise finalize prepare arrange send share provide conduct do carry out before after once when today tomorrow morning afternoon evening week weeks next monday tuesday wednesday thursday friday saturday sunday').split(' '));
+  const ACTIVITY_WORDS = new Set('complete finish finalise finalize prepare arrange send share provide conduct'.split(' '));
   function subjectWords(value, owners) {
+    const body = canonical(value);
     const ownerWords = new Set((owners || []).flatMap(owner => canonical(owner).split(' ')));
-    return [...new Set((canonical(value).match(/[a-z][a-z'-]{2,}/g) || []).filter(word => !SUBJECT_STOP.has(word) && !ownerWords.has(word)).map(word => word.replace(/(?:ing|ed|es|s)$/, '')))];
+    // An activity word can be part of the object (e.g. quality of finish),
+    // rather than the requested operation. Do not erase that distinguishing
+    // noun or lower the object-overlap threshold to compensate.
+    const objectNouns = new Set([...body.matchAll(/\bof(?:\s+the)?\s+([a-z][a-z'-]*)\b/g)].map(match => match[1]).filter(word => ACTIVITY_WORDS.has(word)));
+    return [...new Set((body.match(/[a-z][a-z'-]{2,}/g) || []).filter(word => (!SUBJECT_STOP.has(word) || objectNouns.has(word)) && !ownerWords.has(word)).map(word => word.replace(/(?:ing|ed|es|s)$/, '')))];
   }
   const OPERATION_GROUPS = [
     ['review', 'check', 'assess', 'analyse', 'analyze', 'inspect', 'evaluate', 'examine'],
@@ -198,21 +223,58 @@
     ['order', 'purchase', 'buy', 'place'], ['test', 'validate', 'verify'],
     ['start', 'begin', 'commence'], ['complete', 'finish', 'finalise', 'finalize']
   ];
-  const hasOperation = (value, group) => group.some(verb => new RegExp(`\\b${verb}(?:s|d|ed|ing)?\\b`, 'i').test(value));
+  const hasOperation = (value, group) => group.some(verb => new RegExp(`\\b${verb}(?:s|d|ed|ing)?\\b`, 'i').test(value))
+    || (group.includes('send') && /\b(?:get|pass)\s+(?:it|that|this|those|them)\s+(?:over|across|through)\s+to\b/i.test(value));
   function operationMatches(action, source) {
     const body = canonical(action).replace(/^[^,;.!?]{1,80}\b(?:will|shall|is to)\s+/, '');
-    const verbs = [body.split(' ')[0], ...[...body.matchAll(/\b(?:and|then)\s+([a-z-]+)/g)].map(match => match[1])];
+    const coordinated = [...body.matchAll(/\b(and|then)\s+([a-z-]+)/g)].filter(match => {
+      const verb = match[2];
+      if (OPERATION_GROUPS.some(group => hasOperation(verb, group)) || match[1] === 'then') return true;
+      const previous = body.slice(0, match.index).trim().split(' ').pop();
+      const rest = body.slice(match.index + match[0].length).trim();
+      // Two nominal activities sharing a work/record head are an object,
+      // e.g. inspection and maintenance records, not a second imperative.
+      // Unknown real verbs remain required, including "archive the file".
+      const nominal = word => /(?:ing|tion|sion|ment|ness|ity|ance|ence|hood)$/.test(word || '');
+      return !(nominal(previous) && nominal(verb)
+        && /^(?:work|activities|tasks|documentation|records|requirements|details|information|data|costs|resources)\b/.test(rest));
+    }).map(match => match[2]);
+    const verbs = [body.split(' ')[0], ...coordinated];
     const required = verbs.map(verb => ({ verb, group: OPERATION_GROUPS.find(group => hasOperation(verb, group)) }));
     return required.length > 0 && required.every(({ verb, group }) => group ? hasOperation(source, group)
       : new RegExp(`\\b${verb}(?:s|d|ed|ing)?\\b`, 'i').test(source));
   }
-  function roleAndRecipientMatch(row, clause, unit) {
+  function roleAndRecipientMatch(row, clause, unit, options) {
+    const opts = options || {};
     const value = canonical(clause), ownerWords = (row.owners || []).map(owner => canonical(owner).split(' '));
     const assigned = [...String(clause).matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:will|shall|must|to)\s+(?:review|check|write|draft|send|share|update|prepare|sign|complete|replace|arrange|test)\b/g)];
     if (ownerWords.length && assigned.some(match => !ownerWords.some(parts => canonical(match[1]).split(' ').every(part => parts.includes(part))))) return false;
     const recipients = [...String(row.action || '').matchAll(/\b(to|with|for)\s+([A-Z][\p{L}'’-]*(?:\s+[A-Z][\p{L}'’-]*){0,2})\b/gu)]
       .filter(match => !DAYS.includes(canonical(match[2])) && !MONTHS.includes(canonical(match[2])));
-    if (recipients.some(match => !value.includes(`${match[1].toLowerCase()} ${canonical(match[2])}`))) return false;
+    const nameParts = name => canonical(name).split(' ').filter(part => !DAYS.includes(part) && !MONTHS.includes(part));
+    const nameMatches = (stated, desired) => {
+      const parts = nameParts(stated), wanted = nameParts(desired);
+      if (!parts.length || !parts.every(part => wanted.includes(part))) return false;
+      if (parts.length > 1) return true;
+      // A shortened name is usable only when known people do not make it
+      // ambiguous. It cannot make Casey Lee into Casey Patel.
+      const alternatives = new Set((opts.people || []).filter(name => nameParts(name).includes(parts[0])).map(canonical));
+      return alternatives.size <= 1;
+    };
+    for (const recipient of recipients) {
+      const named = [...String(clause).matchAll(new RegExp(`\\b${recipient[1]}\\s+([A-Z][\\p{L}'’-]*(?:\\s+[A-Z][\\p{L}'’-]*){0,2})\\b`, 'gu'))];
+      if (named.length) {
+        if (!named.every(match => nameMatches(match[1], recipient[2]))) return false;
+        continue;
+      }
+      // In a referential send promise, "to you ... , Casey" names its own
+      // recipient. Do not borrow a name from another timed task in the turn.
+      const at = String(unit.text || '').indexOf(clause);
+      const tail = at >= 0 ? String(unit.text).slice(at + clause.length) : '';
+      const addressed = /\bto you\b/i.test(clause) && tail.match(/^[,\s]+([A-Z][\p{L}'’-]*(?:\s+[A-Z][\p{L}'’-]*){0,2})[.!?]?\s*$/u);
+      if (addressed && nameMatches(addressed[1], recipient[2])) continue;
+      if (!opts.allowMissingRecipient) return false;
+    }
     if (/\b(?:i['’]ll|i will|i can|i am going to)\b/i.test(clause) && ownerWords.length) {
       const speaker = canonical(unit.speaker).split(' ');
       if (!ownerWords.some(parts => parts.every(part => speaker.includes(part)))) return false;
@@ -222,6 +284,8 @@
   function dateSourceSupported(row, units, meetingDate, date) {
     const ids = new Set(row.evidenceIds || []), owners = row.owners || [];
     const rows = (units || []).filter(unit => unit.classification !== 'remove' || unit.restored);
+    const people = [...new Set(rows.map(unit => unit.speaker).filter(Boolean))];
+    const rolesMatch = (clause, unit, allowMissingRecipient = false) => roleAndRecipientMatch(row, clause, unit, { people, allowMissingRecipient });
     const subjects = subjectWords(row.action, owners);
     const about = text => {
       const shared = subjectWords(text, owners).filter(word => subjects.includes(word)).length;
@@ -238,26 +302,26 @@
       const localSubjects = clause => subjectWords(clause, owners).filter(word => !temporalFillers.has(word)
         && !/^(?:i|we|you|they|it|he|she)(?:'ll|'re|'ve|'m|'d)?$/.test(word));
       return carrying.some(({ clause, at: clauseIndex }) => {
-        if (about(clause) && operationMatches(row.action, clause) && roleAndRecipientMatch(row, clause, unit)) return true;
+        if (about(clause) && operationMatches(row.action, clause) && rolesMatch(clause, unit)) return true;
         const shortTiming = !localSubjects(clause).length
-          || /\b(?:do|send|fit|replace|finish|complete)\s+(?:it|that|this|one|unit|them)\b|\bby then\b/i.test(clause);
+          || /\b(?:do|send|get|pass|fit|replace|finish|complete)\s+(?:it|that|this|one|unit|them)\b|\bby then\b/i.test(clause);
         if (!shortTiming) return false;
-        let connectedOperation = operationMatches(row.action, clause) && roleAndRecipientMatch(row, clause, unit);
+        let connectedOperation = operationMatches(row.action, clause) && rolesMatch(clause, unit);
         // A turn can change subjects before its short date clause. That nearer
         // subject controls; comma-splitting must not detach it and borrow an
         // older task merely because both passages have the same speaker.
         for (let local = clauseIndex - 1; local >= 0; local -= 1) {
           const antecedent = clauses[local];
           if (!localSubjects(antecedent).length) continue;
-          if (!about(antecedent) || !roleAndRecipientMatch(row, antecedent, unit)) return false;
-          if (operationMatches(row.action, antecedent)) return true;
+          if (!about(antecedent) || !rolesMatch(antecedent, unit, connectedOperation)) return false;
+          if (operationMatches(row.action, antecedent) || connectedOperation) return true;
           break;
         }
         for (let at = index - 1; at >= Math.max(0, index - 8); at -= 1) {
           const previous = rows[at];
           if (/\b(?:now (?:the|on to)|next item|another task)\b/i.test(previous.text)) break;
-          if (ids.has(previous.id) && operationMatches(row.action, previous.text) && roleAndRecipientMatch(row, previous.text, previous)) connectedOperation = true;
-          if (ids.has(previous.id) && about(previous.text) && connectedOperation && roleAndRecipientMatch(row, previous.text, previous)) return true;
+          if (ids.has(previous.id) && operationMatches(row.action, previous.text) && rolesMatch(previous.text, previous)) connectedOperation = true;
+          if (ids.has(previous.id) && about(previous.text) && connectedOperation && rolesMatch(previous.text, previous)) return true;
           if (/\b(?:i['’]ll|i will|we['’]ll|we will)\b/i.test(previous.text)
             && !/\b(?:it|that|this|one|unit|those|them)\b/i.test(previous.text)
             && !about(previous.text) && subjectWords(previous.text, owners).length >= 2) break;
@@ -308,5 +372,5 @@
     }
     return { action: human ? row : action, issues, assessment: decision || null };
   }
-  return { TIMING_POLICY_VERSION, isValidCalendarDate, classifyTimingWording, explicitCalendarDate, resolveExactDate, normaliseTimingValue, formatCalendarDate, formatTimingLabel, timingAssessmentKey, assessmentMatches, rejectActionTiming, assessActionTiming };
+  return { TIMING_POLICY_VERSION, isValidCalendarDate, classifyTimingWording, explicitCalendarDate, explicitCalendarDates, resolveExactDate, normaliseTimingValue, formatCalendarDate, formatTimingLabel, timingAssessmentKey, assessmentMatches, rejectActionTiming, assessActionTiming };
 }));

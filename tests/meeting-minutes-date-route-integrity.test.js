@@ -63,6 +63,38 @@ test('referee nomination retains conflicting structured dates under unique candi
   const duplicates = api.hybridCandidateLedgerFromResult({ actions: [friday, { ...friday, id: 'copy' }] }, 'primary');
   assert.equal(api.meetingAgentRefereeCandidates('actions', duplicates).length, 1,
     'an identical timing still allows the original duplicate nomination rule');
+  const enumVariants = api.hybridCandidateLedgerFromResult({ actions: [friday,
+    { ...friday, id: 'same-day-target', timing: { ...friday.timing, kind: 'target' } }] }, 'primary');
+  assert.equal(api.meetingAgentRefereeCandidates('actions', enumVariants).length, 1,
+    'the same timing wording and day do not become two work items because models choose different timing enums');
+});
+
+test('dated discussion retains its effective anchor through reconstruction, recovery and final evidence normalization', () => {
+  const V = require('../utils/meetingMinutesAgentV2');
+  const options = { meetingDate: '2026-06-17' };
+  const units = [{ id: 'T0001', speaker: 'Robin',
+    text: 'Existing products must be entered into the product register by 28 November this year.' }];
+  const point = { id: 'registration-date', text: 'Existing products must be entered into the product register by 28 November 2026.',
+    evidenceIds: ['T0001'] };
+  const candidate = { candidateId: 'registration-candidate', sourcePass: 'primary', recordType: 'discussion_point',
+    topic: 'Product registration', text: point.text, evidenceIds: point.evidenceIds, record: point };
+  const initial = V.normaliseAgentResult({ discussion: [{ topic: candidate.topic, points: [point] }] }, units, 'discussion', options);
+  assert.deepEqual(initial.discussion[0].points[0].evidenceIds, ['T0001']);
+  const reconstructed = api.reconstructMissingRefereeDiscussion([], [{ candidateId: candidate.candidateId,
+    targetId: candidate.candidateId, disposition: 'core', evidenceIds: ['T0001'] }], [candidate], units, options);
+  assert.deepEqual(reconstructed.discussion[0].points[0].evidenceIds, ['T0001']);
+  const compact = api.compactDiscussionPropositions(reconstructed.discussion, [], units, options);
+  assert.equal(compact.length, 1);
+  assert.match(compact[0].points[0].text, /28 November 2026/);
+  assert.deepEqual(compact[0].points[0].evidenceIds, ['T0001']);
+  const recovered = api.corroboratedOmittedDiscussionRecords([candidate,
+    { ...candidate, candidateId: 'recovery-candidate', sourcePass: 'recovery' }], [], units, options);
+  assert.equal(recovered.length, 1);
+  assert.deepEqual(recovered[0].points[0].evidenceIds, ['T0001']);
+  const changedAnchor = api.reconstructMissingRefereeDiscussion([], [{ candidateId: candidate.candidateId,
+    targetId: candidate.candidateId, disposition: 'core', evidenceIds: ['T0001'] }], [candidate], units,
+  { meetingDate: '2027-06-17' });
+  assert.deepEqual(changedAnchor.discussion[0].points[0].evidenceIds, [], 'a stale expanded year must not be grounded by a different meeting year');
 });
 
 test('anchored discovery and later action recovery retain the date-precision contract', () => {

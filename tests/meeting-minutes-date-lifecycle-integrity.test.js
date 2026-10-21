@@ -128,3 +128,54 @@ test('reviewer timing and intentional compounds survive all automatic lifecycle 
   assert.deepEqual(V.timingCheckItems([original], units, options), []);
   assert.deepEqual(V.applyTimingCheckResults([original], [], [], options).actions, [original]);
 });
+
+test('a requester can qualify a read-back date and state a later linked contingency for the same work', () => {
+  const units = [
+    { id: 'T0001', speaker: 'Morgan', text: 'Then you will provide the inspection certificate, which I need before the trial starts.' },
+    { id: 'T0002', speaker: 'Chair', text: 'The 24th, so by the 21st then.' },
+    { id: 'T0003', speaker: 'Morgan', text: 'Twenty-first, I would say.' },
+    { id: 'T0004', speaker: 'Chair', text: 'For the inspection certificate, if Sam waits till the 21st, can you access it before you leave?' },
+    { id: 'T0005', speaker: 'Morgan', text: 'Ideally it would be good before I leave.' },
+    { id: 'T0006', speaker: 'Morgan', text: 'I think ideally it might be worth thinking about instead of going to the 21st as the hard stop, it might be worth thinking about it the week before.' },
+    { id: 'T0007', speaker: 'Sam', text: 'I will front load everything as much as possible.' },
+    { id: 'T0008', speaker: 'Morgan', text: 'If not, then we do have that second week up to the 21st as contingency, just in case.' }
+  ];
+  const original = row('Complete and provide the inspection certificate.', { evidenceIds: ['T0001', 'T0002', 'T0003', 'T0005', 'T0006', 'T0008'],
+    timing: { kind: 'deadline', wording: 'By the 21st before the trial starts', exactDate: '' } });
+  const items = V.timingCheckItems([original], units, options);
+  const verdict = { id: items[0].id, verdict: 'qualified', timingQuote: 'Twenty-first, I would say',
+    stepQuote: 'inspection certificate, which I need before the trial starts',
+    qualificationQuote: units[5].text.slice(0, -1), preferredTiming: 'the week before', fallbackTiming: 'up to the 21st as contingency' };
+  const result = V.applyTimingCheckResults([original], items, [verdict], options);
+  assert.equal(result.actions[0].timing.kind, 'target');
+  assert.equal(result.actions[0].timing.wording, 'Preferred: the week before; fallback: up to the 21st as contingency');
+  assert.equal(result.actions[0].timing.exactDate, '');
+  assert.deepEqual(result.rejected, []);
+  const switched = units.map(unit => unit.id === 'T0007'
+    ? { ...unit, text: 'I will prepare the training pack.' } : unit);
+  const switchedItems = V.timingCheckItems([original], switched, options);
+  const blocked = V.applyTimingCheckResults([original], switchedItems, [{ ...verdict, id: switchedItems[0].id }], options);
+  assert.deepEqual(blocked.actions, [original], 'a new work item before the contingency breaks the reference');
+  const otherOwner = units.map(unit => unit.id === 'T0004'
+    ? { ...unit, text: 'Dana will provide the inspection certificate by the 21st.' } : unit);
+  const otherItems = V.timingCheckItems([original], otherOwner, options);
+  assert.deepEqual(V.applyTimingCheckResults([original], otherItems, [{ ...verdict, id: otherItems[0].id }], options).actions,
+    [original], 'a read-back for a named different assignee cannot qualify this owner task');
+});
+
+test('embedded timing removal cannot consume part of another word', () => {
+  const source = [{ id: 'T0001', speaker: 'Sam', text: 'I will prepare the release checklist within the next two to three weeks.' }];
+  const original = row('Prepare the release checklist within the next two to three weeks.', { evidenceIds: ['T0001'],
+    timing: { kind: 'target', wording: 'in the next two to three weeks', exactDate: '' } });
+  const normalised = V.normaliseAgentResult({ actions: [original] }, source, 'actions', options);
+  assert.equal(normalised.actions[0].action, original.action, 'an unmatched preposition is retained without partial-word corruption');
+  assert.deepEqual(normalised.actions[0].timing, original.timing);
+  const exact = V.normaliseAgentResult({ actions: [{ ...original,
+    action: 'Prepare the release checklist in the next two to three weeks.' }] },
+  [{ ...source[0], text: 'I will prepare the release checklist in the next two to three weeks.' }], 'actions', options);
+  assert.equal(exact.actions[0].action, 'Prepare the release checklist.');
+  const name = V.normaliseAgentResult({ actions: [row('Review the Mayfield invoices in May.', { evidenceIds: ['T0001'],
+    timing: { kind: 'target', wording: 'May', exactDate: '' } })] },
+  [{ id: 'T0001', speaker: 'Sam', text: 'I will review the Mayfield invoices in May.' }], 'actions', options);
+  assert.equal(name.actions[0].action, 'Review the Mayfield invoices.');
+});
