@@ -178,4 +178,21 @@ test('embedded timing removal cannot consume part of another word', () => {
     timing: { kind: 'target', wording: 'May', exactDate: '' } })] },
   [{ id: 'T0001', speaker: 'Sam', text: 'I will review the Mayfield invoices in May.' }], 'actions', options);
   assert.equal(name.actions[0].action, 'Review the Mayfield invoices.');
+  for (const apostrophe of ["'", '’']) {
+    for (const [wording, actionText] of [
+      ['next month', `Bring proposed options to next month${apostrophe}s meeting.`],
+      ['Friday', `Prepare the agenda for Friday${apostrophe}s review.`]
+    ]) {
+      const possessive = V.normaliseAgentResult({ actions: [row(actionText, { evidenceIds: ['T0001'],
+        timing: { kind: 'target', wording, exactDate: '' } })] },
+      [{ id: 'T0001', speaker: 'Sam', text: `I will ${actionText.charAt(0).toLowerCase()}${actionText.slice(1)}` }], 'actions', options);
+      assert.equal(possessive.actions[0].action, actionText, 'possessive date modifiers remain a complete part of the instruction');
+    }
+  }
+  const adverbial = V.normaliseAgentResult({ actions: [row('Prepare the release checklist by Friday.', { evidenceIds: ['T0001'],
+    timing: { kind: 'deadline', wording: 'Friday', exactDate: '' } })] },
+  [{ id: 'T0001', speaker: 'Sam', text: 'I will prepare the release checklist by Friday.' }], 'actions', options);
+  assert.equal(adverbial.actions[0].action, 'Prepare the release checklist.');
+  assert.equal(adverbial.actions[0].timing.wording, 'Friday');
+  assert.equal(adverbial.actions[0].timing.exactDate, '2026-10-23');
 });

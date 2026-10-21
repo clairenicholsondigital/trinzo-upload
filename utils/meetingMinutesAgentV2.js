@@ -2761,7 +2761,7 @@ function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacement
     .filter(Boolean)
     .sort((left, right) => right.length - left.length)
     .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
-  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?(?:the\\s+)?(?:${candidates.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}'’])(?:\\b(?:by|on|before|after|during|in|within|from|until|no later than)\\s+)?(?:the\\s+)?(?:${candidates.join('|')})(?![\\p{L}\\p{N}'’])`, 'iu');
   if (!pattern.test(source)) return source;
   const replacement = String(replacementTiming || '').trim();
   let revised = source.replace(pattern, replacement);
