@@ -5860,18 +5860,125 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     }
     changes.set(JSON.stringify(source.path), changed);
   }
-  const visit = (record, path) => {
-    if (isReviewerAuthored(record)) return record;
-    const next = changes.has(JSON.stringify(path)) ? changes.get(JSON.stringify(path)) : record;
-    if (!next) return null;
-    return { ...next, ...(Array.isArray(next.supportingDetails) ? {
-      supportingDetails: next.supportingDetails.map((detail, index) => visit(detail, [...path, 'supportingDetails', index])).filter(Boolean)
-    } : {}) };
+  const sourceByPath = new Map([...sourceBySynthetic.values()].map(source => [JSON.stringify(source.path), source]));
+  const childDispositions = [];
+  const independentIssue = (record, path) => {
+    const source = sourceByPath.get(JSON.stringify(path));
+    if (!source) return 'child_not_independently_reviewed';
+    const state = indexed.states.get(source.item.id), verdict = indexed.byId.get(source.item.id);
+    const timingReview = state?.status === 'rejected' && state.reason === 'temporal_source_binding_not_proved'
+      && verdict?.verdict === 'supported';
+    if (!['supported', 'corrected'].includes(state?.status) && !timingReview) return state?.reason || 'child_fidelity_unresolved';
+    if (record._unsupportedEvidenceIds?.length || record._weakEvidenceIds?.length) return 'child_evidence_diagnostics';
+    const anchors = new Set(record.evidenceIds || []);
+    const passageUnits = source.item.passageUnits || [];
+    if (!anchors.size || [...anchors].some(id => !passageUnits.some(unit => unit.id === id))) return 'child_own_evidence_missing';
+    const quote = text(verdict?.evidenceQuote, 1500);
+    const carrying = passageUnits.filter(unit => anchors.has(unit.id)
+      && decisionQuoteValidation(quote, unit.text, timingReview ? 25 : 120).valid);
+    if (!carrying.length) return 'child_quote_not_in_own_evidence';
+    const value = text(record.text, 1600);
+    const editorial = require('./stagedEditorial');
+    if (editorial.isRawTranscriptDiscussionPoint(value) || !editorial.finaliseDiscussionPointForMinutes(value)
+      || /^(?:it|this|that|these|those|they|he|she|his|her|their|its|which|who|whose)\b|^the\s+(?:former|latter|same|above|following|other)\b/i.test(value)
+      || /\b(?:with|for|after|before|once|until|without|on|to|of|about)\s+(?:it|this|that|them|those|these)\s*[.!?]?$/i.test(value)) return 'child_depends_on_parent_context';
+    if (evidenceSupportScore(value, quote) < 0.42 || polarity(value) !== polarity(quote)) return 'child_quote_support_too_low';
+    const canonical = input => convertSpokenNumbers(String(input).replace(/([a-z])([A-Z])/g, '$1 $2')).text
+      .toLowerCase().replace(/\b(\d+)(?:st|nd|rd|th)\b/g, '$1').replace(/[-–—]/g, ' ');
+    const literal = input => input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const claim = canonical(value), quoted = canonical(quote);
+    const specifics = /\b\d+(?:[.,]\d+)?\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b|\b(?:this|next|last|previous)\s+(?:week|month|year|day)\b/g;
+    if ([...claim.matchAll(specifics)].some(match => !new RegExp(`\\b${literal(match[0])}\\b`).test(quoted))) return 'child_specificity_not_in_quote';
+    const wording = input => canonical(input).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const qualifications = /\b(?:if|unless|once|until|before|after|subject to|provided that|providing that|pending|contingent|depending|dependent|awaiting|approval|approved|permission|permitted|as long as|on condition)\b/;
+    // A verbatim quote may still omit a governing condition from its own
+    // source turn. Do not infer that a nearby qualifier belongs elsewhere.
+    const fullSource = canonical(carrying.map(unit => unit.text).join(' '));
+    if (/[?？]/.test(value) !== /[?？]/.test(fullSource)) return 'child_source_question_modality';
+    if (qualifications.test(fullSource) && wording(value) !== wording(fullSource)) return 'child_source_condition_not_preserved';
+    const hedged = /\b(?:may|might|could|possibly|probably|presumably|perhaps|maybe|hopefully|ideally|expected|provisional|uncertain|unclear|unconfirmed|unsure|not sure|not known|not established)\b/;
+    if (hedged.test(fullSource) && wording(value) !== wording(fullSource)) return 'child_source_uncertainty_omitted';
+    if (polarity(value) !== polarity(fullSource)) return 'child_source_polarity_omitted';
+    if ([...value.matchAll(/\b[A-Z][\p{L}'’-]+\b/gu)].some(match => match.index > 0
+      && !new RegExp(`\\b${literal(canonical(match[0]))}\\b`).test(quoted))) return 'child_named_detail_not_in_quote';
+    const completeOwnSource = carrying.some(unit => wording(value) === wording(unit.text));
+    if (!timingReview && !completeOwnSource) return 'child_statement_not_complete_own_source';
+    if (timingReview && !completeOwnSource) {
+      const mainClause = carrying.some(unit => {
+        const sourceWords = wording(unit.text), quoteAt = sourceWords.indexOf(wording(quote));
+        if (quoteAt < 0) return false;
+        const before = sourceWords.slice(0, quoteAt).trim();
+        return !before || /\b(?:and|but)(?:\s+then)?(?:\s+(?:obviously|also|so|well|just))*$/.test(before);
+      });
+      if (!mainClause) return 'child_quote_not_independent_source_clause';
+      if (/\b(?:proposal|proposed|suggestion|suggested|rejected|declined|disputed|incorrect|false|reported|reportedly|claim|claimed|says|said|asked|whether)\b/.test(fullSource)) return 'child_source_assertion_unresolved';
+      // A date does not make an ownership or approval assertion a timing
+      // phase. The warning-only exception can retain a source-bound schedule
+      // or sequence; it cannot establish another factual predicate.
+      if (!/\b(?:(?:is|are|will be)\s+(?:scheduled|planned|due)|will\s+(?:start|begin|end|finish|follow|continue|last|occur|run|take place))\b/.test(claim)) return 'child_not_independent_timing_phase';
+    }
+    if (wording(value) !== wording(quote)) {
+      // Detaching a model-supported paraphrase creates a new independent
+      // assertion. Keep that boundary literal, except for an already retained
+      // temporal row whose own warning must remain open. That narrow exception
+      // still needs the quote's subject and the claim's words in source order;
+      // an actor mentioned as a recipient or in a sibling clause cannot bind it.
+      if (!timingReview) return 'child_statement_not_literal_in_quote';
+      const subject = quantifiedClaimSubject(value).filter(word => !['and', 'or'].includes(word));
+      const quoteWords = (quoted.match(/[\p{L}\p{N}]+/gu) || []).filter((word, index) => index || !['the', 'a', 'an'].includes(word));
+      const stem = word => word.length > 4 && word.endsWith('s') ? word.slice(0, -1) : word;
+      const quoteRoot = contentTokens(quoted.replace(/^(?:the|a|an)\s+/, '')).map(stem);
+      const subjectBound = subject.length && subject.every((word, index) => word === quoteRoot[index]);
+      const presenceBound = quantifiedClaimSignatures(value).some(signature => locativePresenceDurationBound(value, quote, signature));
+      const grammar = new Set(['the', 'a', 'an', 'and', 'or', 'is', 'are', 'was', 'were', 'will', 'be', 'to', 'of', 'on', 'in', 'at', 'for', 'from', 'between', 'through']);
+      const claimWords = (claim.match(/[\p{L}\p{N}]+/gu) || []).filter(word => !grammar.has(word));
+      let cursor = 0;
+      const ordered = claimWords.every(word => {
+        const next = quoteWords.indexOf(word, cursor);
+        if (next < 0) return false;
+        cursor = next + 1;
+        return true;
+      });
+      if ((!subjectBound || !ordered) && !presenceBound) return 'child_proposition_not_bound_to_quote';
+    }
+    const quantityIssue = quantifiedClaimGroundingIssue(record, carrying);
+    if (quantityIssue && !quantityIssue.unresolved) return 'child_quantity_not_bound';
+    return '';
   };
-  const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => isReviewerAuthored(topic) ? topic : ({
-    ...topic, ...Object.fromEntries(['points', 'decisions', 'openQuestions'].map(kind => [kind,
-      (topic[kind] || []).map((record, rowIndex) => visit(record, [topicIndex, kind, rowIndex])).filter(Boolean)]))
-  }));
+  const visit = (record, path, independently = false) => {
+    if (isReviewerAuthored(record)) return [{ record, path }];
+    const next = changes.has(JSON.stringify(path)) ? changes.get(JSON.stringify(path)) : record;
+    const issue = next && independently ? independentIssue(next, path) : '';
+    // Resolve original child paths before reparenting. A rejected wrapper
+    // cannot prevent independently reviewed grandchildren from being checked.
+    const children = (record.supportingDetails || []).flatMap((detail, index) =>
+      visit(detail, [...path, 'supportingDetails', index], independently || !next));
+    if (independently) {
+      const source = sourceByPath.get(JSON.stringify(path));
+      const state = source && indexed.states.get(source.item.id);
+      childDispositions.push({ recordId: record.id || '', recordPath: path,
+        disposition: next && !issue ? 'retained' : 'withheld', reason: issue || (next ? '' : 'own_fidelity_withheld'),
+        reviewStatus: state?.status || 'missing', reviewReason: state?.reason || '' });
+    }
+    if (!next || issue) return children;
+    return [{ record: { ...next, ...(Array.isArray(record.supportingDetails) ? {
+      supportingDetails: children.map(child => child.record)
+    } : {}) }, path }];
+  };
+  const checked = (Array.isArray(discussion) ? discussion : []).map((topic, topicIndex) => {
+    if (isReviewerAuthored(topic)) return topic;
+    const next = { ...topic, points: [], decisions: [], openQuestions: [] };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      for (const [rowIndex, record] of (topic[kind] || []).entries()) {
+        for (const child of visit(record, [topicIndex, kind, rowIndex])) {
+          // Supporting context has no independent decision/question label.
+          // Detaching it must not inherit a rejected parent's classification.
+          next[child.path.length > 3 ? 'points' : kind].push(child.record);
+        }
+      }
+    }
+    return next;
+  });
   const withheld = applied.withheld.map(row => {
     const index = Number(String(row.topicId).replace('fidelity-row-', ''));
     const source = sourceBySynthetic.get(index);
@@ -5879,6 +5986,7 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
       kind: source.path.length > 3 ? 'supportingDetails' : source.item.kind, recordPath: source.path } : row;
   });
   const accounting = finishReviewAccounting(indexed);
+  if (childDispositions.length) accounting.parentWithheldChildren = childDispositions;
   return { discussion: checked, flags, withheld, accounting,
     checked: accounting.items.filter(item => ['supported', 'corrected', 'uncertain'].includes(item.status)).length,
     corrected: applied.corrected, uncertain: accounting.items.filter(item => !['supported', 'corrected'].includes(item.status)).length,
