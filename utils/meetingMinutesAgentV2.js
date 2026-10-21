@@ -6801,7 +6801,7 @@ function recordLabel(record = {}) {
 
 function reviewFlagContentKey(flag) {
   return JSON.stringify([
-    flag.kind.toLowerCase(), flag.message.toLowerCase(), flag.evidenceIds.map(id => id.toLowerCase()),
+    flag.kind.toLowerCase(), flag.message.toLowerCase(), flag.evidenceIds.map(id => id.toLowerCase()).sort(),
     flag.reviewerAuthored === true, flag.systemTimingIssue || null, flag.temporalField || ''
   ]);
 }
