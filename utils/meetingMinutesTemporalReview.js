@@ -126,11 +126,81 @@ function sameTemporalWork(claim, source) {
   return proper.filter(word => !TEMPORAL_WORDS.has(word.toLowerCase()) && !['The', 'A', 'An', 'It', 'This', 'They', 'We', 'He', 'She'].includes(word)
     && !OP_GROUPS.flat().includes(word.toLowerCase())).every(word => new RegExp(`\\b${word}\\b`, 'i').test(source));
 }
+
+function phaseSubject(value) {
+  const match = String(value).match(/^([\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,2}?)\s+(?:will|shall|must|is|are|was|were|has|have|lasts|takes|begins|starts|ends|follows)\b/iu);
+  if (!match || /\b(?:i|we|us|you|he|she|it|they|this|that|these|those|our|my|your|his|her|their|on|in|at|by|for|from|to|of|under|over|upon|with|as|per|during|within|given)\b/i.test(match[1])) return '';
+  const subject = canon(match[1]).replace(/^(?:the|a|an)\s+/, '');
+  if (subject.split(' ').length > 2) return '';
+  // An unpunctuated participial prefix ("approval permitting report work")
+  // is not an unambiguous subject. A final event noun ("training") is safe.
+  if (subject.split(' ').slice(0, -1).some(word => /(?:ing|ed)$/.test(word))) return '';
+  return subject.split(' ').some(word => !TEMPORAL_WORDS.has(word)) ? subject : '';
+}
+
+function simpleTemporalPhase(value) {
+  // Accept only a complete timing predicate followed by its temporal tail.
+  // An arbitrary suffix or intervening context could qualify both phases.
+  const predicate = String(value).match(/^[\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,5}?\s+(?:(?:is|are|was|were)\s+scheduled|(?:will|shall|must)\s+(?:last|take|begin|start|end|finish|follow|run|resume|occur)|lasts|takes|begins|starts|ends|follows)\s+(.+?)\.?$/iu);
+  if (!predicate) return false;
+  const clock = '\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?|\\d{1,2}\\s*(?:am|pm)';
+  const zone = '(?:(?:utc|gmt)(?:\\s*[+-]\\s*\\d{1,2}(?::?\\d{2})?)?|bst|cet|cest|est|edt|pst|pdt)';
+  const range = `(?:${COUNT})\\s+(?:to|-)\\s+(?:${COUNT})\\s+(?:(?:working|business)\\s+)?(?:days?|weeks?|months?|hours?|minutes?)`;
+  const recurring = `(?:every|each)\\s+(?:(?:other|${COUNT})\\s+)?(?:${WEEKDAY}|days?|weeks?|months?|quarters?|years?)|daily|weekly|fortnightly|monthly|quarterly|annually|yearly`;
+  const anchor = `(?:${range}|${recurring}|${TEMPORAL_ANCHOR})`;
+  return new RegExp(`^(?:(?:for|during|in|on|at|by|within)\\s+)?(?:the\\s+)?${anchor}(?:\\s+(?:morning|afternoon|evening|night))?(?:\\s+at\\s+(?:${clock}))?(?:\\s+${zone})?$`, 'i').test(predicate[1]);
+}
+
+function independentSourcePhaseClips(value) {
+  const source = String(value || '');
+  // Scope can extend across a coordinator or even a sentence boundary. This
+  // fallback does not guess which phase an external qualification governs.
+  if (source.length > 3000 || /[,;()[\]{}!?]/.test(source) || /\b(?:if|unless|provided|providing|assuming|only|subject to|dependent on|depends|depending|conditional|contingent|pending|as long as|whether|once|when|until|after|before|and then|without|not|never|no|cannot|can't|won't|shan't|ain't|(?:is|are|was|were|has|have|do|does|did|would|should|must|need)n['’]t|may|might|could|can|should|possibly|probably|presumably|perhaps|maybe|ideally|prefer|preferred|preferably|hope|hoping|hopefully|expected|provisional|tentative|tentatively|uncertain|unconfirmed|approximate|approximately|roughly|around|about|estimate|estimates|estimated|try|trying|or|either|neither|otherwise|instead|except|but|although|however)\b/i.test(source)) return [];
+  const sentences = source.split(/(?<=[.!?])\s+/).filter(Boolean);
+  // Even a separate sentence can qualify every phase ("Both start Monday").
+  // Keep the fallback limited to a single complete compound source sentence.
+  if (sentences.length !== 1) return [];
+  const clips = [];
+  let cursor = 0;
+  for (const sentence of sentences) {
+    const sentenceStart = source.indexOf(sentence, cursor);
+    cursor = sentenceStart + sentence.length;
+    const boundaries = [...sentence.matchAll(/\s+and\s+/gi)]
+      .filter(match => phaseSubject(sentence.slice(match.index + match[0].length)));
+    if (!boundaries.length) continue;
+    if (boundaries.length > 3) return [];
+    const starts = [0, ...boundaries.map(match => match.index + match[0].length)];
+    const ends = [...boundaries.map(match => match.index), sentence.length];
+    const phases = starts.map((start, index) => {
+      const raw = sentence.slice(start, ends[index]);
+      const leading = raw.length - raw.trimStart().length;
+      const label = raw.trimStart().match(/^[A-Z][\p{L}'’-]*(?:\s+[A-Z][\p{L}'’-]*){0,2}:\s+/u)?.[0] || '';
+      const clipStart = sentenceStart + start + leading + label.length;
+      const clipEnd = sentenceStart + ends[index] - (raw.length - raw.trimEnd().length);
+      const text = source.slice(clipStart, clipEnd);
+      return { text, start: clipStart, end: clipEnd, subject: phaseSubject(text) };
+    });
+    // An inherited subject, an unfinished clause or repeated work with multiple
+    // timings is not independent phase evidence. Keep those cases unresolved.
+    if (phases.some(phase => !phase.subject || !simpleTemporalPhase(phase.text)) || phases.some((left, index) => phases.slice(index + 1)
+      .some(right => sameTemporalWork(left.text, right.text) || sameTemporalWork(right.text, left.text)))) return [];
+    clips.push(...phases);
+    if (clips.length > 4) return [];
+  }
+  return clips;
+}
+
 function supportedByApprovedRecord(claim, record, options = {}) {
   if (canon(claim) === canon(record.text)) return true;
   const candidates = record.type === 'action' ? [record.text] : record.text
     .split(/;|(?<=[.!?])\s+|\band\s+(?=[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+(?:will|shall|must|is to)\b)/).filter(Boolean);
-  return candidates.some(source => sameTemporalWork(claim, source) && temporalMeaningRetained(claim, source, options));
+  if (candidates.some(source => sameTemporalWork(claim, source) && temporalMeaningRetained(claim, source, options))) return true;
+  if (record.type !== 'discussion') return false;
+  const subject = phaseSubject(claim);
+  // This narrow fallback verifies a whole source phase, not a paraphrase or
+  // an arbitrary quoted fragment that may have dropped a local qualifier.
+  return Boolean(subject) && independentSourcePhaseClips(record.text).some(clip => canon(claim) === canon(clip.text) && clip.subject === subject
+    && sameTemporalWork(claim, clip.text) && temporalMeaningRetained(claim, clip.text, options));
 }
 
 function approvedRecords(current = {}) {
@@ -241,4 +311,4 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
 }
 
 module.exports = { summaryTemporalCheckItems, summaryTemporalCheckPrompt, applySummaryTemporalCheckResults, temporalClaim,
-  temporalMeaningRetained, supportedByApprovedRecord };
+  temporalMeaningRetained, supportedByApprovedRecord, independentSourcePhaseClips };
