@@ -6623,6 +6623,9 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   // the missing-evidence sweep below - every save would otherwise re-flag them.
   for (const objective of objectives) delete objective._unsupportedEvidenceIds;
   const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map(normaliseFlag);
+  const suppliedFlagCount = flags.length;
+  const flagRecords = flagRecordsIn([...discussion, ...actions]);
+  const originalFlagReferences = new Map(flagRecords.map(record => [record, new Set(record.reviewFlagIds)]));
   const records = [
     ...discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]),
     ...actions
@@ -6768,25 +6771,24 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     record.reviewFlagIds.push(flag.id);
   }
   if (stage === 'discussion') flags.push(...unresolvedReferenceFlags(units));
-  // Identical flags (same kind, message and evidence) are shown once; every
-  // record that pointed at a dropped copy is repointed at the kept one, so a
-  // hand-typed unsupported action keeps its flag.
-  const alias = new Map();
-  const kept = new Map();
-  for (const flag of flags) {
-    const key = `${flag.kind}|${flag.message}|${flag.evidenceIds.join(',')}`.toLowerCase();
-    if (kept.has(key)) alias.set(flag.id, kept.get(key));
-    else kept.set(key, flag.id);
-  }
+  // A review decision belongs to its original warning and row. Only untouched
+  // automatic duplicates, or a validation warning regenerated for that same
+  // target, may share a flag. Build the kept list and aliases together so they
+  // can never disagree about which reviewer decisions remain distinct.
+  const { reviewFlags, alias } = uniqueFlags(flags, suppliedFlagCount, flagRecords, originalFlagReferences);
   if (alias.size) {
     const repoint = (record) => {
-      if (Array.isArray(record?.reviewFlagIds)) record.reviewFlagIds = [...new Set(record.reviewFlagIds.map((id) => alias.get(id) || id))];
+      if (Array.isArray(record?.reviewFlagIds)) record.reviewFlagIds = [...new Set(record.reviewFlagIds.map((id) => {
+        const visited = new Set();
+        while (alias.has(id) && !visited.has(id)) { visited.add(id); id = alias.get(id); }
+        return id;
+      }))];
       for (const detail of record?.supportingDetails || []) repoint(detail);
     };
     for (const topic of discussion) for (const record of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) repoint(record);
     for (const action of actions) repoint(action);
   }
-  return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags: uniqueFlags(flags) };
+  return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags };
 }
 
 // Evidence flags name their item, so flags for different items never merge (a
@@ -6797,14 +6799,50 @@ function recordLabel(record = {}) {
   return value.length > 90 ? `${value.slice(0, 87).replace(/\s+\S*$/, '')}…` : value;
 }
 
-function uniqueFlags(flags = []) {
-  const seen = new Set();
-  return flags.filter((flag) => {
-    const key = `${flag.kind}|${flag.message}|${flag.evidenceIds.join(',')}`.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
+function reviewFlagContentKey(flag) {
+  return JSON.stringify([
+    flag.kind.toLowerCase(), flag.message.toLowerCase(), flag.evidenceIds.map(id => id.toLowerCase()),
+    flag.reviewerAuthored === true, flag.systemTimingIssue || null, flag.temporalField || ''
+  ]);
+}
+
+function reviewFlagIdentityKey(flag) {
+  // Handled or annotated warnings keep their own identities even if two
+  // reviewers happened to choose the same status and note for separate rows.
+  const untouched = flag.status === 'open' && !flag.correctionNote && !flag.reviewerAuthored;
+  return JSON.stringify([reviewFlagContentKey(flag), flag.status, flag.correctionNote, untouched ? '' : flag.id]);
+}
+
+function uniqueFlags(flags = [], suppliedCount = flags.length, records = [], originalReferences = new Map()) {
+  const supplied = flags.slice(0, suppliedCount);
+  const suppliedIds = new Set(supplied.map(flag => flag.id));
+  const alias = new Map();
+  const retained = flags.filter((flag, index) => {
+    if (index < suppliedCount) return true;
+    const targets = records.filter(record => record.reviewFlagIds.includes(flag.id));
+    const matching = supplied.filter(prior => reviewFlagContentKey(prior) === reviewFlagContentKey(flag)
+      && (!suppliedIds.has(flag.id) || prior.id === flag.id)
+      && targets.length && targets.every(record => originalReferences.get(record)?.has(prior.id)));
+    // Content alone is insufficient: another incoming row may still need the
+    // same warning. Reuse a decision only when its existing target is known.
+    if (matching.length !== 1) return true;
+    if (flag.id !== matching[0].id) alias.set(flag.id, matching[0].id);
+    return false;
+  });
+  const kept = new Map();
+  const reviewFlags = retained.filter(flag => {
+    const key = reviewFlagIdentityKey(flag);
+    if (kept.has(key)) {
+      if (flag.id !== kept.get(key)) alias.set(flag.id, kept.get(key));
+      return false;
+    }
+    kept.set(key, flag.id);
     return true;
   });
+  // normaliseFlag remembers generated copies too; restore the persisted
+  // review state if such a copy reused an existing warning's deterministic id.
+  reviewFlags.forEach(rememberFlag);
+  return { reviewFlags, alias };
 }
 
 function coverageFlags(inventory = [], result = {}) {

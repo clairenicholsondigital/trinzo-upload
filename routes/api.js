@@ -9742,7 +9742,17 @@ function compactMeetingAgentRefereeCandidate(candidate = {}) {
     ...(candidate.timingDecision ? { timingProvenance: {
       status: meetingMinutesAgentText(candidate.timingDecision.status, 40),
       policyVersion: TIMING_POLICY_VERSION,
-      source: 'application_assessment_not_source_evidence'
+      source: 'application_assessment_not_source_evidence',
+      // A rejected exact date can coexist with supported timing wording.
+      // Keep the recorded scope so that status does not imply both were rejected.
+      rejectedExactDates: (Array.isArray(candidate.timingDecision.rejectedExactDates)
+        ? candidate.timingDecision.rejectedExactDates : [])
+        .filter((value) => typeof value === 'string')
+        .map((value) => meetingMinutesAgentText(value, 20)).filter(Boolean).slice(0, 8),
+      rejectedWordings: (Array.isArray(candidate.timingDecision.rejectedWordings)
+        ? candidate.timingDecision.rejectedWordings : [])
+        .filter((value) => typeof value === 'string')
+        .map((value) => meetingMinutesAgentText(value, 220)).filter(Boolean).slice(0, 8)
     } } : {}),
     evidenceIds: [...new Set((Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [])
       .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean))].slice(0, 20),
@@ -10077,18 +10087,38 @@ function meetingAgentActionAuditCandidates(candidates = [], maxChars = 12000, ma
       || Number(right?.priority || 0) - Number(left?.priority || 0)
       || Number(left?.sequence || 0) - Number(right?.sequence || 0));
   const retained = [];
+  const scopedById = new Map();
   const seen = new Set();
   let chars = 2;
   for (const candidate of ordered) {
-    const compact = compactMeetingAgentActionAuditCandidate(candidate);
+    const scoped = compactMeetingAgentActionAuditCandidate(candidate);
+    const compact = { ...scoped };
+    if (scoped.timingProvenance) {
+      // Select the same actions as before scope metadata was added. Its size
+      // must not displace another candidate from an already bounded audit.
+      compact.timingProvenance = { ...scoped.timingProvenance };
+      delete compact.timingProvenance.rejectedExactDates;
+      delete compact.timingProvenance.rejectedWordings;
+    }
     if (!compact.candidateId || seen.has(compact.candidateId)) continue;
     const size = JSON.stringify(compact).length + 1;
     if (retained.length >= maxCandidates || chars + size > maxChars) continue;
     retained.push(compact);
+    scopedById.set(compact.candidateId, scoped);
     seen.add(compact.candidateId);
     chars += size;
   }
-  return retained.sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+  retained.sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0));
+  chars = JSON.stringify(retained).length;
+  return retained.map((compact) => {
+    const scoped = scopedById.get(compact.candidateId);
+    const extraChars = JSON.stringify(scoped).length - JSON.stringify(compact).length;
+    // Both scope lists travel together when there is room. Otherwise keep
+    // legacy provenance and every selected action within the original budget.
+    if (chars + extraChars > maxChars) return compact;
+    chars += extraChars;
+    return scoped;
+  });
 }
 
 function compactMeetingAgentActionRegister(actions = [], maxChars = 9000, maxActions = 32) {
