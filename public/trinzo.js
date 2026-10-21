@@ -4,10 +4,12 @@
    2. Highlight the current page in the nav (aria-current). */
 (function () {
   var primaryHomeUrl = '/meeting-minutes-agent';
+  var aiTeamProjectUrl = '/project-update-test?stage=process&projectId=19';
   var primaryNavItems = [
     { href: primaryHomeUrl, label: 'Meeting Minutes Agent' },
     { href: '/jobs', label: 'Library' },
-    { href: '/insights', label: 'Insights' }
+    { href: '/insights', label: 'Insights' },
+    { href: aiTeamProjectUrl, label: 'AI team project' }
   ];
 
   function normalisedPath(value) {
