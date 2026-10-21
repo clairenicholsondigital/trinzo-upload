@@ -158,6 +158,17 @@ async function buildProjectUpdateResultFromTranscript(transcript, options = {}) 
       };
     }
 
+    if (fallbackUsed) {
+      // Saved with the report so reviewers can see it was not built by the
+      // main project analyser.
+      result.projectReport = result.projectReport && typeof result.projectReport === 'object' ? result.projectReport : {};
+      result.projectReport.analyserFallback = {
+        used: true,
+        script: scriptUsed,
+        reason: String(result.projectWorkflowFallback?.reason || '').slice(0, 500)
+      };
+    }
+
     applyMinutesActionsToProjectReport(result, options.minutesActions, {
       authoritative: Boolean(options.minutesDraftId)
     });
@@ -261,7 +272,10 @@ async function processProjectUpdateJob(job, options = {}) {
 
     await updateGenerationJobProgress(job.jobId, 'saving', 88, 'Saving draft project update report.');
     const response = buildQueuedProjectUpdateResponse(job, result);
-    await markGenerationJobCompleted(job.jobId, job.meetingId, response, 'Project update report is ready for review.');
+    const completedMessage = result?.queuedDiagnostics?.fallbackUsed
+      ? 'Project update report is ready for review. The main analyser failed, so the backup analyser was used: check it carefully.'
+      : 'Project update report is ready for review.';
+    await markGenerationJobCompleted(job.jobId, job.meetingId, response, completedMessage);
     return { ok: true, response };
   } catch (error) {
     await markGenerationJobFailure(job, error.message || 'Project update generation failed.', 'Project update generation');

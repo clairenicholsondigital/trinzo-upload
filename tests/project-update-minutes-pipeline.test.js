@@ -160,6 +160,14 @@ test('legacy Python fallback retains the complete reviewed action register in bo
   assert.deepEqual(result.actions, actions);
   assert.deepEqual(store.versions[0].payload.projectReport.actions, actions);
   assert.deepEqual(store.scripts, ['project_update_minilm.py', 'python_llm.py']);
+  assert.deepEqual(store.versions[0].payload.projectReport.analyserFallback,
+    { used: true, script: 'python_llm.py', reason: 'Simulated primary failure' });
+});
+
+test('a report from the main analyser is not marked as a backup-analyser report', async () => {
+  resetStore();
+  const { result } = await runJob([], { fallback: false });
+  assert.equal(result.projectReport.analyserFallback, undefined);
 });
 
 test('persistence distinguishes action-only snapshots and still deduplicates unchanged or ordinary transcript sources', async () => {

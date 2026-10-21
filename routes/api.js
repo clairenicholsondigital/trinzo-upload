@@ -193,6 +193,8 @@ const {
   getMeetingMinutesAgentDraft,
   listMeetingMinutesAgentDrafts,
   listMeetingMinutesAgentDraftPage,
+  linkMeetingMinutesAgentDraftToProject,
+  findExistingProjectUpdateForSource,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,
@@ -7860,6 +7862,23 @@ router.post('/project-update-test/from-minutes', requireAuth, async (req, res) =
     const meetingTitle = minutes.details?.meetingTitle || draft.title || 'Meeting minutes';
     const minutesActions = minutesActionsForProjectReport(minutes.actions);
     const sourceFingerprint = crypto.createHash('sha256').update(JSON.stringify({ minutesText, minutesActions })).digest('hex');
+    await linkMeetingMinutesAgentDraftToProject(draftId, req.authUser?.userId, projectId);
+    const existing = await findExistingProjectUpdateForSource(projectId, sourceFingerprint);
+    if (existing) {
+      const existingUrl = existing.kind === 'report'
+        ? `/project-update-test/reports/${existing.reportId}`
+        : `/jobs/${existing.jobId}`;
+      return res.status(409).json({
+        ok: false,
+        success: false,
+        duplicate: true,
+        ...existing,
+        existingUrl,
+        error: existing.kind === 'report'
+          ? 'A project update from these exact minutes already exists. Edit the minutes, or archive that report, if you want a new one.'
+          : 'A project update from these minutes is already being created.'
+      });
+    }
     const queued = await queueProjectUpdateGeneration({
       transcriptText: minutesText,
       source: 'meeting-minutes-agent',
@@ -8257,7 +8276,9 @@ router.post('/project-update-test/reports/bulk-delete', requireAuth, async (req,
 
 router.patch('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
   try {
-    const report = await saveProjectReportDetail(req.params.reportId, req.body || {});
+    // Record who saved or approved from the signed-in session, not the request body.
+    const savedBy = req.authUser?.fullName || req.authUser?.email || '';
+    const report = await saveProjectReportDetail(req.params.reportId, { ...(req.body || {}), savedBy });
     if (!report) {
       return res.status(404).json({ ok: false, error: 'Project report not found.' });
     }
@@ -17380,13 +17401,33 @@ router.get('/meeting-minutes-agent/drafts', requireAuth, async (req, res) => {
       offset: req.query?.offset,
       search: req.query?.search,
       status: req.query?.status,
-      sort: req.query?.sort
+      sort: req.query?.sort,
+      projectId: req.query?.projectId
     });
     return res.json({
       ok: true,
       drafts: page.drafts.map((draft) => publicMeetingAgentDraft(draft, { summary: true })),
       pagination: { total: page.total, limit: page.limit, offset: page.offset }
     });
+  } catch (error) {
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
+// Remembers which project these minutes were written for, so the project's
+// Process tab can list only its own minutes. Does not change the minutes.
+router.post('/meeting-minutes-agent/drafts/:draftId/project-link', requireAuth, async (req, res) => {
+  try {
+    const draftId = String(req.params.draftId || '');
+    const projectId = Number(req.body?.projectId);
+    if (!/^\d+$/.test(draftId) || !Number.isSafeInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ ok: false, error: 'Choose saved minutes and a project to link.' });
+    }
+    const project = await getProjectManagementDetail(projectId);
+    if (!project) return res.status(404).json({ ok: false, error: 'Selected project was not found.' });
+    const linked = await linkMeetingMinutesAgentDraftToProject(draftId, req.authUser?.userId, projectId);
+    if (!linked) return res.status(404).json({ ok: false, error: 'Meeting minutes not found.' });
+    return res.json({ ok: true, ...linked });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
   }

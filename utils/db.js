@@ -284,7 +284,7 @@ async function saveProjectReportDetail(reportId, payload = {}) {
            approved_by = CASE WHEN $1 = 'approved' THEN $3 ELSE approved_by END,
            updated_at = NOW()
        WHERE id = $4`,
-      [reportStatus, reportName || `Report ${id}`, payload.savedBy || 'OpenClaw', id]
+      [reportStatus, reportName || `Report ${id}`, payload.savedBy || 'Unknown user', id]
     );
     if (isAutosave && latest.changeType === 'autosave' && Number(latest.versionId || 0) > 0 && !isApproved) {
       await client.query(
@@ -294,7 +294,7 @@ async function saveProjectReportDetail(reportId, payload = {}) {
              report_payload = $3,
              created_at = NOW()
          WHERE id = $4 AND report_id = $5`,
-        [payload.changeSummary || 'Autosaved draft from report detail page.', payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload), Number(latest.versionId), id]
+        [payload.changeSummary || 'Autosaved draft from report detail page.', payload.savedBy || 'Unknown user', JSON.stringify(nextPayload), Number(latest.versionId), id]
       );
       newVersionId = Number(latest.versionId);
     } else {
@@ -302,7 +302,7 @@ async function saveProjectReportDetail(reportId, payload = {}) {
         `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [id, nextVersion, isApproved ? 'approved' : isAutosave ? 'autosave' : 'user_edit', payload.changeSummary || (isAutosave ? 'Autosaved draft from report detail page.' : 'Saved from report detail page.'), payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]
+        [id, nextVersion, isApproved ? 'approved' : isAutosave ? 'autosave' : 'user_edit', payload.changeSummary || (isAutosave ? 'Autosaved draft from report detail page.' : 'Saved from report detail page.'), payload.savedBy || 'Unknown user', JSON.stringify(nextPayload)]
       );
       newVersionId = inserted.rows[0].id;
     }
@@ -3056,7 +3056,7 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
   const reportVersionId = parseId(
     (await query(
       `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-       VALUES ($1, 1, 'ai_generated', 'Initial AI-generated draft from /project-update-test.', 'OpenClaw', $2)
+       VALUES ($1, 1, 'ai_generated', 'Initial AI-generated draft.', 'Trinzo AI', $2)
        RETURNING id`,
       [reportId, JSON.stringify(result || {})]
     )).rows[0],
@@ -3619,7 +3619,57 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_agent_drafts (
 );
 CREATE INDEX IF NOT EXISTS idx_meeting_minutes_agent_drafts_user_updated
   ON meeting_minutes_agent_drafts (user_id, updated_at DESC);
+ALTER TABLE meeting_minutes_agent_drafts ADD COLUMN IF NOT EXISTS project_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_agent_drafts_user_project
+  ON meeting_minutes_agent_drafts (user_id, project_id, created_at DESC);
 `);
+}
+
+// Tags minutes with the project they were written for. Kept outside the
+// payload so it never changes the draft's revision or clashes with editor saves.
+async function linkMeetingMinutesAgentDraftToProject(draftId, userId, projectId) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const result = await query(
+    `UPDATE meeting_minutes_agent_drafts
+     SET project_id = $3
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, project_id`,
+    [Number(draftId), Number(userId), Number(projectId)]
+  );
+  return result.rows[0] ? { draftId: String(result.rows[0].id), projectId: Number(result.rows[0].project_id) } : null;
+}
+
+// Finds a report or an in-flight job already built from exactly this source,
+// so the same minutes are not turned into a second project update.
+async function findExistingProjectUpdateForSource(projectId, sourceFingerprint) {
+  const fingerprint = String(sourceFingerprint || '').toLowerCase();
+  if (!Number(projectId) || !/^[a-f0-9]{64}$/.test(fingerprint)) return null;
+  const report = await query(
+    `SELECT r.id AS "reportId"
+     FROM project_report_sources s
+     JOIN project_reports r ON r.id = s.report_id
+     WHERE r.project_id = $1
+       AND s.transcript_sha256 = $2
+       AND r.report_status <> 'archived'
+     ORDER BY s.id DESC
+     LIMIT 1`,
+    [Number(projectId), fingerprint]
+  );
+  if (report.rows[0]) return { kind: 'report', reportId: Number(report.rows[0].reportId) };
+  await ensureMeetingJobQueueSchema();
+  const job = await query(
+    `SELECT id AS "jobId"
+     FROM meeting_jobs
+     WHERE job_type = 'project_update_generate'
+       AND status IN ('queued','running')
+       AND input_payload->>'sourceFingerprint' = $2
+       AND input_payload->>'projectId' = $1::text
+     ORDER BY id DESC
+     LIMIT 1`,
+    [Number(projectId), fingerprint]
+  );
+  if (job.rows[0]) return { kind: 'job', jobId: Number(job.rows[0].jobId) };
+  return null;
 }
 
 function meetingMinutesAgentDraftFromRow(row, includeTranscript = false) {
@@ -3638,6 +3688,7 @@ function meetingMinutesAgentDraftFromRow(row, includeTranscript = false) {
     updatedAt: row.updated_at || null,
     ...payload
   };
+  if (row.project_id !== undefined) draft.linkedProjectId = row.project_id === null ? null : Number(row.project_id);
   if (includeTranscript) draft.rawTranscript = row.raw_transcript || '';
   return draft;
 }
@@ -3701,18 +3752,24 @@ async function listMeetingMinutesAgentDraftPage(userId, options = {}) {
     title_asc: 'LOWER(title) ASC, created_at DESC, id DESC',
     title_desc: 'LOWER(title) DESC, created_at DESC, id DESC'
   }[sort];
+  const projectId = Number(options.projectId);
   const params = [Number(userId), search, status];
-  const where = `user_id = $1
+  let where = `user_id = $1
     AND ($2 = '' OR title ILIKE '%' || $2 || '%' OR file_name ILIKE '%' || $2 || '%')
     AND ($3 = '' OR status = $3)`;
+  if (Number.isSafeInteger(projectId) && projectId > 0) {
+    params.push(projectId);
+    where += `
+    AND project_id = $${params.length}`;
+  }
   const [countResult, rowsResult] = await Promise.all([
     query(`SELECT COUNT(*)::int AS total FROM meeting_minutes_agent_drafts WHERE ${where}`, params),
     query(
-      `SELECT id, revision, status, title, file_name, payload, created_at, updated_at
+      `SELECT id, revision, status, title, file_name, project_id, payload, created_at, updated_at
        FROM meeting_minutes_agent_drafts
        WHERE ${where}
        ORDER BY ${orderBy}
-       LIMIT $4 OFFSET $5`,
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset]
     )
   ]);
@@ -3941,6 +3998,8 @@ module.exports = {
   getMeetingMinutesAgentDraft,
   listMeetingMinutesAgentDrafts,
   listMeetingMinutesAgentDraftPage,
+  linkMeetingMinutesAgentDraftToProject,
+  findExistingProjectUpdateForSource,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,
