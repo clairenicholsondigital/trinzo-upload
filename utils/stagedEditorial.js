@@ -569,14 +569,14 @@ function neutraliseReportedDiscussion(value) {
   const statement = text.match(REPORTED_SPEECH_DISCUSSION_PREFIX);
   if (statement) {
     const body = statement[3].replace(/^[,;:\s]+/, '').trim();
-    if (!body || REPORTED_SPEECH_DISFLUENCY.test(statement[3]) || FIRST_PERSON_TRANSCRIPT_VOICE.test(body)) return '';
+    if (!body || REPORTED_SPEECH_DISFLUENCY.test(statement[3]) || hasFirstPersonTranscriptVoice(body)) return '';
     if (!discussionPointIsCompleteSentence(body)) return '';
     return sentenceCaseHumanDiscussion(body);
   }
   const question = text.match(REPORTED_QUESTION_DISCUSSION_PREFIX);
   if (question) {
     const body = question[2].replace(/^[,;:\s]+/, '').trim();
-    if (!body || REPORTED_SPEECH_DISFLUENCY.test(body) || FIRST_PERSON_TRANSCRIPT_VOICE.test(body)) return '';
+    if (!body || REPORTED_SPEECH_DISFLUENCY.test(body) || hasFirstPersonTranscriptVoice(body)) return '';
     if (!discussionPointIsCompleteSentence(body)) return '';
     return 'The discussion considered whether ' + body.replace(/[.?!]+$/, '') + '.';
   }
@@ -602,6 +602,16 @@ const STAGED_SPEAKER_TURN_PREFIX = /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:[A
 // object means the conversion did not complete, and an incomplete conversion is not
 // publishable whatever the sentence happens to be about.
 const FIRST_PERSON_TRANSCRIPT_VOICE = /\b(?:I|I'm|I’m|I've|I’ve|I'd|I’d|me|my|mine|myself|we|we're|we’re|we've|we’ve|we'd|we’d|us|our|ours|you|you're|you’re|you've|you’ve|your|yours|let['’]s)\b/i;
+function hasFirstPersonTranscriptVoice(text) {
+  // US is a country initialism in mixed-case prose. Other pronouns retain
+  // their existing meaning, including emphasized WE/OUR and contractions.
+  // Scan every match: a country reference cannot hide a later genuine "us".
+  for (const match of text.matchAll(new RegExp(FIRST_PERSON_TRANSCRIPT_VOICE.source, 'gi'))) {
+    if (match[0] === 'US' && /[a-z]/.test(text)) continue;
+    return true;
+  }
+  return false;
+}
 const STANDALONE_MINUTES_SUBJECT = /^(?:the\s+(?:team|group|meeting|discussion|review|project|client|supplier|process|system|document|audit|work|risk|scope)|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:noted|confirmed|agreed)|[A-Z0-9][A-Za-z0-9'’()./&+-]+\s+(?:is|are|was|were|has|have|will|would|remains?|requires?|includes?|covers?|supports?|uses?|needs?))/;
 
 const DISCUSSION_ACTION_ONLY = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up|begin)\b/i;
@@ -618,7 +628,7 @@ function isRawTranscriptDiscussionPoint(value) {
   // joins the coordinators, which it always grammatically was.
   const firstWord = (text.split(/\s+/)[0] || '').replace(/[^A-Za-z'’]/g, '');
   if (/^(?:And|But|So|Or)$/i.test(firstWord) && !/\b(?:agreed|confirmed|reviewed|noted|discussed|identified)\b/i.test(text)) return true;
-  if (FIRST_PERSON_TRANSCRIPT_VOICE.test(text) && !STANDALONE_MINUTES_SUBJECT.test(text)) return true;
+  if (hasFirstPersonTranscriptVoice(text) && !STANDALONE_MINUTES_SUBJECT.test(text)) return true;
   if (/\b(?:is|was|were|has|have|will|would|could|should)\s*,\s*(?:is|was|were|has|have|will|would|could|should)\b/i.test(text)) return true;
   if (/\b(\w+)\s+\1\b/i.test(text) && !/\b(?:had had|that that)\b/i.test(text)) return true;
   return false;

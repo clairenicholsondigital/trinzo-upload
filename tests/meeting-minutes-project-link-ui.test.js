@@ -146,8 +146,9 @@ async function fullAgentPage(t, { conflict = false, holdFirstSave = false, uploa
   const context = await browser.newContext();
   t.after(() => context.close());
   const page = await context.newPage(), requests = [], errors = [];
-  let draft = draftFixture(), releaseSave;
+  let draft = draftFixture(), releaseSave, observeFirstSave;
   const firstSave = new Promise(resolve => { releaseSave = resolve; });
+  const firstSaveReceived = new Promise(resolve => { observeFirstSave = resolve; });
   const html = fs.readFileSync(path.join(ROOT, 'views/meeting-minutes-agent.html'), 'utf8');
   page.on('pageerror', error => errors.push(String(error)));
   await context.route('**/*', async route => {
@@ -162,6 +163,7 @@ async function fullAgentPage(t, { conflict = false, holdFirstSave = false, uploa
       if (request.method() === 'PATCH') {
         const patch = request.postDataJSON();
         requests.push({ type: 'save', patch: copy(patch) });
+        if (requests.filter(item => item.type === 'save').length === 1) observeFirstSave();
         if (holdFirstSave && requests.filter(item => item.type === 'save').length === 1) await firstSave;
         if (conflict) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Draft changed elsewhere. Reload before creating an update.', currentDraft: { ...draft, revision: 2 } }) });
         draft = { ...draft, ...patch, revision: draft.revision + 1 };
@@ -176,7 +178,7 @@ async function fullAgentPage(t, { conflict = false, holdFirstSave = false, uploa
   });
   await page.goto(ORIGIN + '/meeting-minutes-agent?' + (upload ? '' : 'draftId=202&') + 'projectId=17&projectName=Current%20project');
   if (!upload) await page.waitForSelector('#saveStrip:not([hidden])');
-  return { page, requests, errors, releaseSave, getDraft: () => copy(draft) };
+  return { page, requests, errors, releaseSave, firstSaveReceived, getDraft: () => copy(draft) };
 }
 
 test('the actual agent bridge saves a rapid edit before queuing and preserves timing presentation', async t => {
@@ -210,10 +212,11 @@ test('the actual bridge saves a newer edit made during an in-flight save before 
   assert.deepEqual(errors, []);
 });
 
-test('the bridge also waits for an autosave already in flight before saving newer edits', async t => {
-  const { page, requests, errors, releaseSave } = await fullAgentPage(t, { holdFirstSave: true });
+test('the bridge also waits for an autosave already in flight before saving newer edits', { timeout: 30000 }, async t => {
+  const { page, requests, errors, releaseSave, firstSaveReceived } = await fullAgentPage(t, { holdFirstSave: true });
   await page.fill('#meetingTitle', 'Autosave already started');
   await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'saving');
+  await firstSaveReceived;
   assert.equal(requests.filter(item => item.type === 'save').length, 1);
   await page.fill('#meetingTitle', 'Newer edit during autosave');
   await page.click('#createProjectUpdateFromMinutes');
