@@ -68,8 +68,8 @@ const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinu
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const {
-  ALWAYS_INTERNAL_PEOPLE,
-  alwaysInternalAttendeeName,
+  knownPersonName,
+  normaliseDirectoryNameSpellings,
   normaliseAttendeeReferences,
   normalisePublishedParticipantReference
 } = require('../utils/entityNormalization');
@@ -106,6 +106,7 @@ const { isPublishableTopicLabel, isActionCategoryTopicCard, labelNamesAWorkstrea
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { normaliseDomainTermsDeep, applyTranscriptPhraseCorrections } = require('../utils/domainTerms');
+const settingsStore = require('../utils/settingsStore');
 const { normaliseDatePhrasesDeep } = require('../utils/spokenForms');
 const { TIMING_POLICY_VERSION, isValidCalendarDate } = require('../utils/meetingMinutesTiming');
 const { reviewMeetingCalendarDates } = require('../utils/meetingMinutesDateReview');
@@ -1211,80 +1212,66 @@ function stagedKnownAttendeeKey(value) {
     .toLowerCase();
 }
 
-const STAGED_KNOWN_INTERNAL_ATTENDEES = [
-  'Colm O’Rourke',
-  'Jacqui Fox',
-  'David Didsbury',
-  'Conor Flynn',
-  'Claire Nicholson',
-  'Mark Kelleher',
-  'John-Paul Hughes',
-  'Jenny Gough',
-  'Stuart Smith',
-  'Orla Skally',
-  // Always internal, never client: see ALWAYS_INTERNAL_PEOPLE.
-  ...ALWAYS_INTERNAL_PEOPLE.map((person) => person.name)
-];
+// The known people come from the Settings page People list (see
+// utils/settingsStore.js). The lookups below are rebuilt whenever that list
+// changes.
+let stagedPeopleRegistryCache = { version: -1 };
 
-const STAGED_KNOWN_CLIENT_ATTENDEES = [
-  'Grace McGroogan',
-  'Rebecca Gill',
-  'Patrick Stewart',
-  'Jonny Dobbin',
-  'Adil Kauim',
-  'Kevin Beattie',
-  'Andrew Kane',
-  'Christina Cargan',
-  'Ciaran Ryan',
-  'Claire Doherty',
-  'Luke Speers',
-  'Janine Thomas',
-  'Abby Lennon'
-];
-
-const STAGED_ATTENDEE_BUCKET_BY_NAME = new Map([
-  ...STAGED_KNOWN_INTERNAL_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'internal', name }]),
-  ...STAGED_KNOWN_CLIENT_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'client', name }])
-]);
-
-const STAGED_KNOWN_PERSON_BY_FIRST_NAME = new Map();
-for (const name of [...STAGED_KNOWN_INTERNAL_ATTENDEES, ...STAGED_KNOWN_CLIENT_ATTENDEES]) {
-  const firstName = stagedKnownAttendeeKey(name).split(/\s+/)[0];
-  if (!firstName) continue;
-  const existing = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(firstName);
-  STAGED_KNOWN_PERSON_BY_FIRST_NAME.set(firstName, existing ? null : name);
+function stagedPeopleRegistry() {
+  const version = settingsStore.version();
+  if (stagedPeopleRegistryCache.version === version) return stagedPeopleRegistryCache;
+  const people = settingsStore.getPeople();
+  const bucketByName = new Map(people.map((person) => [
+    stagedKnownAttendeeKey(person.name),
+    { bucket: person.side === 'client' ? 'client' : 'internal', name: person.name }
+  ]));
+  const personByFirstName = new Map();
+  for (const person of people) {
+    const firstName = stagedKnownAttendeeKey(person.name).split(/\s+/)[0];
+    if (!firstName) continue;
+    const existing = personByFirstName.get(firstName);
+    personByFirstName.set(firstName, existing ? null : person.name);
+  }
+  // Speaker labels are rewritten silently through these aliases. A spelling
+  // that keeps the person's first name ("Rebecca Cuckoo") is left to the
+  // first-name correction instead, which tells the reviewer what was changed.
+  const aliases = new Map();
+  for (const person of people) {
+    const firstName = stagedKnownAttendeeKey(person.name).split(/\s+/)[0];
+    for (const spelling of person.spellings || []) {
+      const spellingKey = stagedKnownAttendeeKey(spelling);
+      if (spellingKey.split(/\s+/)[0] === firstName) continue;
+      aliases.set(spellingKey, person.name);
+    }
+  }
+  stagedPeopleRegistryCache = { version, bucketByName, personByFirstName, aliases };
+  return stagedPeopleRegistryCache;
 }
-
-const STAGED_KNOWN_ATTENDEE_ALIASES = new Map([
-  [stagedKnownAttendeeKey('Smith, Stuart M'), 'Stuart Smith'],
-  [stagedKnownAttendeeKey('Smith Stuart M'), 'Stuart Smith']
-]);
 
 function canonicalStagedAttendeeAlias(value) {
   const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return '';
-  return STAGED_KNOWN_ATTENDEE_ALIASES.get(stagedKnownAttendeeKey(cleaned)) || cleaned;
+  return stagedPeopleRegistry().aliases.get(stagedKnownAttendeeKey(cleaned)) || cleaned;
 }
 
 function normaliseStagedKnownAttendeeAliasesInText(value) {
   // Every transcript entry point runs through here, so confirmed phrase
   // corrections reach the models, the denoiser and the evidence panel alike.
-  return applyTranscriptPhraseCorrections(
-    String(value || '').replace(/\bSmith,\s*Stuart\s+M\b/g, 'Stuart Smith')
-  ).text;
+  return applyTranscriptPhraseCorrections(normaliseDirectoryNameSpellings(String(value || ''))).text;
 }
 
 function canonicalKnownStagedPersonName(value) {
   const cleaned = cleanStagedGeneratedLine(canonicalStagedAttendeeAlias(value || ''));
   if (!cleaned) return '';
-  // Misspellings and "Surname, First" forms of the always-internal people resolve to
-  // their proper name, so they land in the internal bucket rather than unresolved.
-  const alwaysInternal = alwaysInternalAttendeeName(cleaned);
-  if (alwaysInternal) return alwaysInternal;
-  const exact = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(cleaned));
+  // Other spellings, misspellings and "Surname, First" forms of the people on the
+  // Settings page People list resolve to their proper name, so they land in the
+  // right bucket rather than unresolved.
+  const listed = knownPersonName(cleaned);
+  if (listed) return listed;
+  const exact = stagedPeopleRegistry().bucketByName.get(stagedKnownAttendeeKey(cleaned));
   if (exact?.name) return exact.name;
   if (/^[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+$/.test(cleaned)) {
-    const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(stagedKnownAttendeeKey(cleaned));
+    const byFirstName = stagedPeopleRegistry().personByFirstName.get(stagedKnownAttendeeKey(cleaned));
     if (byFirstName) return byFirstName;
   }
   // A transcription that gets the first name right and invents the surname.
@@ -1300,7 +1287,7 @@ function canonicalKnownStagedPersonName(value) {
   // transcript's own spelling stands rather than one person being renamed into another.
   const parts = stagedKnownAttendeeKey(cleaned).split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
-    const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
+    const byFirstName = stagedPeopleRegistry().personByFirstName.get(parts[0]);
     if (byFirstName) return byFirstName;
   }
   return cleaned;
@@ -1318,7 +1305,7 @@ function bucketKnownStagedAttendees(names) {
     // read "Rebecca Cuckoo" - the same person, spelled two ways on two screens of the
     // same document.
     const canonicalName = canonicalKnownStagedPersonName(rawName) || canonicalStagedAttendeeAlias(rawName);
-    const known = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(canonicalName));
+    const known = stagedPeopleRegistry().bucketByName.get(stagedKnownAttendeeKey(canonicalName));
     if (known?.bucket === 'internal') {
       internal.push(known.name);
     } else if (known?.bucket === 'client') {
@@ -1555,8 +1542,8 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   const headerTitle = teamsHeader.meetingTitle || '';
   const attendeeNameWarnings = teamsSpeakers.flatMap((name) => {
     const parts = stagedKnownAttendeeKey(name).split(/\s+/).filter(Boolean);
-    if (parts.length < 2 || STAGED_ATTENDEE_BUCKET_BY_NAME.has(stagedKnownAttendeeKey(name))) return [];
-    const knownFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
+    if (parts.length < 2 || stagedPeopleRegistry().bucketByName.has(stagedKnownAttendeeKey(name))) return [];
+    const knownFirstName = stagedPeopleRegistry().personByFirstName.get(parts[0]);
     if (!knownFirstName) return [];
     // The message has to describe what the document now says, not what the transcript
     // said. This flag used to read "Check attendee name X, the surname differs" while the
@@ -1642,7 +1629,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         turnCount: teamsStructure.turnCount,
         eventSpeakerCount: teamsStructure.eventSpeakers.length,
         knownInternalAttendeeCount: internalAttendees.length,
-        knownClientAttendeeCount: clientAttendees.filter((name) => STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(name))?.bucket === 'client').length,
+        knownClientAttendeeCount: clientAttendees.filter((name) => stagedPeopleRegistry().bucketByName.get(stagedKnownAttendeeKey(name))?.bucket === 'client').length,
         headerSource: teamsHeader.source || '',
         dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'
       }

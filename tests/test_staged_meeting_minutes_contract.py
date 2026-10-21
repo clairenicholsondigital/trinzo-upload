@@ -320,7 +320,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("transcript_debris", staged_editorial)
         self.assertIn("Review electrical compliance testing outputs and update the final compliance documentation", staged_editorial)
         self.assertIn("function canonicalKnownStagedPersonName", api)
-        self.assertIn("STAGED_KNOWN_PERSON_BY_FIRST_NAME", api)
+        self.assertIn("stagedPeopleRegistry().personByFirstName", api)
         self.assertIn("function stagedDeadlineIsSupportedByActionEvidence", api)
         self.assertIn("normaliseDeadlineKey", api)
         self.assertIn("mute", api)
@@ -348,28 +348,22 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 
-        self.assertIn("STAGED_KNOWN_INTERNAL_ATTENDEES", api)
-        self.assertIn("STAGED_KNOWN_CLIENT_ATTENDEES", api)
+        # The known people live on the Settings page; these are its starting values.
+        people = (REPO_DIR / "utils" / "settingsDefaults.js").read_text(encoding="utf-8")
+        self.assertIn("function stagedPeopleRegistry", api)
+        self.assertIn("settingsStore.getPeople()", api)
         self.assertIn("function bucketKnownStagedAttendees", api)
-        self.assertIn("Colm O’Rourke", api)
-        self.assertIn("Jacqui Fox", api)
-        self.assertIn("David Didsbury", api)
-        self.assertIn("Conor Flynn", api)
-        self.assertIn("Claire Nicholson", api)
-        self.assertIn("Mark Kelleher", api)
-        self.assertIn("John-Paul Hughes", api)
-        self.assertIn("Jenny Gough", api)
-        self.assertIn("Stuart Smith", api)
-        self.assertIn("STAGED_KNOWN_ATTENDEE_ALIASES", api)
-        self.assertIn("Smith, Stuart M", api)
+        for name in (
+            "Colm O’Rourke", "Jacqui Fox", "David Didsbury", "Conor Flynn", "Claire Nicholson",
+            "Mark Kelleher", "John-Paul Hughes", "Jenny Gough", "Stuart Smith", "Grace McGroogan",
+            "Andrew Kane", "Orla Skally", "Abby Lennon",
+        ):
+            self.assertIn(f"name: '{name}'", people)
+        self.assertIn("Smith, Stuart M", people)
         self.assertIn("function canonicalStagedAttendeeAlias", api)
         self.assertIn("function normaliseStagedKnownAttendeeAliasesInText", api)
-        self.assertIn("Grace McGroogan", api)
-        self.assertIn("Andrew Kane", api)
         self.assertNotIn("'Rebecca Cuckoo'", api)
         self.assertIn("possible_attendee_name_mismatch", api)
-        self.assertIn("Orla Skally", api)
-        self.assertIn("Abby Lennon", api)
         self.assertIn("...explicitClientBuckets.internal", api)
         self.assertIn("...speakerBuckets.internal", api)
         self.assertIn("...unlabelledBuckets.unknown", api)
