@@ -915,16 +915,42 @@ function recordSimilarity(left, right) {
   return lexical + (sharedEvidence ? 0.12 : 0);
 }
 
+// Merging generated wording must not discard the other row's source anchors or
+// review links. Primary anchors count only when that row's evidence resolution
+// retained them. Preserve the original first-eight citation order because the
+// subsequent similarity checks also use citation overlap. Reprioritising that
+// budget here would change later merge decisions. Selection/ranking stays with
+// the original winner, including its wording, id and discovery disposition.
+function mergeDiscussionSourceMetadata(winner, other) {
+  const evidenceIds = [...new Set([...(winner.evidenceIds || []), ...(other.evidenceIds || [])])];
+  const primaryIds = [...new Set([winner, other].flatMap(row =>
+    (row.primaryEvidenceIds || []).filter(id => (row.evidenceIds || []).includes(id))))];
+  winner.evidenceIds = evidenceIds.slice(0, 8);
+  if (Array.isArray(winner.primaryEvidenceIds) || Array.isArray(other.primaryEvidenceIds)) {
+    winner.primaryEvidenceIds = primaryIds.filter(id => winner.evidenceIds.includes(id));
+  }
+  for (const field of ['reviewFlagIds', '_unsupportedEvidenceIds', '_weakEvidenceIds']) {
+    if (Array.isArray(winner[field]) || Array.isArray(other[field])) {
+      winner[field] = [...new Set([...(winner[field] || []), ...(other[field] || [])])];
+    }
+  }
+}
+
 function dedupePointList(values = []) {
   const kept = [];
   for (const value of values) {
     const duplicate = kept.find((existing) => recordSimilarity(existing, value) >= 0.86);
     if (!duplicate) kept.push(value);
     else {
-      duplicate.evidenceIds = [...new Set([...(duplicate.evidenceIds || []), ...(value.evidenceIds || [])])].slice(0, 8);
+      mergeDiscussionSourceMetadata(duplicate, value);
       const details = [...(duplicate.supportingDetails || []), ...(value.supportingDetails || [])];
-      duplicate.supportingDetails = details.filter((detail, index) => details.findIndex((other) =>
-        comparisonText(other.text) === comparisonText(detail.text)) === index).slice(0, 50);
+      const keptDetails = [];
+      for (const detail of details) {
+        const existing = keptDetails.find(other => comparisonText(other.text) === comparisonText(detail.text));
+        if (existing) mergeDiscussionSourceMetadata(existing, detail);
+        else keptDetails.push(detail);
+      }
+      duplicate.supportingDetails = keptDetails.slice(0, 50);
     }
   }
   return kept;
@@ -6755,6 +6781,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   if (alias.size) {
     const repoint = (record) => {
       if (Array.isArray(record?.reviewFlagIds)) record.reviewFlagIds = [...new Set(record.reviewFlagIds.map((id) => alias.get(id) || id))];
+      for (const detail of record?.supportingDetails || []) repoint(detail);
     };
     for (const topic of discussion) for (const record of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) repoint(record);
     for (const action of actions) repoint(action);

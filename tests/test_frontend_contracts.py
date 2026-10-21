@@ -328,9 +328,16 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('id="feedbackEmail"', meeting_minutes_final)
         self.assertNotIn('id="feedbackWidgetButton"', dashboard)
         self.assertIn("router.post('/meeting-minutes-final/feedback'", api)
-        self.assertIn("saveMeetingMinutesFeedback", api)
+        # PR54 inserted /project-update-test/from-minutes before the old
+        # /project-update-test boundary. Inspect only this registered route:
+        # the minutes handoff legitimately reads transcriptText elsewhere.
+        feedback_route = api.split("router.post('/meeting-minutes-final/feedback'", 1)[1].split("\nrouter.", 1)[0]
+        self.assertIn("await saveMeetingMinutesFeedback({", feedback_route)
+        self.assertIn("route: '/meeting-minutes-final'", feedback_route)
+        self.assertIn("source: 'meeting-minutes-final-feedback-widget'", feedback_route)
         self.assertIn("meeting_minutes_feedback", db)
-        self.assertNotIn("transcriptText", api.split("router.post('/meeting-minutes-final/feedback'", 1)[1].split("router.post('/project-update-test'", 1)[0])
+        self.assertNotIn("transcriptText", feedback_route)
+        self.assertNotIn("...req.body", feedback_route)
 
     def test_snippet_level_feedback_and_ai_shortcuts_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
@@ -612,6 +619,7 @@ class FrontendContractTest(unittest.TestCase):
         jobs_page = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")
         shared_js = (REPO_DIR / "public" / "test-transcript-page.js").read_text(encoding="utf-8")
         shared_css = (REPO_DIR / "public" / "trinzo.css").read_text(encoding="utf-8")
+        project_process = (REPO_DIR / "public" / "project-stage-process.js").read_text(encoding="utf-8")
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
@@ -691,7 +699,18 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Expanded row editor", jobs_page)
         self.assertIn("queuedEndpoint: '/api/meeting-minutes-final/jobs'", meeting_minutes_final)
         self.assertIn("jobsPageUrl: '/jobs'", meeting_minutes_final)
-        self.assertIn("queuedEndpoint: '/api/project-update-test/jobs'", (REPO_DIR / "public" / "project-stage-process.js").read_text(encoding="utf-8"))
+        # PR54's approved "process once" flow opens the central minutes agent
+        # and queues a saved revision rather than processing raw input again.
+        self.assertIn("return `/meeting-minutes-agent?${params.toString()}`", project_process)
+        self.assertIn("params.set('projectId', String(ctx.projectId))", project_process)
+        self.assertIn("PW.request('/api/meeting-minutes-agent/drafts?limit=10')", project_process)
+        self.assertIn('data-minutes-revision="${escapeHtml(draft.revision)}"', project_process)
+        self.assertIn("PW.request('from-minutes', {", project_process)
+        self.assertIn("JSON.stringify({ draftId, revision, projectId: ctx.projectId", project_process)
+        self.assertIn("payload.jobUrl || `/jobs/${encodeURIComponent(payload.jobId)}`", project_process)
+        self.assertIn("router.post('/project-update-test/from-minutes', requireAuth", api)
+        self.assertNotIn("buildTranscriptTestPage(", project_process)
+        self.assertNotIn("queuedEndpoint: '/api/project-update-test/jobs'", project_process)
         self.assertIn("project-nav-link project-nav-primary", (REPO_DIR / "public" / "project-workspace.js").read_text(encoding="utf-8"))
         self.assertIn('href="/jobs"', meeting_minutes_final)
         self.assertIn('href="/jobs"', (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8"))
