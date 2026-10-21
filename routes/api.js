@@ -1251,8 +1251,8 @@ const STAGED_KNOWN_PERSON_BY_FIRST_NAME = new Map();
 for (const name of [...STAGED_KNOWN_INTERNAL_ATTENDEES, ...STAGED_KNOWN_CLIENT_ATTENDEES]) {
   const firstName = stagedKnownAttendeeKey(name).split(/\s+/)[0];
   if (!firstName) continue;
-  const existing = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(firstName);
-  STAGED_KNOWN_PERSON_BY_FIRST_NAME.set(firstName, existing ? null : name);
+  STAGED_KNOWN_PERSON_BY_FIRST_NAME.set(firstName,
+    STAGED_KNOWN_PERSON_BY_FIRST_NAME.has(firstName) ? null : name);
 }
 
 const STAGED_KNOWN_ATTENDEE_ALIASES = new Map([
