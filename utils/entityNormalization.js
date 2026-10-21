@@ -59,6 +59,76 @@ function damerauLevenshtein(left, right) {
   return matrix[a.length][b.length];
 }
 
+// People who are always on the internal side of a meeting, never client or
+// external, whatever the transcript or a model says. Teams and speech recognition
+// spell these names several ways, so a name counts as one of them when the first
+// name and surname are each a listed spelling or a close misspelling of one.
+const ALWAYS_INTERNAL_PEOPLE = Object.freeze([
+  {
+    name: 'Advait Dharmadhikari',
+    firstNames: ['advait', 'advaith', 'adwait', 'adwaith', 'advaitt', 'advayt', 'adveit'],
+    surnames: ['dharmadhikari', 'dharmadhikary', 'dharmadikari', 'darmadhikari', 'dharmadhikaari']
+  },
+  {
+    name: 'Saki Arimoto',
+    firstNames: ['saki', 'sakki', 'sakie', 'saaki'],
+    surnames: ['arimoto', 'arimotto', 'arrimoto', 'arimotoh']
+  }
+]);
+
+const PERSON_TITLE_TOKENS = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'san']);
+
+function personTokens(value) {
+  let cleaned = clean(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  // "Dharmadhikari, Advait" is how some directories export names.
+  const comma = cleaned.match(/^([^,]+),\s*([^,]+)$/);
+  if (comma) cleaned = `${comma[2]} ${comma[1]}`;
+  return cleaned.toLowerCase()
+    .replace(/[-_.]+/g, ' ')
+    .replace(/[^a-z\s]/g, '')
+    .split(/\s+/)
+    .filter((token) => token && !PERSON_TITLE_TOKENS.has(token));
+}
+
+function closeToAny(token, spellings, maxDistance) {
+  return spellings.some((spelling) => token === spelling
+    || (maxDistance > 0 && damerauLevenshtein(token, spelling) <= maxDistance));
+}
+
+// Short names get no fuzzy slack: one edit turns "Saki" into "Sami" or "Suki".
+function firstNameMatches(token, person) {
+  return closeToAny(token, person.firstNames, token.length >= 6 ? 1 : 0);
+}
+
+function surnameMatches(token, person) {
+  return closeToAny(token, person.surnames, token.length >= 8 ? 2 : 1);
+}
+
+// Returns the canonical name when the value is one of the always-internal people,
+// otherwise ''. Accepts the first name alone, the surname alone, a surname initial
+// ("Advait D"), "Surname, First" and close misspellings of either part.
+function alwaysInternalAttendeeName(value) {
+  const tokens = personTokens(value);
+  if (!tokens.length || tokens.length > 3) return '';
+  for (const person of ALWAYS_INTERNAL_PEOPLE) {
+    const [first] = tokens;
+    const last = tokens[tokens.length - 1];
+    if (tokens.length === 1) {
+      if (firstNameMatches(first, person) || surnameMatches(first, person)) return person.name;
+      continue;
+    }
+    const firstOk = firstNameMatches(first, person);
+    const surnameOk = surnameMatches(last, person);
+    const initialOk = last.length === 1 && last === person.surnames[0][0];
+    if (firstOk && (surnameOk || initialOk)) return person.name;
+  }
+  return '';
+}
+
+function isAlwaysInternalAttendee(value) {
+  return Boolean(alwaysInternalAttendeeName(value));
+}
+
 function attendeeFirstNames(attendees = []) {
   const byFirst = new Map();
   for (const attendee of Array.isArray(attendees) ? attendees : []) {
@@ -210,6 +280,9 @@ function normaliseAttendeeReferences(text, attendees = []) {
 }
 
 module.exports = {
+  ALWAYS_INTERNAL_PEOPLE,
+  alwaysInternalAttendeeName,
+  isAlwaysInternalAttendee,
   damerauLevenshtein,
   extractMentionedPeople,
   findAttendeeTextCorrections,
