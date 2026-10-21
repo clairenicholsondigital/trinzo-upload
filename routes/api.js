@@ -14455,7 +14455,27 @@ function acceptedVisitAssignmentActions(sourceUnits = [], records = [], options 
       .replace(/^\s*(?:(?:and|then|also)\s+)?(?:(?:when|once|after)\b.{0,100}?,\s*)?/i, ''), 700)
       .replace(/[.]+$/, '');
     if (!checks || !object) continue;
-    const timingWord = meetingMinutesAgentText(String(offered.text || '').match(/\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|next week)\b/i)?.[0], 80);
+    // Only the owner's own visit clause may supply its timing. A different
+    // task in the same turn (or a date inside its dependency) is not a visit
+    // date. Keep a complete temporal tail, including its qualifiers/bounds.
+    const temporalWords = new Set('today tonight tomorrow monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december this next last previous week weeks day days month months year years weekend morning afternoon evening noon midnight early mid late end start of the on at in by before after within until from to or and not no earlier later than probably presumably possibly maybe perhaps hopefully ideally preferably approximately roughly around about if possible all being well least latest first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth twentieth thirtieth one two three four five six seven eight nine ten eleven twelve every each weekly daily monthly am pm utc gmt bst cet cest'.split(' '));
+    const ownClause = String(offered.text || '').split(/[;.!?]|\b(?:and|but|then)\s+(?=(?:I|we|[A-Z][a-z]+)\s+(?:will|shall|can|could|must|need(?:s)? to|have to|am going to|is going to|are going to)|I['’](?:ll|m going to)|we['’]re going to)/i)
+      .map(value => value.trim()).find(value => /^(?:(?:yes|yeah|okay|ok|sure|well|right)[, ]+)*I\s+(?:can|could|would be able to)\s+(?:go|visit|attend)\b/i.test(value));
+    const ownOffer = ownClause?.match(offer);
+    let tail = meetingMinutesAgentText(ownOffer ? ownClause.slice(ownOffer.index + ownOffer[0].length) : '', 220)
+      .replace(/[.!?]+$/, '');
+    // A destination can repeat the request or refer back as "down there".
+    // Strip only that source-bound location, never an arbitrary new object.
+    tail = tail.replace(/^(?:(?:down|up|over|out|back)\s+)?(?:there|here)\b\s*/i, '');
+    const objectWords = object.split(/\s+/).filter(Boolean);
+    for (let offset = 0; offset < objectWords.length; offset += 1) {
+      const destination = objectWords.slice(offset).join(' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      tail = tail.replace(new RegExp(`^(?:(?:down|up|over|out|back)\\s+)?(?:(?:to|at)\\s+)?(?:the\\s+)?${destination}\\b\\s*`, 'i'), '')
+        .replace(new RegExp(`\\s+to\\s+(?:the\\s+)?${destination}$`, 'i'), '').trim();
+    }
+    const words = tail.toLowerCase().match(/[a-z]+/g) || [];
+    const hasCalendar = /\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|year|january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(tail);
+    const timingWord = hasCalendar && words.every(word => temporalWords.has(word)) ? tail : '';
     const action = {
       id: `accepted-visit-${offered.id}`,
       action: `Visit the ${object} and ${checks.charAt(0).toLowerCase()}${checks.slice(1)}.`,
@@ -14723,7 +14743,7 @@ function deferredCommitmentThreadProposal(thread, evidenceUnits = [], resolveSpe
     .replace(/\byour\b/gi, addressedSpeaker ? `${addressedSpeaker}'s` : "the other participant's")
     .replace(/\s+/g, ' ').trim();
 
-  const deferredAnswer = /\b(?:i|we)\s*(?:'ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i;
+  const deferredAnswer = /\b(?:i|we)\s*(?:['’]ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i;
   const resolution = ordered.find((unit) => deferredAnswer.test(unit.text || ''));
   const earlierQuestions = resolution ? ordered.filter((unit) =>
     Number(unit.sequence || 0) < Number(resolution.sequence || 0) && /\?\s*$/.test(unit.text || '')
@@ -14745,17 +14765,36 @@ function deferredCommitmentThreadProposal(thread, evidenceUnits = [], resolveSpe
       subject = subject.replace(new RegExp(`\\bso that ${escapedSpeaker} can\\b`, 'i'), 'so that they can');
     }
     subject = subject.trim();
-    const timed = ordered.find((unit) => Number(unit.sequence || 0) <= Number(resolution.sequence || 0)
-      && /\b(?:monday|tuesday|wednesday|thursday|friday|today|tomorrow|next week)\b/i.test(unit.text || ''))
-      || ordered.find((unit) => Number(unit.sequence || 0) <= Number(resolution.sequence || 0)
-        && /\b(?:meeting|call|review|session|workshop)\b/i.test(unit.text || ''));
-    const timeText = meetingMinutesAgentText(String(timed?.text || '').match(/\b(?:monday|tuesday|wednesday|thursday|friday|today|tomorrow|next week)\b/i)?.[0]
-      || String(timed?.text || '').match(/\b(?:meeting|call|review|session|workshop)\b/i)?.[0], 80);
+    // The knowledge answer, not any earlier timed task in the thread, owns
+    // this proposal's timing. Copy an explicit relation from that same clause;
+    // implicit "know then" references remain untimed rather than borrowing a date.
+    const clauses = String(resolution.text || '').split(/[;.!?]|\b(?:and|but|then)\s+(?=(?:I|we|[A-Z][a-z]+)\s+(?:will|shall|can|could|must|need(?:s)? to|have to|am going to|is going to|are going to)|I['’](?:ll|m going to)|we['’]re going to)/i).map(value => value.trim()).filter(Boolean);
+    const knowledge = clauses.find(value => /^(?:(?:so|and|well|yes|yeah|okay|ok)[, ]+)*(?:I|we)\s*(?:['’]ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i.test(value))
+      || clauses.find(value => /,\s*so\s+(?:I|we)\s*(?:['’]ll|will)\s+(?:know|confirm|find out|have (?:an? )?answer|be able to confirm)\b/i.test(value));
+    let timingWord = '';
+    const answer = knowledge?.match(deferredAnswer);
+    if (answer) {
+      const tail = knowledge.slice(answer.index + answer[0].length).trim().replace(/^(?:more|that|the answer)\s+/i, '').replace(/[.!?]+$/, '');
+      if (/^(?:(?:probably|presumably|possibly|maybe|hopefully|ideally|roughly|approximately)\s+)*(?:after|before|on|by|once|when|until|following|within)\b/i.test(tail)) {
+        timingWord = tail;
+      } else if (/^(?:(?:probably|presumably|possibly|maybe|hopefully|ideally|roughly|approximately|early|late)\s+)*(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|this week|next week)(?:\s+(?:morning|afternoon|evening|if possible|all being well))?$/i.test(tail)) {
+        timingWord = tail;
+      }
+      // A meeting followed by "I'll know then" is useful source context,
+      // but does not state when the follow-up confirmation itself is due.
+      // Keep that proposal and its citations without inventing a deadline.
+    }
+    // A copied dependency must not carry an independent next obligation.
+    // Withhold an ambiguous coordinated tail instead of donating its date or
+    // dropping one of the source conditions to manufacture a shorter timing.
+    if (/\b(?:and|but)\s+(?:(?:I|we)\s+)?(?:will|shall|can|could|must|need(?:s)?\s+to|have\s+to|want(?:s)?\s+to|am\s+going\s+to)\b|\bthen\s+[a-z]+\b/i.test(timingWord)) timingWord = '';
+    timingWord = meetingMinutesAgentText(timingWord, 220);
+    if (timingWord) timingWord = timingWord.charAt(0).toUpperCase() + timingWord.slice(1);
     if (subject.split(/\s+/).length >= 3) return {
-      action: `Confirm whether ${subject}${timeText ? ` after ${timeText}` : ''}.`,
+      action: `Confirm whether ${subject}${timingWord ? ` ${timingWord.charAt(0).toLowerCase()}${timingWord.slice(1)}` : ''}.`,
       owners: [resolveSpeaker(resolution.speaker)].filter(Boolean),
-      timing: timeText ? { kind: 'target', wording: `After ${timeText}`, exactDate: '' } : { kind: 'not_stated', wording: '', exactDate: '' },
-      evidenceIds: [...new Set([question.id, resolution.id, ...(timed ? [timed.id] : [])])].slice(0, 8)
+      timing: timingWord ? { kind: /^(?:after|before|once|when|until|following)\b/i.test(timingWord) ? 'dependency' : 'target', wording: timingWord, exactDate: '' } : { kind: 'not_stated', wording: '', exactDate: '' },
+      evidenceIds: [...new Set([question.id, resolution.id])].slice(0, 8)
     };
   }
 

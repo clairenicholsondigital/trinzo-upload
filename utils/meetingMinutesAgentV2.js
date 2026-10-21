@@ -2721,14 +2721,72 @@ function attachNearbyDependencyConditions(actions = [], units = []) {
   const removed = new Set();
   const indexesFor = (action) => (action.evidenceIds || [])
     .map((id) => context.indexById.get(id)).filter(Number.isInteger);
+  const untimed = { kind: 'not_stated', wording: '', exactDate: '' };
+  const workWithoutCondition = (action) => {
+    const work = replaceEmbeddedTiming(action.action, action.timing?.wording, '', action.timing?.exactDate);
+    // A shortened timing field may leave only its passive ending behind:
+    // "before payment is made" minus "before payment" is not extra work.
+    return work === action.action ? work
+      : work.replace(/\s+\b(?:is|are|was|were|be|been)\s+(?:made|done|[a-z]+(?:ed|en))[.!?]*$/i, '.');
+  };
+  const sourceProvesAttachment = (orphan, target, orphanIndexes) => {
+    const sources = orphanIndexes.map(index => context.rows[index]);
+    if (!sources.length || sources.some(unit => !includedUnit(unit))) return false;
+    // Mixed citations are not exclusive ownership proof. One matching quote
+    // must not hide another speaker taking on the same apparent instruction.
+    if (sources.some(unit => (OWNER_FIRST_PERSON.test(unit.text)
+      || /\bwe\s+(?:will|shall|can|must)\b/i.test(unit.text))
+        && !speakerIsOwner(unit.speaker, target.owners || [])
+      || [...String(unit.text).matchAll(/\b([A-Z][\p{L}'’-]+(?:\s+[A-Z][\p{L}'’-]+){0,2})\s+(?:will|shall|must|can|is going to)\b/gu)]
+        .some(match => !/^(?:I|We|They)$/i.test(match[1])
+          && !speakerIsOwner(match[1], target.owners || [])))) return false;
+    const dated = { ...target, timing: orphan.timing, evidenceIds: orphan.evidenceIds || [] };
+    const sameWork = commitmentCanBeRepresented({ ...orphan, action: workWithoutCondition(orphan),
+      owners: target.owners, timing: untimed }, { ...target, timing: untimed });
+    // A valid timing for the receiver cannot justify deleting a different
+    // instruction, even when both instructions have the same condition.
+    const binding = TimingIntegrity.assessTimingSourceBinding(dated, units);
+    if (sameWork && binding.status === 'supported'
+      && binding.qualifiers.every(qualifier => comparisonText(orphan.timing?.wording).includes(comparisonText(qualifier)))
+      && timingBoundToActionSteps(dated, units)) return true;
+
+    // A short "yes, before we ... it" continuation can be extracted as a
+    // spurious follow-up. Bind it to its immediately preceding owned work,
+    // rather than pooling the nouns from an arbitrary neighbouring window.
+    const fragment = /^(?:(?:yes|yeah|okay|ok|right|sure|just|only|ideally|probably|possibly|maybe)\b[\s,]*)*(before|after|once|until|when|if|unless)\b/i;
+    const conditionWords = (value) => String(value || '').toLowerCase()
+      .match(/[a-z0-9]+/g)?.filter(word => !new Set(['yes', 'yeah', 'okay', 'ok', 'right', 'sure',
+        'just', 'we', 'i', 'it', 'that', 'this', 'them', 'those', 'these', 'the', 'a', 'an']).has(word))
+      .map(word => word.replace(/ments?$/, '')) || [];
+    const expected = conditionWords(orphan.timing?.wording).join('|');
+    if (!expected || sources.some(unit => !fragment.test(unit.text)
+      || conditionWords(unit.text).join('|') !== expected)) return false;
+    const orphanWords = contentTokens(workWithoutCondition(orphan)).filter(word =>
+      !['follow', 'follow-up', 'status', 'the', 'for', 'and', 'on', 'of'].includes(word));
+    if (!sameWork && (!/^follow[- ]?up\b/i.test(orphan.action) || !orphanWords.length
+      || orphanWords.some(word => !contentTokens(target.action).includes(word)))) return false;
+    const first = Math.min(...orphanIndexes);
+    let previous = first - 1;
+    while (previous >= 0 && NON_SUBSTANTIVE_TIMING_BRIDGE.test(context.rows[previous].text)) previous -= 1;
+    const antecedent = context.rows[previous];
+    if (!antecedent || !includedUnit(antecedent) || !(target.evidenceIds || []).includes(antecedent.id)) return false;
+    const assignment = String(antecedent.text).match(/^\s*(I|we|[A-Z][\p{L}'’-]+(?:\s+[A-Z][\p{L}'’-]+){0,2})\s+(?:will|shall|can|am going to|'ll)\s+(.+)$/iu);
+    if (!assignment) return false;
+    const ownerSupported = /^(?:I|we)$/i.test(assignment[1])
+      ? speakerIsOwner(antecedent.speaker, target.owners || [])
+      : (target.owners || []).some(owner => comparisonText(owner) === comparisonText(assignment[1]));
+    return ownerSupported && commitmentCanBeRepresented({ ...target, action: assignment[2], timing: untimed },
+      { ...target, timing: untimed });
+  };
   list.forEach((orphan, orphanIndex) => {
-    if (orphan?.timing?.kind !== 'dependency' || (orphan.owners || []).length
+    if (removed.has(orphanIndex) || isReviewerAuthored(orphan)
+      || orphan?.timing?.kind !== 'dependency' || (orphan.owners || []).length
       || !WEAK_CONDITIONAL_FOLLOW_UP.test(text(orphan.action))) return;
     const orphanIndexes = indexesFor(orphan);
     if (!orphanIndexes.length) return;
     const conditionContext = evidenceWindowText(units, orphan.evidenceIds || [], 3);
     const candidates = list.map((action, index) => {
-      if (index === orphanIndex || !(action.owners || []).length
+      if (index === orphanIndex || isReviewerAuthored(action) || !(action.owners || []).length
         || !CONDITION_RECEIVER_ACTION.test(text(action.action))
         || (action.timing?.kind && action.timing.kind !== 'not_stated')) return null;
       const targetIndexes = indexesFor(action);
@@ -2738,6 +2796,7 @@ function attachNearbyDependencyConditions(actions = [], units = []) {
       const contextWords = new Set(materialTokens(conditionContext));
       const shared = materialTokens(action.action).filter((word) => contextWords.has(word)).length;
       if (shared < 2) return null;
+      if (!sourceProvesAttachment(orphan, action, orphanIndexes)) return null;
       return { index, distance, shared };
     }).filter(Boolean).sort((left, right) => right.shared - left.shared || left.distance - right.distance);
     if (!candidates.length || (candidates[1] && candidates[0].shared === candidates[1].shared)) return;
