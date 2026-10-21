@@ -555,7 +555,8 @@ function normaliseMeetingAgentExecutionTelemetry(value = {}) {
 function meetingAgentFailureClass(value = {}) {
   const code = meetingMinutesAgentText(value?.errorCode || value?.code, 120).toLowerCase();
   const status = Number(value?.upstreamStatus || value?.statusCode || 0);
-  if (/(?:invalid|incomplete|unexpected|missing).*(?:structure|contract|disposition|candidate|response)|empty_(?:discussion|action)/.test(code)) {
+  if (code === 'unmaterialized_referee_action'
+    || /(?:invalid|incomplete|unexpected|missing).*(?:structure|contract|disposition|candidate|response)|empty_(?:discussion|action)/.test(code)) {
     return 'response_contract';
   }
   if (status === 429 || /(?:rate|usage|thrott)/.test(code)) return 'rate_limit';
@@ -8964,6 +8965,8 @@ function meetingAgentCandidateContextChars() {
 function meetingAgentRefereeAccountedForAllCandidates(refereeParsed = {}, refereeContract = {}, refereeRoute = '') {
   const expected = Array.isArray(refereeContract?.expectedCandidateIds) ? refereeContract.expectedCandidateIds : [];
   if (refereeRoute !== 'structured_prompt' || !expected.length) return false;
+  if (Array.isArray(refereeContract.candidates)
+    && meetingAgentDispositionError(refereeParsed, refereeContract.candidates, refereeContract)) return false;
   const returned = new Set((Array.isArray(refereeParsed?.candidateDispositions) ? refereeParsed.candidateDispositions : [])
     .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean));
   return returned.size === expected.length && expected.every((candidateId) => returned.has(candidateId));
@@ -9920,6 +9923,9 @@ function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits
     `[${contract.stage}]`,
     'Invoke Structured Meeting Evidence Referee to repair an incomplete candidate-accounting response.',
     'Classify every supplied candidate exactly once. Return the tool JSON unchanged and do not repeat candidates that are not supplied.',
+    ...(contract.stage === 'ACTION_REFEREE' ? [
+      'An action_thread or action_chain is evidence context, not a writable atomic action. Do not invent a group-to-action mapping or copy group owner/timing hints onto its children. If your publish/proposal judgment cannot identify a writable supplied action, explain the unresolved mapping in the reason; do not change genuine accepted work to reject merely to satisfy the contract. The application will retain it for explicit review if repair cannot resolve it.'
+    ] : []),
     `refereePayload:\n${JSON.stringify(refereePayload)}`
   ].join('\n\n');
 }
@@ -10254,6 +10260,7 @@ function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candid
 
 function meetingAgentInfrastructureFailure(error) {
   if (!error) return false;
+  if (error.code === 'unmaterialized_referee_action') return false;
   if (new Set([
     'power_automate_empty_response', 'power_automate_timeout', 'power_automate_unreachable',
     'power_automate_http_500', 'power_automate_http_502', 'power_automate_http_503', 'power_automate_http_504'
@@ -10710,11 +10717,82 @@ function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = []
   };
 }
 
-function meetingAgentDispositionError(result, candidates = [], contract = {}) {
+function refereeActionMaterializationIssues(dispositions = [], candidates = [], targetCandidates = candidates) {
+  const byId = new Map((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => [String(candidate?.candidateId || ''), candidate]));
+  const targetIds = new Set((targetCandidates || []).map((candidate) => String(candidate?.candidateId || '')));
+  return (Array.isArray(dispositions) ? dispositions : []).flatMap((item) => {
+    const disposition = item?.disposition || item?.classification;
+    if (!['publish', 'proposal', 'core', 'keep'].includes(disposition)) return [];
+    const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
+    const candidate = byId.get(candidateId);
+    const targetId = meetingMinutesAgentText(item?.targetId || item?.mergeTarget, 160);
+    let reason = '';
+    // Group IDs describe source context, not writable action records. The
+    // current Referee protocol has no validated group-to-atomic mapping; a
+    // target alias alone must not approve its children or donate their fields.
+    if (['action_thread', 'action_chain'].includes(candidate?.recordType)) reason = 'group_requires_atomic_action_mapping';
+    else if (candidate?.recordType && candidate.recordType !== 'action') reason = 'candidate_is_not_an_action';
+    else if (candidate?.recordType === 'action'
+      && !meetingMinutesAgentText(candidate.record?.action || candidate.text, 1200)) reason = 'action_wording_missing';
+    else if (targetId && !targetIds.has(targetId)) reason = 'action_target_not_found';
+    if (!reason) return [];
+    return [{ candidateId, disposition, recordType: candidate?.recordType || '', targetId, reason,
+      refereeReason: meetingMinutesAgentText(item?.reason, 500),
+      memberCandidateIds: [...new Set(candidate?.candidateIds || [])].slice(0, 120),
+      evidenceIds: [...new Set([...(candidate?.evidenceIds || candidate?.record?.evidenceIds || []),
+        ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : [])])].slice(0, 20) }];
+  });
+}
+
+function reconcileRefereeActionMaterialization(issues = [], candidates = [], dispositions = [], sourceUnits = [], settled = []) {
+  const validEvidence = new Set((sourceUnits || []).map((unit) => unit.id));
+  const settledById = new Map((settled || []).filter((item) =>
+    ['reject', 'completed', 'suggestion'].includes(item?.disposition)
+    && meetingMinutesAgentText(item?.reason, 500)).map((item) => [item.candidateId, item]));
+  const unresolved = [...new Map((issues || []).map((issue) => [issue.candidateId, issue])).values()]
+    .filter((issue) => !settledById.has(issue.candidateId))
+    .map((issue) => ({ ...issue, evidenceIds: (issue.evidenceIds || []).filter((id) => validEvidence.has(id)) }));
+  const unresolvedById = new Map(unresolved.map((issue) => [issue.candidateId, issue]));
+  const memberIds = new Set(unresolved.flatMap((issue) => issue.memberCandidateIds || []));
+  const groupIds = new Set(candidates.filter((candidate) => ['action_thread', 'action_chain'].includes(candidate.recordType))
+    .map((candidate) => candidate.candidateId));
+  const rows = dispositions.map((item) => {
+    const groupVerdict = groupIds.has(item.candidateId) && settledById.get(item.candidateId);
+    if (groupVerdict) return { ...item, disposition: groupVerdict.disposition,
+      matchedRecordId: '', reason: groupVerdict.reason };
+    const issue = unresolvedById.get(item.candidateId);
+    // A separately represented or explicitly rejected child keeps its own
+    // outcome. A missing sibling has no rejection verdict merely because the
+    // broad group could not be materialized.
+    if (!issue && (!memberIds.has(item.candidateId) || item.disposition !== 'reject'
+      || settledById.has(item.candidateId))) return item;
+    return { ...item, disposition: 'unresolved', matchedRecordId: '',
+      reason: issue ? `Referee ${issue.disposition} could not be materialized: ${issue.reason}.`
+        : 'Not independently represented or adjudicated after an unresolved grouped-action disposition.' };
+  });
+  const flags = unresolved.map((issue, index) => {
+    const candidate = candidates.find((entry) => entry.candidateId === issue.candidateId);
+    return normaliseMeetingAgentFlag({
+      id: `action-materialization-${crypto.createHash('sha256').update(issue.candidateId).digest('hex').slice(0, 20)}`,
+      kind: 'possible_missed_follow_up',
+      message: `A possible follow-up could not be added as an action and still needs review. Check the cited source and add each missing action separately: ${meetingMinutesAgentText(candidate?.text || candidate?.record?.action, 240) || 'Review the cited source.'}`,
+      evidenceIds: issue.evidenceIds
+    }, index);
+  });
+  return { candidateDispositions: rows, flags,
+    accounting: { complete: unresolved.length === 0, unresolvedCount: unresolved.length,
+      unresolvedCandidateIds: unresolved.map((item) => item.candidateId), unresolved } };
+}
+
+function meetingAgentDispositionError(result, candidates = [], contract = {}, targetCandidates = candidates) {
   const expectedIds = [...new Set((Array.isArray(candidates) ? candidates : [])
     .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean))];
   if (!expectedIds.length) return null;
   const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
+  const materializationIssues = contract.stage === 'ACTION_REFEREE'
+    ? refereeActionMaterializationIssues(dispositions, candidates, targetCandidates) : [];
+  const unmaterialized = new Set(materializationIssues.map((item) => item.candidateId));
   const allowed = contract.stage === 'DISCUSSION_REFEREE'
     ? new Set(['core', 'supporting', 'merge', 'reject'])
     : new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
@@ -10764,6 +10842,9 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   } else if (route === 'structured_prompt' && dispositions.some((item) => !targetValid(item))) {
     message = 'The discussion referee referenced a missing primary target.';
     code = 'invalid_referee_target';
+  } else if (materializationIssues.length) {
+    message = 'The action referee accepted a candidate without a writable atomic action or valid target; its materialization remains unresolved.';
+    code = 'unmaterialized_referee_action';
   } else if (route === 'unknown') {
     message = 'The evidence referee response matched neither the structured Prompt contract nor the connected-agent fallback contract.';
     code = 'invalid_referee_contract';
@@ -10778,8 +10859,13 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}) {
   error.validCandidateDispositions = dispositions.filter((item) => {
     const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
     return expectedIds.includes(candidateId) && counts.get(candidateId) === 1
-      && dispositionValid(item) && targetValid(item);
+      && dispositionValid(item) && targetValid(item) && !unmaterialized.has(candidateId);
   });
+  if (materializationIssues.length) error.unresolvedMaterializations = materializationIssues;
+  if (code === 'unmaterialized_referee_action') {
+    error.invalidCandidateIds = [...unmaterialized];
+    error.invalidReasons = materializationIssues.map((item) => `${item.candidateId}: ${item.reason}`);
+  }
   if (code === 'invalid_referee_target') {
     error.invalidCandidateIds = dispositions.filter((item) => !targetValid(item)).map((item) => item.candidateId);
   }
@@ -13953,6 +14039,8 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     .filter((candidate) => candidate?.candidateId)
     .map((candidate) => [String(candidate.candidateId), candidate]));
   const ownerPool = [...(Array.isArray(candidates) ? candidates : []), ...(Array.isArray(options.ownerPool) ? options.ownerPool : [])];
+  const unresolvedMaterializations = refereeActionMaterializationIssues(dispositions, candidates);
+  const unresolvedIds = new Set(unresolvedMaterializations.map((item) => item.candidateId));
   let borrowedOwners = 0;
   const evidenceByTarget = new Map();
   const rows = [];
@@ -13960,6 +14048,7 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
   for (const disposition of Array.isArray(dispositions) ? dispositions : []) {
     const kind = dispositionKind(disposition?.disposition || disposition?.classification);
     const candidateId = String(disposition?.candidateId || '');
+    if (unresolvedIds.has(candidateId)) continue;
     const candidate = candidatesById.get(candidateId);
     const targetId = meetingMinutesAgentText(disposition?.targetId || disposition?.mergeTarget, 160);
     const targetCandidate = targetId ? candidatesById.get(targetId) : null;
@@ -14034,7 +14123,8 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     ).actions),
     actionProposals: dedupeHybridActionProposals(normaliseAgentResult(
       { actions: proposed }, sourceUnits, 'actions', { enforceEvidence: false, meetingDate: options.meetingDate }
-    ).actions)
+    ).actions),
+    ...(unresolvedMaterializations.length ? { unresolvedMaterializations } : {})
   };
 }
 
@@ -15746,6 +15836,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       const initialPass = `referee-${globalBatch ? 'global' : `batch-${batchIndex + 1}`}`;
       const repairPass = `referee-${globalBatch ? 'global-repair' : `repair-${batchIndex + 1}`}`;
       const batchUnresolvedIds = [];
+      const batchMaterializationIssues = [];
       const batchDegradedSources = [];
       let batchError = null;
       let batchResult = await call(initialPass,
@@ -15761,8 +15852,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           transformResult: (result) => normaliseMeetingAgentRefereeContractResult(
             result, batchCandidates, batchContract
           ),
-          validateResult: (result) => meetingAgentDispositionError(result, batchCandidates, batchContract),
-          captureError: (error) => { batchError = error; }
+          validateResult: (result) => meetingAgentDispositionError(result, batchCandidates, batchContract, suppliedRefereeCandidates),
+          captureError: (error) => {
+            batchError = error;
+            batchMaterializationIssues.push(...(error.unresolvedMaterializations || []));
+          }
         });
       if (!batchResult) {
         const retainedValid = Array.isArray(batchError?.validCandidateDispositions)
@@ -15803,8 +15897,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             transformResult: (result) => normaliseMeetingAgentRefereeContractResult(
               result, repairCandidates, repairContract
             ),
-            validateResult: (result) => meetingAgentDispositionError(result, repairCandidates, repairContract),
-            captureError: (error) => { repairError = error; }
+            validateResult: (result) => meetingAgentDispositionError(result, repairCandidates, repairContract, suppliedRefereeCandidates),
+            captureError: (error) => {
+              repairError = error;
+              batchMaterializationIssues.push(...(error.unresolvedMaterializations || []));
+            }
           });
         if (repaired) {
           batchResult = retainedValid.length
@@ -15813,11 +15910,16 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
               candidateDispositions: retainedValid
             }, repaired, batchContract)
             : repaired;
-          const mergedError = meetingAgentDispositionError(batchResult, batchCandidates, batchContract);
+          const mergedError = meetingAgentDispositionError(batchResult, batchCandidates, batchContract, suppliedRefereeCandidates);
           if (mergedError) {
-            batchUnresolvedIds.push(...batchCandidates.map((candidate) => candidate.candidateId));
+            const valid = mergedError.validCandidateDispositions || [];
+            const validIds = new Set(valid.map((item) => item.candidateId));
+            batchUnresolvedIds.push(...batchCandidates.filter((candidate) => !validIds.has(candidate.candidateId))
+              .map((candidate) => candidate.candidateId));
+            batchMaterializationIssues.push(...(mergedError.unresolvedMaterializations || []));
             batchDegradedSources.push(`Referee ${batchLabel} batch could not be reconciled after targeted repair: ${mergedError.message}`);
-            batchResult = null;
+            batchResult = valid.length ? { ...batchResult,
+              candidateDispositions: valid, returnedDispositionCount: valid.length, repairAttempted: true } : null;
           }
         } else {
           const repairValid = Array.isArray(repairError?.validCandidateDispositions)
@@ -15853,6 +15955,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       return {
         batchResult,
         unresolvedIds: batchUnresolvedIds,
+        unresolvedMaterializations: batchMaterializationIssues.filter((issue) => batchUnresolvedIds.includes(issue.candidateId)),
         degradedSources: batchDegradedSources,
         stopRemaining: batchDegradedSources.includes('stop_remaining_referee_batches')
       };
@@ -15912,7 +16015,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       .filter((message) => message !== 'stop_remaining_referee_batches'));
     return {
       results: ordered.map((outcome) => outcome.batchResult).filter(Boolean),
-      unresolvedIds: [...new Set(ordered.flatMap((outcome) => outcome.unresolvedIds))]
+      unresolvedIds: [...new Set(ordered.flatMap((outcome) => outcome.unresolvedIds))],
+      unresolvedMaterializations: ordered.flatMap((outcome) => outcome.unresolvedMaterializations || [])
     };
   };
   let refereeRun = await runRefereeBatchSet(initialRefereePlan);
@@ -15956,6 +16060,10 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       { meetingDate: timingAnchor, ownerPool: ensemble, journeyId: draft.draftId || '' }
     )
     : { actions: [], actionProposals: [] };
+  const unresolvedActionMaterializations = [
+    ...(refereeRun.unresolvedMaterializations || []),
+    ...(reconstructedRefereeActions.unresolvedMaterializations || [])
+  ];
   const refereeInput = stage === 'discussion' ? {
     ...refereeParsed,
     discussion: enrichDiscussionEvidenceFromDispositions(
@@ -15976,11 +16084,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     ])
   };
   const referee = normaliseAgentResult(refereeInput, draft.sourceUnits, stage, { meetingDate: timingAnchor, ...vetoSink });
+  const settledRefereeActionDispositions = stage === 'actions'
+    ? normaliseAgentCandidateDispositions(refereeParsed, draft.sourceUnits) : [];
   if (stage === 'actions') {
     agentDeclaredProposals.push(...normaliseRefereeDeclaredProposals(
       refereeParsed, reconstructedRefereeActions, draft.sourceUnits, { meetingDate: timingAnchor }
     ));
-    agentCandidateDispositions.push(...normaliseAgentCandidateDispositions(refereeParsed, draft.sourceUnits));
+    agentCandidateDispositions.push(...settledRefereeActionDispositions);
   }
   const priorLedger = (draft.candidateLedger || []).filter((candidate) => stage === 'discussion'
     ? candidate.recordType === 'action'
@@ -16774,7 +16884,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const flagIds = flag.evidenceIds || [];
     return !proposedEvidenceSets.some((ids) => flagIds.length && flagIds.some((id) => ids.has(id)));
   });
-  const candidateDispositions = hybridCandidateDispositions(ensemble, reconciledPublishedActions, proposedRecords);
+  const materializationReview = reconcileRefereeActionMaterialization(
+    unresolvedActionMaterializations, ensemble,
+    hybridCandidateDispositions(ensemble, reconciledPublishedActions, proposedRecords),
+    draft.sourceUnits, settledRefereeActionDispositions
+  );
+  const candidateDispositions = materializationReview.candidateDispositions;
   const passImpact = meetingAgentMaterialPassImpact(candidateDispositions, {
     referee: { materialContributionCount: completedPasses.includes('referee')
       ? reconciledPublishedActions.length + proposedRecords.length : 0,
@@ -17141,7 +17256,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     event: 'meeting_agent_final_action_survival', journeyId: draft.draftId,
     restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
   }));
-  const assembledActionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags(refereeFlags, [
+  const assembledActionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags([
+    ...materializationReview.flags, ...refereeFlags
+  ], [
     ...splitTimingFlags,
     ...finalTiming.flags,
     ...timedStepFlags,
@@ -17185,6 +17302,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     }
   } });
   const finalProposal = removePublishedActionProposalDuplicates(proposalTiming.proposal, actionFlagState.content.actions);
+  const finalMaterializationReview = materializationReview.accounting.complete ? materializationReview
+    : reconcileRefereeActionMaterialization(unresolvedActionMaterializations, ensemble,
+      hybridCandidateDispositions(ensemble, actionFlagState.content.actions,
+        finalProposal.changes.filter((change) => change.type === 'add').map((change) => change.after)),
+      draft.sourceUnits, settledRefereeActionDispositions);
   return {
     changes: {
       actions: actionFlagState.content.actions,
@@ -17235,13 +17357,14 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         salvageProposalCount: salvageProposal.length,
         agentDeclaredProposalCount: agentDeclaredProposals.length,
         refereeRoute,
+        refereeMaterialization: finalMaterializationReview.accounting,
         agentCandidateDispositions: agentCandidateDispositions.slice(0, 320),
         corroboratedBackstopCount: candidateBackstop.length,
         strongDiscoveryProposalCount: strongDiscoveryBackstop.length,
         operationalGapProposalCount: processGapBackstop.length,
         commitmentThreadProposalCount: threadBackstop.length,
         telemetry: meetingAgentExecutionTelemetry(measuredProvenance),
-        candidateDispositions
+        candidateDispositions: finalMaterializationReview.candidateDispositions
       } }
     },
     reviewFlags: mergeMeetingAgentFlags(actionFlagState.flags, proposalTiming.flags),
@@ -19390,6 +19513,8 @@ router.stagedEvaluation = {
   meetingAgentResultError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
+  refereeActionMaterializationIssues,
+  reconcileRefereeActionMaterialization,
   meetingAgentRefereeRoute,
   normaliseMeetingAgentRefereeContractResult,
   effectiveDiscussionRefereeDispositions,
