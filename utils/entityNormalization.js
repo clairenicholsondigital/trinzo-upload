@@ -120,8 +120,7 @@ function alwaysInternalAttendeeName(value) {
     const firstOk = firstNameMatches(first, person);
     const surnameOk = surnameMatches(last, person);
     const initialOk = last.length === 1 && last === person.surnames[0][0];
-    if ((firstOk && (surnameOk || initialOk))
-      || (surnameOk && closeToAny(first, person.firstNames, 2))) return person.name;
+    if (firstOk && (surnameOk || initialOk)) return person.name;
   }
   return '';
 }

@@ -20,9 +20,18 @@ test('spelling variants resolve to the always-internal people', () => {
 });
 
 test('different people with similar names are not matched', () => {
-  for (const name of ['Sami', 'Suki', 'Saki Tanaka', 'Advait Kumar', 'Adam Dharma', 'Jacqui Fox', '']) {
+  for (const name of ['Sami', 'Suki', 'Sami Arimoto', 'Suki Arimoto', 'Maki Arimoto', 'Saki Tanaka', 'Advait Kumar', 'Adam Dharma', 'Jacqui Fox', '']) {
     assert.equal(alwaysInternalAttendeeName(name), '', name);
   }
+});
+
+test('a matching surname does not rename a different short given name in saved details', () => {
+  const details = sanitiseDetails({
+    internalAttendees: ['Jacqui Fox'],
+    clientAttendees: ['Sami Arimoto', 'Suki Arimoto', 'Maki Arimoto', 'Sakki Arimotto']
+  });
+  assert.deepEqual(details.internalAttendees, ['Jacqui Fox', 'Saki Arimoto']);
+  assert.deepEqual(details.clientAttendees, ['Sami Arimoto', 'Suki Arimoto', 'Maki Arimoto']);
 });
 
 test('details move the always-internal people out of the client list', () => {
