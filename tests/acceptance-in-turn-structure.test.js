@@ -60,13 +60,13 @@ test('the accepting rows join the citation and supply the timing', () => {
   assert.equal(other.timing.kind, 'not_stated');
 });
 
-test('a bare timing reply still answers a when-question for any action', () => {
+test('a bare timing reply answers a when-question for its owned action', () => {
   const rows = [
     { id: 'T0001', speaker: 'Mark Kelleher', text: 'I\'ll send the plan over.' },
     { id: 'T0002', speaker: 'Jacqui Fox', text: 'When can you do that?' },
     { id: 'T0003', speaker: 'Mark Kelleher', text: 'Friday.' }
   ];
-  const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, rows, ['T0001', 'T0002'], { action: 'Send the plan.' });
+  const timing = V.backfillAskedTiming({ kind: 'not_stated', wording: '', exactDate: '' }, rows, ['T0001', 'T0002'], { action: 'Send the plan.', owners: ['Mark Kelleher'] });
   assert.equal(timing.wording, 'friday');
 });
 

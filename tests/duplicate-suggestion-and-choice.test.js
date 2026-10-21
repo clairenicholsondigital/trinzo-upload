@@ -28,18 +28,18 @@ test('separate work with words in common is still pre-tickable', () => {
 
 test('an offered choice of dates resolves to the day the meeting settled on', () => {
   const units = normaliseSourceUnits([
-    { id: 'T0001', speaker: 'Chair', text: "Let's put the follow-up in for the ninth or the tenth of July.", classification: 'keep' },
+    { id: 'T0001', speaker: 'Lee Hart', text: "I will arrange the follow-up for the ninth or the tenth of July.", classification: 'keep' },
     { id: 'T0002', speaker: 'Lee Hart', text: 'The tenth suits better.', classification: 'keep' },
     { id: 'T0003', speaker: 'Chair', text: 'Tenth it is.', classification: 'keep' }
   ]);
   const resolved = resolveOfferedDateChoice(
-    { kind: 'target', wording: 'ninth or tenth of July', exactDate: '' }, units, ['T0001'], { meetingDate: '2026-06-24' });
+    { kind: 'target', wording: 'ninth or tenth of July', exactDate: '' }, units, ['T0001'], { meetingDate: '2026-06-24', action: 'Arrange the follow-up.', owners: ['Lee Hart'] });
   assert.match(resolved.wording, /tenth of July/);
   assert.ok(!/ninth/.test(resolved.wording));
   // No choice made: the offer stands as it was said.
   const undecided = normaliseSourceUnits([units[0], { id: 'T0002', speaker: 'Lee Hart', text: 'Either works for me.', classification: 'keep' }]);
   assert.equal(resolveOfferedDateChoice({ kind: 'target', wording: 'ninth or tenth of July', exactDate: '' },
-    undecided, ['T0001'], { meetingDate: '2026-06-24' }).wording, 'ninth or tenth of July');
+    undecided, ['T0001'], { meetingDate: '2026-06-24', action: 'Arrange the follow-up.', owners: ['Lee Hart'] }).wording, 'ninth or tenth of July');
 });
 
 test('a standing rule is not an action', () => {

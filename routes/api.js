@@ -209,6 +209,7 @@ const {
 const {
   SCHEMA_VERSION: MEETING_AGENT_SCHEMA_VERSION,
   PAYLOAD_VERSION: MEETING_AGENT_PAYLOAD_VERSION,
+  TIMING_INFERENCE_POLICY_VERSION,
   normaliseExecutiveSummary,
   sanitiseDetails: sanitiseMeetingAgentDetails,
   normaliseSourceUnits,
@@ -10848,11 +10849,35 @@ function normaliseStagedCandidateResult(run, draft) {
   return { discussion: discussion.discussion, actions: actions.actions, objectives };
 }
 
+function stagedCandidateLedgerFromResult(result, draft) {
+  // Stamp only freshly normalised actions. A persisted ledger may already
+  // contain a date inferred under an older source-binding policy.
+  return hybridCandidateLedgerFromResult(result, 'staged').map((candidate) =>
+    candidate.recordType === 'action'
+      ? { ...candidate, timingInferenceVersion: TIMING_INFERENCE_POLICY_VERSION,
+        timingInferenceInputKey: privateStagedCandidateCacheKey(draft, 'actions') }
+      : candidate);
+}
+
+function cachedStagedCandidatesForStage(draft, stage) {
+  const types = stage === 'discussion'
+    ? new Set(['discussion_point', 'decision', 'open_question', 'objective'])
+    : new Set(['action']);
+  const candidates = (draft.candidateLedger || []).filter((candidate) =>
+    candidate.sourcePass === 'staged' && types.has(candidate.recordType));
+  // Regenerate the entire action stage if any row is stale. Reusing just the
+  // current subset would silently omit the remaining staged candidates.
+  if (stage !== 'discussion' && candidates.some((candidate) =>
+    candidate.timingInferenceVersion !== TIMING_INFERENCE_POLICY_VERSION
+      || candidate.timingInferenceInputKey !== privateStagedCandidateCacheKey(draft, 'actions'))) return [];
+  return candidates;
+}
+
 async function buildPrivateStagedCandidateLedger(draft, stage = '') {
   const requestedStage = ['discussion', 'actions'].includes(stage) ? stage : '';
   if (!requestedStage) {
     const run = await runStagedSequenceForEvaluation(draft.preparedTranscript, { fileName: draft.fileName || 'transcript.txt' });
-    return hybridCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), 'staged');
+    return stagedCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), draft);
   }
   const details = sanitiseMeetingAgentDetails(draft.details);
   const meetingIdentity = `${details.meetingTitle || ''} ${draft.fileName || ''}`;
@@ -10877,13 +10902,14 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     actions: requestedStage === 'actions' ? (payload?.screens?.actions || []) : [],
     summary: {}
   } };
-  return hybridCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), 'staged');
+  return stagedCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), draft);
 }
 
 function privateStagedCandidateCacheKey(draft, stage) {
   const preparedHash = crypto.createHash('sha256').update(String(draft?.preparedTranscript || '')).digest('hex');
   const details = sanitiseMeetingAgentDetails(draft?.details);
-  return `${draft?.transcriptSha256 || preparedHash}:${preparedHash}:${details.meetingType || ''}:${details.meetingDate || ''}:${meetingAgentTimingAnchor(draft)}:${TIMING_POLICY_VERSION}:${stage}`;
+  const inference = stage === 'discussion' ? '' : `:inference-${TIMING_INFERENCE_POLICY_VERSION}`;
+  return `${draft?.transcriptSha256 || preparedHash}:${preparedHash}:${details.meetingType || ''}:${details.meetingDate || ''}:${meetingAgentTimingAnchor(draft)}:${TIMING_POLICY_VERSION}:${stage}${inference}`;
 }
 
 function prunePrivateStagedCandidateCache(now = Date.now()) {
@@ -11118,7 +11144,10 @@ function meetingAgentStageInputFingerprint(draft = {}, stage = '') {
     steer: meetingMinutesAgentText(draft.steer, 4000),
     salientDetails: Array.isArray(draft.salientDetails) ? draft.salientDetails : []
   };
-  if (stage === 'actions' || stage === 'summary') input.upstream = meetingAgentUpstreamFingerprint(draft, stage);
+  if (stage === 'actions' || stage === 'summary') {
+    input.upstream = meetingAgentUpstreamFingerprint(draft, stage);
+    input.timingInferenceVersion = TIMING_INFERENCE_POLICY_VERSION;
+  }
   return crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }
 
@@ -15308,11 +15337,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       ? dedupeActionDiscoveryInventory(actionChains, actionThreads, deterministicActionCandidates)
       : [...actionChains, ...actionThreads, ...deterministicActionCandidates])
     : [];
-  const stagedRecordTypes = stage === 'discussion'
-    ? new Set(['discussion_point', 'decision', 'open_question', 'objective'])
-    : new Set(['action']);
-  const cachedStaged = (draft.candidateLedger || []).filter((candidate) =>
-    candidate.sourcePass === 'staged' && stagedRecordTypes.has(candidate.recordType));
+  const cachedStaged = cachedStagedCandidatesForStage(draft, stage);
   const stagedCandidateStartedAt = Date.now();
   let stagedCandidateElapsedMs = 0;
   let stagedCandidatesFromPrewarm = false;
@@ -19285,6 +19310,8 @@ router.stagedEvaluation = {
   commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
   buildPrivateStagedCandidateLedger,
+  stagedCandidateLedgerFromResult,
+  cachedStagedCandidatesForStage,
   prewarmPrivateStagedCandidateLedgers,
   meetingAgentActionPrimaryPromptForDraft,
   borrowOwnersFromTwin,
