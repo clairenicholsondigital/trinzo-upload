@@ -68,6 +68,16 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  const orderedFiling = baseDraft('ordered-filing', false);
+  orderedFiling.currentStep = 5;
+  orderedFiling.selectedStep = 2;
+  orderedFiling.sourceUnits.push({ id:'T0009', sequence:9, speaker:'Sam Okoro', text:'A later independent qualification was recorded.' });
+  orderedFiling.discussion[0].points[0].supportingDetails = [];
+  orderedFiling.unassignedSupportingDetails = [
+    { id:'late-detail', text:'The later qualification remains available.', evidenceIds:['T0009'] },
+    { id:'discussion-1', text:'A distinct earlier retained version needs its own review.', evidenceIds:['T0001'], mergedFromIds:['original-early'], reviewFlagIds:['flag-1'] }
+  ];
+  drafts.set('ordered-filing', orderedFiling);
   const internalOnly = baseDraft('internal-only', false);
   internalOnly.currentStep = 0;
   internalOnly.selectedStep = 0;
@@ -557,6 +567,71 @@ async function launchPage(port, draftId) {
   await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
   return { browser, page, errors };
 }
+
+test('ordered unfiled details file and promote into an independently editable occurrence', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'ordered-filing');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const stored = () => page.evaluate(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft);
+    const settled = () => page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state === 'saved');
+    await page.click('[data-step="2"]');
+    await page.click('#omittedDetailsPanel > summary');
+    const first = page.locator('[data-needs-filing] [data-unassigned-supporting-row]').first();
+    assert.equal(await first.getAttribute('data-unassigned-supporting-row'), '1', 'display order retains the backing index');
+    assert.match(await first.textContent(), /distinct earlier retained version/);
+    await page.selectOption('[data-unassigned-supporting-row="1"] [data-supporting-destination]', '0:points:0');
+    await page.click('[data-file-supporting="1"]');
+    await page.waitForFunction(async () => {
+      const d=(await (await fetch('/test-state/ordered-filing')).json()).draft;
+      return d.unassignedSupportingDetails.length===1 && d.discussion[0].points[0].supportingDetails.length===1;
+    });
+    await settled();
+    let d=await stored(), child=d.discussion[0].points[0].supportingDetails[0];
+    const childId=child.id, original=d.discussion[0].points[0].text;
+    assert.notEqual(childId,'discussion-1');
+    assert.deepEqual(child.mergedFromIds,['original-early','discussion-1']);
+    assert.deepEqual(child.reviewFlagIds,['flag-1']);
+    assert.equal(d.unassignedSupportingDetails[0].id,'late-detail');
+
+    await page.click('#undoLastDecision');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft.unassignedSupportingDetails.length===2);
+    await page.click('#redoLastDecision');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft.unassignedSupportingDetails.length===1);
+    await page.reload();
+    await page.waitForSelector('#omittedDetailsPanel');
+    await page.click('#omittedDetailsPanel > summary');
+    await page.click('#omittedDetailsPanel [data-promote-supporting]');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft.discussion[0].points.length===2);
+    await settled();
+    d=await stored();
+    assert.equal(d.discussion[0].points[1].id,childId);
+    assert.deepEqual(d.discussion[0].points[1].mergedFromIds,['original-early','discussion-1']);
+    assert.equal(d.discussion[0].points[0].text,original);
+    await page.click('[data-step="5"]');
+    await page.locator('#finalDocument [data-kind="discussion"][data-record-id="'+childId+'"]').click();
+    await page.fill('#finalDocument [data-final-editor-value]','The separately retained qualification was reviewed.');
+    await page.click('#finalDocument [data-final-save]');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft.discussion[0].points[1].text==='The separately retained qualification was reviewed.');
+    await settled();
+    d=await stored();
+    assert.equal(d.discussion[0].points[0].text,original);
+    assert.equal(d.discussion[0].points[1].reviewerAuthored,true);
+    await page.reload();
+    await page.waitForSelector('#finalDocument [data-record-id="'+childId+'"]');
+    await page.click('#undoLastDecision');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft.discussion[0].points[1].text==='A distinct earlier retained version needs its own review.');
+    await page.click('#redoLastDecision');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/ordered-filing')).json()).draft.discussion[0].points[1].text==='The separately retained qualification was reviewed.');
+    assert.equal((await stored()).discussion[0].points[0].text,original);
+    assert.deepEqual(errors,[]);
+  } finally {
+    if(browser) await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
 
 test('reviewer wording survives stage editing, final editing, save normalisation and reload', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();

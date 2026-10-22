@@ -71,7 +71,7 @@ const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinu
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { selectSupportingDetailParent } = require('../utils/canonicalMinutes/supportingDetailPlacement');
-const { normalizeUnassignedSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
+const { normalizeUnassignedSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
 const {
   ALWAYS_INTERNAL_PEOPLE,
   alwaysInternalAttendeeName,
@@ -16840,7 +16840,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       supportingDetails: retainedUnassignedSupportingDetails }, [...refereeFlags,
       ...(quantifiedGrounding.flags || []), ...(finalQuantifiedGrounding.flags || []),
       ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
-    finalDiscussion = discussionFlagState.content.discussion;
+    const literalSupportCleanup = foldLiteralParentSupportingRepeats(discussionFlagState.content.discussion);
+    finalDiscussion = literalSupportCleanup.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -16889,6 +16890,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
+          literalSupportingRepeatsFolded: literalSupportCleanup.foldedCount,
           unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
           fidelityReview,

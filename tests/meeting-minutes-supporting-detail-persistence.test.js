@@ -106,6 +106,34 @@ async function documentXml(draft, evidence) {
   return zip.file('word/document.xml').async('string');
 }
 
+test('literal folded context retains provenance through real PATCH/GET and ordinary/evidence exports', async () => {
+  reset();
+  const claim='The calibration review at the regional laboratory is complete';
+  const full=claim+', and the equipment log was signed.';
+  saved.sourceUnits[0].text=full+' I will send the calibration record.';
+  saved.discussion[0].points[0]={id:'main',text:full,evidenceIds:['T0001'],reviewFlagIds:[],
+    supportingDetails:[{id:'repeated-context',text:claim+'.',evidenceIds:['T0001'],mergedFromIds:['earlier-context']}]};
+  const cleanup=require('../utils/meetingMinutesSupportingDetails').foldLiteralParentSupportingRepeats(saved.discussion);
+  assert.equal(cleanup.foldedCount,1);
+  saved.discussion=cleanup.discussion;
+  const first=await request('get');
+  const after=await request('patch','',{discussion:first.discussion,actions:first.actions});
+  const reloaded=await request('get');
+  for(const d of [after,reloaded]){
+    assert.equal(d.discussion[0].points[0].text,full);
+    assert.deepEqual(d.discussion[0].points[0].supportingDetails,[]);
+    assert.deepEqual(d.discussion[0].points[0].mergedFromIds,['repeated-context','earlier-context']);
+    assertPool(d.unassignedSupportingDetails,pool());
+    for(const evidence of [false,true]){
+      const xml=await documentXml(d,evidence);
+      assert.ok(xml.includes('equipment log was signed'));
+      const pdf=api.meetingAgentDraftForPdf(d,evidence);
+      assert.ok(pdf.discussion.some(topic=>topic.points.some(point=>point.includes('equipment log was signed'))));
+    }
+  }
+  assert.equal(providerCalls,0);
+});
+
 test('payload and public projection retain full unfiled detail, provenance and warning links', () => {
   reset();
   assert.ok(longText.length > 1600, 'fixture crosses both the flag and ordinary row clipping boundaries');

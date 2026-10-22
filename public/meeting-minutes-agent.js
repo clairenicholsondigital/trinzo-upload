@@ -1156,6 +1156,60 @@
     return target;
   }
 
+  function orderedUnassignedSupportingDetails(pool, sourceUnits) {
+    var order = new Map();
+    (sourceUnits || []).forEach(function (unit, index) {
+      if (unit && unit.id && !order.has(unit.id)) {
+        var sequence = Number(unit.sequence);
+        order.set(unit.id, Number.isFinite(sequence) && sequence > 0 ? sequence : index + 1);
+      }
+    });
+    var entries = pool.map(function (detail, index) {
+      var positions = (detail.evidenceIds || []).filter(function (id) { return order.has(id); })
+        .map(function (id) { return order.get(id); });
+      return { detail:detail, index:index, position:positions.length ? Math.min.apply(null, positions) : Infinity };
+    });
+    var locked = function (entry) {
+      var detail = entry.detail;
+      return detail.reviewerAuthored === true || detail.confirmedTopic === true
+        || /_human_confirmation$/.test(String(detail.source || ''))
+        || /^(manual-|reviewer-)/.test(String(detail.id || ''));
+    };
+    var generated = entries.filter(function (entry) { return !locked(entry); }).sort(function (a, b) {
+      return a.position === b.position ? a.index - b.index : a.position - b.position;
+    });
+    var next = 0;
+    return entries.map(function (entry) { return locked(entry) ? entry : generated[next++]; });
+  }
+
+  // Filing/promoting a retained version creates another occurrence. Existing
+  // rows keep their identities; only an actual collision needs a fresh one.
+  function uniqueDiscussionDetail(detail) {
+    var used = new Set(), domKeys = new Set();
+    function key(id) { return String(id || '').replace(/[^a-zA-Z0-9_-]+/g, '-'); }
+    function visit(record) {
+      if (!record || record === detail) return;
+      if (record.id) { used.add(String(record.id)); domKeys.add(key(record.id)); }
+      (record.supportingDetails || []).forEach(visit);
+    }
+    (state.draft.discussion || []).forEach(function (topic) {
+      ['points','decisions','openQuestions'].forEach(function (kind) { (topic[kind] || []).forEach(visit); });
+    });
+    (state.draft.unassignedSupportingDetails || []).forEach(visit);
+    (detail.supportingDetails || []).forEach(visit);
+    var id = String(detail.id || '').trim(), fresh = id;
+    function collision(value) { return used.has(value) || domKeys.has(key(value)); }
+    if (!fresh || collision(fresh)) {
+      var stem = (id || 'discussion-detail').slice(0, 48), number = 1;
+      do { fresh = stem + '-occurrence-' + number++; } while (collision(fresh));
+    }
+    var next = preserveDiscussionMergeHistory(detail, Object.assign({}, detail, { id:fresh }));
+    if (fresh !== id && id && (next.mergedFromIds || []).length < 1000) {
+      next.mergedFromIds = Array.from(new Set([].concat(next.mergedFromIds || [], id)));
+    }
+    return next;
+  }
+
   function topicSupportingDetails(topic, topicIndex) {
     return '';
   }
@@ -1173,7 +1227,8 @@
         }).filter(Boolean);
       });
     }).join('');
-    return '<section class="omitted-topic" data-needs-filing><h3>Needs filing</h3><p class="muted">Choose where each detail belongs before deciding whether to add it to the minutes.</p><div class="omitted-detail-list">' + pool.map(function (detail, index) {
+    return '<section class="omitted-topic" data-needs-filing><h3>Needs filing</h3><p class="muted">Choose where each detail belongs before deciding whether to add it to the minutes.</p><div class="omitted-detail-list">' + orderedUnassignedSupportingDetails(pool, state.draft.sourceUnits).map(function (entry) {
+      var detail = entry.detail, index = entry.index;
       var detailId = detail.id || ('unassigned-' + index);
       var control = destinations
         ? '<label>File under<select data-supporting-destination aria-label="File this detail under a discussion item"><option value="">Choose a discussion item…</option>' + destinations + '</select></label><button class="secondary compact" data-file-supporting="' + index + '" type="button" disabled>File detail</button>'
@@ -3163,7 +3218,7 @@
       var poolIndex = Number(fileDetail.dataset.fileSupporting);
       var detail = pool[poolIndex];
       if (!parent || !String(parent.text || '').trim() || !detail) return;
-      var filedDetail = Object.assign({}, detail, { reviewerAuthored: true });
+      var filedDetail = Object.assign({}, uniqueDiscussionDetail(detail), { reviewerAuthored: true });
       delete filedDetail.placementStatus;
       delete filedDetail.placementReason;
       parent.supportingDetails = (parent.supportingDetails || []).concat([filedDetail]);
@@ -3265,7 +3320,10 @@
       var promoteList=promoteTopic && promoteTopic[promote.dataset.parentField];
       var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
-      if(promoted) promoteTopic.points.push(preserveDiscussionMergeHistory(promoted,{id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[],reviewerAuthored:true}));
+      if(promoted){
+        var promotedIdentity=uniqueDiscussionDetail(promoted);
+        promoteTopic.points.push(preserveDiscussionMergeHistory(promotedIdentity,{id:promotedIdentity.id,text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:promoted.supportingDetails||[],reviewerAuthored:true}));
+      }
     }
     if(moveNew){
       var sourceIndex=Number(moveNew.dataset.topicIndex);
