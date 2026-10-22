@@ -13653,19 +13653,21 @@ function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
     || highConfidenceRefereedAction(action, candidates, sourceUnits);
 }
 
+const { sourceSpeakerIdentityScope } = require('../utils/meetingMinutesPromotionSourceIdentity');
+
 // A concrete first-person promise to write the meeting record does not need a
 // second model pass. Keep this narrow: one named owner must speak the cited
 // future-tense words, and the public action must share their material subject.
 function explicitFutureDocumentationCommitment(action = {}, sourceUnits = []) {
   if ((action.owners || []).length !== 1
     || !/^\s*(?:write(?: down)?|document|record|note)\b/i.test(String(action.action || ''))) return false;
-  const owner = String(action.owners[0] || '').toLowerCase();
-  const ownerFirst = owner.split(/\s+/)[0];
+  const identityScope = sourceSpeakerIdentityScope(sourceUnits);
+  const ownerIdentity = identityScope.resolve(action.owners[0]);
+  if (!ownerIdentity) return false;
   const cited = new Set((action.evidenceIds || []).map(String));
   return normaliseSourceUnits(sourceUnits).some((unit) => {
     if (!cited.has(String(unit.id))) return false;
-    const speaker = String(unit.speaker || '').toLowerCase();
-    if (speaker !== owner && speaker.split(/\s+/)[0] !== ownerFirst) return false;
+    if (identityScope.resolve(unit.speaker) !== ownerIdentity) return false;
     if (!/\bi(?:'m| am)\s+going\s+to\s+(?:write(?: down)?|document|record|note)\b|\bi(?:'ll| will)\s+(?:write(?: down)?|document|record|note)\b/i.test(unit.text)) return false;
     return hybridContentTokenOverlap(action.action, unit.text) >= 0.24;
   });
@@ -13676,22 +13678,24 @@ function explicitFutureDocumentationCommitment(action = {}, sourceUnits = []) {
 // the same named owner must speak both cited lines, both lines must describe
 // the action, and the confirmations must be separated in the transcript.
 function repeatedOwnerCommitment(action = {}, sourceUnits = []) {
-  const owners = (action.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean);
-  if (!owners.length || !(action.evidenceIds || []).length) return false;
+  const identityScope = sourceSpeakerIdentityScope(sourceUnits);
+  const ownerIdentities = new Set((action.owners || []).map(owner => identityScope.resolve(owner)).filter(Boolean));
+  if (!ownerIdentities.size || !(action.evidenceIds || []).length) return false;
   const units = new Map(normaliseSourceUnits(sourceUnits).map((unit, index) => [unit.id, {
     ...unit,
     index: Number(String(unit.id || '').match(/\d+/)?.[0] || index)
   }]));
-  const ownerMatches = (speaker = '') => owners.some((owner) => {
-    const a = owner.split(/\s+/)[0]; const b = String(speaker).trim().toLowerCase().split(/\s+/)[0];
-    return owner === String(speaker).trim().toLowerCase() || (a && a === b);
-  });
   const commitment = /\b(?:i(?:'ll| will| can| am going to|'m going to)|we(?:'ll| will| can| are going to)|leave (?:it|that|this) with me|will do)\b|^\s*me\s*[,;:-]/i;
-  const supported = (action.evidenceIds || []).map((id) => units.get(id)).filter(Boolean)
-    .filter((unit) => ownerMatches(unit.speaker) && commitment.test(unit.text)
-      && hybridContentTokenOverlap(action.action, unit.text) >= 0.24);
-  if (supported.length < 2) return false;
-  return Math.max(...supported.map((unit) => unit.index)) - Math.min(...supported.map((unit) => unit.index)) >= 3;
+  const supportedByOwner = new Map();
+  for (const unit of (action.evidenceIds || []).map(id => units.get(id)).filter(Boolean)) {
+    const identity = identityScope.resolve(unit.speaker);
+    if (!ownerIdentities.has(identity) || !commitment.test(unit.text)
+      || hybridContentTokenOverlap(action.action, unit.text) < 0.24) continue;
+    if (!supportedByOwner.has(identity)) supportedByOwner.set(identity, []);
+    supportedByOwner.get(identity).push(unit.index);
+  }
+  return [...supportedByOwner.values()].some(indices => indices.length >= 2
+    && Math.max(...indices) - Math.min(...indices) >= 3);
 }
 
 // Reuse the existing final critic as the targeted promotion referee. An action
@@ -17266,7 +17270,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     // note-taker, and the tool is the note-taker. Offered rather than published
     // so the fact is not lost if the reviewer wants it as an action after all.
     const minuteNotes = meetingMinutesMinuteInstructionRuleEnabled()
-      ? timingChecked.actions.filter((action) => isMinuteInstruction(action?.action)) : [];
+      ? timingChecked.actions.filter((action) => isMinuteInstruction(action?.action, {
+        action, sourceUnits: draft.sourceUnits
+      })) : [];
     if (minuteNotes.length) {
       timingChecked = { ...timingChecked, actions: timingChecked.actions.filter((action) => !minuteNotes.includes(action)) };
       const at = timingChecked.actions.length;
@@ -18724,12 +18730,42 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
   const duplicateModifications = new Set(proposal.stage === 'actions'
     ? (proposal.changes || []).filter(change => duplicateMeetingAgentActionModification(change, currentRows)).map(change => change.id)
     : []);
-  const proposed = (proposal.changes || []).filter(change => change.selected === true && !duplicateModifications.has(change.id));
-  // Resolve each removal through the same occurrence-aware transaction as
-  // manual review. Text plus a reused ordinal ID cannot identify its sibling.
-  const retained = applyProposal(currentRows, proposal, proposed.map(change => change.id));
-  const acceptedIds = proposed.filter(change => change.type !== 'remove' || proposal.stage !== 'actions'
-    || retained.some(row => actionIsLosslesslyCovered(change.before, row))).map(change => change.id);
+  const noOpModifications = new Set(proposal.stage === 'actions'
+    ? (proposal.changes || []).filter(change => {
+      if (change.type !== 'modify' || !change.before || !change.after) return false;
+      const index = findActionOccurrenceIndex(currentRows, change.before);
+      return index >= 0 && actionProvenanceSignature(currentRows[index])
+        === actionProvenanceSignature(preserveActionIdentity(currentRows[index], change.after));
+    }).map(change => change.id) : []);
+  const proposed = (proposal.changes || []).filter(change => change.selected === true
+    && !duplicateModifications.has(change.id) && !noOpModifications.has(change.id));
+  const unsafeRemovals = new Set();
+  let acceptedIds = proposed.map(change => change.id);
+  const unapplied = new Set();
+  if (proposal.stage === 'actions') {
+    // Use the transaction's own occurrence/legacy ambiguity checks and target
+    // claims. A covered sentence is not proof that its named occurrence was
+    // actually removed, and a second edit of one target cannot both apply.
+    // Re-run after refusing an unsafe removal: it must not consume the target
+    // of an otherwise valid edit. Each retry removes at least one candidate.
+    let candidates = proposed;
+    for (;;) {
+      const applied = new Set();
+      const retained = applyProposal(currentRows, proposal, candidates.map(change => change.id), {
+        onAppliedChange: change => applied.add(change.id)
+      });
+      const rejectedRemovals = candidates.filter(change => change.type === 'remove' && applied.has(change.id)
+        && !retained.some(row => actionIsLosslesslyCovered(change.before, row)));
+      if (rejectedRemovals.length) {
+        rejectedRemovals.forEach(change => unsafeRemovals.add(change.id));
+        candidates = candidates.filter(change => !unsafeRemovals.has(change.id));
+        continue;
+      }
+      acceptedIds = candidates.filter(change => applied.has(change.id)).map(change => change.id);
+      candidates.filter(change => !applied.has(change.id)).forEach(change => unapplied.add(change.id));
+      break;
+    }
+  }
   const accepted = new Set(acceptedIds);
   const uncertain = (proposal.changes || []).filter(change => !accepted.has(change.id));
   const replacedIds = new Set(uncertain.map(meetingAgentProposalReviewFlagId));
@@ -18738,7 +18774,12 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
     const wording = meetingMinutesAgentText(record.action || record.text || record.topic, 1600);
     const reason = String(duplicateModifications.has(change.id)
       ? 'This edit would copy the wording, owners and timing of another current action.'
-      : change.reviewContext?.reason || 'Check the source before changing the minutes.')
+      : noOpModifications.has(change.id) ? 'This edit would not change the current action.'
+        : unsafeRemovals.has(change.id) ? 'The current list does not prove that all of this action survives elsewhere.'
+          : unapplied.has(change.id) ? (change.type === 'add'
+            ? 'This suggestion did not insert a new action because that occurrence was already present.'
+            : 'The proposed occurrence could not be changed uniquely in the current list; it may be stale, ambiguous or already handled by another suggestion.')
+            : change.reviewContext?.reason || 'Check the source before changing the minutes.')
       .replace(/\b(?:Tick it[^.]*|It stays unless you tick this)\./gi, '').trim();
     return normaliseMeetingAgentFlag({
       // This is now a source check, not a link to a consumed proposal. Keep it

@@ -1265,7 +1265,9 @@ const ACTION_ACCEPTANCE_PATTERN = /\b(?:yes|yeah|yep|okay|ok|sure|happy to|will 
 const ACTION_SUGGESTION_PATTERN = /\b(?:perhaps|maybe|might|may|could|should|consider|considering|possible|potentially|it would be good|worth thinking)\b/i;
 const ACTION_COMPLETED_PATTERN = /\b(?:already|previously|last (?:week|month)|has been|have been|was|were)\b[^.]{0,100}\b(?:completed|finished|sent|shared|issued|approved|closed|done|delivered|submitted)\b/i;
 const ACTION_STATUS_PATTERN = /\b(?:currently|ongoing|in progress|remains|status is|has been|have been|was|were)\b/i;
-const ACTION_ADMIN_PATTERN = /\b(?:write up (?:the )?meeting|produce (?:the )?minutes|send (?:the )?minutes|circulate (?:the )?minutes|attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share|put\s+away\s+(?:the\s+|this\s+|that\s+)?(?:on[- ]screen\s+)?(?:pdf|pdf\s+copy|document\s+copy)|close\s+(?:the\s+|this\s+|that\s+)?(?:browser\s+)?(?:tab|window)\s*(?:now|for\s+now)?)\b/i;
+// Minute preparation/delivery belongs to the recoverable minute-instruction
+// check below. A prefix such as "send minutes" also names genuine later work.
+const ACTION_ADMIN_PATTERN = /\b(?:attend (?:the )?(?:call|meeting)|join (?:the )?(?:call|meeting)|meeting invite|(?:for|in|into|update|take|record|write)\s+(?:the\s+|these\s+|this\s+|that\s+)?(?:new\s+)?set\s+of\s+minutes|(?:for|in|into)\s+(?:the|these|this)\s+minutes|share\s+(?:your|my|his|her|their|the)?\s*screen|screen\s*share|put\s+away\s+(?:the\s+|this\s+|that\s+)?(?:on[- ]screen\s+)?(?:pdf|pdf\s+copy|document\s+copy)|close\s+(?:the\s+|this\s+|that\s+)?(?:browser\s+)?(?:tab|window)\s*(?:now|for\s+now)?)\b/i;
 // A short first-person "quickly/briefly/just share" line is often the chair
 // moving the meeting along, rather than work that remains after the call. Keep
 // this separate from ACTION_ADMIN_PATTERN: a normal "share the report" remains
@@ -1372,7 +1374,7 @@ function actionEvidenceDisposition(action, evidence) {
   const hasCommitment = ACTION_COMMITMENT_PATTERN.test(source) || ACTION_CONCRETE_INTENTION_PATTERN.test(source) || NAMED_WILL_PATTERN.test(source)
     || ACTION_JOINT_INTENTION_PATTERN.test(source) || ACTION_SCHEDULED_DELIVERABLE_PATTERN.test(source)
     || isDecisionResolutionCommitment(source) || accepted;
-  if ((ACTION_ADMIN_PATTERN.test(action) || isLiveCallConduct(action)) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
+  if (isMeetingAdminAction(action) && !/\b(?:client deliverable|contract|required|formal record)\b/i.test(source)) return 'meeting_admin';
   if (ACTION_COMPLETED_PATTERN.test(source) && !hasCommitment) return 'completed';
   if (requested && !accepted
     && !ACTION_COMMITMENT_PATTERN.test(source.replace(ACTION_REQUEST_PATTERN, ''))
@@ -4994,10 +4996,30 @@ function isNotAnAction(value = '') {
 // bare "Send the meeting minutes." is the minute-taker's own routine, but
 // "Send the minutes to the client by Friday" names a recipient and stays.
 const MINUTE_INSTRUCTION = /^\s*(?:please\s+|just\s+)?(?:write|note|jot|put|record|capture|log|minute|mark|make\s+a\s+note)\s+(?:it\s+|that\s+|this\s+)?(?:down\s+)?(?:that\b|this\b|in\s+the\s+(?:minutes|notes)\b|as\s+(?:a\s+)?(?:note|risk)\b)/i;
-const MINUTES_ROUTINE = /^\s*(?:send|circulate|distribute|share|issue|type\s+up|write\s+up|prepare|finalise|finalize|draft)\s+(?:out\s+|round\s+|around\s+)?(?:the\s+|these\s+|this\s+|today's\s+|this\s+week's\s+)?(?:meeting\s+)?(?:minutes|notes|meeting\s+notes)\s*(?:out|round|around)?\s*\.?\s*$/i;
-function isMinuteInstruction(value = '') {
+const MINUTES_ROUTINE = /^\s*(?:send|circulate|distribute|share|issue|produce|type\s+up|write\s+up|prepare|finalise|finalize|draft)\s+(?:out\s+|round\s+|around\s+)?(?:the\s+|these\s+|this\s+|today's\s+|this\s+week's\s+)?(?:meeting\s+)?(?:minutes|notes|meeting\s+notes)\s*(?:out|round|around)?\s*\.?\s*$/i;
+// Require the whole action to describe note-taking for this call. A recipient,
+// future event, technical qualifier or second task prevents this routine match.
+const CURRENT_MEETING_NOTES = /^\s*(?:please\s+|just\s+)?(?:take|keep|make|write)\s+(?:the\s+)?(?:notes|minutes)\s+(?:during|for|at|in)\s+(?:the|this|our|current)\s+(?:meeting|call|session)\s*\.?\s*$/i;
+const MINUTE_SOURCE_DELIVERABLE = /\b(?:client|customer|contract(?:ual)?|formal\s+record|technical\s+file|required\s+record|board\s+(?:review|approval))\b|\b(?:before|after|once|until|tomorrow|next|upcoming|following|deadline|due)\b|\b(?:send|circulate|distribute|share|issue)\b[^.;]{0,100}\bto\s+\S/i;
+function isMinuteInstruction(value = '', { action = {}, sourceUnits = [] } = {}) {
   const wording = text(value, 600);
-  return MINUTE_INSTRUCTION.test(wording) || MINUTES_ROUTINE.test(wording);
+  if (isReviewerAuthored(action)) return false;
+  if (MINUTE_INSTRUCTION.test(wording)) return true;
+  if (!MINUTES_ROUTINE.test(wording) && !CURRENT_MEETING_NOTES.test(wording)) return false;
+  // A shortened candidate can omit a real deadline or delivery requirement.
+  // Consult its own fields and directly cited clauses, never nearby turns.
+  if (text(action?.timing?.wording, 220) || text(action?.timing?.exactDate, 20)) return false;
+  const cited = new Set(Array.isArray(action?.evidenceIds) ? action.evidenceIds : []);
+  const clauses = evidenceContextFor(sourceUnits).rows.filter(unit => cited.has(unit.id))
+    .flatMap(unit => String(unit.text || '').split(/(?<=[.!?;])\s+|\n+/))
+    .filter(clause => /\b(?:minutes|notes)\b/i.test(clause));
+  return !clauses.some(clause => MINUTE_SOURCE_DELIVERABLE.test(clause)
+    // Exclude the deictic "this", authorship "by", and modal/sequencing
+    // "may/first take notes". The remaining weekday, month, relative-date and
+    // numeric signals preserve later work without inferring a date.
+    || CALENDAR_TIMING.test(clause.replace(/\b(?:this|by)\b/gi, '')
+      .replace(/\b(?:may|first)(?=\s+(?:(?:just|also)\s+)?(?:take|keep|make|write|prepare|send|circulate|produce)\b)/gi, ''))
+    || DEPENDENCY_TIMING.test(clause));
 }
 
 // ---- Social asides in the goodbyes --------------------------------------------
@@ -7373,6 +7395,7 @@ function applyProposal(before = [], proposal = {}, acceptedIds = [], options = {
         && signature(row) === signature(addition))) continue;
       const at = Math.max(0, Math.min(rows.length, originalIndex(change)));
       inserted.set(at, [...(inserted.get(at) || []), addition]);
+      if (typeof options.onAppliedChange === 'function') options.onAppliedChange(change);
       continue;
     }
     // Never use an old numeric position for a destructive change. Autosave,
@@ -7382,9 +7405,14 @@ function applyProposal(before = [], proposal = {}, acceptedIds = [], options = {
     const at = currentIndex(change);
     if (at < 0 || claimedTargets.has(at)) continue;
     claimedTargets.add(at);
-    if (change.type === 'remove') removed.add(at);
-    else if (change.type === 'modify') modified.set(at, rows[at]?.action != null
-      ? preserveActionIdentity(rows[at], change.after) : change.after);
+    if (change.type === 'remove') {
+      removed.add(at);
+      if (typeof options.onAppliedChange === 'function') options.onAppliedChange(change);
+    } else if (change.type === 'modify') {
+      modified.set(at, rows[at]?.action != null
+        ? preserveActionIdentity(rows[at], change.after) : change.after);
+      if (typeof options.onAppliedChange === 'function') options.onAppliedChange(change);
+    }
   }
   // Rebuild from the original rows rather than splicing, so each accepted change
   // is independent of which other changes were accepted.
