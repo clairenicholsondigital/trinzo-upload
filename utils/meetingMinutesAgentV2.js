@@ -3988,7 +3988,13 @@ function applyAnsweredCheckResults(actions = [], items = [], results = []) {
   for (const item of items) {
     const row = verdicts.get(item.id);
     if (!row || row.verdict !== 'answered') continue;
-    if (!decisionQuoteFound(row.answerQuote, item.passage, 45) || !decisionQuoteFound(row.acceptanceQuote, item.passage, 45)) continue;
+    const answer = decisionQuoteValidation(row.answerQuote, item.passage, 45, { includePositions: true });
+    const acceptance = decisionQuoteValidation(row.acceptanceQuote, item.passage, 45, { includePositions: true });
+    // Both quotes must occur in answer-then-acceptance order. Repeated words
+    // can have several occurrences; an earlier acknowledgement or overlapping
+    // span alone cannot prove that this answer was accepted.
+    if (!answer.valid || !acceptance.valid
+      || !answer.positions.some(reply => acceptance.positions.some(ack => ack.start >= reply.end))) continue;
     answered.set(item.index, { answerQuote: text(row.answerQuote, 300), acceptanceQuote: text(row.acceptanceQuote, 200) });
   }
   const list = Array.isArray(actions) ? actions : [];
@@ -4130,6 +4136,12 @@ function applyCompletedInMeetingCheckResults(actions = [], items = [], results =
     const quoteCheck = decisionQuoteValidation(row.completionQuote, item.passage);
     if (!quoteCheck.valid) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: quoteCheck.reason });
+      continue;
+    }
+    // The same promise-only evidence is insufficient at both lifecycle gates.
+    // Future delivery is not proof that the explanation has already happened.
+    if (quoteIsOnlyAPromise(row.completionQuote)) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'quote_is_a_promise' });
       continue;
     }
     completed.set(item.index, text(row.completionQuote, 300));
@@ -5640,12 +5652,17 @@ function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   const boundary = (value, index, direction) => index < 0 || index >= value.length
     || value[index] === ' ' || (value[index] === "'" && (index + direction < 0
       || index + direction >= value.length || value[index + direction] === ' '));
-  const containsCompleteQuote = (value, quotedText) => {
+  const containsCompleteQuote = (value, quotedText, onMatch) => {
     if (!quotedText) return false;
+    let found = false;
     for (let index = value.indexOf(quotedText); index >= 0; index = value.indexOf(quotedText, index + 1)) {
-      if (boundary(value, index - 1, -1) && boundary(value, index + quotedText.length, 1)) return true;
+      if (boundary(value, index - 1, -1) && boundary(value, index + quotedText.length, 1)) {
+        if (!onMatch) return true;
+        onMatch({ start: index, end: index + quotedText.length });
+        found = true;
+      }
     }
-    return false;
+    return found;
   };
   const stripSpeakerPrefix = value => String(value || '').replace(/^[^:]{2,40}:\s*/, (prefix, _offset, source) => {
     const colon = prefix.indexOf(':');
@@ -5665,7 +5682,11 @@ function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   if (minimumWords < 3) return { valid: false, reason: 'quote_too_short', words: minimumWords };
   if (words > maxWords) return { valid: false, reason: 'quote_too_long', words };
   const spoken = String(passage || '').split('\n').map(stripSpeakerPrefix).join(' ');
-  const valid = containsCompleteQuote(flat(spoken), needle);
+  // Positions use this same normalized spoken passage for both quotations.
+  // Existing consumers keep their boolean matching and result shape.
+  const positions = [];
+  const valid = containsCompleteQuote(flat(spoken), needle,
+    options.includePositions === true ? match => positions.push(match) : undefined);
   // Only temporal consumers opt in to the corrected clock parsing. A newly
   // accepted quote must then prove the complete source proposition, or supply
   // a validated structured temporal witness; quotation alone is insufficient.
@@ -5675,6 +5696,7 @@ function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   const legacyValid = legacyWords >= 3 && legacyWords <= maxWords
     && containsCompleteQuote(flat(String(passage || '').split('\n').map(legacyStrip).join(' ')), legacyNeedle);
   return { valid, reason: valid ? '' : 'quote_not_found', words,
+    ...(options.includePositions === true ? { positions } : {}),
     ...(valid && !legacyValid ? { requiresLiteralSource: true } : {}) };
 }
 
