@@ -18548,6 +18548,19 @@ function echoesPublishedAction(published = {}, proposal = {}) {
   return sharesDistinctivePhrase(a, b) || hybridContentTokenOverlap(unhyphen(a), unhyphen(b)) >= 0.45;
 }
 
+// A generated edit can introduce a literal duplicate even when no detail is
+// lost. Defer it for review; neither this check nor automatic adoption deletes
+// an existing occurrence or changes explicit manual acceptance.
+function duplicateMeetingAgentActionModification(change = {}, currentRows = []) {
+  if (change.type !== 'modify' || !change.before || !change.after) return null;
+  const rows = Array.isArray(currentRows) ? currentRows : [];
+  const targetIndex = findActionOccurrenceIndex(rows, change.before);
+  if (targetIndex < 0) return null;
+  const signature = meetingAgentEditableActionSignature(change.after);
+  return rows.find((row, index) => index !== targetIndex
+    && meetingAgentEditableActionSignature(row) === signature) || null;
+}
+
 function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
   proposal = filterIncompleteProposalChanges(proposal, sourceUnits);
   if (!proposal || !Array.isArray(proposal.changes)) return proposal;
@@ -18582,6 +18595,14 @@ function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
       });
     }
     if (change.type === 'modify') {
+      const duplicate = duplicateMeetingAgentActionModification(change, resulting);
+      if (duplicate) {
+        return withSelection(change, false, {
+          label: 'already in the list',
+          reason: 'This edit would copy the wording, owners and timing of another action. Tick it only if both occurrences are intended.',
+          evidenceIds: change.after?.evidenceIds || change.before?.evidenceIds || []
+        });
+      }
       const lost = destructiveActionEdit(change.before || {}, change.after || {}, sourceUnits);
       if (lost) {
         return withSelection(change, false, {
@@ -18700,7 +18721,10 @@ function finaliseMeetingAgentTimingProposal(proposal = {}, draft = {}) {
 // Consuming uncertain suggestions exposes their source-linked checks instead of
 // quietly applying them or leaving a hidden proposal that runs on every reload.
 function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentRows = []) {
-  const proposed = (proposal.changes || []).filter(change => change.selected === true);
+  const duplicateModifications = new Set(proposal.stage === 'actions'
+    ? (proposal.changes || []).filter(change => duplicateMeetingAgentActionModification(change, currentRows)).map(change => change.id)
+    : []);
+  const proposed = (proposal.changes || []).filter(change => change.selected === true && !duplicateModifications.has(change.id));
   // Resolve each removal through the same occurrence-aware transaction as
   // manual review. Text plus a reused ordinal ID cannot identify its sibling.
   const retained = applyProposal(currentRows, proposal, proposed.map(change => change.id));
@@ -18712,7 +18736,9 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
   const checks = uncertain.map((change, index) => {
     const record = change.after || change.before || {};
     const wording = meetingMinutesAgentText(record.action || record.text || record.topic, 1600);
-    const reason = String(change.reviewContext?.reason || 'Check the source before changing the minutes.')
+    const reason = String(duplicateModifications.has(change.id)
+      ? 'This edit would copy the wording, owners and timing of another current action.'
+      : change.reviewContext?.reason || 'Check the source before changing the minutes.')
       .replace(/\b(?:Tick it[^.]*|It stays unless you tick this)\./gi, '').trim();
     return normaliseMeetingAgentFlag({
       // This is now a source check, not a link to a consumed proposal. Keep it
