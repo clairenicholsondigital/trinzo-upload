@@ -9,10 +9,9 @@ const units = Array.from({ length: 30 }, (unused, i) => ({
   classification: 'keep'
 }));
 
-// Topic A cites one early line and one stray late line, so its evidence window
-// spans the whole meeting. Topic B is a tight window around the detail. A
-// detail homeless in topic C must land in B, the topic that actually covers it,
-// not in A merely because A is scanned first.
+// Topic A spans the meeting and B is near the detail. Source windows alone
+// cannot prove a parent: the weak one-word language overlap stays unresolved.
+// A separate positive case supplies enough body anchors to justify refiling.
 const discussion = () => ([
   {
     id: 'A', topic: 'Opening status and tracker movement',
@@ -34,12 +33,29 @@ const discussion = () => ([
   }
 ]);
 
-test('a homeless supporting line goes to the topic that covers it, not the widest one', async () => {
+test('a narrow source window and one shared noun cannot establish a new supporting parent', async () => {
   const out = await organiseDiscussionForReview(discussion(), units);
   const where = out.discussion.find((topic) => (topic.points || [])
     .some((point) => (point.supportingDetails || []).some((detail) => detail.id === 'd1')));
   assert.ok(where, 'the supporting line must still exist somewhere');
+  assert.equal(where.topic, 'Electrical compliance testing');
+  const detail = where.points.flatMap(point => point.supportingDetails || []).find(item => item.id === 'd1');
+  assert.equal(detail.placementStatus, 'unresolved');
+  assert.equal(detail.placementReason, 'no_subject_match');
+  assert.equal(detail.text, 'The symbol incompatibility affects three of the additional languages.');
+  assert.deepEqual(detail.evidenceIds, ['T0020']);
+});
+
+test('distinctive body anchors justify rehoming despite an unrelated wider source window', async () => {
+  const input = discussion();
+  input[1].points[0].text = 'Firmware memory for additional languages has symbol restrictions.';
+  const out = await organiseDiscussionForReview(input, units);
+  const where = out.discussion.find(topic => (topic.points || [])
+    .some(point => (point.supportingDetails || []).some(detail => detail.id === 'd1')));
+  assert.ok(where, 'the supporting line must remain available');
   assert.equal(where.topic, 'Language support and firmware memory');
+  assert.equal(out.discussion.flatMap(topic => topic.points || [])
+    .flatMap(point => point.supportingDetails || []).filter(detail => detail.id === 'd1').length, 1);
 });
 
 test('re-homing never loses a supporting line', async () => {

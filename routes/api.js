@@ -70,6 +70,8 @@ const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, c
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
+const { selectSupportingDetailParent } = require('../utils/canonicalMinutes/supportingDetailPlacement');
+const { normalizeUnassignedSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
 const {
   ALWAYS_INTERNAL_PEOPLE,
   alwaysInternalAttendeeName,
@@ -11563,7 +11565,7 @@ function meetingAgentDraftPayload(draft = {}) {
   draft = meetingAgentWithLegacyDateReview(normaliseMeetingAgentMinuteNumbers(draft));
   const payloadFlags = reconcileMeetingAgentOrphanFlags(
     (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
-    [...(draft.discussion || []), ...(draft.actions || [])],
+    [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)],
     draft.pendingProposal
   );
   const payloadFlagIds = new Set(payloadFlags.map((flag) => String(flag.id)));
@@ -11579,6 +11581,9 @@ function meetingAgentDraftPayload(draft = {}) {
     salientDetails: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.salientDetails) ? draft.salientDetails : []),
     details: sanitiseMeetingAgentDetails(draft.details),
     discussion: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.discussion, payloadFlagIds)),
+    ...(Array.isArray(draft.unassignedSupportingDetails) ? {
+      unassignedSupportingDetails: normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)
+    } : {}),
     actions: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.actions, payloadFlagIds)),
     reviewFlags: normaliseMeetingAgentKnownTermsDeep(payloadFlags),
     pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
@@ -11713,9 +11718,13 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
   const minutes = { details, ...publication, preserveSummaryParagraphs: true };
   if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
-  minutes.supportingDetails = publicationDiscussion.flatMap((topic) =>
-    [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
-      (record?.supportingDetails || []).map((detail) => ({ topic: topic?.topic || 'Discussion', text: detail?.text || '' })))).filter((detail) => detail.text);
+  const unassignedDetails = normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails);
+  minutes.supportingDetails = [
+    ...publicationDiscussion.flatMap((topic) =>
+      [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
+        (record?.supportingDetails || []).map((detail) => ({ topic: topic?.topic || 'Discussion', text: detail?.text || '' })))),
+    ...unassignedDetails.map(detail => ({ topic: 'Needs filing', text: detail.text }))
+  ].filter((detail) => detail.text);
   const evidenceIds = new Set();
   for (const topic of publicationDiscussion) {
     for (const record of [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])]) {
@@ -11726,6 +11735,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   for (const action of publicationActions) {
     for (const id of action?.evidenceIds || []) evidenceIds.add(id);
   }
+  for (const detail of unassignedDetails) for (const id of detail.evidenceIds) evidenceIds.add(id);
   minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
   minutes.reviewFlags = content.reviewFlags;
   return normaliseMeetingAgentKnownTermsDeep(minutes);
@@ -11740,12 +11750,15 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal, draft.sourceUnits || []);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     publication.reviewFlags,
-    [...visibleDiscussion, ...visibleActions],
+    [...visibleDiscussion, ...visibleActions, ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)],
     visibleProposal
   );
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
     ...publication,
+    ...(Array.isArray(draft.unassignedSupportingDetails) ? {
+      unassignedSupportingDetails: normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)
+    } : {}),
     discussion: visibleDiscussion,
     actions: visibleActions,
     pendingProposal: visibleProposal,
@@ -12039,7 +12052,7 @@ function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRow
 }
 
 const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
-  'details', 'steer', 'discussion', 'actions', 'executiveSummary',
+  'details', 'steer', 'discussion', 'unassignedSupportingDetails', 'actions', 'executiveSummary',
   'meetingObjectives', 'reviewFlags', 'pendingProposal', 'staleStages',
   'currentStep', 'selectedStep', 'status',
   // Undoing a change has to restore what it did to the reviewer's own state
@@ -12107,7 +12120,8 @@ function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCove
   const checked = require('../utils/meetingMinutesTimingFlags').reconcileActionTimingWarnings(
     changes.actions, merged, recheck.draft.sourceUnits,
     { meetingDate: meetingAgentTimingAnchor(recheck.draft), proposals: [changes.pendingProposal, recheck.draft.pendingProposal],
-      otherRecords: [changes.discussion ?? recheck.draft.discussion, changes.meetingObjectives ?? recheck.draft.meetingObjectives] }
+      otherRecords: [changes.discussion ?? recheck.draft.discussion, changes.meetingObjectives ?? recheck.draft.meetingObjectives,
+        changes.unassignedSupportingDetails ?? recheck.draft.unassignedSupportingDetails] }
   );
   const retired = checked.retired.filter(item => !references.has(item.id));
   if (retired.length) console.log(JSON.stringify({ event: 'meeting_agent_persisted_timing_warning_retired',
@@ -12581,7 +12595,8 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
       labelSimilarity: 0.6,
       mergeRestatements: true,
       preserveVisibleRows: options.includeAllDetails === true,
-      onRestatements: options.onRestatements
+      onRestatements: options.onRestatements,
+      onUnassignedSupportingDetail: options.onUnassignedSupportingDetail
     });
     result = organiser.discussion;
   }
@@ -12597,6 +12612,7 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
     sourceUnits: options.sourceUnits || [],
     people: options.people || [],
     rewritePartialOverlaps: options.rewritePartialOverlaps,
+    onUnassignedSupportingDetail: options.onUnassignedSupportingDetail,
     onPartialOverlapConsolidated: options.onPartialOverlapConsolidated
   });
   const bodyDedupe = dedupeDiscussionBody(result, options.people || []);
@@ -13865,6 +13881,9 @@ function supportingDetailAddsInformation(detail, retained = [], primary = {}) {
   for (const other of [primary, ...retained]) {
     const otherText = String(other?.text || '').trim();
     if (!otherText) continue;
+    // Coverage of some words or one shared number is not coverage of every
+    // quantity, unit, bound, range and identifier in the supporting claim.
+    if (numericActionEditIssue(text, otherText)) continue;
     const otherTokens = discussionInformationTokens(otherText);
     const covered = [...detailTokens].filter((token) => otherTokens.has(token)).length / detailTokens.size;
     const otherNumbers = new Set(otherText.match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
@@ -13908,8 +13927,8 @@ function consolidateSupportingDetails(record = {}) {
 // cannot discard timed material: its directional content and timing must be
 // represented by the row which would replace it.
 function mayDiscardSupportingDetail(detail, existing) {
-  return !temporalClaim(detail?.text)
-    || !supportingDetailAddsInformation(detail, [], existing);
+  return !numericActionEditIssue(String(detail?.text || ''), String(existing?.text || ''))
+    && (!temporalClaim(detail?.text) || !supportingDetailAddsInformation(detail, [], existing));
 }
 
 function refereeDiscussionTargetId(disposition = {}) {
@@ -14357,6 +14376,12 @@ const OWNER_FOLLOW_UP_PATTERN = new RegExp(
 );
 
 function compactDiscussionPropositions(discussion = [], recovered = [], sourceUnits = [], options = {}) {
+  const retainUnassigned = (detail, context = {}) => {
+    if (typeof options.onUnassignedSupportingDetail !== 'function'
+      || options.onUnassignedSupportingDetail(detail, context) !== true) {
+      throw new Error('Unfiled supporting detail requires a lossless review collector.');
+    }
+  };
   const kindRank = { discussion_point: 1, open_question: 2, decision: 3 };
   const numberTokens = (value) => new Set(String(value || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || []);
   const compatible = (left, right) => {
@@ -14407,8 +14432,12 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       || Number(clientReady(right)) - Number(clientReady(left))
       || String(right.record?.text || '').length - String(left.record?.text || '').length);
     const selected = ordered[0];
+    const mergedFromIds = [...new Set(group.flatMap(item => [
+      item.record?.id, ...(item.record?.mergedFromIds || [])
+    ]).filter(id => id && id !== selected.record?.id))];
     const record = {
       ...selected.record,
+      ...(mergedFromIds.length ? { mergedFromIds } : {}),
       evidenceIds: [...new Set(group.flatMap((item) => item.record?.evidenceIds || []))].slice(0, 12)
     };
     const details = [
@@ -14419,9 +14448,12 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       ])
     ].filter((detail) => detail?.text && (hybridContentTokenOverlap(detail.text, record.text) < 0.94
       || !mayDiscardSupportingDetail(detail, record)));
-    record.supportingDetails = details.filter((detail, index) => details.findIndex((other) =>
+    const retainedDetails = details.filter((detail, index) => details.findIndex((other) =>
       hybridContentTokenOverlap(other.text, detail.text) >= 0.9
-        && mayDiscardSupportingDetail(detail, other)) === index).slice(0, 50);
+        && mayDiscardSupportingDetail(detail, other)) === index);
+    record.supportingDetails = retainedDetails.slice(0, 50);
+    for (const detail of retainedDetails.slice(50)) retainUnassigned(detail,
+      { originalTopic: selected.topic, placementReason: 'parent_detail_capacity' });
     const topic = topicFor(selected.topic);
     // "Mick to contact the engineer today" is a follow-up, not a decision; the
     // Referee's bucket is otherwise taken verbatim, so keep it visible as a
@@ -14455,19 +14487,24 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   for (const item of recoveredRows) {
     const topic = topics.find((candidate) => candidate.topic.toLowerCase() === String(item.topic || '').toLowerCase())
       || topics.find((candidate) => hybridTokenOverlap(candidate.topic, item.topic) >= 0.55);
-    if (!topic) continue;
-    const records = [...topic.decisions, ...topic.openQuestions, ...topic.points];
-    if (!records.length || records.some((record) => hybridContentTokenOverlap(record.text, item.record?.text) >= 0.9
+    const records = topic ? [...topic.decisions, ...topic.openQuestions, ...topic.points] : [];
+    if (records.some((record) => hybridContentTokenOverlap(record.text, item.record?.text) >= 0.9
       && mayDiscardSupportingDetail(item.record, record))) continue;
-    const target = [...records].sort((left, right) => {
-      const score = (record) => hybridContentTokenOverlap(record.text, item.record?.text)
-        + ((record.evidenceIds || []).some((id) => (item.record?.evidenceIds || []).includes(id)) ? 0.25 : 0);
-      return score(right) - score(left);
-    })[0];
-    target.supportingDetails = [...(target.supportingDetails || []), {
+    const selection = selectSupportingDetailParent(item.record || {},
+      records.map(record => ({ topic: topic.topic, record })), { sourceUnits });
+    if (!selection.target) {
+      retainUnassigned(item.record, { originalTopic: item.topic, placementReason: selection.reason });
+      continue;
+    }
+    const target = selection.target.record;
+    const detail = {
       id: item.record?.id || `supporting-${target.id}-${target.supportingDetails?.length || 0}`,
-      text: item.record?.text || '', evidenceIds: [...new Set(item.record?.evidenceIds || [])].slice(0, 8)
-    }].filter((detail) => detail.text).slice(0, 50);
+      text: item.record?.text || '', evidenceIds: [...new Set(item.record?.evidenceIds || [])],
+      ...(item.record?.reviewFlagIds?.length ? { reviewFlagIds: [...item.record.reviewFlagIds] } : {})
+    };
+    if ((target.supportingDetails || []).length >= 50) {
+      retainUnassigned(detail, { originalTopic: item.topic, placementReason: 'parent_detail_capacity' });
+    } else target.supportingDetails = [...(target.supportingDetails || []), detail];
   }
   // A referee can classify a candidate as supporting without repeating its
   // full text in the visible response. Keep that accurate secondary material
@@ -14478,34 +14515,54 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   // Dedupe across the whole draft, not per parent: the same chiller-risk fact
   // attached under four different propositions was four reviewer rows.
   const supportingDedupeThreshold = meetingMinutesAgentSupportingDedupeThreshold();
-  const attachedTexts = allPrimary.flatMap(({ record }) => [
-    record.text,
-    ...(record.supportingDetails || []).map((detail) => detail.text)
-  ]).filter(Boolean);
+  const attachedRecords = allPrimary.flatMap(({ record }) => [
+    record, ...(record.supportingDetails || [])
+  ]).filter(record => record?.text);
   for (const item of Array.isArray(options.supportingCandidates) ? options.supportingCandidates : []) {
     const candidate = item?.candidate || item;
-    const detailText = meetingMinutesAgentText(candidate?.text || candidate?.record?.text, 1600);
-    if (!detailText || !allPrimary.length) continue;
+    const detailText = String(candidate?.text || candidate?.record?.text || '').trim();
+    if (!detailText) continue;
     const explicitTarget = meetingMinutesAgentText(item?.mergeTarget, 80);
-    let ranked = allPrimary.map((target) => {
-      const lexical = hybridContentTokenOverlap(target.record.text, detailText);
-      const evidence = (target.record.evidenceIds || []).some((id) => (candidate.evidenceIds || []).includes(id)) ? 0.3 : 0;
-      const topic = hybridTokenOverlap(target.topic.topic, candidate.topic || '') * 0.25;
-      const targetId = String(target.record.id || '');
-      const direct = explicitTarget && targetId === explicitTarget ? 2 : 0;
-      return { target, score: direct + lexical + evidence + topic };
-    }).sort((left, right) => right.score - left.score);
-    if (!ranked[0] || ranked[0].score < 0.24) continue;
-    const target = ranked[0].target.record;
-    if (attachedTexts.some((existingText) => hybridContentTokenOverlap(existingText, detailText) >= supportingDedupeThreshold
-      && mayDiscardSupportingDetail({ text: detailText, evidenceIds: candidate.evidenceIds || [] }, { text: existingText }))) continue;
+    const detailEvidenceIds = [...new Set([...(candidate.evidenceIds || []), ...(candidate.record?.evidenceIds || [])])];
+    const detailFlagIds = [...new Set([...(candidate.reviewFlagIds || []), ...(candidate.record?.reviewFlagIds || [])])];
+    // A later generated-prose normaliser has a 1,600-character limit. Keep a
+    // longer source detail intact for explicit reviewer filing instead.
+    if (detailText.length > 1600) {
+      retainUnassigned({ id: candidate.candidateId || candidate.record?.id || candidate.id,
+        text: detailText, evidenceIds: detailEvidenceIds, reviewFlagIds: detailFlagIds },
+      { originalTopic: candidate.topic, placementReason: 'long_supporting_detail' });
+      continue;
+    }
+    const selection = selectSupportingDetailParent({ ...candidate, text: detailText }, allPrimary,
+      { explicitTarget, sourceUnits });
+    if (!selection.target) {
+      retainUnassigned({
+        ...candidate,
+        id: candidate.candidateId || candidate.record?.id || candidate.id,
+        text: detailText,
+        evidenceIds: detailEvidenceIds, reviewFlagIds: detailFlagIds
+      }, { originalTopic: candidate.topic, placementReason: selection.reason });
+      continue;
+    }
+    const target = selection.target.record;
+    // Filing must not discard a different quantity, qualification or live
+    // review link just because an untimed sentence sounds similar.
+    if (attachedRecords.some(existing => hybridContentTokenOverlap(existing.text, detailText) >= supportingDedupeThreshold
+      && !numericActionEditIssue(detailText, existing.text)
+      && !supportingDetailAddsInformation({ text: detailText, evidenceIds: detailEvidenceIds }, [], existing)
+      && detailFlagIds.every(id => (existing.reviewFlagIds || []).includes(id))
+      && (candidate.reviewerAuthored !== true || existing.reviewerAuthored === true))) continue;
     const existing = target.supportingDetails || [];
-    target.supportingDetails = [...existing, {
-      id: candidate.candidateId || candidate.record?.id || `supporting-${target.id}-${existing.length}`,
+    const detail = {
+      id: candidate.candidateId || candidate.record?.id || candidate.id || `supporting-${target.id}-${existing.length}`,
       text: detailText,
-      evidenceIds: [...new Set(candidate.evidenceIds || candidate.record?.evidenceIds || [])].slice(0, 8)
-    }].slice(0, 50);
-    attachedTexts.push(detailText);
+      evidenceIds: detailEvidenceIds,
+      ...(detailFlagIds.length ? { reviewFlagIds: detailFlagIds } : {})
+    };
+    if (existing.length >= 50) {
+      retainUnassigned(detail, { originalTopic: candidate.topic, placementReason: 'parent_detail_capacity' });
+    } else target.supportingDetails = [...existing, detail];
+    attachedRecords.push(detail);
   }
   // A Referee may conservatively label a genuinely material proposition as
   // supporting. Keep secondary context collapsed by default, but promote a
@@ -16336,10 +16393,18 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       refereeDiscussionDispositions, suppliedRefereeCandidates
     ));
     const structuredReferee = refereeRoute === 'structured_prompt';
+    const unassignedSupportingDetails = [];
+    const retainUnassignedSupportingDetail = (detail, context = {}) => {
+      const retained = collectUnassignedSupportingDetails(detail, context);
+      if (!retained.length) return false;
+      unassignedSupportingDetails.push(...retained);
+      return true;
+    };
     const compactPreview = (compactEnabled || compactShadowEnabled || structuredReferee)
       ? compactDiscussionPropositions(refereeDiscussion, recoveredDiscussion, draft.sourceUnits, {
         meetingDate: timingAnchor,
         supportingCandidates,
+        onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
         // The Referee remains authoritative by default. A separately gated
         // deterministic marginal-information pass can recover a genuinely
         // material proposition which it labelled as context, without exposing
@@ -16364,7 +16429,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       // directly previously allowed that uncited row into the UI precisely on
       // the degraded path where validation matters most.
       finalDiscussion = (compactEnabled || structuredReferee)
-        ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits, { meetingDate: timingAnchor })
+        ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits, {
+          meetingDate: timingAnchor, onUnassignedSupportingDetail: retainUnassignedSupportingDetail
+        })
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
     }
@@ -16394,6 +16461,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           // Measured 2026-09-27 on the 21 live drafts: 3 of 377 rows, all
           // restatements, gold discussion recall unchanged (263/270).
           mergeRestatements: meetingMinutesDiscussionRestatementsEnabled(),
+          onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
           onRestatements: (merges) => console.log(JSON.stringify({ event: 'meeting_agent_discussion_restatements', journeyId: draft.draftId, merges }))
         };
         const organised = await organiseDiscussionForReview(finalDiscussion, draft.sourceUnits, organiserOptions);
@@ -16561,6 +16629,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     finalDiscussion = await finaliseDiscussionForPublication(finalQuantifiedGrounding.discussion, {
       sourceUnits: draft.sourceUnits,
       people: meetingAgentPeopleNames(draft.sourceUnits),
+      onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
       rewritePartialOverlaps,
       onPartialOverlapConsolidated: ({ candidates, applied }) => console.log(JSON.stringify({
         event: 'meeting_agent_partial_overlap_consolidation', journeyId: draft.draftId,
@@ -16595,6 +16664,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         topicLabels,
         people: meetingAgentPeopleNames(draft.sourceUnits),
         organise: meetingMinutesAgentDiscussionOrganiseEnabled(),
+        onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
         includeAllDetails,
         rewritePartialOverlaps,
         onPartialOverlapConsolidated: ({ candidates, applied }) => console.log(JSON.stringify({
@@ -16736,7 +16806,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       deduped: postPromotion.dropped.length,
       diagnostics: structureDiagnostics
     }));
-    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion }, [...refereeFlags,
+    const retainedUnassignedSupportingDetails = withoutRepresentedUnassignedDetails(
+      mergeUnassignedSupportingDetails(draft.unassignedSupportingDetails, unassignedSupportingDetails), finalDiscussion
+    );
+    // Reconcile review links on unfiled context too. Primary/recovery flag
+    // definitions may be recoverable only through the existing flag registry.
+    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion,
+      supportingDetails: retainedUnassignedSupportingDetails }, [...refereeFlags,
       ...(quantifiedGrounding.flags || []), ...(finalQuantifiedGrounding.flags || []),
       ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
     finalDiscussion = discussionFlagState.content.discussion;
@@ -16749,7 +16825,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const candidateDispositions = hybridCandidateDispositions(
       ensemble,
       flattenHybridDiscussion(finalDiscussion).map((item) => ({ ...item.record, _recordType: item.recordType })),
-      [], supportingRecords
+      [], [...supportingRecords, ...retainedUnassignedSupportingDetails]
     );
     const passImpact = meetingAgentMaterialPassImpact(candidateDispositions, {
       referee: { materialContributionCount: completedPasses.includes('referee')
@@ -16770,7 +16846,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     });
     return {
       changes: {
-        discussion: finalDiscussion, meetingObjectives: objectives, candidateLedger,
+        discussion: finalDiscussion, unassignedSupportingDetails: retainedUnassignedSupportingDetails,
+        meetingObjectives: objectives, candidateLedger,
         passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
         passCache,
         qualityState: { ...(draft.qualityState || {}), discussion: {
@@ -16787,6 +16864,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             ? flattenHybridDiscussion(compactPreview).flatMap((item) => item.record?.supportingDetails || []).length : null,
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
+          unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
           fidelityReview,
           materialDeadlinePromotionCount: preCapMaterialTiming.promoted + materialDeadlines.promoted,
@@ -17993,15 +18071,20 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       ? Math.max(0, Math.min(furthestStep,
         Number(req.body?.selectedStep ?? req.body?.currentStep ?? draft.selectedStep ?? draft.currentStep) || 0))
       : Math.max(0, Math.min(furthestStep, Number(draft.selectedStep ?? draft.currentStep) || 0));
+    const unassignedSupportingDetails = withoutRepresentedUnassignedDetails(
+      Array.isArray(req.body?.unassignedSupportingDetails)
+        ? req.body.unassignedSupportingDetails : draft.unassignedSupportingDetails,
+      normalised.discussion
+    );
     const mergedReviewFlags = reopenFlagsOfReAddedItems(
       mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      [...normalised.discussion, ...normalised.actions]
+      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails]
     );
     const reconciledReviewFlags = reconcileMeetingAgentOrphanFlags(
       mergedReviewFlags,
-      [...normalised.discussion, ...normalised.actions],
+      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails],
       pendingProposal,
-      [...(draft.discussion || []), ...(draft.actions || [])]
+      [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)]
     );
     const reviewDecisionLabel = meetingMinutesAgentText(req.body?.reviewDecisionLabel, 160);
     const changeHistory = reviewDecisionLabel
@@ -18012,6 +18095,8 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       qualityState,
       steer: req.body?.steer ?? draft.steer,
       discussion: normalised.discussion,
+      ...(Array.isArray(req.body?.unassignedSupportingDetails) || Array.isArray(draft.unassignedSupportingDetails)
+        ? { unassignedSupportingDetails } : {}),
       actions: normalised.actions,
       executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
       meetingObjectives: reviewerContent.meetingObjectives ?? draft.meetingObjectives,
@@ -18200,7 +18285,7 @@ function publicMeetingAgentGeneration(generation) {
 }
 
 function meetingAgentStageContentFields(stage) {
-  if (stage === 'discussion') return ['discussion', 'meetingObjectives'];
+  if (stage === 'discussion') return ['discussion', 'meetingObjectives', 'unassignedSupportingDetails'];
   // The Actions pass may remove a generated Discussion point only when the
   // finished accepted action register strictly duplicates it. Persistence
   // applies that optional cleanup only if Discussion was not edited while the
@@ -18216,12 +18301,17 @@ function meetingAgentStageFieldWasGeneratedElsewhere(sourceDraft = {}, freshDraf
     !== JSON.stringify(freshDraft?.qualityState?.discussion ?? null);
 }
 
+function meetingAgentStageFieldValue(draft, field) {
+  return field === 'unassignedSupportingDetails'
+    ? normalizeUnassignedSupportingDetails(draft?.[field]) : draft?.[field] ?? null;
+}
+
 function meetingAgentStageContentConflicts(sourceDraft = {}, freshDraft = {}, stage = '') {
-  const protectedFields = stage === 'discussion' ? ['discussion']
+  const protectedFields = stage === 'discussion' ? ['discussion', 'unassignedSupportingDetails']
     : stage === 'actions' ? ['actions', 'pendingProposal']
       : stage === 'summary' ? ['executiveSummary', 'meetingObjectives'] : [];
   return protectedFields.filter((field) =>
-    JSON.stringify(sourceDraft?.[field] ?? null) !== JSON.stringify(freshDraft?.[field] ?? null)
+    JSON.stringify(meetingAgentStageFieldValue(sourceDraft, field)) !== JSON.stringify(meetingAgentStageFieldValue(freshDraft, field))
       && !meetingAgentStageFieldWasGeneratedElsewhere(sourceDraft, freshDraft, stage, field));
 }
 
@@ -18244,8 +18334,8 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
   if (conflictFields.length) return { conflictFields, changes: {} };
   const changes = {};
   for (const field of meetingAgentStageContentFields(stage)) {
-    const changedSinceStart = JSON.stringify(sourceDraft?.[field] ?? null)
-      !== JSON.stringify(freshDraft?.[field] ?? null);
+    const changedSinceStart = JSON.stringify(meetingAgentStageFieldValue(sourceDraft, field))
+      !== JSON.stringify(meetingAgentStageFieldValue(freshDraft, field));
     const generatedElsewhere = meetingAgentStageFieldWasGeneratedElsewhere(
       sourceDraft, freshDraft, stage, field
     );
@@ -19099,11 +19189,19 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
     }
   }
+  if (stage === 'discussion' && Array.isArray(changes.unassignedSupportingDetails)) {
+    changes.unassignedSupportingDetails = withoutRepresentedUnassignedDetails(
+      mergeUnassignedSupportingDetails(fresh.unassignedSupportingDetails, changes.unassignedSupportingDetails),
+      changes.discussion || fresh.discussion || []
+    );
+  }
   const field = stage === 'actions' ? 'actions' : stage === 'discussion' ? 'discussion' : '';
   let priorFlags = Array.isArray(fresh.reviewFlags) ? fresh.reviewFlags : [];
   if (field && Object.prototype.hasOwnProperty.call(changes, field)) {
-    const oldIds = meetingAgentReferencedFlagIds(fresh[field] || []);
-    const newIds = meetingAgentReferencedFlagIds(changes[field] || []);
+    const oldIds = meetingAgentReferencedFlagIds([...(fresh[field] || []),
+      ...(stage === 'discussion' ? normalizeUnassignedSupportingDetails(fresh.unassignedSupportingDetails) : [])]);
+    const newIds = meetingAgentReferencedFlagIds([...(changes[field] || []),
+      ...(stage === 'discussion' ? normalizeUnassignedSupportingDetails(changes.unassignedSupportingDetails ?? fresh.unassignedSupportingDetails) : [])]);
     priorFlags = priorFlags.filter((flag) => !(oldIds.has(String(flag.id)) && !newIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
   }
   if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'pendingProposal')) {
