@@ -1393,6 +1393,46 @@ function rowsSafeToCompare(left, right) {
   return (Array.isArray(right?.evidenceIds) ? right.evidenceIds : []).some((id) => evidence.has(id));
 }
 
+// Cleanup may move generated text, but reviewer decisions lock the whole
+// containing row (including nested supporting context).
+function hasReviewerDiscussionContent(record) {
+  return isReviewerAuthored(record)
+    || /^(?:manual-|reviewer-)/.test(String(record?.id || ''))
+    || (record?.supportingDetails || []).some(hasReviewerDiscussionContent);
+}
+
+// Wording alone is not enough to discard a supporting record. Only combine
+// simple, literally identical generated leaves when every link fits intact.
+// Richer records stay separate instead of guessing how to reconcile them.
+function mergeSupportingRestatements(details = []) {
+  const allowed = new Set(['id', 'text', 'evidenceIds', 'reviewFlagIds', 'mergedFromIds', 'supportingDetails']);
+  const simple = detail => detail && typeof detail.text === 'string' && detail.text.trim()
+    && detail.id && !hasReviewerDiscussionContent(detail)
+    && !(detail.supportingDetails || []).length
+    && Object.keys(detail).every(key => allowed.has(key));
+  const retained = [];
+  for (const detail of details) {
+    const index = simple(detail) ? retained.findIndex(candidate =>
+      simple(candidate) && candidate.text === detail.text) : -1;
+    if (index < 0) { retained.push(detail); continue; }
+    const previous = retained[index];
+    const evidenceIds = [...new Set([...(previous.evidenceIds || []), ...(detail.evidenceIds || [])])];
+    const reviewFlagIds = [...new Set([...(previous.reviewFlagIds || []), ...(detail.reviewFlagIds || [])])];
+    const mergedFromIds = [...new Set([
+      ...(previous.mergedFromIds || []), ...(detail.mergedFromIds || []), detail.id
+    ].filter(Boolean))].filter(id => id !== previous.id);
+    if (evidenceIds.length > 12 || mergedFromIds.length > 1000) {
+      retained.push(detail);
+      continue;
+    }
+    retained[index] = {
+      ...previous, evidenceIds, reviewFlagIds,
+      ...(mergedFromIds.length ? { mergedFromIds } : {})
+    };
+  }
+  return retained;
+}
+
 function mergeRestatementRecords(left, right) {
   const leftWeight = contentTokens(left?.text).size + (left?.supportingDetails || []).length;
   const rightWeight = contentTokens(right?.text).size + (right?.supportingDetails || []).length;
@@ -1412,8 +1452,7 @@ function mergeRestatementRecords(left, right) {
     evidenceIds: [...new Set([...(preferred.evidenceIds || []), ...(other.evidenceIds || [])])].slice(0, 12),
     reviewFlagIds: [...new Set([...(preferred.reviewFlagIds || []), ...(other.reviewFlagIds || [])])],
     ...(mergedFromIds.length ? { mergedFromIds } : {}),
-    supportingDetails: details.filter((detail, detailIndex) => details.findIndex((candidate) =>
-      text(candidate?.text).toLowerCase() === text(detail?.text).toLowerCase()) === detailIndex)
+    supportingDetails: mergeSupportingRestatements(details)
   };
 }
 
@@ -1421,10 +1460,13 @@ async function dedupeAdjacentRestatements(topics = [], options = {}) {
   const cloned = (Array.isArray(topics) ? topics : []).map(cloneTopic);
   const candidates = [];
   for (const topic of cloned) {
+    if (isReviewerAuthored(topic)) continue;
     for (const kind of ROW_KINDS) {
       const rows = topic[kind] || [];
       for (let index = 1; index < rows.length; index += 1) {
-        if (rowsSafeToCompare(rows[index - 1], rows[index])) {
+        if (!hasReviewerDiscussionContent(rows[index - 1])
+          && !hasReviewerDiscussionContent(rows[index])
+          && rowsSafeToCompare(rows[index - 1], rows[index])) {
           candidates.push({ topic, kind, index, left: rows[index - 1], right: rows[index] });
         }
       }
@@ -1474,8 +1516,7 @@ function directionalClaimCoverage(source, target) {
 }
 
 function primaryRowCanBeDemoted(record = {}) {
-  return !isReviewerAuthored(record)
-    && !(record.supportingDetails || []).some((detail) => isReviewerAuthored(detail))
+  return !hasReviewerDiscussionContent(record)
     && !(record.reviewFlagIds || []).length;
 }
 
@@ -1499,8 +1540,7 @@ function appendDemotedPrimary(parent, candidate, representedByDetail = null) {
     });
   }
   const details = [...(parent.supportingDetails || []), ...additions].filter((detail) => text(detail?.text));
-  parent.supportingDetails = details.filter((detail, detailIndex) => details.findIndex((other) =>
-    normalisedRestatementText(other?.text) === normalisedRestatementText(detail?.text)) === detailIndex);
+  parent.supportingDetails = mergeSupportingRestatements(details);
 }
 
 // Final topic arrangement can place a generated point beside the decision or
@@ -1562,6 +1602,7 @@ async function demoteContainedPrimaryRows(topics = [], options = {}) {
   };
   const demotions = [];
   for (const topic of cloned) {
+    if (isReviewerAuthored(topic)) continue;
     const allRows = () => ROW_KINDS.flatMap((kind) => (topic[kind] || [])
       .map((record, rowIndex) => ({ kind, rowIndex, record })));
     // First remove a visible echo of context which is already preserved under
@@ -1572,9 +1613,9 @@ async function demoteContainedPrimaryRows(topics = [], options = {}) {
       let match = null;
       for (const parentEntry of allRows().sort((left, right) =>
         Number(right.kind === 'decisions') - Number(left.kind === 'decisions'))) {
-        if (parentEntry.record === candidate || isReviewerAuthored(parentEntry.record)) continue;
+        if (parentEntry.record === candidate || hasReviewerDiscussionContent(parentEntry.record)) continue;
         const detail = (parentEntry.record.supportingDetails || []).find((item) => {
-          if (isReviewerAuthored(item)) return false;
+          if (hasReviewerDiscussionContent(item)) return false;
           // A point can echo the combination of a primary outcome and its
           // rationale even when neither sentence covers it alone.
           const represented = {
@@ -1599,7 +1640,7 @@ async function demoteContainedPrimaryRows(topics = [], options = {}) {
         + (record?.supportingDetails || []).reduce((sum, detail) => sum + (contentTokens(detail?.text).size * 0.5), 0);
       const candidateWeight = informationWeight(candidate);
       const destinations = allRows().filter((entry) => entry.record !== candidate
-        && !isReviewerAuthored(entry.record)
+        && !hasReviewerDiscussionContent(entry.record)
         && (entry.kind === 'decisions' || informationWeight(entry.record) >= candidateWeight))
         .sort((left, right) => Number(right.kind === 'decisions') - Number(left.kind === 'decisions')
           || informationWeight(right.record) - informationWeight(left.record));
@@ -1721,11 +1762,12 @@ function partialOverlapCandidates(topics = [], options = {}) {
   const index = unitIndex(options.sourceUnits || []);
   const candidates = [];
   (Array.isArray(topics) ? topics : []).forEach((topic, topicIndex) => {
+    if (isReviewerAuthored(topic)) return;
     const rows = Array.isArray(topic?.points) ? topic.points : [];
     const claimed = new Set();
     for (let rowIndex = 1; rowIndex < rows.length - 1; rowIndex += 1) {
       const group = rows.slice(rowIndex - 1, rowIndex + 2);
-      if (group.some((record) => record?.reviewerAuthored)) continue;
+      if (group.some(hasReviewerDiscussionContent)) continue;
       if (rowEvidenceGap(group[0], group[1], index) > 4 || rowEvidenceGap(group[1], group[2], index) > 4) continue;
       const middleClauses = splitIndependentClauses(group[1]?.text);
       if (middleClauses.length !== 2) continue;
@@ -1755,7 +1797,7 @@ function partialOverlapCandidates(topics = [], options = {}) {
     for (let rowIndex = 0; rowIndex < rows.length - 1; rowIndex += 1) {
       if (claimed.has(rowIndex) || claimed.has(rowIndex + 1)) continue;
       const group = rows.slice(rowIndex, rowIndex + 2);
-      if (group.some((record) => record?.reviewerAuthored)
+      if (group.some(hasReviewerDiscussionContent)
         || rowEvidenceGap(group[0], group[1], index) > 4
         || !rowsConsolidationCompatible(group[0], group[1])
         || !rowPredicatesCompatible(group[0], group[1])) continue;
@@ -1786,7 +1828,7 @@ function partialOverlapCandidates(topics = [], options = {}) {
     for (let rowIndex = 0; rowIndex < rows.length - 2; rowIndex += 1) {
       if (claimed.has(rowIndex) || claimed.has(rowIndex + 1) || claimed.has(rowIndex + 2)) continue;
       const group = [rows[rowIndex], rows[rowIndex + 2]];
-      if (group.some((record) => record?.reviewerAuthored)
+      if (group.some(hasReviewerDiscussionContent)
         || rowEvidenceGap(group[0], group[1], index) > 6
         || !rowsClaimCompatible(group[0], group[1])
         || !rowPredicatesCompatible(group[0], group[1])
@@ -1962,7 +2004,8 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       const pointDecisionPair = new Set([left.kind, right.kind]).size === 2
         && [left.kind, right.kind].every((kind) => kind === 'points' || kind === 'decisions');
       if (right.removed || (left.kind !== right.kind && !pointDecisionPair)
-        || left.record.reviewerAuthored || right.record.reviewerAuthored
+        || isReviewerAuthored(left.topic) || isReviewerAuthored(right.topic)
+        || hasReviewerDiscussionContent(left.record) || hasReviewerDiscussionContent(right.record)
         || !rowsClaimCompatible(left.record, right.record)) continue;
       const exact = normalisedRestatementText(left.record.text) === normalisedRestatementText(right.record.text);
       const sharedEvidence = rowEvidenceOverlap(left.record, right.record);
