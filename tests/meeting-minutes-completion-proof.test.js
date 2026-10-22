@@ -85,10 +85,19 @@ for (const quote of [
 }
 
 test('a later actual explanation still proves completion after an earlier promise in the same packet', () => {
-  const { actions, units } = completionCase('I will explain the calibration procedure shortly.');
+  const actions = [action()];
+  const promise = 'I will explain the calibration procedure shortly.';
   const delivered = 'The operator records the calibration measurement and compares it with the reference.';
-  units.push({ id: 'T0003', speaker: 'Morgan Lee', text: delivered });
+  // Evidence contexts index immutable source arrays; construct the full packet
+  // before its first lookup rather than appending to an already-indexed array.
+  const units = [
+    { id: 'T0001', speaker: 'Chair', text: 'Could you explain the calibration procedure?' },
+    { id: 'T0002', speaker: 'Morgan Lee', text: promise },
+    { id: 'T0003', speaker: 'Morgan Lee', text: delivered }
+  ];
   const items = V.completedInMeetingCheckItems(actions, units);
+  assert.ok(items[0].passage.includes(promise));
+  assert.ok(items[0].passage.includes(delivered));
   const result = V.applyCompletedInMeetingCheckResults(actions, items,
     [{ id: items[0].id, verdict: 'completed', completionQuote: delivered }]);
   assert.equal(result.actions.length, 0);
