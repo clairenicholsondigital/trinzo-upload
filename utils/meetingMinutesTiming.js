@@ -383,6 +383,16 @@
     return String(wording || '').split(/;|\b(?:preferred|fallback|contingency)\s*:/i)
       .map(value => timingComparisonValue(value).replace(/^(?:by|on|at)\s+/, '').trim()).filter(Boolean);
   }
+  function sourceTimingQualifiers(quote) {
+    const qualifiers = quote.match(/\b(?:presumably|probably|possibly|maybe|perhaps|hopefully|ideally|preferably|approximately|roughly|early|late|if possible|all being well)\b/gi) || [];
+    // Unlike "roughly", about/around also introduce subjects and locations.
+    // Count them only immediately before an explicit calendar/time expression
+    // in an already task-bound source clause.
+    const temporal = `(?:${DAYS.join('|')}|today|tomorrow|tonight|(?:this|next)\\s+(?:${DAYS.join('|')}|week|month|year)|${MONTH_RE}\\s+\\d{1,2}|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${MONTH_RE}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}(?:[:.]\\d{2}|\\s*[ap]\\.?m\\.?))`;
+    const approximation = new RegExp(`\\b(about|around)\\s+(?=(?:(?:on|at|by|the)\\s+)?${temporal}\\b)`, 'gi');
+    qualifiers.push(...[...quote.matchAll(approximation)].map(match => match[1]));
+    return qualifiers.map(canonical);
+  }
   function wordingSourceBinding(row, units, meetingDate) {
     const ids = new Set(row.evidenceIds || []);
     const rows = (units || []).filter(unit => unit.classification !== 'remove' || unit.restored);
@@ -525,14 +535,14 @@
     const sourceQuotes = results.flatMap(result => result.quotes);
     return { ...base, status, reason: status === 'supported' ? 'source_bound_wording' : status === 'unsupported' ? 'timing_belongs_to_different_work_or_role' : 'timing_binding_not_established',
       matchedSourceIds: [...new Set(results.flatMap(result => result.matched))], conflictingSourceIds: [...new Set(results.flatMap(result => result.conflicting))], sourceQuotes,
-      qualifiers: [...new Set(sourceQuotes.flatMap(item => item.quote.match(/\b(?:presumably|probably|possibly|maybe|perhaps|hopefully|ideally|preferably|approximately|roughly|early|late|if possible|all being well)\b/gi) || []).map(canonical))] };
+      qualifiers: [...new Set(sourceQuotes.flatMap(item => sourceTimingQualifiers(item.quote)))] };
   }
   function timingConstraints(value) {
     const text = String(value || '');
     const zones = [...text.matchAll(/(?:^|[^A-Za-z])((?:UTC|GMT)(?:[+-]\d{1,2}(?::?\d{2})?)?|BST|CET|CEST|EET|EEST|IST|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AEST|AEDT|JST|NZST|NZDT)(?=$|[^A-Za-z])/gi)].map(match => match[1].toUpperCase());
     const withoutOffsets = text.replace(/\b(?:UTC|GMT)[+-]\d{1,2}(?::?\d{2})?/gi, '');
-    const clocks = [...withoutOffsets.matchAll(/(?<!\d)(\d{1,2})[:.](\d{2})(?:\s*(a\.?m\.?|p\.?m\.?))?/gi)]
-      .filter(match => Number(match[1]) <= 23 && Number(match[2]) < 60)
+    const clocks = [...withoutOffsets.matchAll(/(?<![\d.:])(\d{1,2})(?:[:.](\d{2})(?:\s*(a\.?m\.?|p\.?m\.?)(?![a-z]))?|\s*(a\.?m\.?|p\.?m\.?)(?![a-z]))(?!\d)/gi)]
+      .filter(match => (match[3] || match[4]) ? Number(match[1]) >= 1 && Number(match[1]) <= 12 && Number(match[2] || 0) < 60 : Number(match[1]) <= 23 && Number(match[2]) < 60)
       .filter(match => {
         const before = withoutOffsets.slice(0, match.index), after = withoutOffsets.slice(match.index + match[0].length);
         if (/(?:[£$€]|\b(?:GBP|USD|EUR|CAD|AUD|cost|costs|fee|fees|price|balance|budget))\s*$/i.test(before)
@@ -544,24 +554,30 @@
           || /^\s*(?:UTC|GMT|BST|CET|CEST|EET|EEST|IST|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AEST|AEDT|JST|NZST|NZDT)\b/i.test(after);
       })
       .map(match => {
-        const meridiem = (match[3] || '').replace(/\./g, '').toLowerCase();
+        const meridiem = (match[3] || match[4] || '').replace(/\./g, '').toLowerCase();
         const hour = meridiem && Number(match[1]) >= 1 && Number(match[1]) <= 12 ? Number(match[1]) % 12 + (meridiem === 'pm' ? 12 : 0) : Number(match[1]);
-        return `${hour}:${match[2]}`;
+        return `${hour}:${match[2] || '00'}`;
       });
     const parts = (text.match(/\b(?:morning|afternoon|evening|noon|midnight|lunchtime)\b/gi) || []).map(canonical);
     return { zones: [...new Set(zones)], clocks: [...new Set(clocks)], parts: [...new Set(parts)] };
   }
-  function assessClockConstraints(row, units, meetingDate, date) {
-    const wanted = timingConstraints(row.timing?.wording);
-    if (!Object.values(wanted).some(values => values.length)) return null;
+  function boundCalendarSourceQuotes(row, units, meetingDate, date, requireOwnClause = false) {
     const matches = [];
     for (const unit of (units || []).filter(item => (row.evidenceIds || []).includes(item.id))) {
       for (const clause of String(unit.text || '').split(/[,;]|(?<=[.!?])\s+|\b(?:before|after|once|following|when|until)\b/i).map(clean).filter(Boolean)) {
         if (resolveExactDate(clause, meetingDate) !== date) continue;
         const limited = units.map(item => item === unit ? { ...item, text: clause } : item);
-        if (dateSourceSupported(row, limited, meetingDate, date)) matches.push({ sourceId: unit.id, quote: clause, constraints: timingConstraints(clause) });
+        const proofRow = requireOwnClause ? { ...row, evidenceIds: [unit.id] } : row;
+        if (dateSourceSupported(proofRow, limited, meetingDate, date)) matches.push({ sourceId: unit.id, quote: clause });
       }
     }
+    return matches;
+  }
+  function assessClockConstraints(row, units, meetingDate, date) {
+    const wanted = timingConstraints(row.timing?.wording);
+    if (!Object.values(wanted).some(values => values.length)) return null;
+    const matches = boundCalendarSourceQuotes(row, units, meetingDate, date)
+      .map(item => ({ ...item, constraints: timingConstraints(item.quote) }));
     if (matches.some(item => Object.entries(wanted).every(([key, values]) => values.every(value => item.constraints[key].includes(value))))) return null;
     const contradicts = matches.some(item => Object.entries(wanted).some(([key, values]) => values.length && item.constraints[key].length && !values.some(value => item.constraints[key].includes(value))));
     return { status: contradicts ? 'unsupported' : 'unresolved', reason: contradicts ? 'clock_zone_or_day_part_conflict' : 'clock_zone_or_day_part_not_bound',
@@ -588,8 +604,13 @@
         if (clockBinding) return { ...base, ...clockBinding };
         const carrying = cited.filter(unit => String(unit.text || '').split(/[,;]|(?<=[.!?])\s+/).some(clause => resolveExactDate(clause, opts.meetingDate) === resolved));
         const wordingBinding = wording ? wordingSourceBinding(row, units, opts.meetingDate) : null;
+        // Calendar-equivalent labels (Friday / 23 October) must retain
+        // source uncertainty too. Reuse the same clause-level task proof as
+        // clock checking rather than borrowing a qualifier from another task.
+        const sourceQuotes = wordingBinding?.status === 'supported' ? wordingBinding.sourceQuotes
+          : boundCalendarSourceQuotes(row, units, opts.meetingDate, resolved, true);
         return { ...base, status: 'supported', reason: 'source_bound_calendar_date', matchedSourceIds: carrying.map(unit => unit.id),
-          ...(wordingBinding?.status === 'supported' ? { sourceQuotes: wordingBinding.sourceQuotes, qualifiers: wordingBinding.qualifiers } : {}) };
+          sourceQuotes, qualifiers: [...new Set(sourceQuotes.flatMap(item => sourceTimingQualifiers(item.quote)))] };
       }
       const wordingBinding = wording ? wordingSourceBinding(row, units, opts.meetingDate) : null;
       return { ...base, ...(wordingBinding || {}), status: wordingBinding?.status === 'unsupported' ? 'unsupported' : 'unresolved',
