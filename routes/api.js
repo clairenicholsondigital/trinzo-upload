@@ -253,6 +253,7 @@ const {
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
   evidenceSupportScore,
+  evidenceClauses,
   actionEvidenceDisposition,
   actionNegatedByEvidence,
   groundedExecutiveSummary,
@@ -13676,17 +13677,38 @@ const { sourceSpeakerIdentityScope } = require('../utils/meetingMinutesPromotion
 // second model pass. Keep this narrow: one named owner must speak the cited
 // future-tense words, and the public action must share their material subject.
 function explicitFutureDocumentationCommitment(action = {}, sourceUnits = []) {
-  if ((action.owners || []).length !== 1
-    || !/^\s*(?:write(?: down)?|document|record|note)\b/i.test(String(action.action || ''))) return false;
+  const actionOpening = String(action.action || '').match(/^\s*(?:write(?: down)?|document|record|note)\b/i);
+  if ((action.owners || []).length !== 1 || !actionOpening) return false;
   const identityScope = sourceSpeakerIdentityScope(sourceUnits);
   const ownerIdentity = identityScope.resolve(action.owners[0]);
   if (!ownerIdentity) return false;
+  const actionSubject = String(action.action).slice(actionOpening[0].length);
+  // Separate operations in either wording need ordinary proposal review.
+  const hasCoordinatedOperation = (subject) => {
+    const tail = subject.match(/\b(?:and(?:\s+then)?|then|but|while)\s+(.+)$/i)?.[1] || '';
+    return hybridActionTypes(tail, { includeDocumentation: true }).size > 0
+      || /\b(?:and|but|then|while)\s+(?:i|we|you|he|she|they|it|there)\b/i.test(subject);
+  };
+  if (hasCoordinatedOperation(actionSubject)) return false;
   const cited = new Set((action.evidenceIds || []).map(String));
   return normaliseSourceUnits(sourceUnits).some((unit) => {
     if (!cited.has(String(unit.id))) return false;
     if (identityScope.resolve(unit.speaker) !== ownerIdentity) return false;
-    if (!/\bi(?:'m| am)\s+going\s+to\s+(?:write(?: down)?|document|record|note)\b|\bi(?:'ll| will)\s+(?:write(?: down)?|document|record|note)\b/i.test(unit.text)) return false;
-    return hybridContentTokenOverlap(action.action, unit.text) >= 0.24;
+    // Subject proof only narrows the original gate. Splitting a long turn
+    // must not raise its overlap enough to create a newly eligible shortcut.
+    if (hybridContentTokenOverlap(action.action, unit.text) < 0.24) return false;
+    return evidenceClauses(unit.text).some((clause) => {
+      const promise = clause.match(/\bi(?:'m| am)\s+going\s+to\s+(?:write(?: down)?|document|record|note)\b|\bi(?:'ll| will)\s+(?:write(?: down)?|document|record|note)\b/i);
+      if (!promise) return false;
+      const promisedSubject = clause.slice(promise.index + promise[0].length);
+      if (hasCoordinatedOperation(promisedSubject)) return false;
+      // Shared write/down/record words do not identify the promised work.
+      // Reuse the material-subject guard with the same neutral lead verb,
+      // and bind it to the promise's own clause rather than another sentence.
+      if (distinctActionDeliverables({ action: `Record ${actionSubject}` },
+        { action: `Record ${promisedSubject}` })) return false;
+      return hybridContentTokenOverlap(action.action, clause) >= 0.24;
+    });
   });
 }
 

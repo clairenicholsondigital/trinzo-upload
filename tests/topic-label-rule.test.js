@@ -21,6 +21,24 @@ function withFlag(value, run) {
 }
 const payloadOf = (prompt) => JSON.parse(prompt.slice(prompt.indexOf('\n') + 1));
 
+function assertWritingRulesBeforeTranscript(payload, topicLabelEnabled) {
+  assert.ok(Array.isArray(payload.writingRules));
+  const timingRules = payload.writingRules.filter((rule) => rule.startsWith('Timing precision.'));
+  assert.equal(timingRules.length, 1, 'timing precision is unconditional');
+  assert.match(timingRules[0], /Preserve the source timing, its task, conditions and qualifications/);
+  assert.match(timingRules[0], /Keep exactDate empty unless a single calendar date is unambiguously supported/);
+  assert.match(timingRules[0], /a rejected or uncertain date does not reject an otherwise supported action/);
+  assert.deepEqual(payload.writingRules.filter((rule) => rule.startsWith('TOPIC LABELS.')),
+    topicLabelEnabled ? [FIXTURE] : []);
+  assert.equal(payload.writingRules.filter((rule) => rule === stagedEvaluation.MEETING_AGENT_DISCUSSION_COVERAGE_RULE).length, 1,
+    'discussion coverage remains active with either topic-label flag value');
+  const keys = Object.keys(payload);
+  assert.ok(keys.includes('writingRules') && keys.includes('preparedTranscript'));
+  assert.ok(keys.indexOf('writingRules') < keys.indexOf('preparedTranscript'),
+    'all writing rules must appear before the prepared transcript');
+  assert.equal(payload.preparedTranscript, args.transcript);
+}
+
 test('the rule in code is the rule that was measured', () => {
   assert.equal(stagedEvaluation.MEETING_AGENT_TOPIC_LABEL_RULE, FIXTURE);
 });
@@ -29,12 +47,11 @@ test('with the flag on, anchored discussion discovery carries it as a writing ru
   const prompt = withFlag('1', () => stagedEvaluation.meetingMinutesAgentAnchoredDiscussionPrompt(args));
   assert.equal(prompt.split('\n')[0], '[DISCUSSION_ANCHORED_DISCOVERY]');
   const payload = payloadOf(prompt);
-  assert.deepEqual(payload.writingRules, [FIXTURE, stagedEvaluation.MEETING_AGENT_DISCUSSION_COVERAGE_RULE]);
-  const keys = Object.keys(payload);
-  assert.ok(keys.indexOf('writingRules') < keys.indexOf('preparedTranscript'));
+  assertWritingRulesBeforeTranscript(payload, true);
 });
 
-test('with the flag off, the generic discussion coverage rule remains active', () => {
+test('with the flag off, timing and discussion coverage rules remain before the transcript', () => {
   const prompt = withFlag('0', () => stagedEvaluation.meetingMinutesAgentAnchoredDiscussionPrompt(args));
-  assert.deepEqual(payloadOf(prompt).writingRules, [stagedEvaluation.MEETING_AGENT_DISCUSSION_COVERAGE_RULE]);
+  assert.equal(prompt.split('\n')[0], '[DISCUSSION_ANCHORED_DISCOVERY]');
+  assertWritingRulesBeforeTranscript(payloadOf(prompt), false);
 });

@@ -99,14 +99,46 @@ test('an unowned way-to paraphrase folds into the owned action it restates', () 
   assert.equal(foldUnownedNearCopies([owned, unrelated], 'test').length, 2);
 });
 
-test('an owned way-to paraphrase merges into the concrete action and loses the vague wording', () => {
+test('an owned way-to alternative cannot replace a concrete commitment to both tasks', () => {
   const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
-  const rows = dedupeHybridActionRecords([
+  const { commitmentScopeConflict, commitmentCanBeRepresented } = require('../utils/canonicalMinutes/commitmentDuplicates');
+  // The concrete row requires both operations; the way-to row permits either.
+  // Shared subject matter does not prove those scopes interchangeable.
+  const input = [
     { id: 'a', action: 'Arrange secure document sharing and external file-share access for the auditor.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001'] },
     { id: 'b', action: 'Figure out a way to either get the auditor access to the necessary documents or share them another way.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0090'] }
-  ], {});
-  assert.equal(rows.length, 1);
-  assert.match(rows[0].action, /^Arrange secure document sharing/);
+  ];
+  const before = structuredClone(input);
+  assert.equal(commitmentScopeConflict(input[0], input[1]), true);
+  assert.equal(commitmentCanBeRepresented(input[0], input[1]), false);
+  assert.equal(commitmentCanBeRepresented(input[1], input[0]), false);
+  assert.deepEqual(dedupeHybridActionRecords(input, {}), before);
+  assert.deepEqual(dedupeHybridActionRecords([...input].reverse(), {}), before,
+    'both complete records survive either input order and retain source order');
+  assert.deepEqual(input, before, 'deduplication must not mutate either original record');
+});
+
+test('owned paraphrases still merge when the complete instruction is retained', () => {
+  const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
+  const { commitmentCanBeRepresented } = require('../utils/canonicalMinutes/commitmentDuplicates');
+  const input = [
+    { id: 'a', action: 'Provide the auditor with secure external file-share access.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001'], reviewFlagIds: ['f1'] },
+    { id: 'b', action: 'Provide secure external file-share access to the auditor.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001', 'T0090'], reviewFlagIds: ['f2'] }
+  ];
+  const before = structuredClone(input);
+  assert.equal(commitmentCanBeRepresented(input[0], input[1]), true);
+  assert.equal(commitmentCanBeRepresented(input[1], input[0]), true);
+  for (const records of [input, [...input].reverse()]) {
+    const rows = dedupeHybridActionRecords(records, {});
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'b');
+    assert.equal(rows[0].action, before[1].action);
+    assert.deepEqual(rows[0].owners, ['Sam Carter']);
+    assert.deepEqual(rows[0].timing, { kind: 'not_stated' });
+    assert.deepEqual(rows[0].evidenceIds, ['T0001', 'T0090']);
+    assert.deepEqual([...rows[0].reviewFlagIds].sort(), ['f1', 'f2']);
+  }
+  assert.deepEqual(input, before, 'merging must preserve both source records');
 });
 
 test('a figure already in the minutes in words is not promoted again in digits', () => {

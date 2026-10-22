@@ -407,3 +407,60 @@ test('discussion persistence treats absent and empty pools alike but detects gen
   assert.deepEqual(conflict.changes, {});
   assertPool(edited.unassignedSupportingDetails, [pool()[0]]);
 });
+
+test('unfiled merge history survives public reads, autosave, filing, undo/redo and reload', async () => {
+  reset();
+  const record = { ...pool()[0], mergedFromIds: ['earlier-calibration', 'earlier-qualification'] };
+  saved.unassignedSupportingDetails = [copy(record)];
+  const initial = await request('get');
+  assert.deepEqual(initial.unassignedSupportingDetails[0].mergedFromIds, record.mergedFromIds);
+  assert.equal(initial.unassignedSupportingDetails[0].reviewerAuthored, undefined, 'history does not mark a reviewer edit');
+  assert.deepEqual(api.meetingAgentDraftPayload(saved).unassignedSupportingDetails[0].mergedFromIds, record.mergedFromIds);
+  const autosaved = await request('patch', '', { executiveSummary: initial.executiveSummary });
+  assertPool(autosaved.unassignedSupportingDetails, [record]);
+  assertPool((await request('get')).unassignedSupportingDetails, [record]);
+
+  const discussion = copy(autosaved.discussion);
+  // The browser's file-supporting operation copies the full retained record
+  // and explicitly attributes the chosen filing to the reviewer.
+  const filedRecord = { ...copy(autosaved.unassignedSupportingDetails[0]), reviewerAuthored: true };
+  delete filedRecord.placementReason;
+  discussion[0].points[0].supportingDetails = [filedRecord];
+  const filed = await request('patch', '', { discussion, unassignedSupportingDetails: [],
+    reviewDecisionLabel: 'File calibration context with its merge history' });
+  const assertFiled = draft => {
+    const child = draft.discussion[0].points[0].supportingDetails[0];
+    assert.deepEqual(child.mergedFromIds, record.mergedFromIds);
+    assert.deepEqual(child.evidenceIds, record.evidenceIds);
+    assert.deepEqual(child.reviewFlagIds, record.reviewFlagIds);
+    assert.equal(child.text, record.text);
+    assert.equal(child.reviewerAuthored, true);
+    assertPool(draft.unassignedSupportingDetails, []);
+  };
+  assertFiled(filed);
+  assertFiled(await request('get'));
+  const undone = await request('post', '/undo');
+  assertPool(undone.unassignedSupportingDetails, [record]);
+  assert.equal(undone.discussion[0].points[0].supportingDetails.length, 0);
+  assertFiled(await request('post', '/redo'));
+  assertFiled(await request('get'));
+});
+
+test('PATCH retains unfiled history until a represented attached copy covers every predecessor', async () => {
+  reset();
+  const record = { ...pool()[1], mergedFromIds: ['earlier-archive', 'earlier-comparison'] };
+  saved.unassignedSupportingDetails = [copy(record)];
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails = [{ ...copy(record), mergedFromIds: ['earlier-archive'] }];
+  const partial = await request('patch', '', { discussion, unassignedSupportingDetails: [record] });
+  assertPool(partial.unassignedSupportingDetails, [record]);
+  assertPool((await request('get')).unassignedSupportingDetails, [record]);
+  const completeDiscussion = copy(partial.discussion);
+  completeDiscussion[0].points[0].supportingDetails[0].mergedFromIds = [...record.mergedFromIds, 'another-predecessor'];
+  const complete = await request('patch', '', { discussion: completeDiscussion, unassignedSupportingDetails: [record] });
+  assertPool(complete.unassignedSupportingDetails, []);
+  assert.deepEqual(complete.discussion[0].points[0].supportingDetails[0].mergedFromIds,
+    [...record.mergedFromIds, 'another-predecessor']);
+  assertPool((await request('get')).unassignedSupportingDetails, []);
+});

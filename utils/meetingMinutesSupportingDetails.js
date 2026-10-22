@@ -8,6 +8,16 @@ function strings(values) {
   return [...new Set((Array.isArray(values) ? values : []).filter(value => typeof value === 'string').map(value => value.trim()).filter(Boolean))];
 }
 
+// Match the editor-save merge-history limits for attached supporting rows.
+// These predecessor IDs are review metadata; they never supply evidence or
+// reviewer authorship, and their records need not exist in the current draft.
+function mergeHistoryIds(values, survivorId) {
+  return [...new Set((Array.isArray(values) ? values : []).slice(0, 1000)
+    .filter(id => typeof id === 'string' && id.length <= 220)
+    .map(id => id.trim())
+    .filter(id => id && id !== survivorId && !/[\u0000-\u001f\u007f]/.test(id)))];
+}
+
 function normalizeUnassignedSupportingDetails(values = []) {
   const rows = [];
   const seen = new Map();
@@ -18,8 +28,10 @@ function normalizeUnassignedSupportingDetails(values = []) {
     const id = typeof record.id === 'string' && record.id.trim()
       ? record.id.trim().slice(0, 80)
       : 'unfiled-' + crypto.createHash('sha256').update(JSON.stringify([record.text, [...evidenceIds].sort()])).digest('hex').slice(0, 24);
+    const mergedFromIds = mergeHistoryIds(record.mergedFromIds, id);
     const item = {
       id, text: record.text, evidenceIds,
+      ...(mergedFromIds.length ? { mergedFromIds } : {}),
       ...(strings(record.reviewFlagIds).length ? { reviewFlagIds: strings(record.reviewFlagIds) } : {}),
       ...(typeof record.originalTopic === 'string' && record.originalTopic.trim() ? { originalTopic: record.originalTopic.trim().slice(0, 220) } : {}),
       ...(typeof record.placementReason === 'string' && record.placementReason ? { placementReason: record.placementReason.slice(0, 100) } : {}),
@@ -31,6 +43,8 @@ function normalizeUnassignedSupportingDetails(values = []) {
       const old = seen.get(key);
       const flags = strings([...(old.reviewFlagIds || []), ...(item.reviewFlagIds || [])]);
       if (flags.length) old.reviewFlagIds = flags;
+      const history = mergeHistoryIds([...(old.mergedFromIds || []), ...(item.mergedFromIds || [])], id);
+      if (history.length) old.mergedFromIds = history;
       if (item.reviewerAuthored) old.reviewerAuthored = true;
       continue;
     }
@@ -72,9 +86,11 @@ function withoutRepresentedUnassignedDetails(values = [], discussion = []) {
     if (record.text !== detail.text) return false;
     const evidence = new Set(record.evidenceIds || []);
     const flags = new Set(record.reviewFlagIds || []);
+    const history = new Set(mergeHistoryIds(record.mergedFromIds, record.id));
     return detail.evidenceIds.every(id => evidence.has(id))
       && (detail.evidenceIds.length > 0 || record.id === detail.id)
       && (detail.reviewFlagIds || []).every(id => flags.has(id))
+      && (detail.mergedFromIds || []).every(id => history.has(id))
       && (!detail.reviewerAuthored || record.reviewerAuthored === true);
   }));
 }
