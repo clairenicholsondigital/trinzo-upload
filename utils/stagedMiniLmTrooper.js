@@ -93,7 +93,8 @@ async function denoiseMiniLmFile(rawPath, options = {}) {
   const prepared = await runJson('staged_simplified_minilm.py', [rawPath, '--model', process.env.STAGED_SIMPLIFIED_MINILM_MODEL || MODEL,
     '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85'),
     ...(options.keepShortReplies ? ['--keep-short-replies'] : []),
-    ...(options.preserveShortTemporalFragments ? ['--preserve-short-temporal-fragments'] : [])],
+    ...(options.preserveShortTemporalFragments ? ['--preserve-short-temporal-fragments'] : []),
+    ...(options.preserveShortContextFragments ? ['--preserve-short-context-fragments'] : [])],
   Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000), {
     // The worker keeps the same MiniLM model resident. Reusing it avoids a
     // fresh Torch/model load for every upload, which can take several minutes

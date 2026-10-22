@@ -96,7 +96,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionPublication');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
+const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -13268,10 +13268,19 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     let documentWorkflowDuplicate = null;
     let canonicalDocumentWorkflowDuplicate = null;
     let losslessPreferred = null;
+    let weekdayTimingReconciliation = null;
     const duplicate = merged.find((existing) => {
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
         || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)
         || actionContainmentConflict(record, existing)) return false;
+      if (timingsDifferOnlyByWeekdayPreposition(record, existing)) {
+        // Optional weekday wording may unblock a preserved instruction, but
+        // must not admit a looser owner, operation or deliverable match.
+        weekdayTimingReconciliation = reconcileCommitmentVariants(existing, record);
+        if (weekdayTimingReconciliation) return true;
+        if (!actionIsLosslesslyCovered(record, existing)
+          && !actionIsLosslesslyCovered(existing, record)) return false;
+      }
       // Existing document workflows construct a combined instruction rather
       // than dropping a step. They may retain one step's additional gate;
       // conflicting quantities, polarity or two different gates still block.
@@ -13348,6 +13357,12 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     });
     if (!duplicate) {
       merged.push(record);
+      continue;
+    }
+    if (weekdayTimingReconciliation) {
+      // Retain the proved winner's own timing and verification metadata,
+      // together with both extractions' evidence, flags and timing warnings.
+      merged[merged.indexOf(duplicate)] = weekdayTimingReconciliation.record;
       continue;
     }
     if (losslessPreferred) {
@@ -17461,6 +17476,9 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       // Preserve source-only dates/durations and their qualifications before
       // denoising; later checks still decide which work they belong to.
       preserveShortTemporalFragments: true,
+      // Keep short qualifying context inside an already-retained speaker turn;
+      // this does not enable standalone replies or change classifier decisions.
+      preserveShortContextFragments: true,
       // Measured twice on the six real meetings (3 runs each): keeping short
       // replies lifts T733 reference commitments (18/42 -> 29/42) but costs
       // more on the golden set than it gains (actions 0.443 -> 0.348, overall
@@ -17482,6 +17500,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       rawChars: transcript.text.length,
       preparedChars: preparedTranscript.length,
       sourceUnitCount: sourceUnits.length,
+      shortContextFragmentsVersion: 1,
       dateContext,
       completedAt: new Date().toISOString()
     };

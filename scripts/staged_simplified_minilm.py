@@ -73,7 +73,15 @@ def prepared_unit_text(row: dict) -> str:
     # repeated negation and discourse prefixes must not be speech-cleaned away.
     if row.get("shortTemporalFragment"):
         return usefulness.compact(row.get("text", ""))
-    return clean_speech_text(row.get("text", ""))
+    value = clean_speech_text(row.get("text", ""))
+    # The classifier sees the original sentence alone. Only its completed
+    # retain/uncertain decision can expose adjacent source context; removed
+    # rows keep their former text and cannot donate context to other rows.
+    if row.get("classification") in {"keep", "retain", "uncertain"} and not usefulness.short_context_noise(row.get("text", "")):
+        return usefulness.compact(" ".join(filter(None, [
+            row.get("shortContextPrefix", ""), value, row.get("shortContextSuffix", ""),
+        ])))
+    return value
 
 
 # A whole turn such as "Okay." or "Will do." is how a person accepts a
@@ -154,15 +162,16 @@ def classify_source_rows(rows: list[dict], probabilities, classes, remove_thresh
             effective = "uncertain"
         if row.get("shortReply"):
             effective = "keep"
-        classified.append({
+        classified_row = {
             **row,
             "id": f"T{sequence:04d}",
             "sequence": sequence,
-            "cleanedText": prepared_unit_text(row),
             "classification": effective,
             "confidence": round(confidence, 4),
             "restored": False,
-        })
+        }
+        classified_row["cleanedText"] = prepared_unit_text(classified_row)
+        classified.append(classified_row)
     return classified
 
 
@@ -173,6 +182,7 @@ def main() -> int:
     parser.add_argument("--remove-threshold", type=float, default=0.85)
     parser.add_argument("--keep-short-replies", action="store_true")
     parser.add_argument("--preserve-short-temporal-fragments", action="store_true")
+    parser.add_argument("--preserve-short-context-fragments", action="store_true")
     args = parser.parse_args()
 
     import joblib
@@ -182,7 +192,8 @@ def main() -> int:
     path = Path(args.transcript)
     raw_text = usefulness.read_transcript_file(path)
     rows = usefulness.parse_transcript(raw_text, path.name,
-                                      preserve_short_temporal_fragments=args.preserve_short_temporal_fragments)
+                                      preserve_short_temporal_fragments=args.preserve_short_temporal_fragments,
+                                      preserve_short_context_fragments=args.preserve_short_context_fragments)
     if rows and args.keep_short_replies:
         rows = sorted(rows + short_reply_rows(raw_text, path.name), key=lambda row: (row["line"], row.get("unit", 0)))
     if not rows:

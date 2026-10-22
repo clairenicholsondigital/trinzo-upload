@@ -140,7 +140,8 @@ def read_transcript_file(path: Path) -> str:
     return "\n".join(paragraphs)
 
 
-def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fragments: bool = False) -> list[dict]:
+def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fragments: bool = False,
+                     preserve_short_context_fragments: bool = False) -> list[dict]:
     """Parse timestamped Teams turns or ``Speaker Name: speech`` turns."""
     units: list[dict] = []
     current: dict | None = None
@@ -160,7 +161,8 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
             colon_match = None
         if match:
             if current:
-                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments))
+                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
+                                        preserve_short_context_fragments=preserve_short_context_fragments))
             current = {
                 "source": source,
                 "line": line_no,
@@ -170,7 +172,8 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
             }
         elif colon_match:
             if current:
-                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments))
+                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
+                                        preserve_short_context_fragments=preserve_short_context_fragments))
             current = {
                 "source": source,
                 "line": line_no,
@@ -183,11 +186,84 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
         elif current and not re.match(r"^(?:\d+ June \d{4}|\d+m \d+s|.+ started transcription)$", line, re.I):
             current["body"] = compact(f"{current['body']} {line}")
     if current:
-        units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments))
+        units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
+                                preserve_short_context_fragments=preserve_short_context_fragments))
     return units
 
 
-def split_unit(turn: dict, *, preserve_short_temporal_fragments: bool = False) -> list[dict]:
+# Pure grammatical continuations, acknowledgements and courtesy do not add
+# source context. Negation and hedges are deliberately absent: they can qualify
+# the retained sentence. These categories do not depend on meeting subject matter.
+SHORT_CONTEXT_FUNCTION_WORDS = set("""
+    a an the and or but so then as at by for from in of on to with into onto
+    about through over under up down out off this that these those here there
+    i me my mine we us our ours you your yours he him his she her hers it its
+    they them their theirs who whom whose what which when where how
+    am is are was were be been being do does did have has had
+    can could would should will shall may might must if because therefore
+    s re ve ll d m
+""".split())
+SHORT_CONTEXT_FILLER_WORDS = set("""
+    oh hmm perfect absolutely sorry bye ha hello hi hey good super smashing anyway
+    righto alright excellent fantastic wonderful grand well quite
+""".split())
+SHORT_CONTEXT_ACKNOWLEDGEMENT = re.compile(
+    r"(?:(?:i|we) (?:know|see|understand)|all right|carry on|(?:oh|my|good)[,\s]+(?:god|goodness|gosh|dear))[.!?, ]*", re.I
+)
+SHORT_CONTEXT_DIRECTED_COURTESY = re.compile(
+    r"(?:thanks|thank you|hello|hi|hey|goodbye|bye)[,\s]+[^\W\d_][\w'’.-]*[.!?, ]*", re.I
+)
+SHORT_CONTEXT_NEGATION = re.compile(r"\b(?:no|not|never|neither|nor|nope)\b", re.I)
+SHORT_CONTEXT_QUALIFICATION = re.compile(
+    r"(?:(?:can|could|will|shall|would|should|must|may|might)(?: do)?|do (?:it|that|this))[.!?, ]*", re.I
+)
+SHORT_CONTEXT_AUDIO = re.compile(r"\b(?:muted|unmuted|inaudible)\b", re.I)
+SHORT_CONTEXT_ANNOTATION = re.compile(
+    r"\[[^\]]*\]|\(\s*(?:barking|laughter|coughing|doorbell|music|background noise|inaudible)\s*\)", re.I
+)
+SHORT_CONTEXT_TEMPORAL = re.compile(rf"(?<![A-Za-z0-9]){_TEMPORAL_BASE}(?![A-Za-z0-9])", re.I)
+
+
+def short_context_noise(value: str) -> bool:
+    return bool(NOISE.search(value) or SHORT_CONTEXT_AUDIO.search(value) or SHORT_CONTEXT_ANNOTATION.search(value))
+
+
+def short_context_run(parts: list[str]) -> str:
+    """Keep only a bounded, uninterrupted run of discarded sentence fragments.
+
+    A run with substantive context retains its exact intervening filler too;
+    skipping that filler would manufacture a new contiguous source quote.
+    Audio/annotation noise and temporal expressions reject the whole run.
+    """
+    if not parts:
+        return ""
+    total_words = 0
+    has_context = False
+    for part in parts:
+        words = re.findall(r"[A-Za-z0-9']+", part)
+        total_words += len(words)
+        if not 1 <= len(words) <= 2 or total_words > 5:
+            return ""
+        if SHORT_CONTEXT_TEMPORAL.search(part) or short_context_noise(part):
+            return ""
+        # Expand contractions only for the filler check; rendered source text
+        # keeps its original spelling, punctuation and repeated negation.
+        filler_words = re.findall(r"[A-Za-z0-9]+", part.replace("’", "'"))
+        pure_filler = not SHORT_CONTEXT_NEGATION.search(part) and (
+            SHORT_CONTEXT_ACKNOWLEDGEMENT.fullmatch(part)
+            or SHORT_CONTEXT_DIRECTED_COURTESY.fullmatch(part)
+            or BACKCHANNEL.fullmatch(part)
+            or all(BACKCHANNEL.fullmatch(word)
+                   or word.lower() in SHORT_CONTEXT_FILLER_WORDS
+                   or word.lower() in SHORT_CONTEXT_FUNCTION_WORDS
+                   for word in filler_words)
+        )
+        has_context = has_context or bool(SHORT_CONTEXT_QUALIFICATION.fullmatch(part)) or not pure_filler
+    return " ".join(parts) if has_context else ""
+
+
+def split_unit(turn: dict, *, preserve_short_temporal_fragments: bool = False,
+               preserve_short_context_fragments: bool = False) -> list[dict]:
     body = repair_missing_sentence_spaces(turn.get("body", ""))
     if not body:
         return []
@@ -220,6 +296,16 @@ def split_unit(turn: dict, *, preserve_short_temporal_fragments: bool = False) -
             "speaker": turn["speaker"], "timestamp": turn["timestamp"], "text": part,
             **({"shortTemporalFragment": True} if temporal_fragment else {}),
         })
+    if preserve_short_context_fragments and result:
+        previous_index = -1
+        for row in result:
+            prefix = short_context_run(parts[previous_index + 1:row["unit"]])
+            if prefix:
+                row["shortContextPrefix"] = prefix
+            previous_index = row["unit"]
+        suffix = short_context_run(parts[previous_index + 1:])
+        if suffix:
+            result[-1]["shortContextSuffix"] = suffix
     return result
 
 
