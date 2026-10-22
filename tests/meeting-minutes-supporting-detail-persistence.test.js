@@ -1,0 +1,409 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const JSZip = require('jszip');
+const V = require('../utils/meetingMinutesAgentV2');
+const { generateMeetingMinutesAgentDocx } = require('../utils/meetingMinutesAgentDocx');
+const { withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
+
+// Real route handlers and serializers; only provider/database I/O is replaced.
+process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1 = '0';
+const fetchPath = require.resolve('node-fetch');
+require(fetchPath);
+const originalFetch = require.cache[fetchPath].exports;
+let providerCalls = 0;
+require.cache[fetchPath].exports = async () => {
+  providerCalls += 1;
+  throw new Error('Provider calls are forbidden in supporting-detail persistence tests');
+};
+const db = require('../utils/db');
+const originalGet = db.getMeetingMinutesAgentDraft;
+const originalUpdate = db.updateMeetingMinutesAgentDraft;
+const copy = value => JSON.parse(JSON.stringify(value));
+let saved; let writes;
+db.getMeetingMinutesAgentDraft = async () => copy(saved);
+db.updateMeetingMinutesAgentDraft = async (id, userId, revision, updates) => {
+  assert.equal(id, saved.draftId);
+  assert.equal(userId, 'filing-reviewer');
+  assert.equal(revision, saved.revision);
+  saved = copy({ ...V.migrateDraftPayload(updates.payload), draftId: saved.draftId, revision: revision + 1,
+    status: updates.status || saved.status });
+  writes += 1;
+  return copy(saved);
+};
+const router = require('../routes/api');
+const api = router.stagedEvaluation;
+db.getMeetingMinutesAgentDraft = originalGet;
+db.updateMeetingMinutesAgentDraft = originalUpdate;
+require.cache[fetchPath].exports = originalFetch;
+
+const longText = 'Calibration background for independent reviewer inspection. '
+  + 'The source context remains available with its evidence and qualifications. '.repeat(27)
+  + 'The final calibration qualification is retained: ZETA-TAIL.';
+const detail = (id, text, evidenceIds, extra = {}) => ({ id, text, evidenceIds, reviewFlagIds: [], ...extra });
+const pool = () => [
+  detail('unfiled-long', longText, ['T0002'], { reviewFlagIds: ['detail-review'],
+    originalTopic: 'Earlier calibration context', placementReason: 'No unique supporting parent was established.' }),
+  detail('unfiled-short', 'The calibration archive contains the retained comparison record.', ['T0003'], {
+    originalTopic: 'Archive', placementReason: 'The suggested target was ambiguous.' })
+];
+function reset() {
+  const sourceUnits = [
+    { id: 'T0001', speaker: 'Morgan Taylor', text: 'The calibration review is complete. I will send the calibration record.' },
+    { id: 'T0002', speaker: 'Morgan Taylor', text: longText },
+    { id: 'T0003', speaker: 'Morgan Taylor', text: 'The calibration archive contains the retained comparison record.' }
+  ];
+  saved = { draftId: 'support-filing', revision: 1, status: 'draft', payloadVersion: V.PAYLOAD_VERSION,
+    details: { meetingTitle: 'Calibration review', meetingType: 'General', meetingDate: '2026-10-21',
+      internalAttendees: ['Morgan Taylor'], clientAttendees: [] },
+    sourceUnits, preparedTranscript: V.preparedTranscriptFromUnits(sourceUnits),
+    discussion: [{ id: 'calibration', topic: 'Calibration review',
+      points: [{ id: 'main', text: 'The calibration review is complete.', evidenceIds: ['T0001'], reviewFlagIds: [], supportingDetails: [] }],
+      decisions: [], openQuestions: [] }],
+    unassignedSupportingDetails: pool(),
+    actions: [{ id: 'send', action: 'Send the calibration record.', owners: ['Morgan Taylor'],
+      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] }],
+    executiveSummary: 'The calibration record was reviewed.', meetingObjectives: [],
+    reviewFlags: [{ id: 'detail-review', kind: 'unclear_reference', status: 'open',
+      message: 'The calibration context has an unclear reference; confirm which calibration batch it describes.', evidenceIds: ['T0002'], correctionNote: '' }],
+    changeHistory: [], redoHistory: [], staleStages: [], currentStep: 5, selectedStep: 5,
+    qualityState: { preparation: { dateContext: { source: 'reviewer', meetingDate: '2026-10-21' } } } };
+  writes = 0;
+}
+async function request(method, suffix = '', body = {}) {
+  const routePath = `/meeting-minutes-agent/drafts/:draftId${suffix}`;
+  const route = router.stack.find(layer => layer.route?.path === routePath && layer.route.methods[method])?.route;
+  assert.ok(route, `Missing ${method} ${routePath}`);
+  const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; } };
+  await route.stack.at(-1).handle({ params: { draftId: saved.draftId }, authUser: { userId: 'filing-reviewer' },
+    body: { revision: saved.revision, ...body } }, res);
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(providerCalls, 0);
+  return res.body.draft;
+}
+function mainContent(draft) {
+  return { discussion: draft.discussion.map(topic => ({ id: topic.id, topic: topic.topic,
+    ...Object.fromEntries(['points', 'decisions', 'openQuestions'].map(field => [field,
+      (topic[field] || []).map(row => ({ id: row.id, text: row.text }))])) })),
+    actions: draft.actions.map(row => ({ id: row.id, action: row.action, owners: row.owners, timing: row.timing })) };
+}
+function assertPool(actual, expected) {
+  assert.ok(Array.isArray(actual), 'the pool must survive as an array');
+  const view = rows => rows.map(row => ({ ...row, reviewFlagIds: row.reviewFlagIds || [] }));
+  assert.deepEqual(view(actual), view(expected));
+}
+function supportInventory(draft) {
+  const attached = (draft.discussion || []).flatMap(topic => ['points', 'decisions', 'openQuestions']
+    .flatMap(field => (topic[field] || []).flatMap(row => row.supportingDetails || [])));
+  return [...attached, ...(draft.unassignedSupportingDetails || [])];
+}
+function retainedIdentity(row) {
+  return { id: row.id, text: row.text, evidenceIds: row.evidenceIds, reviewFlagIds: row.reviewFlagIds || [] };
+}
+async function documentXml(draft, evidence) {
+  const zip = await JSZip.loadAsync(await generateMeetingMinutesAgentDocx(draft, evidence));
+  return zip.file('word/document.xml').async('string');
+}
+
+test('payload and public projection retain full unfiled detail, provenance and warning links', () => {
+  reset();
+  assert.ok(longText.length > 1600, 'fixture crosses both the flag and ordinary row clipping boundaries');
+  const before = copy(saved);
+  const payload = api.meetingAgentDraftPayload(saved);
+  assertPool(payload.unassignedSupportingDetails, pool());
+  const visible = api.publicMeetingAgentDraft({ ...saved, ...payload });
+  assertPool(visible.unassignedSupportingDetails, pool());
+  assert.equal(visible.reviewFlags.find(row => row.id === 'detail-review')?.status, 'open');
+  assert.equal(visible.unassignedSupportingDetails[0].text, longText);
+  assert.match(visible.unassignedSupportingDetails[0].text, /ZETA-TAIL\.$/);
+  assert.deepEqual(saved, before, 'read/publication cannot mutate the stored draft');
+});
+
+test('old-client PATCH that omits the pool preserves full records through save and reload', async () => {
+  reset();
+  const first = await request('get');
+  const originalMain = mainContent(first);
+  for (let count = 0; count < 2; count += 1) {
+    const after = await request('patch', '', { discussion: first.discussion, actions: first.actions });
+    assertPool(saved.unassignedSupportingDetails, pool());
+    assertPool(after.unassignedSupportingDetails, pool());
+    assert.deepEqual(mainContent(after), originalMain);
+    assertPool((await request('get')).unassignedSupportingDetails, pool());
+  }
+  assert.equal(writes, 2);
+});
+
+test('filing transfers a complete unfiled record exactly once and undo/redo restores both sides', async () => {
+  reset();
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails = [copy(initial.unassignedSupportingDetails[0])];
+  const remaining = [copy(initial.unassignedSupportingDetails[1])];
+  const after = await request('patch', '', { discussion, unassignedSupportingDetails: remaining,
+    reviewDecisionLabel: 'File calibration context under its matching discussion point' });
+  assert.equal(after.discussion[0].points[0].supportingDetails[0].text, longText);
+  assertPool(after.unassignedSupportingDetails, remaining);
+  assert.equal(supportInventory(after).filter(row => row.id === 'unfiled-long').length, 1);
+  assert.deepEqual(supportInventory(after).map(retainedIdentity).sort((a,b) => a.id.localeCompare(b.id)),
+    pool().map(retainedIdentity).sort((a,b) => a.id.localeCompare(b.id)));
+  assert.deepEqual(mainContent(after), mainContent(initial), 'filing cannot promote the detail or reorder main text/actions');
+  assert.equal(saved.changeHistory.at(-1).beforeState.unassignedSupportingDetails[0].text, longText);
+  const undone = await request('post', '/undo');
+  assertPool(undone.unassignedSupportingDetails, pool());
+  assert.equal(undone.discussion[0].points[0].supportingDetails.length, 0);
+  const redone = await request('post', '/redo');
+  assert.equal(redone.discussion[0].points[0].supportingDetails[0].text, longText);
+  assertPool(redone.unassignedSupportingDetails, remaining);
+  assert.equal(supportInventory(redone).filter(row => row.id === 'unfiled-long').length, 1);
+  const reloaded = await request('get');
+  assert.equal(reloaded.discussion[0].points[0].supportingDetails[0].text, longText);
+  assertPool(reloaded.unassignedSupportingDetails, remaining);
+});
+
+test('an explicitly empty pool survives filing of its last record and a later old-client autosave', async () => {
+  reset();
+  saved.unassignedSupportingDetails = [pool()[1]];
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails = copy(initial.unassignedSupportingDetails);
+  const filed = await request('patch', '', { discussion, unassignedSupportingDetails: [], reviewDecisionLabel: 'File archive context' });
+  assertPool(filed.unassignedSupportingDetails, []);
+  const next = await request('patch', '', { executiveSummary: filed.executiveSummary });
+  assertPool(next.unassignedSupportingDetails, []);
+  assert.equal(supportInventory(next).filter(row => row.id === 'unfiled-short').length, 1);
+});
+
+for (const stage of ['actions', 'summary']) {
+  test(`${stage} background persistence keeps the current pool through JSON serialization`, async () => {
+    reset();
+    const sourceDraft = copy(saved);
+    saved.unassignedSupportingDetails[1].placementReason = 'A reviewer retained the latest filing decision.';
+    const expectedPool = copy(saved.unassignedSupportingDetails);
+    const changes = stage === 'actions' ? { actions: copy(saved.actions) }
+      : { executiveSummary: 'The calibration findings have been reviewed.', meetingObjectives: [] };
+    const result = await api.persistMeetingAgentBackgroundStage({ draftId: saved.draftId, userId: 'filing-reviewer',
+      stage, sourceDraft, result: { changes, reviewFlags: [] },
+      getDraft: async () => copy(saved),
+      saveDraft: async (fresh, incoming) => {
+        saved = copy({ ...api.meetingAgentDraftPayload({ ...fresh, ...incoming }),
+          draftId: fresh.draftId, status: fresh.status, revision: fresh.revision + 1 });
+        return copy(saved);
+      }, wait: async () => assert.fail('No retry should be needed') });
+    assert.deepEqual(result.conflictFields, []);
+    assertPool(saved.unassignedSupportingDetails, expectedPool);
+    assert.equal(saved.unassignedSupportingDetails[0].text, longText);
+    assertPool(api.publicMeetingAgentDraft(saved).unassignedSupportingDetails, expectedPool);
+    assert.equal(providerCalls, 0);
+  });
+}
+
+test('ordinary exports keep identical main content/order; evidence exports include full pool and source', async () => {
+  reset();
+  const withoutPool = { ...copy(saved), unassignedSupportingDetails: [] };
+  const ordinary = api.meetingAgentDraftForPdf(saved, false);
+  assert.deepEqual(ordinary, api.meetingAgentDraftForPdf(withoutPool, false));
+  assert.equal(JSON.stringify(ordinary).includes('ZETA-TAIL'), false);
+  const evidence = api.meetingAgentDraftForPdf(saved, true);
+  assert.ok((evidence.supportingDetails || []).some(row => row.text === longText), 'PDF evidence must retain the full review-only detail');
+  assert.ok((evidence.evidenceAppendix || []).some(row => row.id === 'T0002' && row.text === longText), 'pool-only citations must reach the source appendix');
+  const docxDraft = api.meetingAgentDraftForDocx(saved);
+  const ordinaryXml = await documentXml(docxDraft, false);
+  assert.equal(ordinaryXml, await documentXml(api.meetingAgentDraftForDocx(withoutPool), false));
+  assert.equal(ordinaryXml.includes('ZETA-TAIL'), false);
+  const evidenceXml = await documentXml(docxDraft, true);
+  assert.ok(evidenceXml.includes('ZETA-TAIL.'), 'DOCX evidence must not clip the full detail');
+  assert.ok(evidenceXml.includes('T0002'), 'DOCX source appendix must include pool-only evidence');
+  assert.ok(evidenceXml.indexOf('The calibration review is complete.') < evidenceXml.indexOf('Send the calibration record.'),
+    'main discussion/actions order must remain unchanged');
+});
+
+test('payload preserves distinct records sharing an ID instead of overwriting by ID', async () => {
+  reset();
+  saved.unassignedSupportingDetails = pool().map(row => ({ ...row, id: 'shared-detail-id' }));
+  const expected = copy(saved.unassignedSupportingDetails);
+  const after = await request('patch', '', { executiveSummary: saved.executiveSummary });
+  assertPool(after.unassignedSupportingDetails, expected);
+  assert.equal(after.unassignedSupportingDetails.length, 2);
+  assert.notEqual(after.unassignedSupportingDetails[0].text, after.unassignedSupportingDetails[1].text);
+  assert.notDeepEqual(after.unassignedSupportingDetails[0].evidenceIds, after.unassignedSupportingDetails[1].evidenceIds);
+});
+
+test('an unchanged detail sent both attached and in the pool is retained exactly once', async () => {
+  reset();
+  saved.unassignedSupportingDetails = [pool()[1]];
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails = copy(initial.unassignedSupportingDetails);
+  const after = await request('patch', '', { discussion, unassignedSupportingDetails: initial.unassignedSupportingDetails,
+    reviewDecisionLabel: 'File existing review detail' });
+  assert.equal(supportInventory(after).filter(row => row.id === 'unfiled-short').length, 1);
+  assert.equal(after.discussion[0].points[0].supportingDetails[0].text, pool()[1].text);
+  assertPool(after.unassignedSupportingDetails, []);
+});
+
+test('a newly unmatched supporting candidate reaches the review pool in full without main promotion', () => {
+  reset();
+  const text = longText.replaceAll('Calibration', 'Shipping').replaceAll('calibration', 'shipping');
+  const sourceUnits = [...saved.sourceUnits, { id: 'T0004', speaker: 'Morgan Taylor', text }];
+  const collected = [];
+  const output = api.compactDiscussionPropositions(copy(saved.discussion), [], sourceUnits, {
+    promoteMaterialSupporting: false,
+    supportingCandidates: [{ candidate: { candidateId: 'new-shipping-context', text,
+      evidenceIds: ['T0004'], reviewFlagIds: ['detail-review'], topic: 'Shipping context' } }],
+    onUnassignedSupportingDetail(record, context) { collected.push({ ...record, ...context }); return true; }
+  });
+  assert.equal(collected.length, 1);
+  assert.equal(collected[0].text, text);
+  assert.deepEqual(collected[0].evidenceIds, ['T0004']);
+  assert.deepEqual(collected[0].reviewFlagIds, ['detail-review']);
+  assert.equal(collected[0].id, 'new-shipping-context');
+  const visible = output.flatMap(topic => ['points', 'decisions', 'openQuestions'].flatMap(field => topic[field] || []));
+  assert.deepEqual(visible.map(row => row.text), saved.discussion[0].points.map(row => row.text));
+  assert.equal(supportInventory({ discussion: output }).some(row => row.text === text), false);
+  const serialized = api.meetingAgentDraftPayload({ ...saved, sourceUnits,
+    discussion: output, unassignedSupportingDetails: collected });
+  assert.equal(serialized.unassignedSupportingDetails[0].text, text);
+  assert.match(serialized.unassignedSupportingDetails[0].text, /ZETA-TAIL\.$/);
+});
+
+test('legacy undo snapshots without the new pool field preserve current unfiled context', async () => {
+  reset();
+  const legacy = api.meetingAgentReviewSnapshot(saved);
+  delete legacy.unassignedSupportingDetails;
+  legacy.executiveSummary = 'The earlier calibration summary was reviewed.';
+  saved.changeHistory = [{ id: 'legacy-review', type: 'review_decision', label: 'Older summary edit',
+    createdAt: '2026-10-20T09:00:00.000Z', beforeState: legacy }];
+  const undone = await request('post', '/undo');
+  assert.equal(undone.executiveSummary, legacy.executiveSummary);
+  assertPool(undone.unassignedSupportingDetails, pool());
+  const redone = await request('post', '/redo');
+  assertPool(redone.unassignedSupportingDetails, pool());
+  assert.equal(redone.executiveSummary, 'The calibration record was reviewed.');
+});
+
+test('a safely targeted supporting candidate beyond the parent cap is retained in the review pool', () => {
+  reset();
+  const discussion = copy(saved.discussion);
+  const existing = Array.from({ length: 50 }, (_, index) => {
+    const suffix = String.fromCharCode(97 + Math.floor(index / 26)) + String.fromCharCode(97 + index % 26);
+    return detail(`sample-${suffix}`, `Calibration sample marker${suffix} has measured concentration ${index + 1} percent.`,
+      [`T${String(index + 100).padStart(4, '0')}`]);
+  });
+  discussion[0].points[0].supportingDetails = existing;
+  const incoming = { candidateId: 'overflow-sample', text: 'Calibration sample markerzz has measured concentration 91 percent.',
+    evidenceIds: ['T0999'], reviewFlagIds: ['detail-review'], topic: 'Calibration review' };
+  const sourceUnits = [...saved.sourceUnits,
+    ...existing.map(row => ({ id: row.evidenceIds[0], speaker: 'Morgan Taylor', text: row.text })),
+    { id: 'T0999', speaker: 'Morgan Taylor', text: incoming.text }];
+  const collected = [];
+  const output = api.compactDiscussionPropositions(discussion, [], sourceUnits, {
+    promoteMaterialSupporting: false,
+    supportingCandidates: [{ candidate: incoming, mergeTarget: 'main' }],
+    onUnassignedSupportingDetail(record, context) { collected.push({ ...record, ...context }); return true; }
+  });
+  const attached = supportInventory({ discussion: output });
+  assert.equal(attached.length, 50);
+  assert.equal(collected.length, 1, 'the next legitimate detail must not vanish at the array cap');
+  assert.equal(collected[0].id, incoming.candidateId);
+  assert.equal(collected[0].text, incoming.text);
+  assert.deepEqual(collected[0].evidenceIds, incoming.evidenceIds);
+  assert.deepEqual(collected[0].reviewFlagIds, incoming.reviewFlagIds);
+  assert.deepEqual(attached.map(row => row.id).sort(), existing.map(row => row.id).sort());
+  assert.equal(new Set([...attached, ...collected].map(row => row.id)).size, 51);
+  assert.equal(output.flatMap(topic => ['points', 'decisions', 'openQuestions'].flatMap(field => topic[field] || [])).length, 1,
+    'overflow must not become an additional main proposition');
+});
+
+test('manual filing beyond fifty supporting records survives save and reload', async () => {
+  reset();
+  const existing = Array.from({ length: 50 }, (_, index) => {
+    const suffix = String.fromCharCode(97 + Math.floor(index / 26)) + String.fromCharCode(97 + index % 26);
+    return detail(`retained-${suffix}`, `Calibration sample marker${suffix} measured ${index + 1} percent concentration.`,
+      [`T${String(index + 100).padStart(4, '0')}`], { reviewerAuthored: true });
+  });
+  saved.discussion[0].points[0].supportingDetails = existing;
+  const last = detail('manual-fifty-one', 'Calibration sample markerzz measured 91 percent concentration.', ['T0999'], {
+    originalTopic: 'Retained calibration measurements', placementReason: 'A reviewer must choose the parent.' });
+  saved.unassignedSupportingDetails = [last];
+  saved.sourceUnits.push(...existing.map(row => ({ id: row.evidenceIds[0], speaker: 'Morgan Taylor', text: row.text })),
+    { id: 'T0999', speaker: 'Morgan Taylor', text: last.text });
+  saved.preparedTranscript = V.preparedTranscriptFromUnits(saved.sourceUnits);
+  const initial = await request('get');
+  assert.equal(initial.discussion[0].points[0].supportingDetails.length, 50);
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails.push(copy(last));
+  const filed = await request('patch', '', { discussion, unassignedSupportingDetails: [],
+    reviewDecisionLabel: 'File an additional calibration measurement' });
+  assert.equal(filed.discussion[0].points[0].supportingDetails.length, 51);
+  assert.equal(filed.discussion[0].points[0].supportingDetails.find(row => row.id === last.id)?.text, last.text);
+  assertPool(filed.unassignedSupportingDetails, []);
+  const reloaded = await request('get');
+  assert.equal(reloaded.discussion[0].points[0].supportingDetails.length, 51);
+  const again = await request('patch', '', { discussion: reloaded.discussion });
+  assert.equal(again.discussion[0].points[0].supportingDetails.length, 51);
+  assert.equal(supportInventory(again).filter(row => row.id === last.id).length, 1);
+});
+
+test('filing preserves all ten valid citations instead of truncating to the generated-row budget', async () => {
+  reset();
+  const evidenceIds = Array.from({ length: 10 }, (_, index) => `T${String(index + 200).padStart(4, '0')}`);
+  const record = detail('ten-citations', 'The calibration qualification is supported by retained source observations.', evidenceIds);
+  saved.sourceUnits.push(...evidenceIds.map(id => ({ id, speaker: 'Morgan Taylor', text: record.text })));
+  saved.preparedTranscript = V.preparedTranscriptFromUnits(saved.sourceUnits);
+  saved.unassignedSupportingDetails = [record];
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails = copy(initial.unassignedSupportingDetails);
+  const filed = await request('patch', '', { discussion, unassignedSupportingDetails: [], reviewDecisionLabel: 'File all source-qualified context' });
+  assert.deepEqual(filed.discussion[0].points[0].supportingDetails[0].evidenceIds, evidenceIds);
+  assert.deepEqual(saved.discussion[0].points[0].supportingDetails[0].evidenceIds, evidenceIds);
+  assert.deepEqual((await request('get')).discussion[0].points[0].supportingDetails[0].evidenceIds, evidenceIds);
+});
+
+for (const missing of ['flag', 'reviewer-lock']) {
+  test(`a represented-text shadow cannot discard pool provenance missing its ${missing}`, () => {
+    reset();
+    const record = { ...pool()[1], reviewerAuthored: true, reviewFlagIds: ['detail-review'] };
+    saved.unassignedSupportingDetails = [record];
+    const attached = copy(record);
+    if (missing === 'flag') attached.reviewFlagIds = [];
+    else delete attached.reviewerAuthored;
+    saved.discussion[0].points[0].supportingDetails = [attached];
+    assertPool(withoutRepresentedUnassignedDetails(saved.unassignedSupportingDetails, saved.discussion), [record]);
+    const payload = api.meetingAgentDraftPayload(saved);
+    assertPool(payload.unassignedSupportingDetails, [record]);
+    assert.equal(payload.unassignedSupportingDetails[0].reviewerAuthored, true);
+    assert.deepEqual(payload.unassignedSupportingDetails[0].reviewFlagIds, ['detail-review']);
+    assert.equal(payload.reviewFlags.find(row => row.id === 'detail-review')?.status, 'open');
+  });
+}
+
+test('a represented shadow with complete citation/flag/lock coverage can leave the pool', () => {
+  reset();
+  const record = { ...pool()[1], reviewerAuthored: true, reviewFlagIds: ['detail-review'] };
+  saved.unassignedSupportingDetails = [copy(record)];
+  saved.discussion[0].points[0].supportingDetails = [copy(record)];
+  const remaining = withoutRepresentedUnassignedDetails(saved.unassignedSupportingDetails, saved.discussion);
+  assertPool(remaining, []);
+  const payload = api.meetingAgentDraftPayload({ ...saved, unassignedSupportingDetails: remaining });
+  assertPool(payload.unassignedSupportingDetails, []);
+  assert.deepEqual(payload.discussion[0].points[0].supportingDetails[0].reviewFlagIds, ['detail-review']);
+  assert.equal(payload.discussion[0].points[0].supportingDetails[0].reviewerAuthored, true);
+});
+
+test('discussion persistence treats absent and empty pools alike but detects genuine reviewer changes', () => {
+  reset();
+  const source = copy(saved);
+  delete source.unassignedSupportingDetails;
+  const fresh = { ...copy(source), unassignedSupportingDetails: [] };
+  const generated = { discussion: copy(source.discussion), unassignedSupportingDetails: [pool()[1]] };
+  const compatible = api.meetingAgentStagePersistenceChanges(source, fresh, 'discussion', generated);
+  assert.deepEqual(compatible.conflictFields, []);
+  assertPool(compatible.changes.unassignedSupportingDetails, [pool()[1]]);
+  const edited = { ...copy(fresh), unassignedSupportingDetails: [pool()[0]] };
+  const conflict = api.meetingAgentStagePersistenceChanges(source, edited, 'discussion', generated);
+  assert.deepEqual(conflict.conflictFields, ['unassignedSupportingDetails']);
+  assert.deepEqual(conflict.changes, {});
+  assertPool(edited.unassignedSupportingDetails, [pool()[0]]);
+});

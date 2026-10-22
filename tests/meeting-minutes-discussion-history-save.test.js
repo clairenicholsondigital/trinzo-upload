@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const V = require('../utils/meetingMinutesAgentV2');
 const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
+const { normalizeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
 
 const reviewerOptions = {
   enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true
@@ -66,6 +67,8 @@ function patchHarness(initial) {
     publicMeetingAgentDraft: value => structuredClone(value),
     meetingAgentSummaryTextHash: value => String(value || ''),
     markMeetingAgentReviewerEdits,
+    normalizeUnassignedSupportingDetails,
+    withoutRepresentedUnassignedDetails,
     normaliseAgentResult: V.normaliseAgentResult,
     meetingAgentTimingAnchor: () => '',
     rebaseMeetingAgentProposal: value => value,

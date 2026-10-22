@@ -79,6 +79,8 @@ function evidenceAppendix(draft = {}) {
     }
   }
   for (const action of draft.actions || []) for (const id of action.evidenceIds || []) used.add(id);
+  const unassigned = Array.isArray(draft.unassignedSupportingDetails) ? draft.unassignedSupportingDetails : [];
+  for (const detail of unassigned) for (const id of detail.evidenceIds || []) used.add(id);
   let body = paragraph('Evidence appendix', 'Heading1');
   const supporting = (draft.discussion || []).flatMap((topic) =>
     [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])].flatMap((item) =>
@@ -86,6 +88,13 @@ function evidenceAppendix(draft = {}) {
   if (supporting.length) {
     body += paragraph('Supporting context', 'Heading2');
     for (const detail of supporting) body += bullet(`${detail.topic}: ${detail.text}`);
+  }
+  if (unassigned.length) {
+    body += paragraph('Needs filing', 'Heading2');
+    for (const detail of unassigned) {
+      const sources = (detail.evidenceIds || []).length ? ` (Sources: ${detail.evidenceIds.join(', ')})` : '';
+      body += bullet(`${detail.text}${sources}`);
+    }
   }
   for (const unit of units.filter((item) => used.has(item.id))) {
     body += paragraph(`${unit.id} · ${unit.speaker}${unit.timestamp ? ` · ${unit.timestamp}` : ''}`, 'Heading3');

@@ -23,6 +23,7 @@ const { isRawTranscriptDiscussionPoint } = require('../stagedEditorial');
 const { SHIFT_MARKER } = require('./discourseSegments');
 const { isReviewerAuthored } = require('./state');
 const { primaryEvidenceIdsForRecord } = require('./discussionPublication');
+const { selectSupportingDetailParent } = require('./supportingDetailPlacement');
 const {
   isPersonalAside,
   isPeripheralAside,
@@ -480,54 +481,53 @@ function retypeRows(topic, index) {
 // 3. Demotion of rows that are not minutes
 // ---------------------------------------------------------------------------
 
-// Distance to the row's NEAREST cited line, not its earliest. A row citing
-// T0118-T0121 plus one stray T0020 is not "at" line 20: measuring from the
-// earliest put every later detail next to it, which is how one row in run 9
-// collected nineteen supporting lines.
-function nearestPrimary(rows, sequence) {
-  let best = null;
-  for (const row of rows) {
-    const sequences = recordSequences(row.record, row.index);
-    const distance = Number.isFinite(sequence) && sequences.length
-      ? Math.min(...sequences.map((value) => Math.abs(value - sequence)))
-      : Number.POSITIVE_INFINITY;
-    if (!best || distance < best.distance) best = { row, distance };
-  }
-  return best ? best.row.record : null;
-}
-
-function demoteUnreadyRows(topics, index) {
-  const orphans = [];
-  const result = topics.map((topic) => {
-    const rows = topicRows(topic).map((row) => ({ ...row, index }));
+function demoteUnreadyRows(topics, index, options = {}) {
+  const pending = [];
+  const retained = new Set();
+  const replacements = new Map();
+  const result = topics.map(topic => {
     const keep = { ...topic, points: [], decisions: [], openQuestions: [] };
-    const demoted = [];
-    for (const row of rows) {
+    for (const row of topicRows(topic)) {
+      const protectedRow = reviewerTopic(topic) || isReviewerAuthored(row.record)
+        || (row.record.supportingDetails || []).some(detail => isReviewerAuthored(detail));
       const flagged = Array.isArray(row.record.reviewFlagIds) && row.record.reviewFlagIds.length > 0;
       // A warning must not make raw transcript wording publishable. Other
       // conversational rows remain visible when a reviewer must resolve them.
-      if (isVerbatimUnit(row.record.text, index, row.record.evidenceIds)
-        || (!flagged && notClientReady(row.record, index))) demoted.push(row);
-      else keep[row.kind].push(row.record);
-    }
-    const remaining = topicRows(keep).map((row) => ({ ...row, index }));
-    for (const row of demoted) {
-      const detail = { id: row.record.id, text: text(row.record.text, 1600), evidenceIds: [...(row.record.evidenceIds || [])] };
-      const host = nearestPrimary(remaining, earliest(row.record, index));
-      if (host) {
-        host.supportingDetails = [...(host.supportingDetails || []), ...(row.record.supportingDetails || []), detail];
-      } else {
-        orphans.push({ detail, extra: row.record.supportingDetails || [], sequence: earliest(row.record, index) });
-      }
+      if (!protectedRow && (isVerbatimUnit(row.record.text, index, row.record.evidenceIds)
+        || (!flagged && notClientReady(row.record, index)))) pending.push({ topic, keep, row });
+      else { keep[row.kind].push(row.record); retained.add(row.record); }
     }
     return keep;
-  }).filter((topic) => topicRows(topic).length);
-  for (const orphan of orphans) {
-    const rows = result.flatMap((topic) => topicRows(topic).map((row) => ({ ...row, index })));
-    const host = nearestPrimary(rows, orphan.sequence);
-    if (host) host.supportingDetails = [...(host.supportingDetails || []), ...orphan.extra, orphan.detail];
+  });
+  const candidates = result.flatMap(topic => topicRows(topic).map(({ record }) => ({ topic, record })));
+  const sourceUnits = [...(index?.byId?.values() || [])];
+  for (const { topic, row } of pending) {
+    const { supportingDetails = [], ...detail } = row.record;
+    const placement = selectSupportingDetailParent(detail, candidates, { sourceUnits });
+    const destinationLocked = placement.target && (reviewerTopic(placement.target.topic)
+      || isReviewerAuthored(placement.target.record));
+    if (placement.target && !destinationLocked) {
+      const host = placement.target.record;
+      host.supportingDetails = [...(host.supportingDetails || []), ...supportingDetails, detail];
+      continue;
+    }
+    const placementReason = destinationLocked ? 'reviewer_target_locked' : placement.reason;
+    const handedOff = typeof options.onUnassignedSupportingDetail === 'function'
+      && options.onUnassignedSupportingDetail(detail, {
+        originalTopic: text(topic.topic, 220), placementReason, supportingDetails
+      }) === true;
+    if (handedOff) continue;
+    // Standalone callers without a review-material collector must not lose an
+    // orphan or silently attach it to an unrelated neighbour. Keep its original
+    // position until a caller can preserve it explicitly outside the minutes.
+    retained.add(row.record);
+    replacements.set(row.record, { ...row.record, placementStatus: 'unresolved', placementReason });
   }
-  return result;
+  return result.map((topic, topicIndex) => ({
+    ...topic,
+    ...Object.fromEntries(ROW_KINDS.map(kind => [kind, (topics[topicIndex][kind] || [])
+      .filter(record => retained.has(record)).map(record => replacements.get(record) || record)]))
+  })).filter(topic => topicRows(topic).length);
 }
 
 // ---------------------------------------------------------------------------
@@ -687,34 +687,41 @@ function dropVerbatimSupporting(topics, index) {
   return topics;
 }
 
-function rehomeSupportingDetails(topics, index, margin = 2) {
-  const windows = topics.map((topic) => topicWindow(topic, index));
-  for (let from = 0; from < topics.length; from += 1) {
-    for (const { record } of topicRows(topics[from])) {
-      const kept = [];
-      for (const detail of record.supportingDetails || []) {
-        const sequences = recordSequences(detail, index);
-        if (!sequences.length) { kept.push(detail); continue; }
-        const at = Math.min(...sequences);
-        const here = windows[from];
-        if (here && at >= here.start - margin && at <= here.end + margin) { kept.push(detail); continue; }
-        // The narrowest topic whose window contains the line, not the first.
-        // A topic with one stray citation spans the whole meeting and would
-        // otherwise swallow every homeless detail.
-        let to = -1;
-        let span = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < topics.length; i += 1) {
-          if (i === from || !windows[i]) continue;
-          if (at < windows[i].start - margin || at > windows[i].end + margin) continue;
-          const width = windows[i].end - windows[i].start;
-          if (width < span) { span = width; to = i; }
-        }
-        if (to < 0) { kept.push(detail); continue; }
-        const host = nearestPrimary(topicRows(topics[to]).map((row) => ({ ...row, index })), at);
-        if (!host) { kept.push(detail); continue; }
-        host.supportingDetails = [...(host.supportingDetails || []), detail];
+function rehomeSupportingDetails(topics, index) {
+  const candidates = topics.flatMap(topic => topicRows(topic).map(({ record }) => ({ topic, record })));
+  // Plan from the original inventory. A child moved to a later topic must not
+  // be reconsidered, duplicated or bounced back during this same pass.
+  const entries = candidates.flatMap(parent => (parent.record.supportingDetails || [])
+    .map(detail => ({ parent, detail })));
+  const sourceUnits = [...(index?.byId?.values() || [])];
+  for (const { parent, detail } of entries) {
+    if (reviewerTopic(parent.topic) || isReviewerAuthored(parent.record) || isReviewerAuthored(detail)) continue;
+    // Existing plausible filing is stronger than a longer competing sentence.
+    // Do not churn accepted context merely because another row shares more words.
+    const hasExplicitTarget = [detail.mergeTarget, detail.targetId, detail.primaryId]
+      .some(value => String(value || '').trim());
+    const currentPlacement = hasExplicitTarget ? { target: null }
+      : selectSupportingDetailParent(detail, [parent], { sourceUnits });
+    const placement = currentPlacement.target ? currentPlacement
+      : selectSupportingDetailParent(detail, candidates, { sourceUnits });
+    if (!placement.target) {
+      detail.placementStatus = 'unresolved';
+      detail.placementReason = placement.reason;
+      continue;
+    }
+    if (placement.target.record !== parent.record) {
+      // A generated child may not mutate a reviewer-owned destination card.
+      if (reviewerTopic(placement.target.topic) || isReviewerAuthored(placement.target.record)) {
+        detail.placementStatus = 'unresolved';
+        detail.placementReason = 'reviewer_target_locked';
+        continue;
       }
-      record.supportingDetails = kept;
+      parent.record.supportingDetails = (parent.record.supportingDetails || []).filter(value => value !== detail);
+      placement.target.record.supportingDetails = [...(placement.target.record.supportingDetails || []), detail];
+    }
+    if (detail.placementStatus === 'unresolved') {
+      delete detail.placementStatus;
+      delete detail.placementReason;
     }
   }
   return topics;
@@ -2201,7 +2208,7 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
   // The all-details experiment has already made an explicit publication
   // choice. Its final organisation pass may consolidate and order those rows,
   // but must not quietly turn accepted rows back into reviewer suggestions.
-  if (options.preserveVisibleRows !== true) topics = demoteUnreadyRows(topics, index);
+  if (options.preserveVisibleRows !== true) topics = demoteUnreadyRows(topics, index, options);
   topics = await consolidateTopics(topics, index, options);
   topics = await mergeRestatedRows(topics, index, options);
   if (options.preserveVisibleRows !== true) {

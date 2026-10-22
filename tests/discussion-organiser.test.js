@@ -926,7 +926,8 @@ test('status statements labelled Decision become points; answered open questions
   assert.deepEqual(topic.points.map((r) => r.id).sort(), ['d1', 'q1', 'q3']);
 });
 
-test('verbatim transcript sentences and conversational rows are demoted to context, flagged rows are not', () => {
+test('verbatim transcript sentences and conversational rows are retained for review, flagged rows stay visible', () => {
+  const unassigned = [];
   const topics = demoteUnreadyRows([{
     topic: 'Alarms',
     points: [
@@ -934,18 +935,26 @@ test('verbatim transcript sentences and conversational rows are demoted to conte
       { id: 'raw', text: 'The alarm changes seem to have gone through successfully.Across the three parameters, which are sound, flash, and color, and...So there is one outstanding point, I suppose, really in terms of the mute button.', evidenceIds: ['T0005'], reviewFlagIds: [] },
       { id: 'flagged', text: 'So we think the mute button is fine.', evidenceIds: ['T0005'], reviewFlagIds: ['flag-1'] }
     ], decisions: [], openQuestions: []
-  }], index);
+  }], index, { onUnassignedSupportingDetail(detail, context) { unassigned.push({ detail, context }); return true; } });
   assert.deepEqual(topics[0].points.map((r) => r.id), ['p1', 'flagged']);
-  assert.deepEqual(topics[0].points[0].supportingDetails.map((d) => d.id), ['raw']);
+  assert.deepEqual(topics[0].points[0].supportingDetails || [], []);
+  assert.deepEqual(unassigned.map(({ detail }) => detail.id), ['raw']);
+  assert.equal(unassigned[0].detail.text, 'The alarm changes seem to have gone through successfully.Across the three parameters, which are sound, flash, and color, and...So there is one outstanding point, I suppose, really in terms of the mute button.');
+  assert.deepEqual(unassigned[0].detail.evidenceIds, ['T0005']);
 });
 
-test('a topic made only of a raw sentence is folded into the nearest topic as context', () => {
+test('an orphan raw sentence is retained for filing rather than attached to an unrelated nearest topic', () => {
+  const unassigned = [];
   const topics = demoteUnreadyRows([
     { topic: 'Languages', points: [{ id: 'p1', text: 'Memory capacity exists for the twelve additional languages.', evidenceIds: ['T0006'] }], decisions: [], openQuestions: [] },
     { topic: 'Discussion', points: [], decisions: [], openQuestions: [{ id: 'raw', text: 'The alarm changes seem to have gone through successfully.Across the three parameters, which are sound, flash, and color, and...So there is one outstanding point, I suppose, really in terms of the mute button.', evidenceIds: ['T0005'] }] }
-  ], index);
+  ], index, { onUnassignedSupportingDetail(detail, context) { unassigned.push({ detail, context }); return true; } });
   assert.equal(topics.length, 1);
-  assert.equal(topics[0].points[0].supportingDetails[0].id, 'raw');
+  assert.equal(topics[0].topic, 'Languages');
+  assert.deepEqual(topics[0].points[0].supportingDetails || [], []);
+  assert.equal(unassigned[0].detail.id, 'raw');
+  assert.deepEqual(unassigned[0].detail.evidenceIds, ['T0005']);
+  assert.equal(unassigned[0].context.originalTopic, 'Discussion');
 });
 
 test('topics are consolidated by evidence adjacency and label similarity without forcing unrelated topics into a cap', async () => {
@@ -1204,7 +1213,8 @@ test('an explicit hard topic cap remains available to legacy callers', async () 
   assert.equal(merged.length, 2);
 });
 
-test('short verbatim speech and unresolved role labels are not published as primary rows', () => {
+test('short verbatim speech and unresolved role labels are retained outside primary rows', () => {
+  const unassigned = [];
   const localUnits = [
     { id: 'T0100', speaker: 'Alex', text: "It's approved, yeah, it was approved for Wednesday." },
     { id: 'T0101', speaker: 'Morgan', text: 'David will contact the speaker about the command letters.' }
@@ -1216,8 +1226,12 @@ test('short verbatim speech and unresolved role labels are not published as prim
       { id: 'raw', text: "It's approved, yeah, it was approved for Wednesday.", evidenceIds: ['T0100'] },
       { id: 'role', text: 'David will contact the speaker about the command letters.', evidenceIds: ['T0101'] }
     ], decisions: [], openQuestions: []
-  }], unitIndex(localUnits));
+  }], unitIndex(localUnits), { onUnassignedSupportingDetail(detail, context) { unassigned.push({ detail, context }); return true; } });
   assert.deepEqual(cleaned[0].points.map((row) => row.id), ['good']);
+  assert.deepEqual(unassigned.map(({ detail }) => detail.id), ['raw', 'role']);
+  assert.equal(unassigned[0].detail.text, localUnits[0].text);
+  assert.equal(unassigned[1].detail.text, localUnits[1].text);
+  assert.deepEqual(unassigned.map(({ detail }) => detail.evidenceIds), [['T0100'], ['T0101']]);
 });
 
 test('answered question clauses embedded in decisions are removed and cite the answer', () => {

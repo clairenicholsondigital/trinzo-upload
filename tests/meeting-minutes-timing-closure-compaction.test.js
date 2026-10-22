@@ -5,11 +5,26 @@ const api = require('../routes/api').stagedEvaluation;
 
 const row = (id, text, evidenceIds = ['T0001']) => ({ id, text, evidenceIds, supportingDetails: [] });
 const topic = points => ({ id: 'inspection', topic: 'Inspection planning', points, decisions: [], openQuestions: [] });
-const allRecords = discussion => discussion.flatMap(t => ['points', 'decisions', 'openQuestions']
-  .flatMap(key => (t[key] || []).flatMap(record => [record, ...(record.supportingDetails || [])])));
+const allRecords = result => {
+  const discussion = Array.isArray(result) ? result : result.discussion;
+  return discussion.flatMap(t => ['points', 'decisions', 'openQuestions']
+    .flatMap(key => (t[key] || []).flatMap(record => [record, ...(record.supportingDetails || [])])))
+    .concat(result.unassignedSupportingDetails || []);
+};
+const compactWithReviewPool = (primary, recovered, units, options = {}) => {
+  const unassignedSupportingDetails = [];
+  const discussion = api.compactDiscussionPropositions(primary, recovered, units, {
+    ...options,
+    onUnassignedSupportingDetail(detail, context) {
+      unassignedSupportingDetails.push(structuredClone({ ...detail, ...context }));
+      return true;
+    }
+  });
+  return { discussion, unassignedSupportingDetails };
+};
 const unitsFor = values => values.map((text, index) => ({ id: `T000${index + 1}`, text, speaker: 'Morgan', classification: 'keep' }));
 const compact = (primary, details, units = unitsFor([...primary.map(r => r.text), ...details.map(r => r.text)])) =>
-  api.compactDiscussionPropositions([topic(primary)], [], units, {
+  compactWithReviewPool([topic(primary)], [], units, {
     promoteMaterialSupporting: false,
     supportingCandidates: details.map(record => ({ candidate: {
       candidateId: record.id, recordType: 'discussion_point', sourcePass: 'primary', topic: 'Inspection planning', ...record
@@ -23,6 +38,11 @@ test('a short lead identity cannot discard a richer multi-phase temporal detail'
   const result = compact([identity], [schedule], unitsFor([identity.text, schedule.text]));
   assert.ok(allRecords(result).some(r => r.id === 'schedule' && r.text === schedule.text));
   assert.deepEqual(allRecords(result).find(r => r.id === 'schedule').evidenceIds, ['T0002']);
+  assert.deepEqual(result.discussion[0].points.map(r => r.id), ['lead'], 'review-only timing must not become another main claim');
+  assert.equal(result.discussion[0].points[0].supportingDetails.length, 0, 'a shared lead name does not prove this richer schedule belongs under that identity row');
+  assert.equal(result.unassignedSupportingDetails.length, 1);
+  assert.equal(result.unassignedSupportingDetails[0].text, schedule.text, 'all preparation, on-site duration and reporting-range wording survives outside an unproved parent');
+  assert.deepEqual(result.unassignedSupportingDetails[0].evidenceIds, ['T0002']);
   assert.deepEqual(schedule, input);
 });
 
@@ -58,7 +78,7 @@ test('duration, recurrence, clock, zone and qualification differences survive su
 test('richer recovered temporal detail is not treated as covered by a short core row', () => {
   const primary = row('core', 'The inspection team is led by Morgan.');
   const recovered = row('later', 'The inspection team led by Morgan will prepare next Monday and work on site for five days.', ['T0002']);
-  const result = api.compactDiscussionPropositions([topic([primary])], [topic([recovered])],
+  const result = compactWithReviewPool([topic([primary])], [topic([recovered])],
     unitsFor([primary.text, recovered.text]), { promoteMaterialSupporting: false });
   assert.ok(allRecords(result).some(r => r.text === recovered.text));
 });

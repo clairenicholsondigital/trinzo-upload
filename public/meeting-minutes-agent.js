@@ -1149,6 +1149,28 @@
     return '';
   }
 
+  function unassignedSupportingDetailsPanel(discussion) {
+    var pool = (state.draft && state.draft.unassignedSupportingDetails) || [];
+    if (!Array.isArray(pool) || !pool.length) return '';
+    var destinations = (discussion || []).flatMap(function (topic, topicIndex) {
+      return ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
+        return (topic[field] || []).map(function (item, itemIndex) {
+          if (!String(item.text || '').trim()) return '';
+          var excerpt = String(item.text || '').trim();
+          var label = String(topic.topic || 'Untitled topic').slice(0, 60) + ' — ' + excerpt.slice(0, 90) + (excerpt.length > 90 ? '…' : '');
+          return '<option value="' + topicIndex + ':' + field + ':' + itemIndex + '">' + escapeHtml(label) + '</option>';
+        }).filter(Boolean);
+      });
+    }).join('');
+    return '<section class="omitted-topic" data-needs-filing><h3>Needs filing</h3><p class="muted">Choose where each detail belongs before deciding whether to add it to the minutes.</p><div class="omitted-detail-list">' + pool.map(function (detail, index) {
+      var detailId = detail.id || ('unassigned-' + index);
+      var control = destinations
+        ? '<label>File under<select data-supporting-destination aria-label="File this detail under a discussion item"><option value="">Choose a discussion item…</option>' + destinations + '</select></label><button class="secondary compact" data-file-supporting="' + index + '" type="button" disabled>File detail</button>'
+        : '<p class="muted">Add a discussion point, decision or open question first, then choose where to file this detail.</p>';
+      return '<article class="omitted-detail" data-unassigned-supporting-row="' + index + '" id="' + escapeHtml(recordDomId('unassigned-supporting', detailId + '-' + index, index)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(detail.text || '') + '</p></div><div class="omitted-detail-actions">' + control + evidenceBlock(detail.evidenceIds, 'unassigned-' + detailId + '-' + index) + '</div></article>';
+    }).join('') + '</div></section>';
+  }
+
   function omittedDetailsPanel(discussion) {
     var grouped = (discussion || []).map(function (topic, topicIndex) {
       var rows = ['points', 'decisions', 'openQuestions'].flatMap(function (field) {
@@ -1160,14 +1182,16 @@
       });
       return { topic:topic, topicIndex:topicIndex, rows:rows };
     }).filter(function (group) { return group.rows.length; });
-    var count = grouped.reduce(function (total, group) { return total + group.rows.length; }, 0);
+    var unassigned = unassignedSupportingDetailsPanel(discussion);
+    var pool = (state.draft && state.draft.unassignedSupportingDetails) || [];
+    var count = grouped.reduce(function (total, group) { return total + group.rows.length; }, 0) + (Array.isArray(pool) ? pool.length : 0);
     if (!count) return '';
     return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Review additional details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details were left out of the draft. Check whether anything should be included.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
       return '<section class="omitted-topic"><h3>' + escapeHtml(group.topic.topic || 'Untitled topic') + '</h3><div class="omitted-detail-list">' + group.rows.map(function (row) {
         var detailId = row.detail.id || (group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex);
-        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(row.detail.text || '') + '</p></div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
+        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(row.detail.text || '') + '</p>' + (row.detail.placementStatus === 'unresolved' ? '<p class="muted">Placement needs review.</p>' : '') + '</div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
       }).join('') + '</div></section>';
-    }).join('') + '</div></div></details>';
+    }).join('') + unassigned + '</div></div></details>';
   }
 
   // Offered only when there is somewhere to merge to.
@@ -2155,7 +2179,7 @@
 
   // Stages the server can finish on its own, and the fields each one owns.
   var BACKGROUND_STAGES = {
-    discussion: ['discussion'],
+    discussion: ['discussion', 'unassignedSupportingDetails'],
     actions: ['actions'],
     summary: ['executiveSummary', 'meetingObjectives']
   };
@@ -2171,7 +2195,8 @@
 
   function stageContentKey(draft, stage) {
     return BACKGROUND_STAGES[stage].map(function (field) {
-      return JSON.stringify(draft && draft[field] != null ? draft[field] : null);
+      var fallback = field === 'unassignedSupportingDetails' ? [] : null;
+      return JSON.stringify(draft && draft[field] != null ? draft[field] : fallback);
     }).concat([stageGeneratedAt(draft, stage)]).join('|');
   }
 
@@ -2180,7 +2205,8 @@
       return Boolean(String((draft && draft.executiveSummary) || '').trim())
         || Boolean(((draft && draft.meetingObjectives) || []).length);
     }
-    return Boolean(((draft && draft[stage]) || []).length);
+    return Boolean(((draft && draft[stage]) || []).length)
+      || (stage === 'discussion' && Boolean(((draft && draft.unassignedSupportingDetails) || []).length));
   }
 
   // Nothing to look at and no run behind it: the tab holds nothing here.
@@ -2331,6 +2357,7 @@
       details: state.draft.details,
       steer: state.draft.steer || '',
       discussion: state.draft.discussion,
+      unassignedSupportingDetails: state.draft.unassignedSupportingDetails || [],
       actions: state.draft.actions,
       executiveSummary: state.draft.executiveSummary || '',
       meetingObjectives: state.draft.meetingObjectives || [],
@@ -3102,7 +3129,39 @@
     }
   });
 
+  document.getElementById('discussionScreen').addEventListener('change', function (event) {
+    var destination = event.target.closest('[data-supporting-destination]');
+    if (!destination) return;
+    var row = destination.closest('[data-unassigned-supporting-row]');
+    var button = row && row.querySelector('[data-file-supporting]');
+    if (button) button.disabled = !destination.value;
+  });
+
   document.getElementById('discussionScreen').addEventListener('click', function (event) {
+    var fileDetail = event.target.closest('[data-file-supporting]');
+    if (fileDetail) {
+      if (!state.draft) return;
+      var unassignedRow = fileDetail.closest('[data-unassigned-supporting-row]');
+      var destination = unassignedRow && unassignedRow.querySelector('[data-supporting-destination]');
+      var parts = destination && destination.value.split(':');
+      if (!parts || parts.length !== 3 || !/^(points|decisions|openQuestions)$/.test(parts[1])) return;
+      readDiscussion();
+      var topic = (state.draft.discussion || [])[Number(parts[0])];
+      var parent = topic && (topic[parts[1]] || [])[Number(parts[2])];
+      var pool = state.draft.unassignedSupportingDetails || [];
+      var poolIndex = Number(fileDetail.dataset.fileSupporting);
+      var detail = pool[poolIndex];
+      if (!parent || !String(parent.text || '').trim() || !detail) return;
+      var filedDetail = Object.assign({}, detail, { reviewerAuthored: true });
+      delete filedDetail.placementStatus;
+      delete filedDetail.placementReason;
+      parent.supportingDetails = (parent.supportingDetails || []).concat([filedDetail]);
+      pool.splice(poolIndex, 1);
+      markUndoStep('file additional detail', '');
+      renderDiscussion();
+      scheduleSave();
+      return;
+    }
     var toggleAll=event.target.closest('[data-toggle-all-topics]');
     if(toggleAll){
       var collapseAll=toggleAll.dataset.toggleAllTopics==='collapse';
@@ -3818,7 +3877,7 @@
       setSaveStatus('Custom owner entry is kept in this tab until you finish it.', 'local-only');
       return;
     }
-    if (event.target.matches('textarea,input,select') && !event.target.closest('[data-final-editor]') && !event.target.matches('#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other]')) {
+    if (event.target.matches('textarea,input,select') && !event.target.closest('[data-final-editor]') && !event.target.matches('#includeEvidence,#transcriptFile,#mobileStepSelect,[data-add-owner],[data-owner-other],[data-supporting-destination]')) {
       markUndoStep(undoLabelForField(event.target), undoGroupKeyForField(event.target));
       readEditors();
       rememberPendingActions();

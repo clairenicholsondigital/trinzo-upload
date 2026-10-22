@@ -890,21 +890,33 @@ function normalisePoint(value, units, prefix, index, options = {}) {
   const supportingDetails = (Array.isArray(candidate.supportingDetails) ? candidate.supportingDetails : [])
     .map((detail, detailIndex) => {
       const source = typeof detail === 'string' ? { text: detail } : (detail || {});
-      const detailText = text(source.text || source.point || source.value, 1600);
+      // Filing retained context is a reviewer operation. Do not truncate a
+      // complete review-only detail when it is moved under a chosen point.
+      const detailText = options.preserveReviewerEdits === true && source.reviewerAuthored === true
+        ? String(source.text || source.point || source.value || '').trim()
+        : text(source.text || source.point || source.value, 1600);
       if (!detailText) return null;
       const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds, { meetingDate: options.meetingDate });
+      if (options.preserveReviewerEdits === true && source.reviewerAuthored === true) {
+        const validSuppliedIds = [...new Set((Array.isArray(source.evidenceIds) ? source.evidenceIds : [])
+          .map(id => text(id, 30)).filter(id => evidenceContextFor(units).known.has(id)))];
+        if (validSuppliedIds.length) detailEvidence.evidenceIds = validSuppliedIds;
+      }
       const detailFlags = [...new Set((Array.isArray(source.reviewFlagIds) ? source.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))];
       const detailId = text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex);
       return {
         id: detailId,
         ...reviewerProvenance(source, options),
         ...reviewerMergeHistory(source, 'mergedFromIds', detailId, options),
+        ...(source.placementStatus === 'unresolved' ? {
+          placementStatus: 'unresolved', placementReason: text(source.placementReason, 100)
+        } : {}),
         text: detailText,
         evidenceIds: detailEvidence.evidenceIds,
         // A context line keeps its flag, so the flag can point at it.
         ...(detailFlags.length ? { reviewFlagIds: detailFlags } : {})
       };
-    }).filter(Boolean).slice(0, 50);
+    }).filter(Boolean).slice(0, options.preserveReviewerEdits === true ? undefined : 50);
   return {
     id: pointId,
     ...reviewerProvenance(candidate, options),
