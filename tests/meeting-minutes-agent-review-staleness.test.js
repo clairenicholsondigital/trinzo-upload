@@ -47,7 +47,7 @@ function baseDraft() {
   };
 }
 
-async function invoke(endpoint, body = {}) {
+async function invoke(endpoint, body = {}, expectedStatus = 200) {
   const route = router.stack.find((layer) => layer.route?.path === `/meeting-minutes-agent/drafts/:draftId/${endpoint}`).route;
   const response = {
     statusCode: 200,
@@ -58,7 +58,7 @@ async function invoke(endpoint, body = {}) {
     params: { draftId: savedDraft.draftId }, authUser: { userId: 'reviewer' },
     body: { revision: savedDraft.revision, ...body }
   }, response);
-  assert.equal(response.statusCode, 200, JSON.stringify(response.body));
+  assert.equal(response.statusCode, expectedStatus, JSON.stringify(response.body));
   return response.body;
 }
 
@@ -99,6 +99,60 @@ for (const stage of ['actions', 'discussion']) {
     assert.deepEqual(savedDraft[stage], before);
     assert.deepEqual(savedDraft.staleStages, stage === 'actions' ? ['summary'] : ['actions', 'summary']);
   });
+
+  for (const review of [
+    { label: 'accepting the remaining suggestion', decision: 'accept', applies: true },
+    { label: 'rejecting the remaining suggestion', decision: 'reject', applies: false },
+    { label: 'automatically accepting the remaining suggestion', decision: 'accept', automatic: true, applies: true },
+    { label: 'automatically reviewing an uncertain remaining suggestion', decision: 'accept', automatic: true, applies: false }
+  ]) {
+    test(`${review.label} after undo discards the old ${stage} redo branch`, async () => {
+      savedDraft = baseDraft();
+      savedDraft[stage].push(stage === 'actions'
+        ? { ...savedDraft.actions[0], id: 'supplier-action', action: 'Review the supplier agreement.' }
+        : { ...savedDraft.discussion[0], id: 'supplier-topic', topic: 'Supplier agreement',
+          points: [{ id: 'supplier-point', text: 'The supplier agreement needs review.' }] });
+      const original = structuredClone(savedDraft[stage]);
+      const remainingEdit = stage === 'actions'
+        ? { ...original[1], action: 'Review the updated supplier agreement.' }
+        : { ...original[1], points: [{ ...original[1].points[0], text: 'The updated supplier agreement needs review.' }] };
+      savedDraft.pendingProposal = { stage, changes: [
+        { id: 'first', type: 'modify', before: original[0], after: editedRows(original)[0],
+          beforeIndex: 0, index: 0, selected: true },
+        { id: 'remaining', type: 'modify', before: original[1], after: remainingEdit,
+          beforeIndex: 1, index: 1, selected: review.applies }
+      ] };
+      savedDraft.reviewFlags = [{ id: 'proposal-review-remaining', kind: 'uncertain_fact',
+        status: 'open', message: 'Check the supplier agreement wording.', evidenceIds: [] }];
+
+      await invoke('proposal', { decision: 'accept', changeIds: ['first'] });
+      const undone = await invoke('undo');
+      assert.deepEqual(savedDraft[stage], original);
+      assert.deepEqual(savedDraft.pendingProposal.changes.map(change => change.id), ['remaining']);
+      assert.equal(savedDraft.redoHistory.length, 1);
+      assert.ok(undone.draft.lastRedo, 'undo must expose the original redo before the new decision');
+
+      const reviewed = await invoke('proposal', {
+        decision: review.decision, acceptAll: true, automatic: review.automatic
+      });
+      assert.deepEqual(savedDraft[stage].map(({ timingDecision, ...row }) => row),
+        review.applies ? [original[0], remainingEdit] : original);
+      assert.equal(savedDraft.pendingProposal, null);
+      assert.deepEqual(savedDraft.redoHistory, [], 'a new review decision must discard the old future');
+      assert.equal(reviewed.draft.lastRedo, null, 'the response must clear the client redo control');
+      const decided = structuredClone(savedDraft);
+      const redo = await invoke('redo', {}, 409);
+      assert.equal(redo.error, 'There is nothing to redo.');
+      assert.deepEqual(savedDraft, decided, 'a stale redo request must preserve the new decision and revision');
+
+      const decidedSnapshot = router.stagedEvaluation.meetingAgentReviewSnapshot(savedDraft);
+      await invoke('undo');
+      assert.deepEqual(savedDraft[stage], original);
+      await invoke('redo');
+      assert.deepEqual(router.stagedEvaluation.meetingAgentReviewSnapshot(savedDraft), decidedSnapshot,
+        'the new review decision must retain its own normal undo/redo history');
+    });
+  }
 }
 
 test('undoing a complete review snapshot restores its coherent content and freshness', async () => {

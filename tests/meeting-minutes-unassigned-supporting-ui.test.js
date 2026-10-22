@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
+const V = require('../utils/meetingMinutesAgentV2');
 
 const ROOT = path.resolve(__dirname, '..');
 const LONG_DETAIL = 'Review <img id="unsafe-detail" src=x onerror="window.unsafe=true"> & "context". '
@@ -58,7 +59,13 @@ async function fixture(initial = draft()) {
     if (req.body.revision !== saved.revision) return res.status(409).json({
       ok: false, error: 'Updated in background', currentDraft: saved
     });
-    saved = { ...saved, ...req.body, revision: saved.revision + 1, updatedAt: new Date().toISOString() };
+    // Exercise the production editor-save normalizer: a spread-only mock can
+    // hide truncation when retained context becomes a main discussion point.
+    const normalized = V.normaliseAgentResult({ ...saved, ...req.body }, saved.sourceUnits, '', {
+      enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true
+    });
+    saved = { ...saved, ...req.body, discussion: normalized.discussion,
+      revision: saved.revision + 1, updatedAt: new Date().toISOString() };
     res.json({ ok: true, draft: saved });
   });
   const server = await new Promise((resolve) => {
@@ -87,8 +94,28 @@ async function openPool(page) {
   return page.locator('[data-unassigned-supporting-row="0"]');
 }
 
-test('an unfiled detail stays escaped, complete and excluded until explicitly filed then promoted', { timeout: 90000 }, async () => {
-  const f = await fixture();
+test('filing, promotion and demotion retain complete context and merge history through real save normalization', { timeout: 90000 }, async () => {
+  const initial = draft();
+  const history = ['earlier-context', 'T9999', 'stage_2_human_confirmation'];
+  initial.unassignedSupportingDetails[0].mergedFromIds = history;
+  const warning = { id: 'review-1', kind: 'uncertain_fact', stage: 'discussion', status: 'open',
+    message: 'Check the qualification against the source.', evidenceIds: ['T0002'] };
+  initial.reviewFlags = [warning];
+  const f = await fixture(initial);
+  function assertRetainedRecord() {
+    const saved = f.saved();
+    const rows = saved.discussion.flatMap((topic) => ['points', 'decisions', 'openQuestions']
+      .flatMap((field) => topic[field].flatMap((item) => [item, ...(item.supportingDetails || [])])))
+      .concat(saved.unassignedSupportingDetails);
+    const matches = rows.filter((item) => item.id === 'unfiled-1');
+    assert.equal(matches.length, 1, 'the same retained record occurs exactly once');
+    assert.equal(matches[0].text, LONG_DETAIL);
+    assert.deepEqual(matches[0].evidenceIds, ['T0002']);
+    assert.deepEqual(matches[0].reviewFlagIds, ['review-1']);
+    assert.deepEqual(matches[0].mergedFromIds, history);
+    assert.equal(matches[0].reviewerAuthored, true);
+    assert.deepEqual(saved.reviewFlags, [warning], 'conversions keep the original source warning open');
+  }
   try {
     const { page } = f;
     let row = await openPool(page);
@@ -122,6 +149,8 @@ test('an unfiled detail stays escaped, complete and excluded until explicitly fi
     assert.deepEqual(detail.evidenceIds, ['T0002']);
     assert.deepEqual(detail.reviewFlagIds, ['review-1']);
     assert.equal(detail.reviewerAuthored, true);
+    assert.deepEqual(detail.mergedFromIds, history);
+    assertRetainedRecord();
     assert.equal(detail.placementStatus, undefined);
     assert.equal(detail.placementReason, undefined);
     assert.equal(body.staleStages.length, 0, 'filing retained context does not change main minutes');
@@ -142,8 +171,77 @@ test('an unfiled detail stays escaped, complete and excluded until explicitly fi
     assert.equal(f.saved().discussion[1].points.at(-1).text, LONG_DETAIL);
     assert.equal(f.saved().discussion[1].points.at(-1).reviewerAuthored, true);
     assert.deepEqual(f.saved().unassignedSupportingDetails, []);
+    assertRetainedRecord();
+    await page.reload(); await settled(page);
+    assert.equal(await page.locator('[data-record-field="points"][data-topic-index="1"][data-item-index="1"]').inputValue(), LONG_DETAIL);
+    assertRetainedRecord();
+
+    const promotedRow = page.locator('[data-record-row][data-row-topic="1"][data-row-field="points"][data-row-index="1"]');
+    await promotedRow.locator('.record-menu > summary').click();
+    await Promise.all([
+      page.waitForResponse((res) => res.request().method() === 'PATCH'),
+      promotedRow.locator('[data-demote-record]').click()
+    ]);
+    await settled(page);
+    assert.equal(f.saved().discussion[1].points.length, 1);
+    assert.equal(f.saved().discussion[1].decisions[0].supportingDetails[0].id, 'unfiled-1');
+    assertRetainedRecord();
+    await page.reload(); await settled(page);
+    assertRetainedRecord();
+    await page.click('#omittedDetailsPanel > summary');
+    const demotedRow = page.locator('#minutes-supporting-unfiled-1');
+    assert.equal(await demotedRow.locator('.omitted-detail-copy p').textContent(), LONG_DETAIL);
+    await demotedRow.locator('.evidence-toggle').click();
+    assert.match(await demotedRow.locator('.evidence-panel').textContent(), /SOURCE <script>not executable<\/script> & original full context/);
+    assert.equal(await page.locator('#unsafe-detail').count(), 0);
     assert.deepEqual(f.errors, []);
   } finally { await f.close(); }
+});
+
+test('promotion and demotion transfer only bounded valid predecessor IDs as record history', { timeout: 90000 }, async () => {
+  const predecessors = Array.from({ length: 1000 }, (_, index) => 'predecessor-' + index);
+  const exactLimit = 'h'.repeat(220);
+  const malformed = [' previous-detail ', 'previous-detail', 'history-record', '', null, 42,
+    'bad\u0000id', 'x'.repeat(221), 'T9999', 'stage_2_human_confirmation', exactLimit, ...predecessors];
+  const expected = ['previous-detail', 'T9999', 'stage_2_human_confirmation', exactLimit, ...predecessors.slice(0, 989)];
+  for (const operation of ['promotion', 'demotion']) {
+    const initial = draft();
+    initial.unassignedSupportingDetails = [];
+    const detail = { id: 'history-record', text: 'Keep the original source qualification.',
+      evidenceIds: ['T0002'], reviewFlagIds: ['review-1'], mergedFromIds: malformed, supportingDetails: [] };
+    if (operation === 'promotion') initial.discussion[0].points[0].supportingDetails = [detail];
+    else initial.discussion[0].points.push(detail);
+    const f = await fixture(initial);
+    try {
+      const { page } = f;
+      let button;
+      if (operation === 'promotion') {
+        await page.click('#omittedDetailsPanel > summary');
+        button = page.locator('[data-promote-supporting][data-topic-index="0"][data-parent-field="points"]');
+      } else {
+        const row = page.locator('[data-record-row][data-row-topic="0"][data-row-index="1"]');
+        await row.locator('.record-menu > summary').click();
+        button = row.locator('[data-demote-record]');
+      }
+      await Promise.all([
+        page.waitForResponse((res) => res.request().method() === 'PATCH'), button.click()
+      ]);
+      await settled(page);
+      const parent = operation === 'promotion' ? f.patches.at(-1).discussion[0].points[1]
+        : f.patches.at(-1).discussion[0].points[0].supportingDetails[0];
+      assert.equal(Array.isArray(parent.mergedFromIds), true, operation + ' keeps predecessor history');
+      assert.deepEqual(parent.mergedFromIds, expected, operation + ' applies the metadata budget before sending');
+      assert.deepEqual(parent.evidenceIds, ['T0002'], 'historical IDs do not become citations');
+      assert.deepEqual(parent.reviewFlagIds, ['review-1']);
+      assert.equal(parent.reviewerAuthored, true);
+      await page.reload(); await settled(page);
+      const persisted = operation === 'promotion' ? f.saved().discussion[0].points[1]
+        : f.saved().discussion[0].points[0].supportingDetails[0];
+      assert.deepEqual(persisted.mergedFromIds, expected);
+      assert.deepEqual(persisted.evidenceIds, ['T0002']);
+      assert.deepEqual(f.errors, []);
+    } finally { await f.close(); }
+  }
 });
 
 test('a pool-only draft remains reviewable and can gain an explicit destination', { timeout: 60000 }, async () => {

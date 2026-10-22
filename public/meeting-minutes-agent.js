@@ -1145,6 +1145,17 @@
     return 'minutes-' + kind + '-' + key;
   }
 
+  // Promotion and demotion move the same record. Keep bounded predecessor
+  // history as metadata alongside its existing evidence and review links.
+  function preserveDiscussionMergeHistory(source, target) {
+    var history = Array.from(new Set((Array.isArray(source.mergedFromIds) ? source.mergedFromIds : []).slice(0, 1000)
+      .filter(function (id) { return typeof id === 'string' && id.length <= 220; })
+      .map(function (id) { return id.trim(); })
+      .filter(function (id) { return id && id !== target.id && !/[\u0000-\u001f\u007f]/.test(id); })));
+    if (history.length) target.mergedFromIds = history;
+    return target;
+  }
+
   function topicSupportingDetails(topic, topicIndex) {
     return '';
   }
@@ -3245,7 +3256,7 @@
       var targets=demoteTopic && ['decisions','openQuestions','points'].flatMap(function(field){return (demoteTopic[field]||[]).filter(function(item){return item!==demoted;});});
       if(demoted && targets && targets.length){
         var target=targets[0];
-        target.supportingDetails=(target.supportingDetails||[]).concat([{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[],reviewFlagIds:demoted.reviewFlagIds||[],reviewerAuthored:true}],demoted.supportingDetails||[]);
+        target.supportingDetails=(target.supportingDetails||[]).concat([preserveDiscussionMergeHistory(demoted,{id:demoted.id,text:demoted.text,evidenceIds:demoted.evidenceIds||[],reviewFlagIds:demoted.reviewFlagIds||[],reviewerAuthored:true})],demoted.supportingDetails||[]);
         demoteList.splice(Number(demote.dataset.itemIndex),1);
       }
     }
@@ -3254,7 +3265,7 @@
       var promoteList=promoteTopic && promoteTopic[promote.dataset.parentField];
       var parent=promoteList && promoteList[Number(promote.dataset.itemIndex)];
       var promoted=parent && (parent.supportingDetails||[]).splice(Number(promote.dataset.promoteSupporting),1)[0];
-      if(promoted) promoteTopic.points.push({id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[],reviewerAuthored:true});
+      if(promoted) promoteTopic.points.push(preserveDiscussionMergeHistory(promoted,{id:promoted.id||('promoted-'+Date.now()),text:promoted.text,evidenceIds:promoted.evidenceIds||[],reviewFlagIds:promoted.reviewFlagIds||[],supportingDetails:[],reviewerAuthored:true}));
     }
     if(moveNew){
       var sourceIndex=Number(moveNew.dataset.topicIndex);

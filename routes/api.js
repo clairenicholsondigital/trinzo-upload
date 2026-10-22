@@ -19721,6 +19721,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
       const saved = await saveMeetingAgentDraft(draft, req, {
         pendingProposal: null,
         changeHistory: history,
+        redoHistory: [],
         reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [], allIds)
       });
       return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
@@ -19758,6 +19759,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
       ])],
       pendingProposal: remainingProposal,
       changeHistory: history,
+      redoHistory: [],
       reviewFlags: automaticReview ? automaticReview.reviewFlags
         : resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [...acceptedIdSet], [])
     });
