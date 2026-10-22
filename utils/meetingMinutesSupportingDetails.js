@@ -72,6 +72,52 @@ function mergeUnassignedSupportingDetails(...collections) {
   return normalizeUnassignedSupportingDetails(collections.flatMap(rows => Array.isArray(rows) ? rows : []));
 }
 
+// Only fold a complete literal first claim into its own generated parent.
+// Paraphrases, extra evidence, warnings, descendants and reviewer choices stay.
+function foldLiteralParentSupportingRepeats(discussion = []) {
+  const { isReviewerAuthored } = require('./canonicalMinutes/state');
+  const locked = row => isReviewerAuthored(row) || row?.confirmedTopic === true
+    || /^(?:manual-|reviewer-)/.test(String(row?.id || ''));
+  const reviewerSubtree = row => locked(row) || (row?.supportingDetails || []).some(reviewerSubtree);
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const protectedWords = value => (value.match(/\b(?:not|no|never|without|except|if|unless|until|before|after|once|pending|unconfirmed|alleged|reported|apparently|probably|possibly|maybe|perhaps|roughly|approximately|around|about|trying|expected|proposed|false|incorrect|wrong|disputed|uncertain|unclear|unverified|whether|however|only|may|might|could|would|should)\b/gi) || []).map(word => word.toLowerCase()).join('|');
+  let foldedCount = 0;
+  const topics = (Array.isArray(discussion) ? discussion : []).map(topic => {
+    if (locked(topic)) return topic;
+    const next = { ...topic };
+    for (const kind of ['points', 'decisions', 'openQuestions']) {
+      next[kind] = (topic[kind] || []).map(parent => {
+        if (reviewerSubtree(parent) || kind === 'openQuestions' || (parent.reviewFlagIds || []).length) return parent;
+        const parentText = clean(parent.text);
+        const evidence = new Set(parent.evidenceIds || []);
+        let history = mergeHistoryIds(parent.mergedFromIds, parent.id);
+        const details = (parent.supportingDetails || []).filter(detail => {
+          if (!detail || Object.keys(detail).some(key => !['id', 'text', 'evidenceIds', 'reviewFlagIds', 'mergedFromIds', 'supportingDetails'].includes(key))
+            || locked(detail) || (detail.reviewFlagIds || []).length
+            || (detail.supportingDetails || []).length || !detail.id
+            || !(detail.evidenceIds || []).length
+            || !(detail.evidenceIds || []).every(id => evidence.has(id))) return true;
+          const claim = clean(detail.text).replace(/[.]$/, '');
+          const tail = parentText.slice(claim.length);
+          if (claim.split(' ').length < 8 || !parentText.startsWith(claim)
+            || !(tail === '.' || tail === '' || /^\.\s+|^, and |^; and /.test(tail))
+            || protectedWords(parentText) !== protectedWords(claim)) return true;
+          const merged = mergeHistoryIds([...history, detail.id, ...(detail.mergedFromIds || [])], parent.id);
+          // Do not truncate predecessor history in order to hide a repetition.
+          if (history.length + 1 + (detail.mergedFromIds || []).length > 1000) return true;
+          history = merged;
+          foldedCount += 1;
+          return false;
+        });
+        return details.length === (parent.supportingDetails || []).length ? parent
+          : { ...parent, supportingDetails: details, ...(history.length ? { mergedFromIds: history } : {}) };
+      });
+    }
+    return next;
+  });
+  return { discussion: topics, foldedCount };
+}
+
 function withoutRepresentedUnassignedDetails(values = [], discussion = []) {
   const records = [];
   const visit = record => {
@@ -99,5 +145,6 @@ module.exports = {
   normalizeUnassignedSupportingDetails,
   collectUnassignedSupportingDetails,
   mergeUnassignedSupportingDetails,
-  withoutRepresentedUnassignedDetails
+  withoutRepresentedUnassignedDetails,
+  foldLiteralParentSupportingRepeats
 };
