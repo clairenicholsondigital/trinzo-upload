@@ -687,15 +687,32 @@ function dropVerbatimSupporting(topics, index) {
   return topics;
 }
 
-function rehomeSupportingDetails(topics, index) {
+function rehomeSupportingDetails(topics, index, options = {}) {
   const candidates = topics.flatMap(topic => topicRows(topic).map(({ record }) => ({ topic, record })));
   // Plan from the original inventory. A child moved to a later topic must not
   // be reconsidered, duplicated or bounced back during this same pass.
   const entries = candidates.flatMap(parent => (parent.record.supportingDetails || [])
     .map(detail => ({ parent, detail })));
   const sourceUnits = [...(index?.byId?.values() || [])];
+  const reviewerSubtree = detail => isReviewerAuthored(detail)
+    || (detail.supportingDetails || []).some(reviewerSubtree);
+  const retainUnresolved = (parent, detail, reason) => {
+    // The existing collector retains the full subtree, citations, warnings and
+    // merge history. Detach only after it explicitly accepts responsibility;
+    // standalone callers without a collector must remain lossless too.
+    const handedOff = typeof options.onUnassignedSupportingDetail === 'function'
+      && options.onUnassignedSupportingDetail(detail, {
+        originalTopic: text(parent.topic.topic, 220), placementReason: reason
+      }) === true;
+    if (handedOff) {
+      parent.record.supportingDetails = (parent.record.supportingDetails || []).filter(value => value !== detail);
+    } else {
+      detail.placementStatus = 'unresolved';
+      detail.placementReason = reason;
+    }
+  };
   for (const { parent, detail } of entries) {
-    if (reviewerTopic(parent.topic) || isReviewerAuthored(parent.record) || isReviewerAuthored(detail)) continue;
+    if (reviewerTopic(parent.topic) || isReviewerAuthored(parent.record) || reviewerSubtree(detail)) continue;
     // Existing plausible filing is stronger than a longer competing sentence.
     // Do not churn accepted context merely because another row shares more words.
     const hasExplicitTarget = [detail.mergeTarget, detail.targetId, detail.primaryId]
@@ -705,15 +722,13 @@ function rehomeSupportingDetails(topics, index) {
     const placement = currentPlacement.target ? currentPlacement
       : selectSupportingDetailParent(detail, candidates, { sourceUnits });
     if (!placement.target) {
-      detail.placementStatus = 'unresolved';
-      detail.placementReason = placement.reason;
+      retainUnresolved(parent, detail, placement.reason);
       continue;
     }
     if (placement.target.record !== parent.record) {
       // A generated child may not mutate a reviewer-owned destination card.
       if (reviewerTopic(placement.target.topic) || isReviewerAuthored(placement.target.record)) {
-        detail.placementStatus = 'unresolved';
-        detail.placementReason = 'reviewer_target_locked';
+        retainUnresolved(parent, detail, 'reviewer_target_locked');
         continue;
       }
       parent.record.supportingDetails = (parent.record.supportingDetails || []).filter(value => value !== detail);
@@ -2213,7 +2228,7 @@ async function organiseDiscussionForReview(discussion = [], sourceUnits = [], op
   topics = await mergeRestatedRows(topics, index, options);
   if (options.preserveVisibleRows !== true) {
     topics = dropVerbatimSupporting(topics, index);
-    topics = rehomeSupportingDetails(topics, index);
+    topics = rehomeSupportingDetails(topics, index, options);
   }
   topics = sortByEvidence(topics, index);
   const after = { topics: topics.length, rows: topics.reduce((sum, topic) => sum + topicRows(topic).length, 0) };

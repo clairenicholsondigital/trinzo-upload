@@ -7,6 +7,8 @@ const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
 const V = require('../utils/meetingMinutesAgentV2');
+const { rehomeSupportingDetails, unitIndex } = require('../utils/canonicalMinutes/discussionOrganiser');
+const { collectUnassignedSupportingDetails } = require('../utils/meetingMinutesSupportingDetails');
 
 const ROOT = path.resolve(__dirname, '..');
 const LONG_DETAIL = 'Review <img id="unsafe-detail" src=x onerror="window.unsafe=true"> & "context". '
@@ -98,6 +100,19 @@ test('filing, promotion and demotion retain complete context and merge history t
   const initial = draft();
   const history = ['earlier-context', 'T9999', 'stage_2_human_confirmation'];
   initial.unassignedSupportingDetails[0].mergedFromIds = history;
+  // Start with generated context attached to an unrelated parent, then exercise
+  // the real organiser-to-review-pool handoff before any browser interaction.
+  initial.discussion[0].points[0].supportingDetails = initial.unassignedSupportingDetails;
+  initial.unassignedSupportingDetails = [];
+  rehomeSupportingDetails(initial.discussion, unitIndex(initial.sourceUnits), {
+    onUnassignedSupportingDetail(detail, context) {
+      initial.unassignedSupportingDetails.push(...collectUnassignedSupportingDetails(detail, context));
+      return true;
+    }
+  });
+  assert.equal(initial.discussion[0].points[0].supportingDetails.length, 0);
+  assert.equal(initial.unassignedSupportingDetails.length, 1);
+  assert.deepEqual(initial.unassignedSupportingDetails[0].mergedFromIds, history);
   const warning = { id: 'review-1', kind: 'uncertain_fact', stage: 'discussion', status: 'open',
     message: 'Check the qualification against the source.', evidenceIds: ['T0002'] };
   initial.reviewFlags = [warning];
