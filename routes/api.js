@@ -16322,7 +16322,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       finalDiscussion = decisionChecked.discussion;
     }
     if (correctnessChecksEnabled()) {
-      const fidelityItems = discussionFidelityCheckItems(finalDiscussion, draft.sourceUnits, { meetingDate: timingAnchor });
+      const fidelityDetails = sanitiseMeetingAgentDetails(draft.details);
+      const fidelityItems = discussionFidelityCheckItems(finalDiscussion, draft.sourceUnits, {
+        meetingDate: timingAnchor,
+        people: [...(fidelityDetails.internalAttendees || []), ...(fidelityDetails.clientAttendees || []),
+          ...(fidelityDetails.allAttendees || [])]
+      });
       const fidelityBatches = [];
       for (let index = 0; index < fidelityItems.length; index += 8) fidelityBatches.push(fidelityItems.slice(index, index + 8));
       const fidelityResults = (await Promise.all(fidelityBatches.map((batch, index) => call(
@@ -17453,6 +17458,9 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     transcript.text = corrected.text;
     const preparationStartedAt = Date.now();
     const prepared = await prepareMiniLmTranscript(transcript.text, {
+      // Preserve source-only dates/durations and their qualifications before
+      // denoising; later checks still decide which work they belong to.
+      preserveShortTemporalFragments: true,
       // Measured twice on the six real meetings (3 runs each): keeping short
       // replies lifts T733 reference commitments (18/42 -> 29/42) but costs
       // more on the golden set than it gains (actions 0.443 -> 0.348, overall

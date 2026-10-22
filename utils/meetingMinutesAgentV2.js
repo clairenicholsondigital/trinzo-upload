@@ -5636,6 +5636,10 @@ function applyDecisionCheckResults(discussion = [], items = [], results = []) {
 // generated problem and correcting transcript words are quoted verbatim.
 function discussionFidelityCheckItems(discussion = [], units = [], options = {}) {
   const items = [];
+  const temporalPeople = [...new Set([
+    ...(Array.isArray(units) ? units : []).map(unit => unit?.speaker),
+    ...(Array.isArray(options.people) ? options.people : [])
+  ].filter(person => typeof person === 'string' && person.trim()))];
   (Array.isArray(discussion) ? discussion : []).forEach((topic, topicIndex) => {
     if (isReviewerAuthored(topic)) return;
     const append = (record, path, kind, rowIndex) => {
@@ -5646,6 +5650,7 @@ function discussionFidelityCheckItems(discussion = [], units = [], options = {})
         items.push({
           id: `df${items.length + 1}`, topicIndex, kind, rowIndex, path, row,
           meetingDate: options.meetingDate || '',
+          temporalPeople,
           evidenceIds: [...new Set(record.evidenceIds || [])],
           contextCoverage: packet.coverage,
           passage: packet.units.map(unit => `[${unit.id}] ${unit.speaker}: ${unit.text}`).join('\n'),
@@ -5804,6 +5809,13 @@ function applySourceDiscussionFidelityResults(discussion = [], items = [], resul
 function applyDiscussionFidelityResults(discussion = [], items = [], results = []) {
   const indexed = indexReviewResults(items, results, ['supported', 'corrected', 'uncertain']);
   const atPath = path => path.reduce((value, key) => value?.[key], discussion);
+  const temporalContext = (item, record) => {
+    const ownIds = new Set(record?.evidenceIds || []);
+    const sourceRecords = (item.passageUnits || []).filter(unit => ownIds.has(unit.id));
+    return { people: item.temporalPeople,
+      sourceRecords, sourceContextComplete: ownIds.size > 0 && [...ownIds].every(id =>
+        sourceRecords.some(unit => unit.id === id && typeof unit.text === 'string' && unit.text.trim())) };
+  };
   const synthetic = [], mappedItems = [], sourceBySynthetic = new Map();
   for (const item of items) {
     const path = item.path || [item.topicIndex, item.kind, item.rowIndex];
@@ -5875,7 +5887,7 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
       }
     }
     if (row.verdict === 'supported') {
-      if (Temporal.temporalClaim(item.row)) {
+      if (Temporal.temporalClaim(item.row, temporalContext(item, sourceBySynthetic.get(item.topicIndex)?.record))) {
         const quote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
         const carrying = quote.valid ? (item.passageUnits || []).filter(unit => quoteText(unit.text).includes(quoteText(row.evidenceQuote))) : [];
         const supported = carrying.some(unit => Temporal.supportedByApprovedRecord(item.row,
@@ -5897,7 +5909,11 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     let changed = applied.discussion[syntheticIndex]?.points?.[0] || null;
     const state = indexed.states.get(source.item.id);
     const Temporal = require('./meetingMinutesTemporalReview');
-    if (changed && !['supported', 'corrected', 'uncertain'].includes(state.status) && Temporal.temporalClaim(source.item.row)) {
+    const verdict = indexed.byId.get(source.item.id);
+    const suppliedTemporalEvidence = verdict && ['supported', 'corrected'].includes(verdict.verdict)
+      && Object.prototype.hasOwnProperty.call(verdict, 'temporalEvidence');
+    if (changed && !['supported', 'corrected', 'uncertain'].includes(state.status)
+      && (suppliedTemporalEvidence || Temporal.temporalClaim(source.item.row, temporalContext(source.item, source.record)))) {
       const flag = normaliseFlag({ kind: 'timing',
         message: `Cannot verify the timing in "${text(source.item.row, 260)}": ${text(state.reason, 180).replace(/_/g, ' ')}. Confirm it against the cited source.`,
         evidenceIds: changed.evidenceIds || [] }, flags.length);

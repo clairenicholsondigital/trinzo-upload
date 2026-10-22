@@ -5,9 +5,54 @@ const { formatTimingLabel, isValidCalendarDate } = require('./meetingMinutesTimi
 const V = require('./meetingMinutesAgentV2');
 const Binding = require('./meetingMinutesTemporalBinding');
 
-function temporalClaim(value) {
+// Availability is not always a schedule. Keep unknown subjects and finite
+// availability predicates conservative; only a direct, static resource noun
+// phrase can avoid the additional temporal proof (ordinary fidelity still runs).
+// These are general financial, stock, property and information categories,
+// rather than names or wording from any particular meeting.
+const STATIC_AVAILABILITY_RESOURCE = /\b(?:funds?|funding|money|cash|budgets?|stock|supplies|materials?|equipment|inventory|rooms?|plots?|premises|storage|documents?|manuals?|copies|records?|information)\s+available\b/gi;
+const AVAILABILITY_SCHEDULING = /\b(?:now|soon|immediately|shortly|instantly|right away|still|yet|already|currently|presently|recently|previously|formerly|temporarily|eventually|later|earlier|then|not|never|no longer|used to|will|would|shall|should|can|could|must|might|becomes?|became|becoming|remains?|has|have|had|pending|upon|following|subject to|dependent|depending|provided|providing|if|unless|while|whenever|as soon as|without|approval|approved|permission|required|contingent|awaiting|probably|possibly|perhaps|maybe|hopefully|expected|provisional|uncertain|unclear|unconfirmed|unresolved)\b|\bavailable\s+(?:from|on|upon|with|only if)\b|[?？]/i;
+
+function staticResourceAvailability(value, options) {
+  const body = String(value || '');
+  if (/\bavailability\b/i.test(body) || AVAILABILITY_SCHEDULING.test(body)) return false;
+  const available = [...body.matchAll(/\bavailable\b/gi)];
+  if (!available.length) return false;
+  const resources = [...body.matchAll(STATIC_AVAILABILITY_RESOURCE)];
+  if (resources.length !== available.length) return false;
+  const people = (Array.isArray(options?.people) ? options.people : [])
+    .filter(person => typeof person === 'string' && person.trim())
+    .map(person => person.trim().toLocaleLowerCase().replace(/[’‘]/g, "'"));
+  return resources.every(match => {
+    // Only aliases actually supplied by the source/details are used. An
+    // unrecognised noun never becomes a resource merely because nobody in the
+    // attendee list matches it.
+    const local = body.slice(Math.max(0, match.index - 100), match.index + match[0].length)
+      .toLocaleLowerCase().replace(/[’‘]/g, "'");
+    // A resource as the last conjunct does not establish that the complete
+    // subject is non-personal ("staff and equipment available"). Leave mixed
+    // or otherwise coordinated subjects to the conservative default.
+    if (/\b(?:and|or)\b/.test(local.split(/[.;:!?]/).pop())) return false;
+    return !people.some(person => {
+      const at = local.lastIndexOf(person);
+      return at >= 0 && (at === 0 || !/[\p{L}\p{N}]/u.test(local[at - 1]))
+        && !/[\p{L}\p{N}]/u.test(local[at + person.length] || '');
+    });
+  });
+}
+
+function temporalClaim(value, options = {}) {
   if (seasonProfile(value).length) return true;
-  return /\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midday|midnight|night|(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:st|nd|rd|th)?\s+(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?)|before|after|within|until|once|when|deadline|target|preferred|fallback|contingency|available|availability)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b/i.test(String(value || ''));
+  const body = String(value || '');
+  if (/\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midday|midnight|night|(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:st|nd|rd|th)?\s+(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?)|before|after|within|until|once|when|deadline|target|preferred|fallback|contingency)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b/i.test(body)) return true;
+  if (!/\b(?:available|availability)\b/i.test(body)) return false;
+  if (!staticResourceAvailability(body, options)) return true;
+  if (options.sourceContextComplete === false) return true;
+  // A static-looking compression must not erase the real schedule or
+  // prerequisite in its own source. Callers supply original cited records,
+  // never merely nearby context, and speaker labels are not source text.
+  return (Array.isArray(options.sourceRecords) ? options.sourceRecords : []).some(record =>
+    temporalClaim(typeof record === 'string' ? record : record?.text, { people: options.people }));
 }
 
 function seasonProfile(value) {
@@ -257,6 +302,13 @@ function approvedRecords(current = {}) {
 
 function summaryTemporalCheckItems(values = {}, current = {}, _sourceUnits = [], options = {}) {
   const authority = approvedRecords(current);
+  const list = value => Array.isArray(value) ? value : [];
+  const people = [...new Set([
+    ...list(_sourceUnits).map(unit => unit?.speaker),
+    ...list(options.people), ...list(current.details?.allAttendees),
+    ...list(current.details?.internalAttendees), ...list(current.details?.clientAttendees),
+    ...list(current.actions).flatMap(action => list(action?.owners))
+  ].filter(person => typeof person === 'string' && person.trim()))];
   const words = value => new Set(V.contentTokens(value));
   const items = [];
   const append = (row, locator, reviewerAuthored = false) => {
@@ -264,8 +316,9 @@ function summaryTemporalCheckItems(values = {}, current = {}, _sourceUnits = [],
     const ranked = authority.map((record, index) => ({ record, index,
       score: [...words(record.text)].filter(word => target.has(word)).length }))
       .sort((a, b) => b.score - a.score || a.index - b.index);
-    if (!temporalClaim(row) && !ranked.some(item => item.score >= 2
-      && (temporalProfile(item.record.text).hedged || temporalProfile(item.record.text).dependencies.length)
+    if (!temporalClaim(row, { people }) && !ranked.some(item => item.score >= 2
+      && (temporalProfile(item.record.text).hedged || temporalProfile(item.record.text).dependencies.length
+        || /\b(?:available|availability)\b/i.test(row) && temporalClaim(item.record.text, { people }))
       && sameTemporalWork(row, item.record.text))) return;
     const retained = ranked.filter(item => item.score > 0).slice(0, 12).sort((a, b) => a.index - b.index).map(item => item.record);
     items.push({ id: `st${items.length + 1}`, ...locator, row,
