@@ -21,6 +21,9 @@ const {
 const { extractTextFromUpload } = require('../utils/transcript');
 const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
 const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
+const { captureSemanticPolicy, normaliseSemanticPolicy, semanticPolicyForRun, semanticPolicyForFingerprint } = require('../utils/meetingMinutesSemanticPolicy');
+const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
+const { validateReconciliationReceipt, rebindReconciliationReceipt } = require('../utils/canonicalMinutes/actionSemanticReconciliation');
 const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
 const { preserveCopiedReviewerContent } = require('../utils/meetingMinutesReviewedAiEdits');
 const {
@@ -495,6 +498,7 @@ function normaliseMeetingAgentGeneration(generation) {
     stage: Object.hasOwn(MEETING_AGENT_STAGE_STEP, generation.stage) ? generation.stage : 'discussion',
     status,
     bootId: meetingMinutesAgentText(generation.bootId, 80),
+    semanticPolicy: normaliseSemanticPolicy(generation.semanticPolicy),
     startedAt: meetingMinutesAgentText(generation.startedAt, 40),
     error: meetingMinutesAgentText(generation.error, 400),
     pass: meetingMinutesAgentText(generation.pass, 80),
@@ -10439,12 +10443,15 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isTopicArrangementResult = options.responseKind === 'topic_arrangement'
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.groups);
+    const isSemanticReconciliationResult = options.responseKind === 'semantic_reconciliation'
+      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Array.isArray(candidate.decisions);
     const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
     if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
       || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult
-      || isTopicArrangementResult || isTimingCheckResult) {
+      || isTopicArrangementResult || isTimingCheckResult || isSemanticReconciliationResult) {
       structured = candidate;
       break;
     }
@@ -10474,6 +10481,8 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   const topicArrangement = options.responseKind === 'topic_arrangement'
     && Array.isArray(parsedResult?.groups);
   const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
+  const semanticReconciliation = options.responseKind === 'semantic_reconciliation'
+    && Array.isArray(parsedResult?.decisions);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
       && !timingCheck
@@ -10481,6 +10490,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
       && !anchoredDiscussionDiscovery
       && !anchoredActionDiscovery
       && !topicArrangement
+      && !semanticReconciliation
       && (!Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)))) {
     const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
     error.statusCode = 502;
@@ -10918,6 +10928,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
         paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass
       });
+      if (typeof options.onResult === 'function') await options.onResult(freshResult, attemptInfo);
       const transformedResult = typeof options.transformResult === 'function'
         ? options.transformResult(freshResult) : freshResult;
       const result = accumulatedResult && typeof options.combineResults === 'function'
@@ -11265,6 +11276,7 @@ function meetingAgentStageInputFingerprint(draft = {}, stage = '') {
   const input = {
     timingPolicyVersion: TIMING_POLICY_VERSION,
     timingContext: meetingAgentPromptDetails(draft).timingContext,
+    semanticPolicy: semanticPolicyForFingerprint(draft),
     stage,
     transcript: draft.transcriptSha256 || '',
     prepared: crypto.createHash('sha256').update(preparedTranscript).digest('hex'),
@@ -11377,6 +11389,14 @@ function meetingAgentStageHasContent(draft = {}, stage = '') {
 // reviewer who uploaded and came back later saw nothing, and a restart threw
 // the work away. Filling an empty stage is safe because there is nothing of
 // theirs to overwrite; anything else still waits to be adopted.
+function meetingAgentUntouchedSpeculationChanges(fresh = {}, stage = '', input = {}) {
+  const { currentStep: _step, selectedStep: _selected, ...changes } = input;
+  // Speculative publication is still generated admission. It needs the same
+  // occurrence allocation and exact proof rebinding as a foreground run.
+  return stage === 'actions' ? admitMeetingAgentGeneratedActionChanges(fresh, changes,
+    `${fresh.draftId || ''}:${changes.qualityState?.actions?.completedAt || ''}:speculation`) : changes;
+}
+
 async function persistUntouchedSpeculation(draftId, userId, stage, result, fingerprint) {
   if (!result || !result.changes) return false;
   try {
@@ -11389,7 +11409,7 @@ async function persistUntouchedSpeculation(draftId, userId, stage, result, finge
       if (meetingAgentStageHasContent(fresh, stage)) return false;
       if (meetingAgentStageInputFingerprint(fresh, stage) !== fingerprint) return false;
       // Never move the reviewer: the stage they are on is their business.
-      const { currentStep: _step, selectedStep: _selected, ...changes } = result.changes || {};
+      const changes = meetingAgentUntouchedSpeculationChanges(fresh, stage, result.changes);
       const saved = await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
         ...changes,
         staleStages: meetingAgentStaleStagesAfterGeneration(fresh, fresh, stage, changes)
@@ -11434,7 +11454,8 @@ function startStageSpeculation(draft = {}, userId = '', options = {}) {
     progress: { pass: 'starting', message: 'Preparing independent quality checks…', completedPasses: [], callTimings: [], degradedSources: [] },
     preview: null, passCache: null, result: null, error: null, promise: null
   };
-  const speculativeDraft = { ...draft, generation: null };
+  const speculativeDraft = { ...draft, generation: null,
+    _semanticPolicy: semanticPolicyForFingerprint(draft) };
   entry.promise = meetingAgentCallContext.run({ background: true, draftId, stage }, () =>
     generateHybridMeetingAgentStage(speculativeDraft, stage, {
       onProgress: async (progress) => { entry.progress = { ...entry.progress, ...progress }; },
@@ -11517,6 +11538,26 @@ function meetingAgentWithoutDanglingFlagRefs(records = [], flagIds = new Set()) 
   return (Array.isArray(records) ? records : []).map(clean);
 }
 
+function normaliseMeetingAgentQualityState(qualityState = {}) {
+  // Source witnesses, hashes, cache packets and receipt originals are immutable
+  // evidence. They must never pass through prose/glossary correction walkers.
+  const source = qualityState && typeof qualityState === 'object' ? qualityState : {};
+  const prose = { ...source };
+  const protectedStates = new Map();
+  for (const stage of ['discussion', 'actions', 'summary']) {
+    if (source[stage] && Object.hasOwn(source[stage], 'semanticReconciliation')) {
+      const { semanticReconciliation, ...rest } = source[stage];
+      prose[stage] = rest;
+      protectedStates.set(stage, semanticReconciliation);
+    }
+  }
+  const normalised = normaliseMeetingAgentKnownTermsDeep(prose);
+  for (const [stage, semanticReconciliation] of protectedStates) {
+    normalised[stage] = { ...normalised[stage], semanticReconciliation };
+  }
+  return normalised;
+}
+
 function meetingAgentDraftPayload(draft = {}) {
   draft = meetingAgentWithLegacyDateReview(normaliseMeetingAgentMinuteNumbers(draft));
   const payloadFlags = reconcileMeetingAgentOrphanFlags(
@@ -11549,7 +11590,7 @@ function meetingAgentDraftPayload(draft = {}) {
     candidateLedger: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.candidateLedger) ? draft.candidateLedger.slice(0, 1200) : []),
     passProvenance: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.passProvenance) ? draft.passProvenance.slice(-40) : []),
     passCache: normaliseMeetingAgentPassCache(draft.passCache),
-    qualityState: normaliseMeetingAgentKnownTermsDeep(draft.qualityState && typeof draft.qualityState === 'object' ? draft.qualityState : {}),
+    qualityState: normaliseMeetingAgentQualityState(draft.qualityState),
     generation: normaliseMeetingAgentGeneration(draft.generation),
     currentStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(draft.currentStep || 0))),
     selectedStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP,
@@ -12235,7 +12276,7 @@ function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed
 // deliverables sound alike.  This is deliberately not an extractor: it can
 // only restore a row already present in the approved, display-eligible set,
 // and only when no strict equivalent remains in the finished list.
-function reconcileFinalApprovedActions(published = [], approved = []) {
+function reconcileFinalApprovedActions(published = [], approved = [], options = {}) {
   const actions = [...(Array.isArray(published) ? published : [])];
   const restored = [];
   const representedReviewerOccurrences = new Set();
@@ -12255,6 +12296,12 @@ function reconcileFinalApprovedActions(published = [], approved = []) {
       }
       continue;
     }
+    // New source-bound semantic reconciliation supplies exact, immutable
+    // original-to-final receipts. No raw-ID skip list: changed wording, source,
+    // timing or metadata invalidates the receipt and work is restored normally.
+    const semanticallyRepresented = Array.isArray(options.receipts) && actions.some(existing =>
+      options.receipts.some(receipt => validateReconciliationReceipt(receipt, record, existing, options.sourceUnits || [])));
+    if (semanticallyRepresented) continue;
     // Use the same directional, lossless variant proof as the final deduper.
     // If its survivor needs an approved row's extra detail, enrich that single
     // instruction rather than restoring a second wording of the same task.
@@ -14881,14 +14928,25 @@ function isPersonalErrandAction(value = '') {
   return PERSONAL_ERRAND_ACTION.test(meetingMinutesAgentText(value, 400));
 }
 
-function removePublishedActionProposalDuplicates(proposal = {}, published = []) {
+function semanticReceiptCoversActionProposal(record = {}, published = [], options = {}) {
+  if (!Array.isArray(options.receipts) || isReviewerAuthored(record)) return false;
+  // Only an unchanged original covered by an exact CURRENT survivor qualifies.
+  // Identity differences at generated admission never grant an ID-wide exemption.
+  return options.receipts.some(receipt => receipt?.original
+    && actionProvenanceSignature(record) === actionProvenanceSignature(receipt.original)
+    && published.some(survivor => validateReconciliationReceipt(receipt, receipt.original,
+      survivor, options.sourceUnits || [])));
+}
+
+function removePublishedActionProposalDuplicates(proposal = {}, published = [], options = {}) {
   const publishedRows = Array.isArray(published) ? published : [];
   return {
     ...proposal,
     changes: (Array.isArray(proposal?.changes) ? proposal.changes : []).filter((change) => {
       if (change?.type !== 'add' || !change.after?.action) return true;
       if (isPersonalErrandAction(change.after.action)) return false;
-      return !publishedRows.some((record) => publishedActionCoversProposal(record, change.after));
+      return !semanticReceiptCoversActionProposal(change.after, publishedRows, options)
+        && !publishedRows.some((record) => publishedActionCoversProposal(record, change.after));
     })
   };
 }
@@ -15346,8 +15404,94 @@ async function verifyMeetingAgentSummaryTiming(draft, values, call) {
   return applySummaryTemporalCheckResults(values, items, results, options);
 }
 
+async function finishMeetingAgentGeneratedStage(result, draft, stage, options = {}) {
+  // Bind witnesses to the exact prepared-source schema persisted by payload(),
+  // including legacy callers lacking default source fields. Raw transcript
+  // storage remains separate and is never rewritten by this boundary.
+  draft = { ...draft, sourceUnits: normaliseSourceUnits(draft.sourceUnits) };
+  let cleaned = cleanGeneratedMeetingAgentResult(result, stage);
+  const shadowOriginal = cleaned;
+  const policy = semanticPolicyForRun(draft, options.semanticPolicy);
+  const previousSemantic = cleaned?.changes?.qualityState?.[stage]?.semanticReconciliation
+    || draft.qualityState?.[stage]?.semanticReconciliation;
+  if (policy.mode === 'off' && ['actions', 'discussion'].includes(stage)
+    && Array.isArray(cleaned?.changes?.[stage]) && previousSemantic) {
+    // Legacy generation can omit qualityState. Retain its predecessor only as
+    // inactive recovery history; it cannot authorize deletion in this new run.
+    const qualityState = { ...(draft.qualityState || {}), ...(cleaned.changes.qualityState || {}) };
+    cleaned = { ...cleaned, changes: { ...cleaned.changes, qualityState: { ...qualityState,
+      [stage]: { ...(qualityState[stage] || {}), semanticReconciliation: { ...previousSemantic,
+        applied: false, publishedApplied: false, mode: 'off', supersededByPolicyOff: true,
+        previousPolicy: previousSemantic.previousPolicy || previousSemantic.policy, policy } }
+    } } };
+  }
+  // Freeze the same visible presentation that save/publication will expose,
+  // before creating content-bound proofs. Keep source and receipt metadata raw.
+  if (policy.mode !== 'off' && ['actions', 'discussion'].includes(stage) && cleaned?.changes?.[stage]) {
+    const numbered = normaliseMeetingAgentMinuteNumbers({ [stage]: cleaned.changes[stage] });
+    const format = value => normaliseMeetingAgentKnownTerms(normaliseDatePhrasesDeep(normalisePresentationCurrency(value)));
+    const formatRecord = (record, field) => ({ ...record, [field]: format(record[field]),
+      ...(field === 'action' && record.timing ? { timing: { ...record.timing, wording: format(record.timing.wording) } } : {}),
+      ...(Array.isArray(record.supportingDetails) ? { supportingDetails: record.supportingDetails.map(item => formatRecord(item, 'text')) } : {}) });
+    const formatted = stage === 'actions' ? numbered.actions.map(record => formatRecord(record, 'action'))
+      : numbered.discussion.map(topic => ({ ...topic, ...Object.fromEntries(['points', 'decisions', 'openQuestions']
+        .filter(key => Array.isArray(topic[key])).map(key => [key, topic[key].map(record => formatRecord(record, 'text'))])) }));
+    cleaned = { ...cleaned, changes: { ...cleaned.changes, [stage]: formatted } };
+  }
+  const reconciled = await reconcileGeneratedSemanticStage(cleaned, draft, stage, {
+    policy: semanticPolicyForRun(draft, options.semanticPolicy),
+    meetingDate: meetingAgentTimingAnchor(draft),
+    context: { details: meetingAgentPromptDetails(draft), timingPolicyVersion: TIMING_POLICY_VERSION,
+      steer: draft.steer || '', salientDetails: draft.salientDetails || [] },
+    ask: options.semanticAsk || askPowerAutomateMeetingMinutesAgentWithRetry,
+    onProgress: options.onProgress,
+    verifySurvival: reconcileFinalApprovedActions
+  });
+  if (policy.mode === 'shadow' && reconciled?.changes && shadowOriginal?.changes) {
+    reconciled.changes = { ...reconciled.changes, [stage]: shadowOriginal.changes[stage] };
+  }
+  const semantic = reconciled?.changes?.qualityState?.[stage]?.semanticReconciliation;
+  if (!semantic || policy.mode === 'off') return reconciled;
+  if (stage === 'actions' && semantic.applied && semantic.receipts?.length && reconciled.changes.pendingProposal) {
+    const proposal = reconciled.changes.pendingProposal;
+    const proofOptions = { receipts: semantic.receipts, sourceUnits: draft.sourceUnits };
+    const represented = (proposal.changes || []).filter(change => change?.type === 'add' && change.after
+      && semanticReceiptCoversActionProposal(change.after, reconciled.changes.actions, proofOptions));
+    if (represented.length) {
+      const covered = new Set(represented);
+      const remaining = proposal.changes.filter(change => !covered.has(change));
+      reconciled.changes.pendingProposal = remaining.length ? { ...proposal, changes: remaining } : null;
+      semantic.coveredProposalChanges = structuredClone(represented);
+      // The original warning state remains recoverable. Only an untouched
+      // missing-work flag for the exact represented proposal can be resolved.
+      const ids = new Set(represented.map(meetingAgentProposalReviewFlagId));
+      const isCoveredFlag = flag => ids.has(String(flag?.id || ''))
+        && flag.kind === 'possible_missed_follow_up' && meetingAgentFlagUntouched(flag);
+      const retainedFlags = [];
+      for (const target of [reconciled, reconciled.changes]) {
+        if (!Array.isArray(target.reviewFlags)) continue;
+        retainedFlags.push(...target.reviewFlags.filter(isCoveredFlag));
+        target.reviewFlags = target.reviewFlags.filter(flag => !isCoveredFlag(flag));
+      }
+      if (retainedFlags.length) semantic.coveredProposalFlags = structuredClone(retainedFlags);
+    }
+  }
+  const calls = semantic.calls || [];
+  const state = reconciled.changes.qualityState[stage];
+  const provenance = [...(reconciled.changes.passProvenance || []), ...calls].slice(-40);
+  return { ...reconciled, changes: { ...reconciled.changes,
+    passProvenance: provenance,
+    qualityState: { ...reconciled.changes.qualityState, [stage]: { ...state,
+      ...(stage === 'actions' ? { automaticCount: reconciled.changes.actions.length } : {}),
+      callPerformance: [...(state.callPerformance || []), ...meetingAgentCallPerformance(calls)],
+      telemetry: meetingAgentExecutionTelemetry(provenance.filter(item => item.stage === stage)),
+      stageElapsedMs: Number(state.stageElapsedMs || 0) + semantic.elapsedMs
+    } }
+  } };
+}
+
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
-  return cleanGeneratedMeetingAgentResult(await generateHybridMeetingAgentStageRaw(draft, stage, options), stage);
+  return finishMeetingAgentGeneratedStage(await generateHybridMeetingAgentStageRaw(draft, stage, options), draft, stage, options);
 }
 
 async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
@@ -17426,6 +17570,7 @@ async function startInitialMeetingAgentProcessing(draft, req) {
   const stage = 'discussion';
   const generation = {
     stage,
+    semanticPolicy: captureSemanticPolicy(),
     status: 'running',
     bootId: MEETING_AGENT_BOOT_ID,
     startedAt: new Date().toISOString(),
@@ -17943,7 +18088,11 @@ router.patch('/meeting-minutes-agent/drafts/:draftId/source/:unitId', requireAut
 // background worker runs the identical path. The steer is always read from the
 // draft, never the request body, for the same reason.
 async function generateMeetingAgentStage(draft, stage, instruction) {
-  return cleanGeneratedMeetingAgentResult(await generateMeetingAgentStageRaw(draft, stage, instruction), stage);
+  const result = await generateMeetingAgentStageRaw(draft, stage, instruction);
+  // Explicit edit requests remain literal proposals. Automatic consolidation
+  // belongs to fresh generation, not acceptance or editing of reviewer work.
+  return instruction ? cleanGeneratedMeetingAgentResult(result, stage)
+    : finishMeetingAgentGeneratedStage(result, draft, stage);
 }
 
 async function generateMeetingAgentStageRaw(draft, stage, instruction) {
@@ -18039,7 +18188,7 @@ const MEETING_AGENT_RETRY_MS = [5000, 15000, 30000];
 
 function publicMeetingAgentGeneration(generation) {
   if (!generation) return null;
-  const { bootId: _bootId, ...rest } = generation;
+  const { bootId: _bootId, semanticPolicy: _semanticPolicy, ...rest } = generation;
   return rest;
 }
 
@@ -18733,6 +18882,30 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
       existingActions: fresh.actions || [], reservedActions: reserved, generationKey
     }).actions : original;
   if (Array.isArray(changes.actions)) changes.actions = allocated;
+  const semantic = changes.qualityState?.actions?.semanticReconciliation;
+  if (Array.isArray(changes.actions) && semantic?.applied && semantic.receipts?.length) {
+    const bound = semantic.receipts.map(receipt => {
+      const candidates = original.map((row, index) => ({ index,
+        bound: rebindReconciliationReceipt(receipt, row, allocated[index], normaliseSourceUnits(fresh.sourceUnits)) }))
+        .filter(item => item.bound);
+      return candidates.length === 1 ? candidates[0].bound : null;
+    });
+    if (bound.some(receipt => !receipt)) {
+      // Identity admission is mandatory. An unbindable proof cannot justify
+      // deletion: recover the retained originals and allocate them normally.
+      return admitMeetingAgentGeneratedActionChanges(fresh, { ...input,
+        actions: structuredClone(semantic.original),
+        qualityState: { ...changes.qualityState, actions: { ...changes.qualityState.actions,
+          semanticReconciliation: { ...semantic, applied: false, receipts: [], ledger: [],
+            identityBinding: { complete: false },
+            unresolved: [...(semantic.unresolved || []), { reason: 'semantic_identity_binding_failed' }] }
+        } }
+      }, generationKey);
+    }
+    changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
+      semanticReconciliation: { ...semantic, receipts: bound, identityBinding: { complete: true } }
+    } };
+  }
   const proposal = changes.pendingProposal;
   if (proposal?.stage !== 'actions' || !Array.isArray(proposal.changes)) return changes;
   const additions = proposal.changes.filter(change => change.type === 'add' && change.after);
@@ -18776,6 +18949,9 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       const proposal = preselectDiscussionProposal(buildProposal('discussion', current, generated));
       changes.pendingProposal = proposal?.changes?.length ? { ...proposal, source: 'regeneration' } : null;
       delete changes.discussion;
+      const semantic = changes.qualityState?.discussion?.semanticReconciliation;
+      if (semantic) changes.qualityState.discussion = { ...changes.qualityState.discussion,
+        semanticReconciliation: { ...semantic, applied: false, publishedApplied: false, deferredToProposal: true } };
       const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
       incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
     }
@@ -18789,7 +18965,9 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       normaliseAgentResult({ actions }, fresh.sourceUnits || [], '', { enforceEvidence: false }).actions
     );
     const previousFingerprint = fresh.qualityState?.actions?.generatedFingerprint || '';
-    const reviewerEdited = current.length > 0 && (current.some(isReviewerAuthored)
+    const keptOccurrences = new Set(fresh.keptActionOccurrenceIds || []);
+    const isExplicitlyKept = row => Boolean(row?.occurrenceId && keptOccurrences.has(row.occurrenceId));
+    const reviewerEdited = current.length > 0 && (current.some(isReviewerAuthored) || current.some(isExplicitlyKept)
       || (Boolean(previousFingerprint) && asSaved(current) !== previousFingerprint));
     const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
     // What was generated last time, so a later regeneration can tell the
@@ -18805,7 +18983,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       const previousTexts = Array.isArray(fresh.qualityState?.actions?.generatedTexts) ? fresh.qualityState.actions.generatedTexts : null;
       const previousSignatures = Array.isArray(fresh.qualityState?.actions?.generatedSignatures)
         ? fresh.qualityState.actions.generatedSignatures : null;
-      const reviewerTouched = (row) => isReviewerAuthored(row)
+      const reviewerTouched = (row) => isReviewerAuthored(row) || isExplicitlyKept(row)
         || (previousSignatures ? !previousSignatures.includes(meetingAgentEditableActionSignature(row))
           : previousTexts && !previousTexts.includes(meetingMinutesAgentText(row?.action, 1600)));
       const deletedByReviewer = previousTexts
@@ -18827,6 +19005,9 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
         ? preselectActionProposal({ ...diff, changes: combined, source: 'regeneration' }, current, fresh.sourceUnits || [])
         : null;
       delete changes.actions;
+      const semantic = changes.qualityState?.actions?.semanticReconciliation;
+      if (semantic) changes.qualityState.actions = { ...changes.qualityState.actions,
+        semanticReconciliation: { ...semantic, applied: false, publishedApplied: false, deferredToProposal: true } };
       // The generated action register was not applied, so it cannot justify
       // removing a corresponding row from the reviewer's Discussion.
       delete changes.discussion;
@@ -19052,6 +19233,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requir
     }
     const generation = {
       stage,
+      semanticPolicy: captureSemanticPolicy(),
       status: 'running',
       bootId: MEETING_AGENT_BOOT_ID,
       startedAt: new Date().toISOString(),
@@ -19146,7 +19328,8 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
       error.currentDraft = draft;
       throw error;
     }
-    const result = await generateMeetingAgentStage(draft, stage, req.body?.instruction);
+    const result = await generateMeetingAgentStage({ ...draft,
+      _semanticPolicy: captureSemanticPolicy() }, stage, req.body?.instruction);
     if (instruction) {
       const before = stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
       const after = stage === 'discussion' ? result.normalised.discussion : result.normalised.actions;
@@ -19266,7 +19449,9 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     }, draft.sourceUnits, 'actions', { enforceEvidence: false }).actions;
     const reconciledActions = mergePublishedActionEvidence(publishedBase, combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
-      buildProposal('actions', reconciledActions, combined), reconciledActions
+      buildProposal('actions', reconciledActions, combined), reconciledActions,
+      { receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
+        ? draft.qualityState.actions.semanticReconciliation.receipts : [], sourceUnits: draft.sourceUnits }
     ), actionChains);
     // Never re-propose an action the reviewer deleted since it was generated.
     const generatedTexts = Array.isArray(draft.qualityState?.actions?.generatedTexts) ? draft.qualityState.actions.generatedTexts : [];
@@ -19287,7 +19472,9 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
         ...meetingAgentDerivedStaleStages(draft, { ...draft, actions: reconciledActions })
       ])],
       pendingProposal: (() => {
-        const finalProposal = removePublishedActionProposalDuplicates(proposal, reconciledActions);
+        const finalProposal = removePublishedActionProposalDuplicates(proposal, reconciledActions,
+          { receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
+            ? draft.qualityState.actions.semanticReconciliation.receipts : [], sourceUnits: draft.sourceUnits });
         return finalProposal.changes.length ? preselectActionProposal(finalProposal, reconciledActions, draft.sourceUnits) : null;
       })(),
       reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...rescueFlags, ...missedFlags])
@@ -19731,7 +19918,10 @@ router.stagedEvaluation = {
   normaliseMeetingAgentPassCache,
   meetingAgentPassCacheKey,
   generateHybridMeetingAgentStage,
+  finishMeetingAgentGeneratedStage,
   normaliseMeetingAgentDraftChanges,
+  normaliseMeetingAgentQualityState,
+  meetingAgentDraftPayload,
   meetingAgentStageInputFingerprint,
   meetingAgentStageHasContent,
   meetingAgentNextSpeculativeStage,
@@ -19739,6 +19929,7 @@ router.stagedEvaluation = {
   startStageSpeculation,
   adoptStageSpeculation,
   applyStageResultVirtually,
+  meetingAgentUntouchedSpeculationChanges,
   privateStageSpeculations,
   meetingAgentMemoryCacheState,
   clearMeetingAgentMemoryCaches,

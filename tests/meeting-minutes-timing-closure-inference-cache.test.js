@@ -76,9 +76,9 @@ function legacyFingerprint(value, stage) {
   return hash(JSON.stringify(input));
 }
 
-test('pre-inference-policy speculations cannot be adopted for actions or summaries', async () => {
+test('pre-current-policy speculations cannot be adopted for discussion, actions or summaries', async () => {
   const value = draft();
-  for (const stage of ['actions', 'summary']) {
+  for (const stage of ['discussion', 'actions', 'summary']) {
     const old = legacyFingerprint(value, stage);
     assert.notEqual(api.meetingAgentStageInputFingerprint(value, stage), old);
     const key = `${value.draftId}:${stage}`;
@@ -89,7 +89,11 @@ test('pre-inference-policy speculations cannot be adopted for actions or summari
       assert.ok(api.privateStageSpeculations.has(key));
     } finally { api.privateStageSpeculations.delete(key); }
   }
-  assert.equal(api.meetingAgentStageInputFingerprint(value, 'discussion'), legacyFingerprint(value, 'discussion'));
+  const { captureSemanticPolicy } = require('../utils/meetingMinutesSemanticPolicy');
+  const off = { ...value, _semanticPolicy: captureSemanticPolicy({ MEETING_MINUTES_AGENT_SEMANTIC_RECONCILIATION_V1: 'off' }) };
+  const on = { ...value, _semanticPolicy: captureSemanticPolicy({ MEETING_MINUTES_AGENT_SEMANTIC_RECONCILIATION_V1: 'on' }) };
+  assert.notEqual(api.meetingAgentStageInputFingerprint(off, 'discussion'), api.meetingAgentStageInputFingerprint(on, 'discussion'),
+    'discussion generation now depends on the semantic policy, while raw-response cache keys stay independent below');
 });
 
 test('private processed-action keys change while raw Microsoft response keys retain their policy', () => {
