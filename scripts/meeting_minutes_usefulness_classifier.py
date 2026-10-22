@@ -54,6 +54,49 @@ RATIONALE_OR_IMPACT = re.compile(
     re.I,
 )
 
+# A short answer can carry the only date or qualification for nearby work.
+# This recognises whole fragments only; it does not associate them with a task.
+# Opt-in callers retain the complete text, including negation and qualifications.
+_TEMPORAL_NUMBER = (
+    r"(?:\d+(?:[.,]\d+)?|a|an|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?|several|a few|a couple of)"
+)
+_TEMPORAL_DAY = r"(?:\d{1,2}(?:st|nd|rd|th)?)"
+_TEMPORAL_MONTH = r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
+_TEMPORAL_PERIOD = r"(?:(?:the )?end of )?(?:this|next|last|coming|following) (?:day|week|weekend|month|quarter|year|morning|afternoon|evening|night)"
+_TEMPORAL_BASE = (
+    rf"(?:{_TEMPORAL_PERIOD}|(?:today|tomorrow|tonight|yesterday)(?: (?:morning|afternoon|evening|night))?|"
+    r"(?:(?:this|next|last|coming|following|early|late) )?(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
+    r"(?: (?:morning|afternoon|evening|night))?|"
+    r"(?:early |late )?(?:(?:this|next|last|coming|following) )?(?:spring|summer|autumn|fall|winter)|"
+    rf"{_TEMPORAL_DAY} {_TEMPORAL_MONTH}(?: \d{{4}})?|{_TEMPORAL_MONTH}(?: {_TEMPORAL_DAY}(?:,? \d{{4}})?)?|"
+    r"(?:the )?\d{1,2}(?:st|nd|rd|th)|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4}|"
+    r"\d{1,2}:\d{2}(?:\s?[ap]m)?|\d{1,2}\s?[ap]m|"
+    rf"{_TEMPORAL_NUMBER}(?:(?: to |\s*[-–]\s*){_TEMPORAL_NUMBER})? (?:(?:working|business|calendar) )?(?:seconds?|minutes?|hours?|days?|weeks?|months?|quarters?|years?))"
+)
+_TEMPORAL_PREFIX = (
+    r"(?:oh|well|no|not|maybe|perhaps|probably|possibly|hopefully|ideally|early|late|"
+    r"around|about|approximately|roughly|only|just|at least|at most|up to|under|over|"
+    r"less than|more than|no earlier than|no later than|before|after|by|from|until|within|in|during|for|at|on)"
+)
+_TEMPORAL_SUFFIX = (
+    r"(?:only|maybe|perhaps|probably|possibly|hopefully|ideally|at the earliest|at the latest|"
+    r"or later|or earlier|at least|at most|(?:if|unless) [A-Za-z]+(?: [A-Za-z]+){0,2})"
+)
+SHORT_TEMPORAL_FRAGMENT = re.compile(
+    rf"(?:{_TEMPORAL_PREFIX}[,\s]+){{0,3}}{_TEMPORAL_BASE}(?:[,\s]+{_TEMPORAL_SUFFIX})?",
+    re.I,
+)
+
+
+def is_short_temporal_fragment(text: str) -> bool:
+    value = compact(text)
+    words = re.findall(r"[A-Za-z0-9']+", value)
+    if not 1 <= len(words) <= 5:
+        return False
+    return bool(SHORT_TEMPORAL_FRAGMENT.fullmatch(value.strip(" .!?;\"'“”‘’")))
+
 
 def compact(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
@@ -97,7 +140,7 @@ def read_transcript_file(path: Path) -> str:
     return "\n".join(paragraphs)
 
 
-def parse_transcript(text: str, source: str = "") -> list[dict]:
+def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fragments: bool = False) -> list[dict]:
     """Parse timestamped Teams turns or ``Speaker Name: speech`` turns."""
     units: list[dict] = []
     current: dict | None = None
@@ -117,7 +160,7 @@ def parse_transcript(text: str, source: str = "") -> list[dict]:
             colon_match = None
         if match:
             if current:
-                units.extend(split_unit(current))
+                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments))
             current = {
                 "source": source,
                 "line": line_no,
@@ -127,7 +170,7 @@ def parse_transcript(text: str, source: str = "") -> list[dict]:
             }
         elif colon_match:
             if current:
-                units.extend(split_unit(current))
+                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments))
             current = {
                 "source": source,
                 "line": line_no,
@@ -140,11 +183,11 @@ def parse_transcript(text: str, source: str = "") -> list[dict]:
         elif current and not re.match(r"^(?:\d+ June \d{4}|\d+m \d+s|.+ started transcription)$", line, re.I):
             current["body"] = compact(f"{current['body']} {line}")
     if current:
-        units.extend(split_unit(current))
+        units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments))
     return units
 
 
-def split_unit(turn: dict) -> list[dict]:
+def split_unit(turn: dict, *, preserve_short_temporal_fragments: bool = False) -> list[dict]:
     body = repair_missing_sentence_spaces(turn.get("body", ""))
     if not body:
         return []
@@ -152,14 +195,30 @@ def split_unit(turn: dict) -> list[dict]:
     # Transcripts frequently omit punctuation. Keep a meaningful utterance as one unit.
     if len(parts) == 1 and len(body) > 650:
         parts = [body]
+    temporal_parts = [is_short_temporal_fragment(part) for part in parts] if preserve_short_temporal_fragments else []
+    # Sentence splitting must not turn "No. Wednesday." or a later cancellation
+    # into a newly protected bare date. Keep a bounded whole turn, without
+    # guessing how its sentences relate. Longer mixed turns retain old parsing
+    # rather than exposing a new fragment without its possibly qualifying text.
+    if len(parts) > 1 and any(temporal_parts):
+        if len(re.findall(r"[A-Za-z0-9']+", body)) <= 5:
+            return [{
+                "source": turn["source"], "line": turn["line"], "unit": 0,
+                "speaker": turn["speaker"], "timestamp": turn["timestamp"],
+                "text": compact(turn.get("body", "")), "shortTemporalFragment": True,
+            }]
+        if not all(temporal_parts):
+            temporal_parts = []
     result = []
     for index, part in enumerate(parts):
         words = re.findall(r"[A-Za-z0-9']+", part)
-        if len(words) < 3:
+        temporal_fragment = bool(temporal_parts and temporal_parts[index])
+        if len(words) < 3 and not temporal_fragment:
             continue
         result.append({
             "source": turn["source"], "line": turn["line"], "unit": index,
             "speaker": turn["speaker"], "timestamp": turn["timestamp"], "text": part,
+            **({"shortTemporalFragment": True} if temporal_fragment else {}),
         })
     return result
 

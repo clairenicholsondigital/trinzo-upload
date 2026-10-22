@@ -63,9 +63,17 @@ def clean_speech_text(text: str) -> str:
 
 def render_full_name_clean_transcript(rows: list[dict]) -> str:
     return "\n".join(
-        f"{usefulness.compact(row.get('speaker', '')) or 'Speaker'}: {clean_speech_text(row.get('text', ''))}"
-        for row in rows if clean_speech_text(row.get("text", ""))
+        f"{usefulness.compact(row.get('speaker', '')) or 'Speaker'}: {prepared_unit_text(row)}"
+        for row in rows if prepared_unit_text(row)
     )
+
+
+def prepared_unit_text(row: dict) -> str:
+    # These short source fragments must retain all qualifiers. In particular,
+    # repeated negation and discourse prefixes must not be speech-cleaned away.
+    if row.get("shortTemporalFragment"):
+        return usefulness.compact(row.get("text", ""))
+    return clean_speech_text(row.get("text", ""))
 
 
 # A whole turn such as "Okay." or "Will do." is how a person accepts a
@@ -126,12 +134,45 @@ def short_reply_rows(raw_text: str, source: str) -> list[dict]:
     return rows
 
 
+def classify_source_rows(rows: list[dict], probabilities, classes, remove_threshold: float) -> list[dict]:
+    classified = []
+    for sequence, row in enumerate(rows, 1):
+        if probabilities is None:
+            predicted, _reason = usefulness.bootstrap_label(row["text"])
+            confidence = 1.0
+        else:
+            probs = probabilities[sequence - 1]
+            best = int(probs.argmax())
+            predicted = str(classes[best])
+            confidence = float(probs[best])
+        effective = "uncertain" if predicted == "remove" and confidence < remove_threshold else predicted
+        if usefulness.FORCE_REMOVE_NOISE.search(row["text"]):
+            effective = "remove"
+        if effective == "remove" and usefulness.RATIONALE_OR_IMPACT.search(row["text"]):
+            effective = "uncertain"
+        if row.get("shortTemporalFragment") and effective == "remove":
+            effective = "uncertain"
+        if row.get("shortReply"):
+            effective = "keep"
+        classified.append({
+            **row,
+            "id": f"T{sequence:04d}",
+            "sequence": sequence,
+            "cleanedText": prepared_unit_text(row),
+            "classification": effective,
+            "confidence": round(confidence, 4),
+            "restored": False,
+        })
+    return classified
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript")
     parser.add_argument("--model", required=True)
     parser.add_argument("--remove-threshold", type=float, default=0.85)
     parser.add_argument("--keep-short-replies", action="store_true")
+    parser.add_argument("--preserve-short-temporal-fragments", action="store_true")
     args = parser.parse_args()
 
     import joblib
@@ -140,7 +181,8 @@ def main() -> int:
     bundle = joblib.load(args.model)
     path = Path(args.transcript)
     raw_text = usefulness.read_transcript_file(path)
-    rows = usefulness.parse_transcript(raw_text, path.name)
+    rows = usefulness.parse_transcript(raw_text, path.name,
+                                      preserve_short_temporal_fragments=args.preserve_short_temporal_fragments)
     if rows and args.keep_short_replies:
         rows = sorted(rows + short_reply_rows(raw_text, path.name), key=lambda row: (row["line"], row.get("unit", 0)))
     if not rows:
@@ -168,32 +210,7 @@ def main() -> int:
     probabilities = classifier.predict_proba(matrix) if matrix is not None else None
     if probabilities is None:
         embedding_source = "heuristic_fallback"
-    classified = []
-    for sequence, row in enumerate(rows, 1):
-        if probabilities is None:
-            predicted, _reason = usefulness.bootstrap_label(row["text"])
-            confidence = 1.0
-        else:
-            probs = probabilities[sequence - 1]
-            best = int(probs.argmax())
-            predicted = str(classifier.classes_[best])
-            confidence = float(probs[best])
-        effective = "uncertain" if predicted == "remove" and confidence < args.remove_threshold else predicted
-        if usefulness.FORCE_REMOVE_NOISE.search(row["text"]):
-            effective = "remove"
-        if effective == "remove" and usefulness.RATIONALE_OR_IMPACT.search(row["text"]):
-            effective = "uncertain"
-        if row.get("shortReply"):
-            effective = "keep"
-        classified.append({
-            **row,
-            "id": f"T{sequence:04d}",
-            "sequence": sequence,
-            "cleanedText": clean_speech_text(row.get("text", "")),
-            "classification": effective,
-            "confidence": round(confidence, 4),
-            "restored": False,
-        })
+    classified = classify_source_rows(rows, probabilities, classifier.classes_, args.remove_threshold)
 
     kept = [row for row in classified if row["classification"] != "remove"]
     prepared = render_full_name_clean_transcript(kept)
