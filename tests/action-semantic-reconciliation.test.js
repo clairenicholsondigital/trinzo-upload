@@ -115,6 +115,164 @@ test('each exact original clause and its full operation/object mapping is requir
   }
 });
 
+test('dotted prose abbreviations cannot invent a measurement unit in source-supported action coverage', () => {
+  const actions = [row('Review the calibration guidance, e.g. the bench protocols.'),
+    row('Review the calibration guidance, for example the bench protocols.')];
+  const units = [source('I will review the calibration guidance, for example the bench protocols.')];
+  const pair = mergePair(actions, units);
+  const result = R.applyActionReconciliation(pair.packet, pair.envelope);
+  assert.equal(result.actions.length, 1, 'an abbreviation must not become an unsupported gram unit: '
+    + JSON.stringify(result.ledger.map(item => item.reasons)));
+  assert.deepEqual(pair.packet.rows.map(item => item.facets.units), [[], []]);
+  assert.ok(R.validateReconciliationReceipt(result.receipts[0], actions[0], result.actions[0], units));
+});
+
+test('abbreviation boundaries preserve attached real units, case-sensitive volumes and dotted unit products', () => {
+  for (const unit of ['g', 'mg', 'kg', 'mL', 'ML']) {
+    const packet = makePacket([row(`Send 5${unit} of reagent to Jordan.`)], [source(`I will send 5${unit} of reagent to Jordan.`)]);
+    assert.deepEqual(packet.rows[0].facets.units, [unit], unit);
+  }
+  for (const [text, expected] of [
+    ['Record the torque in N.m.', ['N', 'm']],
+    ['Record the product in g.m.', ['g', 'm']],
+    ['Send 5 mg of reagent to Jordan.', ['mg']]
+  ]) {
+    const packet = makePacket([row(text)], [source(text)]);
+    assert.deepEqual(packet.rows[0].facets.units, expected, text);
+  }
+  for (const [from, to] of [['5g', '5mg'], ['5mg', '5kg'], ['5mL', '5ML']]) {
+    const pair = mergePair([row(`Send ${from} of reagent to Jordan.`), row(`Send ${to} of reagent to Jordan.`)],
+      [source(`I will send ${from} or ${to} of reagent to Jordan.`)]);
+    const result = R.applyActionReconciliation(pair.packet, pair.envelope);
+    assert.equal(result.actions.length, 2, `${from} must not be treated as ${to}`);
+    assert.match(result.ledger[0].reasons.join(','), /units_would_change_or_be_lost/);
+  }
+});
+
+test('unknown dotted products preserve recognized component units and cannot become equivalent', () => {
+  for (const [from, to, expected] of [['H.m.', 'H.s.', [['m'], ['s']]], ['B.m.', 'B.s.', [['m'], ['s']]],
+    ['e.g.m.', 'e.g.s.', [['g', 'm'], ['g', 's']]], ['tag.e.g.', 'tag.e.s.', [['g'], ['s']]]]) {
+    const pair = mergePair([row(`Record the calibration response in ${from}`), row(`Record the calibration response in ${to}`)],
+      [source(`I will record the calibration response in ${from} and ${to}`)]);
+    const result = R.applyActionReconciliation(pair.packet, pair.envelope);
+    assert.equal(result.actions.length, 2, `${from} and ${to} must not lose their distinct unit components`);
+    assert.deepEqual(pair.packet.rows.map(item => item.facets.units), expected);
+    assert.match(result.ledger[0].reasons.join(','), /units_would_change_or_be_lost/);
+  }
+});
+
+test('abbreviation handling retains quantity, source-unit and timing safeguards', () => {
+  for (const [from, to] of [['5 g', '6 g'], ['5g', '6g']]) {
+    const pair = mergePair([row(`Send ${from} of reagent to Jordan.`), row(`Send ${to} of reagent to Jordan.`)],
+      [source(`I will send ${from} or ${to} of reagent to Jordan.`)]);
+    const result = R.applyActionReconciliation(pair.packet, pair.envelope);
+    assert.equal(result.actions.length, 2, `${from} must not be treated as ${to}`);
+  }
+  const noUnit = mergePair([row('Send 5mg of reagent to Jordan.'), row('Provide Jordan with 5mg of reagent.')],
+    [source('I will send Jordan 5 of reagent.')]);
+  assert.equal(R.applyActionReconciliation(noUnit.packet, noUnit.envelope).actions.length, 2);
+  const actions = [row('Review the calibration guidance, e.g. the bench protocols.', {
+    timing: { kind: 'target', wording: 'Monday', exactDate: '' } }),
+    row('Review the calibration guidance, for example the bench protocols.', {
+      timing: { kind: 'target', wording: 'Tuesday', exactDate: '' } })];
+  const pair = mergePair(actions, [source('I will review the calibration guidance and bench protocols Monday or Tuesday.')]);
+  assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 2);
+});
+
+test('attached decimal measurements retain the whole number rather than an interchangeable integer prefix', () => {
+  for (const quantity of ['5g', '5.2g', '5.6mg', '5.2kg', '5.2mL', '5.2ML']) {
+    const packet = makePacket([row(`Send ${quantity} of reagent to Jordan.`)], [source(`I will send ${quantity} of reagent to Jordan.`)]);
+    assert.deepEqual(packet.rows[0].facets.quantities, [quantity.match(/^[0-9.]+/)[0]], quantity);
+  }
+  const different = mergePair([row('Send 5.2g of reagent to Jordan.'), row('Send 5.6g of reagent to Jordan.')],
+    [source('I will send 5.2g or 5.6g of reagent to Jordan.')]);
+  const blocked = R.applyActionReconciliation(different.packet, different.envelope);
+  assert.equal(blocked.actions.length, 2);
+  assert.match(blocked.ledger[0].reasons.join(','), /quantities_would_change_or_be_lost/);
+  const wrongSource = mergePair([row('Send 5.6g of reagent to Jordan.'), row('Provide Jordan with 5.6g of reagent.')],
+    [source('I will send Jordan 5.2g of reagent.')]);
+  const unsupported = R.applyActionReconciliation(wrongSource.packet, wrongSource.envelope);
+  assert.equal(unsupported.actions.length, 2);
+  assert.match(unsupported.ledger[0].reasons.join(','), /quantity_without_direct_source_support/);
+  const equal = mergePair([row('Send 5.2g of reagent to Jordan.'), row('Provide Jordan with 5.2 g of reagent.')],
+    [source('I will send Jordan 5.2 g of reagent.')]);
+  assert.equal(R.applyActionReconciliation(equal.packet, equal.envelope).actions.length, 1,
+    'equivalent spacing must not weaken or block a complete quantity witness');
+});
+
+test('leading decimals are protected as complete literal quantities', () => {
+  const pair = mergePair([row('Send .5g of reagent to Jordan.'), row('Send .6g of reagent to Jordan.')],
+    [source('I will send .5g or .6g of reagent to Jordan.')]);
+  assert.deepEqual(pair.packet.rows.map(item => item.facets.quantities), [['.5'], ['.6']]);
+  assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 2);
+});
+
+test('signed amounts cannot merge with an unsigned amount of the same magnitude', () => {
+  const pair = mergePair([row('Send -5g of reagent to Jordan.'), row('Send 5g of reagent to Jordan.')],
+    [source('I will send -5g or 5g of reagent to Jordan.')]);
+  assert.deepEqual(pair.packet.rows.map(item => item.facets.quantities), [['-5'], ['5']]);
+  assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 2);
+});
+
+test('scientific notation retains its whole coefficient and signed exponent', () => {
+  for (const [from, to] of [['5e-3g', '5e-4g'], ['5e-3g', '6e-3g']]) {
+    const pair = mergePair([row(`Send ${from} of reagent to Jordan.`), row(`Send ${to} of reagent to Jordan.`)],
+      [source(`I will send ${from} or ${to} of reagent to Jordan.`)]);
+    assert.deepEqual(pair.packet.rows.map(item => item.facets.quantities), [[from.slice(0, -1)], [to.slice(0, -1)]]);
+    assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 2);
+  }
+});
+
+test('literal numeric forms retain source support and equal attached or spaced measurements', () => {
+  for (const quantity of ['.5', '-5', '5e-3', '-.5', '-5.2e-3', '5e+3', '−5']) {
+    const pair = mergePair([row(`Send ${quantity}g of reagent to Jordan.`), row(`Provide Jordan with ${quantity} g of reagent.`)],
+      [source(`I will send Jordan ${quantity} g of reagent.`)]);
+    assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 1, quantity);
+  }
+  for (const [amount, sourceAmount] of [['.5', '.6'], ['-5', '5'], ['5e-3', '5e-4'], ['5e-3', '6e-3']]) {
+    const pair = mergePair([row(`Send ${amount}g of reagent to Jordan.`), row(`Provide Jordan with ${amount} g of reagent.`)],
+      [source(`I will send Jordan ${sourceAmount} g of reagent.`)]);
+    const result = R.applyActionReconciliation(pair.packet, pair.envelope);
+    assert.equal(result.actions.length, 2, `${sourceAmount} cannot support ${amount}`);
+    assert.match(result.ledger[0].reasons.join(','), /quantity_without_direct_source_support/);
+  }
+});
+
+test('numeric signs do not erase independent range endpoints', () => {
+  for (const [amount, expected] of [['5-6', ['5', '6']], ['.5-.6', ['.5', '.6']], ['-5--6', ['-5', '-6']]]) {
+    const packet = makePacket([row(`Record a range of ${amount} g.`)], [source(`I will record a range of ${amount} g.`)]);
+    assert.deepEqual(packet.rows[0].facets.quantities, expected, amount);
+  }
+  const pair = mergePair([row('Record a range of -5--6 g.'), row('Record a range of -5--7 g.')],
+    [source('I will record a range of -5--6 g or -5--7 g.')]);
+  assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 2);
+});
+
+test('decimal backtracking protection preserves complete quantities before sentence punctuation', () => {
+  for (const quantity of ['5', '5.2']) {
+    const packet = makePacket([row(`Keep the sample count at ${quantity}.`)], [source(`I will keep the sample count at ${quantity}.`)]);
+    assert.deepEqual(packet.rows[0].facets.quantities, [quantity]);
+  }
+  const pair = mergePair([row('Keep the sample count at 5.'), row('Keep the sample count at 6.')],
+    [source('I will keep the sample count at 5 or 6.')]);
+  assert.equal(R.applyActionReconciliation(pair.packet, pair.envelope).actions.length, 2);
+});
+
+test('numbered artifact and version identifiers remain exact tokens rather than independent quantities', () => {
+  for (const [from, to] of [['CAL5mg', 'CAL6mg'], ['REV-5.2g', 'REV-5.6g'], ['v5.2', 'v5.6'],
+    ['CAL5e-3g', 'CAL5e-4g'], ['v.5', 'v.6']]) {
+    const pair = mergePair([row(`Review the ${from} calibration notes.`), row(`Review the ${to} calibration notes.`)],
+      [source(`I will review the ${from} and ${to} calibration notes.`)]);
+    for (const [index, identifier] of [from, to].entries()) {
+      assert.deepEqual(pair.packet.rows[index].facets.quantities, [], identifier);
+      assert.ok(pair.packet.rows[index].facets.identifiers.includes(identifier));
+    }
+    const result = R.applyActionReconciliation(pair.packet, pair.envelope);
+    assert.equal(result.actions.length, 2, `${from} and ${to} remain separate identifiers`);
+    assert.match(result.ledger[0].reasons.join(','), /identifiers_would_change_or_be_lost/);
+  }
+});
+
 test('source spans must identify unique unchanged units with exact offsets, quotes and source-linked owners', () => {
   const { packet, envelope: decision } = mergePair(semanticPair(), semanticSource());
   for (const mutate of [e => e.decisions[0].coverage[0].sourceSpans[0].quote = 'invented source',
