@@ -4,6 +4,113 @@ const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutes
 const { formatTimingLabel, isValidCalendarDate } = require('./meetingMinutesTiming');
 const V = require('./meetingMinutesAgentV2');
 const Binding = require('./meetingMinutesTemporalBinding');
+const { convertSpokenNumbers } = require('./spokenNumbers');
+
+const DURATION_WORD_VALUES = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const DURATION_COUNT = '(?:\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)';
+const DURATION_UNIT = '(?:(?:working|business)\\s+)?(?:days?|weeks?|months?|quarters?|years?|hours?|minutes?|seconds?)';
+const DURATION_VALUE = DURATION_COUNT + '(?:\\s*(?:to|or|[-–—])\\s*' + DURATION_COUNT + ')?\\s+' + DURATION_UNIT;
+
+// Only a comparison copy changes. The existing number parser supplies original
+// spans; numbers outside complete duration quantities/ranges stay untouched.
+function normaliseDurationQuantities(value) {
+  const source = String(value || '');
+  const converted = convertSpokenNumbers(source);
+  let delta = 0;
+  const conversions = converted.conversions.map(change => {
+    const outputStart = change.start + delta;
+    delta += change.replacement.length - (change.end - change.start);
+    return { ...change, outputStart, outputEnd: outputStart + change.replacement.length };
+  });
+  const sourcePosition = position => {
+    let difference = 0;
+    for (const change of conversions) {
+      if (position > change.outputStart && position < change.outputEnd) return null;
+      if (change.outputEnd <= position) difference += change.end - change.start - change.replacement.length;
+    }
+    return position + difference;
+  };
+  const replacements = [];
+  for (const match of converted.text.matchAll(new RegExp('\\b' + DURATION_VALUE + '\\b', 'gi'))) {
+    const end = match.index + match[0].length;
+    const touching = conversions.filter(change => change.outputStart < end && change.outputEnd > match.index);
+    if (touching.some(change => change.outputStart < match.index || change.outputEnd > end
+      || !/^\d+(?:\.\d+)?$/.test(change.replacement))) continue;
+    const start = sourcePosition(match.index), finish = sourcePosition(end);
+    if (start == null || finish == null) continue;
+    if (/\b[A-Z][A-Za-z]*$/.test(source.slice(start, finish))) continue;
+    // A duration-looking work subject is not a quantity adapter's authority
+    // to rename that subject. Fronted explicit temporal prepositions remain
+    // quantities; ambiguous nominal subjects keep their original spelling.
+    const prefix = source.slice(0, start);
+    const boundaries = [...prefix.matchAll(/[.;:!?]|\band\b/gi)];
+    const boundary = boundaries.length ? boundaries[boundaries.length - 1].index + boundaries[boundaries.length - 1][0].length : 0;
+    if (/^[\s"'‘’“”(\[]*(?:(?:the|a|an)\s+[\s"'‘’“”(\[]*)?$/i.test(source.slice(boundary, start))
+      && source.slice(finish).replace(/[\s.;!?"'‘’“”)\]]+/g, '')) continue;
+    const auxiliary = source.slice(boundary).match(/\b(?:will|shall|must|should|can|could|may|might|is|are|was|were|has|have|had|lasts|takes|begins|starts|ends|follows|runs|continues|resumes)\b/i);
+    if (auxiliary && start < boundary + auxiliary.index
+      && !/\b(?:in|within|for|after|before|until|during|over|every|each)\s+(?:(?:approximately|roughly|about|around)\s+)?$/i.test(prefix)) continue;
+    // Keep the shared parser's name protection for capitalized small counts.
+    const words = [...match[0].matchAll(/\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b/gi)];
+    if (words.some(word => /^[A-Z]/.test(word[0])
+      && source.slice(0, sourcePosition(match.index + word.index)).trim()
+      && !/[.!?]\s*$/.test(source.slice(0, sourcePosition(match.index + word.index))))) continue;
+    const replacement = match[0].replace(/\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b/gi,
+      word => String(DURATION_WORD_VALUES[word.toLowerCase()]));
+    if (source.slice(start, finish) !== replacement) replacements.push({ start, end: finish, replacement });
+  }
+  let result = source;
+  for (const change of replacements.reverse()) result = result.slice(0, change.start) + change.replacement + result.slice(change.end);
+  return result;
+}
+
+function literalTemporalPropositionMatch(left, right) {
+  const literal = value => normaliseDurationQuantities(value).toLowerCase()
+    .replace(/[’‘]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim();
+  return literal(left) === literal(right);
+}
+
+function temporalComparisonCanon(value) {
+  // Preserve only explicit decimal literals in the comparison representation.
+  // The general prose canonicalizer and original source remain unchanged.
+  return String(value || '').split(/(\d+\.\d+)/).map((part, index) => index % 2 ? part : canon(part))
+    .join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function temporalApproximationFacets(value) {
+  const source = String(value || '').toLowerCase();
+  const zone = '(?:utc|gmt)(?:\\s*[+-]\\s*\\d{1,2}(?::?\\d{2})?)?|bst|cet|cest|est|edt|pst|pdt';
+  const clock = '(?:\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*(?:am|pm)\\b)?|\\d{1,2}\\s*(?:am|pm)\\b)(?:\\s*(?:' + zone + ')\\b)?';
+  const anchors = [...source.matchAll(new RegExp('(?:' + DURATION_VALUE + ')\\b|(?:' + clock + ')(?!\\d)', 'g'))];
+  const canonical = anchor => /^(?:\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm))/.test(anchor)
+    ? anchor.replace(/\s+/g, '') : anchor.replace(/\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b/g,
+      word => String(DURATION_WORD_VALUES[word])).replace(/\s*(?:\b(?:to|or)\b|[-–—])\s*/g, ':').replace(/\s+/g, ' ').trim();
+  const approximate = new Set();
+  // Bare "about"/"around" can introduce a topic or location. They are only
+  // precision markers when immediately attached to a literal clock below.
+  const marker = /\b(?:approximately|roughly|estimated\s+at|(?:approximate|estimated)\s+duration\s+(?:of|is))\s*/g;
+  for (const match of source.matchAll(marker)) {
+    const at = match.index + match[0].length;
+    const ordinal = anchors.findIndex(anchor => anchor.index === at);
+    if (ordinal >= 0) approximate.add(ordinal + ':' + canonical(anchors[ordinal][0]));
+  }
+  for (const match of source.matchAll(/\b(?:about|around)\s*/g)) {
+    const ordinal = anchors.findIndex(anchor => anchor.index === match.index + match[0].length);
+    if (ordinal >= 0 && /^\d{1,2}(?::|\s*(?:am|pm)\b)/.test(anchors[ordinal][0])) {
+      approximate.add(ordinal + ':' + canonical(anchors[ordinal][0]));
+    }
+  }
+  anchors.forEach((anchor, ordinal) => {
+    if (!/^\d{1,2}(?::|\s*(?:am|pm)\b)/.test(anchor[0])) return;
+    const tail = source.slice(anchor.index + anchor[0].length);
+    // A suffix describes this clock only when it closes the sentence. In
+    // "10:30 approximately five minutes after ...", it describes the interval.
+    if (/^\s*,?\s*(?:roughly|approximately|estimated)\b(?=\s*(?:[.!?](?:\s|$)|$))/.test(tail)) {
+      approximate.add(ordinal + ':' + canonical(anchor[0]));
+    }
+  });
+  return [...approximate].sort((left, right) => parseInt(left, 10) - parseInt(right, 10));
+}
 
 // Availability is not always a schedule. Keep unknown subjects and finite
 // availability predicates conservative; only a direct, static resource noun
@@ -43,7 +150,9 @@ function staticResourceAvailability(value, options) {
 
 function temporalClaim(value, options = {}) {
   if (seasonProfile(value).length) return true;
-  const body = String(value || '');
+  const body = normaliseDurationQuantities(value);
+  if (new RegExp('\\b' + DURATION_VALUE + '\\b', 'i').test(body)) return true;
+  if (/(?<!\d)\d{1,2}:\d{2}(?:\s*(?:am|pm))?(?!\d)|(?<!\d)\d{1,2}\s*(?:am|pm)(?![a-z])/i.test(body)) return true;
   if (/\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midday|midnight|night|(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:st|nd|rd|th)?\s+(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?)|before|after|within|until|once|when|deadline|target|preferred|fallback|contingency)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b/i.test(body)) return true;
   if (!/\b(?:available|availability)\b/i.test(body)) return false;
   if (!staticResourceAvailability(body, options)) return true;
@@ -84,7 +193,7 @@ for (const word of 'daily weekly fortnightly monthly quarterly annually yearly m
 const canon = value => String(value || '').toLowerCase().replace(/[’]/g, "'").replace(/[–—]/g, '-').replace(/[^\p{L}\p{N}:' +\-]+/gu, ' ').replace(/\s+/g, ' ').trim();
 const WEEKDAY = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
 const MONTH = 'january|february|march|april|may|june|july|august|september|october|november|december';
-const COUNT = '\\d+|one|two|three|four|five|six|seven|eight|nine|ten';
+const COUNT = '\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten';
 const TEMPORAL_ANCHOR = `(?:\\d{4}-\\d{2}-\\d{2}|\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?|\\d{1,2}\\s*(?:am|pm)|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${MONTH})(?:\\s+\\d{4})?|(?:${COUNT})\\s+(?:(?:working|business)\\s+)?(?:days?|weeks?|months?|hours?|minutes?)|(?:(?:this|next|last|previous)\\s+)?(?:${WEEKDAY}|weekend|week|month|quarter|year)|${MONTH}|today|tomorrow|tonight|morning|afternoon|evening|noon|midday|midnight|night|(?:end|start|middle)\\s+of\\s+(?:(?:this|next|the)\\s+)?(?:week|month|year))`;
 function temporalFacets(text) {
   const recurrence = [];
@@ -134,7 +243,8 @@ function temporalFacets(text) {
     seasons: seasonProfile(text), quantityBounds };
 }
 function temporalProfile(value) {
-  const labelled = canon(value).replace(/\b(?:on or before|no later than|not later than)\b/g, 'by'), facets = temporalFacets(labelled);
+  const comparison = normaliseDurationQuantities(value);
+  const labelled = temporalComparisonCanon(comparison).replace(/\b(?:on or before|no later than|not later than)\b/g, 'by'), facets = temporalFacets(labelled);
   const text = labelled.replace(/\b(?:owners|timing|target|deadline|dependent on)\s*:/g, ' ').replace(/\bnot stated\b/g, ' ');
   // A transcript may omit spaces around a clock or zone ("at10:30BST").
   // Keep these constraints independently of calendar-token matching.
@@ -142,9 +252,10 @@ function temporalProfile(value) {
     .map(clock => clock.replace(/\s+/g, ''));
   const zones = (text.match(/(?<![a-z])(?:utc|gmt)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?(?![a-z])|(?<![a-z])(?:bst|cet|cest|est|edt|pst|pdt)(?![a-z])/g) || [])
     .map(zone => zone.replace(/\s+/g, ''));
-  const atoms = facets.atomsText.match(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}(?:\s*(?:am|pm|gmt|bst|utc|cet|cest))?\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:working|business)\s+)?(?:days?|weeks?|months?|quarters?|years?|hours?|minutes?|seconds?)\b|\b\d+(?:st|nd|rd|th)?\b|\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b|\b(?:this|next|last|previous)\s+(?:day|week|month|quarter|year)\b|\b(?:preferred|fallback|contingency|hard stop)\b/g) || [];
+  const atoms = facets.atomsText.match(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}(?:\s*(?:am|pm|gmt|bst|utc|cet|cest))?\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:working|business)\s+)?(?:days?|weeks?|months?|quarters?|years?|hours?|minutes?|seconds?)\b|\b\d+(?:\.\d+)?(?:st|nd|rd|th)?\b|\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b|\b(?:this|next|last|previous)\s+(?:day|week|month|quarter|year)\b|\b(?:preferred|fallback|contingency|hard stop)\b/g) || [];
   const dependencies = text.match(/\b(?:before|after|once|until|when|subject to|dependent on)\s+[^.;:]{1,100}/g) || [];
   return { text, atoms, dependencies, clocks, zones, ...Object.fromEntries(['recurrence', 'recurringOrdinals', 'ranges', 'bounds', 'dayparts', 'phases', 'seasons', 'quantityBounds'].map(field => [field, facets[field]])),
+    approximations: temporalApproximationFacets(comparison),
     historicalSchedule: /\b(?:(?:was|were|had been)\s+(?:not\s+)?(?:scheduled|planned|due)|(?:was|were)\s+to\s+(?:begin|start|end|finish|run|resume|occur)|took place)\b/.test(text),
     capability: /\b(?:can|could|able to|capable of)\b/.test(text),
     hedged: /\b(?:try|trying|may|might|could|possibly|probably|presumably|perhaps|maybe|ideally|prefer|preferred|preferably|hope|hoping|hopefully|expected|provisional|tentative|tentatively|unconfirmed)\b/.test(text),
@@ -158,7 +269,7 @@ function temporalMeaningRetained(claim, source, options = {}) {
   if (a.negative !== b.negative || b.hedged && !a.hedged) return false;
   if (a.historicalSchedule !== b.historicalSchedule || b.capability && !a.capability) return false;
   if (JSON.stringify(a.clocks) !== JSON.stringify(b.clocks) || JSON.stringify(a.zones) !== JSON.stringify(b.zones)) return false;
-  if (['recurrence', 'recurringOrdinals', 'ranges', 'bounds', 'dayparts', 'phases', 'seasons', 'quantityBounds'].some(field => JSON.stringify(a[field]) !== JSON.stringify(b[field]))) return false;
+  if (['recurrence', 'recurringOrdinals', 'ranges', 'bounds', 'dayparts', 'phases', 'seasons', 'quantityBounds', 'approximations'].some(field => JSON.stringify(a[field]) !== JSON.stringify(b[field]))) return false;
   let at = 0;
   for (const atom of a.atoms) {
     at = b.atoms.indexOf(atom, at);
@@ -188,7 +299,7 @@ function sameTemporalWork(claim, source) {
       ? sourceOperations.some(other => group.includes(other))
       : group.some(other => new RegExp(`\\b${other}\\b`, 'i').test(source)))))) return false;
   const stop = new Set([...TEMPORAL_WORDS, ...OP_GROUPS.flat(), 'will', 'would', 'shall', 'can', 'could', 'must', 'should', 'been', 'being']);
-  const objects = value => new Set(V.contentTokens(value).filter(word => !stop.has(word) && !/^\d/.test(word)));
+  const objects = value => new Set(V.contentTokens(normaliseDurationQuantities(value)).filter(word => !stop.has(word) && !/^\d/.test(word)));
   const wanted = objects(claim), present = objects(source);
   const shared = [...wanted].filter(word => present.has(word)).length;
   if (!wanted.size || shared < Math.min(2, wanted.size) || shared / wanted.size < 0.7) return false;
@@ -283,7 +394,7 @@ function legacySupportedByApprovedRecord(claim, record, options = {}) {
 function validateTemporalEvidence(claim, records, evidence, options = {}) {
   return Binding.validateTemporalEvidence(claim, records, evidence, options,
     { temporalMeaningRetained, operationGroups: OP_GROUPS, legacySupportedByRecord: legacySupportedByApprovedRecord,
-      phaseSubject, simpleTemporalPhase, seasonProfile });
+      phaseSubject, simpleTemporalPhase, seasonProfile, normaliseDurationQuantities });
 }
 
 function approvedRecords(current = {}) {
@@ -364,19 +475,20 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
       : typeof objectives[item.objectiveIndex] === 'string' ? objectives[item.objectiveIndex] : objectives[item.objectiveIndex]?.text;
     if (current !== item.row) state = { id: item.id, status: 'stale', reason: 'stale_summary_snapshot' };
     else if (row?.verdict === 'supported') {
-      const evidence = V.decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
+      const evidence = V.decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
       const carrying = evidence.valid ? item.authorityRecords.filter(record => canon(record.text).includes(canon(row.evidenceQuote))) : [];
       const structured = Object.prototype.hasOwnProperty.call(row, 'temporalEvidence');
       const binding = structured ? validateTemporalEvidence(item.row, carrying, row.temporalEvidence,
         { ...options, contextRecords: item.authorityRecords }) : null;
-      state = (structured ? binding.supported : carrying.some(record => supportedByApprovedRecord(item.row, record, options)))
+      state = (structured ? binding.supported : carrying.some(record => (!evidence.requiresLiteralSource
+        || literalTemporalPropositionMatch(item.row, record.text)) && supportedByApprovedRecord(item.row, record, options)))
         ? { id: item.id, status: 'supported', reason: '', ...(binding ? { temporalBinding: binding.binding } : {}) }
         : { id: item.id, status: 'rejected', reason: binding?.reason || 'summary_temporal_binding_not_proved' };
     }
     else if (row?.verdict === 'uncertain') state = { id: item.id, status: 'uncertain', reason: String(row.reason || 'temporal_claim_uncertain').slice(0, 300) };
     else if (row?.verdict === 'corrected') {
-      const problem = V.decisionQuoteValidation(row.problemQuote, item.row, 25);
-      const evidence = V.decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
+      const problem = V.decisionQuoteValidation(row.problemQuote, item.row, 25, { allowClockPrefix: true });
+      const evidence = V.decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
       const corrected = V.text(row.correctedText, 1500);
       const carrying = item.authorityRecords.filter(record => canon(record.text).includes(canon(row.evidenceQuote)));
       const structured = Object.prototype.hasOwnProperty.call(row, 'temporalEvidence');
@@ -387,7 +499,8 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
         // sentence. Temporal correction must retain its existing work and
         // assignment as well as prove the replacement timing independently.
         || !sameTemporalWork(item.row, corrected)
-        || !(structured ? binding.supported : carrying.some(record => supportedByApprovedRecord(corrected, record, options)))) {
+        || !(structured ? binding.supported : carrying.some(record => (!(problem.requiresLiteralSource || evidence.requiresLiteralSource)
+          || literalTemporalPropositionMatch(corrected, record.text)) && supportedByApprovedRecord(corrected, record, options)))) {
         state = { id: item.id, status: 'rejected', reason: binding?.reason || 'invalid_or_unsupported_temporal_correction' };
       } else if (item.reviewerAuthored) {
         state = { id: item.id, status: 'uncertain', reason: 'reviewer_temporal_wording_preserved' };
@@ -410,5 +523,5 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
 }
 
 module.exports = { summaryTemporalCheckItems, summaryTemporalCheckPrompt, applySummaryTemporalCheckResults, temporalClaim,
-  temporalMeaningRetained, supportedByApprovedRecord, independentSourcePhaseClips, validateTemporalEvidence,
+  temporalMeaningRetained, supportedByApprovedRecord, independentSourcePhaseClips, validateTemporalEvidence, normaliseDurationQuantities, literalTemporalPropositionMatch,
   temporalEvidencePromptInstructions: Binding.temporalEvidencePromptInstructions };

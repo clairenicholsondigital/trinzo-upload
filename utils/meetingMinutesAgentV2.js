@@ -5562,15 +5562,37 @@ function decisionCheckPrompt(items = []) {
 // Prompts ask for short quotations, but a longer exact quotation is still
 // stronger evidence than a truncated or paraphrased one. Keep the hard limit
 // generous enough for a complete spoken sentence while still bounding input.
-function decisionQuoteValidation(quote, passage, maxWords = 120) {
+function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   const flat = (value) => quoteText(value).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const needle = flat(String(quote || '').replace(/^[^:]{2,40}:\s*/, ''));
+  const stripSpeakerPrefix = value => String(value || '').replace(/^[^:]{2,40}:\s*/, (prefix, _offset, source) => {
+    const colon = prefix.indexOf(':');
+    // A clock inside a short sentence is spoken content, not a speaker label.
+    const clock = /(?:^|[^\d])\d{1,2}$/.test(prefix.slice(0, colon))
+      && /^\d{2}(?!\d)/.test(source.slice(colon + 1));
+    return clock && options.allowClockPrefix ? prefix : '';
+  });
+  const quoted = stripSpeakerPrefix(quote);
+  const needle = flat(quoted);
   const words = needle ? needle.split(' ').length : 0;
-  if (words < 3) return { valid: false, reason: 'quote_too_short', words };
+  // Punctuation must not turn one spoken clock (or its zone offset) into
+  // several words and satisfy the minimum evidence length by itself.
+  const minimumText = flat(quoted.replace(/\b(?:UTC|GMT)\s*[+-]\s*\d{1,2}(?::?\d{2})?\b/gi, 'zone')
+    .replace(/(?<!\d)\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:am|pm)\b)?(?!\d)/gi, 'clock'));
+  const minimumWords = minimumText ? minimumText.split(' ').length : 0;
+  if (minimumWords < 3) return { valid: false, reason: 'quote_too_short', words: minimumWords };
   if (words > maxWords) return { valid: false, reason: 'quote_too_long', words };
-  const spoken = String(passage || '').split('\n').map((line) => line.replace(/^[^:]{2,40}:\s*/, '')).join(' ');
+  const spoken = String(passage || '').split('\n').map(stripSpeakerPrefix).join(' ');
   const valid = flat(spoken).includes(needle);
-  return { valid, reason: valid ? '' : 'quote_not_found', words };
+  // Only temporal consumers opt in to the corrected clock parsing. A newly
+  // accepted quote must then prove the complete source proposition, or supply
+  // a validated structured temporal witness; quotation alone is insufficient.
+  const legacyStrip = value => String(value || '').replace(/^[^:]{2,40}:\s*/, '');
+  const legacyNeedle = flat(legacyStrip(quote));
+  const legacyWords = legacyNeedle ? legacyNeedle.split(' ').length : 0;
+  const legacyValid = legacyWords >= 3 && legacyWords <= maxWords
+    && flat(String(passage || '').split('\n').map(legacyStrip).join(' ')).includes(legacyNeedle);
+  return { valid, reason: valid ? '' : 'quote_not_found', words,
+    ...(valid && !legacyValid ? { requiresLiteralSource: true } : {}) };
 }
 
 function decisionQuoteFound(quote, passage, maxWords = 120) {
@@ -5697,7 +5719,7 @@ function discussionFidelityCheckPrompt(items = []) {
   ].join('\n\n');
 }
 
-function applySourceDiscussionFidelityResults(discussion = [], items = [], results = []) {
+function applySourceDiscussionFidelityResults(discussion = [], items = [], results = [], options = {}) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
   const replacements = new Map();
   const warnings = new Map();
@@ -5705,13 +5727,16 @@ function applySourceDiscussionFidelityResults(discussion = [], items = [], resul
   for (const item of items) {
     const row = verdicts.get(item.id);
     if (!row || !['corrected', 'uncertain'].includes(row.verdict)) continue;
-    const problemCheck = decisionQuoteValidation(row.problemQuote, item.row);
+    const Temporal = require('./meetingMinutesTemporalReview');
+    const boundTemporal = options.temporalBindings?.has(item.id) === true;
+    const quoteOptions = { allowClockPrefix: boundTemporal || Temporal.temporalClaim(row.correctedText || item.row) };
+    const problemCheck = decisionQuoteValidation(row.problemQuote, item.row, 120, quoteOptions);
     // A claim the passage never makes (an added month, an attitude nobody
     // voiced) has no transcript words to quote. An "uncertain" verdict may
     // therefore stand on the quoted problem alone; a supplied evidence quote
     // must still be real, and a correction always needs one.
     const noEvidenceQuote = row.verdict === 'uncertain' && !text(row.evidenceQuote, 400);
-    const evidenceCheck = noEvidenceQuote ? { valid: true } : decisionQuoteValidation(row.evidenceQuote, item.passage);
+    const evidenceCheck = noEvidenceQuote ? { valid: true } : decisionQuoteValidation(row.evidenceQuote, item.passage, 120, quoteOptions);
     if (!problemCheck.valid || !evidenceCheck.valid) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: !problemCheck.valid ? `problem_${problemCheck.reason}` : `evidence_${evidenceCheck.reason}` });
       continue;
@@ -5722,6 +5747,16 @@ function applySourceDiscussionFidelityResults(discussion = [], items = [], resul
     if (!correctedText || /\.\.\.|\w\.[A-Z]/.test(correctedText)) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: 'invalid_corrected_text' });
       continue;
+    }
+    if (!boundTemporal && (problemCheck.requiresLiteralSource || evidenceCheck.requiresLiteralSource)) {
+      const ownIds = new Set(item.evidenceIds || []);
+      const literalOwnSource = (item.passageUnits || []).some(unit => ownIds.has(unit.id)
+        && decisionQuoteValidation(row.evidenceQuote, unit.text, 120, quoteOptions).valid
+        && Temporal.literalTemporalPropositionMatch(correctedText, unit.text));
+      if (!literalOwnSource) {
+        rejected.push({ id: item.id, verdict: row.verdict, reason: 'temporal_source_binding_not_proved' });
+        continue;
+      }
     }
     if (evidenceSupportScore(correctedText, item.passage) < 0.42) {
       rejected.push({ id: item.id, verdict: row.verdict, reason: 'support_too_low' });
@@ -5830,7 +5865,8 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     }
     const syntheticIndex = synthetic.length;
     synthetic.push({ id: `fidelity-row-${syntheticIndex}`, topic: topic?.topic || '', points: [record], decisions: [] });
-    const mapped = { ...item, topicIndex: syntheticIndex, kind: 'points', rowIndex: 0 };
+    const mapped = { ...item, topicIndex: syntheticIndex, kind: 'points', rowIndex: 0,
+      evidenceIds: [...new Set(record.evidenceIds || [])] };
     mappedItems.push(mapped);
     sourceBySynthetic.set(syntheticIndex, { item, path, record, topic });
     if (item.contextCoverage?.omittedAnchorIds?.length || !item.passage) {
@@ -5855,10 +5891,10 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
       const ownAnchors = new Set(source?.record.evidenceIds || []);
       const records = (item.passageUnits || []).filter(unit => ownAnchors.has(unit.id))
         .map(unit => ({ id: unit.id, type: 'discussion', text: unit.text, speaker: unit.speaker }));
-      const shortQuote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
+      const shortQuote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
       const mappedSource = records.find(record => record.id === row.temporalEvidence?.sourceId);
       if (!shortQuote.valid || !mappedSource
-        || !decisionQuoteValidation(row.evidenceQuote, mappedSource.text, 25).valid) {
+        || !decisionQuoteValidation(row.evidenceQuote, mappedSource.text, 25, { allowClockPrefix: true }).valid) {
         indexed.states.set(item.id, { id: item.id, status: 'rejected', reason: 'temporal_evidence_quote_not_in_own_source' });
         continue;
       }
@@ -5888,17 +5924,20 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     }
     if (row.verdict === 'supported') {
       if (Temporal.temporalClaim(item.row, temporalContext(item, sourceBySynthetic.get(item.topicIndex)?.record))) {
-        const quote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25);
+        const quote = decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
         const carrying = quote.valid ? (item.passageUnits || []).filter(unit => quoteText(unit.text).includes(quoteText(row.evidenceQuote))) : [];
-        const supported = carrying.some(unit => Temporal.supportedByApprovedRecord(item.row,
-          { type: 'discussion', text: `${unit.speaker || ''}: ${unit.text}` }, { meetingDate: item.meetingDate }));
+        const ownIds = new Set(sourceBySynthetic.get(item.topicIndex)?.record.evidenceIds || []);
+        const supported = carrying.some(unit => (!quote.requiresLiteralSource
+          || (ownIds.has(unit.id) && Temporal.literalTemporalPropositionMatch(item.row, unit.text)))
+          && Temporal.supportedByApprovedRecord(item.row,
+            { type: 'discussion', text: `${unit.speaker || ''}: ${unit.text}` }, { meetingDate: item.meetingDate }));
         indexed.states.set(item.id, supported ? { id: item.id, status: 'supported', reason: '' }
           : { id: item.id, status: 'rejected', reason: 'temporal_source_binding_not_proved' });
       } else indexed.states.set(item.id, { id: item.id, status: 'supported', reason: '' });
     }
     else accepted.push(row);
   }
-  const applied = applySourceDiscussionFidelityResults(synthetic, mappedItems, accepted);
+  const applied = applySourceDiscussionFidelityResults(synthetic, mappedItems, accepted, { temporalBindings });
   for (const rejected of applied.rejected) indexed.states.set(rejected.id, { ...rejected, status: 'rejected' });
   for (const row of accepted) if (indexed.states.get(row.id)?.status === 'pending') {
     indexed.states.set(row.id, { id: row.id, status: row.verdict === 'corrected' ? 'corrected' : 'uncertain', reason: text(row.reason, 300),

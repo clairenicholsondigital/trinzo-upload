@@ -108,8 +108,9 @@ function workNormal(value, operationGroups) {
   return words(value).map(word => forms.get(word) || word);
 }
 
-function propositionTokens(value, evidence, operationGroups) {
+function propositionTokens(value, evidence, operationGroups, normaliseQuantities) {
   let body = evidence.qualificationQuotes.reduce((text, quote) => removeQualification(text, quote), String(value));
+  if (typeof normaliseQuantities === 'function') body = normaliseQuantities(body);
   body = normal(body);
   const count = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)';
   const duration = `${count}\\s+(?:(?:working|business)\\s+)?(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?)`;
@@ -158,7 +159,7 @@ function independentQualifierPhase(source, selected, helpers) {
   return selected;
 }
 
-function workBound(claim, source, evidence, operationGroups) {
+function workBound(claim, source, evidence, operationGroups, normaliseQuantities) {
   const a = frame(claim, evidence.qualificationQuotes), b = frame(source, evidence.qualificationQuotes);
   if (!a || !b) return false;
   const past = value => /^(?:was|were|had)$/.test(value.auxiliary);
@@ -174,7 +175,7 @@ function workBound(claim, source, evidence, operationGroups) {
   const wantedWork = normalized(evidence.workClaimQuote), sourceWork = normalized(evidence.workSourceQuote);
   if (!wantedWork.length || JSON.stringify(wantedWork) !== JSON.stringify(sourceWork)) return false;
   const substantial = value => normalized(value).filter(word => !temporalWords.has(word) && !/^\d/.test(word));
-  if (JSON.stringify(propositionTokens(claim, evidence, operationGroups)) !== JSON.stringify(propositionTokens(source, evidence, operationGroups))) return false;
+  if (JSON.stringify(propositionTokens(claim, evidence, operationGroups, normaliseQuantities)) !== JSON.stringify(propositionTokens(source, evidence, operationGroups, normaliseQuantities))) return false;
   // The declared work expression must identify this phase's complete event
   // subject or complete operation/object, never just a shared date or verb.
   const subject = normalized(a.subject);
@@ -214,7 +215,7 @@ function validateTemporalEvidence(claim, records, evidence, options = {}, helper
   if (!boundarySafe(source, evidence.sourceQuote, start, evidence.qualificationQuotes)) return no('temporal_source_phase_not_complete');
   const outside = source.slice(0, start) + ' ' + source.slice(start + evidence.sourceQuote.length);
   if (normal(outside).includes(articleless(evidence.workSourceQuote))) return no('competing_temporal_source_phases');
-  if (!fullRecordProved && !workBound(claim, evidence.sourceQuote, evidence, helpers.operationGroups || [])) return no('temporal_phase_work_not_proved');
+  if (!fullRecordProved && !workBound(claim, evidence.sourceQuote, evidence, helpers.operationGroups || [], helpers.normaliseDurationQuantities)) return no('temporal_phase_work_not_proved');
   if (!fullRecordProved && (typeof helpers.temporalMeaningRetained !== 'function' || !helpers.temporalMeaningRetained(claim, evidence.sourceQuote, options))) return no('temporal_phase_meaning_not_retained');
   // Nearby evidence is context, not a source authority. A separate turn that
   // explicitly qualifies the same work or the shared plan must not disappear
