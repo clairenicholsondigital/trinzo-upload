@@ -862,10 +862,25 @@ function reviewerProvenance(value, options = {}) {
   };
 }
 
+// Merge history describes deleted predecessor records; it is not evidence or
+// reviewer authorship. Only the editor-save boundary carries this metadata,
+// without requiring its historical IDs to exist in the current register.
+// Historical topic writers allowed 220-character IDs: reject longer values
+// rather than truncating them into a different record's identity.
+function reviewerMergeHistory(value, field, survivorId, options = {}) {
+  if (options.preserveReviewerEdits !== true || !Array.isArray(value?.[field])) return {};
+  const ids = [...new Set(value[field].slice(0, 1000)
+    .filter(id => typeof id === 'string' && id.length <= 220)
+    .map(id => id.trim())
+    .filter(id => id && id !== survivorId && !/[\u0000-\u001f\u007f]/.test(id)))];
+  return ids.length ? { [field]: ids } : {};
+}
+
 function normalisePoint(value, units, prefix, index, options = {}) {
   const candidate = typeof value === 'string' ? { text: value } : (value || {});
   const pointText = text(candidate.text || candidate.point || candidate.value, 1600);
   if (!pointText) return null;
+  const pointId = text(candidate.id, 80) || stableId(prefix, pointText, index);
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
   const resolved = resolveEvidence(pointText, units, candidate.evidenceIds, { meetingDate: options.meetingDate });
   if (correctnessChecksEnabled() && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
@@ -879,9 +894,11 @@ function normalisePoint(value, units, prefix, index, options = {}) {
       if (!detailText) return null;
       const detailEvidence = resolveEvidence(detailText, units, source.evidenceIds, { meetingDate: options.meetingDate });
       const detailFlags = [...new Set((Array.isArray(source.reviewFlagIds) ? source.reviewFlagIds : []).map((id) => text(id, 80)).filter(Boolean))];
+      const detailId = text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex);
       return {
-        id: text(source.id, 80) || stableId(`${prefix}-supporting`, detailText, detailIndex),
+        id: detailId,
         ...reviewerProvenance(source, options),
+        ...reviewerMergeHistory(source, 'mergedFromIds', detailId, options),
         text: detailText,
         evidenceIds: detailEvidence.evidenceIds,
         // A context line keeps its flag, so the flag can point at it.
@@ -889,8 +906,9 @@ function normalisePoint(value, units, prefix, index, options = {}) {
       };
     }).filter(Boolean).slice(0, 50);
   return {
-    id: text(candidate.id, 80) || stableId(prefix, pointText, index),
+    id: pointId,
     ...reviewerProvenance(candidate, options),
+    ...reviewerMergeHistory(candidate, 'mergedFromIds', pointId, options),
     text: pointText,
     ...(['core', 'supporting', 'reject'].includes(candidate.discoveryDisposition)
       ? { discoveryDisposition: candidate.discoveryDisposition } : {}),
@@ -1001,9 +1019,11 @@ function normaliseDiscussion(candidate = {}, units = [], options = {}) {
   };
   const topics = discussionTopicItems(candidate).slice(0, 80).map((item, index) => {
     const topic = text(item?.topic, 220) || 'Discussion';
+    const topicId = text(item?.id, 80) || stableId('topic', topic, index);
     return {
-      id: text(item?.id, 80) || stableId('topic', topic, index),
+      id: topicId,
       ...reviewerProvenance(item, options),
+      ...reviewerMergeHistory(item, 'mergedTopicIds', topicId, options),
       topic,
       // The reviewer's choice to leave this title out of the minutes.
       ...(item?.hideHeading === true ? { hideHeading: true } : {}),

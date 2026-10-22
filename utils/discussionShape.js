@@ -409,13 +409,6 @@ function discussionPointMatchesActionByProvenance(point = {}, action = {}, peopl
   return sharedSubjectTokens.length >= 3;
 }
 
-// This dependency-free marker is deliberately conservative. It is not a date
-// resolver: uncertain temporal context stays with its parent for review. Do
-// not import the temporal-review module here (it depends on V2, which imports
-// this module).
-const TIMED_SUPPORT = /\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|before|after|until|once|when|deadline|contingency|fallback|(?:this|next|last|previous|every|each)\s+(?:day|week|weekend|month|quarter|year)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:working\s+|business\s+)?(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)|may\s+\d{1,2})\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}|\b\d{1,2}\s*(?:am|pm)\b/i;
-const SUPPORT_DATE_OR_DAYPART = /\b(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|morning|afternoon|evening|night|noon|midday|midnight|lunchtime|fortnights?|eod|cob)\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)s\b|\b(?:end of (?:the )?day|close of (?:business|play))\b|\b(?:at|by|before|after)\s+\d{1,2}\.\d{2}(?!\s*(?:%|percent\b|pounds?\b|euros?\b|dollars?\b|usd\b|gbp\b|eur\b))\b|\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b|\b(?:by|before|after|in|during)\s+may\b|\b(?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+(?:of\s+)?may\b/i;
-
 function literalInstruction(value) {
   const text = clean(value).normalize('NFKC').replace(/[’]/g, "'").replace(/[.!?;]+$/, '').trim();
   // Only sentence-initial capitalization is presentation. Preserve the case
@@ -428,7 +421,10 @@ function detailOwners(record = {}) {
     .map(clean).filter(Boolean))];
 }
 
-function timedSupportingDetailCovered(detail, action, people) {
+// Whole ordered wording, matching ownership and a shared exact source line
+// provide bounded coverage for a parent or supporting instruction. Uncertain
+// context stays in Discussion; this helper does not infer semantic equivalence.
+function discussionInstructionCovered(detail, action, people) {
   const value = clean(detail?.text);
   let instruction = value;
   let owners = detailOwners(detail);
@@ -450,8 +446,8 @@ function timedSupportingDetailCovered(detail, action, people) {
   if (requiredTiming.wording || requiredTiming.exactDate) {
     if (['kind', 'wording', 'exactDate'].some(key => clean(requiredTiming[key]) !== clean(retainedTiming[key]))) return false;
   }
-  // Exact ordered wording is the bounded proof. A date shared by a different
-  // task, or a date attached to a larger compound, cannot cover this child.
+  // Shared vocabulary or dates cannot cover omitted clauses or a different
+  // task. Every operation, constraint and relational word must be retained.
   const required = literalInstruction(instruction);
   const retained = literalInstruction(action.action || action.text);
   if (!requiredTiming.wording && !requiredTiming.exactDate) {
@@ -467,20 +463,22 @@ function timedSupportingDetailCovered(detail, action, people) {
     && required === literalInstruction(`${clean(action.action || action.text).replace(/[.!?;]+$/, '')} ${clean(timing.wording)}`));
 }
 
-function hasUnrepresentedSupportingTiming(record, actions, people) {
+function hasUnrepresentedSupportingDetails(record, actions, people) {
   return (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).some(detail => {
-    if (isReviewerAuthored(detail) || hasUnrepresentedSupportingTiming(detail, actions, people)) return true;
+    if (isReviewerAuthored(detail) || hasUnrepresentedSupportingDetails(detail, actions, people)) return true;
     const value = clean(detail?.text);
     const timing = detail?.timing || {};
-    if (!value || isRawTranscriptDiscussionPoint(value)
-      || !(TIMED_SUPPORT.test(value) || SUPPORT_DATE_OR_DAYPART.test(value) || timing.wording || timing.exactDate)) return false;
-    return !actions.some(action => timedSupportingDetailCovered(detail, action, people));
+    if (!value) return Boolean(timing.wording || timing.exactDate);
+    if (isRawTranscriptDiscussionPoint(value)) return false;
+    return !actions.some(action => discussionInstructionCovered(detail, action, people));
   });
 }
 
 // Discussion is available before Actions, so action-shaped context remains
 // visible at that stage.  Once the accepted action register exists, remove
-// only a generated point which strictly duplicates one of those actions.
+// only a generated point whose complete instruction and every meaningful
+// descendant have literal, owner- and source-backed coverage in Actions.
+// Otherwise retain the original tree without rewriting or promoting it.
 // Decisions, open questions and reviewer-authored rows are never touched.
 function removeDiscussionActionDuplicates(discussion = [], actions = [], people = []) {
   const dropped = [];
@@ -491,12 +489,14 @@ function removeDiscussionActionDuplicates(discussion = [], actions = [], people 
       if (isReviewerAuthored(point)) return true;
       const candidates = Array.isArray(actions) ? actions : [];
       const match = candidates.find((action) =>
-        discussionPointMatchesAction(point, action, people));
+        discussionPointMatchesAction(point, action, people)
+        && discussionInstructionCovered(point, action, people));
       const provenanceMatches = match ? [] : candidates.filter((action) =>
-        discussionPointMatchesActionByProvenance(point, action, people));
+        discussionPointMatchesActionByProvenance(point, action, people)
+        && discussionInstructionCovered(point, action, people));
       const acceptedMatch = match || (provenanceMatches.length === 1 ? provenanceMatches[0] : null);
       if (!acceptedMatch) return true;
-      if (hasUnrepresentedSupportingTiming(point, candidates, people)) return true;
+      if (hasUnrepresentedSupportingDetails(point, candidates, people)) return true;
       dropped.push({ pointId: point?.id || '', actionId: acceptedMatch?.id || '', text: clean(point?.text).slice(0, 200) });
       return false;
     });

@@ -38,7 +38,7 @@ test('accepted actions remove only strict generated assignment duplicates from d
   assert.deepEqual(result.dropped.map((item) => item.pointId), ['generated']);
 });
 
-test('same-owner assignments with the same evidence are removed across complementary action wording', () => {
+test('same-owner same-source complementary wording is preserved without complete literal coverage', () => {
   const discussion = [{
     id: 'calibration', topic: 'Calibration records', decisions: [], openQuestions: [], points: [{
       id: 'generated',
@@ -53,11 +53,11 @@ test('same-owner assignments with the same evidence are removed across complemen
     evidenceIds: ['T0040', 'T0041']
   }];
   const result = removeDiscussionActionDuplicates(discussion, actions, people);
-  assert.equal(result.discussion.length, 0);
-  assert.deepEqual(result.dropped.map((item) => item.actionId), ['action-1']);
+  assert.deepEqual(result.discussion, discussion);
+  assert.equal(result.dropped.length, 0);
 });
 
-test('passive prioritisation wording is treated as an assignment only when one action matches', () => {
+test('passive prioritisation context survives an action covering only the requested work', () => {
   const discussion = [{
     id: 'diagnostics', topic: 'Diagnostic records', decisions: [], openQuestions: [], points: [{
       id: 'generated',
@@ -70,8 +70,8 @@ test('passive prioritisation wording is treated as an assignment only when one a
     owners: ['Priya Shah'], evidenceIds: ['T0040']
   }];
   const result = removeDiscussionActionDuplicates(discussion, actions, people);
-  assert.equal(result.discussion.length, 0);
-  assert.equal(result.dropped[0].actionId, 'action-1');
+  assert.deepEqual(result.discussion, discussion);
+  assert.equal(result.dropped.length, 0);
 });
 
 test('a provenance match stays in discussion when two accepted actions are plausible', () => {
@@ -91,7 +91,7 @@ test('a provenance match stays in discussion when two accepted actions are plaus
   assert.equal(result.dropped.length, 0);
 });
 
-test('a collective monitoring commitment leaves discussion only when the accepted Action matches it', () => {
+test('collective agreement context survives a matching action without proven ownership and full wording', () => {
   const point = row('collective', 'The committee agreed to monitor the theft risk as an ongoing issue.');
   const discussion = [{ id: 'risk', topic: 'Theft risk', points: [point], decisions: [], openQuestions: [] }];
   assert.equal(isExplicitCollectiveCommitment(point.text), true);
@@ -99,9 +99,9 @@ test('a collective monitoring commitment leaves discussion only when the accepte
     'classification alone never removes the point');
 
   const matching = [{ id: 'action-1', action: 'Monitor the theft risk as an ongoing issue.', owners: [], evidenceIds: ['T0001'] }];
-  const removed = removeDiscussionActionDuplicates(discussion, matching, people);
-  assert.equal(removed.discussion.length, 0);
-  assert.equal(removed.dropped.length, 1);
+  const retained = removeDiscussionActionDuplicates(discussion, matching, people);
+  assert.deepEqual(retained.discussion, discussion);
+  assert.equal(retained.dropped.length, 0);
 
   const unrelated = [{ id: 'action-2', action: 'Monitor the supplier delivery risk.', owners: [], evidenceIds: ['T0001'] }];
   assert.equal(removeDiscussionActionDuplicates(discussion, unrelated, people).discussion[0].points.length, 1);
