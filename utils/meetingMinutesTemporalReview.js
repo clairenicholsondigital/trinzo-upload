@@ -147,8 +147,8 @@ function temporalProfile(value) {
   return { text, atoms, dependencies, clocks, zones, ...Object.fromEntries(['recurrence', 'recurringOrdinals', 'ranges', 'bounds', 'dayparts', 'phases', 'seasons', 'quantityBounds'].map(field => [field, facets[field]])),
     historicalSchedule: /\b(?:(?:was|were|had been)\s+(?:not\s+)?(?:scheduled|planned|due)|(?:was|were)\s+to\s+(?:begin|start|end|finish|run|resume|occur)|took place)\b/.test(text),
     capability: /\b(?:can|could|able to|capable of)\b/.test(text),
-    hedged: /\b(?:try|trying|may|might|could|possibly|probably|presumably|perhaps|maybe|ideally|prefer|preferred|preferably|hope|hoping|hopefully|expected|provisional)\b/.test(text),
-    negative: /\b(?:not|never|cannot|can't|won't|no longer)\b/.test(text) };
+    hedged: /\b(?:try|trying|may|might|could|possibly|probably|presumably|perhaps|maybe|ideally|prefer|preferred|preferably|hope|hoping|hopefully|expected|provisional|tentative|tentatively|unconfirmed)\b/.test(text),
+    negative: /\b(?:not|never|cannot|can't|won't|no longer|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|don't|doesn't|didn't|wouldn't|shouldn't|mustn't|couldn't)\b/.test(text) };
 }
 function temporalMeaningRetained(claim, source, options = {}) {
   const anchoredYears = value => isValidCalendarDate(options.meetingDate)
