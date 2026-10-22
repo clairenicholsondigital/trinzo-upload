@@ -26,7 +26,8 @@
   var navigationScrollToken = 0;
   var navigationScrollTimer = null;
   var navigationScrollRestore = false;
-  var actionEditorState = { pendingRows: {}, customOwners: {}, editingOwners: {}, editingTiming: {} };
+  var actionEditorState = { pendingRows: Object.create(null), customOwners: Object.create(null),
+    editingOwners: Object.create(null), editingTiming: Object.create(null) };
   var discussionEditorState = { pendingTopics: {}, pendingRecords: {}, collapsedTopics: {} };
   var pendingReviewDecisionLabel = '';
   var undoToastTimer = null;
@@ -545,8 +546,8 @@
     });
   }
 
-  function actionTranscriptId(actionId, index) {
-    return recordDomId('action-transcript', actionId, index);
+  function actionTranscriptId(action, index) {
+    return actionDomId(action, index, 'action-transcript');
   }
 
   // Where the reviewer was on each screen. Stepping out to the preview and
@@ -1352,9 +1353,88 @@
     Object.keys(value).forEach(function (key) { forgetPendingDiscussion(value[key]); });
   }
 
+  // A model-facing ID can repeat in an older draft. Occurrence IDs identify
+  // individual rows without changing the original IDs or their evidence.
+  function ensureActionOccurrences(draft) {
+    var rows = (draft.actions || []).concat(draft.removedActions || []);
+    var counts = Object.create(null);
+    rows.forEach(function (action) {
+      var key = typeof action.occurrenceId === 'string' ? action.occurrenceId : '';
+      if (/^[A-Za-z0-9_-]{1,128}$/.test(key)) counts[key] = (counts[key] || 0) + 1;
+    });
+    // A repeated occurrence token is ambiguous too. Retain neither claim to it,
+    // so a stale checked reference cannot silently select the first row.
+    var used = new Set(Object.keys(counts));
+    rows.forEach(function (action) {
+      var key = typeof action.occurrenceId === 'string' ? action.occurrenceId : '';
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(key) || counts[key] !== 1) {
+        do {
+          key = 'action-occurrence-' + (window.crypto && window.crypto.randomUUID
+            ? window.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+        } while (used.has(key));
+        action.occurrenceId = key;
+      }
+      used.add(key);
+    });
+  }
+
+  function transferActionOccurrences(draft) {
+    if (!state.draft) return;
+    function signature(row) {
+      function ordered(value, top) {
+        if (Array.isArray(value)) return value.map(function (item) { return ordered(item, false); });
+        if (!value || typeof value !== 'object') return value;
+        var result = Object.create(null);
+        Object.keys(value).sort().forEach(function (key) {
+          if (!(top && key === 'occurrenceId')) result[key] = ordered(value[key], false);
+        });
+        return result;
+      }
+      return JSON.stringify(ordered(row, true));
+    }
+    var prior = (state.draft.actions || []).concat(state.draft.removedActions || []);
+    var incoming = (draft.actions || []).concat(draft.removedActions || []);
+    var priorBySignature = Object.create(null);
+    var incomingCounts = Object.create(null);
+    prior.forEach(function (row) {
+      var key = signature(row);
+      (priorBySignature[key] || (priorBySignature[key] = [])).push(row);
+    });
+    incoming.forEach(function (row) {
+      var key = signature(row);
+      incomingCounts[key] = (incomingCounts[key] || 0) + 1;
+    });
+    incoming.forEach(function (row) {
+      if (row.occurrenceId) return;
+      var key = signature(row);
+      var matches = priorBySignature[key] || [];
+      if (matches.length === 1 && incomingCounts[key] === 1) row.occurrenceId = actionOccurrence(matches[0]);
+    });
+  }
+
+  function actionOccurrence(action) {
+    return String(action && action.occurrenceId || '');
+  }
+
+  function actionIndexForOccurrence(key) {
+    if (!key || !state.draft) return -1;
+    var matches = (state.draft.actions || []).map(function (action, index) {
+      return actionOccurrence(action) === key ? index : -1;
+    }).filter(function (index) { return index >= 0; });
+    return matches.length === 1 ? matches[0] : -1;
+  }
+
+  function actionDomId(action, index, kind) {
+    var id = String(action && action.id || '');
+    var unique = /^[A-Za-z0-9_-]+$/.test(id) && ((state.draft && state.draft.actions) || []).filter(function (row) {
+      return String(row.id || '') === id || actionOccurrence(row) === id;
+    }).length === 1;
+    return recordDomId(kind || 'action', unique ? id : actionOccurrence(action), index);
+  }
+
   function ownerEditor(action, index) {
     var owners = action.owners || [];
-    var actionId = String(action.id || ('action-' + index));
+    var actionId = actionOccurrence(action);
     var editing = Boolean(actionEditorState.editingOwners[actionId]);
     if (!editing) {
       return '<button type="button" class="field-display owner-summary" data-edit-owners data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit owners">' + escapeHtml(owners.join(', ') || 'No owner assigned') + '</button>';
@@ -1362,7 +1442,7 @@
     var taken = owners.map(function (owner) { return owner.toLowerCase(); });
     var available = participantNames().filter(function (name) { return taken.indexOf(name.toLowerCase()) < 0; });
     var chips = owners.map(function (owner) {
-      return '<span class="owner-chip" data-owner-chip data-action-index="' + index + '" data-owner="' + escapeHtml(owner) + '">' + escapeHtml(owner) + '<button type="button" data-remove-owner data-action-index="' + index + '" data-owner="' + escapeHtml(owner) + '" aria-label="Remove owner ' + escapeHtml(owner) + '">&times;</button></span>';
+      return '<span class="owner-chip" data-owner-chip data-action-index="' + index + '" data-owner="' + escapeHtml(owner) + '">' + escapeHtml(owner) + '<button type="button" data-remove-owner data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" data-owner="' + escapeHtml(owner) + '" aria-label="Remove owner ' + escapeHtml(owner) + '">&times;</button></span>';
     }).join('') || '<span class="muted">Not stated</span>';
     var options = available.map(function (name) {
       return '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
@@ -1425,14 +1505,14 @@
     })();
     document.getElementById('actionsBody').innerHTML = actions.map(function (item, index) {
       var timing = item.timing || {kind:'not_stated',wording:'',exactDate:''};
-      var targetId = recordDomId('action', item.id, index);
-      var transcriptId = actionTranscriptId(item.id, index);
-      var transcriptKey = disclosureKey(item.evidenceIds, 'action-transcript:' + (item.id || index));
+      var targetId = actionDomId(item, index);
+      var transcriptId = actionTranscriptId(item, index);
+      var transcriptKey = disclosureKey(item.evidenceIds, 'action-transcript:' + actionOccurrence(item));
       var transcriptOpen = Boolean(openDisclosures[transcriptKey]);
       // No "•••" menu on an action row: it only repeated the row's own
       // source and remove controls under a heading,
       // and two remove buttons that do the same thing read as two things.
-      var kept = isActionKept(item.id);
+      var kept = isActionKept(item);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
       var decisions = '<div class="row-decisions">'
@@ -1446,7 +1526,7 @@
       var grip = '<button type="button" class="action-grip" data-action-grip="' + index + '" draggable="true"'
         + ' aria-label="Reorder action ' + (index + 1) + '. Drag, or use the arrow keys."'
         + ' title="Drag to reorder"><svg class="ic" aria-hidden="true"><use href="#i-grip"/></svg></button>';
-      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea></div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, item.id) + '</td></tr>';
+      return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '" data-action-occurrence-id="' + escapeHtml(actionOccurrence(item)) + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea></div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, actionOccurrence(item)) + '</td></tr>';
     }).join('') || '<tr class="empty-actions-row"><td colspan="3" class="muted">' + escapeHtml(emptyActionsMessage) + '</td></tr>';
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
@@ -1465,8 +1545,23 @@
     return state.draft.removedActions;
   }
 
-  function isActionKept(id) {
-    return Boolean(id) && keptActionIds().indexOf(id) !== -1;
+  function keptActionOccurrenceIds() {
+    if (!state.draft) return [];
+    if (!Array.isArray(state.draft.keptActionOccurrenceIds)) state.draft.keptActionOccurrenceIds = [];
+    return state.draft.keptActionOccurrenceIds;
+  }
+
+  function unambiguousLegacyActionId(action) {
+    var id = String(action && action.id || '');
+    var rows = (state.draft.actions || []).concat(state.draft.removedActions || []);
+    return id && rows.filter(function (row) { return String(row.id || '') === id; }).length === 1 ? id : '';
+  }
+
+  function isActionKept(action) {
+    var key = actionOccurrence(action);
+    var legacy = unambiguousLegacyActionId(action);
+    return Boolean(key && keptActionOccurrenceIds().indexOf(key) !== -1)
+      || Boolean(legacy && keptActionIds().indexOf(legacy) !== -1);
   }
 
   function renderActionReview() {
@@ -1492,7 +1587,9 @@
 
   function rerenderActions() {
     var snapshot = captureFocus();
-    renderActions();
+    var wasRendering = rendering;
+    rendering = true;
+    try { renderActions(); } finally { rendering = wasRendering; }
     restoreFocus(snapshot);
   }
 
@@ -1544,8 +1641,8 @@
     if (!state.draft) return;
     (state.draft.actions || []).forEach(function (action) {
       if (/^manual-action-/.test(String(action.id || '')) && !String(action.action || '').trim()) {
-        actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
-      } else if (action.id) delete actionEditorState.pendingRows[action.id];
+        actionEditorState.pendingRows[actionOccurrence(action)] = JSON.parse(JSON.stringify(action));
+      } else if (actionOccurrence(action)) delete actionEditorState.pendingRows[actionOccurrence(action)];
     });
   }
 
@@ -1624,7 +1721,7 @@
   function restorePendingActions(draft) {
     var actions = Array.isArray(draft.actions) ? draft.actions : [];
     Object.keys(actionEditorState.pendingRows).forEach(function (id) {
-      if (!actions.some(function (action) { return action.id === id; })) actions.push(actionEditorState.pendingRows[id]);
+      if (!actions.some(function (action) { return actionOccurrence(action) === id; })) actions.push(actionEditorState.pendingRows[id]);
     });
     draft.actions = actions;
     return draft;
@@ -1696,11 +1793,20 @@
         }
       }
     }
-    for (var actionIndex = 0; actionIndex < (state.draft.actions || []).length; actionIndex += 1) {
-      var action = state.draft.actions[actionIndex];
-      if ((action.reviewFlagIds || []).indexOf(flagId) >= 0) return {
+    var linkedActions = (state.draft.actions || []).map(function (action, index) {
+      return { action: action, index: index };
+    }).filter(function (entry) { return (entry.action.reviewFlagIds || []).indexOf(flagId) >= 0; });
+    // A shared warning is not evidence that the first linked row is its target.
+    if (linkedActions.length > 1) return {
+      ambiguous: true, label: 'Several actions',
+      text: linkedActions.map(function (entry) { return entry.action.action || ''; }).join('\n')
+    };
+    if (linkedActions.length === 1) {
+      var action = linkedActions[0].action;
+      var actionIndex = linkedActions[0].index;
+      return {
         stage: 3,
-        elementId: recordDomId('action', action.id, actionIndex),
+        elementId: actionDomId(action, actionIndex),
         label: 'Action',
         text: action.action || '',
         field: flag.kind === 'timing' ? 'timing' : flag.kind === 'ownership' ? 'owners' : 'action'
@@ -1723,7 +1829,7 @@
     var inferred = inferredActionForFlag(flag);
     if (inferred) return {
       stage: 3,
-      elementId: recordDomId('action', inferred.action.id, inferred.index),
+      elementId: actionDomId(inferred.action, inferred.index),
       label: inferred.field === 'timing' ? 'Action timing' : inferred.field === 'owners' ? 'Action owner' : 'Action',
       text: inferred.action.action || '',
       field: inferred.field,
@@ -1733,7 +1839,7 @@
   }
 
   function flagsTargetingAction(action, index) {
-    var elementId = recordDomId('action', action && action.id, index);
+    var elementId = actionDomId(action, index);
     return ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) {
       var target = flagTarget(flag);
       return target && target.elementId === elementId;
@@ -1828,11 +1934,13 @@
       if (candidateText) {
         body += '<div class="flag-target' + (!target ? ' transcript-candidate' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span><blockquote>' + escapeHtml(candidateText) + '</blockquote>';
       }
-      if (target) {
+      if (target && !target.ambiguous) {
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += (candidateText ? '' : '<div class="flag-target"><span>' + escapeHtml(candidateLabel) + '</span>')
           + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">Open in minutes</button></div>';
+      } else if (target && target.ambiguous) {
+        body += '<p>This check is linked to several actions. Review those rows directly.</p></div>';
       } else if (candidateText) {
         body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
       } else {
@@ -1882,7 +1990,10 @@
     options = options || {};
     if (!finalEditMatches(kind, id, field) || options.deferred) {
       var displayValue = options.displayValue == null ? value : options.displayValue;
-      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(id || '') + '" data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
+      var actionIndex = kind === 'action' ? actionIndexForOccurrence(id) : -1;
+      var recordId = actionIndex >= 0 ? state.draft.actions[actionIndex].id : id;
+      var occurrenceAttribute = kind === 'action' ? ' data-action-occurrence-id="' + escapeHtml(id) + '"' : '';
+      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
     }
     var control = options.singleLine
       ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
@@ -1891,7 +2002,7 @@
   }
 
   function finalTimingDisplay(action) {
-    return '<button class="final-editable final-editable-cell" data-final-edit data-kind="action" data-record-id="' + escapeHtml(action.id) + '" data-field="timing" type="button" title="Click to edit timing">' + escapeHtml(timingText(action.timing || {})) + '</button>';
+    return '<button class="final-editable final-editable-cell" data-final-edit data-kind="action" data-record-id="' + escapeHtml(action.id) + '" data-action-occurrence-id="' + escapeHtml(actionOccurrence(action)) + '" data-field="timing" type="button" title="Click to edit timing">' + escapeHtml(timingText(action.timing || {})) + '</button>';
   }
 
   function finalEditButtons() {
@@ -1967,11 +2078,11 @@
       return heading + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
     }).join('');
     var actionsHtml = (draft.actions || []).map(function (action) {
-      var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', action.id, field); })[0] || '';
+      var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', actionOccurrence(action), field); })[0] || '';
       var cell = function (field, html) { return '<td' + (editing === field ? ' class="final-editing-cell"' : '') + '>' + html + '</td>'; };
       return '<tr' + (editing ? ' class="is-editing"' : '') + '>'
-        + cell('action', finalTextEditor('action', action.id, 'action', action.action, {block:true,label:'Edit action',deferred:true}))
-        + cell('owners', finalTextEditor('action', action.id, 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated',deferred:true}))
+        + cell('action', finalTextEditor('action', actionOccurrence(action), 'action', action.action, {block:true,label:'Edit action',deferred:true}))
+        + cell('owners', finalTextEditor('action', actionOccurrence(action), 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated',deferred:true}))
         + cell('timing', finalTimingDisplay(action)) + '</tr>'
         + (editing ? finalActionEditorRow(action, editing) : '');
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
@@ -2163,7 +2274,20 @@
     reload.hidden = true;
     delete reload.dataset.progressCheck;
     reload.textContent = 'Reload saved version';
+    transferActionOccurrences(draft);
+    ensureActionOccurrences(draft);
+    var unfinishedOwnerKeys = Object.keys(actionEditorState.customOwners).filter(function (key) {
+      var entry = actionEditorState.customOwners[key];
+      return entry && (entry.visible || entry.value);
+    });
+    if (unfinishedOwnerKeys.some(function (key) {
+      return (draft.actions || []).filter(function (row) { return actionOccurrence(row) === key; }).length !== 1;
+    })) {
+      setSaveStatus('The saved actions changed while an owner entry was unfinished. Finish or cancel that entry before reloading.', 'local-only');
+      return;
+    }
     state.draft = restorePendingActions(restorePendingDiscussion(draft));
+    ensureActionOccurrences(state.draft);
     // Responses to saves and background work must not navigate the reviewer.
     // On the initial load, restore the separately persisted selected screen;
     // older drafts fall back to their furthest unlocked step.
@@ -2216,6 +2340,7 @@
       selectedStep: state.currentStep,
       includeSections: state.draft.includeSections || { meetingObjectives: true, executiveSummary: true, topicHeadings: true },
       keptActionIds: state.draft.keptActionIds || [],
+      keptActionOccurrenceIds: state.draft.keptActionOccurrenceIds || [],
       removedActions: state.draft.removedActions || []
     };
     if (statusValue) body.status = statusValue;
@@ -3126,11 +3251,12 @@
     if (!restoreButton || !state.draft) return;
     readActions();
     var back = removedActions().splice(Number(restoreButton.dataset.restoreAction), 1)[0];
-    if (back) state.draft.actions.push({
-      id: back.id, action: back.action, owners: back.owners || [],
-      timing: back.timing || {kind:'not_stated',wording:'',exactDate:''},
-      evidenceIds: back.evidenceIds || [], reviewFlagIds: [], reviewerAuthored: true
-    });
+    if (back) {
+      var restored = Object.assign({}, back, { reviewerAuthored: true });
+      delete restored.removedAt;
+      state.draft.actions.push(restored);
+      ensureActionOccurrences(state.draft);
+    }
     rerenderActions(); queueReviewDecision('Action put back');
   });
 
@@ -3253,7 +3379,7 @@
     var removeOwner = event.target.closest('[data-remove-owner]');
     if (removeOwner) {
       readActions();
-      var owned = state.draft.actions[Number(removeOwner.dataset.actionIndex)];
+      var owned = state.draft.actions[actionIndexForOccurrence(removeOwner.dataset.actionId)];
       if (owned) {
         owned.owners = (owned.owners || []).filter(function (name) { return name !== removeOwner.dataset.owner; });
         owned.reviewerAuthored = true;
@@ -3265,12 +3391,19 @@
     var keepButton = event.target.closest('[data-keep-action]');
     if (keepButton) {
       readActions();
-      var keptRow = state.draft.actions[Number(keepButton.dataset.keepAction)];
-      if (keptRow && keptRow.id) {
-        var ids = keptActionIds();
-        var at = ids.indexOf(keptRow.id);
-        if (at === -1) ids.push(keptRow.id); else ids.splice(at, 1);
-        markUndoStep(at === -1 ? 'Action marked as checked' : 'Action marked as unchecked', '');
+      var keptElement = keepButton.closest('[data-action-occurrence-id]');
+      var keptRow = state.draft.actions[actionIndexForOccurrence(keptElement && keptElement.dataset.actionOccurrenceId)];
+      if (keptRow) {
+        var wasKept = isActionKept(keptRow);
+        var ids = keptActionOccurrenceIds();
+        var key = actionOccurrence(keptRow);
+        var at = ids.indexOf(key);
+        if (at !== -1) ids.splice(at, 1);
+        var legacy = unambiguousLegacyActionId(keptRow);
+        var legacyAt = legacy ? keptActionIds().indexOf(legacy) : -1;
+        if (legacyAt !== -1) keptActionIds().splice(legacyAt, 1);
+        if (!wasKept) ids.push(key);
+        markUndoStep(wasKept ? 'Action marked as unchecked' : 'Action marked as checked', '');
       }
       rerenderActions(); scheduleSave();
       return;
@@ -3278,25 +3411,29 @@
     var button = event.target.closest('[data-delete-action]') || event.target.closest('[data-reject-action]');
     if (!button) return;
     readActions();
-    var removedIndex = Number(button.dataset.deleteAction != null ? button.dataset.deleteAction : button.dataset.rejectAction);
+    var removedElement = button.closest('[data-action-occurrence-id]');
+    var removedIndex = actionIndexForOccurrence(removedElement && removedElement.dataset.actionOccurrenceId);
+    if (removedIndex < 0) return;
     var actionToRemove = state.draft.actions[removedIndex];
+    var removedLegacyId = unambiguousLegacyActionId(actionToRemove);
     var inferredFlagIds = flagsTargetingAction(actionToRemove, removedIndex);
     var removedAction = state.draft.actions.splice(removedIndex,1)[0];
     resolveDeletedTargetFlags(linkedReviewFlagIds(removedAction).concat(inferredFlagIds));
     // Keep the row so it can be put back from the Removed section rather than
     // retyped. Newest first, because the last rejection is the likely undo.
-    if (removedAction) removedActions().unshift({
-      id: removedAction.id || '', action: removedAction.action || '',
-      owners: removedAction.owners || [], timing: removedAction.timing || {kind:'not_stated',wording:'',exactDate:''},
-      evidenceIds: removedAction.evidenceIds || [], removedAt: new Date().toISOString()
-    });
-    if (removedAction && removedAction.id) {
-      var keptAt = keptActionIds().indexOf(removedAction.id);
-      if (keptAt !== -1) keptActionIds().splice(keptAt, 1);
-      delete actionEditorState.pendingRows[removedAction.id];
-      delete actionEditorState.customOwners[removedAction.id];
-      delete actionEditorState.editingOwners[removedAction.id];
-      delete actionEditorState.editingTiming[removedAction.id];
+    if (removedAction) removedActions().unshift(Object.assign({}, JSON.parse(JSON.stringify(removedAction)), {
+      removedAt: new Date().toISOString()
+    }));
+    if (removedAction) {
+      var removedKey = actionOccurrence(removedAction);
+      var keptAt = keptActionOccurrenceIds().indexOf(removedKey);
+      if (keptAt !== -1) keptActionOccurrenceIds().splice(keptAt, 1);
+      var legacyKeptAt = removedLegacyId ? keptActionIds().indexOf(removedLegacyId) : -1;
+      if (legacyKeptAt !== -1) keptActionIds().splice(legacyKeptAt, 1);
+      delete actionEditorState.pendingRows[removedKey];
+      delete actionEditorState.customOwners[removedKey];
+      delete actionEditorState.editingOwners[removedKey];
+      delete actionEditorState.editingTiming[removedKey];
     }
     renderActions(); queueReviewDecision('Action removed');
   });
@@ -3371,7 +3508,8 @@
   document.getElementById('actionsBody').addEventListener('change', function (event) {
     var select = event.target.closest('[data-add-owner]');
     if (!select || !select.value) return;
-    var index = Number(select.dataset.actionIndex);
+    var index = actionIndexForOccurrence(select.dataset.actionId);
+    if (index < 0) return;
     if (select.value === '__other') {
       var other = select.parentElement.querySelector('[data-owner-other]');
       actionEditorState.customOwners[select.dataset.actionId] = { visible:true, value:'' };
@@ -3392,8 +3530,8 @@
       input.hidden = true;
       return;
     }
-    var index = (state.draft.actions || []).findIndex(function (action) { return action.id === actionId; });
-    if (index < 0) index = Number(input.dataset.actionIndex);
+    var index = actionIndexForOccurrence(actionId);
+    if (index < 0) return;
     var added = addOwner(index, input.value);
     input.value = '';
     delete actionEditorState.customOwners[actionId];
@@ -3431,11 +3569,12 @@
     readActions();
     var action = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[],reviewerAuthored:true};
     state.draft.actions.push(action);
-    actionEditorState.pendingRows[action.id] = JSON.parse(JSON.stringify(action));
+    ensureActionOccurrences(state.draft);
+    actionEditorState.pendingRows[actionOccurrence(action)] = JSON.parse(JSON.stringify(action));
     markUndoStep('add action', '');
     renderActions();
     setSaveStatus('New action row is kept in this tab until you enter the action.', 'local-only');
-    var field = document.querySelector('#' + recordDomId('action', action.id) + ' [data-action]');
+    var field = document.querySelector('#' + actionDomId(action, state.draft.actions.indexOf(action)) + ' [data-action]');
     if (field) field.focus({ preventScroll:true });
   });
 
@@ -3483,7 +3622,7 @@
       if (!value) return false;
       state.draft.executiveSummary = value; label = 'Executive summary edited';
     } else if (edit.kind === 'action') {
-      var action = (state.draft.actions || []).find(function (item) { return String(item.id) === String(edit.id); });
+      var action = state.draft.actions[actionIndexForOccurrence(edit.id)];
       if (!action) return false;
       var previousAction = actionEditFingerprint(action);
       if (edit.field === 'action') {
@@ -3520,9 +3659,12 @@
     }
     var editable = event.target.closest('[data-final-edit]');
     if (editable) {
-      activeFinalEdit = { kind:editable.dataset.kind, id:editable.dataset.recordId || '', field:editable.dataset.field };
+      activeFinalEdit = { kind:editable.dataset.kind,
+        id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
+        field:editable.dataset.field };
+      if (activeFinalEdit.kind === 'action' && actionIndexForOccurrence(activeFinalEdit.id) < 0) { activeFinalEdit = null; return; }
       if (activeFinalEdit.kind === 'action' && activeFinalEdit.field === 'owners') {
-        var action = (state.draft.actions || []).find(function (item) { return String(item.id) === String(activeFinalEdit.id); });
+        var action = state.draft.actions[actionIndexForOccurrence(activeFinalEdit.id)];
         activeFinalEdit.ownerSelection = action ? (action.owners || []).slice() : [];
       }
       renderFinal();

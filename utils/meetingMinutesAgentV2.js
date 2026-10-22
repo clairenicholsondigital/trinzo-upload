@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { validOccurrenceId, actionProvenanceSignature, findActionOccurrenceIndex, preserveActionIdentity, assignGeneratedActionIdentities } = require('./meetingMinutesActionIdentity');
 const TimingIntegrity = require('./meetingMinutesTiming');
 const { normaliseSystemTimingIssue, actionTimingIssueFlag } = require('./meetingMinutesTimingFlags');
 const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutesReviewAccounting');
@@ -101,7 +102,8 @@ function normaliseKnownTermsDeep(value) {
     if (value instanceof Date) return value;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return value;
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseKnownTermsDeep(item)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' ? item : normaliseKnownTermsDeep(item)]));
   }
   return value;
 }
@@ -6757,6 +6759,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
     timing = timingAssessment.action.timing;
     return {
       id: text(item?.id, 80) || stableId('action', action, index),
+      ...(validOccurrenceId(item?.occurrenceId) ? { occurrenceId: item.occurrenceId } : {}),
       ...reviewerProvenance(item, options),
       action,
       owners,
@@ -7274,7 +7277,7 @@ function buildProposal(stage, before = [], after = []) {
   return { id: stableId('proposal', `${stage}|${Date.now()}`), stage, createdAt: new Date().toISOString(), changes };
 }
 
-function applyProposal(before = [], proposal = {}, acceptedIds = []) {
+function applyProposal(before = [], proposal = {}, acceptedIds = [], options = {}) {
   const accepted = new Set(acceptedIds);
   const rows = Array.isArray(before) ? before : [];
   // IDs from independent model responses are ordinal labels, not globally
@@ -7291,15 +7294,35 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
   const signature = row => JSON.stringify(reviewShape(row));
   const targetKey = row => JSON.stringify([text(row?.id, 80), signature(row)]);
   const targetIdCounts = new Map();
+  const legacyActionTargetCounts = new Map();
+  const legacyActionKey = row => JSON.stringify([text(row?.id, 80), actionProvenanceSignature(row)]);
   for (const change of proposal.changes || []) {
     if (change.type === 'add') continue;
     const key = targetKey(change.before);
     targetIdCounts.set(key, (targetIdCounts.get(key) || 0) + 1);
+    if (change.before?.action != null && !validOccurrenceId(change.before.occurrenceId)) {
+      const legacyKey = legacyActionKey(change.before);
+      const positions = legacyActionTargetCounts.get(legacyKey) || new Set();
+      // Several suggestions can address the same original row. Count captured
+      // occurrences, not alternative edits/removals of that one occurrence.
+      positions.add(Number.isInteger(change.beforeIndex) ? change.beforeIndex
+        : Number.isInteger(change.index) ? change.index : `unknown:${change.id}`);
+      legacyActionTargetCounts.set(legacyKey, positions);
+    }
   }
   const originalIndex = (change) => (Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0);
   const currentIndex = (change) => {
     const beforeRecord = change?.before;
     if (!beforeRecord || typeof beforeRecord !== 'object') return -1;
+    if (beforeRecord.action != null) {
+      if (!validOccurrenceId(beforeRecord.occurrenceId)) {
+        const key = legacyActionKey(beforeRecord);
+        const captured = legacyActionTargetCounts.get(key)?.size || 0;
+        const remaining = rows.filter(row => row?.action != null && legacyActionKey(row) === key).length;
+        if (captured > 1 && remaining < captured && !rows.some(row => row === beforeRecord)) return -1;
+      }
+      return findActionOccurrenceIndex(rows, beforeRecord);
+    }
     const id = text(beforeRecord.id, 80);
     if (id) {
       const candidates = rows.map((row, index) => text(row?.id, 80) === id
@@ -7325,10 +7348,27 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
     if (!accepted.has(change.id)) continue;
     if (change.type === 'add') {
       const afterId = text(change.after?.id, 80);
-      if (rows.some((row) => (!afterId || text(row?.id, 80) === afterId)
-        && signature(row) === signature(change.after))) continue;
+      let addition = change.after;
+      if (proposal.stage === 'actions' && addition?.action != null) {
+        const generationKey = `${proposal.id || ''}|${change.id || ''}`;
+        const claimedOccurrence = validOccurrenceId(addition.occurrenceId);
+        if (claimedOccurrence && rows.some(row => validOccurrenceId(row.occurrenceId) === claimedOccurrence
+          && actionProvenanceSignature(row) !== actionProvenanceSignature(addition))) {
+          addition = { ...addition };
+          delete addition.occurrenceId;
+        }
+        const expected = assignGeneratedActionIdentities([addition], { generationKey }).actions[0];
+        const occurrenceId = validOccurrenceId(addition.occurrenceId) || expected.occurrenceId;
+        if (rows.some(row => validOccurrenceId(row.occurrenceId) === occurrenceId
+          && actionProvenanceSignature(row) === actionProvenanceSignature(addition))) continue;
+        if (!validOccurrenceId(addition.occurrenceId) && rows.some(row => text(row.id, 80) === afterId
+          && actionProvenanceSignature(row) === actionProvenanceSignature(addition))) continue;
+        addition = assignGeneratedActionIdentities([{ ...addition, occurrenceId }], { generationKey,
+          reservedActions: [...rows, ...[...inserted.values()].flat(), ...(options.reservedActions || [])] }).actions[0];
+      } else if (rows.some((row) => (!afterId || text(row?.id, 80) === afterId)
+        && signature(row) === signature(addition))) continue;
       const at = Math.max(0, Math.min(rows.length, originalIndex(change)));
-      inserted.set(at, [...(inserted.get(at) || []), change.after]);
+      inserted.set(at, [...(inserted.get(at) || []), addition]);
       continue;
     }
     // Never use an old numeric position for a destructive change. Autosave,
@@ -7339,7 +7379,8 @@ function applyProposal(before = [], proposal = {}, acceptedIds = []) {
     if (at < 0 || claimedTargets.has(at)) continue;
     claimedTargets.add(at);
     if (change.type === 'remove') removed.add(at);
-    else if (change.type === 'modify') modified.set(at, change.after);
+    else if (change.type === 'modify') modified.set(at, rows[at]?.action != null
+      ? preserveActionIdentity(rows[at], change.after) : change.after);
   }
   // Rebuild from the original rows rather than splicing, so each accepted change
   // is independent of which other changes were accepted.

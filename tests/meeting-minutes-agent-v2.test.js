@@ -1002,7 +1002,16 @@ test('proposal changes can be partially accepted without altering unselected rec
   const after = [{ id: 'a', action: 'First revised' }, { id: 'b', action: 'Second' }, { id: 'c', action: 'Third' }];
   const proposal = buildProposal('actions', before, after);
   const addition = proposal.changes.find((change) => change.type === 'add');
-  assert.deepEqual(applyProposal(before, proposal, [addition.id]), [...before, after[2]]);
+  const accepted = applyProposal(before, proposal, [addition.id]);
+  // New admissions carry occurrence metadata; every visible/provenance field
+  // and every untouched existing row must still match the selected subset.
+  const content = ({ id: _id, occurrenceId: _occurrenceId, ...row }) => row;
+  assert.deepEqual(accepted.map(content), [...before, after[2]].map(content));
+  assert.deepEqual(accepted.slice(0, before.length), before);
+  assert.equal(accepted[2].id, after[2].id);
+  assert.match(accepted[2].occurrenceId, /^action-occurrence-/);
+  assert.equal(new Set(accepted.map(row => row.id)).size, accepted.length);
+  assert.deepEqual(applyProposal(accepted, proposal, [addition.id]), accepted);
 });
 
 test('Word export uses UK dates, timing labels and contains no organisation field', async () => {
@@ -1055,11 +1064,23 @@ test('an inserted row is one change, and any subset of changes applies correctly
   const inserted = { id: 'x', action: 'Book the notified body audit slot.' };
   const edited = { id: 'b', action: 'Chase the vendor for the Polish translation files.' };
 
+  const assertAccepted = (actual, expected) => {
+    const content = ({ id: _id, occurrenceId: _occurrenceId, ...row }) => row;
+    assert.deepEqual(actual.map(content), expected.map(content));
+    assert.deepEqual(actual.map(row => row.id), expected.map(row => row.id));
+    assert.equal(new Set(actual.map(row => row.id)).size, actual.length);
+    expected.forEach((row, index) => {
+      if (row === inserted) assert.match(actual[index].occurrenceId, /^action-occurrence-/);
+      else assert.deepEqual(actual[index], row);
+    });
+    return actual;
+  };
   // a pure insertion must not read as "edit every row after it"
   const insertion = buildProposal('actions', [first, second], [first, inserted, second]);
   assert.equal(insertion.changes.length, 1);
   assert.equal(insertion.changes[0].type, 'add');
-  assert.deepEqual(applyProposal([first, second], insertion, [insertion.changes[0].id]), [first, inserted, second]);
+  const insertedOnce = assertAccepted(applyProposal([first, second], insertion, [insertion.changes[0].id]), [first, inserted, second]);
+  assert.deepEqual(applyProposal(insertedOnce, insertion, [insertion.changes[0].id]), insertedOnce);
   assert.deepEqual(applyProposal([first, second], insertion, []), [first, second]);
 
   // an insertion alongside an edit: each is independently acceptable
@@ -1067,9 +1088,9 @@ test('an inserted row is one change, and any subset of changes applies correctly
   const add = mixed.changes.find((change) => change.type === 'add');
   const modify = mixed.changes.find((change) => change.type === 'modify');
   assert.ok(add && modify);
-  assert.deepEqual(applyProposal([first, second], mixed, [add.id]), [first, inserted, second]);
+  assertAccepted(applyProposal([first, second], mixed, [add.id]), [first, inserted, second]);
   assert.deepEqual(applyProposal([first, second], mixed, [modify.id]), [first, edited]);
-  assert.deepEqual(applyProposal([first, second], mixed, [add.id, modify.id]), [first, inserted, edited]);
+  assertAccepted(applyProposal([first, second], mixed, [add.id, modify.id]), [first, inserted, edited]);
 
   // a removal, accepted and rejected
   const removal = buildProposal('actions', [first, inserted, second], [first, second]);
@@ -1080,7 +1101,7 @@ test('an inserted row is one change, and any subset of changes applies correctly
 
   // a proposal persisted before beforeIndex existed still applies
   const legacy = { stage: 'actions', changes: [{ id: 'L1', type: 'add', before: null, after: inserted, index: 2 }] };
-  assert.deepEqual(applyProposal([first, second], legacy, ['L1']), [first, second, inserted]);
+  assertAccepted(applyProposal([first, second], legacy, ['L1']), [first, second, inserted]);
 });
 
 test('a stale proposal target can never remove or modify the row now occupying its old index', () => {
