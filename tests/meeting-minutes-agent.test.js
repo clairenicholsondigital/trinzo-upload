@@ -2223,19 +2223,28 @@ test('compact discussion clusters the same proposition across generated topic la
   assert.deepEqual(visible[0].evidenceIds, ['T0001', 'T0002']);
 });
 
-test('an ordinary recovered question becomes supporting context rather than another visible row', () => {
+test('an ordinary recovered question stays review context without a guessed parent or extra visible row', () => {
   const units = [
     { id: 'T0050', sequence: 50, speaker: 'Alex', text: 'The supplier access approach is being reviewed.', classification: 'keep' },
     { id: 'T0051', sequence: 51, speaker: 'Priya', text: 'Which portal might be used?', classification: 'keep' }
   ];
+  const collected = [];
   const compact = compactDiscussionPropositions(
     [{ topic: 'Supplier access', points: [{ id: 'p1', text: 'The supplier access approach is being reviewed.', evidenceIds: ['T0050'] }], decisions: [], openQuestions: [] }],
     [{ topic: 'Supplier access', points: [], decisions: [], openQuestions: [{ id: 'q1', text: 'Which portal might be used?', evidenceIds: ['T0051'] }] }],
-    units
+    units,
+    { onUnassignedSupportingDetail(detail, context) { collected.push({ detail, context }); return true; } }
   );
-  assert.equal(compact[0].points.length, 1);
-  assert.equal(compact[0].openQuestions.length, 0);
-  assert.equal(compact[0].points[0].supportingDetails[0].text, 'Which portal might be used?');
+  const visible = compact.flatMap(topic => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  assert.deepEqual(visible.map(record => record.id), ['p1']);
+  assert.equal(visible[0].text, 'The supplier access approach is being reviewed.');
+  assert.deepEqual(visible[0].supportingDetails, []);
+  // A topic label and adjacent citations do not prove which proposition owns
+  // the question. Its full wording and evidence remain available for review.
+  assert.deepEqual(collected, [{
+    detail: { id: 'q1', text: 'Which portal might be used?', evidenceIds: ['T0051'] },
+    context: { originalTopic: 'Supplier access', placementReason: 'no_subject_match' }
+  }]);
 });
 
 test('a distinct material supporting detail is promoted into the visible minutes', () => {
@@ -2299,19 +2308,28 @@ test('compact discussion does not merge conflicting quantities', () => {
   assert.equal(compact[0].points.length, 2);
 });
 
-test('ordinary corroborated recovery becomes collapsed context instead of another visible row', () => {
+test('ordinary corroborated recovery remains lossless review context without another visible row', () => {
   const units = [
     { id: 'T0200', sequence: 200, speaker: 'Alex', text: 'Supplier approval is the current release blocker.', classification: 'keep' },
     { id: 'T0201', sequence: 201, speaker: 'Priya', text: 'The supplier normally sends a weekly status note.', classification: 'keep' }
   ];
+  const collected = [];
   const compact = compactDiscussionPropositions(
     [{ topic: 'Release', points: [{ id: 'p1', text: 'Supplier approval is the current release blocker.', evidenceIds: ['T0200'] }], decisions: [], openQuestions: [] }],
     [{ topic: 'Release', points: [{ id: 'p2', text: 'The supplier normally sends a weekly status note.', evidenceIds: ['T0201'] }], decisions: [], openQuestions: [] }],
-    units
+    units,
+    { onUnassignedSupportingDetail(detail, context) { collected.push({ detail, context }); return true; } }
   );
-  assert.equal(compact[0].points.length, 1);
-  assert.equal(compact[0].points[0].supportingDetails.length, 1);
-  assert.equal(compact[0].points[0].supportingDetails[0].text, 'The supplier normally sends a weekly status note.');
+  const visible = compact.flatMap(topic => [...topic.points, ...topic.decisions, ...topic.openQuestions]);
+  assert.deepEqual(visible.map(record => record.id), ['p1']);
+  assert.equal(visible[0].text, 'Supplier approval is the current release blocker.');
+  assert.deepEqual(visible[0].supportingDetails, []);
+  // Sharing only "supplier" does not establish a subject match. The review
+  // collector keeps the complete recovered fact, including its source.
+  assert.deepEqual(collected, [{
+    detail: { id: 'p2', text: 'The supplier normally sends a weekly status note.', evidenceIds: ['T0201'] },
+    context: { originalTopic: 'Release', placementReason: 'no_subject_match' }
+  }]);
 });
 
 test('collapsed context removes shorter evidence-overlapping restatements', () => {
@@ -2800,7 +2818,7 @@ test('an empty action recovery result is accepted when the agent disposed of eve
   ]), null);
 });
 
-test('supporting details that restate a primary row or each other semantically are dropped, primaries never', async () => {
+test('semantic supporting dedupe drops restatements but preserves extra quantities and all primaries', async () => {
   const discussion = [{ topic: 'Chiller', points: [
     { id: 'p1', text: 'A chiller failure during the IPA ferment risks the whole batch.', evidenceIds: ['T0001'], supportingDetails: [
       { id: 'c1', text: 'If the chiller fails mid-ferment the entire twelve hundred litres could be lost.', evidenceIds: ['T0001'] },
@@ -2812,13 +2830,21 @@ test('supporting details that restate a primary row or each other semantically a
     ] }
   ], decisions: [], openQuestions: [] }];
   // Text order handed to the grouper is primaries first (p1, p2) then details
-  // (c1, c2, c3, c4). Unit vectors: c1 and c3 restate p1; c4 restates p2; c2 is distinct.
+  // (c1, c2, c3, c4). Even identical vectors do not prove that p1's "whole
+  // batch" retains c1's extra twelve-hundred-litre quantity. c3 and c4 are
+  // genuine restatements; c2 remains distinct.
   const vectors = [[1, 0, 0], [0, 1, 0], [1, 0, 0], [0, 0, 1], [1, 0, 0], [0, 1, 0]];
   const result = await dedupeSupportingDetailsSemantically(discussion, { vectors, threshold: 0.8 });
   const [p1, p2] = result[0].points;
-  assert.deepEqual(p1.supportingDetails.map((detail) => detail.id), ['c2']);
+  assert.deepEqual(p1.supportingDetails.map((detail) => detail.id), ['c1', 'c2']);
+  assert.deepEqual(p1.supportingDetails[0], {
+    id: 'c1', text: 'If the chiller fails mid-ferment the entire twelve hundred litres could be lost.', evidenceIds: ['T0001']
+  });
   assert.deepEqual(p2.supportingDetails.map((detail) => detail.id), []);
-  assert.equal(result[0].points.length, 2, 'primary rows are never removed by the supporting dedupe');
+  assert.deepEqual(result[0].points.map(record => ({ id: record.id, text: record.text, evidenceIds: record.evidenceIds })), [
+    { id: 'p1', text: 'A chiller failure during the IPA ferment risks the whole batch.', evidenceIds: ['T0001'] },
+    { id: 'p2', text: 'The last IPA batch was muted on aroma.', evidenceIds: ['T0003'] }
+  ], 'primary rows and their source evidence are unchanged by the supporting dedupe');
 
   // With no vectors and the worker unreachable the lexical fallback decides;
   // a grouper failure leaves the discussion untouched.

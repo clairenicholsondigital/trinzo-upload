@@ -14465,8 +14465,8 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   }
 
   // Corroborated omissions no longer bypass the referee into the visible draft.
-  // Explicit decisions remain core; other accurate recovery material is kept as
-  // collapsed context on the closest proposition in the same topic.
+  // Explicit decisions remain core; other accurate recovery material needs a
+  // justified parent in the same topic or lossless retention for review.
   const recoveredRows = flattenHybridDiscussion(recovered);
   const materialCore = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|reject(?:ed|ion)?|block(?:ed|er|ing)?|cannot|can't|unable|depend(?:s|ent|ency)?|subject to|prevent(?:s|ed|ing)?|significant risk|material risk|unresolved|required decision|requires? confirmation|not yet (?:agreed|approved|resolved|confirmed)|awaiting (?:approval|decision|confirmation)|responsibil(?:ity|ities)|handled (?:at|by)|separate track|workstream|in parallel|handover|debrief|end of day|after (?:the )?site|return journey)\b/i;
   const recoveredCore = recoveredRows.filter((item) => item.recordType === 'decision'
@@ -14508,8 +14508,8 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
   }
   // A referee can classify a candidate as supporting without repeating its
   // full text in the visible response. Keep that accurate secondary material
-  // recoverable by attaching it to the closest core proposition. The candidate
-  // ledger remains private; only the evidence-grounded detail is exposed.
+  // under a justified core proposition or in the review-only filing pool.
+  // The candidate ledger remains private; full supporting text is retained.
   const allPrimary = topics.flatMap((topic) => [...topic.decisions, ...topic.openQuestions, ...topic.points]
     .map((record) => ({ topic, record })));
   // Dedupe across the whole draft, not per parent: the same chiller-risk fact
