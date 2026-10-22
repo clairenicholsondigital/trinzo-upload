@@ -13649,8 +13649,11 @@ function highConfidenceRefereedAction(action, candidates = [], sourceUnits = [])
 function safeAgentProposalPromotion(action, candidates = [], sourceUnits = []) {
   if (!action?.action || !Array.isArray(action.evidenceIds) || !action.evidenceIds.length) return false;
   if (transcriptTextGateEnabled() && transcriptTextIssue(action.action, sourceUnits)) return false;
+  // A documentation promise proves commitment, not every owner, timing,
+  // quantity or source concern. Use the same review gate as other promotions;
+  // the candidate remains available for explicit reviewer acceptance.
+  if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length) return false;
   const explicitDocumentation = explicitFutureDocumentationCommitment(action, sourceUnits);
-  if (Array.isArray(action.reviewFlagIds) && action.reviewFlagIds.length && !explicitDocumentation) return false;
   const sourceInfo = hybridActionSourceInfo(action, candidates);
   const evidence = surroundingEvidence(sourceUnits, action.evidenceIds).filter((unit) => unit.cited)
     .map((unit) => `${unit.speaker}: ${unit.text}`).join(' ');
