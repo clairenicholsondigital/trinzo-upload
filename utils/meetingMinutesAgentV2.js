@@ -878,7 +878,11 @@ function reviewerMergeHistory(value, field, survivorId, options = {}) {
 
 function normalisePoint(value, units, prefix, index, options = {}) {
   const candidate = typeof value === 'string' ? { text: value } : (value || {});
-  const pointText = text(candidate.text || candidate.point || candidate.value, 1600);
+  // A reviewer may promote complete retained context into the minutes. Keep
+  // their full wording at the save boundary, as for filed supporting details.
+  const pointText = options.preserveReviewerEdits === true && candidate.reviewerAuthored === true
+    ? String(candidate.text || candidate.point || candidate.value || '').trim()
+    : text(candidate.text || candidate.point || candidate.value, 1600);
   if (!pointText) return null;
   const pointId = text(candidate.id, 80) || stableId(prefix, pointText, index);
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
@@ -937,7 +941,8 @@ function normalisePoint(value, units, prefix, index, options = {}) {
 }
 
 function normalisePointList(values, units, prefix, options = {}) {
-  return (Array.isArray(values) ? values : []).map((value, index) => normalisePoint(value, units, prefix, index, options)).filter(Boolean).slice(0, 50);
+  return (Array.isArray(values) ? values : []).map((value, index) => normalisePoint(value, units, prefix, index, options))
+    .filter(Boolean).slice(0, options.preserveReviewerEdits === true ? undefined : 50);
 }
 
 function recordSimilarity(left, right) {
@@ -1029,7 +1034,7 @@ function normaliseDiscussion(candidate = {}, units = [], options = {}) {
     const normalised = normalisePointList(rows, units, prefix, options);
     return reviewerSave ? normalised : dedupePointList(normalised);
   };
-  const topics = discussionTopicItems(candidate).slice(0, 80).map((item, index) => {
+  const topics = discussionTopicItems(candidate).slice(0, reviewerSave ? undefined : 80).map((item, index) => {
     const topic = text(item?.topic, 220) || 'Discussion';
     const topicId = text(item?.id, 80) || stableId('topic', topic, index);
     return {

@@ -464,3 +464,163 @@ test('PATCH retains unfiled history until a represented attached copy covers eve
     [...record.mergedFromIds, 'another-predecessor']);
   assertPool((await request('get')).unassignedSupportingDetails, []);
 });
+
+function discussionRows(draft) {
+  return (draft.discussion || []).flatMap(topic => ['points', 'decisions', 'openQuestions']
+    .flatMap(field => topic[field] || []));
+}
+
+test('promoting a complete reviewer detail preserves its tail and provenance through PATCH, GET, undo and redo', async () => {
+  reset();
+  const retained = detail('promoted-context', longText, ['T0002'], {
+    reviewerAuthored: true, mergedFromIds: ['earlier-context', 'earlier-qualification'],
+    reviewFlagIds: ['detail-review']
+  });
+  saved.unassignedSupportingDetails = [];
+  saved.discussion[0].mergedTopicIds = ['earlier-calibration-topic'];
+  saved.discussion[0].points[0].supportingDetails = [copy(retained)];
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  discussion[0].points[0].supportingDetails = [];
+  discussion[0].points.push({ ...copy(retained), supportingDetails: [] });
+  const promoted = await request('patch', '', { discussion, reviewDecisionLabel: 'Add retained calibration context to the minutes' });
+  const assertPromoted = draft => {
+    const row = discussionRows(draft).find(row => row.id === retained.id);
+    assert.ok(row, 'the promoted record must remain a main proposition');
+    assert.equal(row.text.length, longText.length, 'main normalization must retain the complete reviewer wording');
+    assert.equal(row.text, longText);
+    assert.match(row.text, /ZETA-TAIL\.$/);
+    assert.equal(row.reviewerAuthored, true);
+    assert.deepEqual(row.evidenceIds, retained.evidenceIds);
+    assert.deepEqual(row.reviewFlagIds, retained.reviewFlagIds);
+    assert.deepEqual(row.mergedFromIds, retained.mergedFromIds);
+    assert.deepEqual(draft.discussion[0].mergedTopicIds, ['earlier-calibration-topic']);
+    assert.equal([...discussionRows(draft), ...supportInventory(draft)].filter(row => row.id === retained.id).length, 1);
+    assert.equal(draft.reviewFlags.find(flag => flag.id === 'detail-review')?.status, 'open');
+  };
+  assertPromoted(promoted);
+  assertPromoted(saved);
+  const pdfPoints = api.meetingAgentDraftForPdf(saved, false).discussion.flatMap(topic => topic.points);
+  assert.equal(pdfPoints.filter(point => point === longText).length, 1, 'ordinary PDF projection includes the complete promoted point exactly once');
+  assert.ok(pdfPoints.some(point => point.endsWith('ZETA-TAIL.')), 'ordinary PDF projection retains the final qualification');
+  const ordinaryXml = await documentXml(api.meetingAgentDraftForDocx(saved), false);
+  assert.ok(ordinaryXml.includes(longText), 'ordinary DOCX binary includes the complete promoted point');
+  assert.ok(ordinaryXml.includes('ZETA-TAIL.'), 'ordinary DOCX binary retains the final qualification');
+  assertPromoted(await request('get'));
+  assert.equal(saved.changeHistory.at(-1).beforeState.discussion[0].points[0].supportingDetails[0].text, longText);
+  const undone = await request('post', '/undo');
+  assert.equal(discussionRows(undone).some(row => row.id === retained.id), false);
+  const restored = supportInventory(undone).find(row => row.id === retained.id);
+  assert.deepEqual(retainedIdentity(restored), retainedIdentity(retained));
+  assert.deepEqual(restored.mergedFromIds, retained.mergedFromIds);
+  assert.equal(restored.reviewerAuthored, true);
+  assertPromoted(await request('post', '/redo'));
+  assertPromoted(await request('get'));
+});
+
+test('reviewer PATCH retains fifty-one rows in every discussion category through reload, undo and redo', async () => {
+  reset();
+  saved.unassignedSupportingDetails = [];
+  const initial = await request('get');
+  const discussion = copy(initial.discussion);
+  for (const field of ['points', 'decisions', 'openQuestions']) {
+    discussion[0][field] = Array.from({ length: 51 }, (_, index) => {
+      const evidenceId = `T${String(saved.sourceUnits.length + 1).padStart(4, '0')}`;
+      const wording = `Calibration ${field} record ${index + 1} retains the reviewer inspection qualification.`;
+      saved.sourceUnits.push({ id: evidenceId, speaker: 'Morgan Taylor', text: wording });
+      return detail(`${field}-retained-${index + 1}`, wording, [evidenceId], {
+        mergedFromIds: [`${field}-predecessor-${index + 1}`],
+        reviewFlagIds: index === 50 ? ['detail-review'] : []
+      });
+    });
+  }
+  saved.preparedTranscript = V.preparedTranscriptFromUnits(saved.sourceUnits);
+  const expected = discussionRows({ discussion }).map(retainedIdentity);
+  const assertRetained = draft => {
+    for (const field of ['points', 'decisions', 'openQuestions']) {
+      assert.equal(draft.discussion[0][field].length, 51, `all reviewer ${field} must survive`);
+      assert.ok(draft.discussion[0][field].every(row => row.reviewerAuthored === true));
+      assert.deepEqual(draft.discussion[0][field].map(row => row.mergedFromIds),
+        discussion[0][field].map(row => row.mergedFromIds));
+    }
+    assert.deepEqual(discussionRows(draft).map(retainedIdentity), expected);
+    assert.equal(new Set(discussionRows(draft).map(row => row.id)).size, 153, 'retain every occurrence exactly once');
+    assert.equal(draft.reviewFlags.find(flag => flag.id === 'detail-review')?.status, 'open');
+  };
+  assertRetained(await request('patch', '', { discussion, reviewDecisionLabel: 'Retain all reviewed calibration records' }));
+  assertRetained(saved);
+  assertRetained(await request('get'));
+  const undone = await request('post', '/undo');
+  assert.deepEqual(mainContent(undone), mainContent(initial));
+  assertRetained(await request('post', '/redo'));
+  const reloaded = await request('get');
+  assertRetained(reloaded);
+  assertRetained(await request('patch', '', { discussion: reloaded.discussion }));
+});
+
+test('reviewer PATCH retains an eighty-first topic through reload, undo and redo', async () => {
+  reset();
+  saved.unassignedSupportingDetails = [];
+  saved.discussion = Array.from({ length: 80 }, (_, index) => ({
+    id: `retained-topic-${index + 1}`, topic: `Calibration record ${index + 1}`,
+    points: [detail(`retained-point-${index + 1}`, saved.sourceUnits[0].text, ['T0001'])],
+    decisions: [], openQuestions: []
+  }));
+  const initial = await request('get');
+  assert.equal(initial.discussion.length, 80);
+  const discussion = copy(initial.discussion);
+  discussion.push({ id: 'retained-topic-81', topic: 'Reviewer calibration qualification',
+    mergedTopicIds: ['previous-qualification-topic'],
+    points: [detail('retained-point-81', saved.sourceUnits[2].text, ['T0003'], {
+      reviewFlagIds: ['detail-review'], mergedFromIds: ['previous-qualification-point']
+    })], decisions: [], openQuestions: [] });
+  const assertRetained = draft => {
+    assert.equal(draft.discussion.length, 81);
+    assert.deepEqual(draft.discussion.map(topic => topic.id), discussion.map(topic => topic.id));
+    assert.equal(discussionRows(draft).filter(row => row.id === 'retained-point-81').length, 1);
+    assert.equal(draft.discussion.at(-1).reviewerAuthored, true);
+    assert.deepEqual(draft.discussion.at(-1).mergedTopicIds, ['previous-qualification-topic']);
+    assert.deepEqual(draft.discussion.at(-1).points[0].mergedFromIds, ['previous-qualification-point']);
+    assert.deepEqual(draft.discussion.at(-1).points[0].evidenceIds, ['T0003']);
+    assert.deepEqual(draft.discussion.at(-1).points[0].reviewFlagIds, ['detail-review']);
+  };
+  assertRetained(await request('patch', '', { discussion, reviewDecisionLabel: 'Retain another reviewer topic' }));
+  assertRetained(saved);
+  assertRetained(await request('get'));
+  assert.equal((await request('post', '/undo')).discussion.length, 80);
+  assertRetained(await request('post', '/redo'));
+  assertRetained(await request('get'));
+});
+
+test('full reviewer wording requires the save boundary and authorship; generated budgets and sanitization remain', () => {
+  reset();
+  const candidate = { discussion: [{ id: 'bounded-topic', topic: 'Calibration review', points: [
+    detail('bounded-long', longText, ['T0002', 'T9999'], {
+      reviewerAuthored: true, confirmedTopic: true, mergedFromIds: ['old-calibration'],
+      primaryEvidenceIds: ['T0002', 'T9999'], arbitraryClientProperty: 'discard me'
+    })
+  ], decisions: [], openQuestions: [] }], actions: [] };
+  const options = { enforceEvidence: false, dedupeActions: false, mergeTopics: false };
+  const authored = V.normaliseAgentResult(copy(candidate), saved.sourceUnits, '', { ...options, preserveReviewerEdits: true });
+  assert.equal(authored.discussion[0].points[0].text, longText);
+  assert.equal(authored.discussion[0].points[0].id, 'bounded-long');
+  assert.deepEqual(authored.discussion[0].points[0].evidenceIds, ['T0002']);
+  assert.deepEqual(authored.discussion[0].points[0].primaryEvidenceIds, ['T0002']);
+  assert.equal(authored.discussion[0].points[0].arbitraryClientProperty, undefined);
+  const generated = V.normaliseAgentResult(copy(candidate), saved.sourceUnits, '', options).discussion[0].points[0];
+  assert.equal(generated.text.length, 1600);
+  assert.equal(generated.reviewerAuthored, undefined);
+  assert.equal(generated.confirmedTopic, undefined);
+  assert.equal(generated.mergedFromIds, undefined);
+  delete candidate.discussion[0].points[0].reviewerAuthored;
+  const unchanged = V.normaliseAgentResult(copy(candidate), saved.sourceUnits, '', { ...options, preserveReviewerEdits: true });
+  assert.equal(unchanged.discussion[0].points[0].text.length, 1600, 'an unchanged generated row does not gain the text exemption');
+  candidate.discussion[0].points = Array.from({ length: 51 }, (_, index) =>
+    detail(`bounded-${index + 1}`, `Calibration sample ${index + 1} has a retained measurement.`, ['T0001'], { reviewerAuthored: true }));
+  assert.equal(V.normaliseAgentResult(copy(candidate), saved.sourceUnits, '', options).discussion[0].points.length, 50);
+  candidate.discussion = Array.from({ length: 81 }, (_, index) => ({
+    ...copy(candidate.discussion[0]), id: `bounded-topic-${index + 1}`, topic: `Calibration sample ${index + 1}`,
+    points: [copy(candidate.discussion[0].points[0])]
+  }));
+  assert.equal(V.normaliseAgentResult(copy(candidate), saved.sourceUnits, '', options).discussion.length, 80);
+});
