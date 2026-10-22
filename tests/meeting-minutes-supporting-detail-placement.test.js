@@ -268,4 +268,3 @@ test('unready rows and details authored by a reviewer stay in their chosen locat
   });
   assert.deepEqual(result, before);
 });
-
