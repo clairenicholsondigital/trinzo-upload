@@ -114,8 +114,9 @@ test('manual supporting content and reviewer-owned parent/topic survive even whe
   }
 });
 
-test('ordinary untimed context and raw transcript alone retain previous action-duplicate behavior', () => {
-  assert.equal(run([row('context', 'The instrument has an engraved serial label.')]).discussion.length, 0);
+test('ordinary untimed context survives while raw transcript alone does not block exact duplicate removal', () => {
+  const context = row('context', 'The instrument has an engraved serial label.');
+  assert.deepEqual(kept(run([context])).supportingDetails, [context]);
   assert.equal(run([row('raw', 'So we should, you know, maybe inspect it tomorrow.')]).discussion.length, 0);
   assert.equal(run([]).discussion.length, 0);
 });
@@ -128,11 +129,11 @@ test('V2 can import this preservation gate first without a circular temporal-rev
   assert.doesNotMatch(result.stderr, /circular dependency/i);
 });
 
-test('decimal prices and percentage rates are ordinary untimed context, not dotted clock claims', () => {
+test('decimal prices and percentage rates survive as meaningful context alongside clock claims', () => {
   for (const text of [
     'The cover costs £13.50.', 'The cover costs $13.50.', 'The surcharge is set at 13.50%.',
     'The surcharge is set at 13.50 percent.', 'The cover is priced at 13.50 pounds.',
     'The cover is priced at 13.50 USD.'
-  ]) assert.equal(run([row('price', text)]).discussion.length, 0, text);
+  ]) assert.deepEqual(kept(run([row('price', text)])).supportingDetails.map(detail => detail.text), [text], text);
   assert.ok(kept(run([row('time', 'The documents must arrive at 13.50.')])));
 });
