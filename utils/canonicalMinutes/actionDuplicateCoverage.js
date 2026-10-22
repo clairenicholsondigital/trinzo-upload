@@ -18,7 +18,23 @@ function ownerKey(record = {}) {
 function timingKey(record = {}) {
   const timing = record.timing || {};
   if (!timing.kind || timing.kind === 'not_stated') return '';
-  return [timing.kind, actionText(timing.wording), String(timing.exactDate || '').trim()].join('|');
+  // A weekday can take an optional "on" without changing this occurrence.
+  // Compare that spelling only; preserve every other timing word, its kind and
+  // exact date, and leave the retained record's wording/verification untouched.
+  // Quoted/introduced wording may name a plan rather than a day, and a
+  // weekday possessive may be part of that name. Do not reinterpret either.
+  const literalWording = actionText(timing.wording);
+  const wording = QUOTED_OR_INTRODUCED.test(literalWording.replace(/‘/g, "'")) ? literalWording
+    : literalWording.replace(/\bon\s+(?=(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b(?!'))/g, '');
+  return [timing.kind, wording, String(timing.exactDate || '').trim()].join('|');
+}
+
+// Identify exactly the newly equivalent timing spellings, so presentation
+// dedupers still require a preserved-instruction proof before using them.
+function timingsDifferOnlyByWeekdayPreposition(left = {}, right = {}) {
+  const key = timingKey(left);
+  return Boolean(key && key === timingKey(right)
+    && actionText(left.timing?.wording) !== actionText(right.timing?.wording));
 }
 
 function conflictingTimings(left = {}, right = {}) {
@@ -128,5 +144,5 @@ function actionContainmentConflict(left = {}, right = {}) {
 
 module.exports = {
   actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText,
-  conflictingTimings, actionContainmentConflict
+  conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict
 };
