@@ -858,7 +858,10 @@ test('a concrete first-person future documentation commitment is safe to promote
     owners: ['Jacqui Fox'], evidenceIds: ['T2400'], reviewFlagIds: ['proposal-review']
   };
   assert.equal(explicitFutureDocumentationCommitment(action, units), true);
-  assert.equal(safeAgentProposalPromotion(action, [], units), true);
+  assert.equal(safeAgentProposalPromotion(action, [], units), false,
+    'the valid promise does not resolve an existing proposal review concern');
+  assert.equal(safeAgentProposalPromotion({ ...action, reviewFlagIds: [] }, [], units), true,
+    'the same supported unflagged promise still promotes');
   assert.equal(explicitFutureDocumentationCommitment({
     action: 'Write down the release risk.', owners: ['Alex Stone'], evidenceIds: ['T2400']
   }, units), false, 'the cited speaker must be the owner');

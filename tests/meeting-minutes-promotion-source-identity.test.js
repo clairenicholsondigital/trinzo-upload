@@ -63,7 +63,11 @@ test('a short source label cannot establish an invented full owner identity', ()
 test('exact full-name documentation promises remain valid with a namesake elsewhere', () => {
   const sources = [unit('T0001', 'Morgan Lee', DOCUMENT_PROMISE), unit('T0099', 'Morgan Shaw')];
   assert.equal(unchangedCall(explicitFutureDocumentationCommitment, documentation('Morgan Lee'), sources), true);
-  assert.equal(unchangedCall((row, units) => safeAgentProposalPromotion(row, [], units), documentation('Morgan Lee'), sources), true);
+  assert.equal(unchangedCall((row, units) => safeAgentProposalPromotion(row, [], units), documentation('Morgan Lee'), sources), false,
+    'an exact source identity does not settle the separate ownership review concern');
+  assert.equal(unchangedCall((row, units) => safeAgentProposalPromotion(row, [], units),
+    { ...documentation('Morgan Lee'), reviewFlagIds: [] }, sources), true,
+    'the supported unflagged identity remains eligible');
 });
 
 test('unique short documentation labels may use a complete identity established outside the cited turn', () => {

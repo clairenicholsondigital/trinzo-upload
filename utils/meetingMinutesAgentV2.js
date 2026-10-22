@@ -3797,7 +3797,11 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
     // for the new set of minutes" does not commit anyone to a cybersecurity
     // update. Checked on the quote's line(s), which carry the subject.
     if (options.requireOwnerTie && !commitmentQuoteAboutAction(row.commitmentQuote, action.action, item.passage)) continue;
-    rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []), reviewFlagIds: [] });
+    // This check establishes a commitment only. It cannot resolve independent
+    // field/source warnings or an unknown linked concern. Keep those decisions
+    // for their own checker/reviewer and do not alias the caller's flag list.
+    rescued.push({ ...action, owners: row.ownerSupported === false ? [] : (action.owners || []),
+      reviewFlagIds: Array.isArray(action.reviewFlagIds) ? [...action.reviewFlagIds] : [] });
   }
   return rescued;
 }
