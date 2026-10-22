@@ -276,7 +276,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("generationRunning('actions')", client)
         self.assertIn("function flagTarget", client)
         self.assertIn('data-view-flag-target', client)
-        self.assertIn("actionEditorState = { pendingRows: {}, customOwners: {}, editingOwners: {}, editingTiming: {} }", client)
+        # Opaque occurrence tokens can equal inherited Object property names.
+        # Keep all four editor-state stores, with no inherited keys; browser
+        # regressions exercise independent constructor/__proto__ row edits.
+        for field in ["pendingRows", "customOwners", "editingOwners", "editingTiming"]:
+            self.assertRegex(client, rf"\b{field}:\s*Object\.create\(null\)")
         self.assertIn("function renderPageHeading()", client)
         self.assertIn("Preparing summary…", client)
         self.assertIn('id="summaryFields"', page)

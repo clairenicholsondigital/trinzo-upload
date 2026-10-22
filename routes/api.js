@@ -322,7 +322,8 @@ const {
   removeDiscussionActionDuplicates
 } = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
-const { normaliseKeptActionIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
+const { normaliseKeptActionIds, normaliseKeptActionOccurrenceIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
+const { validOccurrenceId, actionProvenanceSignature, findActionOccurrenceIndex, preserveActionIdentity, assignGeneratedActionIdentities } = require('../utils/meetingMinutesActionIdentity');
 const { includedSections, summaryStageIsEmpty, applyIncludedSections, applyTopicHeadings } = require('../utils/includedSections');
 const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProjectReport } = require('../utils/minutesForProjectUpdate');
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
@@ -11557,6 +11558,8 @@ function meetingAgentDraftPayload(draft = {}) {
     // checked off, and which they rejected and could still put back.
     includeSections: includedSections(draft),
     keptActionIds: normaliseKeptActionIds(draft.keptActionIds, draft.actions),
+    keptActionOccurrenceIds: normaliseKeptActionOccurrenceIds(draft.keptActionOccurrenceIds,
+      [...(draft.actions || []), ...(draft.removedActions || [])]),
     removedActions: normaliseMeetingAgentKnownTermsDeep(normaliseRemovedActions(draft.removedActions))
   };
 }
@@ -11945,21 +11948,23 @@ function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRow
   const completed = new Set(completedIds || []);
   const original = Array.isArray(originalRows) ? originalRows : [];
   const current = Array.isArray(currentRows) ? currentRows : [];
-  const targetIdCounts = new Map();
-  for (const change of proposal.changes || []) {
-    if (change.type === 'add') continue;
-    const id = meetingMinutesAgentText(change.before?.id, 80);
-    if (id) targetIdCounts.set(id, (targetIdCounts.get(id) || 0) + 1);
-  }
-  const rowIndex = (row, change = null) => {
+  const rowIndex = (row) => {
+    if (row?.action != null) {
+      const exactReferences = current.map((candidate, index) => candidate === row ? index : -1).filter(index => index >= 0);
+      if (!validOccurrenceId(row.occurrenceId) && exactReferences.length === 1) return exactReferences[0];
+      // Identical legacy occurrences cannot be distinguished after one has
+      // disappeared. A surviving ordinal ID must not inherit its suggestion.
+      if (!validOccurrenceId(row.occurrenceId)) {
+        const same = candidate => String(candidate?.id || '') === String(row.id || '')
+          && actionProvenanceSignature(candidate) === actionProvenanceSignature(row);
+        if (original.filter(same).length > 1 && current.filter(same).length < original.filter(same).length) return -1;
+      }
+      return findActionOccurrenceIndex(current, row);
+    }
     const id = meetingMinutesAgentText(row?.id, 80);
     if (id) {
       const candidates = current.map((candidate, index) => meetingMinutesAgentText(candidate?.id, 80) === id ? index : -1)
         .filter((index) => index >= 0);
-      if (change && targetIdCounts.get(id) > 1) {
-        const expected = Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0;
-        return candidates.includes(expected) ? expected : -1;
-      }
       return candidates.length === 1 ? candidates[0] : -1;
     }
     const serialised = JSON.stringify(row || null);
@@ -11998,7 +12003,7 @@ const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
   // Undoing a change has to restore what it did to the reviewer's own state
   // too: which sections they included, what they checked off, what they
   // rejected. Without these, undo puts the text back and loses the rest.
-  'includeSections', 'keptActionIds', 'removedActions'
+  'includeSections', 'keptActionIds', 'keptActionOccurrenceIds', 'removedActions'
 ];
 
 function meetingAgentReviewSnapshot(draft = {}) {
@@ -12082,6 +12087,14 @@ async function loadOwnedMeetingAgentDraft(req, options = {}) {
 async function saveMeetingAgentDraft(draft, req, changes = {}) {
   const persistedChanges = normaliseMeetingAgentDraftChanges(changes);
   const merged = { ...draft, ...persistedChanges };
+  // A transaction that removes one ambiguous occurrence must not turn its old
+  // shared checked token into approval of the surviving sibling.
+  if (Object.prototype.hasOwnProperty.call(persistedChanges, 'actions')
+    || Object.prototype.hasOwnProperty.call(persistedChanges, 'removedActions')) {
+    merged.keptActionOccurrenceIds = normaliseKeptActionOccurrenceIds(merged.keptActionOccurrenceIds,
+      [...(merged.actions || []), ...(merged.removedActions || [])],
+      [...(draft.actions || []), ...(draft.removedActions || [])]);
+  }
   return updateMeetingMinutesAgentDraft(draft.draftId, req.authUser?.userId, draft.revision, {
     title: sanitiseMeetingAgentDetails(merged.details).meetingTitle || draft.title,
     status: persistedChanges.status || draft.status,
@@ -17867,6 +17880,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       redoHistory: reviewDecisionLabel ? [] : draft.redoHistory,
       includeSections: includedSections({ includeSections: req.body?.includeSections ?? draft.includeSections }),
       keptActionIds: normaliseKeptActionIds(req.body?.keptActionIds ?? draft.keptActionIds, normalised.actions),
+      keptActionOccurrenceIds: normaliseKeptActionOccurrenceIds(
+        req.body?.keptActionOccurrenceIds ?? draft.keptActionOccurrenceIds,
+        [...normalised.actions, ...normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions)],
+        [...(draft.actions || []), ...(draft.removedActions || [])]),
       removedActions: normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions),
       status: req.body?.status
     });
@@ -18535,9 +18552,9 @@ function finaliseMeetingAgentTimingProposal(proposal = {}, draft = {}) {
 // quietly applying them or leaving a hidden proposal that runs on every reload.
 function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentRows = []) {
   const proposed = (proposal.changes || []).filter(change => change.selected === true);
-  const removes = proposed.filter(change => change.type === 'remove');
-  const retained = applyProposal(currentRows, proposal, proposed.filter(change => change.type !== 'remove').map(change => change.id))
-    .filter(row => !removes.some(change => row.id === change.before?.id && sameActionText(row, change.before)));
+  // Resolve each removal through the same occurrence-aware transaction as
+  // manual review. Text plus a reused ordinal ID cannot identify its sibling.
+  const retained = applyProposal(currentRows, proposal, proposed.map(change => change.id));
   const acceptedIds = proposed.filter(change => change.type !== 'remove' || proposal.stage !== 'actions'
     || retained.some(row => actionIsLosslesslyCovered(change.before, row))).map(change => change.id);
   const accepted = new Set(acceptedIds);
@@ -18702,6 +18719,41 @@ function meetingAgentFlagUntouched(flag = {}) {
 //   replaced: the new run arrives as proposed changes to accept or reject.
 // - Open flags that belonged to replaced rows or a replaced proposal go with
 //   them, and identical open flags are shown once.
+function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generationKey = '') {
+  const changes = { ...input };
+  const checkedBefore = normaliseKeptActionOccurrenceIds(fresh.keptActionOccurrenceIds,
+    [...(fresh.actions || []), ...(fresh.removedActions || [])]);
+  if (JSON.stringify(checkedBefore) !== JSON.stringify(fresh.keptActionOccurrenceIds || [])) {
+    changes.keptActionOccurrenceIds = checkedBefore;
+  }
+  const original = Array.isArray(changes.actions) ? changes.actions : (fresh.actions || []);
+  const reserved = [...(fresh.actions || []), ...(fresh.removedActions || [])];
+  const allocated = Array.isArray(changes.actions)
+    ? assignGeneratedActionIdentities(original, {
+      existingActions: fresh.actions || [], reservedActions: reserved, generationKey
+    }).actions : original;
+  if (Array.isArray(changes.actions)) changes.actions = allocated;
+  const proposal = changes.pendingProposal;
+  if (proposal?.stage !== 'actions' || !Array.isArray(proposal.changes)) return changes;
+  const additions = proposal.changes.filter(change => change.type === 'add' && change.after);
+  const admittedAdds = assignGeneratedActionIdentities(additions.map(change => change.after), {
+    reservedActions: [...reserved, ...allocated], generationKey: generationKey + ':proposal'
+  }).actions;
+  let addIndex = 0;
+  changes.pendingProposal = { ...proposal, changes: proposal.changes.map(change => {
+    if (change.type === 'add' && change.after) return { ...change, after: admittedAdds[addIndex++] };
+    if (!change.before) return change;
+    const index = findActionOccurrenceIndex(original, change.before);
+    if (index < 0) return change;
+    const target = allocated[index];
+    return { ...change,
+      before: preserveActionIdentity(target, change.before),
+      ...(change.type === 'modify' && change.after ? { after: preserveActionIdentity(target, change.after) } : {})
+    };
+  }) };
+  return changes;
+}
+
 function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges = {}, result = {}) {
   const changes = { ...scopedChanges };
   let incomingFlags = Array.isArray(result.reviewFlags) ? result.reviewFlags : [];
@@ -18805,7 +18857,10 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
     seen.add(key);
     return true;
   });
-  return { changes, reviewFlags, keptReviewerActions };
+  return { changes: stage === 'actions'
+    ? admitMeetingAgentGeneratedActionChanges(fresh, changes,
+      `${fresh.draftId || ''}:${fresh.generation?.startedAt || ''}:actions`) : changes,
+    reviewFlags, keptReviewerActions };
 }
 
 async function persistMeetingAgentBackgroundStage(options = {}) {
@@ -19225,7 +19280,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       message: `The completeness check found a possible missed action: ${change.after?.action || 'Review this proposed action.'}`,
       evidenceIds: change.after?.evidenceIds || []
     }, index));
-    const saved = await saveMeetingAgentDraft(draft, req, {
+    const saved = await saveMeetingAgentDraft(draft, req, admitMeetingAgentGeneratedActionChanges(draft, {
       actions: reconciledActions,
       staleStages: [...new Set([
         ...(draft.staleStages || []),
@@ -19236,8 +19291,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
         return finalProposal.changes.length ? preselectActionProposal(finalProposal, reconciledActions, draft.sourceUnits) : null;
       })(),
       reviewFlags: mergeMeetingAgentFlags(draft.reviewFlags, [...audited.reviewFlags, ...rescueFlags, ...missedFlags])
-    });
-    return res.json({ ok: true, proposal: proposal.changes.length ? proposal : null, draft: publicMeetingAgentDraft(saved) });
+    }, `${draft.draftId || ''}:${draft.revision}:audit`));
+    return res.json({ ok: true, proposal: saved.pendingProposal || null, draft: publicMeetingAgentDraft(saved) });
   } catch (error) {
     safeLogError('[meeting-minutes-agent/audit-actions] failed', error);
     return sendMeetingAgentFailure(res, error);
@@ -19283,7 +19338,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     // Applying suggestions is a literal review transaction. Do not run the
     // complete editable register through generation-time deduplication here:
     // it can remove an untouched action or even the addition just selected.
-    const after = applyProposal(before, proposal, [...acceptedIdSet]);
+    const after = applyProposal(before, proposal, [...acceptedIdSet], { reservedActions: draft.removedActions || [] });
     const remainingProposal = automaticReview ? null
       : rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
     const unacceptedChanges = automaticReview ? []
@@ -19667,6 +19722,7 @@ router.stagedEvaluation = {
   meetingAgentReviewSnapshot,
   meetingAgentReviewHistoryEntry,
   automaticMeetingAgentProposalReview,
+  admitMeetingAgentGeneratedActionChanges,
   finaliseMeetingAgentTimingProposal,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,

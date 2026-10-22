@@ -70,7 +70,8 @@ function normalisePresentationCurrency(value) {
   if (typeof value === 'string') return normaliseUkCurrency(value);
   if (Array.isArray(value)) return value.map(normalisePresentationCurrency);
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalisePresentationCurrency(item)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' ? item : normalisePresentationCurrency(item)]));
   }
   return value;
 }

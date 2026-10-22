@@ -211,7 +211,8 @@ function normaliseDatePhrasesDeep(value) {
     if (value instanceof Date) return value;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return value;
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normaliseDatePhrasesDeep(item)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' ? item : normaliseDatePhrasesDeep(item)]));
   }
   return value;
 }

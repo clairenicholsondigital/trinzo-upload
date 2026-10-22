@@ -28,8 +28,14 @@ test('a new action sharing an existing ordinal ID is still added once', () => {
   const two = action('A1', 'Send the project plan to Priya Shah.');
   const p = buildProposal('actions', [one], [one, two]);
   const ids = p.changes.map(c => c.id);
-  assert.deepEqual(applyProposal([one], p, ids), [one, two]);
-  assert.deepEqual(applyProposal([one, two], p, ids), [one, two]);
+  const admitted = applyProposal([one], p, ids);
+  const content = ({ id: _id, occurrenceId: _occurrenceId, ...row }) => row;
+  assert.deepEqual(admitted.map(content), [one, two].map(content));
+  assert.deepEqual(admitted[0], one, 'the existing target keeps its identity and every field');
+  assert.notEqual(admitted[1].id, one.id, 'a new occurrence cannot reuse the existing ordinal ID');
+  assert.match(admitted[1].occurrenceId, /^action-occurrence-/);
+  assert.deepEqual(applyProposal(admitted, p, ids), admitted, 'repeat acceptance preserves allocated identities');
+  assert.deepEqual(applyProposal([one, two], p, ids), [one, two], 'historical rows are not rekeyed by ordinary review');
 });
 
 test('combining actions never rewrites the discovery records or their nested fields', () => {
