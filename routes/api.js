@@ -104,6 +104,7 @@ const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOr
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { convertSpokenNumbers } = require('../utils/spokenNumbers');
+const { numericActionEditIssue } = require('../utils/meetingMinutesActionNumericPreservation');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, isActionCategoryTopicCard, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
@@ -18528,6 +18529,8 @@ function destructiveActionEdit(before = {}, after = {}, sourceUnits = []) {
   if (before.timing?.exactDate && !after.timing?.exactDate) return 'it removes the date';
   if (before.timing?.exactDate && after.timing?.exactDate
     && before.timing.exactDate !== after.timing.exactDate) return 'it changes the date';
+  const numericIssue = numericActionEditIssue(before, after);
+  if (numericIssue) return numericIssue;
   if (transcriptTextGateEnabled() && transcriptTextIssue(after.action, sourceUnits)) return 'the new wording reads as a line of the conversation';
   return '';
 }
@@ -18726,7 +18729,18 @@ function finaliseMeetingAgentTimingProposal(proposal = {}, draft = {}) {
 // Automatic adoption must respect the same positive checks as proposal review.
 // Consuming uncertain suggestions exposes their source-linked checks instead of
 // quietly applying them or leaving a hidden proposal that runs on every reload.
-function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentRows = []) {
+function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentRows = [], sourceUnits = []) {
+  // Saved selections can predate current proposal checks. Recheck the actual
+  // uniquely matched row before a rejected edit can claim its transaction
+  // target and suppress a separate safe suggestion for the same occurrence.
+  const destructiveModifications = new Map(proposal.stage === 'actions'
+    ? (proposal.changes || []).flatMap(change => {
+      if (change.type !== 'modify' || !change.before || !change.after) return [];
+      const index = findActionOccurrenceIndex(currentRows, change.before);
+      if (index < 0) return [];
+      const reason = destructiveActionEdit(currentRows[index], change.after, sourceUnits);
+      return reason ? [[change.id, reason]] : [];
+    }) : []);
   const duplicateModifications = new Set(proposal.stage === 'actions'
     ? (proposal.changes || []).filter(change => duplicateMeetingAgentActionModification(change, currentRows)).map(change => change.id)
     : []);
@@ -18738,7 +18752,8 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
         === actionProvenanceSignature(preserveActionIdentity(currentRows[index], change.after));
     }).map(change => change.id) : []);
   const proposed = (proposal.changes || []).filter(change => change.selected === true
-    && !duplicateModifications.has(change.id) && !noOpModifications.has(change.id));
+    && !duplicateModifications.has(change.id) && !noOpModifications.has(change.id)
+    && !destructiveModifications.has(change.id));
   const unsafeRemovals = new Set();
   let acceptedIds = proposed.map(change => change.id);
   const unapplied = new Set();
@@ -18775,7 +18790,8 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
     const reason = String(duplicateModifications.has(change.id)
       ? 'This edit would copy the wording, owners and timing of another current action.'
       : noOpModifications.has(change.id) ? 'This edit would not change the current action.'
-        : unsafeRemovals.has(change.id) ? 'The current list does not prove that all of this action survives elsewhere.'
+        : destructiveModifications.has(change.id) ? `This edit was left for review because ${destructiveModifications.get(change.id)}.`
+          : unsafeRemovals.has(change.id) ? 'The current list does not prove that all of this action survives elsewhere.'
           : unapplied.has(change.id) ? (change.type === 'add'
             ? 'This suggestion did not insert a new action because that occurrence was already present.'
             : 'The proposed occurrence could not be changed uniquely in the current list; it may be stale, ambiguous or already handled by another suggestion.')
@@ -19571,7 +19587,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, asyn
     if (timingReview) proposal = timingReview.proposal;
     const allIds = (proposal.changes || []).map((change) => change.id);
     const automaticReview = decision === 'accept' && req.body?.automatic === true
-      ? automaticMeetingAgentProposalReview(proposal, mergeMeetingAgentFlags(draft.reviewFlags, timingReview?.flags || []), proposal.stage === 'discussion' ? draft.discussion : draft.actions) : null;
+      ? automaticMeetingAgentProposalReview(proposal, mergeMeetingAgentFlags(draft.reviewFlags, timingReview?.flags || []),
+        proposal.stage === 'discussion' ? draft.discussion : draft.actions, draft.sourceUnits) : null;
     const acceptedIds = decision === 'reject' ? []
       : automaticReview ? automaticReview.acceptedIds
       : req.body?.acceptAll === true ? allIds
