@@ -3771,7 +3771,9 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
 // supplies an exact transcript quote proving that classification. Missing or
 // unverifiable results leave the action untouched.
 function finalActionLifecycleCheckItems(actions = [], units = []) {
-  const rowsById = new Map(evidenceContextFor(units).rows.map((unit) => [String(unit.id), unit]));
+  const context = evidenceContextFor(units);
+  const sourceIndexByUnit = new Map(context.rows.map((unit, index) => [unit, index]));
+  const rowsById = new Map(context.rows.map((unit) => [String(unit.id), unit]));
   return (Array.isArray(actions) ? actions : []).map((action, index) => {
     const actionWords = new Set(actionSubjectWords(action?.action || ''));
     const owners = (action?.owners || []).map((owner) => String(owner).toLowerCase());
@@ -3788,7 +3790,10 @@ function finalActionLifecycleCheckItems(actions = [], units = []) {
     }).slice(0, 6);
     const seen = new Set();
     const passageUnits = rankedIds.flatMap((id) => evidenceWindowUnits(units, [id], 2, 5))
-      .filter((unit) => !seen.has(unit.id) && seen.add(unit.id)).slice(0, 40);
+      .filter((unit) => !seen.has(unit.id) && seen.add(unit.id)).slice(0, 40)
+      // Keep relevance selection and its limit, then restore dialogue order so
+      // later answers, corrections and completions follow the turns they qualify.
+      .sort((left, right) => sourceIndexByUnit.get(left) - sourceIndexByUnit.get(right));
     const passage = passageUnits
       .map((unit) => `${unit.speaker}: ${unit.text}`).join('\n');
     if (!passage || !text(action?.action)) return null;
@@ -5592,6 +5597,19 @@ function decisionCheckPrompt(items = []) {
 // generous enough for a complete spoken sentence while still bounding input.
 function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   const flat = (value) => quoteText(value).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Keep the existing normalization, but a substring must cover complete
+  // tokens. A standalone apostrophe can be a quotation mark; an apostrophe
+  // inside can't, O'Brien or Ann's cannot bound a shorter quoted word.
+  const boundary = (value, index, direction) => index < 0 || index >= value.length
+    || value[index] === ' ' || (value[index] === "'" && (index + direction < 0
+      || index + direction >= value.length || value[index + direction] === ' '));
+  const containsCompleteQuote = (value, quotedText) => {
+    if (!quotedText) return false;
+    for (let index = value.indexOf(quotedText); index >= 0; index = value.indexOf(quotedText, index + 1)) {
+      if (boundary(value, index - 1, -1) && boundary(value, index + quotedText.length, 1)) return true;
+    }
+    return false;
+  };
   const stripSpeakerPrefix = value => String(value || '').replace(/^[^:]{2,40}:\s*/, (prefix, _offset, source) => {
     const colon = prefix.indexOf(':');
     // A clock inside a short sentence is spoken content, not a speaker label.
@@ -5610,7 +5628,7 @@ function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   if (minimumWords < 3) return { valid: false, reason: 'quote_too_short', words: minimumWords };
   if (words > maxWords) return { valid: false, reason: 'quote_too_long', words };
   const spoken = String(passage || '').split('\n').map(stripSpeakerPrefix).join(' ');
-  const valid = flat(spoken).includes(needle);
+  const valid = containsCompleteQuote(flat(spoken), needle);
   // Only temporal consumers opt in to the corrected clock parsing. A newly
   // accepted quote must then prove the complete source proposition, or supply
   // a validated structured temporal witness; quotation alone is insufficient.
@@ -5618,7 +5636,7 @@ function decisionQuoteValidation(quote, passage, maxWords = 120, options = {}) {
   const legacyNeedle = flat(legacyStrip(quote));
   const legacyWords = legacyNeedle ? legacyNeedle.split(' ').length : 0;
   const legacyValid = legacyWords >= 3 && legacyWords <= maxWords
-    && flat(String(passage || '').split('\n').map(legacyStrip).join(' ')).includes(legacyNeedle);
+    && containsCompleteQuote(flat(String(passage || '').split('\n').map(legacyStrip).join(' ')), legacyNeedle);
   return { valid, reason: valid ? '' : 'quote_not_found', words,
     ...(valid && !legacyValid ? { requiresLiteralSource: true } : {}) };
 }
