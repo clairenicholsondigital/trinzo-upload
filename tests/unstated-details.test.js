@@ -139,32 +139,76 @@ test('the fidelity critic is asked about added specifics and small talk', () => 
   assert.match(prompt, /"issue":""/);
 });
 
-test('an added detail or small talk surfaces as a visible flag with no evidence quote', () => {
+test('an unverified assertion is withheld recoverably while uncited small talk stays reviewable', () => {
   const discussion = [{
     topic: 'Logistics',
     points: [{ id: 'p1', text: 'Launch planned for 9 March; Sam indifferent to golf.', evidenceIds: ['T0003'], supportingDetails: [] }],
     decisions: [],
     openQuestions: []
   }];
+  const before = structuredClone(discussion);
   const items = discussionFidelityCheckItems(discussion, units);
   assert.equal(items.length, 1);
-  for (const [issue, pattern] of [['small_talk', /small talk/], ['added_detail', /Cannot verify "Sam indifferent to golf"/]]) {
+  for (const issue of ['small_talk', 'added_detail']) {
     const result = applyDiscussionFidelityResults(discussion, items, [{
       id: items[0].id, verdict: 'uncertain', issue, problemQuote: 'Sam indifferent to golf', evidenceQuote: '', reason: 'A personal taste.'
     }]);
     assert.equal(result.rejected.length, 0);
     assert.equal(result.flags.length, 1);
-    assert.match(result.flags[0].message, pattern);
-    assert.ok(isUsefulReviewFlag(result.flags[0]), `${issue} flag must reach the reviewer`);
+    const flag = result.flags[0];
+    assert.equal(flag.kind, 'uncertain_fact');
+    assert.equal(flag.status, 'open');
+    assert.deepEqual(flag.evidenceIds, ['T0003']);
+    assert.ok(isUsefulReviewFlag(flag), `${issue} flag must reach the reviewer`);
+    if (issue === 'small_talk') {
+      assert.match(flag.message, /small talk/);
+      assert.deepEqual(result.withheld, [], 'an uncited small-talk verdict cannot remove the row');
+      assert.deepEqual(result.discussion[0].points, [{ ...before[0].points[0], reviewFlagIds: [flag.id] }]);
+    } else {
+      assert.match(flag.message, /unverified assertion.*withheld for source review/);
+      assert.ok(flag.message.includes(before[0].points[0].text), 'the visible warning identifies the full withheld claim');
+      assert.deepEqual(result.discussion[0].points, []);
+      assert.equal(result.withheld.length, 1);
+      const withheld = result.withheld[0];
+      assert.equal(withheld.issue, 'added_detail');
+      assert.equal(withheld.reason, 'A personal taste.');
+      assert.deepEqual(withheld.evidenceIds, ['T0003']);
+      assert.equal(withheld.reviewFlagId, flag.id);
+      assert.deepEqual(withheld.recordPath, [0, 'points', 0]);
+      assert.deepEqual(withheld.record, { ...before[0].points[0], reviewFlagIds: [flag.id] },
+        'the complete original row and source links remain recoverable');
+    }
+    assert.deepEqual(discussion, before, 'fidelity checking cannot mutate the caller draft');
   }
   const invented = applyDiscussionFidelityResults(discussion, items, [{
     id: items[0].id, verdict: 'uncertain', issue: 'added_detail', problemQuote: 'Sam loves cricket', evidenceQuote: '', reason: ''
   }]);
-  assert.equal(invented.flags.length, 0, 'the problem quote must still come from the row');
+  assert.equal(invented.accounting.complete, false);
+  assert.equal(invented.accounting.counts.rejected, 1, 'the problem quote must still come from the row');
+  assert.equal(invented.accounting.items[0].reason, 'problem_quote_not_found');
+  assert.equal(invented.checked, 0);
+  assert.deepEqual(invented.withheld, []);
+  assert.equal(invented.flags.length, 1, 'the date-bearing row retains an incomplete-check warning');
+  assert.equal(invented.flags[0].kind, 'timing');
+  assert.match(invented.flags[0].message, /problem quote not found/);
+  assert.doesNotMatch(invented.flags[0].message, /Sam loves cricket/, 'invented wording cannot become the warning claim');
+  assert.ok(isUsefulReviewFlag(invented.flags[0]));
+  assert.deepEqual(invented.discussion[0].points, [{ ...before[0].points[0], reviewFlagIds: [invented.flags[0].id] }],
+    'invented problem wording cannot rewrite or withhold the original');
   const correction = applyDiscussionFidelityResults(discussion, items, [{
     id: items[0].id, verdict: 'corrected', problemQuote: 'Sam indifferent to golf', evidenceQuote: '', correctedText: 'Launch planned for 9 March.'
   }]);
-  assert.equal(correction.rejected.length, 1, 'a correction still needs transcript words');
+  assert.equal(correction.accounting.complete, false);
+  assert.equal(correction.accounting.counts.rejected, 1, 'a correction still needs transcript words');
+  assert.equal(correction.accounting.items[0].reason, 'evidence_quote_too_short');
+  assert.equal(correction.corrected, 0);
+  assert.equal(correction.checked, 0);
+  assert.deepEqual(correction.withheld, []);
+  assert.equal(correction.flags.length, 1);
+  assert.equal(correction.flags[0].kind, 'timing');
+  assert.ok(isUsefulReviewFlag(correction.flags[0]));
+  assert.deepEqual(correction.discussion[0].points, [{ ...before[0].points[0], reviewFlagIds: [correction.flags[0].id] }]);
+  assert.deepEqual(discussion, before);
 });
 
 test('discussion discovery forbids unspoken months and small talk', () => {

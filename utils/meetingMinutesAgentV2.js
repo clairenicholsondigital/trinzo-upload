@@ -845,6 +845,10 @@ function isUsefulReviewFlag(flag = {}) {
     && normalised.status === 'open' && !normalised.correctionNote) return false;
   if (normalised.kind !== 'uncertain_fact') return true;
   if (normalised.status !== 'open' || normalised.correctionNote) return true;
+  // The quantified-claim gate creates these only when the source does not bind
+  // a stated location/duration to the named work. Its typed uncertainty must
+  // survive save/publication regardless of the warning's prose wording.
+  if (/^flag-quantity-binding-/.test(String(normalised.id || ''))) return true;
   return MATERIAL_UNCERTAINTY_PATTERN.test(normalised.message);
 }
 
