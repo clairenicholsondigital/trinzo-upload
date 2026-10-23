@@ -44,7 +44,11 @@ function normalizeUnassignedSupportingDetails(values = []) {
       ...filingProvenance(record),
       ...(unsafe || Object.keys(record).some(key => !['id', 'text', 'evidenceIds', 'reviewFlagIds',
         'mergedFromIds', 'originalTopic', 'placementReason', 'reviewerAuthored', 'filingOrigins',
-        'filingMergeProtected'].includes(key)) ? { filingMergeProtected: true } : {}),
+        'filingMergeProtected'].includes(key)
+        // An empty generated child list carries no content to preserve. Real
+        // descendants and malformed values must still prevent consolidation.
+        && !(key === 'supportingDetails' && Array.isArray(record[key]) && record[key].length === 0))
+        ? { filingMergeProtected: true } : {}),
       ...(mergedFromIds.length ? { mergedFromIds } : {}),
       ...(strings(record.reviewFlagIds).length ? { reviewFlagIds: strings(record.reviewFlagIds) } : {}),
       ...(typeof record.originalTopic === 'string' && record.originalTopic.trim() ? { originalTopic: record.originalTopic.trim().slice(0, 220) } : {}),
