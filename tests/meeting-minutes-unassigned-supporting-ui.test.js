@@ -136,7 +136,8 @@ test('filing, promotion and demotion retain complete context and merge history t
     const { page } = f;
     let row = await openPool(page);
     assert.equal(await row.locator('.omitted-detail-copy > p:first-child').textContent(), LONG_DETAIL);
-    assert.equal(await row.locator('.review-notice').textContent(), warning.message);
+    assert.equal(await row.locator('.review-notice [data-retained-warning-message]').textContent(), warning.message);
+    assert.equal(await row.locator('.review-notice').evaluate(node => node.open), false);
     assert.equal(await page.locator('#unsafe-detail').count(), 0);
     assert.equal(await page.evaluate(() => window.unsafe), undefined);
     assert.equal(await row.locator('[data-supporting-destination]').inputValue(), '');
@@ -207,7 +208,8 @@ test('filing, promotion and demotion retain complete context and merge history t
     assertRetainedRecord();
     await page.click('#omittedDetailsPanel > summary');
     const demotedRow = page.locator('#minutes-supporting-unfiled-1');
-    assert.equal(await demotedRow.locator('.omitted-detail-copy p').textContent(), LONG_DETAIL);
+    assert.equal(await demotedRow.locator('.omitted-detail-copy > p:first-child').textContent(), LONG_DETAIL);
+    assert.equal(await demotedRow.locator('[data-retained-warning-message]').textContent(), warning.message);
     await demotedRow.locator('.evidence-toggle').click();
     assert.match(await demotedRow.locator('.evidence-panel').textContent(), /SOURCE <script>not executable<\/script> & original full context/);
     assert.equal(await page.locator('#unsafe-detail').count(), 0);

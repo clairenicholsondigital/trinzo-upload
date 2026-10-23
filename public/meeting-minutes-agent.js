@@ -540,10 +540,34 @@
 
   function autoGrow(root) {
     (root || document).querySelectorAll('textarea').forEach(function (area) {
+      // Hidden editors have no measurable content height. Their next render
+      // or step activation will size them at their actual visible width.
+      if (!area.getClientRects().length) return;
       area.style.height = 'auto';
       var compact = area.matches('[data-record-field],[data-action],[data-objective-index],[data-topic]');
-      area.style.height = Math.max(area.scrollHeight, compact ? 36 : 52) + 'px';
+      var box = getComputedStyle(area);
+      var number = function (value) { return parseFloat(value) || 0; };
+      // scrollHeight includes padding but excludes borders; CSS height means
+      // the border box here, or the content box for an explicitly styled editor.
+      var adjustment = box.boxSizing === 'border-box'
+        ? number(box.borderTopWidth) + number(box.borderBottomWidth)
+        : -number(box.paddingTop) - number(box.paddingBottom);
+      area.style.height = Math.max(Math.ceil(area.scrollHeight + adjustment), compact ? 36 : 52) + 'px';
     });
+  }
+
+  var autoGrowFrame = null;
+  function scheduleAutoGrow() {
+    if (autoGrowFrame !== null) return;
+    autoGrowFrame = window.requestAnimationFrame(function () {
+      autoGrowFrame = null;
+      autoGrow();
+    });
+  }
+  window.addEventListener('resize', scheduleAutoGrow);
+  if (document.fonts) {
+    document.fonts.ready.then(scheduleAutoGrow, scheduleAutoGrow);
+    document.fonts.addEventListener('loadingdone', scheduleAutoGrow);
   }
 
   function actionTranscriptId(action, index) {
@@ -1194,6 +1218,45 @@
     return '';
   }
 
+  function reviewFlagLabel(flag) {
+    var labels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Check this against the transcript', possible_missed_follow_up:'Possible missed follow-up' };
+    var kind = String(flag && flag.kind || '');
+    return labels[kind] || (kind ? kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); }) : 'Source check needed');
+  }
+
+  function retainedWarningState(id) {
+    var flag = ((state.draft && state.draft.reviewFlags) || []).find(function (item) { return item.id === id; });
+    return {
+      hidden: Boolean(flag && flag.status && flag.status !== 'open'),
+      label: reviewFlagLabel(flag),
+      message: flag && typeof flag.message === 'string' && flag.message.trim()
+        ? flag.message : 'The explanation for this retained warning is unavailable. Check this detail against its source before including it.'
+    };
+  }
+
+  function retainedWarningNotices(detail, ownerKey) {
+    return Array.from(new Set(detail.reviewFlagIds || [])).filter(function (id) {
+      return typeof id === 'string' && id;
+    }).map(function (id) {
+      var notice = retainedWarningState(id);
+      // The full explanation can quote the paragraph. Keep it available in a
+      // disclosure rather than repeating that paragraph in the visible list.
+      return '<details class="review-notice" data-retained-warning="' + escapeHtml(id)
+        + '" data-keep-open="' + escapeHtml(disclosureKey([id], 'retained-warning:' + ownerKey))
+        + '"' + (notice.hidden ? ' hidden' : '') + '><summary>' + escapeHtml(notice.label)
+        + '</summary><p data-retained-warning-message>' + escapeHtml(notice.message) + '</p></details>';
+    }).join('');
+  }
+
+  function refreshRetainedWarningNotices() {
+    document.querySelectorAll('[data-retained-warning]').forEach(function (node) {
+      var notice = retainedWarningState(node.dataset.retainedWarning);
+      node.hidden = notice.hidden;
+      node.querySelector('summary').textContent = notice.label;
+      node.querySelector('[data-retained-warning-message]').textContent = notice.message;
+    });
+  }
+
   function unassignedSupportingDetailsPanel(discussion) {
     var pool = (state.draft && state.draft.unassignedSupportingDetails) || [];
     if (!Array.isArray(pool) || !pool.length) return '';
@@ -1228,11 +1291,7 @@
       var control = destinations
         ? '<label>File under<select data-supporting-destination aria-label="File this detail under a discussion item"><option value="">Choose a discussion item…</option>' + destinations + '</select></label><button class="secondary compact" data-file-supporting="' + index + '" type="button" disabled>File detail</button>'
         : '<p class="muted">Add a discussion point, decision or open question first, then choose where to file this detail.</p>';
-      var warnings = (detail.reviewFlagIds || []).map(function (id) {
-        var flag = (state.draft.reviewFlags || []).find(function (item) { return item.id === id; });
-        if (flag && flag.status && flag.status !== 'open') return '';
-        return '<p class="review-notice">' + escapeHtml(flag ? flag.message : 'The explanation for this retained warning is unavailable. Check this detail against its source before including it.') + '</p>';
-      }).join('');
+      var warnings = retainedWarningNotices(detail, 'unassigned-' + detailId + '-' + index);
       var promote = '<label>Add as a discussion point in<select data-unassigned-topic><option value="">Choose a topic…</option>'
         + topicOptions + '<option value="new">New topic…</option></select></label>'
         + '<input data-unassigned-new-topic aria-label="New topic heading" placeholder="Heading for a new topic" maxlength="220" hidden>'
@@ -1271,7 +1330,7 @@
     return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Review additional details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details were left out of the draft. Check whether anything should be included.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
       return '<section class="omitted-topic"><h3>' + escapeHtml(group.topic.topic || 'Untitled topic') + '</h3><div class="omitted-detail-list">' + group.rows.map(function (row) {
         var detailId = row.detail.id || (group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex);
-        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(row.detail.text || '') + '</p>' + (row.detail.placementStatus === 'unresolved' ? '<p class="muted">Placement needs review.</p>' : '') + '</div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
+        return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(row.detail.text || '') + '</p>' + retainedWarningNotices(row.detail, 'supporting-' + detailId + '-' + group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex) + (row.detail.placementStatus === 'unresolved' ? '<p class="muted">Placement needs review.</p>' : '') + '</div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
       }).join('') + '</div></section>';
     }).join('') + unassigned + '</div></div></details>';
   }
@@ -2035,11 +2094,10 @@
     var panel = document.getElementById('reviewFlags');
     var wasHidden = panel.hidden;
     if (open.length && wasHidden) panel.open = false;
-    var flagLabels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Check this against the transcript', possible_missed_follow_up:'Possible missed follow-up' };
     document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
       if (flag.status !== 'open') return '';
       if (proposalChangeForFlag(flag)) return '';
-      var label = flagLabels[flag.kind] || flag.kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); });
+      var label = reviewFlagLabel(flag);
       var target = flagTarget(flag);
       var displayMessage = target && target.proposal
         ? 'The agent found a possible addition that is not in the minutes yet.'
@@ -2084,6 +2142,7 @@
       return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
     }).join('');
     restoreDisclosures(document.getElementById('flagList'));
+    refreshRetainedWarningNotices();
     updateReviewQueueSummary();
   }
 
@@ -3932,6 +3991,9 @@
         }
         // The jump to the item replaces the step's own landing position; without
         // this the autosave that follows the step change scrolls back to the top.
+        for (var ancestor = target.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          if (ancestor.tagName === 'DETAILS') ancestor.open = true;
+        }
         clearStepNavigationScroll();
         target.scrollIntoView({behavior:'smooth',block:'center'});
         target.classList.add('flag-target-highlight');
