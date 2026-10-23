@@ -6,6 +6,7 @@ const { commitmentScopeConflict } = require('../utils/canonicalMinutes/commitmen
 const R = require('../utils/canonicalMinutes/actionSemanticReconciliation');
 const { captureSemanticPolicy, normaliseSemanticPolicy } = require('../utils/meetingMinutesSemanticPolicy');
 const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
+const { promptContext } = require('../utils/meetingMinutesSemanticStage');
 const row = (id, action, extra = {}) => ({ id, action, owners: ['Morgan Lee'], evidenceIds: ['T0001'],
   reviewFlagIds: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, ...extra });
 const pair = () => [row('a', 'Check with Alex regarding supplier documentation.'),
@@ -63,6 +64,16 @@ test('even an affirmative source verdict cannot authorise losing additional enqu
   const [short,full]=pair();
   assert.ok(R.mechanicalCoverage(full,short).reasons.includes('enquiry_purpose_detail_would_be_lost'));
   assert.deepEqual(R.mechanicalCoverage(short,full).reasons,['directional_wording_not_proved']);
+});
+
+test('contact source context keeps the existing eight-source budget and original references', () => {
+  const units=Array.from({length:30},(_,i)=>({id:'T'+String(i+1).padStart(4,'0'),speaker:'Morgan Lee',text:'Supplier documentation context '+i}));
+  const rows=pair();rows.forEach(r=>r.evidenceIds=['T0014','T0015']);
+  const packet=R.prepareActionReconciliation({actions:rows,sourceUnits:units,scope:'contact_enquiries'});
+  const context=promptContext(packet,packet.candidates);
+  assert.equal(context.sourceUnits.length,8);
+  assert.ok(['T0014','T0015'].every(id=>context.sourceUnits.some(u=>u.id===id)));
+  assert.ok(context.sourceUnits.every(u=>Math.abs(Number(u.id.slice(1))-14)<=5));
 });
 
 test('enquiry opt-in is frozen, bounded and does not enable discussion reconciliation', async () => {

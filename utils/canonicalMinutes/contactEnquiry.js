@@ -34,7 +34,8 @@ function sameEnquiryPair(left, right) {
   if (!eligible(left) || !eligible(right)) return false;
   const a = enquiryFrame(left.action), b = enquiryFrame(right.action);
   if (a.recipient !== b.recipient || canonical(left.owners[0]) !== canonical(right.owners[0])
-    || !left.evidenceIds.some(id => right.evidenceIds.includes(id))) return false;
+    || !left.evidenceIds.some(id => right.evidenceIds.includes(id))
+    || new Set([...left.evidenceIds,...right.evidenceIds]).size > 8) return false;
   const x = purposeWords(a.purpose), y = purposeWords(b.purpose);
   const common = [...x].filter(word => y.has(word)).length;
   return common >= 2 && common / Math.min(x.size, y.size) >= 0.6;

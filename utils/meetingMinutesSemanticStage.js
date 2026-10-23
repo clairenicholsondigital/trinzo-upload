@@ -85,6 +85,10 @@ function promptContext(packet, candidates, maxChars = 48000) {
     .sort((a,b)=>b.score-a.score || a.index-b.index);
   let used=0; const selected=[];
   for(const item of ordered) {
+    // Contact-only checks use the same citation capacity as publication.
+    // Supply their recorded evidence first, then nearby context; do not let
+    // unrelated conversations donate witnesses and overflow the archive.
+    if(packet.scope==='contact_enquiries' && selected.length>=8) break;
     const size=JSON.stringify(item.unit).length;
     if(used+size>maxChars) continue;
     selected.push(item);used+=size;
