@@ -50,6 +50,7 @@ async function fixture(initial = draft()) {
   let saved = structuredClone(initial);
   const patches = [];
   app.get('/meeting-minutes-agent', (_req, res) => res.type('html').send(fs.readFileSync(path.join(ROOT, 'views/meeting-minutes-agent.html'), 'utf8')));
+  app.get('/static/meeting-minutes-filing-order.js', (_req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(ROOT, 'public/meeting-minutes-filing-order.js'), 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (_req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(ROOT, 'public/meeting-minutes-agent.js'), 'utf8')));
   app.get('/static/meeting-minutes-timing.js', (_req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(ROOT, 'utils/meetingMinutesTiming.js'), 'utf8')));
   app.get('/static/trinzo.js', (_req, res) => res.type('application/javascript').send(''));

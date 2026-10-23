@@ -330,6 +330,7 @@ function startStubServer() {
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
   app.get('/static/meeting-minutes-timing.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(REPO_ROOT, 'utils', 'meetingMinutesTiming.js'), 'utf8')));
+  app.get('/static/meeting-minutes-filing-order.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(REPO_ROOT, 'public', 'meeting-minutes-filing-order.js'), 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
   app.get('/static/trinzo.js', (req, res) => res.type('application/javascript').send(''));
   app.get('/static/trinzo-fonts.css', (req, res) => res.type('text/css').send(''));
