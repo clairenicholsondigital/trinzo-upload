@@ -247,12 +247,12 @@ test('the post-promotion editorial pass removes finished-body restatements and a
       id: 'topic-budget', topic: 'Photography budget', decisions: [], openQuestions: [],
       points: [
         { id: 'budget-1', text: 'The photography budget is approximately £8,000.', evidenceIds: ['T0300'], supportingDetails: [] },
-        { id: 'budget-2', text: 'The budget for photography is approximately £8k.', evidenceIds: ['T0300'], supportingDetails: [], simulationSource: 'supporting_detail' }
+        { id: 'budget-2', text: 'The budget for photography is approximately £8k.', evidenceIds: ['T0300'], supportingDetails: [] }
       ]
     },
     {
       id: 'topic-recap', topic: 'Action summary and next steps', decisions: [], openQuestions: [],
-      points: [{ id: 'recap-1', text: 'Gemma summarised the actions and next steps.', evidenceIds: ['T0301'], supportingDetails: [], simulationSource: 'supporting_detail' }]
+      points: [{ id: 'recap-1', text: 'Gemma summarised the actions and next steps.', evidenceIds: ['T0301'], supportingDetails: [] }]
     }
   ];
   const result = await finalisePromotedDiscussion(discussion, { organise: false, people: ['Gemma Rourke'] });
@@ -260,6 +260,29 @@ test('the post-promotion editorial pass removes finished-body restatements and a
   assert.equal(result.discussion[0].points.length, 1);
   assert.match(result.discussion[0].points[0].text, /photography budget/i);
   assert.ok(result.dropped.some((item) => item.because === 'same wording'));
+});
+
+test('the post-promotion body cleanup preserves provenance-bearing rows and recaps', async () => {
+  const discussion = [{
+    id: 'topic-budget', topic: 'Photography budget', decisions: [], openQuestions: [],
+    points: [
+      { id: 'budget-1', text: 'The photography budget is approximately £8,000.', evidenceIds: ['T0300'], supportingDetails: [] },
+      { id: 'budget-2', text: 'The budget for photography is approximately £8k.', evidenceIds: ['T0300'], supportingDetails: [], simulationSource: 'supporting_detail' },
+      { id: 'recap-1', text: 'Gemma summarised the actions and next steps.', evidenceIds: ['T0301'], supportingDetails: [], simulationSource: 'supporting_detail' }
+    ]
+  }];
+  const before = structuredClone(discussion);
+  const result = await finalisePromotedDiscussion(discussion, { organise: false, people: ['Gemma Rourke'] });
+  const rows = result.discussion.flatMap(topic => topic.points);
+  for (const source of before[0].points.slice(1)) {
+    const kept = rows.find(row => row.id === source.id);
+    assert.ok(kept);
+    assert.equal(kept.text, source.text);
+    assert.equal(kept.simulationSource, source.simulationSource);
+    assert.deepEqual(kept.evidenceIds, source.evidenceIds);
+  }
+  assert.deepEqual(discussion, before);
+  assert.equal(result.dropped.length, 0);
 });
 
 test('discussion structure diagnostics report oversized and closely related singleton sections without changing them', () => {
