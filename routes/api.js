@@ -2,6 +2,7 @@ const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
+const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
@@ -16891,7 +16892,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,
       independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: packet.candidates.length
     });
-    const claimConsolidation = boundedRewrite
+    let claimConsolidation = boundedRewrite
       ? await discussionRewrite.consolidate(finalDiscussion, draft.sourceUnits, {
         inventory: (prompt, packet) => rewriteCall('inventory', prompt, packet),
         propose: (prompt, packet) => rewriteCall('proposal', prompt, packet),
@@ -16908,6 +16909,17 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: selected.length
         })
       }) : { discussion: finalDiscussion, audit: { applied: false, reason: 'disabled' } };
+    // Run after late demotion/organisation and the existing bounded editor.
+    // Child warnings and reviewer records are ineligible; parent text, source
+    // references and warning targets remain unchanged. Reuse the private,
+    // topic-scoped restore archive without discarding an earlier editor's proof.
+    if (/^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_OWN_PARENT_COVERAGE_V1 || '0'))) {
+      const ownParent = await discussionOwnParent.consolidate(claimConsolidation.discussion, draft.sourceUnits, {
+        inventory: (prompt, packet) => rewriteCall('own-parent-inventory', prompt, packet),
+        verify: (prompt, packet) => rewriteCall('own-parent-verification', prompt, packet)
+      });
+      claimConsolidation = discussionOwnParent.combine(claimConsolidation, ownParent, draft.sourceUnits);
+    }
     finalDiscussion = claimConsolidation.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
