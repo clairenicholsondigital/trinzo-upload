@@ -9887,9 +9887,18 @@ function meetingAgentRefereeEvidencePacket(sourceUnits = [], candidates = [], tr
   };
 }
 
+function meetingAgentRefereeReferenceTargets(contract = {}) {
+  if (contract.stage !== 'DISCUSSION_REFEREE') return [];
+  // Reference-only records have one writable target identity. Exposing the
+  // discovery candidate ID as another identity led the Referee to return that
+  // old ID instead of the approved target. Keep original provenance private in
+  // the unchanged contract; never turn an unknown reply ID into a valid alias.
+  return (contract.retainedDiscussionTargets || []).map(target => ({ ...target, candidateId: target.targetId }));
+}
+
 function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [], details = {}, candidates, requestId,
   contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId) }) {
-  const targets = contract.stage === 'DISCUSSION_REFEREE' ? contract.retainedDiscussionTargets || [] : [];
+  const targets = meetingAgentRefereeReferenceTargets(contract);
   const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, [...contract.candidates, ...targets], transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
@@ -9915,7 +9924,7 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
 
 function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits = [], details = {}, candidates, requestId,
   contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId) }) {
-  const targets = contract.stage === 'DISCUSSION_REFEREE' ? contract.retainedDiscussionTargets || [] : [];
+  const targets = meetingAgentRefereeReferenceTargets(contract);
   const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, [...contract.candidates, ...targets], transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,

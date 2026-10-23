@@ -6,6 +6,10 @@ This batch implements task 5B and the bounded catalogue-transport part of 5C. It
 
 Initial and repair discussion referee prompts include an existing `retainedDiscussionTargets` catalogue when the caller has one. Both include source windows for these approved targets as well as the candidates to classify. Reference targets remain outside expected candidate IDs/counts; they are not reclassified. Empty catalogues leave initial prompt payloads unchanged.
 
+Each reference record uses its approved target ID consistently in both identity fields on the wire. Two isolated synthetic Microsoft checks exposed the ambiguity: with different original candidate and approved target IDs, both initial and repair replies returned the old candidate ID. The original candidate identity remains unchanged in the private contract. Response validation still rejects that old ID; it is not accepted as a new alias.
+
+Repeating both synthetic checks with the single reference identity returned the correct approved target and passed the unchanged contract validator in both cases. These four calls used invented supplier-release statements, not user transcripts or library drafts. They prove this particular ambiguity and its bounded fix; they do not establish the missing original historical target values or solve cross-batch linking.
+
 Unresolved candidates elsewhere in concurrently executing batches are not promoted into approved targets. Unknown targets still fail existing validation and receive the existing subset-repair/retention path. This is not the cross-batch linking phase in task 5D, and does not establish why an unavailable historical reply contained a bad target.
 
 ## Private failure audit

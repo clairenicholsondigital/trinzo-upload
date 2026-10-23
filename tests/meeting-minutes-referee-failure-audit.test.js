@@ -13,7 +13,9 @@ test('initial and repair prompts provide the same approved catalogue and its sou
   const c=contract(),before=structuredClone(c);
   for(const build of [A.meetingMinutesAgentRefereePrompt,A.meetingMinutesAgentRefereeRepairPrompt]) {
     const p=payload(build({stage:'discussion',contract:c,sourceUnits:sources}));
-    assert.deepEqual(p.existingDiscussionTargets,[parent]);
+    assert.deepEqual(p.existingDiscussionTargets,[{...parent,candidateId:parent.targetId}]);
+    assert.equal(p.existingDiscussionTargets[0].candidateId,p.existingDiscussionTargets[0].targetId);
+    assert.ok(!JSON.stringify(p).includes('"parent"'));
     assert.deepEqual(p.expectedCandidateIds,['child']);
     assert.equal(p.expectedCandidateCount,1);
     assert.deepEqual(p.candidateEnsemble.map(r=>r.candidateId),['child']);
@@ -26,6 +28,7 @@ test('supplying a catalogue does not permit unknown or unapproved cross-batch ta
     candidateDispositions:[{candidateId:'child',disposition:'merge',targetId,reason:'Covered.',evidenceIds:['T0001']}]});
   assert.equal(A.meetingAgentDispositionError(reply('approved-parent'),[child],contract()),null);
   assert.equal(A.meetingAgentDispositionError(reply('unknown'),[child],contract()).code,'invalid_referee_target');
+  assert.equal(A.meetingAgentDispositionError(reply('parent'),[child],contract()).code,'invalid_referee_target');
   assert.equal(A.meetingAgentDispositionError(reply('approved-parent'),[child],contract([]),[child,parent]).code,'invalid_referee_target');
 });
 test('empty-target discussion and action prompts do not acquire extra catalogue fields',()=>{
