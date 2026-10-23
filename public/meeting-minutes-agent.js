@@ -1153,6 +1153,8 @@
       .map(function (id) { return id.trim(); })
       .filter(function (id) { return id && id !== target.id && !/[\u0000-\u001f\u007f]/.test(id); })));
     if (history.length) target.mergedFromIds = history;
+    if (Array.isArray(source.filingOrigins)) target.filingOrigins = cloneEditorValue(source.filingOrigins);
+    if (source.filingMergeProtected === true) target.filingMergeProtected = true;
     return target;
   }
 

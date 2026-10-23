@@ -867,6 +867,11 @@ function reviewerProvenance(value, options = {}) {
 // without requiring its historical IDs to exist in the current register.
 // Historical topic writers allowed 220-character IDs: reject longer values
 // rather than truncating them into a different record's identity.
+function reviewerFilingProvenance(value, options = {}) {
+  return options.preserveReviewerEdits === true
+    ? require('./meetingMinutesFilingProvenance').filingProvenance(value) : {};
+}
+
 function reviewerMergeHistory(value, field, survivorId, options = {}) {
   if (options.preserveReviewerEdits !== true || !Array.isArray(value?.[field])) return {};
   const ids = [...new Set(value[field].slice(0, 1000)
@@ -912,6 +917,7 @@ function normalisePoint(value, units, prefix, index, options = {}) {
         id: detailId,
         ...reviewerProvenance(source, options),
         ...reviewerMergeHistory(source, 'mergedFromIds', detailId, options),
+        ...reviewerFilingProvenance(source, options),
         ...(source.placementStatus === 'unresolved' ? {
           placementStatus: 'unresolved', placementReason: text(source.placementReason, 100)
         } : {}),
@@ -925,6 +931,7 @@ function normalisePoint(value, units, prefix, index, options = {}) {
     id: pointId,
     ...reviewerProvenance(candidate, options),
     ...reviewerMergeHistory(candidate, 'mergedFromIds', pointId, options),
+    ...reviewerFilingProvenance(candidate, options),
     text: pointText,
     ...(['core', 'supporting', 'reject'].includes(candidate.discoveryDisposition)
       ? { discoveryDisposition: candidate.discoveryDisposition } : {}),

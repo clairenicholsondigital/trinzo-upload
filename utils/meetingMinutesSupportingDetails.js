@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { filingProvenance } = require('./meetingMinutesFilingProvenance');
 
 // This is application review state, not part of the Microsoft response schema.
 // Keep the complete supporting text here; a review flag is only a short notice.
@@ -29,8 +30,20 @@ function normalizeUnassignedSupportingDetails(values = []) {
       ? record.id.trim().slice(0, 80)
       : 'unfiled-' + crypto.createHash('sha256').update(JSON.stringify([record.text, [...evidenceIds].sort()])).digest('hex').slice(0, 24);
     const mergedFromIds = mergeHistoryIds(record.mergedFromIds, id);
+    const unsafe = (record.id !== undefined && (record.id !== id || /[\u0000-\u001f\u007f]/.test(id)))
+      || ['evidenceIds', 'reviewFlagIds'].some(key => record[key] !== undefined
+        && (!Array.isArray(record[key]) || record[key].some(value => typeof value !== 'string' || !value.trim())))
+      || (record.mergedFromIds !== undefined && (!Array.isArray(record.mergedFromIds)
+        || record.mergedFromIds.length > 1000 || record.mergedFromIds.some(value =>
+          typeof value !== 'string' || value.length > 220 || /[\u0000-\u001f\u007f]/.test(value))))
+      || ['originalTopic', 'placementReason'].some(key => record[key] !== undefined
+        && (typeof record[key] !== 'string' || record[key].length > (key === 'originalTopic' ? 220 : 100)));
     const item = {
       id, text: record.text, evidenceIds,
+      ...filingProvenance(record),
+      ...(unsafe || Object.keys(record).some(key => !['id', 'text', 'evidenceIds', 'reviewFlagIds',
+        'mergedFromIds', 'originalTopic', 'placementReason', 'reviewerAuthored', 'filingOrigins',
+        'filingMergeProtected'].includes(key)) ? { filingMergeProtected: true } : {}),
       ...(mergedFromIds.length ? { mergedFromIds } : {}),
       ...(strings(record.reviewFlagIds).length ? { reviewFlagIds: strings(record.reviewFlagIds) } : {}),
       ...(typeof record.originalTopic === 'string' && record.originalTopic.trim() ? { originalTopic: record.originalTopic.trim().slice(0, 220) } : {}),
@@ -41,6 +54,19 @@ function normalizeUnassignedSupportingDetails(values = []) {
     const key = JSON.stringify([id, item.text, [...evidenceIds].sort()]);
     if (seen.has(key)) {
       const old = seen.get(key);
+      if (old.filingOrigins || item.filingOrigins
+        || old.originalTopic !== item.originalTopic || old.placementReason !== item.placementReason) {
+        const origin = row => ({ id: row.id,
+          ...(row.originalTopic ? { originalTopic: row.originalTopic } : {}),
+          ...(row.placementReason ? { placementReason: row.placementReason } : {}) });
+        const origins = [...new Map([...(old.filingOrigins || [origin(old)]),
+          ...(item.filingOrigins || [origin(item)])].map(value => [JSON.stringify(value), value])).values()];
+        const completeHistory = new Set([...(old.mergedFromIds || []), ...(item.mergedFromIds || [])]);
+        completeHistory.delete(id);
+        if (origins.length > 1000 || completeHistory.size > 1000) { rows.push(item); continue; }
+        old.filingOrigins = origins;
+      }
+      if (item.filingMergeProtected) old.filingMergeProtected = true;
       const flags = strings([...(old.reviewFlagIds || []), ...(item.reviewFlagIds || [])]);
       if (flags.length) old.reviewFlagIds = flags;
       const history = mergeHistoryIds([...(old.mergedFromIds || []), ...(item.mergedFromIds || [])], id);
@@ -51,7 +77,36 @@ function normalizeUnassignedSupportingDetails(values = []) {
     seen.set(key, item);
     rows.push(item);
   }
-  return rows;
+  return consolidateExactFilingDuplicates(rows);
+}
+
+// Exact generated leaves only. Keep the first position/identity, and retain
+// every predecessor and placement origin. This is not semantic deduplication.
+function consolidateExactFilingDuplicates(rows) {
+  const candidates = new Map(), result = [];
+  const origin = row => ({ id: row.id,
+    ...(row.originalTopic ? { originalTopic: row.originalTopic } : {}),
+    ...(row.placementReason ? { placementReason: row.placementReason } : {}) });
+  const origins = row => row.filingOrigins || [origin(row)];
+  const locked = row => row.reviewerAuthored === true || row.filingMergeProtected === true
+    || /^(?:manual-|reviewer-)/.test(row.id);
+  for (const row of rows) {
+    const key = JSON.stringify([row.text, [...row.evidenceIds].sort(), [...(row.reviewFlagIds || [])].sort()]);
+    const old = candidates.get(key);
+    if (!locked(row) && row.evidenceIds.length && old && old.id !== row.id) {
+      const history = [...new Set([...(old.mergedFromIds || []), row.id, ...(row.mergedFromIds || [])])]
+        .filter(id => id !== old.id);
+      const combined = [...new Map([...origins(old), ...origins(row)].map(value => [JSON.stringify(value), value])).values()];
+      if (history.length <= 1000 && combined.length <= 1000) {
+        old.mergedFromIds = history;
+        old.filingOrigins = combined;
+        continue;
+      }
+    }
+    result.push(row);
+    if (!locked(row) && row.evidenceIds.length) candidates.set(key, row);
+  }
+  return result;
 }
 
 function collectUnassignedSupportingDetails(record, context = {}) {
@@ -137,7 +192,9 @@ function withoutRepresentedUnassignedDetails(values = [], discussion = []) {
       && (detail.evidenceIds.length > 0 || record.id === detail.id)
       && (detail.reviewFlagIds || []).every(id => flags.has(id))
       && (detail.mergedFromIds || []).every(id => history.has(id))
-      && (!detail.reviewerAuthored || record.reviewerAuthored === true);
+      && (!detail.reviewerAuthored || record.reviewerAuthored === true)
+      && (detail.filingOrigins || []).every(origin =>
+        (record.filingOrigins || []).some(other => JSON.stringify(other) === JSON.stringify(origin)));
   }));
 }
 
