@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { filingProvenance } = require('./meetingMinutesFilingProvenance');
+const { orderedEntries } = require('../public/meeting-minutes-filing-order');
 
 // This is application review state, not part of the Microsoft response schema.
 // Keep the complete supporting text here; a review flag is only a short notice.
@@ -123,6 +124,10 @@ function collectUnassignedSupportingDetails(record, context = {}) {
   return normalizeUnassignedSupportingDetails(retained);
 }
 
+function orderedFilingSupportingDetails(values = [], sourceUnits = []) {
+  return orderedEntries(normalizeUnassignedSupportingDetails(values), sourceUnits).map(entry => entry.detail);
+}
+
 function mergeUnassignedSupportingDetails(...collections) {
   return normalizeUnassignedSupportingDetails(collections.flatMap(rows => Array.isArray(rows) ? rows : []));
 }
@@ -200,6 +205,7 @@ function withoutRepresentedUnassignedDetails(values = [], discussion = []) {
 
 module.exports = {
   normalizeUnassignedSupportingDetails,
+  orderedFilingSupportingDetails,
   collectUnassignedSupportingDetails,
   mergeUnassignedSupportingDetails,
   withoutRepresentedUnassignedDetails,

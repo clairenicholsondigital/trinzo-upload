@@ -71,7 +71,7 @@ const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinu
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { selectSupportingDetailParent } = require('../utils/canonicalMinutes/supportingDetailPlacement');
-const { normalizeUnassignedSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
+const { normalizeUnassignedSupportingDetails, orderedFilingSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
 const {
   ALWAYS_INTERNAL_PEOPLE,
   alwaysInternalAttendeeName,
@@ -11719,7 +11719,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
   const minutes = { details, ...publication, preserveSummaryParagraphs: true };
   if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
-  const unassignedDetails = normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails);
+  const unassignedDetails = orderedFilingSupportingDetails(draft.unassignedSupportingDetails, draft.sourceUnits || []);
   minutes.supportingDetails = [
     ...publicationDiscussion.flatMap((topic) =>
       [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
