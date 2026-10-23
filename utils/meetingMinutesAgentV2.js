@@ -17,6 +17,7 @@ const { isActionCategoryTopicCard } = require('./canonicalMinutes/topicEditorial
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
 const { actionIsSafelyCovered } = require('./canonicalMinutes/actionDuplicateCoverage');
 const { commitmentCanBeRepresented } = require('./canonicalMinutes/commitmentDuplicates');
+const { correctionMeaningIssue } = require('./meetingMinutesFidelityMeaning');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -849,6 +850,9 @@ function isUsefulReviewFlag(flag = {}) {
   // a stated location/duration to the named work. Its typed uncertainty must
   // survive save/publication regardless of the warning's prose wording.
   if (/^flag-quantity-binding-/.test(String(normalised.id || ''))) return true;
+  // A fidelity checker could not establish a safe replacement. Its typed
+  // warning must survive independently of the provider's choice of prose.
+  if (/^flag-fidelity-meaning-/.test(String(normalised.id || ''))) return true;
   return MATERIAL_UNCERTAINTY_PATTERN.test(normalised.message);
 }
 
@@ -5882,6 +5886,23 @@ function applySourceDiscussionFidelityResults(discussion = [], items = [], resul
       rejected.push({ id: item.id, verdict: row.verdict, reason: 'support_too_low' });
       continue;
     }
+    const ownIds = new Set(item.evidenceIds || []);
+    const sources = [...(item.passageUnits || [])].sort((a, b) => Number(ownIds.has(b.id)) - Number(ownIds.has(a.id)));
+    // The existing temporal binding validates the complete corrected work,
+    // phase, actor and qualifications before placing an item in this map. Do
+    // not replace that stronger proof with a literal-only paraphrase veto.
+    const meaning = boundTemporal ? { sourceIds: [] } : correctionMeaningIssue(item.row, correctedText, sources);
+    if (meaning.reason) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: meaning.reason });
+      continue;
+    }
+    // Broader context can reveal a problem, but cannot donate a new assertion
+    // without a complete citation reallocation. That separate repair remains
+    // out of scope: require this assertion's witness in the row's own sources.
+    if (meaning.sourceIds.some(id => !(item.evidenceIds || []).includes(id))) {
+      rejected.push({ id: item.id, verdict: row.verdict, reason: 'correction_assertion_source_not_cited' });
+      continue;
+    }
     replacements.set(key, { ...row, correctedText });
   }
   const flags = [];
@@ -5928,6 +5949,8 @@ function applySourceDiscussionFidelityResults(discussion = [], items = [], resul
             ? `Not clear whether this belongs in the minutes: it reads as small talk. ${text(result.reason, 200)}`.trim()
             : `Check this sentence against the cited passage: ${text(result.reason, 260) || 'the wording may change the meaning.'}`;
         const flag = normaliseFlag({
+          ...(!replacement && !['added_detail', 'small_talk'].includes(issue)
+            ? { id: stableId('flag-fidelity-meaning', `${record.id}|${record.text}|${result.reason}`, 0) } : {}),
           kind: 'uncertain_fact',
           message: replacement
             ? `Wording corrected against the cited passage: "${text(result.problemQuote, 180)}" → "${replacement.correctedText}".`
@@ -6069,9 +6092,20 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     const state = indexed.states.get(source.item.id);
     const Temporal = require('./meetingMinutesTemporalReview');
     const verdict = indexed.byId.get(source.item.id);
+    const meaningRejected = ['correction_assertion_strength_not_proved', 'correction_assertion_source_not_cited'].includes(state.reason);
+    if (changed && meaningRejected) {
+      const flag = normaliseFlag({
+        id: stableId('flag-fidelity-meaning', `${source.record.id}|${source.item.row}|${state.reason}`, 0),
+        kind: 'uncertain_fact',
+        message: `Could not safely correct this sentence without changing its follow-up or commitment status. The original wording was retained: "${text(source.item.row, 500)}". Check it against the source.`,
+        evidenceIds: changed.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      changed = { ...changed, reviewFlagIds: [...new Set([...(changed.reviewFlagIds || []), flag.id])] };
+    }
     const suppliedTemporalEvidence = verdict && ['supported', 'corrected'].includes(verdict.verdict)
       && Object.prototype.hasOwnProperty.call(verdict, 'temporalEvidence');
-    if (changed && !['supported', 'corrected', 'uncertain'].includes(state.status)
+    if (changed && !meaningRejected && !['supported', 'corrected', 'uncertain'].includes(state.status)
       && (suppliedTemporalEvidence || Temporal.temporalClaim(source.item.row, temporalContext(source.item, source.record)))) {
       const flag = normaliseFlag({ kind: 'timing',
         message: `Cannot verify the timing in "${text(source.item.row, 260)}": ${text(state.reason, 180).replace(/_/g, ' ')}. Confirm it against the cited source.`,

@@ -570,7 +570,7 @@ function normaliseMeetingAgentExecutionTelemetry(value = {}) {
 function meetingAgentFailureClass(value = {}) {
   const code = meetingMinutesAgentText(value?.errorCode || value?.code, 120).toLowerCase();
   const status = Number(value?.upstreamStatus || value?.statusCode || 0);
-  if (code === 'unmaterialized_referee_action'
+  if (code === 'unmaterialized_referee_action' || code === 'invalid_referee_target'
     || /(?:invalid|incomplete|unexpected|missing).*(?:structure|contract|disposition|candidate|response)|empty_(?:discussion|action)/.test(code)) {
     return 'response_contract';
   }

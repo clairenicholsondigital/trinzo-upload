@@ -76,6 +76,30 @@ async function request(method, suffix = '', body = {}, userId = 'bounded-reviewe
   await route.stack.at(-1).handle({ params: { draftId: saved.draftId }, authUser: { userId }, body: { revision: saved.revision, ...body } }, res);
   return res;
 }
+test('unresolved fidelity warnings survive actual owned GET/PATCH and preserve reviewer resolution', async () => {
+  await reset();
+  const row = { id: 'fidelity-row', text: 'The current latch needs replacement.', evidenceIds: ['T0001'], reviewFlagIds: [] };
+  const discussion = [{ topic: 'Equipment', points: [row], decisions: [], openQuestions: [] }];
+  const items = V.discussionFidelityCheckItems(discussion, saved.sourceUnits);
+  const checked = V.applyDiscussionFidelityResults(discussion, items, [{
+    id: items[0].id, verdict: 'uncertain', problemQuote: row.text, evidenceQuote: '',
+    reason: 'The intended meaning cannot be established.'
+  }]);
+  saved.discussion = checked.discussion; saved.reviewFlags = checked.flags;
+  delete saved.qualityState.discussion.claimConsolidation;
+  const before = (await request('get')).body.draft;
+  assert.equal(before.reviewFlags.length, 1);
+  assert.match(before.reviewFlags[0].id, /^flag-fidelity-meaning-/);
+  assert.deepEqual(before.discussion[0].points[0].reviewFlagIds, [before.reviewFlags[0].id]);
+  assert.equal((await request('patch', '', { discussion: before.discussion, reviewFlags: before.reviewFlags })).statusCode, 200);
+  const after = (await request('get')).body.draft;
+  assert.deepEqual(after.reviewFlags, before.reviewFlags);
+  after.reviewFlags[0].status = 'confirmed'; after.reviewFlags[0].correctionNote = 'Checked against the recording.';
+  assert.equal((await request('patch', '', { reviewFlags: after.reviewFlags })).statusCode, 200);
+  const resolved = (await request('get')).body.draft;
+  assert.equal(resolved.reviewFlags[0].status, 'confirmed');
+  assert.equal(resolved.reviewFlags[0].correctionNote, 'Checked against the recording.');
+});
 test('verified source allocation and recovery survive real PATCH/GET without replaying the lexical citation picker', async () => {
   await reset(); const archive = copy(saved.qualityState.discussion.claimConsolidation);
   const before = await request('get'); assert.equal(before.body.draft.canRestoreCombinedDiscussion, true);
