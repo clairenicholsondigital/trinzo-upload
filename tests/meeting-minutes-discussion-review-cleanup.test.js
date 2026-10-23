@@ -8,7 +8,8 @@ function between(start, end) {
   assert(a >= 0 && b > a); return js.slice(a, b);
 }
 function client(draft = {}) {
-  const context = vm.createContext({ state:{ draft }, Map, Set, Array, Number, String });
+  const context = vm.createContext({ state:{ draft }, Map, Set, Array, Number, String,
+    window: { MeetingMinutesFilingOrder: require('../public/meeting-minutes-filing-order') } });
   vm.runInContext(between('  function preserveDiscussionMergeHistory(', '  function topicSupportingDetails('), context);
   vm.runInContext(between('  function findFinalDiscussionRecord(', '  function applyFinalEdit('), context);
   return context;

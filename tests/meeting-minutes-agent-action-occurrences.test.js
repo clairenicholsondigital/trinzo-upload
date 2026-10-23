@@ -61,6 +61,7 @@ async function harness(id, identical = false, configure) {
   const errors = [];
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(path.join(root, 'views/meeting-minutes-agent.html'), 'utf8')));
   app.get('/static/meeting-minutes-timing.js', (req, res) => res.type('js').send(fs.readFileSync(path.join(root, 'utils/meetingMinutesTiming.js'), 'utf8')));
+  app.get('/static/meeting-minutes-filing-order.js', (req, res) => res.type('js').send(fs.readFileSync(path.join(root, 'public/meeting-minutes-filing-order.js'), 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('js').send(fs.readFileSync(path.join(root, 'public/meeting-minutes-agent.js'), 'utf8')));
   app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft }));
   app.get('/api/meeting-minutes-agent/drafts/:id/generation', (req, res) => res.json({ ok: true, generation: null }));

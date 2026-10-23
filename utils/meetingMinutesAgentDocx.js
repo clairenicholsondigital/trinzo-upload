@@ -1,6 +1,7 @@
 'use strict';
 
 const JSZip = require('jszip');
+const { orderedFilingSupportingDetails } = require('./meetingMinutesSupportingDetails');
 const { timingForPublication } = require('./meetingMinutesAgentV2');
 const { formatCalendarDate, formatTimingLabel } = require('./meetingMinutesTiming');
 const { normaliseDatePhrasesDeep } = require('./spokenForms');
@@ -79,7 +80,7 @@ function evidenceAppendix(draft = {}) {
     }
   }
   for (const action of draft.actions || []) for (const id of action.evidenceIds || []) used.add(id);
-  const unassigned = Array.isArray(draft.unassignedSupportingDetails) ? draft.unassignedSupportingDetails : [];
+  const unassigned = orderedFilingSupportingDetails(draft.unassignedSupportingDetails, units);
   for (const detail of unassigned) for (const id of detail.evidenceIds || []) used.add(id);
   let body = paragraph('Evidence appendix', 'Heading1');
   const supporting = (draft.discussion || []).flatMap((topic) =>

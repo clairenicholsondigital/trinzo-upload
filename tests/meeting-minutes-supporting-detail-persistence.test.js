@@ -134,6 +134,46 @@ test('literal folded context retains provenance through real PATCH/GET and ordin
   assert.equal(providerCalls,0);
 });
 
+test('raw saved filing rows use the same duplicate cleanup and order in screen, Word and PDF evidence', async () => {
+  reset();
+  const { orderedEntries } = require('../public/meeting-minutes-filing-order');
+  const early = detail('early-context', 'The calibration certificate remains available.', ['T0002'],
+    { originalTopic: 'Equipment', placementReason: 'no_unique_parent' });
+  saved.unassignedSupportingDetails = [
+    detail('late-context', 'The comparison archive remains available.', ['T0003']),
+    detail('manual-fixed', 'The reviewer retained this independent explanation.', ['T0003'], { reviewerAuthored: true }),
+    early,
+    { ...early, id: 'duplicate-context', originalTopic: 'Inspection', placementReason: 'parent_not_publishable' }
+  ];
+  const before = copy(saved);
+  const visible = api.publicMeetingAgentDraft(saved);
+  const expected = orderedEntries(visible.unassignedSupportingDetails, saved.sourceUnits).map(entry => entry.detail.text);
+  assert.equal(expected.length, 3);
+  assert.equal(expected[1], saved.unassignedSupportingDetails[1].text);
+  const pdf = api.meetingAgentDraftForPdf(saved, true);
+  assert.deepEqual(pdf.supportingDetails.filter(row => row.topic === 'Needs filing').map(row => row.text), expected);
+  const xml = await documentXml(api.meetingAgentDraftForDocx(saved), true);
+  const section = xml.slice(xml.indexOf('Needs filing')).split('<w:pStyle w:val="Heading3"')[0];
+  const actual = [...section.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)]
+    .map(match => match[1]).filter(text => expected.some(value => text.startsWith(value)))
+    .map(text => text.replace(/ \(Sources: [^)]*\)$/, ''));
+  assert.deepEqual(actual, expected);
+  assert.deepEqual(saved, before);
+  assert.equal(writes, 0);
+  assert.equal(providerCalls, 0);
+});
+
+test('export-only filing cleanup leaves ordinary Word and PDF minutes unchanged', async () => {
+  reset();
+  saved.unassignedSupportingDetails = [pool()[1], { ...pool()[1], id: 'same-text-other-id' }];
+  const noPool = { ...saved, unassignedSupportingDetails: [] };
+  assert.equal(await documentXml(api.meetingAgentDraftForDocx(saved), false),
+    await documentXml(api.meetingAgentDraftForDocx(noPool), false));
+  assert.deepEqual(api.meetingAgentDraftForPdf(saved, false), api.meetingAgentDraftForPdf(noPool, false));
+  assert.equal(writes, 0);
+  assert.equal(providerCalls, 0);
+});
+
 test('payload and public projection retain full unfiled detail, provenance and warning links', () => {
   reset();
   assert.ok(longText.length > 1600, 'fixture crosses both the flag and ordinary row clipping boundaries');

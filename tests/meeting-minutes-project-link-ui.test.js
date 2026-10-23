@@ -155,7 +155,7 @@ async function fullAgentPage(t, { conflict = false, holdFirstSave = false, uploa
     const request = route.request(), pathname = new URL(request.url()).pathname;
     const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (pathname === '/meeting-minutes-agent') return route.fulfill({ status: 200, contentType: 'text/html', body: html });
-    const files = { '/static/meeting-minutes-agent.js': 'public/meeting-minutes-agent.js', '/static/meeting-minutes-project-link.js': 'public/meeting-minutes-project-link.js', '/static/meeting-minutes-timing.js': 'utils/meetingMinutesTiming.js' };
+    const files = { '/static/meeting-minutes-filing-order.js': 'public/meeting-minutes-filing-order.js', '/static/meeting-minutes-agent.js': 'public/meeting-minutes-agent.js', '/static/meeting-minutes-project-link.js': 'public/meeting-minutes-project-link.js', '/static/meeting-minutes-timing.js': 'utils/meetingMinutesTiming.js' };
     if (files[pathname]) return route.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.join(ROOT, files[pathname]), 'utf8') });
     if (pathname === '/api/meeting-minutes-agent/check-duplicate') return json({ ok: true, duplicates: [] });
     if (pathname === '/api/meeting-minutes-agent/prepare') return json({ ok: true, draft, resumeUrl: '/meeting-minutes-agent?draftId=202' });
