@@ -21,6 +21,7 @@ function contactActionFrame(value) {
   if (!name) return null;
   if (/\b(?:to|with|the|in|at|on|about|regarding|concerning|and|or)\b/i.test(name[1])) return null;
   const body = rest.slice(name[0].length).trim();
+  if (!body || /^[.!]$/.test(body)) return null;
   const destinationText = body.replace(PURPOSE, '');
   return { recipient: normal(name[1]), body, destinationText,
     namedDestinations: [...new Set([...destinationText.matchAll(NAMED_DESTINATION)].map(match => normal(match[0])))].sort() };

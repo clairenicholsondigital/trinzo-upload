@@ -47,6 +47,8 @@ test('unfamiliar recipient grammar stays on its established path',()=>{
     'Speak to Alex van Buren to clarify responsibilities.',
     'Speak to the supplier team to clarify responsibilities.',
     'Speak to Alex To Clarify Responsibilities.',
+    'Discuss with Alex System Alpha.',
+    'Speak to Alex Smith.',
     'Speak to Alex about "the London plan".',
     'Could Alex clarify responsibilities?',
     'Do not speak to Alex to clarify responsibilities.'

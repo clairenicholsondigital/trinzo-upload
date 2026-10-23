@@ -10,7 +10,7 @@ Normalise only case, whitespace, Unicode presentation and curly apostrophes for 
 
 Within this construction, `to clarify`, `to avoid` and the other explicitly recognised verbal purpose markers do not introduce delivery destinations. Real spatial phrases remain available to the destination comparison. Complete explicit named locations are guarded: North Warehouse and South Warehouse are not equivalent because both contain `warehouse`; `at` locations are recognised within the contact construction too.
 
-Unknown grammar retains the previous parser. In particular, this batch does not guess identities for recipient lists, lowercase groups, punctuated titles, lowercase name particles, quotations or questions. It is not a universal natural-language parser or a complete solution for all possible forms of tasks 4A/4B.
+Unknown grammar retains the previous parser. In particular, this batch does not guess identities for recipient lists, lowercase groups, punctuated titles, lowercase name particles, quotations or questions. A contact with no explicit following purpose/topic boundary also retains the old path: a sequence of capitalised words could be a long name or an implicit topic. It is not a universal natural-language parser or a complete solution for all possible forms of tasks 4A/4B.
 
 ## Preservation and evidence
 
