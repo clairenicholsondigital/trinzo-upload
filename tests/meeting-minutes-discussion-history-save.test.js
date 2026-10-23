@@ -249,6 +249,25 @@ test('merge-history IDs confer no authorship, confirmation, evidence or timing p
   assert.deepEqual(result.reviewFlags, comparison.reviewFlags, 'history cannot alter source validation or warning decisions');
 });
 
+test('PATCH filing and subsequent saves preserve both exact-duplicate placement origins', async () => {
+  const initial = draftFixture();
+  const first = { id: 'unfiled-a', text: initial.sourceUnits[1].text,
+    evidenceIds: ['T0002'], originalTopic: 'Laboratory', placementReason: 'no_unique_parent' };
+  initial.unassignedSupportingDetails = normalizeUnassignedSupportingDetails([first,
+    { ...first, id: 'unfiled-b', originalTopic: 'Inspection', placementReason: 'parent_not_publishable' }]);
+  const original = structuredClone(initial.unassignedSupportingDetails[0]);
+  const harness = patchHarness(initial);
+  const saved = await harness.save(body => {
+    body.discussion[0].points[0].supportingDetails = [{ ...body.unassignedSupportingDetails[0], reviewerAuthored: true }];
+    body.unassignedSupportingDetails = [];
+  });
+  assert.deepEqual(saved.discussion[0].points[0].supportingDetails[0].filingOrigins, original.filingOrigins);
+  assert.deepEqual(saved.discussion[0].points[0].supportingDetails[0].mergedFromIds, ['unfiled-b']);
+  const again = await harness.save();
+  assert.deepEqual(again.discussion[0].points[0].supportingDetails[0].filingOrigins, original.filingOrigins);
+  assert.deepEqual(again.unassignedSupportingDetails, []);
+});
+
 test('generated JSON cannot turn merge-history metadata into reviewer exemptions', () => {
   const input = draftFixture();
   const topic = input.discussion[0];
