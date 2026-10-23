@@ -55,7 +55,7 @@ test('the final restatement pass can be restricted to final topic boundaries', a
   assert.equal(result[1].points.length, 1, 'the final pass must not merge across arranged topics');
 });
 
-test('a generated point already represented by retained supporting context is demoted without losing evidence', async () => {
+test('a generated point represented by supporting context is demoted with its complete original claim', async () => {
   const discussion = [{
     id: 'fees', topic: 'Annual fees', openQuestions: [],
     decisions: [{
@@ -75,8 +75,10 @@ test('a generated point already represented by retained supporting context is de
   });
   assert.equal(cleaned[0].points.length, 0);
   assert.deepEqual(cleaned[0].decisions[0].evidenceIds, ['T10', 'T11', 'T12']);
-  assert.deepEqual(cleaned[0].decisions[0].supportingDetails.map((detail) => detail.id), ['rationale']);
-  assert.deepEqual(cleaned[0].decisions[0].supportingDetails[0].evidenceIds, ['T11', 'T12']);
+  assert.deepEqual(cleaned[0].decisions[0].supportingDetails.map(detail => detail.id), ['rationale', 'echo']);
+  assert.deepEqual(cleaned[0].decisions[0].supportingDetails[0].evidenceIds, ['T11']);
+  assert.deepEqual(cleaned[0].decisions[0].supportingDetails[1].evidenceIds, ['T11', 'T12']);
+  assert.equal(cleaned[0].decisions[0].supportingDetails[1].text, discussion[0].points[0].text);
   assert.deepEqual(cleaned[0].decisions[0].mergedFromIds, ['echo']);
 });
 
@@ -488,7 +490,7 @@ test('stale decision wrappers are removed only from topics with no decisions', (
   ]);
 });
 
-test('adjacent same-kind restatements with shared evidence merge conservatively', async () => {
+test('adjacent paraphrases preserve warning scope; unflagged copies still consolidate', async () => {
   const discussion = [{
     id: 't1', topic: 'Lead handling', decisions: [], openQuestions: [],
     points: [{
@@ -502,11 +504,16 @@ test('adjacent same-kind restatements with shared evidence merge conservatively'
   const cleaned = await dedupeAdjacentRestatements(discussion, {
     encode: (values) => values.map(() => [1, 0])
   });
-  assert.equal(cleaned[0].points.length, 1);
-  assert.equal(cleaned[0].points[0].id, 'p2', 'the more informative row is retained');
-  assert.deepEqual(cleaned[0].points[0].evidenceIds, ['T0004', 'T0005', 'T0001']);
-  assert.deepEqual(cleaned[0].points[0].reviewFlagIds, ['f1']);
-  assert.deepEqual(cleaned[0].points[0].supportingDetails.map((row) => row.id), ['s1']);
+  assert.deepEqual(cleaned[0].points.map(row => [row.id, row.text, row.reviewFlagIds]),
+    discussion[0].points.map(row => [row.id, row.text, row.reviewFlagIds]), 'a warning must not be retargeted to a different sentence');
+  const unflagged = structuredClone(discussion);
+  unflagged[0].points[0].reviewFlagIds = [];
+  const merged = await dedupeAdjacentRestatements(unflagged, { encode: values => values.map(() => [1, 0]) });
+  assert.equal(merged[0].points.length, 1);
+  assert.equal(merged[0].points[0].id, 'p2', 'the more informative unflagged row is retained');
+  assert.deepEqual(merged[0].points[0].evidenceIds, ['T0004', 'T0005', 'T0001']);
+  assert.deepEqual(merged[0].points[0].reviewFlagIds, []);
+  assert.deepEqual(merged[0].points[0].supportingDetails.map(row => row.id), ['s1']);
 });
 
 test('restatement cleanup preserves rows with distinct figures, polarity or no shared evidence', async () => {
@@ -546,7 +553,7 @@ test('global cleanup collapses exact repetitions across topics and preserves pro
   assert.deepEqual(rows[0].mergedFromIds, ['p1']);
 });
 
-test('global cleanup merges same-topic paraphrases grounded in one client-feedback passage', async () => {
+test('global cleanup retains a qualified paraphrase until its claim coverage is proved', async () => {
   const discussion = [{ topic: 'Client delivery feedback', points: [
     {
       id: 'p1', text: 'Client delivery feedback is currently captured differently by project.',
@@ -560,9 +567,14 @@ test('global cleanup merges same-topic paraphrases grounded in one client-feedba
   const cleaned = await dedupeGlobalRestatements(discussion, {
     encode: (values) => values.map(() => [1, 0])
   });
-  assert.equal(cleaned[0].points.length, 1);
-  assert.equal(cleaned[0].points[0].id, 'p2', 'the fuller formulation survives');
-  assert.deepEqual(cleaned[0].points[0].mergedFromIds, ['p1']);
+  assert.deepEqual(cleaned[0].points.map(row => [row.id, row.text, row.evidenceIds]),
+    discussion[0].points.map(row => [row.id, row.text, row.evidenceIds]), 'shared evidence and similarity cannot waive the extra qualification');
+  const compatible = structuredClone(discussion);
+  compatible[0].points[0].text = 'Client delivery feedback may be captured differently by project.';
+  const merged = await dedupeGlobalRestatements(compatible, { encode: values => values.map(() => [1, 0]) });
+  assert.equal(merged[0].points.length, 1);
+  assert.equal(merged[0].points[0].id, 'p2', 'the fuller compatible formulation survives');
+  assert.deepEqual(merged[0].points[0].mergedFromIds, ['p1']);
 });
 
 test('global cleanup joins a manual-slice paraphrase from immediately neighbouring evidence', async () => {
@@ -638,7 +650,7 @@ test('exact generated topic headings merge after punctuation and spacing normali
   assert.deepEqual(merged[0].mergedTopicIds, ['risk-b']);
 });
 
-test('explicit supporting-detail children are removed only when the parent contains their claim', async () => {
+test('explicit supporting-detail provenance cannot be discarded by an ordinary parent merge', async () => {
   const discussion = [{ id: 'testing', topic: 'Testing status', decisions: [], openQuestions: [], points: [
     { id: 'parent', text: 'Electrical compliance testing preparation has not started and remains scheduled for July.', evidenceIds: ['T0001', 'T0002'] },
     { id: 'child', text: 'Electrical compliance testing preparation has not started.', evidenceIds: ['T0001'], simulationSource: 'supporting_detail', simulationParentId: 'parent' },
@@ -647,8 +659,10 @@ test('explicit supporting-detail children are removed only when the parent conta
   const cleaned = await dedupeGlobalRestatements(discussion, {
     encode: (values) => values.map((value) => /calibrated/.test(value) ? [0, 1] : [1, 0])
   });
-  assert.deepEqual(cleaned[0].points.map((row) => row.id), ['parent', 'distinct-child']);
-  assert.deepEqual(new Set(cleaned[0].points[0].evidenceIds), new Set(['T0001', 'T0002']));
+  assert.deepEqual(cleaned[0].points.map(row => [row.id, row.text, row.evidenceIds]),
+    discussion[0].points.map(row => [row.id, row.text, row.evidenceIds]), 'the child provenance and extra scheduled phase require explicit reconciliation');
+  assert.equal(cleaned[0].points[1].simulationParentId, 'parent');
+  assert.equal(cleaned[0].points[1].simulationSource, 'supporting_detail');
 });
 
 test('strongly overlapping rows with substantially shared evidence keep the richer wording', async () => {

@@ -10,6 +10,7 @@
 // fallback. Record ids, evidence ids and review-flag links are preserved.
 
 const { encodeViaWorker, cosine } = require('./semanticDedupe');
+const mergeSafety = require('./discussionMergeSafety');
 const {
   editorialTopicLabel,
   isPublishableTopicLabel,
@@ -1451,16 +1452,11 @@ function mergeRestatementRecords(left, right) {
   const preferred = rightWeight >= leftWeight ? right : left;
   const other = preferred === left ? right : left;
   const details = [...(preferred.supportingDetails || []), ...(other.supportingDetails || [])];
-  const mergedFromIds = [...new Set([
-    ...(preferred.mergedFromIds || []),
-    ...(other.mergedFromIds || []),
-    other.id
-  ].filter(Boolean))].filter((id) => id !== preferred.id);
+  const metadata = mergeSafety.reconcileMetadata([left, right], preferred);
+  if (!metadata) return null;
   return {
     ...preferred,
-    evidenceIds: [...new Set([...(preferred.evidenceIds || []), ...(other.evidenceIds || [])])].slice(0, 12),
-    reviewFlagIds: [...new Set([...(preferred.reviewFlagIds || []), ...(other.reviewFlagIds || [])])],
-    ...(mergedFromIds.length ? { mergedFromIds } : {}),
+    ...metadata,
     supportingDetails: mergeSupportingRestatements(details)
   };
 }
@@ -1475,6 +1471,7 @@ async function dedupeAdjacentRestatements(topics = [], options = {}) {
       for (let index = 1; index < rows.length; index += 1) {
         if (!hasReviewerDiscussionContent(rows[index - 1])
           && !hasReviewerDiscussionContent(rows[index])
+          && mergeSafety.claimsCompatible(rows[index - 1]?.text, rows[index]?.text)
           && rowsSafeToCompare(rows[index - 1], rows[index])) {
           candidates.push({ topic, kind, index, left: rows[index - 1], right: rows[index] });
         }
@@ -1510,7 +1507,8 @@ async function dedupeAdjacentRestatements(topics = [], options = {}) {
       && lexical >= Number(options.minimumLexicalOverlap || 0.35);
     const lexicalMatch = lexical >= Number(options.lexicalThreshold || 0.82);
     if (!semanticMatch && !lexicalMatch) continue;
-    rows.splice(candidate.index - 1, 2, mergeRestatementRecords(candidate.left, candidate.right));
+    const merged = mergeRestatementRecords(candidate.left, candidate.right);
+    if (merged) rows.splice(candidate.index - 1, 2, merged);
   }
   return cloned;
 }
@@ -1530,26 +1528,21 @@ function primaryRowCanBeDemoted(record = {}) {
 }
 
 function appendDemotedPrimary(parent, candidate, representedByDetail = null) {
-  parent.evidenceIds = [...new Set([...(parent.evidenceIds || []), ...(candidate.evidenceIds || [])])].slice(0, 12);
+  if ([parent, candidate].some(record => !mergeSafety.validIds(record.evidenceIds, 12)
+    || record.mergedFromIds !== undefined && !mergeSafety.validIds(record.mergedFromIds, 1000))) return false;
+  const evidenceIds = [...new Set([...(parent.evidenceIds || []), ...(candidate.evidenceIds || [])])];
+  const history = [...new Set([...(parent.mergedFromIds || []), candidate.id,
+    ...(candidate.mergedFromIds || [])].filter(Boolean))].filter(id => id !== parent.id);
+  if (evidenceIds.length > 12 || history.length > 1000) return false;
+  // Retain the complete candidate metadata even when an existing detail
+  // represents its wording. Exact simple leaves may still reconcile below.
+  const additions = [{ ...cloneRecord(candidate), supportingDetails: [] }, ...(candidate.supportingDetails || [])];
+  const details = [...(parent.supportingDetails || []), ...additions].filter(detail => text(detail?.text));
+  parent.evidenceIds = evidenceIds;
   parent.reviewFlagIds = [...new Set([...(parent.reviewFlagIds || []), ...(candidate.reviewFlagIds || [])])];
-  parent.mergedFromIds = [...new Set([
-    ...(parent.mergedFromIds || []), candidate.id, ...(candidate.mergedFromIds || [])
-  ].filter(Boolean))].filter((id) => id !== parent.id);
-  const additions = [...(candidate.supportingDetails || [])];
-  if (representedByDetail) {
-    representedByDetail.evidenceIds = [...new Set([
-      ...(representedByDetail.evidenceIds || []), ...(candidate.evidenceIds || [])
-    ])].slice(0, 12);
-  } else {
-    additions.unshift({
-      id: candidate.id,
-      text: candidate.text,
-      evidenceIds: [...new Set(candidate.evidenceIds || [])].slice(0, 12),
-      ...(candidate.mergedFromIds?.length ? { mergedFromIds: [...candidate.mergedFromIds] } : {})
-    });
-  }
-  const details = [...(parent.supportingDetails || []), ...additions].filter((detail) => text(detail?.text));
+  parent.mergedFromIds = history;
   parent.supportingDetails = mergeSupportingRestatements(details);
+  return true;
 }
 
 // Final topic arrangement can place a generated point beside the decision or
@@ -1577,7 +1570,8 @@ async function demoteContainedPrimaryRows(topics = [], options = {}) {
   const closeEvidence = (left, right) => rowEvidenceOverlap(left, right)
     || rowEvidenceGap(left, right, index) <= 2;
   const compatible = (candidate, retained) => {
-    if (!rowsConsolidationCompatible(candidate, retained)
+    if (!mergeSafety.claimsCompatible(candidate?.text, retained?.text)
+      || !rowsConsolidationCompatible(candidate, retained)
       || !rowPredicatesCompatible(candidate, retained)) return false;
     // Demotion hides a primary row by default, so use a stricter polarity
     // boundary than the rewrite editor: even a scoped negative stays visible.
@@ -1636,7 +1630,7 @@ async function demoteContainedPrimaryRows(topics = [], options = {}) {
         if (detail) { match = { parent: parentEntry.record, detail }; break; }
       }
       if (!match) continue;
-      appendDemotedPrimary(match.parent, candidate, match.detail);
+      if (!appendDemotedPrimary(match.parent, candidate, match.detail)) continue;
       topic.points.splice(pointIndex, 1);
       demotions.push({ reason: 'represented_by_supporting_detail', topic: text(topic.topic), id: text(candidate.id) });
     }
@@ -1655,7 +1649,7 @@ async function demoteContainedPrimaryRows(topics = [], options = {}) {
           || informationWeight(right.record) - informationWeight(left.record));
       const destination = destinations.find((entry) => strongContainment(candidate, entry.record, false));
       if (!destination) continue;
-      appendDemotedPrimary(destination.record, candidate);
+      if (!appendDemotedPrimary(destination.record, candidate)) continue;
       topic.points.splice(pointIndex, 1);
       demotions.push({ reason: 'contained_primary', topic: text(topic.topic), id: text(candidate.id) });
     }
@@ -1893,6 +1887,7 @@ function validPartialOverlapRewrite(candidate, proposedRows) {
   const rewritten = proposedRows.map((row) => text(typeof row === 'string' ? row : row?.text)).filter(Boolean);
   if (rewritten.length !== proposedRows.length || rewritten.some((row) => contentTokens(row).size < 4)) return false;
   const originalText = originals.join(' '); const rewrittenText = rewritten.join(' ');
+  if (!mergeSafety.rewriteRetainsProtected(originals, rewritten)) return false;
   if (!sameSet(consolidationNumbers(originalText), consolidationNumbers(rewrittenText))) return false;
   if (!sameSet(consolidationNamesAndAcronyms(originalText), consolidationNamesAndAcronyms(rewrittenText))) return false;
   if (ROW_NEGATION.test(originalText) !== ROW_NEGATION.test(rewrittenText)) return false;
@@ -1929,15 +1924,15 @@ async function consolidatePartialOverlapRows(topics = [], options = {}) {
     const originals = indexes.map((index) => rows[index]).filter(Boolean);
     if (originals.length !== candidate.rows.length
       || originals.some((record, index) => text(record?.id, 160) !== candidate.rows[index].id)) continue;
-    const evidenceIds = [...new Set(originals.flatMap((record) => record.evidenceIds || []))];
-    const reviewFlagIds = [...new Set(originals.flatMap((record) => record.reviewFlagIds || []))];
+    const metadata = mergeSafety.reconcileMetadata(originals, originals[0]);
+    if (!metadata) continue;
     const supportingDetails = originals.flatMap((record) => record.supportingDetails || []);
+    const survivingIds = originals.slice(0, proposed.length).map(record => record.id);
     const replacements = proposed.map((proposedRow, index) => ({
       ...cloneRecord(originals[Math.min(index, originals.length - 1)]),
       id: originals[index]?.id || `${originals[0]?.id || 'point'}-consolidated-${index + 1}`,
       text: text(typeof proposedRow === 'string' ? proposedRow : proposedRow?.text),
-      evidenceIds,
-      reviewFlagIds,
+      ...mergeSafety.reconcileMetadata(originals, originals[index], { survivingIds }),
       supportingDetails: index === 0 ? supportingDetails : []
     }));
     if (Array.isArray(candidate.rowIndexes)) {
@@ -2015,6 +2010,7 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
       if (right.removed || (left.kind !== right.kind && !pointDecisionPair)
         || isReviewerAuthored(left.topic) || isReviewerAuthored(right.topic)
         || hasReviewerDiscussionContent(left.record) || hasReviewerDiscussionContent(right.record)
+        || !mergeSafety.claimsCompatible(left.record?.text, right.record?.text)
         || !rowsClaimCompatible(left.record, right.record)) continue;
       const exact = normalisedRestatementText(left.record.text) === normalisedRestatementText(right.record.text);
       const sharedEvidence = rowEvidenceOverlap(left.record, right.record);
@@ -2066,6 +2062,7 @@ async function dedupeGlobalRestatements(topics = [], options = {}) {
         && !equivalentQuestion && !sameTopicShared && !sameTopicNearby && !sameTopicDistant
         && !crossTopicShared && !crossTopicNearby) continue;
       const merged = mergeRestatementRecords(left.record, right.record);
+      if (!merged) continue;
       if (pointDecisionPair) {
         const decision = left.kind === 'decisions' ? left : right;
         const point = decision === left ? right : left;

@@ -1,4 +1,5 @@
 const express = require('express');
+const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
 const mammoth = require('mammoth');
@@ -11549,15 +11550,17 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   const prose = { ...source };
   const protectedStates = new Map();
   for (const stage of ['discussion', 'actions', 'summary']) {
-    if (source[stage] && Object.hasOwn(source[stage], 'semanticReconciliation')) {
-      const { semanticReconciliation, ...rest } = source[stage];
-      prose[stage] = rest;
-      protectedStates.set(stage, semanticReconciliation);
+    if (!source[stage]) continue;
+    const rest = { ...source[stage] }, protectedFields = {};
+    for (const key of ['semanticReconciliation', 'claimConsolidation']) {
+      if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
+    prose[stage] = rest;
+    protectedStates.set(stage, protectedFields);
   }
   const normalised = normaliseMeetingAgentKnownTermsDeep(prose);
-  for (const [stage, semanticReconciliation] of protectedStates) {
-    normalised[stage] = { ...normalised[stage], semanticReconciliation };
+  for (const [stage, protectedFields] of protectedStates) {
+    normalised[stage] = { ...normalised[stage], ...protectedFields };
   }
   return normalised;
 }
@@ -11792,6 +11795,8 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.stageLabel = MEETING_AGENT_STEP_LABELS[Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(safe.currentStep) || 0))];
   // The client only needs to know whether an undo exists. Shipping up to 30
   // full before/after snapshots on every save was pure weight.
+  safe.canRestoreCombinedDiscussion = discussionClaims.canRestore(safe.discussion, draft.sourceUnits,
+    draft.qualityState?.discussion?.claimConsolidation) === true;
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
   // The client only needs to know a redo exists and what it is called.
   const latestRedo = Array.isArray(redoHistory) ? redoHistory[redoHistory.length - 1] : null;
@@ -16868,6 +16873,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
     const literalSupportCleanup = foldLiteralParentSupportingRepeats(discussionFlagState.content.discussion);
     finalDiscussion = literalSupportCleanup.discussion;
+    // Existing wording only, unflagged main leaves, complete source context,
+    // and an independent coverage check. Failed/uncertain checks keep both.
+    const claimConsolidation = /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_CLAIM_CONSOLIDATION_V1 || '0'))
+      ? await discussionClaims.consolidate(finalDiscussion, draft.sourceUnits, {
+        assess: (prompt, packet) => call('critic-discussion-claim-proposal', prompt, {
+          optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,
+          independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: packet.candidates.length
+        }),
+        verify: (prompt, packet, selected) => call('critic-discussion-claim-verification', prompt, {
+          optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,
+          independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: selected.length
+        })
+      }) : { discussion: finalDiscussion, audit: { applied: false, reason: 'disabled' } };
+    finalDiscussion = claimConsolidation.discussion;
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -16917,6 +16936,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           visiblePropositionCount: flattenHybridDiscussion(finalDiscussion).length,
           supportingDetailCount: supportingRecords.length,
           literalSupportingRepeatsFolded: literalSupportCleanup.foldedCount,
+          claimConsolidation: claimConsolidation.audit,
           unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
           fidelityReview,
@@ -19827,6 +19847,31 @@ router.post('/meeting-minutes-agent/drafts/:draftId/redo', requireAuth, async (r
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
   }
+});
+
+router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-discussion', requireAuth, async (req, res) => {
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    if (Number(req.body?.revision) !== draft.revision || draft.generation?.status === 'running') {
+      const error = new Error('This draft changed or is still generating. Reload it before restoring paragraphs.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const audit = draft.qualityState?.discussion?.claimConsolidation;
+    const discussion = discussionClaims.restore(draft.discussion, draft.sourceUnits, audit);
+    if (!discussion) {
+      const error = new Error('These paragraphs have changed since they were combined. Your edits have been preserved.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const qualityState = { ...draft.qualityState, discussion: { ...draft.qualityState.discussion,
+      claimConsolidation: { ...audit, applied: false, restored: true } } };
+    const saved = await saveMeetingAgentDraft(draft, req, { discussion, qualityState,
+      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, 'Restore combined paragraphs')].slice(-30),
+      redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, { ...draft, discussion })])] });
+    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
+  } catch (error) { return sendMeetingAgentFailure(res, error); }
 });
 
 router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (req, res) => {
