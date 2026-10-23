@@ -1,5 +1,6 @@
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
+const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
@@ -11570,7 +11571,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
 function meetingAgentDraftPayload(draft = {}) {
   draft = meetingAgentWithLegacyDateReview(normaliseMeetingAgentMinuteNumbers(draft));
   const payloadFlags = reconcileMeetingAgentOrphanFlags(
-    (Array.isArray(draft.reviewFlags) ? draft.reviewFlags : []).filter(isUsefulMeetingAgentReviewFlag),
+    filingReviewFlags(draft).filter(isUsefulMeetingAgentReviewFlag),
     [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)],
     draft.pendingProposal
   );
@@ -11755,7 +11756,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   const visibleActions = publication.actions;
   const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal, draft.sourceUnits || []);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
-    publication.reviewFlags,
+    filingReviewFlags(draft, publication.reviewFlags),
     [...visibleDiscussion, ...visibleActions, ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)],
     visibleProposal
   );
@@ -11830,6 +11831,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
       resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(safe.draftId || '')}`
     };
   }
+  safe.filingReview = filingSuggestions(safe);
   return safe;
 }
 

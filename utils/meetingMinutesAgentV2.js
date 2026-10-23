@@ -892,6 +892,10 @@ function normalisePoint(value, units, prefix, index, options = {}) {
   const pointId = text(candidate.id, 80) || stableId(prefix, pointText, index);
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
   const resolved = resolveEvidence(pointText, units, candidate.evidenceIds, { meetingDate: options.meetingDate });
+  if (options.preserveReviewerEdits === true && candidate.reviewerAuthored === true && candidate.filingOrigins?.length) {
+    const validSuppliedIds = [...new Set(suppliedIds.filter(id => evidenceContextFor(units).known.has(id)))];
+    if (validSuppliedIds.length) resolved.evidenceIds = validSuppliedIds;
+  }
   if (correctnessChecksEnabled() && !suppliedIds.some((id) => evidenceContextFor(units).known.has(id))
     && resolved.evidenceIds.length && !uncitedClaimSupported(pointText, resolved, units)) {
     resolved.evidenceIds = [];

@@ -78,6 +78,21 @@ function startStubServer() {
     { id:'discussion-1', text:'A distinct earlier retained version needs its own review.', evidenceIds:['T0001'], mergedFromIds:['original-early'], reviewFlagIds:['flag-1'] }
   ];
   drafts.set('ordered-filing', orderedFiling);
+  const filingReview = baseDraft('filing-review', false);
+  filingReview.currentStep = 5; filingReview.selectedStep = 2;
+  filingReview.actions[0].occurrenceId = 'action-occurrence-filing-fixture';
+  filingReview.sourceUnits.push({ id:'T0002', speaker:'Sam Okoro', text:'The pressure calibration certificate is available.' });
+  filingReview.discussion[0].points[0] = { id:'discussion-1',
+    text:'The pressure calibration certificate requires checking before circulation.',
+    evidenceIds:['T0001'], reviewFlagIds:[], supportingDetails:[] };
+  filingReview.unassignedSupportingDetails = [
+    { id:'first-certificate', text:'The pressure calibration certificate is available.', evidenceIds:['T0001','T0002'],
+      originalTopic:'Calibration', placementReason:'no_subject_match', filingMergeProtected:true },
+    { id:'discussion-1', text:'The pressure calibration certificate is available.', evidenceIds:['T0002'],
+      reviewFlagIds:['unavailable-warning'], originalTopic:'Calibration', placementReason:'no_subject_match', mergedFromIds:['old-certificate'] },
+    { id:'annual-inspection', text:'The annual inspection remains unresolved.', evidenceIds:['T0002'] }
+  ];
+  drafts.set('filing-review', filingReview);
   const internalOnly = baseDraft('internal-only', false);
   internalOnly.currentStep = 0;
   internalOnly.selectedStep = 0;
@@ -329,6 +344,7 @@ function startStubServer() {
   let actionCompletionChecks = 0;
 
   app.get('/meeting-minutes-agent', (req, res) => res.type('html').send(fs.readFileSync(PAGE_PATH, 'utf8')));
+  app.get('/static/trinzo.css', (req, res) => res.type('text/css').send(fs.readFileSync(path.join(REPO_ROOT, 'public', 'trinzo.css'), 'utf8')));
   app.get('/static/meeting-minutes-timing.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(REPO_ROOT, 'utils', 'meetingMinutesTiming.js'), 'utf8')));
   app.get('/static/meeting-minutes-filing-order.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(path.join(REPO_ROOT, 'public', 'meeting-minutes-filing-order.js'), 'utf8')));
   app.get('/static/meeting-minutes-agent.js', (req, res) => res.type('application/javascript').send(fs.readFileSync(CLIENT_PATH, 'utf8')));
@@ -347,7 +363,10 @@ function startStubServer() {
     res.json({ ok: true, draft: prepared, resumeUrl: '/meeting-minutes-agent?draftId=prepared' });
   });
   function visibleDraft(id, draft) {
-    return id === 'reviewer-provenance'
+    if (id === 'filing-review') draft = { ...draft,
+      changeHistory: (reviewHistory.get(id) || []).map((entry, index) => ({ id:'undo-'+(index+1), label:entry.label })),
+      redoHistory: (redoHistory.get(id) || []).map((entry, index) => ({ id:'redo-'+(index+1), label:entry.label })) };
+    return ['reviewer-provenance', 'filing-review'].includes(id)
       ? require('../routes/api').stagedEvaluation.publicMeetingAgentDraft(draft) : draft;
   }
   app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: visibleDraft(req.params.id, drafts.get(req.params.id)) }));
@@ -389,7 +408,7 @@ function startStubServer() {
     };
     // Exercise the actual save normaliser and read-time publication helpers for
     // the provenance journey; a plain echo server would conceal lost markers.
-    if (req.params.id === 'reviewer-provenance') {
+    if (['reviewer-provenance', 'filing-review'].includes(req.params.id)) {
       const normalised = require('../utils/meetingMinutesAgentV2').normaliseAgentResult({
         discussion: next.discussion, actions: next.actions, reviewFlags: next.reviewFlags
       }, next.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true });
@@ -568,6 +587,120 @@ async function launchPage(port, draftId) {
   await page.waitForFunction(() => document.querySelector('#actionsBody tr'));
   return { browser, page, errors };
 }
+
+test('filing review groups wording but retains separate controls, warning links and explicit direct promotion', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'filing-review'); browser = launched.browser;
+    const { page, errors } = launched;
+    const stored = () => page.evaluate(async () => (await (await fetch('/test-state/filing-review')).json()).draft);
+    await page.click('[data-step="2"]');
+    await page.locator('#omittedDetailsPanel > summary').click();
+    assert.equal(await page.locator('[data-identical-filing-group]').count(), 1);
+    assert.equal(await page.locator('[data-identical-filing-group] > p').textContent(), 'The pressure calibration certificate is available.');
+    assert.equal(await page.locator('[data-unassigned-supporting-row]').count(), 3);
+    await page.locator('[data-identical-filing-group] > details > summary').click();
+    assert.match(await page.locator('[data-unassigned-supporting-row="1"]').textContent(), /explanation.*unavailable/);
+    assert.equal(await page.locator('[data-view-flag-target="minutes-unassigned-supporting-discussion-1-1"]').count(),1);
+    const before = await stored(), originalMain = before.discussion[0].points[0].text;
+    await page.selectOption('[data-unassigned-supporting-row="1"] [data-unassigned-topic]', '0');
+    await page.click('[data-promote-unassigned="1"]');
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state==='saved');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/filing-review')).json()).draft.unassignedSupportingDetails.length===2);
+    let draft = await stored(), moved = draft.discussion[0].points.find(p => p.text==='The pressure calibration certificate is available.');
+    assert.ok(moved, JSON.stringify(await page.evaluate(async () => (await (await fetch('/test-state/filing-review')).json())))); assert.notEqual(moved.id, 'discussion-1');
+    assert.deepEqual(moved.mergedFromIds, ['old-certificate','discussion-1']);
+    assert.deepEqual(moved.evidenceIds,['T0002']); assert.deepEqual(moved.reviewFlagIds,['unavailable-warning']);
+    assert.equal(moved.reviewerAuthored,true);
+    assert.equal(moved.filingOrigins[0].originalTopic,'Calibration');
+    assert.equal(draft.unassignedSupportingDetails[0].id,'first-certificate');
+    assert.equal(draft.discussion[0].points[0].text,originalMain);
+    assert.deepEqual(draft.actions,before.actions);
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state==='saved');
+    await page.click('#undoLastDecision');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/filing-review')).json()).draft.unassignedSupportingDetails.length===3);
+    await page.click('#redoLastDecision');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/filing-review')).json()).draft.unassignedSupportingDetails.length===2);
+    await page.reload(); await page.waitForSelector('#omittedDetailsPanel');
+    await page.locator('#omittedDetailsPanel > summary').click();
+    await page.selectOption('[data-unassigned-supporting-row="1"] [data-unassigned-topic]', 'new');
+    await page.fill('[data-unassigned-supporting-row="1"] [data-unassigned-new-topic]', 'Annual inspection');
+    await page.click('[data-promote-unassigned="1"]');
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state==='saved');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/filing-review')).json()).draft.discussion.length===2);
+    draft = await stored();
+    assert.equal(draft.discussion[1].topic,'Annual inspection');
+    assert.equal(draft.discussion[1].points[0].text,'The annual inspection remains unresolved.');
+    assert.equal(draft.unassignedSupportingDetails.length,1);
+    assert.deepEqual(errors,[]);
+  } finally { if(browser) await browser.close(); await new Promise(resolve=>server.close(resolve)); }
+});
+
+test('filing suggestions require a deliberate click and move only the selected retained occurrence', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'filing-review'); browser=launched.browser;
+    const {page, errors}=launched;
+    await page.click('[data-step="2"]'); await page.locator('#omittedDetailsPanel > summary').click();
+    await page.locator('[data-identical-filing-group] > details > summary').click();
+    assert.equal(await page.locator('[data-use-filing-suggestion]').count(),1);
+    const before=await page.evaluate(async () => (await (await fetch('/test-state/filing-review')).json()).draft);
+    assert.equal(before.unassignedSupportingDetails.length,3);
+    await page.click('[data-use-filing-suggestion="0"]');
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state==='saved');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/filing-review')).json()).draft.unassignedSupportingDetails.length===2);
+    const after=await page.evaluate(async () => (await (await fetch('/test-state/filing-review')).json()).draft);
+    assert.equal(after.discussion[0].points.length,1);
+    assert.equal(after.discussion[0].points[0].text,before.discussion[0].points[0].text);
+    assert.ok(after.discussion[0].points[0].supportingDetails[0], JSON.stringify(await page.evaluate(async () => (await (await fetch('/test-state/filing-review')).json()))));
+    assert.equal(after.discussion[0].points[0].supportingDetails[0].id,'first-certificate');
+    assert.ok(after.unassignedSupportingDetails.some(p=>p.id==='discussion-1'));
+    assert.deepEqual(after.actions,before.actions); assert.deepEqual(errors,[]);
+  } finally { if(browser)await browser.close(); await new Promise(resolve=>server.close(resolve)); }
+});
+
+test('filing controls preserve readable full-width text at desktop and phone widths', { timeout:120000 }, async () => {
+  const {server,port}=await startStubServer();let browser;
+  try {
+    const launched=await launchPage(port,'filing-review');browser=launched.browser;const {page,errors}=launched;
+    await page.locator('#omittedDetailsPanel > summary').click();
+    for(const width of [1280,390]){
+      await page.setViewportSize({width,height:844});
+      const box=await page.locator('[data-unassigned-supporting-row="2"]').evaluate(row=>{
+        const copy=row.querySelector('.omitted-detail-copy').getBoundingClientRect();
+        const bounds=row.getBoundingClientRect();
+        return {copyWidth:copy.width,rowWidth:bounds.width,overflow:row.scrollWidth-row.clientWidth,
+          controls:[...row.querySelectorAll('select,button,input:not([hidden])')].map(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right})),
+          left:bounds.left,right:bounds.right};
+      });
+      assert.ok(box.copyWidth>box.rowWidth*.85,JSON.stringify({width,box}));
+      assert.ok(box.overflow<=1,JSON.stringify({width,box}));
+      assert.ok(box.controls.every(b=>b.left>=box.left && b.right<=box.right+1),JSON.stringify({width,box}));
+    }
+    assert.deepEqual(errors,[]);
+  } finally {if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
+});
+
+test('editing a parent invalidates an older filing suggestion without moving any occurrence', { timeout:120000 }, async () => {
+  const {server,port}=await startStubServer(); let browser;
+  try {
+    const launched=await launchPage(port,'filing-review');browser=launched.browser;
+    const {page,errors}=launched;
+    await page.click('[data-step="2"]');await page.locator('#omittedDetailsPanel > summary').click();
+    await page.locator('[data-identical-filing-group] > details > summary').click();
+    assert.equal(await page.locator('[data-use-filing-suggestion]').count(),1);
+    await page.fill('[data-record-field="points"][data-topic-index="0"][data-item-index="0"]','The annual report requires separate review.');
+    await page.click('[data-use-filing-suggestion="0"]');
+    assert.equal(await page.locator('[data-use-filing-suggestion]').count(),0);
+    await page.waitForFunction(() => document.getElementById('saveStatus')?.dataset.state==='saved');
+    const saved=await page.evaluate(async () => (await (await fetch('/test-state/filing-review')).json()).draft);
+    assert.equal(saved.unassignedSupportingDetails.length,3);
+    assert.equal(saved.discussion[0].points.length,1);
+    assert.deepEqual(saved.discussion[0].points[0].supportingDetails,[]);
+    assert.equal(saved.discussion[0].points[0].text,'The annual report requires separate review.');
+    assert.deepEqual(errors,[]);
+  } finally {if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
+});
 
 test('ordered unfiled details file and promote into an independently editable occurrence', { timeout:120000 }, async () => {
   const { server, port } = await startStubServer();

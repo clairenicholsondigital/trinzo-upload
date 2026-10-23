@@ -135,7 +135,8 @@ test('filing, promotion and demotion retain complete context and merge history t
   try {
     const { page } = f;
     let row = await openPool(page);
-    assert.equal(await row.locator('.omitted-detail-copy p').textContent(), LONG_DETAIL);
+    assert.equal(await row.locator('.omitted-detail-copy > p:first-child').textContent(), LONG_DETAIL);
+    assert.equal(await row.locator('.review-notice').textContent(), warning.message);
     assert.equal(await page.locator('#unsafe-detail').count(), 0);
     assert.equal(await page.evaluate(() => window.unsafe), undefined);
     assert.equal(await row.locator('[data-supporting-destination]').inputValue(), '');
@@ -152,7 +153,7 @@ test('filing, promotion and demotion retain complete context and merge history t
     await page.waitForTimeout(1050);
     assert.equal(f.patches.length, patchCount);
     assert.equal(f.saved().unassignedSupportingDetails.length, 1);
-    assert.match(await row.locator('option:checked').textContent(), /Second <topic> & context — Which option/);
+    assert.match(await row.locator('[data-supporting-destination] option:checked').textContent(), /Second <topic> & context — Which option/);
 
     const saved = page.waitForResponse((res) => res.request().method() === 'PATCH');
     await row.locator('[data-file-supporting]').click();
