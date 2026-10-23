@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const V = require('../utils/meetingMinutesAgentV2');
-const { normalizeUnassignedSupportingDetails: normalize, withoutRepresentedUnassignedDetails: without } = require('../utils/meetingMinutesSupportingDetails');
+const { normalizeUnassignedSupportingDetails: normalize, withoutRepresentedUnassignedDetails: without,
+  collectUnassignedSupportingDetails: collect } = require('../utils/meetingMinutesSupportingDetails');
 const row = extra => ({ id: 'generated-a', text: 'The supplier provided the revised calibration certificate.',
   evidenceIds: ['T0001', 'T0002'], reviewFlagIds: ['check'], originalTopic: 'Equipment',
   placementReason: 'no_unique_parent', ...extra });
@@ -24,6 +25,56 @@ test('different generated IDs with exact text and citation sets consolidate loss
   assert.deepEqual(input, before);
   assert.deepEqual(normalize(JSON.parse(JSON.stringify(result))), result);
 });
+for (const side of ['first', 'second', 'both']) test('empty supporting lists do not block exact filing consolidation: ' + side, () => {
+  const input = pair({ mergedFromIds: ['earlier-b'] });
+  if (side !== 'second') input[0].supportingDetails = [];
+  if (side !== 'first') input[1].supportingDetails = [];
+  const before = structuredClone(input);
+  const result = normalize(input);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].text, input[0].text);
+  assert.deepEqual(result[0].evidenceIds, input[0].evidenceIds);
+  assert.deepEqual(result[0].reviewFlagIds, ['check']);
+  assert.deepEqual(result[0].mergedFromIds, ['generated-b', 'earlier-b']);
+  assert.deepEqual(result[0].filingOrigins, [
+    { id: 'generated-a', originalTopic: 'Equipment', placementReason: 'no_unique_parent' },
+    { id: 'generated-b', originalTopic: 'Inspection', placementReason: 'parent_not_publishable' }
+  ]);
+  assert.notEqual(result[0].filingMergeProtected, true);
+  assert.deepEqual(input, before);
+  assert.deepEqual(normalize(JSON.parse(JSON.stringify(result))), result);
+});
+for (const [name, extra] of [
+  ['existing protection', { filingMergeProtected: true }],
+  ['unknown metadata', { extraContext: 'retain separately' }],
+  ['reviewer authorship', { reviewerAuthored: true }],
+  ['different warnings', { reviewFlagIds: ['different-check'] }],
+  ['different evidence', { evidenceIds: ['T0001'] }]
+]) test('an empty supporting list cannot bypass ' + name, () => {
+  const input = pair({ supportingDetails: [], ...extra });
+  assert.equal(normalize(input).length, 2);
+  assert.equal(normalize(normalize(input)).length, 2);
+});
+for (const value of [null, {}, '', 'none', false, 0]) test('malformed supporting list remains protected: ' + JSON.stringify(value), () => {
+  const input = pair({ supportingDetails: value });
+  assert.equal(normalize(input).length, 2);
+  assert.equal(normalize(normalize(input)).length, 2);
+});
+
+test('collection retains a real parent and consolidates only its exact generated leaf copies', () => {
+  const children = pair().map(child => ({ ...child, supportingDetails: [] }));
+  const parent = row({ id: 'parent', text: 'The inspection remains subject to supplier approval.', supportingDetails: children });
+  const before = structuredClone(parent), result = collect(parent);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].id, 'parent');
+  assert.equal(result[0].text, parent.text);
+  assert.equal(result[0].filingMergeProtected, true);
+  assert.deepEqual(result[1].mergedFromIds, ['generated-b']);
+  assert.equal(result[1].filingOrigins.length, 2);
+  assert.deepEqual(parent, before);
+  assert.deepEqual(normalize(JSON.parse(JSON.stringify(result))), result);
+});
+
 test('citation and warning order do not affect identical set matching', () => {
   const result = normalize([row({ reviewFlagIds: ['one', 'two'] }), row({ id: 'generated-b',
     evidenceIds: ['T0002', 'T0001'], reviewFlagIds: ['two', 'one'] })]);
