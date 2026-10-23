@@ -2,6 +2,7 @@
 
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame } = require('./contactEnquiry');
+const { contactActionFrame } = require('./contactActionGrammar');
 const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText, conflictingTimings, actionContainmentConflict } = require('./actionDuplicateCoverage');
 
 // One commitment written twice. The action list is assembled from two
@@ -47,6 +48,7 @@ const RECIPIENT = /\b(?:to|with)\s+(?:the\s+)?(.+?)(?=\s+\b(?:for|by|before|afte
 // the intended scheme" and set "back" in one and the same job.
 const PERSON_WORD = /\b(?:team|client|customer|auditor|group|committee|board|everyone|everybody|all|colleagues|staff|management|supplier|vendor|provider|organisers?|organizers?)\b/i;
 const DESTINATION = /\b(?:into|onto|to|in|on)\s+(?:the\s+|a\s+|an\s+)?([a-z][a-z-]+(?:\s+[a-z][a-z-]+){0,2})(?=\s+\b(?:for|by|before|after|so\s+that|once|when|and)\b|[.;,]|$)/i;
+const CONTACT_DESTINATION = new RegExp(DESTINATION.source.replace('into|onto|to|in|on', 'into|onto|to|in|on|at'), DESTINATION.flags);
 
 function stem(token) {
   token = token.replace(/^re(?=(?:open|send|share|run|test|check|submit|start|book|schedule|issue|do|draft|write|order|confirm|visit|assess|review)$)/, '');
@@ -135,6 +137,8 @@ function dependsOn(waiting, step) {
   return inClause > 0 && inOwn / Math.max(1, stepObj.size) < 0.34;
 }
 function recipients(value) {
+  const contact = contactActionFrame(value);
+  if (contact) return new Set(words(contact.recipient).filter(w => !STOP.has(w)).map(stem));
   const m = String(value || '').match(RECIPIENT);
   if (!m) return new Set();
   const phrase = m[1];
@@ -142,16 +146,26 @@ function recipients(value) {
   return isPerson ? new Set(words(phrase).filter((w) => !STOP.has(w)).map(stem)) : new Set();
 }
 function conflictingRecipients(a, b) {
+  const left = contactActionFrame(a), right = contactActionFrame(b);
+  // Exact names, not shared first names or shared purpose words. Do not invent
+  // an alias between a short name and a different explicitly named person.
+  if (left && right) return left.recipient !== right.recipient;
   const x = recipients(a), y = recipients(b);
   if (!x.size || !y.size) return false;
   for (const t of x) if (y.has(t)) return false;
   return true;
 }
 function destinations(value) {
-  const m = String(value || '').replace(DEPENDENCY, '').match(DESTINATION);
+  const contact = contactActionFrame(value);
+  const m = (contact ? contact.destinationText : String(value || '')).replace(DEPENDENCY, '').match(contact ? CONTACT_DESTINATION : DESTINATION);
   return new Set(m ? words(m[1]).filter((w) => !STOP.has(w)).map(stem) : []);
 }
 function conflictingDestinations(a, b) {
+  const left = contactActionFrame(a), right = contactActionFrame(b);
+  // "North Warehouse" and "South Warehouse" are not the same place because
+  // both contain "warehouse". Keep complete explicit spatial phrases guarded.
+  if (left?.namedDestinations.length && right?.namedDestinations.length
+    && JSON.stringify(left.namedDestinations) !== JSON.stringify(right.namedDestinations)) return true;
   const x = destinations(a), y = destinations(b);
   if (!x.size || !y.size) return false;
   for (const t of x) if (y.has(t)) return false;
