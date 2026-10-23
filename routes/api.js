@@ -13234,7 +13234,9 @@ function bundleSameRecipientDeliveries(records = []) {
     // above; concatenating them duplicates work and can repeat timing clauses.
     if (group.some(({ frame }, index) => /;/.test(frame.object)
       || group.slice(index + 1).some(({ frame: other }) =>
-        hybridContentTokenOverlap(frame.object, other.object) >= 0.5))) continue;
+        // Spelling normalisation only refuses bundling; it never authorises deduplication.
+        hybridContentTokenOverlap(frame.object.replace(/[-‐‑‒–—]/g, ' '),
+          other.object.replace(/[-‐‑‒–—]/g, ' ')) >= 0.5))) continue;
     const items = group.map(({ record, frame }) => deliveryBundleItem(record, frame)).filter(Boolean);
     if (items.length !== group.length || items.some((item) => item.split(/\s+/).length > 55)) continue;
     const [first] = group;
@@ -13382,7 +13384,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       }
       const delivery = actionDeliveryFrame(record);
       const otherDelivery = actionDeliveryFrame(existing);
-      if (delivery && otherDelivery && (delivery.recipientKey !== otherDelivery.recipientKey
+      // Unicode separators are not reliably tokenised by the loose matchers below.
+      // Require the preserved-instruction proof above for those deliveries.
+      if (delivery && otherDelivery && (/[‐‑‒–—]/u.test(String(record.action) + String(existing.action))
+        || delivery.recipientKey !== otherDelivery.recipientKey
         || hybridContentTokenOverlap(delivery.object, otherDelivery.object) < 0.5)) return false;
       const workTypes = hybridActionTypes(record.action);
       const otherWorkTypes = hybridActionTypes(existing.action);
