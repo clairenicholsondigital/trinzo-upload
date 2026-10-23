@@ -13,6 +13,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const { refereeFailureSnapshot, appendRefereeFailureAudit } = require('../utils/meetingMinutesRefereeFailureAudit');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerProjectKnowledge } = require('../utils/knowledge');
 
@@ -9886,14 +9887,25 @@ function meetingAgentRefereeEvidencePacket(sourceUnits = [], candidates = [], tr
   };
 }
 
+function meetingAgentRefereeReferenceTargets(contract = {}) {
+  if (contract.stage !== 'DISCUSSION_REFEREE') return [];
+  // Reference-only records have one writable target identity. Exposing the
+  // discovery candidate ID as another identity led the Referee to return that
+  // old ID instead of the approved target. Keep original provenance private in
+  // the unchanged contract; never turn an unknown reply ID into a valid alias.
+  return (contract.retainedDiscussionTargets || []).map(target => ({ ...target, candidateId: target.targetId }));
+}
+
 function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [], details = {}, candidates, requestId,
   contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId) }) {
-  const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, contract.candidates, transcript);
+  const targets = meetingAgentRefereeReferenceTargets(contract);
+  const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, [...contract.candidates, ...targets], transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     requestId: contract.requestId,
     stage: contract.stage,
     timingPolicyVersion: TIMING_POLICY_VERSION,
+    ...(targets.length ? { existingDiscussionTargets: targets } : {}),
     meetingDetails: details.timingContext || { meetingDate: sanitiseMeetingAgentDetails(details).meetingDate, dateSource: 'provided_meeting_details' },
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
@@ -9912,7 +9924,8 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
 
 function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits = [], details = {}, candidates, requestId,
   contract = meetingMinutesAgentRefereeContract(stage, candidates, requestId) }) {
-  const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, contract.candidates, transcript);
+  const targets = meetingAgentRefereeReferenceTargets(contract);
+  const evidencePacket = meetingAgentRefereeEvidencePacket(sourceUnits, [...contract.candidates, ...targets], transcript);
   const refereePayload = {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     requestId: contract.requestId,
@@ -9923,10 +9936,10 @@ function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits
     // Without this marker it can interpret a one-candidate repair payload as
     // another ordinary referee run and return an empty/default disposition.
     repairAttempt: true,
-    ...(contract.retainedDiscussionTargets?.length ? {
+    ...(targets.length ? {
       // Reference context only: these valid siblings are not part of the
       // repair subset and must not be counted or classified again.
-      existingDiscussionTargets: contract.retainedDiscussionTargets
+      existingDiscussionTargets: targets
     } : {}),
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
@@ -10983,6 +10996,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       requestId: meetingMinutesAgentText(options.requestId, 160)
     };
     if (options.onAttempt) await options.onAttempt(attemptInfo).catch(() => {});
+    let rawReply, normalizedReply;
     try {
       const configuredAttemptTimeoutMs = Number(options.attemptTimeoutMs
         || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000);
@@ -10992,12 +11006,14 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
         paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass
       });
+      if (typeof options.onFailure === 'function') rawReply = refereeFailureSnapshot(freshResult);
       if (typeof options.onResult === 'function') await options.onResult(freshResult, attemptInfo);
       const transformedResult = typeof options.transformResult === 'function'
         ? options.transformResult(freshResult) : freshResult;
       const result = accumulatedResult && typeof options.combineResults === 'function'
         ? options.combineResults(accumulatedResult, transformedResult)
         : transformedResult;
+      if (typeof options.onFailure === 'function') normalizedReply = refereeFailureSnapshot(result);
       const reportedError = meetingAgentResultError(result);
       if (reportedError) throw reportedError;
       const validationError = typeof options.validateResult === 'function' ? options.validateResult(result) : null;
@@ -11009,6 +11025,15 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       return { result, timings };
     } catch (error) {
       lastError = error;
+      // Diagnostics are private and optional. Storage failure must never cause
+      // another provider request or replace the original validation outcome.
+      if (typeof options.onFailure === 'function') {
+        try { await options.onFailure({ prompt: refereeFailureSnapshot(attemptPrompt),
+          rawReply: rawReply || refereeFailureSnapshot(undefined),
+          normalizedReply: normalizedReply || refereeFailureSnapshot(undefined), attemptInfo, error }); }
+        catch { console.warn(JSON.stringify({ event: 'meeting_agent_referee_audit_unavailable',
+          pass: options.pass || '', requestId: attemptInfo.requestId })); }
+      }
       timings.push({
         ...attemptInfo, elapsedMs: Date.now() - started, ok: false,
         statusCode: Number(error.statusCode || 0) || undefined,
@@ -11611,7 +11636,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -15513,7 +15538,7 @@ async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
-      const { passCache, ...generationPatch } = patch;
+      const { passCache, refereeFailureAudit, ...generationPatch } = patch;
       if (stage === 'actions' && Array.isArray(generationPatch.previewActions)) {
         const visible = meetingAgentPreviewSavedActions(
           generationPatch.previewActions, fresh.actions, fresh.sourceUnits
@@ -15533,7 +15558,9 @@ async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = 
       try {
         await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
           generation,
-          ...(passCache ? { passCache: normaliseMeetingAgentPassCache(passCache) } : {})
+          ...(passCache ? { passCache: normaliseMeetingAgentPassCache(passCache) } : {}),
+          ...(refereeFailureAudit ? { qualityState: { ...(fresh.qualityState || {}),
+            [stage]: { ...(fresh.qualityState?.[stage] || {}), refereeFailureAudit } } } : {})
         });
         return;
       } catch (error) {
@@ -15690,6 +15717,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const completedPasses = [];
   const degradedSources = [];
   let passCache = normaliseMeetingAgentPassCache(draft.passCache);
+  let refereeFailureAudit = draft.qualityState?.[stage]?.refereeFailureAudit;
+  const refereeAuditRunId = crypto.randomUUID();
   const stageStartedAt = Date.now();
   const stageDeadlineAt = stageStartedAt + Math.max(180000, Number(process.env.MEETING_MINUTES_AGENT_STAGE_TIMEOUT_MS || 360000));
   const progress = async (pass, message, activeTimings = []) => {
@@ -15792,6 +15821,17 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         validateResult: callOptions.validateResult,
         repairPrompt: callOptions.repairPrompt,
         combineResults: callOptions.combineResults,
+        ...(stage === 'discussion' && isRefereeCall ? { onFailure: async ({ prompt: exactPrompt, rawReply, normalizedReply, attemptInfo, error }) => {
+          refereeFailureAudit = appendRefereeFailureAudit(refereeFailureAudit, {
+            runId: refereeAuditRunId, stage, pass, requestId, attempt: attemptInfo.attempt,
+            prompt: exactPrompt, rawReply, normalizedReply,
+            contract: refereeFailureSnapshot(callOptions.refereeContract || {}),
+            validation: { code: meetingMinutesAgentText(error.code, 120),
+              invalidCandidateIds: (error.invalidCandidateIds || []).slice(0, 120),
+              missingCandidateIds: (error.missingCandidateIds || []).slice(0, 120) }
+          });
+          if (options.onRefereeFailure) await options.onRefereeFailure(refereeFailureAudit);
+        } } : {}),
         onAttempt: (attempt) => progress(pass,
           // Retry counts are our plumbing, not the reviewer's business: they
           // only need to know it is still going.
@@ -17027,6 +17067,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
         passCache,
         qualityState: { ...(draft.qualityState || {}), discussion: {
+          ...(refereeFailureAudit ? { refereeFailureAudit } : {}),
           completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
           completedAt: new Date().toISOString(), passImpact,
           callPerformance: meetingAgentCallPerformance(measuredProvenance),
@@ -19561,6 +19602,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
           ? await generateHybridMeetingAgentStage(fresh, stage, {
             onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
             onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
+            onRefereeFailure: (refereeFailureAudit) => updateMeetingAgentHybridProgress(draftId, userId, stage, { refereeFailureAudit }),
             onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
           })
           : await generateMeetingAgentStage(fresh, stage, '');
