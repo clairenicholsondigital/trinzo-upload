@@ -76,6 +76,19 @@ async function request(method, suffix = '', body = {}, userId = 'bounded-reviewe
   await route.stack.at(-1).handle({ params: { draftId: saved.draftId }, authUser: { userId }, body: { revision: saved.revision, ...body } }, res);
   return res;
 }
+test('private referee failure evidence survives owned save exactly and never appears in public draft JSON',async()=>{
+  await reset();
+  const F=require('../utils/meetingMinutesRefereeFailureAudit');
+  const journal=F.appendRefereeFailureAudit(null,{prompt:F.refereeFailureSnapshot('PRIVATE original udimed source'),
+    rawReply:F.refereeFailureSnapshot({targetId:'PRIVATE rejected udimed target'})});
+  saved.qualityState.discussion.refereeFailureAudit=journal;
+  const before=(await request('get')).body.draft;
+  assert.ok(!JSON.stringify(before).includes('PRIVATE'));
+  assert.equal((await request('patch','',{discussion:before.discussion,qualityState:{discussion:{refereeFailureAudit:{forged:true}}}})).statusCode,200);
+  assert.deepEqual(saved.qualityState.discussion.refereeFailureAudit,journal);
+  const after=(await request('get')).body.draft;
+  assert.ok(!JSON.stringify(after).includes('PRIVATE'));
+});
 test('unresolved fidelity warnings survive actual owned GET/PATCH and preserve reviewer resolution', async () => {
   await reset();
   const row = { id: 'fidelity-row', text: 'The current latch needs replacement.', evidenceIds: ['T0001'], reviewFlagIds: [] };
