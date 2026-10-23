@@ -44,6 +44,7 @@ async function agentPage(t, initialDraft) {
     const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (pathname === '/meeting-minutes-agent') return route.fulfill({ status: 200, contentType: 'text/html', body: HTML });
     const scripts = {
+      '/static/meeting-minutes-filing-order.js': 'public/meeting-minutes-filing-order.js',
       '/static/meeting-minutes-agent.js': 'public/meeting-minutes-agent.js',
       '/static/meeting-minutes-timing.js': 'utils/meetingMinutesTiming.js',
       '/static/meeting-minutes-project-link.js': 'public/meeting-minutes-project-link.js'
