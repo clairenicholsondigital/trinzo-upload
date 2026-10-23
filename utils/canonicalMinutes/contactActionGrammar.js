@@ -9,7 +9,7 @@ const NAME = /^([\p{Lu}][\p{L}'’-]*(?:\s+[\p{Lu}][\p{L}'’-]*){0,11})(?=\s+(?
 // These forms are unambiguously verbal in this construction. Do not strip
 // ambiguous objects such as "to check point", or capitalised place names.
 const PURPOSE = /\bto\s+(?=(?:clarify|avoid|understand|ensure|determine|establish|identify|confirm|agree)\b)/g;
-const NAMED_DESTINATION = /\b(?:into|onto|in|at|on|to)\s+(?:the\s+)?[\p{Lu}][\p{L}'’-]*(?:\s+[\p{Lu}][\p{L}'’-]*){0,5}(?=\s+(?:for|by|before|after|and|to|once|when)\b|[.!]|$)/gu;
+const NAMED_DESTINATION = /\b(into|onto|in|at|on|to)\s+(?:the\s+)?([\p{Lu}][\p{L}'’-]*(?:\s+[\p{Lu}][\p{L}'’-]*){0,5})(?=\s+(?:for|by|before|after|and|to|once|when)\b|[.!]|$)/gu;
 const normal = value => value.normalize('NFKC').replace(/[’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
 
 function contactActionFrame(value) {
@@ -24,7 +24,7 @@ function contactActionFrame(value) {
   if (!body || /^[.!]$/.test(body)) return null;
   const destinationText = body.replace(PURPOSE, '');
   return { recipient: normal(name[1]), body, destinationText,
-    namedDestinations: [...new Set([...destinationText.matchAll(NAMED_DESTINATION)].map(match => normal(match[0])))].sort() };
+    namedDestinations: [...new Set([...destinationText.matchAll(NAMED_DESTINATION)].map(match => normal(`${match[1]} ${match[2]}`)))].sort() };
 }
 
 module.exports = { contactActionFrame };

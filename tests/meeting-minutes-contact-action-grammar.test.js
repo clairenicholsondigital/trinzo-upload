@@ -55,6 +55,8 @@ test('unfamiliar recipient grammar stays on its established path',()=>{
   ]) assert.equal(contactActionFrame(value),null,value);
 });
 test('real spatial destinations survive alongside a purpose',()=>{
+  assert.equal(conflictingDestinations('Speak to Alex to clarify responsibilities at the North Warehouse.',
+    'Speak to Alex to clarify responsibilities at North Warehouse.'),false,'an optional article is not a different place');
   for(const [a,b] of [
     ['Speak to Alex to clarify supplier responsibilities in London.','Speak to Alex to clarify supplier responsibilities in Paris.'],
     ['Speak to Alex to clarify supplier responsibilities at North Warehouse.','Speak to Alex to clarify supplier responsibilities at South Warehouse.'],
