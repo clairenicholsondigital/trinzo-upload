@@ -73,6 +73,32 @@ by live generation. It can nominate repeated sentences within a row or nearby
 unflagged main rows, request a source-aware rewrite, and independently assess
 every original/output sentence. Its returned discussion is always unchanged.
 
+The optional experimental mode `delete_sentences` accepts only references to
+original sentences and retained covering sentences; replacement prose is not
+accepted. Every affected row must remain nonempty. Cycles, dependent/quoted
+wording, conditions, missing shared evidence and citation-budget overflow are
+excluded. An independent deletion-equivalence check is required in addition to
+complete original/output support and coverage. This is nomination and assessment,
+not automatic deletion. The returned discussion is still unchanged.
+
+Private diagnostics distinguish protected-meaning/figure loss, unsupported
+originals, lost original coverage, unsupported output, invalid response contracts,
+provider failures and unproved deletion equivalence. Provider callbacks receive
+copies so they cannot mutate the packet or plan used for validation. These
+diagnostics are not a public review verdict that a source claim is false.
+
+The offline script scripts/meeting_minutes_discussion_repetition_audit.js reads
+explicitly supplied saved JSON snapshots. It reports literal sentence counts
+and record exclusions without provider/database calls, writes or source prose
+in its output. It is not part of live generation.
+
+The saved five discussions used for this phase contain zero exact repeated
+sentences within main points or across points under one heading. Consequently,
+no new literal-deletion publication pass is justified by those samples. This
+does not mean their paraphrased repetition is resolved. Fresh-generation,
+persistence and actual export acceptance are required before a future publication
+path is connected; this assessment-only change does not activate one.
+
 Validated proposals retain complete originals and source context. Proposals
 exceeding the normal publication evidence budget are explicitly marked.
 Validation does not mean approval for publication. Warning-aware rewriting,
