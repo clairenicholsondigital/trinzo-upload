@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
-const { enquiryFrame, sameEnquiryPair } = require('./contactEnquiry');
+const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
 const { convertSpokenNumbers } = require('../spokenNumbers');
 const { normaliseUkCurrency } = require('./textNormalisation');
 const { numberedIdentifiers, quantityTokens, unitTokens } = require('../meetingMinutesNumericTokens');
@@ -137,6 +137,7 @@ function hardConflicts(part, whole) {
   const enquiryA = enquiryFrame(part.action), enquiryB = enquiryFrame(whole.action);
   if (enquiryA && enquiryB) {
     if (enquiryA.recipient !== enquiryB.recipient) reasons.push('different_recipient');
+    if (!enquiryPurposeRetained(part.action,whole.action)) reasons.push('enquiry_purpose_detail_would_be_lost');
     // Topic prepositions belong to the source-verified purpose, not a
     // delivery destination. No purpose equivalence is inferred here.
   } else {

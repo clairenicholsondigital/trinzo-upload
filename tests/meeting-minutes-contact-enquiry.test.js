@@ -25,7 +25,9 @@ test('scoped nomination recognises the enquiry carrier without proving purpose r
   const actions = pair(), frozen = structuredClone(actions);
   const packet = R.prepareActionReconciliation({ actions, sourceUnits: sources, scope: 'contact_enquiries' });
   assert.equal(packet.candidates.length, 1);
-  assert.deepEqual(packet.candidates[0].leftIntoRight.reasons, ['directional_wording_not_proved']);
+  const directions=[packet.candidates[0].leftIntoRight,packet.candidates[0].rightIntoLeft];
+  assert.ok(directions.some(d=>d.reasons.includes('directional_wording_not_proved')));
+  assert.ok(directions.some(d=>d.reasons.includes('enquiry_purpose_detail_would_be_lost')));
   assert.equal(R.buildDeterministicEnvelope(packet).decisions[0].relation, 'unresolved');
   assert.deepEqual(actions, frozen);
 });
@@ -55,6 +57,12 @@ test('kept occurrence cannot become an enquiry candidate', () => {
   const rows=pair();rows[0].occurrenceId='action-occurrence-111111111111111111111111';
   assert.equal(R.prepareActionReconciliation({actions:rows,sourceUnits:sources,scope:'contact_enquiries',
     protectedOccurrenceIds:[rows[0].occurrenceId]}).candidates.length,0);
+});
+
+test('even an affirmative source verdict cannot authorise losing additional enquiry requirements', () => {
+  const [short,full]=pair();
+  assert.ok(R.mechanicalCoverage(full,short).reasons.includes('enquiry_purpose_detail_would_be_lost'));
+  assert.deepEqual(R.mechanicalCoverage(short,full).reasons,['directional_wording_not_proved']);
 });
 
 test('enquiry opt-in is frozen, bounded and does not enable discussion reconciliation', async () => {

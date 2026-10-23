@@ -16,6 +16,13 @@ function enquiryFrame(value) {
   return { recipient: canonical(match[1]), purpose, operation: 'review' };
 }
 const FIELDS = new Set(['id', 'action', 'owners', 'timing', 'evidenceIds', 'occurrenceId', 'reviewFlagIds', 'timingDecision']);
+const purposeWords = text => new Set((text.match(/[\p{L}]{3,}/gu) || [])
+  .filter(word => !['the', 'and', 'for', 'with', 'from', 'regarding', 'about'].includes(word)));
+function enquiryPurposeRetained(part, whole) {
+  const a=enquiryFrame(part),b=enquiryFrame(whole);
+  return Boolean(a && b && a.recipient===b.recipient
+    && [...purposeWords(a.purpose)].every(word=>purposeWords(b.purpose).has(word)));
+}
 function eligible(record) {
   return record && Object.keys(record).every(key => FIELDS.has(key))
     && record.owners?.length === 1 && record.timing?.kind === 'not_stated'
@@ -28,10 +35,8 @@ function sameEnquiryPair(left, right) {
   const a = enquiryFrame(left.action), b = enquiryFrame(right.action);
   if (a.recipient !== b.recipient || canonical(left.owners[0]) !== canonical(right.owners[0])
     || !left.evidenceIds.some(id => right.evidenceIds.includes(id))) return false;
-  const words = text => new Set((text.match(/[\p{L}]{3,}/gu) || [])
-    .filter(word => !['the', 'and', 'for', 'with', 'from', 'regarding', 'about'].includes(word)));
-  const x = words(a.purpose), y = words(b.purpose);
+  const x = purposeWords(a.purpose), y = purposeWords(b.purpose);
   const common = [...x].filter(word => y.has(word)).length;
   return common >= 2 && common / Math.min(x.size, y.size) >= 0.6;
 }
-module.exports = { enquiryFrame, sameEnquiryPair };
+module.exports = { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained };
