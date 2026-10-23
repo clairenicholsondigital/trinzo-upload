@@ -105,6 +105,42 @@ Validation does not mean approval for publication. Warning-aware rewriting,
 claim-level evidence allocation, persistence/recovery and repeated provider
 quality checks are prerequisites for a later live partial-overlap editor.
 
+## Multi-sentence source consistency
+
+At the meeting-agent final-generation and save boundaries,
+reconcileDiscussionClauseSources repairs a generated main point only when
+whole-record resolution has left primary anchors outside its citations.
+Existing per-sentence resolution must independently retain every original
+primary anchor. The repair reconciles only source references already present
+in the record; it does not donate unrelated globally ranked source lines.
+It keeps wording, primary references, warnings, supporting context and history.
+Reviewer-controlled cards are excluded. Missing/ambiguous sources, unresolved
+anchors and citation-budget overflow retain the original record. This is
+citation consistency, not a semantic certification of all original wording.
+Private original-record/check history is protected from glossary rewriting.
+
+Saved-five replay repairs five inconsistent DITA main records with unchanged
+prose. Source consistency survives the owned PATCH/GET boundary. Single claims,
+decisions, actions and early candidate ranking retain their existing behavior.
+
+## Bounded clause experiment
+
+discussionClauseConsolidation has no live generation call site. It nominates
+repeated sentences or a single trailing comma-as/because explanation within
+an unflagged generated main point. It accepts only deletions of original spans,
+with a retained covering unit, protected inventories, independent per-unit
+source/coverage checks and a selection hash. Prefixes cannot be removed while
+dependent explanations remain. Unknown metadata, warnings, supporting children,
+reviewer cards, ambiguous identities and incomplete source packets are excluded.
+Complete originals and topic-scoped recovery use the existing private archive.
+
+Three real-data trials on the saved five did not approve a wording change.
+The Abbott explanatory-clause candidate was declined; DITA candidates were
+also declined. Revalidation of the existing-survivor Allotment lock candidate
+failed independent checks. These are recorded failed acceptance gates, not
+reasons to loosen validation. Neither experiment is activated, and no visible
+repetition reduction or fresh-generation quality improvement is claimed.
+
 ## Validation limits
 
 Generic counterexamples, persistence/recovery tests, existing positive cleanup
