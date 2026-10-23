@@ -49,7 +49,11 @@ const ANSWER_OPENER = /^\s*(?:yes|yeah|yep|no|nope|okay|ok)\b/i;
 const ANSWER_CLAIM = /\b(?:i(?:'ve| have)|we(?:'ve| have)|she(?:'s| has)|he(?:'s| has)|they(?:'ve| have)) (?:done|sent|put|added|updated|completed|addressed|closed|finished|amended|reviewed)\b/i;
 const DIRECT_ANSWER = /\b(?:(?:it|that) was me|i (?:did|ordered|sent|made|handled|owned|prepared|completed|reviewed|booked|arranged)\b|(?:he|she|they|we) (?:did|ordered|sent|made|handled|owned|prepared|completed|reviewed|booked|arranged)\b)/i;
 const EMBEDDED_QUESTION_CLAUSE = /(?:[;,]\s*)questions?\s+(?:on|about|of|was|were|regarding)\b[^.;?]*(?:[.?]|$)/i;
-const NOTE_STYLE_START = /^(?:need to\b|(?:current|existing|planned|expected|required|proposed)\b[^.;]{3,140};|[A-Z][^.;]{1,100}\s+to\s+(?:arrange|check|confirm|contact|email|prepare|provide|reorder|review|send|share|update)\b)/;
+const NOTE_STYLE_START = /^(?:need to\b|(?:current|existing|planned|expected|required|proposed)\b[^.;]{3,140};)/;
+const NOTE_STYLE_TASK = /^([A-Z][^.;]{1,100}?)\s+to\s+(?:arrange|check|confirm|contact|email|prepare|provide|reorder|review|send|share|update)\b/;
+// A finite reporting clause is prose: "Morgan asked Riley to confirm...".
+// Keep subject-to-verb fragments blocked without misreading the reported task.
+const REPORTED_TASK_CLAUSE = /\b(?!to\b)\S+\s+(?:asks|asked|requests|requested|agrees|agreed|decides|decided|confirms|confirmed|instructs|instructed|directs|directed|proposes|proposed|offers|offered|commits|committed|declines|declined|refuses|refused)\b/i;
 const UNRESOLVED_ROLE = /\b(?:the speaker|the presenter|the attendee|the participant)\b/i;
 const ROUTINE_INTRODUCTION = /\b(?:meeting (?:started|opened|began) with (?:attendee )?introductions?|attendees? introduced themselves|presence of .{0,80}(?:was|were) noted)\b/i;
 
@@ -275,7 +279,9 @@ const INQUIRY_ONLY = /^[A-Z][\w'’-]+(?: [A-Z][\w'’-]+)? (?:inquires|enquires
 
 function isConversational(value) {
   if (CONVERSATIONAL_OPENER.test(value) || CONVERSATIONAL_FILLER.test(value) || /\.\.\.|\w\.[A-Z]/.test(value)) return true;
-  if (NOTE_STYLE_START.test(value) || UNRESOLVED_ROLE.test(value) || ROUTINE_INTRODUCTION.test(value)) return true;
+  const task = String(value || '').match(NOTE_STYLE_TASK);
+  if (NOTE_STYLE_START.test(value) || (task && !REPORTED_TASK_CLAUSE.test(task[1]))
+    || UNRESOLVED_ROLE.test(value) || ROUTINE_INTRODUCTION.test(value)) return true;
   // "Jacqui inquires about PMS progress from Ciaran." records that a question
   // was asked, not what was said; it reads as context, not a minute.
   return INQUIRY_ONLY.test(value) && contentTokens(value).size <= 8;
