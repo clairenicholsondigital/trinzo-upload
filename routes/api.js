@@ -14655,15 +14655,41 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       && !/^\s*we\s+(?:agreed|decided|confirmed|approved|concluded|will|must|need)/i.test(value)) return false;
     return true;
   };
+  // The prose/evidence gate rejects parents, not their retained descendants.
+  // Use the pre-normalisation trees so review handoff does not truncate long
+  // text, nested context or history while the unsupported parent stays blocked.
+  const originalRows = flattenHybridDiscussion(topics).map(item => item.record);
+  const originalDetails = [];
+  const indexDetail = detail => {
+    if (!detail || typeof detail !== 'object') return;
+    originalDetails.push(detail);
+    for (const child of Array.isArray(detail.supportingDetails) ? detail.supportingDetails : []) indexDetail(child);
+  };
+  for (const record of originalRows) for (const detail of record.supportingDetails || []) indexDetail(detail);
+  const sameId = (left, right) => meetingMinutesAgentText(left?.id, 80)
+    && meetingMinutesAgentText(left.id, 80) === meetingMinutesAgentText(right?.id, 80);
+  const keepParent = (record, topic) => {
+    if ((record.evidenceIds || []).length && clientReadyDiscussion(record)) return true;
+    const sourceDetails = originalRows.filter(source => sameId(source, record))
+      .flatMap(source => source.supportingDetails || []);
+    const remainingDetails = (record.supportingDetails || []).flatMap(detail => {
+      const originals = originalDetails.filter(source => sameId(source, detail));
+      return originals.length ? originals : [detail];
+    });
+    for (const detail of new Set([...sourceDetails, ...remainingDetails])) {
+      retainUnassigned(detail, { originalTopic: topic.topic, placementReason: 'parent_not_publishable' });
+    }
+    return false;
+  };
   return normaliseAgentResult({ discussion: topics }, sourceUnits, 'discussion', options).discussion.map((topic) => ({
     ...topic,
-    points: (topic.points || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
+    points: (topic.points || []).filter((record) => keepParent(record, topic))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
         .filter((detail) => (detail.evidenceIds || []).length) })),
-    decisions: (topic.decisions || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
+    decisions: (topic.decisions || []).filter((record) => keepParent(record, topic))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
         .filter((detail) => (detail.evidenceIds || []).length) })),
-    openQuestions: (topic.openQuestions || []).filter((record) => (record.evidenceIds || []).length && clientReadyDiscussion(record))
+    openQuestions: (topic.openQuestions || []).filter((record) => keepParent(record, topic))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
         .filter((detail) => (detail.evidenceIds || []).length) }))
   })).filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length);
