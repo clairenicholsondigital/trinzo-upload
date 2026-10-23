@@ -1,5 +1,6 @@
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
+const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
 const mammoth = require('mammoth');
@@ -11552,7 +11553,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -16872,7 +16873,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       ...(quantifiedGrounding.flags || []), ...(finalQuantifiedGrounding.flags || []),
       ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
     const literalSupportCleanup = foldLiteralParentSupportingRepeats(discussionFlagState.content.discussion);
-    finalDiscussion = literalSupportCleanup.discussion;
+    const discussionSourceCoverage = reconcileDiscussionClauseSources(literalSupportCleanup.discussion, draft.sourceUnits,
+      { resolve: resolveEvidence, meetingDate: timingAnchor });
+    finalDiscussion = discussionSourceCoverage.discussion;
     // Existing wording only, unflagged main leaves, complete source context,
     // and an independent coverage check. Failed/uncertain checks keep both.
     const claimConsolidation = /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_CLAIM_CONSOLIDATION_V1 || '0'))
@@ -16937,6 +16940,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           supportingDetailCount: supportingRecords.length,
           literalSupportingRepeatsFolded: literalSupportCleanup.foldedCount,
           claimConsolidation: claimConsolidation.audit,
+          discussionSourceCoverage: discussionSourceCoverage.audit,
           unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
           fidelityReview,
@@ -18129,6 +18133,9 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
     }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true,
       meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) });
+    // Save normalisation must not undo a generated multi-clause source repair.
+    normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
+      { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
     const pendingProposal = draft.pendingProposal?.stage === 'actions'
       ? rebaseMeetingAgentProposal(draft.pendingProposal, draft.actions || [], normalised.actions, [], { preserveSelection: true })
       : draft.pendingProposal;
@@ -18326,6 +18333,8 @@ async function generateMeetingAgentStageRaw(draft, stage, instruction) {
   let normalised = normaliseAgentResult(parsed, draft.sourceUnits, stage, {
     meetingDate: meetingAgentTimingAnchor(draft)
   });
+  if (stage === 'discussion') normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
+    { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor(draft) }).discussion;
   if (instruction) normalised = preserveCopiedReviewerContent(draft, parsed, normalised, stage);
   normalised.reviewFlags = normalised.reviewFlags.filter(isUsefulMeetingAgentReviewFlag);
   // Discussion is generated before Actions, so judging the whole salient-detail
