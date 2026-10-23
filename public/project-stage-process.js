@@ -138,13 +138,29 @@
       const riskHtml = risks.length
         ? risks.map((item) => `<li><strong>${PW.escapeHtml(item.riskTitle || 'Risk')}</strong>${item.category ? ` <span class="muted">${PW.escapeHtml(PW.friendlyLabel(item.category))}</span>` : ''}${item.mitigation ? `<br /><span class="muted">Mitigation: ${PW.escapeHtml(String(item.mitigation).slice(0, 120))}${String(item.mitigation).length > 120 ? '…' : ''}</span>` : ''}</li>`).join('')
         : '<li class="muted">No monitored risks yet — add standing risks in the project profile if they need regular review.</li>';
+      // With no milestones the agenda below is the standard template, not one
+      // built from this project, so say so and point to Setup.
+      const setupUrl = `?stage=setup&projectId=${encodeURIComponent(ctx.projectId)}`;
+      const genericNotice = milestones.length ? '' : `
+        <div class="safeguard-banner warning generic-agenda-notice" role="note">
+          <strong>Generic agenda:</strong> this project has no milestones set up yet, so this is the standard project update agenda rather than one tailored to this project.
+          <a href="${PW.escapeHtml(setupUrl)}" data-agenda-open-setup style="color:inherit;font-weight:600;text-decoration:underline">Add milestones in Setup</a> to build an agenda around this project's delivery.
+        </div>`;
       target.className = 'meeting-agenda';
-      target.innerHTML = `
+      target.innerHTML = `${genericNotice}
         <article class="agenda-step"><span class="step-no">1</span><div><h3>Start with changes since the last update</h3><ul><li>What has moved forward, changed, slipped, or become clearer?</li><li>Are there any decisions or actions from the previous update to close out?</li></ul></div></article>
         <article class="agenda-step"><span class="step-no">2</span><div><h3>Review monitored milestones</h3><p class="muted">For each item, confirm what changed, what is blocked, and whether the forecast still holds.</p><ul>${milestoneHtml}</ul></div></article>
         <article class="agenda-step"><span class="step-no">3</span><div><h3>Review monitored risks</h3><p class="muted">Confirm whether each risk has reduced, escalated, or needs a new action.</p><ul>${riskHtml}</ul></div></article>
         <article class="agenda-step"><span class="step-no">4</span><div><h3>Capture decisions, actions and next update</h3><ul><li>What decisions were made?</li><li>Who owns each action and by when?</li><li>What should the client-facing update say?</li></ul></div></article>
       `;
+      const setupLink = target.querySelector('[data-agenda-open-setup]');
+      const setupTab = document.querySelector('.stage-tab[data-stage="setup"]');
+      if (setupLink && setupTab) {
+        setupLink.addEventListener('click', (event) => {
+          event.preventDefault();
+          setupTab.click();
+        });
+      }
     } catch (error) {
       target.className = 'empty-state';
       target.innerHTML = `Could not build the agenda from the project profile. You can still process the meeting in the Meeting Minutes Agent.`;
