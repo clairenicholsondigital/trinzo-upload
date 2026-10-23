@@ -27,6 +27,7 @@ const { extractTextFromUpload } = require('../utils/transcript');
 const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
 const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
 const { captureSemanticPolicy, normaliseSemanticPolicy, semanticPolicyForRun, semanticPolicyForFingerprint } = require('../utils/meetingMinutesSemanticPolicy');
+const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
 const { validateReconciliationReceipt, rebindReconciliationReceipt } = require('../utils/canonicalMinutes/actionSemanticReconciliation');
 const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
@@ -11801,6 +11802,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   // full before/after snapshots on every save was pure weight.
   safe.canRestoreCombinedDiscussion = discussionClaims.canRestore(safe.discussion, draft.sourceUnits,
     draft.qualityState?.discussion?.claimConsolidation) === true;
+  safe.canRestoreCombinedActions = Boolean(originalEnquiryActions(draft));
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
   // The client only needs to know a redo exists and what it is called.
   const latestRedo = Array.isArray(redoHistory) ? redoHistory[redoHistory.length - 1] : null;
@@ -15555,7 +15557,8 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
   }
   // Freeze the same visible presentation that save/publication will expose,
   // before creating content-bound proofs. Keep source and receipt metadata raw.
-  if (policy.mode !== 'off' && ['actions', 'discussion'].includes(stage) && cleaned?.changes?.[stage]) {
+  if (policy.mode !== 'off' && (policy.scope !== 'contact_enquiries' || stage === 'actions')
+    && ['actions', 'discussion'].includes(stage) && cleaned?.changes?.[stage]) {
     const numbered = normaliseMeetingAgentMinuteNumbers({ [stage]: cleaned.changes[stage] });
     const format = value => normaliseMeetingAgentKnownTerms(normaliseDatePhrasesDeep(normalisePresentationCurrency(value)));
     const formatRecord = (record, field) => ({ ...record, [field]: format(record[field]),
@@ -15579,6 +15582,7 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
     reconciled.changes = { ...reconciled.changes, [stage]: shadowOriginal.changes[stage] };
   }
   const semantic = reconciled?.changes?.qualityState?.[stage]?.semanticReconciliation;
+  if (policy.scope === 'contact_enquiries' && stage !== 'actions') return reconciled;
   if (!semantic || policy.mode === 'off') return reconciled;
   if (stage === 'actions' && semantic.applied && semantic.receipts?.length && reconciled.changes.pendingProposal) {
     const proposal = reconciled.changes.pendingProposal;
@@ -18164,6 +18168,14 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
     }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true,
       meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) });
+    // An unchanged save is not a fresh source judgement. Keep the sealed
+    // register and its proof intact; actual action/date edits take the usual
+    // normalisation path and invalidate whole-register recovery.
+    if (!dateChanged && originalEnquiryActions(draft)
+      && (!Array.isArray(req.body?.actions)
+        || sameEnquiryActionSnapshot(req.body.actions, publishedBeforeSave.actions))) {
+      normalised.actions = structuredClone(draft.actions);
+    }
     // Save normalisation must not undo a generated multi-clause source repair.
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
@@ -19189,7 +19201,8 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
       }, generationKey);
     }
     changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-      semanticReconciliation: { ...semantic, receipts: bound, identityBinding: { complete: true } }
+      semanticReconciliation: { ...semantic, receipts: bound, identityBinding: { complete: true },
+        ...(semantic.policy?.scope === 'contact_enquiries' ? { restoreSnapshot: structuredClone(allocated) } : {}) }
     } };
   }
   const proposal = changes.pendingProposal;
@@ -19887,6 +19900,25 @@ router.post('/meeting-minutes-agent/drafts/:draftId/redo', requireAuth, async (r
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
   }
+});
+
+router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-actions', requireAuth, async (req, res) => {
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    const actions = originalEnquiryActions(draft);
+    if (Number(req.body?.revision) !== draft.revision || draft.generation?.status === 'running' || !actions) {
+      const error = new Error('These actions changed or are still generating. Your edits have been preserved.');
+      error.statusCode = 409; throw error;
+    }
+    const audit = draft.qualityState.actions.semanticReconciliation;
+    const qualityState = { ...draft.qualityState, actions: { ...draft.qualityState.actions,
+      semanticReconciliation: { ...audit, applied: false, restored: true } } };
+    const saved = await saveMeetingAgentDraft(draft, req, { actions, qualityState,
+      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, 'Restore separate actions')].slice(-30),
+      redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),
+        ...meetingAgentDerivedStaleStages(draft, { ...draft, actions })])] });
+    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
+  } catch (error) { return sendMeetingAgentFailure(res, error); }
 });
 
 router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-discussion', requireAuth, async (req, res) => {

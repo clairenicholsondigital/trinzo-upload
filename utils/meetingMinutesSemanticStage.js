@@ -85,6 +85,10 @@ function promptContext(packet, candidates, maxChars = 48000) {
     .sort((a,b)=>b.score-a.score || a.index-b.index);
   let used=0; const selected=[];
   for(const item of ordered) {
+    // Contact-only checks use the same citation capacity as publication.
+    // Supply their recorded evidence first, then nearby context; do not let
+    // unrelated conversations donate witnesses and overflow the archive.
+    if(packet.scope==='contact_enquiries' && selected.length>=8) break;
     const size=JSON.stringify(item.unit).length;
     if(used+size>maxChars) continue;
     selected.push(item);used+=size;
@@ -151,12 +155,13 @@ function emptyEnvelope(packet, decisions) { return {version:packet.version,packe
 async function reconcileGeneratedSemanticStage(result, draft, stage, options = {}) {
   const policy = semanticPolicyForRun(draft,options.policy);
   if(policy.mode==='off' || !['actions','discussion'].includes(stage) || !result?.changes) return result;
+  if(policy.scope==='contact_enquiries' && stage!=='actions') return result;
   const original = result.changes[stage];
   if(!Array.isArray(original)) return result;
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedOccurrenceIds:draft.keptActionOccurrenceIds || []})
+    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)

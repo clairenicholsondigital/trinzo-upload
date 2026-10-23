@@ -1,6 +1,7 @@
 'use strict';
 
 const { isReviewerAuthored } = require('./state');
+const { enquiryFrame } = require('./contactEnquiry');
 const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText, conflictingTimings, actionContainmentConflict } = require('./actionDuplicateCoverage');
 
 // One commitment written twice. The action list is assembled from two
@@ -210,6 +211,8 @@ function exactOwners(record = {}) {
 }
 function deadlineScope(record = {}) {
   const text = comparisonAction(record);
+  const enquiry = enquiryFrame(record.action || record.text);
+  if (enquiry) return { deadlines: [], body: `check with ${enquiry.recipient} regarding ${enquiry.purpose}` };
   return { deadlines: text.match(BY_DEADLINE) || [], body: text.replace(BY_DEADLINE, '').replace(/\s+/g, ' ').trim() };
 }
 function quantityPhrases(record = {}) {
