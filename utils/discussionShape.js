@@ -137,7 +137,8 @@ function shapeDiscussion(discussion = [], people = []) {
 // stated as a point, again in a recap line and again as a decision.
 //
 // This runs last, on the finished body, which is the only place every row is
-// visible at once. It removes rows, never rewrites them.
+// visible at once. Simple generated repeats may be removed or split into
+// their independent clauses; reviewer content and richer review state stay intact.
 
 const BODY_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then',
   'than', 'their', 'there', 'will', 'would', 'could', 'should', 'have', 'has', 'been', 'was', 'were', 'are',
@@ -157,8 +158,10 @@ function bodyTokens(value) {
 }
 
 // Figures as values, so "twelve hundred" matches 1200 and "a thousand" 1000.
-function bodyFigures(value) {
-  const words = clean(value).toLowerCase().replace(/[-–]/g, ' ');
+function bodyFigures(value, includeSmallValues = false) {
+  const amounts = includeSmallValues ? clean(value).replace(/([£$€])\s*(\d+(?:\.\d+)?)\s*([km])\b/gi,
+    (_match, currency, number, scale) => currency + Number(number) * (scale.toLowerCase() === 'k' ? 1000 : 1000000)) : clean(value);
+  const words = amounts.toLowerCase().replace(/[-–]/g, ' ');
   const found = new Set();
   for (const digit of words.match(/\d[\d,]*(?:\.\d+)?/g) || []) {
     const number = Number(digit.replace(/,/g, ''));
@@ -172,13 +175,14 @@ function bodyFigures(value) {
     current = 0; running = 0;
   };
   for (const token of words.match(/[a-z]+/g) || []) {
+    if (includeSmallValues && token === 'zero') found.add('0');
     if (BODY_NUMBER_WORD[token] != null) current += BODY_NUMBER_WORD[token];
     else if (token === 'hundred') current = (current || 1) * 100;
     else if (token === 'thousand') { running += (current || 1) * 1000; current = 0; }
     else flush();
   }
   flush();
-  found.delete('1');
+  if (!includeSmallValues) found.delete('1');
   return found;
 }
 
@@ -199,8 +203,60 @@ function sharesFigure(left, right) {
   return shared.length >= 2 || shared.some((figure) => Number(figure) >= 10);
 }
 
+// These are vetoes, not a semantic equivalence classifier. Overlapping words
+// cannot settle a changed figure, negation, qualification or condition.
+function bodyClaimsCompatible(left, right) {
+  const canonical = value => clean(value).toLowerCase().replace(/[’]/g, "'");
+  const a = canonical(left), b = canonical(right);
+  if (!sameValueSet(bodyFigures(a, true), bodyFigures(b, true))) return false;
+  const negative = /\b(?:no|not|never|cannot|without|[a-z]+n't|declin(?:e|ed)|reject(?:ed)?|refus(?:e|ed))\b/;
+  if (negative.test(a) !== negative.test(b)) return false;
+  const markers = value => new Set(value.match(/\b(?:uncertain|unsure|unclear|unconfirmed|unverified|possible|possibly|potential|potentially|perhaps|maybe|might|could|may|probably|likely|apparently|allegedly|presumably|approximately|roughly|around|about|estimated|expected|tentative|tentatively|proposed|suggested|considering|ideally|hopefully|i think|we think|i believe|we believe|i estimate|we estimate|i expect|we expect)\b/g) || []);
+  if (!sameValueSet(markers(a), markers(b))) return false;
+  const conditions = value => new Set((value.match(/\b(?:only if|only when|only after|only before|subject to|provided(?: that)?|providing|as long as|conditional on|dependent on|depending on|if|unless|until|before|after|once|when|pending)\b[^.;!?]*/g) || [])
+    .map(clause => clause.replace(/[^a-z0-9' ]/g, ' ').replace(/\s+/g, ' ').trim()));
+  if (!sameValueSet(conditions(a), conditions(b))) return false;
+  const bounds = value => new Set((value.match(/\b(?:at least|at most|up to|less than|more than|under|over|below|above)\b/g) || [])
+    .map(bound => /^(?:over|above|more than)$/.test(bound) ? 'above'
+      : /^(?:under|below|less than)$/.test(bound) ? 'below'
+        : /^(?:at most|up to)$/.test(bound) ? 'maximum' : 'minimum'));
+  return sameValueSet(bounds(a), bounds(b));
+}
+
+function bodyReviewerContent(record) {
+  return isReviewerAuthored(record) || /^(?:manual-|reviewer-)/.test(String(record?.id || ''))
+    || (record?.supportingDetails || []).some(bodyReviewerContent);
+}
+
+function bodyReviewerTopic(topic) {
+  return bodyReviewerContent(topic) || topicItems(topic).some(bodyReviewerContent);
+}
+
+// This older pass has no claim-level warning/context reconciliation. Keep
+// richer records rather than move their warning targets or discard metadata.
+function bodyCleanupEligible(row) {
+  const allowed = new Set(['id', 'text', 'evidenceIds', 'reviewFlagIds', 'supportingDetails', 'mergedFromIds']);
+  const ids = values => Array.isArray(values) && values.every(id => typeof id === 'string'
+    && id.trim() === id && id && id.length <= 220 && !/[\u0000-\u001f\u007f]/.test(id));
+  return row && !bodyReviewerContent(row) && typeof row.id === 'string' && ids([row.id])
+    && Object.keys(row).every(key => allowed.has(key))
+    && ids(row.evidenceIds) && row.evidenceIds.length > 0 && row.evidenceIds.length <= 12
+    && (row.reviewFlagIds === undefined || Array.isArray(row.reviewFlagIds) && !row.reviewFlagIds.length)
+    && (row.supportingDetails === undefined || Array.isArray(row.supportingDetails) && !row.supportingDetails.length)
+    && (row.mergedFromIds === undefined || ids(row.mergedFromIds) && row.mergedFromIds.length <= 1000);
+}
+
+function mergeBodyRepeatMetadata(kept, removed) {
+  const evidenceIds = [...new Set([...kept.evidenceIds, ...removed.evidenceIds])];
+  const mergedFromIds = [...new Set([...(kept.mergedFromIds || []), removed.id, ...(removed.mergedFromIds || [])])]
+    .filter(id => id !== kept.id);
+  if (evidenceIds.length > 12 || mergedFromIds.length > 1000) return null;
+  return { ...kept, evidenceIds, ...(mergedFromIds.length ? { mergedFromIds } : {}) };
+}
+
 // Why a row repeats one that is already in the minutes, or '' when it does not.
 function repeatsRow(value, kept) {
+  if (!bodyClaimsCompatible(value, kept)) return '';
   const overlap = bodyOverlap(value, kept);
   if (overlap >= 0.6) return 'same wording';
   if (overlap >= 0.4 && sharesFigure(value, kept)) return 'same figures, different words';
@@ -212,6 +268,13 @@ function repeatsRow(value, kept) {
 // just its restatement from the compound row. This preserves both subjects for
 // the later global topic arranger instead of forcing it to file a mixed row
 // under whichever subject dominates the wording.
+function bodyHasPartialOverlap(compound, atomic) {
+  const clauses = clean(compound).split(/;\s*|(?<=[.!?])\s+|,\s+(?=(?:and|but|while|whereas)\b)/i)
+    .map(part => clean(part).replace(/^(?:and|but|while|whereas)\s+/i, '')).filter(Boolean);
+  const repeated = clauses.map(clause => Boolean(repeatsRow(clause, atomic)));
+  return clauses.length > 1 && repeated.some(Boolean) && !repeated.every(Boolean);
+}
+
 function compoundRemainder(compound, atomic) {
   const compoundTokens = bodyTokens(compound);
   const atomicTokens = bodyTokens(atomic);
@@ -240,9 +303,13 @@ function recapsSeveralRows(value, keptTexts, people) {
     return [parts.join(' '), parts[0]].map(escapeName)
       .some((form) => new RegExp(String.raw`\b${form}\b`, 'i').test(value));
   });
-  if (named.length < 2 || !namesSomeoneWithWork(value, people)) return '';
-  const echoed = keptTexts.filter((kept) => bodyOverlap(value, kept) >= 0.3).length;
-  return echoed >= 2 ? 'recaps rows already minuted' : '';
+  if (named.length < 2 || !namesSomeoneWithWork(value, people)) return [];
+  const clauses = clean(value).split(/;\s*|(?<=[.!?])\s+/).filter(Boolean);
+  // Each recap clause must agree with an existing claim, not merely share
+  // people's names with two unrelated or differently qualified statements.
+  const matches = clauses.map(clause => keptTexts.findIndex(kept => repeatsRow(clause, kept)));
+  return clauses.length >= 2 && matches.every(index => index >= 0) && new Set(matches).size >= 2
+    ? [...new Set(matches)] : [];
 }
 
 // "Action assigned to split the list and write the rationale before the next
@@ -275,25 +342,48 @@ function dedupeDiscussionBody(discussion = [], people = []) {
   const dropped = [];
   const kept = [];
   const topics = (Array.isArray(discussion) ? discussion : []).map((topic) => {
+    if (bodyReviewerTopic(topic)) return topic;
     const next = { ...topic, points: [], decisions: [], openQuestions: [...(topic.openQuestions || [])] };
     // Decisions are settled first, so a point restating a decision is the row
     // that goes, not the other way round.
     for (const kind of ['decisions', 'points']) {
       for (const row of Array.isArray(topic?.[kind]) ? topic[kind] : []) {
         const value = clean(row?.text);
-        if (!value) { next[kind].push(row); continue; }
-        if (announcesActions(value)) {
+        if (!value || !bodyCleanupEligible(row)) { next[kind].push(row); continue; }
+        if (!(row.mergedFromIds || []).length && announcesActions(value)) {
           dropped.push({ text: value.slice(0, 200), because: 'announces the actions list', kept: '' });
           continue;
         }
-        const recapBecause = recapsSeveralRows(value, kept.map((entry) => entry.text), people);
-        if (recapBecause) {
-          dropped.push({ text: value.slice(0, 200), because: recapBecause, kept: '' });
+        const recapMatches = recapsSeveralRows(value, kept.map((entry) => entry.text), people);
+        const recapMerges = recapMatches.map(index => ({ entry: kept[index],
+          merged: row.evidenceIds.every(id => kept[index].row.evidenceIds.includes(id))
+            ? mergeBodyRepeatMetadata(kept[index].row, row) : null }));
+        if (recapMerges.length && recapMerges.every(item => item.merged)) {
+          for (const { entry, merged } of recapMerges) {
+            entry.container[entry.index] = merged;
+            entry.row = merged;
+          }
+          dropped.push({ text: value.slice(0, 200), because: 'recaps rows already minuted', kept: '' });
+          continue;
+        }
+        // Do not trim a compound/recap against a different neighbour after
+        // finding that an overlapping claim has an incompatible qualification.
+        if (kept.some(entry => bodyOverlap(value, entry.text) >= 0.6
+          && !bodyClaimsCompatible(value, entry.text))) {
+          next[kind].push(row);
           continue;
         }
         const match = kept.find((entry) => repeatsRow(value, entry.text));
         if (match) {
-          const keptRemainder = compoundRemainder(match.text, value);
+          const canSplit = !(row.mergedFromIds || []).length && !(match.row.mergedFromIds || []).length
+            && sameValueSet(new Set(row.evidenceIds), new Set(match.row.evidenceIds));
+          const possibleKeptRemainder = compoundRemainder(match.text, value);
+          const possibleCurrentRemainder = compoundRemainder(value, match.text);
+          if (!canSplit && (possibleKeptRemainder || possibleCurrentRemainder)) {
+            next[kind].push(row);
+            continue;
+          }
+          const keptRemainder = canSplit ? possibleKeptRemainder : '';
           if (keptRemainder) {
             const replacement = {
               ...match.row,
@@ -308,7 +398,7 @@ function dedupeDiscussionBody(discussion = [], people = []) {
             next[kind].push(row);
             continue;
           }
-          const currentRemainder = compoundRemainder(value, match.text);
+          const currentRemainder = canSplit ? possibleCurrentRemainder : '';
           if (currentRemainder) {
             const replacement = {
               ...row,
@@ -321,8 +411,17 @@ function dedupeDiscussionBody(discussion = [], people = []) {
             continue;
           }
         }
+        // Failure to produce a standalone remainder is not permission to
+        // discard another clause, even when the whole paragraph overlaps.
+        if (match && (bodyHasPartialOverlap(value, match.text) || bodyHasPartialOverlap(match.text, value))) {
+          next[kind].push(row);
+          continue;
+        }
         const because = match ? repeatsRow(value, match.text) : '';
-        if (because) {
+        const merged = because ? mergeBodyRepeatMetadata(match.row, row) : null;
+        if (merged) {
+          match.container[match.index] = merged;
+          match.row = merged;
           dropped.push({ text: value.slice(0, 200), because, kept: (match?.text || '').slice(0, 120) });
           continue;
         }
@@ -333,7 +432,7 @@ function dedupeDiscussionBody(discussion = [], people = []) {
     return next;
   });
   return {
-    discussion: topics.filter((topic) => topic.points.length || topic.decisions.length || topic.openQuestions.length),
+    discussion: topics.filter((topic) => bodyReviewerTopic(topic) || topic.points.length || topic.decisions.length || topic.openQuestions.length),
     dropped
   };
 }

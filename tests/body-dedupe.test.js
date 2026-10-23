@@ -8,12 +8,12 @@ const { dedupeDiscussionBody } = require('../utils/discussionShape');
 const row = (id, text) => ({ id, text, evidenceIds: ['T0001'], reviewFlagIds: [], supportingDetails: [] });
 const texts = (result) => result.discussion.flatMap((topic) => [...topic.points, ...topic.decisions, ...topic.openQuestions]).map((r) => r.text);
 
-test('the same figure spelled out and in digits is kept once', () => {
+test('the same approximate figure spelled out and in digits is kept once', () => {
   const result = dedupeDiscussionBody([{
     topic: 'Yield',
     points: [
       row('a', '1200 litres yields about 22 clean 50-litre kegs after losses.'),
-      row('b', 'The batch size of twelve hundred litres at fifty-litre kegs yields twenty-two clean kegs after losses.')
+      row('b', 'The batch size of twelve hundred litres at fifty-litre kegs yields about twenty-two clean kegs after losses.')
     ],
     decisions: [], openQuestions: []
   }], []);
