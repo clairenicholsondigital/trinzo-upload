@@ -106,6 +106,46 @@ async function documentXml(draft, evidence) {
   return zip.file('word/document.xml').async('string');
 }
 
+test('direct filing promotion survives real PATCH GET undo redo and Word export without consuming another occurrence', async () => {
+  reset();
+  for (let i = 4; i <= 15; i++) saved.sourceUnits.push({ id:'T'+String(i).padStart(4,'0'), speaker:'Morgan Taylor', text:longText });
+  const ids=saved.sourceUnits.map(unit=>unit.id);
+  saved.unassignedSupportingDetails=[
+    detail('chosen',longText,ids,{reviewFlagIds:['lost-warning'],originalTopic:'Calibration',placementReason:'no_subject_match'}),
+    detail('independent',longText,['T0002'],{originalTopic:'Archive',placementReason:'no_subject_match'})
+  ];
+  const initial=await request('get');
+  assert.match(initial.reviewFlags.find(f=>f.id==='lost-warning').message,/unavailable/);
+  const discussion=copy(initial.discussion);
+  const original=initial.unassignedSupportingDetails[0];
+  discussion[0].points.push({...original,reviewerAuthored:true,supportingDetails:[],
+    filingOrigins:[{id:original.id,originalTopic:original.originalTopic,placementReason:original.placementReason}]});
+  const after=await request('patch','',{discussion,unassignedSupportingDetails:[initial.unassignedSupportingDetails[1]],
+    reviewFlags:initial.reviewFlags,reviewDecisionLabel:'Move retained detail to discussion'});
+  const reloaded=await request('get');
+  for(const d of [after,reloaded]){
+    assert.equal(d.unassignedSupportingDetails.length,1);
+    assert.equal(d.unassignedSupportingDetails[0].id,'independent');
+    const moved=d.discussion[0].points.find(p=>p.id==='chosen');
+    assert.equal(moved.text,longText);assert.deepEqual(moved.evidenceIds,ids);
+    assert.deepEqual(moved.reviewFlagIds,['lost-warning']);
+    assert.equal(moved.filingOrigins[0].originalTopic,'Calibration');
+    assert.equal(moved.reviewerAuthored,true);
+    assert.equal(d.discussion[0].points[0].text,initial.discussion[0].points[0].text);
+    assert.deepEqual(mainContent(d).actions,mainContent(initial).actions);
+    assert.match(d.reviewFlags.find(f=>f.id==='lost-warning').message,/unavailable/);
+    const xml=await documentXml(api.meetingAgentDraftForDocx(d),false);
+    assert.ok(xml.includes('ZETA-TAIL.'));
+  }
+  const undoId=after.lastUndo.id;
+  const undone=await request('post','/undo',{changeId:undoId});
+  assert.equal(undone.unassignedSupportingDetails.length,2);
+  assert.equal(undone.discussion[0].points.length,1);
+  const redone=await request('post','/redo',{});
+  assert.equal(redone.unassignedSupportingDetails.length,1);
+  assert.equal(redone.discussion[0].points.find(p=>p.id==='chosen').text,longText);
+});
+
 test('literal folded context retains provenance through real PATCH/GET and ordinary/evidence exports', async () => {
   reset();
   const claim='The calibration review at the regional laboratory is complete';

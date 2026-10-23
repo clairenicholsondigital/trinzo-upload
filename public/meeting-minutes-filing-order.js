@@ -34,5 +34,28 @@
     return entries.map(function (entry) { return locked(entry) ? entry : generated[next++]; });
   }
 
-  return { orderedEntries: orderedEntries };
+  // Exact text only; every occurrence keeps its own identity and controls.
+  function groupedEntries(pool, sourceUnits) {
+    var groups = [], byText = new Map();
+    orderedEntries(pool, sourceUnits).forEach(function (entry) {
+      var detail = entry.detail;
+      var locked = detail.reviewerAuthored === true || detail.confirmedTopic === true
+        || /_human_confirmation$/.test(String(detail.source || ''))
+        || /^(manual-|reviewer-)/.test(String(detail.id || ''));
+      var group = !locked && byText.get(detail.text);
+      if (!group) {
+        group = { text: detail.text, entries: [] }; groups.push(group);
+        if (!locked) byText.set(detail.text, group);
+      }
+      group.entries.push(entry);
+    });
+    return groups;
+  }
+
+  // Compare the complete public inputs rather than a collision-prone hash.
+  function suggestionBasis(draft) {
+    return JSON.stringify([draft.discussion || [], draft.unassignedSupportingDetails || [], draft.sourceUnits || []]);
+  }
+
+  return { orderedEntries: orderedEntries, groupedEntries: groupedEntries, suggestionBasis: suggestionBasis };
 }));

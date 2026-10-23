@@ -197,6 +197,8 @@ function withoutRepresentedUnassignedDetails(values = [], discussion = []) {
     const evidence = new Set(record.evidenceIds || []);
     const flags = new Set(record.reviewFlagIds || []);
     const history = new Set(mergeHistoryIds(record.mergedFromIds, record.id));
+    // Filing one occurrence is not permission to remove another identical entry.
+    if (record.id !== detail.id && !history.has(detail.id)) return false;
     return detail.evidenceIds.every(id => evidence.has(id))
       && (detail.evidenceIds.length > 0 || record.id === detail.id)
       && (detail.reviewFlagIds || []).every(id => flags.has(id))
