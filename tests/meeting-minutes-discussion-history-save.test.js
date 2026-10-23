@@ -76,6 +76,8 @@ function patchHarness(initial) {
     reconcileDiscussionClauseSources,
     originalEnquiryActions,
     sameEnquiryActionSnapshot,
+    discussionRewrite: require('../utils/canonicalMinutes/discussionBoundedRewrite'),
+    discussionClaims: require('../utils/canonicalMinutes/discussionClaimConsolidation'),
     meetingAgentTimingAnchor: () => '',
     rebaseMeetingAgentProposal: value => value,
     MEETING_AGENT_PAYLOAD_VERSION: V.PAYLOAD_VERSION,

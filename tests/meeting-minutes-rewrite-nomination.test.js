@@ -104,3 +104,38 @@ test('failed services, changed sources and shadow mode preserve the input',async
  const stale=await B.consolidate(f.discussion,changed,providers({verify:async(_,p,s)=>{const r=verification(p,s);changed[0].text+=' Changed.';return r;}}));
  assert.equal(stale.audit.reason,'stale_input');assert.deepEqual(stale.discussion,f.discussion);
 });
+
+test('verified rewrite citations replace stale context references while originals remain restorable',async()=>{
+ const f=fixture();
+ f.discussion[0].points.forEach(r=>{r.evidenceIds=Array.from({length:8},(_,i)=>'U'+(i+8));r.primaryEvidenceIds=[...r.evidenceIds];});
+ const original=structuredClone(f.discussion);
+ const r=await B.consolidate(f.discussion,f.sources,providers());
+ assert.equal(r.audit.applied,true);
+ assert.deepEqual(r.discussion[0].points[0].evidenceIds,['U8','U9']);
+ assert.deepEqual(r.discussion[0].points[0].primaryEvidenceIds,['U8','U9']);
+ assert.deepEqual(r.audit.ledger[0].citationAllocation.originalEvidenceIds,original[0].points[0].evidenceIds);
+ assert.deepEqual(r.audit.ledger[0].originalRows.map(v=>v.record.evidenceIds),original[0].points.map(v=>v.evidenceIds));
+ assert.deepEqual(C.restore(r.discussion,f.sources,r.audit),original);
+});
+
+test('all independently verified witnesses survive even when old-context union would overflow',async()=>{
+ const f=fixture();
+ f.discussion[0].points.forEach(r=>{r.evidenceIds=Array.from({length:8},(_,i)=>'U'+(i+8));});
+ const r=await B.consolidate(f.discussion,f.sources,providers({verify:async(_,p,s)=>{
+  const v=verification(p,s);
+  const extra=s[0].sourceUnits.filter(u=>['U16','U17','U18','U19','U20','U21'].includes(u.id)).map(u=>({sourceId:u.id,quote:u.text}));
+  v.results[0].claimChecks[0].sourceWitnesses.push(...extra);return v;
+ }}));
+ assert.equal(r.audit.applied,true);
+ assert.deepEqual(r.discussion[0].points[0].evidenceIds,['U8','U9','U16','U17','U18','U19','U20','U21']);
+});
+
+test('thirteen verified witnesses still reject the whole edit without truncation',async()=>{
+ const f=fixture();
+ const r=await B.consolidate(f.discussion,f.sources,providers({verify:async(_,p,s)=>{
+  const v=verification(p,s);
+  v.results[0].claimChecks[0].sourceWitnesses=s[0].sourceUnits.slice(0,13).map(u=>({sourceId:u.id,quote:u.text}));return v;
+ }}));
+ assert.equal(r.audit.applied,false);assert.deepEqual(r.discussion,f.discussion);
+ assert.equal(r.audit.diagnostics[0].reason,'citation_overflow');
+});

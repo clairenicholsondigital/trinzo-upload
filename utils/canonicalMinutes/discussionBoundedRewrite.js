@@ -298,9 +298,19 @@ function verified(packet, candidates, response) {
     }
     const usedSources = unique([...result.claimChecks, ...result.originalChecks, ...result.outputChecks]
       .flatMap(ch => ch.sourceWitnesses.map(w => w.sourceId)));
-    const evidenceIds = unique([...c.metadata.evidenceIds, ...usedSources]);
+    // A new paragraph cites its independently verified source witnesses.
+    // Original references (including unused context/filler) remain losslessly
+    // archived with every original row; they are not automatically citations
+    // for rewritten prose. Never prune the verifier's witnesses to fit a cap.
+    const verifiedAllocation = c.nominationKind === 'partial_overlap';
+    const evidenceIds = verifiedAllocation ? usedSources : unique([...c.metadata.evidenceIds, ...usedSources]);
     if (evidenceIds.length > 12) { diagnostics.push({ id: c.id, reason: 'citation_overflow' }); continue; }
-    accepted.push({ ...clone(c), metadata: { ...c.metadata, evidenceIds }, verification: clone(result) });
+    accepted.push({ ...clone(c), metadata: { ...c.metadata, evidenceIds,
+      ...(verifiedAllocation ? { primaryEvidenceIds: [...evidenceIds] } : {}) },
+      ...(verifiedAllocation ? { citationAllocation: { method: 'independently_verified_witnesses',
+        originalEvidenceIds: unique(c.rows.flatMap(row => row.record.evidenceIds)),
+        originalPrimaryEvidenceIds: unique(c.rows.flatMap(row => row.record.primaryEvidenceIds || [])),
+        verifiedEvidenceIds: [...evidenceIds] } } : {}), verification: clone(result) });
   }
   return { accepted, diagnostics };
 }
@@ -334,6 +344,7 @@ async function consolidate(discussion, sourceUnits, options = {}) {
     audit.ledger.push({ id: candidate.id, survivorId: survivor.record.id, originalRows: clone(candidate.rows),
       inventory: candidate.inventory, checks: candidate.verification, selectionHash: candidate.selectionHash,
       ...(candidate.nominationKind ? { nominationKind: candidate.nominationKind } : {}),
+      ...(candidate.citationAllocation ? { citationAllocation: clone(candidate.citationAllocation) } : {}),
       removedIds: candidate.rows.slice(1).map(row => row.record.id) });
   }
   if (removed.size) result.forEach((topic, ti) => {
