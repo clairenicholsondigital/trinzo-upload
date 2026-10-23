@@ -10684,6 +10684,60 @@ function discussionRefereeSufficiency(discussion = [], baseline = []) {
   };
 }
 
+// A failed sibling is not permission to reclassify an already checked claim.
+// Match discovery records exactly, never by topic, shared sources or similarity.
+function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline = []) {
+  const inactive = { active: false, dispositions: result?.candidateDispositions || [],
+    candidates: ensemble, discussion: baseline, settledCandidateIds: [], routedRecords: [] };
+  if (meetingAgentRefereeRoute(result, contract) !== 'structured_prompt') return inactive;
+  const error = meetingAgentDispositionError(result, contract.candidates, contract);
+  const dispositions = error ? error.validCandidateDispositions || [] : result.candidateDispositions || [];
+  if (!dispositions.length) return inactive;
+  const stable = value => Array.isArray(value) ? value.map(stable)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort()
+      .filter(key => value[key] !== undefined).map(key => [key, stable(value[key])])) : value;
+  const key = (kind, record) => JSON.stringify(stable([kind, Object.fromEntries(
+    Object.entries(record || {}).filter(([name]) => !['primaryEvidenceIds', 'discoveryDisposition'].includes(name))
+  )]));
+  const settled = new Set(dispositions.map(row => row.candidateId));
+  const records = new Map();
+  const add = candidate => {
+    if (!candidate?.record || isReviewerAuthored(candidate) || hasMeetingAgentReviewerContent(candidate.record)
+      || candidate.record.supportingDetails?.length) return;
+    records.set(key(candidate.recordType, candidate.record), candidate);
+  };
+  for (const candidate of contract.candidates) {
+    if (!settled.has(candidate.candidateId)) continue;
+    add(candidate);
+  }
+  // Consume only members actually released by the existing supporting route,
+  // not every member of a rejected/filtered cluster. A separately supplied
+  // member whose verdict is missing still needs fallback.
+  for (const { candidate: member } of refereeClusterSupportingCandidates(dispositions, contract.candidates)) {
+    if (contract.candidates.some(row => row.candidateId === member.candidateId)
+      && !settled.has(member.candidateId)) continue;
+    add(member);
+  }
+  const routedRecords = [];
+  const discussion = baseline.map(topic => {
+    if (isReviewerAuthored(topic)) return topic;
+    const next = { ...topic };
+    for (const [field, kind] of [['points', 'discussion_point'], ['decisions', 'decision'], ['openQuestions', 'open_question']]) {
+      next[field] = (topic[field] || []).filter(record => {
+        if (hasMeetingAgentReviewerContent(record) || !records.has(key(kind, record))) return true;
+        routedRecords.push({ topic: topic.topic, kind, record: structuredClone(record) });
+        return false;
+      });
+    }
+    return next;
+  }).filter(topic => isReviewerAuthored(topic)
+    || ['points', 'decisions', 'openQuestions'].some(field => topic[field]?.length));
+  return { active: true, dispositions, discussion, routedRecords,
+    settledCandidateIds: [...settled],
+    candidates: ensemble.filter(candidate => isReviewerAuthored(candidate) || hasMeetingAgentReviewerContent(candidate.record)
+      || !settled.has(candidate.candidateId) && !records.has(key(candidate.recordType, candidate.record))) };
+}
+
 function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = [], contract = {}) {
   if (!result || typeof result !== 'object' || !Array.isArray(result.candidateDispositions)) return result;
   const candidateById = new Map((Array.isArray(candidates) ? candidates : [])
@@ -14078,6 +14132,7 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
       text: selected.candidate.text, evidenceIds, supportingDetails: group
         .filter((item) => item !== selected && ['supporting', 'merge'].includes(item.kind))
         .map((item) => ({
+          ...(item.candidate.record || {}),
           id: item.candidate.record?.id || item.candidate.candidateId,
           text: item.candidate.text,
           evidenceIds: [...new Set([
@@ -16410,11 +16465,16 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     );
     const authoritativeStructuredReferee = refereeRoute === 'structured_prompt'
       && discussionRefereeHasCompleteCandidateAccounting(rawContractDiagnostics);
-    // The website's legacy facet-anchor repair predates the complete typed
-    // Referee contract. Do not promote supporting rows when the structured
-    // Referee has classified every supplied candidate successfully.
-    const refereeDiscussionDispositions = authoritativeStructuredReferee
-      ? rawRefereeDiscussionDispositions.map((item) => ({ ...item }))
+    const baselineDiscussion = mergeHybridDiscussionTopics(
+      primary.discussion, recovery?.discussion || []
+    );
+    const partialFallback = discussionRefereeFallbackPlan(refereeParsed, refereeContract, ensemble, baselineDiscussion);
+    const preserveStructuredDecisions = authoritativeStructuredReferee || partialFallback.active;
+    // A valid typed verdict remains authoritative for its own candidate even
+    // when another candidate is missing. Keep facet-anchor repair for legacy
+    // or wholly failed contracts only.
+    const refereeDiscussionDispositions = preserveStructuredDecisions
+      ? partialFallback.dispositions.map((item) => ({ ...item }))
       : effectiveDiscussionRefereeDispositions(
         rawRefereeDiscussionDispositions, suppliedRefereeCandidates
       );
@@ -16422,9 +16482,6 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       referee.discussion, refereeDiscussionDispositions, ensemble, draft.sourceUnits, { meetingDate: timingAnchor }
     );
     let refereeDiscussion = reconstructed.discussion;
-    const baselineDiscussion = mergeHybridDiscussionTopics(
-      primary.discussion, recovery?.discussion || []
-    );
     if (reconstructed.reconstructedTargetIds.length
       && Array.isArray(refereeParsed?.discussion) && refereeParsed.discussion.length) {
       degradedSources.push(`The discussion referee omitted ${reconstructed.reconstructedTargetIds.length} referenced primary record${reconstructed.reconstructedTargetIds.length === 1 ? '' : 's'}; the website rebuilt them from their evidence-backed candidates.`);
@@ -16432,7 +16489,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     if (rawContractDiagnostics.undisposedCandidateCount) {
       degradedSources.push(`The discussion referee did not classify ${rawContractDiagnostics.undisposedCandidateCount} supplied candidate${rawContractDiagnostics.undisposedCandidateCount === 1 ? '' : 's'}; corroborated discovery results were retained as a safety backstop.`);
     }
-    if (!flattenHybridDiscussion(refereeDiscussion).length) {
+    if (!preserveStructuredDecisions && !flattenHybridDiscussion(refereeDiscussion).length) {
       if (flattenHybridDiscussion(baselineDiscussion).length) {
         refereeDiscussion = baselineDiscussion;
         degradedSources.push('The discussion referee returned no usable primary propositions; the evidence-normalised primary and recovery drafts were retained for safety.');
@@ -16442,12 +16499,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     // the old recall backstop after it would promote candidates the referee
     // deliberately classified as supporting, merge or reject, undoing the
     // global proposition-level judgement and recreating reviewer-visible rows.
-    // Keep the backstop for legacy, failed or incomplete referee responses.
+    // Partial typed responses recover only discovery records not already
+    // routed by valid verdicts; legacy/failed responses retain their backstop.
     const completeStructuredReferee = authoritativeStructuredReferee
       && reconstructed.unresolvedTargetIds.length === 0;
     const recoveredDiscussion = completeStructuredReferee
       ? []
-      : corroboratedOmittedDiscussionRecords(ensemble, refereeDiscussion, draft.sourceUnits, { meetingDate: timingAnchor });
+      : [
+        ...corroboratedOmittedDiscussionRecords(partialFallback.active ? partialFallback.candidates : ensemble,
+          refereeDiscussion, draft.sourceUnits, { meetingDate: timingAnchor }),
+        // Retain the remaining discovery text even when it was found by only
+        // one pass. Existing compacting validates it and either files it under
+        // a justified parent, publishes material work, or retains it for review.
+        ...(partialFallback.active ? partialFallback.discussion : [])
+      ];
     const compactEnabled = meetingMinutesAgentCompactDiscussionEnabled();
     const compactShadowEnabled = !compactEnabled && meetingMinutesAgentCompactDiscussionShadowEnabled();
     const ensembleById = new Map(ensemble.map((candidate) => [candidate.candidateId, candidate]));
@@ -16479,7 +16544,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         // deterministic marginal-information pass can recover a genuinely
         // material proposition which it labelled as context, without exposing
         // ordinary supporting detail or requiring another AI call.
-        promoteMaterialSupporting: !completeStructuredReferee
+        promoteMaterialSupporting: !preserveStructuredDecisions
           || meetingMinutesAgentPromoteMaterialSupportingEnabled()
       })
       : null;
@@ -16491,7 +16556,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       ? compactPreview
       : mergeHybridDiscussionTopics(refereeDiscussion, recoveredDiscussion);
     finalDiscussion = stampPrimaryDiscussionEvidence(finalDiscussion, draft.sourceUnits);
-    if (structuredReferee && !completeStructuredReferee && !compactSufficiency.sufficient
+    if (structuredReferee && !preserveStructuredDecisions && !completeStructuredReferee && !compactSufficiency.sufficient
       && flattenHybridDiscussion(baselineDiscussion).length) {
       // An incomplete Referee must never bypass the normal evidence/client-
       // readiness gate. The raw discovery draft can contain a record whose
@@ -16992,6 +17057,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           },
           telemetry: meetingAgentExecutionTelemetry(measuredProvenance),
           refereeRoute,
+          partialRefereeFallback: {
+            applied: partialFallback.active && !completeStructuredReferee,
+            settledCandidateIds: partialFallback.active && !completeStructuredReferee
+              ? partialFallback.settledCandidateIds : [],
+            // Private provenance: retain the exact discovery versions whose
+            // existing referee route is preserved, including their metadata.
+            routedRecords: partialFallback.active && !completeStructuredReferee
+              ? partialFallback.routedRecords : []
+          },
           refereeSufficiency: compactSufficiency,
           refereeContract: {
             ...rawContractDiagnostics,
@@ -20142,6 +20216,7 @@ router.stagedEvaluation = {
   normaliseMeetingAgentRefereeContractResult,
   effectiveDiscussionRefereeDispositions,
   discussionRefereeSufficiency,
+  discussionRefereeFallbackPlan,
   meetingMinutesAgentRefereeContract,
   meetingAgentCommitmentRecheckNeeded,
   meetingAgentRefereeEvidencePacket,
