@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
+const { enquiryFrame, sameEnquiryPair } = require('./contactEnquiry');
 const { convertSpokenNumbers } = require('../spokenNumbers');
 const { normaliseUkCurrency } = require('./textNormalisation');
 const { numberedIdentifiers, quantityTokens, unitTokens } = require('../meetingMinutesNumericTokens');
@@ -52,6 +53,8 @@ const OPERATION_GROUPS = [
   ['buy', /^(?:buy|purchase|procure)$/], ['install', /^(?:fit|install)$/]
 ];
 function operation(value) {
+  const enquiry = enquiryFrame(value);
+  if (enquiry) return enquiry.operation;
   const verb = words(value)[0] || '';
   return OPERATION_GROUPS.find(([, pattern]) => pattern.test(verb))?.[0] || verb;
 }
@@ -60,6 +63,8 @@ function instructionClauses(value) {
     .map(text => text.trim()).filter(Boolean);
 }
 function operationSequence(value) {
+  const enquiry = enquiryFrame(value);
+  if (enquiry) return [enquiry.operation];
   return unique([...String(value || '').matchAll(/(?:^|[;,]\s*(?:(?:and|then)\s+)?|\b(?:and|then)\s+)(send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|buy|purchase|fit|install|sign|take|address)\b/gi)]
     .map(match => operation(match[1]))).sort();
 }
@@ -129,8 +134,15 @@ function hardConflicts(part, whole) {
   }
   if (operation(part.action) !== operation(whole.action)) reasons.push('different_operation');
   if (!subset(operationSequence(part.action), operationSequence(whole.action))) reasons.push('operation_would_be_lost');
-  if (conflictingRecipients(part.action, whole.action)) reasons.push('different_recipient');
-  if (conflictingDestinations(part.action, whole.action)) reasons.push('different_destination');
+  const enquiryA = enquiryFrame(part.action), enquiryB = enquiryFrame(whole.action);
+  if (enquiryA && enquiryB) {
+    if (enquiryA.recipient !== enquiryB.recipient) reasons.push('different_recipient');
+    // Topic prepositions belong to the source-verified purpose, not a
+    // delivery destination. No purpose equivalence is inferred here.
+  } else {
+    if (conflictingRecipients(part.action, whole.action)) reasons.push('different_recipient');
+    if (conflictingDestinations(part.action, whole.action)) reasons.push('different_destination');
+  }
   if (dependsOn(part.action, whole.action) || dependsOn(whole.action, part.action)) reasons.push('separate_dependency_step');
   // Missing quantities can be extra detail only in the covering direction.
   // Competing values, units, bounds or relationships remain blocked.
@@ -183,6 +195,7 @@ function prepareActionReconciliation(input = {}) {
   for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
     if (left.protected || right.protected) continue;
+    if (input.scope === 'contact_enquiries' && !sameEnquiryPair(left.action, right.action)) continue;
     const leftWords = contentWords(left.action.action); const rightWords = contentWords(right.action.action);
     const common = leftWords.filter(word => rightWords.includes(word)).length;
     const sharedEvidence = (left.action.evidenceIds || []).some(id => (right.action.evidenceIds || []).includes(id));
@@ -198,7 +211,8 @@ function prepareActionReconciliation(input = {}) {
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
-    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24) } };
+    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24) },
+    ...(input.scope === 'contact_enquiries' ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }
 function validateEnvelope(packet, envelope) {

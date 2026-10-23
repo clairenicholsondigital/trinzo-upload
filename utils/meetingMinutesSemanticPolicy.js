@@ -19,12 +19,16 @@ function normaliseSemanticPolicy(value) {
     maxCandidates: bounded(value.maxCandidates, 64, 1, 128),
     batchSize: bounded(value.batchSize, 4, 1, 8),
     budgetMs: bounded(value.budgetMs, 90000, 10000, 180000),
-    attemptTimeoutMs: bounded(value.attemptTimeoutMs, 60000, 10000, 90000) });
+    attemptTimeoutMs: bounded(value.attemptTimeoutMs, 60000, 10000, 90000),
+    ...(value.scope === 'contact_enquiries' ? { scope: value.scope } : {}) });
 }
 function captureSemanticPolicy(env = process.env) {
+  const broadMode = String(env.MEETING_MINUTES_AGENT_SEMANTIC_RECONCILIATION_V1 || 'off').trim().toLowerCase();
+  const enquiries = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTACT_ENQUIRY_DEDUPE_V1 || '0'));
   return normaliseSemanticPolicy({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
-    mode: String(env.MEETING_MINUTES_AGENT_SEMANTIC_RECONCILIATION_V1 || 'off').trim().toLowerCase(),
-    maxCandidates: env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
+    mode: enquiries ? 'on' : broadMode,
+    ...(enquiries ? { scope: 'contact_enquiries' } : {}),
+    maxCandidates: enquiries ? 2 : env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
     batchSize: env.MEETING_MINUTES_AGENT_SEMANTIC_BATCH_SIZE,
     budgetMs: env.MEETING_MINUTES_AGENT_SEMANTIC_BUDGET_MS,
     attemptTimeoutMs: env.MEETING_MINUTES_AGENT_SEMANTIC_TIMEOUT_MS });

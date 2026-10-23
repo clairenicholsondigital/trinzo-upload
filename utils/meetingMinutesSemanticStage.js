@@ -151,12 +151,13 @@ function emptyEnvelope(packet, decisions) { return {version:packet.version,packe
 async function reconcileGeneratedSemanticStage(result, draft, stage, options = {}) {
   const policy = semanticPolicyForRun(draft,options.policy);
   if(policy.mode==='off' || !['actions','discussion'].includes(stage) || !result?.changes) return result;
+  if(policy.scope==='contact_enquiries' && stage!=='actions') return result;
   const original = result.changes[stage];
   if(!Array.isArray(original)) return result;
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedOccurrenceIds:draft.keptActionOccurrenceIds || []})
+    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)
