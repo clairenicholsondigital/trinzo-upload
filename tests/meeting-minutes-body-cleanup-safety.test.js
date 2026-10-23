@@ -152,4 +152,3 @@ for (const [name, left, right] of [
     checkPreserved([topic('equipment', pair.map((text, i) => row('claim-' + i, text)))]);
   }
 });
-
