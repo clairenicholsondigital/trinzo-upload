@@ -317,7 +317,8 @@ test('project bar behaves like scoped project navigation', () => {
   // update is queued from the finished minutes.
   assert.ok(projectStageProcessSource.includes('/meeting-minutes-agent?'));
   assert.ok(projectStageProcessSource.includes("PW.request('from-minutes'"));
-  assert.ok(projectStageProcessSource.includes("/api/meeting-minutes-agent/drafts?limit=10"));
+  assert.ok(projectStageProcessSource.includes("/api/meeting-minutes-agent/drafts?${query}"));
+  assert.ok(projectStageProcessSource.includes("limit=10&projectId="));
   assert.ok(projectStageProcessSource.includes('data-process-panel="agenda" aria-pressed="false">Suggested agenda</button>'));
   assert.ok(projectStageProcessSource.includes('data-process-tab-panel="agenda" hidden'));
   assert.ok(projectStageProcessSource.includes('wireProcessSubtabs(container)'));

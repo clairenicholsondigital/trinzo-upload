@@ -18,8 +18,8 @@
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
-  // process is mounted once and kept alive so in-progress transcript text is not
-  // lost when switching tabs; data stages rebuild on each activation for freshness.
+  // process is mounted once and kept alive so its status messages survive tab
+  // switches; data stages rebuild on each activation for freshness.
   const PERSISTENT_STAGES = new Set(['process']);
   const mounted = {};
 

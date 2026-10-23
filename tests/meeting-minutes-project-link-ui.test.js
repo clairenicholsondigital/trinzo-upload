@@ -50,6 +50,7 @@ test('a pending save and queue stay locked across the refresh timer and only que
     window.calls = [];
     window.MeetingMinutesAgent = { saveForProjectUpdate: () => new Promise(resolve => { window.finishSave = () => resolve({ id: '202', revision: 9 }); }) };
     window.fetch = (url, options) => {
+      if (String(url).includes('/project-link')) return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
       window.calls.push({ url, body: JSON.parse(options.body) });
       return new Promise(resolve => { window.finishQueue = () => resolve({ ok: true, json: async () => ({ ok: true, jobId: 'stub-job', jobUrl: '/jobs/stub-job' }) }); });
     };
@@ -77,7 +78,9 @@ test('save errors, changed drafts and queue errors do not send stale minutes or 
   await page.evaluate(() => {
     window.calls = 0;
     window.MeetingMinutesAgent = { saveForProjectUpdate: async () => { throw new Error('Save conflict: reload first.'); } };
-    window.fetch = async () => { window.calls += 1; return { ok: false, status: 409, json: async () => ({ error: '<img src=x onerror=alert(1)>' }) }; };
+    window.fetch = async (url) => {
+      if (String(url).includes('/project-link')) return { ok: true, json: async () => ({ ok: true }) };
+      window.calls += 1; return { ok: false, status: 409, json: async () => ({ error: '<img src=x onerror=alert(1)>' }) }; };
   });
   await page.addScriptTag({ content: LINK_SOURCE });
   await page.click('#createProjectUpdateFromMinutes');
@@ -250,4 +253,64 @@ test('upload keeps explicit project context in the resume URL and after refresh'
   await page.waitForSelector('#projectLinkBanner');
   assert.match(await page.locator('#projectLinkBanner').innerText(), /Current project/);
   assert.deepEqual(errors, []);
+});
+
+test('opening linked minutes tags that draft with the project once, and retries after a failure', async t => {
+  const page = await isolatedPage(t);
+  await page.evaluate(() => {
+    window.linkCalls = [];
+    window.failNextLink = true;
+    window.fetch = async (url, options) => {
+      if (String(url).includes('/project-link')) {
+        window.linkCalls.push({ url, body: JSON.parse(options.body) });
+        if (window.failNextLink) { window.failNextLink = false; return { ok: false, status: 500, json: async () => ({}) }; }
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+  });
+  await page.addScriptTag({ content: LINK_SOURCE });
+  await page.waitForFunction(() => window.linkCalls.length === 2, null, { timeout: 5000 });
+  await page.waitForTimeout(2200);
+  const calls = await page.evaluate(() => window.linkCalls);
+  assert.equal(calls.length, 2, 'one failed attempt, one successful retry, then no more');
+  assert.equal(calls[1].url, '/api/meeting-minutes-agent/drafts/202/project-link');
+  assert.deepEqual(calls[1].body, { projectId: '17' });
+});
+
+test('Process lists this project\'s minutes by default, can show all, and links an existing duplicate update', async t => {
+  const page = await isolatedPage(t, '/project-update-test?stage=process&projectId=23');
+  await page.evaluate(() => {
+    document.body.innerHTML = '<main id="process"></main>';
+    window.draftRequests = [];
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    window.ProjectWorkspace = {
+      escapeHtml, asArray: value => Array.isArray(value) ? value : [], displayDate: value => value, friendlyLabel: value => value,
+      request: async (url) => {
+        if (url.startsWith('/api/meeting-minutes-agent/drafts')) {
+          window.draftRequests.push(url);
+          return url.includes('projectId=23')
+            ? { drafts: [] }
+            : { drafts: [{ draftId: '301', revision: 2, title: 'Other meeting' }] };
+        }
+        if (url === 'from-minutes') {
+          const error = new Error('A project update from these exact minutes already exists.');
+          error.payload = { duplicate: true, kind: 'report', existingUrl: '/project-update-test/reports/88' };
+          throw error;
+        }
+        return { context: {} };
+      }
+    };
+  });
+  await page.addScriptTag({ content: PROCESS_SOURCE });
+  await page.evaluate(() => window.ProjectStages.process.mount(document.getElementById('process'), { projectId: 23, project: { projectName: 'Current' } }));
+  await page.waitForFunction(() => /No minutes for this project yet/.test(document.getElementById('minutesDraftList').textContent));
+  assert.equal(await page.evaluate(() => window.draftRequests[0]), '/api/meeting-minutes-agent/drafts?limit=10&projectId=23');
+  await page.click('#toggleAllMinutes');
+  await page.waitForSelector('[data-create-from-minutes="301"]');
+  assert.equal(await page.evaluate(() => window.draftRequests.at(-1)), '/api/meeting-minutes-agent/drafts?limit=10');
+  await page.click('[data-create-from-minutes="301"]');
+  await page.waitForSelector('#fromMinutesStatus a');
+  assert.equal(await page.locator('#fromMinutesStatus a').getAttribute('href'), '/project-update-test/reports/88');
+  assert.match(await page.locator('#fromMinutesStatus').innerText(), /already exists/);
 });
