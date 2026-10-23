@@ -5,6 +5,7 @@
 const C = require('./discussionClaimConsolidation');
 const clauses = require('./discussionClauseConsolidation');
 const safety = require('./discussionMergeSafety');
+const rewriteNomination = require('./discussionRewriteNomination');
 const { numberWordsToValue } = require('./textNormalisation');
 const VERSION = 'discussion-bounded-rewrite-v1';
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -27,14 +28,18 @@ async function prepare(discussion, sourceUnits, options = {}) {
   const singles = clauses.prepare(discussion, sourceUnits, { maxCandidates: 3 }).candidates;
   const pairs = options.withinRecordOnly === true ? []
     : (await C.prepare(discussion, sourceUnits, { maxCandidates: 6, encode: options.encode })).candidates;
-  const raw = [...singles.map(c => [{ path: c.path, record: c.record }]), ...pairs.map(c => c.rows)];
+  const partial = options.partialOverlap === true && options.withinRecordOnly !== true
+    ? await rewriteNomination.nominate(discussion, sourceUnits, { eligible, encode: options.encode }) : [];
+  const raw = [...singles.map(c => ({ rows: [{ path: c.path, record: c.record }] })),
+    ...pairs.map(c => ({ rows: c.rows })), ...partial.map(c => ({ rows: c.rows, partial: true }))];
   const counts = safety.identityCounts(discussion), sources = new Map(), duplicate = new Set();
   for (const source of sourceUnits || []) {
     if (sources.has(source.id)) duplicate.add(source.id);
     sources.set(source.id, source);
   }
   const candidates = [], used = new Set();
-  for (const rows of raw) {
+  for (const nomination of raw) {
+    const { rows } = nomination;
     if (rows.length > 2 || rows.some(row => row.path[1] !== 'points' || used.has(row.record.id)
       || !eligible(row.record) || counts.get(row.record.id) !== 1)
       || rows.some(row => row.path[0] !== rows[0].path[0])) continue;
@@ -57,6 +62,17 @@ async function prepare(discussion, sourceUnits, options = {}) {
       for (const source of [sourceUnits[index - 1], sourceUnits[index + 1]])
         if (source && !duplicate.has(source.id) && typeof source.text === 'string') context.add(source.id);
     }
+    if (nomination.partial) {
+      // This path may preserve different qualifications/claims. Supply the
+      // complete local exchange, not just one turn beside truncated citations.
+      // The existing 24-unit/48k limits still apply; no remote search or donated
+      // claims, and independent source verification remains mandatory.
+      const first = Math.max(0, Math.min(...anchorIndices) - 8);
+      const last = Math.min(sourceUnits.length - 1, Math.max(...anchorIndices) + 8);
+      const expanded = sourceUnits.slice(first, last + 1);
+      if (expanded.some(unit => duplicate.has(unit.id))) continue;
+      expanded.forEach(unit => context.add(unit.id));
+    }
     const supplied = sourceUnits.filter(source => context.has(source.id));
     if (supplied.length > 24 || supplied.some(source => !source.text.trim() || source.text.length > 12000)
       || JSON.stringify(supplied).length > 48000) continue;
@@ -64,7 +80,8 @@ async function prepare(discussion, sourceUnits, options = {}) {
     if (!metadata) continue;
     const members = rows.map(row => ({ path: clone(row.path), record: clone(row.record), sentences: sentences(row.record.text) }));
     candidates.push({ id: 'rewrite-' + C.hash(members).slice(0, 24), rows: members,
-      sourceUnits: clone(supplied), metadata });
+      sourceUnits: clone(supplied), metadata,
+      ...(nomination.partial ? { nominationKind: 'partial_overlap' } : {}) });
     rows.forEach(row => used.add(row.record.id));
     if (candidates.length >= Math.min(3, Math.max(1, options.maxCandidates ?? 3))) break;
   }
@@ -200,6 +217,16 @@ function proposals(packet, candidates, response) {
       || /[\u0000-\u001f\u007f]/.test(text) || question(text) || !/[.!]$/.test(text)
       || !equal(figures(before), figures(text)) || !protectedNames(before, text, candidate)
       || !sourceWordsRetained(candidate, text)) continue;
+    if (candidate.nominationKind === 'partial_overlap') {
+      const normalized = value => value.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, ' ').trim();
+      const required = unique(candidate.rows.flatMap(row => safety.qualifiers(row.record.text)));
+      const after = safety.qualifiers(text);
+      const conditions = unique(candidate.rows.flatMap(row => safety.conditions(row.record.text)));
+      // Conservative vetoes only: even an approving model cannot discard an
+      // original qualification. Awkward paraphrases retain both originals.
+      if (required.some(value => !after.includes(value))
+        || conditions.some(value => !normalized(text).includes(value))) continue;
+    }
     accepted.push({ ...clone(candidate), text, outputSentences: sentences(text),
       selectionHash: C.hash({ candidate: candidate.id, inventory: candidate.inventory, text }) });
   }
@@ -306,6 +333,7 @@ async function consolidate(discussion, sourceUnits, options = {}) {
     candidate.rows.slice(1).forEach(row => removed.add(JSON.stringify(row.path)));
     audit.ledger.push({ id: candidate.id, survivorId: survivor.record.id, originalRows: clone(candidate.rows),
       inventory: candidate.inventory, checks: candidate.verification, selectionHash: candidate.selectionHash,
+      ...(candidate.nominationKind ? { nominationKind: candidate.nominationKind } : {}),
       removedIds: candidate.rows.slice(1).map(row => row.record.id) });
   }
   if (removed.size) result.forEach((topic, ti) => {
