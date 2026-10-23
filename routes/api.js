@@ -1,5 +1,6 @@
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
+const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
@@ -16876,9 +16877,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const discussionSourceCoverage = reconcileDiscussionClauseSources(literalSupportCleanup.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: timingAnchor });
     finalDiscussion = discussionSourceCoverage.discussion;
-    // Existing wording only, unflagged main leaves, complete source context,
-    // and an independent coverage check. Failed/uncertain checks keep both.
-    const claimConsolidation = /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_CLAIM_CONSOLIDATION_V1 || '0'))
+    // The bounded editor has its own opt-in. It never enables the older
+    // semantic/claim flags, and shares their private topic-scoped restore path.
+    const boundedRewrite = /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_BOUNDED_REWRITE_V1 || '0'));
+    const rewriteCall = (stage, prompt, packet) => call('critic-discussion-rewrite-' + stage, prompt, {
+      optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,
+      independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: packet.candidates.length
+    });
+    const claimConsolidation = boundedRewrite
+      ? await discussionRewrite.consolidate(finalDiscussion, draft.sourceUnits, {
+        inventory: (prompt, packet) => rewriteCall('inventory', prompt, packet),
+        propose: (prompt, packet) => rewriteCall('proposal', prompt, packet),
+        verify: (prompt, packet) => rewriteCall('verification', prompt, packet)
+      })
+      : /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_CLAIM_CONSOLIDATION_V1 || '0'))
       ? await discussionClaims.consolidate(finalDiscussion, draft.sourceUnits, {
         assess: (prompt, packet) => call('critic-discussion-claim-proposal', prompt, {
           optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,

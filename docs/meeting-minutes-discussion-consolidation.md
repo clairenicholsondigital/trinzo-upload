@@ -141,6 +141,61 @@ failed independent checks. These are recorded failed acceptance gates, not
 reasons to loosen validation. Neither experiment is activated, and no visible
 repetition reduction or fresh-generation quality improvement is claimed.
 
+## Bounded source-aware rewrites
+
+discussionBoundedRewrite is the narrowly scoped successor experiment. It reuses
+existing clause/pair nomination without weakening any existing merge/deletion
+guards. At most three disjoint candidates contain one main point or two main
+points under the same heading. It excludes warnings, supporting children,
+reviewer-controlled topics, questions, simulation provenance, unknown metadata,
+duplicate identities and incomplete sources. Decisions/actions are not rewritten.
+
+A bounded source packet includes recorded nearby references within eight source
+positions and one adjacent source unit at each original anchor. Context is
+evidence only, never automatic permission to add information or citations.
+Remote references accidentally attached to a neighbouring point are excluded.
+Missing/oversized packets retain originals. Verified output remains within the
+normal 1,600-character point limit and twelve-reference publication budget.
+
+Three separate Microsoft correction calls enumerate source-backed atomic claims,
+propose a shorter paragraph, then independently challenge the inventory and
+rewrite. Each call has one attempt and a 45-second limit. The verifier sees all
+supplied sources, full original sentences and the claims, but not the original
+citation subset or the inventory's selected witnesses. It must find its own
+exact source quotations, so incomplete old citations cannot themselves decide
+source truth. Unsupported original material still blocks rewriting.
+
+Every claim needs source and retained-output witnesses. Independent checks must
+also certify complete inventory/retention for every original sentence and
+support/no-new-claims for every output sentence. An overall acceptable verdict
+cannot override a failed check. Invalid contracts, nonliteral quotes, missing
+coverage, uncertainty, failed source support or service failure keep originals.
+Named attribution and figures receive additional deterministic rejection checks.
+Exact content words shared by original wording and supplied evidence must remain
+in the output. This conservative guard prevents a model from approving deletion
+of an explicit source-backed quality term. It may reject otherwise reasonable
+synonym-based edits; it never establishes semantic equivalence. Object-specific
+relations, conditions and roles still require the independent source/claim checks.
+Model verification is not an absolute semantic proof.
+
+Accepted changes reconcile original metadata without truncation, retaining full
+originals, claim inventories, verification witnesses and selection hashes in the
+existing private claimConsolidation archive. Existing topic-scoped restoration,
+reviewer-edit vetoes and save/export flows apply. No additional save-normalisation
+repair was required by the real accepted examples.
+
+The new, independent opt-in is
+MEETING_MINUTES_AGENT_DISCUSSION_BOUNDED_REWRITE_V1 (default 0).
+It is connected only at final hybrid meeting-agent discussion publication.
+It does not enable either older experimental semantic/claim flag, change action
+extraction, alter Microsoft configuration or revise existing library drafts.
+The new route selects either bounded rewriting or the older gated consolidation;
+it never stacks two incompatible recovery archives.
+
+The reviewed real cases and expected prose stay in private research fixtures.
+No transcript names, source IDs, phrases or fixed replacements appear in
+production nomination or prompts. Tests use generic counterexamples.
+
 ## Validation limits
 
 Generic counterexamples, persistence/recovery tests, existing positive cleanup
