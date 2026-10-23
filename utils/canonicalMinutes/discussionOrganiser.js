@@ -793,7 +793,10 @@ function discussionTopicArrangementInput(discussion = [], sourceUnits = []) {
   let invalidReason = '';
   topics.forEach((topic, topicIndex) => {
     const rows = topicRows(topic);
-    const locked = reviewerTopic(topic) || rows.some(({ record }) => isReviewerAuthored(record));
+    // A reviewer-owned descendant locks the containing card, just as it does
+    // for chronological sorting. Withhold every row so the model cannot move
+    // its parent or siblings around that retained context.
+    const locked = reviewerTopic(topic) || rows.some(({ record }) => hasReviewerDiscussionContent(record));
     if (locked) {
       lockedTopicIndexes.add(topicIndex);
       return;
