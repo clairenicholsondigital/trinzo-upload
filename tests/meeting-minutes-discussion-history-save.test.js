@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const V = require('../utils/meetingMinutesAgentV2');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
+const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
 const { normalizeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
 
@@ -73,6 +74,8 @@ function patchHarness(initial) {
     normaliseAgentResult: V.normaliseAgentResult,
     resolveEvidence: V.resolveEvidence,
     reconcileDiscussionClauseSources,
+    originalEnquiryActions,
+    sameEnquiryActionSnapshot,
     meetingAgentTimingAnchor: () => '',
     rebaseMeetingAgentProposal: value => value,
     MEETING_AGENT_PAYLOAD_VERSION: V.PAYLOAD_VERSION,
