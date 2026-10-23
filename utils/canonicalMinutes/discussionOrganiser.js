@@ -753,7 +753,7 @@ function rehomeSupportingDetails(topics, index, options = {}) {
 // ---------------------------------------------------------------------------
 
 function sortByEvidence(topics, index) {
-  const locked = topic => reviewerTopic(topic) || topicRows(topic).some(({ record }) => isReviewerAuthored(record));
+  const locked = topic => reviewerTopic(topic) || topicRows(topic).some(({ record }) => hasReviewerDiscussionContent(record));
   const first = topic => Math.min(...topicRows(topic).map(({ record }) => publicationEarliest(record, index)));
   const generated = topics.filter(topic => !locked(topic)).sort((left, right) => first(left) - first(right));
   let next = 0;
@@ -2173,14 +2173,19 @@ function normaliseDiscussionPresentation(discussion = []) {
     for (const kind of ROW_KINDS) {
       next[kind] = (Array.isArray(topic?.[kind]) ? topic[kind] : []).map((record) => {
         if (isReviewerAuthored(record)) return record;
+        const supportingDetails = (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).map((detail) =>
+          isReviewerAuthored(detail) ? detail : { ...detail, text: normaliseSentencePresentation(detail?.text) });
         return {
           ...record,
           // A missing question mark cannot be inferred mechanically. Preserve
           // an unpunctuated open question for the semantic/editorial layer;
           // only declarative point and decision rows receive a full stop.
           text: normaliseSentencePresentation(record?.text, { terminalPunctuation: kind !== 'openQuestions' }),
-          supportingDetails: (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).map((detail) =>
-            isReviewerAuthored(detail) ? detail : { ...detail, text: normaliseSentencePresentation(detail?.text) })
+          // Every generated parent crosses this boundary, even when no parent
+          // merge/demotion ran. Reuse the lossless exact-leaf guard after
+          // presentation so formatting cannot reintroduce a literal repeat.
+          supportingDetails: hasReviewerDiscussionContent(topic) || hasReviewerDiscussionContent(record)
+            ? supportingDetails : mergeSupportingRestatements(supportingDetails)
         };
       });
     }
