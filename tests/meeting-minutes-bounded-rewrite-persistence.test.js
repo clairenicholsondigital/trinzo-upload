@@ -18,20 +18,33 @@ db.updateMeetingMinutesAgentDraft = async (id, userId, revision, changes) => {
 };
 const router = require('../routes/api'), api = router.stagedEvaluation;
 test.after(() => { db.getMeetingMinutesAgentDraft = oldGet; db.updateMeetingMinutesAgentDraft = oldUpdate; });
-const output = 'Nora Patel criticised the current latch as cheap and poor quality and proposed a proper bracket and a decent latch, with a warning light as a possibility.';
-async function reset() {
-  const sourceUnits = V.normaliseSourceUnits([
+const legacyOutput = 'Nora Patel criticised the current latch as cheap and poor quality and proposed a proper bracket and a decent latch, with a warning light as a possibility.';
+let output = legacyOutput;
+async function reset(partial = false) {
+  output = partial ? 'The team planned supplier upload oversight and clear registration responsibilities, with a documented plan; a gap could remain if audited.' : legacyOutput;
+  const inputs = partial ? Array.from({ length: 24 }, (_, i) => ({ id: `T${String(i + 1).padStart(4, '0')}`,
+    speaker: 'Morgan Lee', text: i === 7 ? 'The team planned supplier upload oversight and clear registration responsibilities, with a documented plan.'
+      : i === 8 ? 'A gap could remain if audited.' : 'Adjacent source context.' })) : [
     { id: 'T0001', speaker: 'Nora Patel', text: 'The current latch is rubbish, one of the cheap ones.' },
     { id: 'T0002', speaker: 'Nora Patel', text: 'We want a proper bracket, a decent latch and maybe a warning light.' }
-  ]);
-  const witnesses = sourceUnits.map(s => ({ sourceId: s.id, quote: s.text }));
-  original = [{ id: 'topic', topic: 'Equipment', points: [
+  ];
+  const sourceUnits = V.normaliseSourceUnits(inputs);
+  const witnesses = sourceUnits.filter((s, index) => !partial || (partial === 'wide' ? index < 10 : ['T0008', 'T0009'].includes(s.id)))
+    .map(s => ({ sourceId: s.id, quote: s.text }));
+  const originalPoints = partial ? [
+    { id: 'a', text: 'The team planned supplier upload oversight and clear registration responsibilities, with a documented plan.' },
+    { id: 'b', text: 'The team planned supplier upload oversight and clear registration responsibilities; a gap could remain if audited.' }
+  ].map(r => ({ ...r, evidenceIds: Array.from({ length: 8 }, (_, i) => `T${String(i + 8).padStart(4, '0')}`),
+    primaryEvidenceIds: Array.from({ length: 8 }, (_, i) => `T${String(i + 8).padStart(4, '0')}`),
+    reviewFlagIds: [], supportingDetails: [] })) : [
     { id: 'a', text: 'The current latch was poor quality, with suggestions for a proper bracket, a decent latch, and potentially a warning light.',
       evidenceIds: ['T0002'], primaryEvidenceIds: ['T0002'], reviewFlagIds: [], supportingDetails: [], mergedFromIds: ['earlier-a'] },
     { id: 'b', text: 'Nora Patel described the current latch as cheap and proposed a proper bracket, latch, and possibly a warning light.',
       evidenceIds: ['T0001', 'T0002'], reviewFlagIds: [], supportingDetails: [] }
-  ], decisions: [], openQuestions: [] }];
+  ];
+  original = [{ id: 'topic', topic: partial ? 'Supplier registration' : 'Equipment', points: originalPoints, decisions: [], openQuestions: [] }];
   const result = await B.consolidate(original, sourceUnits, {
+    partialOverlap: Boolean(partial),
     encode: async texts => texts.map(() => [1, 0]),
     inventory: async (_, p) => ({ version: B.VERSION, packetHash: p.packetHash, results: p.candidates.map(c => ({
       id: c.id, decision: 'inventory', records: c.rows.map((row, i) => ({ recordId: row.record.id,
@@ -46,7 +59,7 @@ async function reset() {
       outputChecks: c.outputSentences.map((_, sentenceIndex) => ({ sentenceIndex, supported: true, noNewClaims: true, sourceWitnesses: witnesses }))
     })) })
   });
-  assert.equal(result.audit.applied, true);
+  assert.equal(result.audit.applied, true, JSON.stringify({ reason: result.audit.reason, diagnostics: result.audit.diagnostics }));
   saved = { draftId: 'bounded-draft', revision: 1, status: 'draft', payloadVersion: V.PAYLOAD_VERSION,
     fileName: 'equipment.txt', details: { meetingTitle: 'Equipment', meetingType: 'General', meetingDate: '2026-10-21', internalAttendees: ['Nora Patel'], clientAttendees: [] },
     sourceUnits, rawTranscript: sourceUnits.map(s => s.text).join(' '), preparedTranscript: V.preparedTranscriptFromUnits(sourceUnits),
@@ -106,4 +119,56 @@ test('owned revision checks, active generation and reviewer changes continue to 
   assert.equal((await request('post', '/restore-combined-discussion')).statusCode, 409); delete saved.generation;
   saved.discussion[0].points[0].text += ' Reviewer correction.';
   assert.equal((await request('post', '/restore-combined-discussion')).statusCode, 409); assert.equal(writes, 0);
+});
+
+test('partial rewrite verified citations and complete old references survive owned save, export and restore', async () => {
+  await reset(true);
+  const archive = copy(saved.qualityState.discussion.claimConsolidation);
+  assert.equal(archive.ledger[0].nominationKind, 'partial_overlap');
+  assert.deepEqual(saved.discussion[0].points[0].evidenceIds, ['T0008', 'T0009']);
+  assert.equal(archive.ledger[0].citationAllocation.originalEvidenceIds.length, 8);
+  const before = await request('get');
+  assert.equal(before.body.draft.canRestoreCombinedDiscussion, true);
+  assert.equal((await request('patch', '', { discussion: before.body.draft.discussion })).statusCode, 200);
+  assert.deepEqual(saved.qualityState.discussion.claimConsolidation, archive);
+  assert.deepEqual(saved.discussion[0].points[0].evidenceIds, ['T0008', 'T0009']);
+  assert.deepEqual(saved.discussion[0].points[0].primaryEvidenceIds, ['T0008', 'T0009']);
+  const draft = api.meetingAgentDraftPayload(saved);
+  for (const includeEvidence of [false, true]) {
+    const zip = await JSZip.loadAsync(await generateMeetingMinutesAgentDocx(api.meetingAgentDraftForDocx(draft), includeEvidence));
+    const xml = await zip.file('word/document.xml').async('string');
+    assert.ok(xml.includes('a gap could remain if audited'));
+    assert.ok(xml.includes('with a documented plan'));
+    const pdf = await generateStagedMinutesPdf(api.meetingAgentDraftForPdf(draft, includeEvidence));
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-'); assert.ok(pdf.length > 1000);
+  }
+  assert.equal((await request('post', '/restore-combined-discussion')).statusCode, 200);
+  assert.deepEqual(saved.discussion, original);
+  assert.equal(saved.discussion[0].points[0].evidenceIds.length, 8);
+});
+
+test('reviewer edits to a partial rewrite still invalidate automatic restoration', async () => {
+  await reset(true);
+  const draft = (await request('get')).body.draft;
+  draft.discussion[0].points[0].text += ' Reviewer qualification.';
+  assert.equal((await request('patch', '', { discussion: draft.discussion })).statusCode, 200);
+  assert.equal(saved.discussion[0].points[0].reviewerAuthored, true);
+  assert.equal((await request('get')).body.draft.canRestoreCombinedDiscussion, false);
+  assert.equal((await request('post', '/restore-combined-discussion')).statusCode, 409);
+});
+
+test('a literal save preserves a verified ten-source paragraph and all recoverable original citations', async () => {
+  await reset('wide');
+  const refs = copy(saved.discussion[0].points[0].evidenceIds);
+  assert.equal(refs.length, 10);
+  const archive = copy(saved.qualityState.discussion.claimConsolidation);
+  const draft = (await request('get')).body.draft;
+  assert.deepEqual(draft.discussion[0].points[0].evidenceIds, refs);
+  assert.equal((await request('patch', '', { discussion: draft.discussion })).statusCode, 200);
+  assert.deepEqual(saved.discussion[0].points[0].evidenceIds, refs);
+  assert.deepEqual(saved.discussion[0].points[0].primaryEvidenceIds, refs);
+  assert.deepEqual(saved.qualityState.discussion.claimConsolidation, archive);
+  assert.equal((await request('get')).body.draft.canRestoreCombinedDiscussion, true);
+  assert.equal((await request('post', '/restore-combined-discussion')).statusCode, 200);
+  assert.deepEqual(saved.discussion, original);
 });

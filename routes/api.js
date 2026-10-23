@@ -16963,6 +16963,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     });
     let claimConsolidation = boundedRewrite
       ? await discussionRewrite.consolidate(finalDiscussion, draft.sourceUnits, {
+        partialOverlap: /^(?:1|true|yes|on)$/i.test(String(
+          process.env.MEETING_MINUTES_AGENT_DISCUSSION_PARTIAL_OVERLAP_REWRITE_V1 || '0')),
         inventory: (prompt, packet) => rewriteCall('inventory', prompt, packet),
         propose: (prompt, packet) => rewriteCall('proposal', prompt, packet),
         verify: (prompt, packet) => rewriteCall('verification', prompt, packet)
@@ -18253,6 +18255,18 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     // Save normalisation must not undo a generated multi-clause source repair.
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
+    const discussionProof = draft.qualityState?.discussion?.claimConsolidation;
+    if (!dateChanged && discussionProof?.method === discussionRewrite.VERSION
+      && discussionProof.ledger?.some(entry => entry.nominationKind === 'partial_overlap'
+        && entry.citationAllocation?.method === 'independently_verified_witnesses')
+      && discussionClaims.canRestore(draft.discussion, draft.sourceUnits, discussionProof)
+      && (!Array.isArray(req.body?.discussion)
+        || discussionClaims.hash(req.body.discussion) === discussionClaims.hash(publishedBeforeSave.discussion))) {
+      // An unchanged save is not another source judgement. Keep the verified
+      // rewrite/citations and restoration hash together, including paragraphs
+      // whose complete proof needs more than the lexical picker's eight refs.
+      normalised.discussion = structuredClone(draft.discussion);
+    }
     const pendingProposal = draft.pendingProposal?.stage === 'actions'
       ? rebaseMeetingAgentProposal(draft.pendingProposal, draft.actions || [], normalised.actions, [], { preserveSelection: true })
       : draft.pendingProposal;
