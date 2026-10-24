@@ -79,6 +79,7 @@ const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semantic
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { selectSupportingDetailParent } = require('../utils/canonicalMinutes/supportingDetailPlacement');
 const { normalizeUnassignedSupportingDetails, orderedFilingSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
+const { discussionSelectionCoverage, discussionPublicationCoverage } = require('../utils/meetingMinutesDiscussionCoverage');
 const {
   ALWAYS_INTERNAL_PEOPLE,
   alwaysInternalAttendeeName,
@@ -9521,6 +9522,10 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
   };
   const discussionTopicKey = (candidate) => {
     const topic = meetingMinutesAgentText(candidate?.topic, 240).toLowerCase();
+    // Untitled transcript windows are one source group, even when their words
+    // happen to hit several editorial facets. Otherwise raw windows consume a
+    // slot per facet in every round and displace named, readable discoveries.
+    if (!topic) return 'untitled-evidence';
     const value = `${topic} ${candidate?.text || ''}`.toLowerCase();
     // Discovery passes often give the same workstream slightly different
     // headings. Group those headings by general editorial facet before the
@@ -9549,7 +9554,10 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
   const discussionSalience = (candidate) => {
     const text = String(candidate?.text || '');
     const material = /\b(?:agree(?:d|ment)?|decid(?:e|ed|ion)|approv(?:e|ed|al)|block(?:ed|er|ing)?|risk|depend(?:s|ent|ency)?|subject to|unresolved|required|must|standard|regulation|scope|deadline|target|responsib(?:le|ility)|owner|lead|increase|decrease|\d+(?:[.,]\d+)?%?)\b/i.test(text);
-    return Number(recordRank[candidate?.recordType] || 0) * 100
+    const readable = !isRawTranscriptDiscussionPoint(text);
+    const editorialRank = readable && ['primary', 'recovery'].includes(candidate?.sourcePass) ? 2
+      : readable && candidate?.sourcePass === 'staged' ? 1 : 0;
+    return editorialRank * 1000 + Number(recordRank[candidate?.recordType] || 0) * 100
       + Number(material) * 30
       + Number(sourceRank[candidate?.sourcePass] || 0) * 10
       + Number(candidate?.priority || 0);
@@ -9575,7 +9583,10 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
         const rightTopic = discussionInformationTokens(candidate.topic || '');
         const topicCompatible = !leftTopic.size || !rightTopic.size
           || [...leftTopic].some((token) => rightTopic.has(token));
-        return (topicCompatible && lexical >= 0.56) || (sharedEvidence && lexical >= 0.28);
+        const subjectMatch = selectSupportingDetailParent({ text: candidate.text },
+          [{ record: { id: other.candidateId, text: other.text } }]).target;
+        return Boolean(subjectMatch) && ((topicCompatible && lexical >= 0.56)
+          || (sharedEvidence && lexical >= 0.28));
       }));
       if (cluster) cluster.push(candidate);
       else clusters.push([candidate]);
@@ -9601,8 +9612,30 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
     });
   };
   const balancedDiscussion = (items, limit) => {
+    // Reserve one independent assessment per named primary/recovery subject.
+    // Secondary extractor headings are not equivalent evidence of a new
+    // subject: promoting each heading to its own group displaced qualified
+    // primary statements with more assertive secondary summaries in replay.
+    const named = new Map();
+    for (const candidate of items) {
+      if (!['primary', 'recovery'].includes(candidate.sourcePass)
+        || !isPublishableTopicLabel(candidate.topic) || isRawTranscriptDiscussionPoint(candidate.text)) continue;
+      const key = String(candidate.topic).toLowerCase().replace(/\s+/g, ' ').trim();
+      if (!named.has(key)) named.set(key, []);
+      named.get(key).push(candidate);
+    }
+    const selected = [];
+    for (const group of named.values()) {
+      if (selected.length >= limit) break;
+      const best = propositionClusters(group).sort((left, right) => discussionSalience(right) - discussionSalience(left)
+        || Number(left.sequence || 0) - Number(right.sequence || 0))[0];
+      if (best) selected.push(best);
+    }
+    const reservedIds = new Set(selected.flatMap(candidate => [candidate.candidateId,
+      ...(candidate.clusterMembers || []).map(member => member.candidateId)]));
     const groups = new Map();
     items.forEach((candidate) => {
+      if (reservedIds.has(candidate.candidateId)) return;
       const key = discussionTopicKey(candidate);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(candidate);
@@ -9615,7 +9648,6 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
       propositionClusters(group).sort((left, right) =>
         discussionSalience(right) - discussionSalience(left)
         || Number(left.sequence || 0) - Number(right.sequence || 0)));
-    const selected = [];
     while (selected.length < limit) {
       let added = false;
       for (const group of groups.values()) {
@@ -9625,41 +9657,9 @@ function meetingAgentRefereeCandidates(stage, candidates = []) {
       }
       if (!added) break;
     }
-    // Keep propositions displaced only by the response-size limit available to
-    // the Referee as evidence-backed cluster context. They do not require an
-    // additional disposition row, but remain recoverable as collapsed detail
-    // beneath the selected proposition from the same editorial topic.
-    const selectedByTopic = new Map();
-    for (const candidate of selected) {
-      const key = discussionTopicKey(candidate);
-      if (!selectedByTopic.has(key)) selectedByTopic.set(key, []);
-      selectedByTopic.get(key).push(candidate);
-    }
-    for (const [key, remaining] of groups) {
-      const anchors = selectedByTopic.get(key) || [];
-      if (!anchors.length) continue;
-      for (const omitted of remaining) {
-        const anchor = [...anchors].sort((left, right) => {
-          const score = (candidate) => hybridContentTokenOverlap(candidate.text, omitted.text)
-            + ((candidate.evidenceIds || []).some((id) => (omitted.evidenceIds || []).includes(id)) ? 0.35 : 0);
-          return score(right) - score(left);
-        })[0];
-        const members = [...(anchor.clusterMembers || []), {
-          candidateId: omitted.candidateId,
-          sourcePass: omitted.sourcePass,
-          recordType: omitted.recordType,
-          topic: omitted.topic,
-          text: omitted.text,
-          evidenceIds: omitted.evidenceIds,
-          priority: omitted.priority,
-          sequence: omitted.sequence,
-          clusterRelation: 'overflow'
-        }, ...(omitted.clusterMembers || [])];
-        anchor.clusterMembers = members.filter((member, index) => member?.text
-          && members.findIndex((other) => other.candidateId === member.candidateId) === index)
-          .slice(0, 16);
-      }
-    }
+    // Unselected distinct propositions stay in the private ledger. The
+    // selection-coverage handoff retains editorial overflow for review without
+    // attaching it to a different subject or inventing a referee verdict.
     return selected;
   };
   if (stage === 'discussion') {
@@ -9835,7 +9835,9 @@ function refereeClusterSupportingCandidates(dispositions = [], candidates = []) 
       // each fact once rather than once per cluster.
       if (result.some((item) => hybridContentTokenOverlap(item.candidate.text, member.text) >= dedupeThreshold
         && mayDiscardSupportingDetail(member, item.candidate))) continue;
-      result.push({ candidate: member, mergeTarget: targetId, clusterRepresentativeId: candidate.candidateId });
+      const unassessed = member.clusterRelation === 'overflow';
+      result.push({ candidate: member, mergeTarget: unassessed ? '' : targetId,
+        clusterRepresentativeId: candidate.candidateId, ...(unassessed ? { unassessed: true } : {}) });
     }
   }
   return result.slice(0, 240);
@@ -10743,7 +10745,9 @@ function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline
   // Consume only members actually released by the existing supporting route,
   // not every member of a rejected/filtered cluster. A separately supplied
   // member whose verdict is missing still needs fallback.
-  for (const { candidate: member } of refereeClusterSupportingCandidates(dispositions, contract.candidates)) {
+  for (const released of refereeClusterSupportingCandidates(dispositions, contract.candidates)) {
+    if (released.unassessed) continue;
+    const { candidate: member } = released;
     if (contract.candidates.some(row => row.candidateId === member.candidateId)
       && !settled.has(member.candidateId)) continue;
     add(member);
@@ -14163,7 +14167,8 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
     // An invalid merge reference is unresolved checking, not permission to
     // promote its supporting material into a new primary proposition.
     const selected = [...eligible].sort((left, right) =>
-      Number(sourceRank[right.candidate.sourcePass] || 0) - Number(sourceRank[left.candidate.sourcePass] || 0)
+      Number(!isRawTranscriptDiscussionPoint(right.candidate.text)) - Number(!isRawTranscriptDiscussionPoint(left.candidate.text))
+      || Number(sourceRank[right.candidate.sourcePass] || 0) - Number(sourceRank[left.candidate.sourcePass] || 0)
       || Number(typeRank[right.candidate.recordType] || 0) - Number(typeRank[left.candidate.recordType] || 0)
       || Number(right.candidate.priority || 0) - Number(left.candidate.priority || 0)
       || String(right.candidate.text || '').length - String(left.candidate.text || '').length)[0];
@@ -15693,6 +15698,19 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
   if (policy.mode === 'shadow' && reconciled?.changes && shadowOriginal?.changes) {
     reconciled.changes = { ...reconciled.changes, [stage]: shadowOriginal.changes[stage] };
   }
+  const publicationState = reconciled?.changes?.qualityState?.discussion;
+  if (stage === 'discussion' && publicationState?.refereePublication) {
+    const final = discussionPublicationCoverage(reconciled.changes.discussion,
+      publicationState.effectiveRefereeCandidateDispositions || [], reconciled.changes.candidateLedger || [], {
+        unassignedSupportingDetails: reconciled.changes.unassignedSupportingDetails,
+        withheldRows: publicationState.fidelityWithheldRows
+      });
+    publicationState.refereePublication = { ...publicationState.refereePublication, final };
+    publicationState.refereeSufficiency = { ...publicationState.refereeSufficiency,
+      sufficient: (publicationState.refereeSufficiency?.accountingAuthoritative
+        || publicationState.refereeSufficiency?.sufficient) && final.complete,
+      publicationComplete: final.complete };
+  }
   const semantic = reconciled?.changes?.qualityState?.[stage]?.semanticReconciliation;
   if (policy.scope === 'contact_enquiries' && stage !== 'actions') return reconciled;
   if (!semantic || policy.mode === 'off') return reconciled;
@@ -16239,6 +16257,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   }
   const refereeContract = meetingMinutesAgentRefereeContract(stage, ensemble);
   const suppliedRefereeCandidates = refereeContract.candidates;
+  const selectionCoverage = stage === 'discussion'
+    ? discussionSelectionCoverage(ensemble, suppliedRefereeCandidates) : null;
   const configuredRefereeBatchSize = stage === 'discussion'
     ? process.env.MEETING_MINUTES_AGENT_DISCUSSION_REFEREE_BATCH_SIZE
     : process.env.MEETING_MINUTES_AGENT_ACTION_REFEREE_BATCH_SIZE;
@@ -16598,6 +16618,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       refereeDiscussionDispositions, suppliedRefereeCandidates
     ));
     const structuredReferee = refereeRoute === 'structured_prompt';
+    // Overflow has no verdict and no inherited target. Readable discovery can
+    // still be filed by the existing positive subject match, or retained in
+    // Needs filing. This is not a referee core vote; the normal downstream
+    // evidence, promotion and editorial safeguards still apply.
+    if (structuredReferee) supportingCandidates.push(...selectionCoverage.unassessedEditorialCandidates
+      .filter(candidate => candidate.text && !isRawTranscriptDiscussionPoint(candidate.text))
+      .map(candidate => ({ candidate })));
     const unassignedSupportingDetails = [];
     const retainUnassignedSupportingDetail = (detail, context = {}) => {
       const retained = collectUnassignedSupportingDetails(detail, context);
@@ -16619,8 +16646,11 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       })
       : null;
     const measuredSufficiency = discussionRefereeSufficiency(compactPreview || [], baselineDiscussion);
+    const compactPublication = discussionPublicationCoverage(compactPreview || [], refereeDiscussionDispositions, ensemble,
+      { unassignedSupportingDetails });
     const compactSufficiency = completeStructuredReferee
-      ? { ...measuredSufficiency, sufficient: true, accountingAuthoritative: true }
+      ? { ...measuredSufficiency, sufficient: compactPublication.complete, accountingAuthoritative: true,
+        publicationComplete: compactPublication.complete }
       : measuredSufficiency;
     let finalDiscussion = (compactEnabled || structuredReferee)
       ? compactPreview
@@ -17062,6 +17092,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       claimConsolidation = discussionOwnParent.combine(claimConsolidation, ownParent, draft.sourceUnits);
     }
     finalDiscussion = claimConsolidation.discussion;
+    const finalPublication = discussionPublicationCoverage(finalDiscussion, refereeDiscussionDispositions, ensemble,
+      { unassignedSupportingDetails: retainedUnassignedSupportingDetails, withheldRows: fidelityWithheldRows });
     const objectives = mergeGroundedObjectiveRecords([
       primaryParsed.meetingObjectives || primaryParsed.objectives || [],
       recovery ? (recovery.meetingObjectives || recovery.objectives || []) : [],
@@ -17139,7 +17171,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             routedRecords: partialFallback.active && !completeStructuredReferee
               ? partialFallback.routedRecords : []
           },
-          refereeSufficiency: compactSufficiency,
+          refereeSufficiency: { ...compactSufficiency,
+            sufficient: compactSufficiency.sufficient && finalPublication.complete,
+            publicationComplete: finalPublication.complete },
+          selectionCoverage: {
+            suppliedCandidateIds: selectionCoverage.suppliedCandidateIds,
+            clusteredCandidateIds: selectionCoverage.clusteredCandidateIds,
+            unassessedCandidateIds: selectionCoverage.unassessedCandidateIds
+          },
+          refereePublication: { compact: compactPublication, final: finalPublication },
           refereeContract: {
             ...rawContractDiagnostics,
             reconstructedTargetIds: reconstructed.reconstructedTargetIds,
@@ -20302,6 +20342,8 @@ router.stagedEvaluation = {
   normaliseMeetingAgentRefereeContractResult,
   effectiveDiscussionRefereeDispositions,
   discussionRefereeSufficiency,
+  discussionSelectionCoverage,
+  discussionPublicationCoverage,
   discussionRefereeFallbackPlan,
   meetingMinutesAgentRefereeContract,
   meetingAgentCommitmentRecheckNeeded,
