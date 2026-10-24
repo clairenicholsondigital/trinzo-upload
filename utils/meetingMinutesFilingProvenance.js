@@ -8,9 +8,9 @@ const ids = value => Array.isArray(value) && value.length <= 1000 && value.every
 const sameIds = (a, b) => ids(a) && ids(b)
   && JSON.stringify([...new Set(a)].sort()) === JSON.stringify([...new Set(b)].sort());
 const LEAF_KEYS = ['id', 'text', 'evidenceIds', 'reviewFlagIds', 'primaryEvidenceIds',
-  'discoveryDisposition', 'supportingDetails'];
+  'discoveryDisposition', 'supportingDetails', 'originalTopic'];
 const CANDIDATE_KEYS = ['id', 'candidateId', 'text', 'evidenceIds', 'reviewFlagIds',
-  'priority', 'sourcePass', 'recordType', 'topic', 'dispositionHint', 'record'];
+  'priority', 'sourcePass', 'recordType', 'topic', 'dispositionHint', 'record', 'originalTopic'];
 
 // Exact known generated shapes only. This archive is provenance, never a
 // source of evidence, reviewer authorship, approval, or a new filing decision.
@@ -18,7 +18,10 @@ function generatedFilingRecord(value) {
   if (!plain(value) || !identity(value.id) || /^(?:manual-|reviewer-)/.test(value.id)
     || typeof value.text !== 'string' || !value.text.trim() || value.text.length > 1600
     || !ids(value.evidenceIds) || !value.evidenceIds.length
-    || value.reviewFlagIds !== undefined && !ids(value.reviewFlagIds)) return false;
+    || value.reviewFlagIds !== undefined && !ids(value.reviewFlagIds)
+    || value.originalTopic !== undefined && (typeof value.originalTopic !== 'string'
+      || !value.originalTopic.trim() || value.originalTopic.length > 220
+      || /[\u0000-\u001f\u007f]/.test(value.originalTopic))) return false;
   const envelope = value.candidateId !== undefined;
   if (Object.keys(value).some(key => !(envelope ? CANDIDATE_KEYS : LEAF_KEYS).includes(key))) return false;
   if (!envelope) return (value.primaryEvidenceIds === undefined

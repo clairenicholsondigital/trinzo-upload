@@ -10714,10 +10714,27 @@ function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline
   )]));
   const settled = new Set(dispositions.map(row => row.candidateId));
   const records = new Map();
+  // Production selection is a compact wire projection without .record. Bind
+  // private records only here, by unique exact identity, so settled discovery
+  // cannot return through fallback. Never put these trees in the AI payload.
+  const privateCandidates = new Map();
+  for (const candidate of ensemble) {
+    if (!candidate?.candidateId) continue;
+    privateCandidates.set(candidate.candidateId,
+      privateCandidates.has(candidate.candidateId) ? null : candidate);
+  }
+  const recordFor = candidate => {
+    if (candidate?.record) return candidate.record;
+    const source = privateCandidates.get(candidate?.candidateId);
+    if (!source?.record || isReviewerAuthored(source) || !['sourcePass', 'recordType', 'topic', 'text', 'evidenceIds']
+      .every(field => JSON.stringify(stable(candidate[field])) === JSON.stringify(stable(source[field])))) return null;
+    return source.record;
+  };
   const add = candidate => {
-    if (!candidate?.record || isReviewerAuthored(candidate) || hasMeetingAgentReviewerContent(candidate.record)
-      || candidate.record.supportingDetails?.length) return;
-    records.set(key(candidate.recordType, candidate.record), candidate);
+    const record = recordFor(candidate);
+    if (!record || isReviewerAuthored(candidate) || hasMeetingAgentReviewerContent(record)
+      || record.supportingDetails?.length) return;
+    records.set(key(candidate.recordType, record), candidate);
   };
   for (const candidate of contract.candidates) {
     if (!settled.has(candidate.candidateId)) continue;
@@ -14166,6 +14183,7 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
           ...(item.candidate.record || {}),
           id: item.candidate.record?.id || item.candidate.candidateId,
           text: item.candidate.text,
+          originalTopic: item.candidate.record?.originalTopic || item.candidate.originalTopic || item.candidate.topic,
           evidenceIds: [...new Set([
             ...(item.candidate.evidenceIds || item.candidate.record?.evidenceIds || []),
             ...(Array.isArray(item.disposition.evidenceIds) ? item.disposition.evidenceIds : [])
@@ -14569,10 +14587,13 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       evidenceIds: [...new Set(group.flatMap((item) => item.record?.evidenceIds || []))].slice(0, 12)
     };
     const details = [
-      ...(record.supportingDetails || []),
+      ...(record.supportingDetails || []).map(detail => ({ ...detail,
+        originalTopic: detail?.originalTopic || selected.topic })),
       ...ordered.slice(1).flatMap((item) => [
-        { id: item.record?.id, text: item.record?.text, evidenceIds: item.record?.evidenceIds || [] },
-        ...(item.record?.supportingDetails || [])
+        { id: item.record?.id, text: item.record?.text, evidenceIds: item.record?.evidenceIds || [],
+          originalTopic: item.record?.originalTopic || item.topic },
+        ...(item.record?.supportingDetails || []).map(detail => ({ ...detail,
+          originalTopic: detail?.originalTopic || item.topic }))
       ])
     ].filter((detail) => detail?.text && (hybridContentTokenOverlap(detail.text, record.text) < 0.94
       || !mayDiscardSupportingDetail(detail, record)));
@@ -14628,6 +14649,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     const detail = {
       id: item.record?.id || `supporting-${target.id}-${target.supportingDetails?.length || 0}`,
       text: item.record?.text || '', evidenceIds: [...new Set(item.record?.evidenceIds || [])],
+      originalTopic: item.record?.originalTopic || item.topic,
       ...(item.record?.reviewFlagIds?.length ? { reviewFlagIds: [...item.record.reviewFlagIds] } : {})
     };
     if ((target.supportingDetails || []).length >= 50) {
@@ -14650,6 +14672,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     const candidate = item?.candidate || item;
     const detailText = String(candidate?.text || candidate?.record?.text || '').trim();
     if (!detailText) continue;
+    const originalTopic = candidate.record?.originalTopic || candidate.originalTopic || candidate.topic;
     const explicitTarget = meetingMinutesAgentText(item?.mergeTarget, 80);
     const detailEvidenceIds = [...new Set([...(candidate.evidenceIds || []), ...(candidate.record?.evidenceIds || [])])];
     const detailFlagIds = [...new Set([...(candidate.reviewFlagIds || []), ...(candidate.record?.reviewFlagIds || [])])];
@@ -14658,7 +14681,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     if (detailText.length > 1600) {
       retainUnassigned({ id: candidate.candidateId || candidate.record?.id || candidate.id,
         text: detailText, evidenceIds: detailEvidenceIds, reviewFlagIds: detailFlagIds },
-      { originalTopic: candidate.topic, placementReason: 'long_supporting_detail' });
+      { originalTopic, placementReason: 'long_supporting_detail' });
       continue;
     }
     const selection = selectSupportingDetailParent({ ...candidate, text: detailText }, allPrimary,
@@ -14669,7 +14692,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
         id: candidate.candidateId || candidate.record?.id || candidate.id,
         text: detailText,
         evidenceIds: detailEvidenceIds, reviewFlagIds: detailFlagIds
-      }, { originalTopic: candidate.topic, placementReason: selection.reason });
+      }, { originalTopic, placementReason: selection.reason });
       continue;
     }
     const target = selection.target.record;
@@ -14685,10 +14708,11 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       id: candidate.candidateId || candidate.record?.id || candidate.id || `supporting-${target.id}-${existing.length}`,
       text: detailText,
       evidenceIds: detailEvidenceIds,
+      originalTopic,
       ...(detailFlagIds.length ? { reviewFlagIds: detailFlagIds } : {})
     };
     if (existing.length >= 50) {
-      retainUnassigned(detail, { originalTopic: candidate.topic, placementReason: 'parent_detail_capacity' });
+      retainUnassigned(detail, { originalTopic, placementReason: 'parent_detail_capacity' });
     } else target.supportingDetails = [...existing, detail];
     attachedRecords.push(detail);
   }
