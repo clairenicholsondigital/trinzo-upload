@@ -11,7 +11,8 @@ const verdict = (id, disposition, targetId = '') => ({ candidateId: id, disposit
 const topic = points => [{ topic: 'Delivery', points, decisions: [], openQuestions: [] }];
 function setup(kind = 'supporting') {
   const main = candidate('main', row('main-row', 'Supplier approval remains the delivery blocker.'));
-  const support = candidate('context', row('context-row', 'The supplier approval is required before delivery can begin.'));
+  const support = candidate('context', row('context-row', 'The supplier approval is required before delivery can begin.'),
+    { topic: 'Supplier approval documentation' });
   const missing = candidate('missing', row('missing-row', 'The warehouse access checklist remains outstanding.', { evidenceIds: ['T0002'] }));
   const candidates = [main, support, missing];
   const contract = A.meetingMinutesAgentRefereeContract('discussion', candidates, 'request', { selected: true });

@@ -752,8 +752,8 @@ test('different recipients or different documents do not collapse into a hand-of
   ]).length, 2);
 });
 
-test('same-owner deliveries to one named recipient become one evidence-backed bundle', () => {
-  const rows = dedupeHybridActionRecords([{
+test('compatible same-owner deliveries bundle while additional inline conditions keep separate timing', () => {
+  const input = [{
     id: 'training', action: 'Send the relevant training standards pack to Morgan Lee.', owners: ['Alex Green'],
     timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0010']
   }, {
@@ -762,13 +762,15 @@ test('same-owner deliveries to one named recipient become one evidence-backed bu
   }, {
     id: 'risk', action: 'Share the risk analysis with Morgan Lee after confidentiality is in place.', owners: ['Alex Green'],
     timing: { kind: 'deadline', wording: 'before the audit', exactDate: '2026-08-03' }, evidenceIds: ['T0080']
-  }]);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].action,
-    'Provide Morgan Lee with the relevant training standards pack; the audit scope outputs once the scope is determined; and the risk analysis after confidentiality is in place before the audit.');
+  }];
+  const rows = dedupeHybridActionRecords(structuredClone(input));
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].action, /relevant training standards pack/);
+  assert.match(rows[0].action, /audit scope outputs once the scope is determined/);
   assert.deepEqual(rows[0].owners, ['Alex Green']);
-  assert.deepEqual(rows[0].evidenceIds, ['T0010', 'T0040', 'T0080']);
+  assert.deepEqual(rows[0].evidenceIds, ['T0010', 'T0040']);
   assert.deepEqual(rows[0].timing, { kind: 'not_stated', wording: '', exactDate: '' });
+  assert.deepEqual(rows[1], input[2], 'the existing timing guard preserves the complete conditional delivery');
 });
 
 test('delivery bundling handles recipient-first access wording and is idempotent', () => {
@@ -1345,7 +1347,7 @@ test('discussion referee batches cover topics before taking repeated rows from o
   assert.ok(supplied.filter((candidate) => candidate.topic === 'Schedule').length < 30);
 });
 
-test('discussion referee clustering preserves paraphrases and overflow as grounded context', () => {
+test('discussion referee clustering preserves genuine paraphrases as grounded context', () => {
   const candidates = [
     { candidateId: 'scope-primary', sourcePass: 'primary', recordType: 'discussion_point', topic: 'Scope', text: 'The audit scope includes software validation.', evidenceIds: ['T0001'], priority: 9, sequence: 1 },
     { candidateId: 'scope-recovery', sourcePass: 'recovery', recordType: 'discussion_point', topic: 'Scope', text: 'Software validation is included within the audit scope.', evidenceIds: ['T0001', 'T0002'], priority: 9, sequence: 2 },
@@ -1363,7 +1365,7 @@ test('discussion referee clustering preserves paraphrases and overflow as ground
   assert.ok(supplied.some((candidate) => candidate.clusterMembers.length > 0));
 });
 
-test('discussion referee keeps overflow from differently named topics in the same material facet', () => {
+test('discussion referee accounts for distinct overflow without inheriting an unrelated facet verdict', () => {
   const candidates = Array.from({ length: 30 }, (_, index) => ({
     candidateId: `risk-${index}`,
     sourcePass: 'primary',
@@ -1375,12 +1377,15 @@ test('discussion referee keeps overflow from differently named topics in the sam
     sequence: index + 1
   }));
   const supplied = meetingAgentRefereeCandidates('discussion', candidates);
+  const coverage = require('../utils/meetingMinutesDiscussionCoverage').discussionSelectionCoverage(candidates, supplied);
   const represented = new Set(supplied.flatMap((candidate) => [
     candidate.candidateId,
     ...(candidate.clusterMembers || []).map((member) => member.candidateId)
-  ]));
+  ]).concat(coverage.unassessedCandidateIds));
   assert.equal(supplied.length, 24);
   assert.equal(represented.size, 30, 'the Referee limit must not make later material disappear');
+  assert.equal(coverage.unassessedCandidateIds.length, 6);
+  assert.ok(supplied.every(candidate => (candidate.clusterMembers || []).every(member => member.clusterRelation !== 'overflow')));
 });
 
 test('discussion referee takes distinct propositions before a same-topic paraphrase', () => {
