@@ -73,6 +73,8 @@ const { clearMiniLMProfileMemoryCache } = require('../utils/canonicalMinutes/min
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { batchRefereeCandidates, normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
+const discussionMaterialityPolicy = require('../config/meeting-minutes-discussion-materiality-policy.json');
+const { retainPureFutureAssignments } = require('../utils/meetingMinutesDiscussionTaskBoundary');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults, ownerSupported, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
@@ -9744,7 +9746,7 @@ function meetingMinutesAgentRefereeContract(stage, candidates = [], requestId = 
   });
 }
 
-function compactMeetingAgentRefereeCandidate(candidate = {}) {
+function compactMeetingAgentRefereeCandidate(candidate = {}, options = {}) {
   const compact = {
     candidateId: meetingMinutesAgentText(candidate.candidateId, 160),
     sourcePass: meetingMinutesAgentText(candidate.sourcePass, 80),
@@ -9776,8 +9778,10 @@ function compactMeetingAgentRefereeCandidate(candidate = {}) {
     evidenceIds: [...new Set((Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [])
       .map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean))].slice(0, 20),
     focusEvidenceId: meetingMinutesAgentText(candidate.focusEvidenceId, 30),
-    dispositionHint: meetingMinutesAgentText(candidate.dispositionHint, 80),
-    priority: Number(candidate.priority || 0),
+    ...(options.independentDiscussionJudgement ? {} : {
+      dispositionHint: meetingMinutesAgentText(candidate.dispositionHint, 80),
+      priority: Number(candidate.priority || 0)
+    }),
     sequence: Number(candidate.sequence || 0)
   };
   // Discussion cluster members are deliberately not copied into the Referee's
@@ -9895,7 +9899,12 @@ function meetingAgentRefereeReferenceTargets(contract = {}) {
   // discovery candidate ID as another identity led the Referee to return that
   // old ID instead of the approved target. Keep original provenance private in
   // the unchanged contract; never turn an unknown reply ID into a valid alias.
-  return (contract.retainedDiscussionTargets || []).map(target => ({ ...target, candidateId: target.targetId }));
+  return (contract.retainedDiscussionTargets || []).map(target => {
+    const reference = { ...target, candidateId: target.targetId };
+    delete reference.dispositionHint;
+    delete reference.priority;
+    return reference;
+  });
 }
 
 function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [], details = {}, candidates, requestId,
@@ -9907,11 +9916,14 @@ function meetingMinutesAgentRefereePrompt({ stage, transcript, sourceUnits = [],
     requestId: contract.requestId,
     stage: contract.stage,
     timingPolicyVersion: TIMING_POLICY_VERSION,
+    ...(contract.stage === 'DISCUSSION_REFEREE' ? { discussionPolicyVersion: discussionMaterialityPolicy.version } : {}),
     ...(targets.length ? { existingDiscussionTargets: targets } : {}),
     meetingDetails: details.timingContext || { meetingDate: sanitiseMeetingAgentDetails(details).meetingDate, dateSource: 'provided_meeting_details' },
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
-    candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
+    candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate, {
+      independentDiscussionJudgement: contract.stage === 'DISCUSSION_REFEREE'
+    })),
     preparedTranscript: evidencePacket.preparedTranscript,
     writingRules: [MEETING_AGENT_TIMING_RULE, ...(contract.stage.startsWith('DISCUSSION') ? [MEETING_AGENT_DISCUSSION_COVERAGE_RULE, ...(meetingAgentCorrectionRuleEnabled() ? [MEETING_AGENT_CORRECTION_RULE] : [])] : [])]
   };
@@ -9933,6 +9945,7 @@ function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits
     requestId: contract.requestId,
     stage: contract.stage,
     timingPolicyVersion: TIMING_POLICY_VERSION,
+    ...(contract.stage === 'DISCUSSION_REFEREE' ? { discussionPolicyVersion: discussionMaterialityPolicy.version } : {}),
     meetingDetails: details.timingContext || { meetingDate: sanitiseMeetingAgentDetails(details).meetingDate, dateSource: 'provided_meeting_details' },
     // The published structured Referee has an explicit subset-repair mode.
     // Without this marker it can interpret a one-candidate repair payload as
@@ -9945,7 +9958,9 @@ function meetingMinutesAgentRefereeRepairPrompt({ stage, transcript, sourceUnits
     } : {}),
     expectedCandidateCount: contract.expectedCandidateIds.length,
     expectedCandidateIds: contract.expectedCandidateIds,
-    candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate)),
+    candidateEnsemble: contract.candidates.map((candidate) => compactMeetingAgentRefereeCandidate(candidate, {
+      independentDiscussionJudgement: contract.stage === 'DISCUSSION_REFEREE'
+    })),
     preparedTranscript: evidencePacket.preparedTranscript,
     writingRules: [MEETING_AGENT_TIMING_RULE, ...(contract.stage.startsWith('DISCUSSION') ? [MEETING_AGENT_DISCUSSION_COVERAGE_RULE, ...(meetingAgentCorrectionRuleEnabled() ? [MEETING_AGENT_CORRECTION_RULE] : [])] : [])]
   };
@@ -14173,7 +14188,10 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
       || Number(right.candidate.priority || 0) - Number(left.candidate.priority || 0)
       || String(right.candidate.text || '').length - String(left.candidate.text || '').length)[0];
     if (!selected?.candidate?.text) continue;
-    const evidenceIds = [...new Set(group.flatMap((item) => [
+    // Supporting text retains its own citations below. It must not donate
+    // those citations to the primary claim before its placement is checked;
+    // later detaching a misplaced child cannot otherwise undo that donation.
+    const evidenceIds = [...new Set(eligible.flatMap((item) => [
       ...(item.candidate.evidenceIds || item.candidate.record?.evidenceIds || []),
       ...(Array.isArray(item.disposition.evidenceIds) ? item.disposition.evidenceIds : [])
     ]))].slice(0, 12);
@@ -14182,7 +14200,12 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
     ));
     const record = {
       ...(selected.candidate.record || {}), id: targetId,
-      text: selected.candidate.text, evidenceIds, supportingDetails: group
+      text: selected.candidate.text, evidenceIds,
+      primaryEvidenceIds: [...new Set([
+        ...(selected.candidate.evidenceIds || selected.candidate.record?.evidenceIds || []),
+        ...(Array.isArray(selected.disposition.evidenceIds) ? selected.disposition.evidenceIds : [])
+      ])].filter(id => evidenceIds.includes(id)).slice(0, 12),
+      supportingDetails: group
         .filter((item) => item !== selected && ['supporting', 'merge'].includes(item.kind))
         .map((item) => ({
           ...(item.candidate.record || {}),
@@ -16484,7 +16507,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
     candidateDispositions: [], reviewFlags: []
   };
-  const refereeParsed = normaliseRefereeOutput(mergedRefereeResult, suppliedRefereeCandidates)
+  const refereeParsed = normaliseRefereeOutput(mergedRefereeResult, suppliedRefereeCandidates, {
+    preserveUntargetedSupporting: stage === 'discussion'
+  })
     || mergedRefereeResult;
   if (refereeBatchResults.length && !completedPasses.includes('referee')) completedPasses.push('referee');
   if (unresolvedRefereeIds.length) {
@@ -17019,6 +17044,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     finalDiscussion = materialDeadlines.discussion;
     const roleConflicts = flagConflictingDiscussionRoles(finalDiscussion, draft.sourceUnits);
     finalDiscussion = roleConflicts.discussion;
+    // A model core verdict cannot turn a task-only sentence into discussion.
+    // Retain the entire original in the filing pool and keep the raw verdict;
+    // the publication audit must honestly report it as filed, not published.
+    const actionOnlyDiscussion = structuredReferee
+      ? retainPureFutureAssignments(finalDiscussion, meetingAgentPeopleNames(draft.sourceUnits), retainUnassignedSupportingDetail)
+      : { discussion: finalDiscussion, retained: [] };
+    finalDiscussion = actionOnlyDiscussion.discussion;
     if (roleConflicts.conflicts.length) console.log(JSON.stringify({
       event: 'meeting_agent_discussion_role_conflicts', journeyId: draft.draftId,
       conflicts: roleConflicts.conflicts
@@ -17180,6 +17212,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             unassessedCandidateIds: selectionCoverage.unassessedCandidateIds
           },
           refereePublication: { compact: compactPublication, final: finalPublication },
+          actionOnlyDiscussionRetained: actionOnlyDiscussion.retained,
           refereeContract: {
             ...rawContractDiagnostics,
             reconstructedTargetIds: reconstructed.reconstructedTargetIds,

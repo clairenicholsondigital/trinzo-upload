@@ -1706,8 +1706,14 @@ test('missing referee target records are reconstructed from classified evidence 
   assert.deepEqual(rebuilt.reconstructedTargetIds, ['d1']);
   assert.equal(rebuilt.discussion.length, 1);
   assert.equal(rebuilt.discussion[0].points[0].id, 'd1');
-  assert.deepEqual(rebuilt.discussion[0].points[0].evidenceIds, ['T0001', 'T0002']);
+  assert.deepEqual(rebuilt.discussion[0].points[0].evidenceIds, ['T0001']);
+  assert.deepEqual(rebuilt.discussion[0].points[0].primaryEvidenceIds, ['T0001']);
   assert.equal(rebuilt.discussion[0].points[0].supportingDetails.length, 1);
+  assert.deepEqual(rebuilt.discussion[0].points[0].supportingDetails[0].evidenceIds, ['T0002']);
+  assert.deepEqual([...new Set([
+    ...rebuilt.discussion[0].points[0].evidenceIds,
+    ...rebuilt.discussion[0].points[0].supportingDetails.flatMap(detail => detail.evidenceIds)
+  ])], ['T0001', 'T0002'], 'all source evidence survives without being donated to the primary');
 });
 
 test('disposition-only action referee output reconstructs polished candidate records', () => {

@@ -107,3 +107,27 @@ test('removes an invalid scalar evidence ID and raises the existing warning', ()
   assert.deepEqual(result.discussion[0].points[0].evidenceIds, []);
   assert.equal(result.reviewFlags[0].type, 'invalid_evidence_references');
 });
+
+test('structured discussion keeps unrelated supporting material untargeted even with zero overlap', () => {
+  const rows = [
+    { candidateId: 'cooling', disposition: 'core', text: 'Cooling pressure inspection complete' },
+    { candidateId: 'insurance', disposition: 'supporting', targetId: '', text: 'Supplier insurance outstanding', evidenceIds: ['T0002'] }
+  ];
+  const before = structuredClone(rows);
+  const result = normaliseRefereeDispositions(rows, [], { preserveUntargetedSupporting: true });
+  assert.equal(result[1].targetId, '');
+  assert.equal(result[1].disposition, 'supporting');
+  assert.deepEqual(rows, before);
+  assert.equal(normaliseRefereeDispositions(rows)[1].targetId, 'cooling', 'legacy adapters retain their explicit compatibility mode');
+});
+
+test('structured discussion preserves explicit targets, aliases and core identity without inferring missing targets', () => {
+  const rows = [
+    { candidateId: 'primary', disposition: 'core', targetId: 'canonical' },
+    { candidateId: 'detail', disposition: 'supporting', targetId: 'canonical' },
+    { candidateId: 'unfiled', disposition: 'supporting', targetId: '' },
+    { candidateId: 'merge', disposition: 'merge', targetId: '' },
+    { candidateId: 'work', disposition: 'publish', targetId: '' }
+  ];
+  assert.deepEqual(normaliseRefereeDispositions(rows, [], { preserveUntargetedSupporting: true }), rows);
+});

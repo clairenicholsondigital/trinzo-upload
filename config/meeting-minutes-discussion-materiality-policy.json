@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "scope": "DISCUSSION_REFEREE only",
+  "baseActiveConfiguration": "5b5fb73a-f22b-4f35-b0ab-a089c8f5c3f4",
+  "replacements": [
+    {
+      "before": "For DISCUSSION_REFEREE core, supporting and merge require a valid targetId naming an existing discussion proposition. Do not invent targetId.",
+      "after": "For DISCUSSION_REFEREE core must target itself and merge must target a retained equivalent core. Supporting may target a retained core that it genuinely explains, or use targetId as an empty string when no suitable core is available. Never invent or force a targetId."
+    },
+    {
+      "before": "Shared subject plus compatible evidence or an explicit resolved outcome is sufficient to group them.",
+      "after": "Group only the same concrete proposition or its explicit resolution. Shared subject or compatible evidence alone is insufficient: independently material outcomes, current states, changes, limitations, risks and dependencies remain distinct even within one broad subject."
+    },
+    {
+      "before": "Classify the primary as core only when it adds a distinct decision, material conclusion, meaningful quantified fact or change, blocker, dependency, significant risk or unresolved requirement needing resolution. A new core row must pass this marginal-information test.",
+      "after": "Classify the primary as core when it adds a distinct decision, material conclusion, meaningful quantified fact or change, consequential current state or progress, operational capability or limitation, blocker, dependency, significant risk or unresolved requirement. A decision or unresolved question is not required for an independently material factual discussion point. For example, testing paused because a required fixture is unavailable is a reportable current state and blocker, not merely context. Changed capability, consequential progress and a current restriction can be material without a commitment or decision. Unchanged routine status, incidental process detail and historical context without a current consequence remain reject. A new core must add marginal information; do not turn every update into a separate core."
+    },
+    {
+      "before": "For DISCUSSION_REFEREE, core targetId must equal its own candidateId. supporting and merge targetId must name the retained core candidate. reject targetId must be an empty string. Do not use quotas or reject material content merely to reduce row count.",
+      "after": "For DISCUSSION_REFEREE, core targetId must equal its own candidateId. A merge must name the retained equivalent core. Supporting may name a retained core only when it explains the same concrete subject and proposition; otherwise targetId must be an empty string. A shared person, project, nearby source turn, broad topic label or general risk vocabulary is not a parent relationship. Never target a supporting candidate, form a target cycle, or use the supporting candidate itself as its parent. Reject targetId must be an empty string. Do not use quotas or reject material content merely to reduce row count.\n\nDISCUSSION INPUT INTERPRETATION: dispositionHint, priority and earlier model classifications are hypotheses to reassess against source evidence, not evidence of materiality or a quota. existingDiscussionTargets, when supplied, contains already retained core references available for placement only; do not classify or count them again and do not assume any is a suitable parent. In repairAttempt mode classify only the supplied expectedCandidateIds subset. If a substantive supporting explanation has no suitable available parent, preserve it as supporting with an empty targetId; do not force it onto an unrelated reference. Preserve all existing source, qualification, timing and action-boundary requirements."
+    },
+    {
+      "before": "When the same evidence contains both a substantive discussion outcome and an action, judge only the independently meaningful decision, rationale, risk, conclusion or unresolved question; reject the commitment itself.",
+      "after": "When the same evidence contains both a substantive discussion outcome and an action, judge only the independently meaningful decision, rationale, risk, conclusion or unresolved question; reject the commitment itself. Apply this boundary before judging materiality or choosing a topic: a clear plan, schedule, deadline or assignment is still future work, not a current-state update. A discussion_point recordType, subject-specific title or detailed explanation of the task never overrides this boundary. For example, an engineer will renew a certificate next month is a task and must be reject here; testing is currently paused because the certificate expired is an independently reportable factual blocker. An approved spending limit is a decision; the assignee who will make the purchase is an action. If the supplied candidate contains only the commitment, reject it rather than retaining it as core or supporting."
+    }
+  ]
+}
