@@ -1415,7 +1415,7 @@
     var listBar = discussion.length
       ? '<div class="discussion-list-bar"><label class="topic-headings-switch"><input type="checkbox" data-topic-headings-switch' + (showHeadings ? ' checked' : '') + '> Show topic titles in minutes</label>'
         + (discussion.length > 1 ? '<button class="secondary quiet compact" data-toggle-all-topics="' + (allCollapsed ? 'expand' : 'collapse') + '" type="button">' + (allCollapsed ? 'Expand all' : 'Collapse all') + '</button>' : '')
-        + (state.draft && state.draft.canRestoreCombinedDiscussion ? '<button class="secondary quiet compact" data-restore-combined-discussion type="button">Restore combined paragraphs</button>' : '')
+        + (state.draft && state.draft.canRestoreCombinedDiscussion ? '<button class="secondary quiet compact" data-restore-combined-discussion type="button">' + (state.draft.canRestorePairedDiscussionActions ? 'Restore original discussion and action wording' : 'Restore combined paragraphs') + '</button>' : '')
         + '</div>'
       : '';
     document.getElementById('discussionListBar').innerHTML = listBar;
@@ -2976,17 +2976,19 @@
   async function restoreCombinedDiscussion() {
     if (!state.draft || !state.draft.canRestoreCombinedDiscussion) return;
     try { await saveDraftNow(); } catch (error) { return setStatus(error.message, true, 'discussion'); }
-    setBusy(true, 'Restoring the original paragraphs...', 'discussion');
+    if (!state.draft.canRestoreCombinedDiscussion) return;
+    var pairedRestore = state.draft.canRestorePairedDiscussionActions;
+    setBusy(true, pairedRestore ? 'Restoring original discussion and action wording...' : 'Restoring the original paragraphs...', 'discussion');
     draftWritesInFlight += 1;
     try {
       var payload = await jsonRequest(draftUrl('/restore-combined-discussion'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ revision: state.draft.revision })
+        body: JSON.stringify({ revision: state.draft.revision, ...(pairedRestore ? { restorePairedActions: true } : {}) })
       });
       activeFinalEdit = null;
       endUndoGroup();
       adoptDraft(payload.draft);
-      setStatus('Original paragraphs restored.', false, 'discussion');
+      setStatus(pairedRestore ? 'Original discussion and action wording restored.' : 'Original paragraphs restored.', false, 'discussion');
     } catch (error) { setStatus(error.message, true, 'discussion'); }
     finally { setBusy(false); endDraftWrite(); }
   }
