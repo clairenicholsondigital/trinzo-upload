@@ -1968,8 +1968,9 @@ def selector_protocol_enabled() -> bool:
 
 
 def selector_diagnostic(event: str, **data: Any) -> None:
-    if selector_protocol_enabled():
-        print("STAGED_SELECTOR_DIAGNOSTIC " + json.dumps({"event": event, **data}), file=sys.stderr, flush=True)
+    if selector_protocol_enabled() or os.environ.get("STAGED_AGENT_SELECTOR_DIAGNOSTICS", "0") == "1":
+        with _SELECTOR_FAILURE_LOCK:
+            print("STAGED_SELECTOR_DIAGNOSTIC " + json.dumps({"event": event, **data}), file=sys.stderr, flush=True)
 
 
 def signal_selector_failure(error: Exception) -> None:
@@ -2006,8 +2007,8 @@ def retrieval_batch_decisions(batch: list[tuple[int, str]], guidance: str) -> di
             if selector_protocol_enabled():
                 schema = copy.deepcopy(schema)
                 schema["json_schema"]["schema"]["properties"]["decisions"]["items"]["properties"]["evidenceTurns"]["minItems"] = 1
-            protocol = ('\nReturn ONLY {"decisions":[{"candidateNumber":1,"decision":"KEEP or REMOVE",'
-                '"rejectionCode":"NONE or an allowed removal code","evidenceTurns":[1]}]}. '
+            protocol = ('\nReturn ONLY {"decisions":[{"candidateNumber":1,"decision":"KEEP",'
+                '"rejectionCode":"NONE","evidenceTurns":[1]}]}. '
                 'decision is ONLY KEEP or REMOVE, never COMMITTED, REQUIRED, PROPOSED or DISCUSSION_ONLY. '
                 'Every decision needs at least one supplied original transcript turn number. '
                 'Candidate numbers are local to this request. ' + feedback) if selector_protocol_enabled() else ''

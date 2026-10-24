@@ -61,10 +61,16 @@ function runJson(script, args, timeoutMs, extraEnv = {}) {
     child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      const fail = error => {
+        if (signalToken) console.warn(JSON.stringify({event:'meeting_agent_private_selector_failure',
+          runId:crypto.createHash('sha256').update(signalToken).digest('hex').slice(0,16),
+          code:error.code || 'STAGED_PROCESS_FAILED',missingNumbers:terminalFailure?.missingNumbers,diagnostics}));
+        reject(error);
+      };
       if (terminalFailure) {
         const error = new Error('Private staged selector failed before completing both source checks.');
         error.code = 'STAGED_SELECTOR_FAILED'; error.retryable = true; error.details = terminalFailure; error.diagnostics = diagnostics;
-        reject(error); return;
+        fail(error); return;
       }
       if (timedOut) {
         const error = new Error(`Staged MiniLM/Trooper process timed out after ${timeoutMs}ms.`);
@@ -72,14 +78,14 @@ function runJson(script, args, timeoutMs, extraEnv = {}) {
         error.diagnostics = diagnostics;
         error.retryable = true;
         error.details = stderr.slice(0, 2000);
-        reject(error);
+        fail(error);
         return;
       }
       if (code !== 0) {
         const error = new Error(`Staged MiniLM/Trooper process failed (${code ?? signal}).`);
         error.diagnostics = diagnostics;
         error.details = stderr.slice(0, 2000);
-        reject(error);
+        fail(error);
         return;
       }
       try { resolve(JSON.parse(stdout)); } catch {
@@ -217,7 +223,8 @@ async function generatePreparedTrooperStage(stage, preparedTranscriptText, optio
       Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000),
       { ...(options.shortRepairConcurrency === 3 ? { STAGED_ACTION_SHORT_REPAIR_CONCURRENCY: '3' } : {}),
         ...(options.selectorBatchConcurrency === 2 ? { STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY: '2' } : {}),
-        ...(stage === 'actions' && options.selectorProtocol === true ? { STAGED_AGENT_SELECTOR_PROTOCOL: '1', STAGED_AGENT_SELECTOR_FAILURE_TOKEN: crypto.randomBytes(24).toString('hex') } : {}) });
+        ...(stage === 'actions' && options.selectorProtocol === true ? { STAGED_AGENT_SELECTOR_PROTOCOL: '1' } : {}),
+        ...(stage === 'actions' && (options.selectorFailureSignal === true || options.selectorProtocol === true) ? { STAGED_AGENT_SELECTOR_DIAGNOSTICS: '1', STAGED_AGENT_SELECTOR_FAILURE_TOKEN: crypto.randomBytes(24).toString('hex') } : {}) });
     return stagedStageResult(stage, result, {
       source: 'prepared_minilm_v3',
       preparedLength: preparedText.length,

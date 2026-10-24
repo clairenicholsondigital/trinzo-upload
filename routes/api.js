@@ -11164,7 +11164,8 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
     shortRepairConcurrency: 3,
     selectorBatchConcurrency: 2,
-    selectorProtocol: !/^(?:0|false)$/i.test(process.env.MEETING_MINUTES_AGENT_SELECTOR_PROTOCOL_V1 || '1'),
+    selectorProtocol: /^(?:1|true)$/i.test(process.env.MEETING_MINUTES_AGENT_SELECTOR_PROTOCOL_V1 || '0'),
+    selectorFailureSignal: true,
     // Long transcripts routinely finish just beyond the previous 150-second
     // boundary. This work is private and prewarmed, so allow it to finish and
     // populate the cache instead of killing useful work near completion.
