@@ -306,7 +306,7 @@ async function separate(discussion, actions, sourceUnits, reviewFlags = [], opti
       selected=proposals(packet,reply);
       if(!selected){audit.rejectedAttempts.push({stage:'proposal',proposal:clone(reply),reason:'invalid_proposal'});if(attempt===0)continue;return unchanged('invalid_proposal');}
       if(!selected.length)return unchanged('proposal_declined');
-      if(attempt&&C.hash(reply.results)===C.hash(audit.rejectedAttempts[0].proposal.results))return unchanged('unchanged_rejected_proposal');
+      if(attempt&&Array.isArray(audit.rejectedAttempts[0]?.proposal?.results)&&C.hash(reply.results)===C.hash(audit.rejectedAttempts[0].proposal.results))return unchanged('unchanged_rejected_proposal');
       const verification=await options.verify(verificationPrompt(packet,selected),clone(packet),clone(selected));
       review=verified(packet,selected,verification);
       if(!review)return unchanged('invalid_verification');

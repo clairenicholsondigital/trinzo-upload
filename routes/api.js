@@ -5,6 +5,7 @@ const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRe
 const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
 const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
 const discussionActionSeparation = require('../utils/canonicalMinutes/discussionActionSeparation');
+const minimalFidelityRepair = require('../utils/meetingMinutesMinimalFidelityRepair');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
@@ -11159,6 +11160,7 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     .join('\n\n');
   const payload = await generatePreparedTrooperStage(requestedStage, stagedTranscript, {
     meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
+    shortRepairConcurrency: 3,
     // Long transcripts routinely finish just beyond the previous 150-second
     // boundary. This work is private and prewarmed, so allow it to finish and
     // populate the cache instead of killing useful work near completion.
@@ -11675,7 +11677,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -15799,7 +15801,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   let refereeFailureAudit = draft.qualityState?.[stage]?.refereeFailureAudit;
   const refereeAuditRunId = crypto.randomUUID();
   const stageStartedAt = Date.now();
-  const stageDeadlineAt = stageStartedAt + Math.max(180000, Number(process.env.MEETING_MINUTES_AGENT_STAGE_TIMEOUT_MS || 360000));
+  let stageDeadlineAt = stageStartedAt + Math.max(180000, Number(process.env.MEETING_MINUTES_AGENT_STAGE_TIMEOUT_MS || 360000));
   const progress = async (pass, message, activeTimings = []) => {
     const progressProvenance = [
       ...passProvenance,
@@ -16780,6 +16782,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     let fidelityFlags = [];
     let fidelityWithheldRows = [];
     let fidelityReview = { expected: 0, received: 0, complete: false, disabled: true };
+    let minimalFidelityRepairAudit = null;
     if (correctnessChecksEnabled()) {
       // Rows citing an assumption and its correction are rare; those that do
       // not carry the correction's content leave the primary rows.
@@ -16848,11 +16851,23 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         { optional: true, responseKind: 'correction_check', maxAttempts: 2, candidateCount: batch.length,
           validateResult: result => meetingAgentReviewPacketError(batch, result, ['supported', 'corrected', 'uncertain']) }
       )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
-      const fidelityChecked = applyDiscussionFidelityResults(finalDiscussion, fidelityItems, fidelityResults);
+      const minimalRepairEnabled = !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_MINIMAL_FIDELITY_REPAIR_V1 || '1'));
+      const minimalRepairStartedAt = Date.now();
+      const fidelityChecked = !minimalRepairEnabled
+        ? applyDiscussionFidelityResults(finalDiscussion, fidelityItems, fidelityResults)
+        : await minimalFidelityRepair.repair(finalDiscussion, fidelityItems, fidelityResults, {
+          request: (part, prompt) => call('critic-discussion-minimal-fidelity-' + part, prompt, {
+            optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,
+            independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: 1
+          })
+        });
+      // This optional repair must not consume the remaining time reserved for
+      // existing placement, duplication and source checks later in the stage.
+      if (minimalRepairEnabled) stageDeadlineAt += Date.now() - minimalRepairStartedAt;
       finalDiscussion = fidelityChecked.discussion;
       fidelityFlags = fidelityChecked.flags;
       fidelityWithheldRows = fidelityChecked.withheld || [];
-      fidelityReview = fidelityChecked.accounting;
+      ({minimalCorrectionRepair:minimalFidelityRepairAudit,...fidelityReview}=fidelityChecked.accounting);
       console.log(JSON.stringify({
         event: 'meeting_agent_discussion_fidelity', journeyId: draft.draftId,
         checked: fidelityChecked.checked, corrected: fidelityChecked.corrected, uncertain: fidelityChecked.uncertain,
@@ -17201,6 +17216,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
           fidelityReview,
+          ...(minimalFidelityRepairAudit ? {minimalFidelityRepair:minimalFidelityRepairAudit} : {}),
           materialDeadlinePromotionCount: preCapMaterialTiming.promoted + materialDeadlines.promoted,
           topicArrangementVersion: topicArrangement.version,
           topicArrangement,

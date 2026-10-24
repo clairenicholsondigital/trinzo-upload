@@ -1015,3 +1015,62 @@ class SelectorBatchingTests(unittest.TestCase):
         big = [(n, "y" * 9000) for n in range(1, 6)]
         self.assertEqual([len(b) for b in PIPELINE.selector_batches(big)], [1, 1, 1, 1, 1])
         self.assertEqual(PIPELINE.selector_batches([]), [])
+
+
+class AgentShortRepairConcurrencyTests(unittest.TestCase):
+    def test_parallel_repair_preserves_requests_order_numbering_and_metadata(self):
+        import threading
+        import re
+        actions = [{"owner": "Reviewer", "action": "send", "evidenceIds": ["turn_1"], "sample": i % 3}
+                   for i in range(36)]
+        prompts = []
+        def reply(prompt, _tokens, _schema):
+            prompts.append(prompt)
+            return {"repairs": [{"candidateNumber": int(n), "action": f"Send document {n} to the reviewer"}
+                                for n in re.findall(r"(?m)^(\d+)\. Owner:", prompt)]}
+        with mock.patch.object(PIPELINE, "call_trooper", reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SHORT_REPAIR_CONCURRENCY": "1"}):
+            serial = PIPELINE.repair_short_actions(actions, ["Reviewer: Send the document."])
+        expected_prompts = sorted(prompts)
+        prompts.clear()
+        barrier = threading.Barrier(3, timeout=3)
+        lock = threading.Lock()
+        active = 0
+        maximum = 0
+        def concurrent_reply(prompt, tokens, schema):
+            nonlocal active, maximum
+            with lock:
+                active += 1
+                maximum = max(maximum, active)
+            try:
+                barrier.wait()
+                return reply(prompt, tokens, schema)
+            finally:
+                with lock:
+                    active -= 1
+        with mock.patch.object(PIPELINE, "call_trooper", concurrent_reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SHORT_REPAIR_CONCURRENCY": "3"}):
+            parallel = PIPELINE.repair_short_actions(actions, ["Reviewer: Send the document."])
+        self.assertEqual(maximum, 3)
+        self.assertEqual(parallel, serial)
+        self.assertEqual(sorted(prompts), expected_prompts)
+        self.assertEqual([a["sample"] for a in parallel], [a["sample"] for a in actions])
+
+    def test_parallel_batch_failure_keeps_all_originals(self):
+        actions = [{"owner": "Reviewer", "action": "send", "evidenceIds": ["turn_1"]} for _ in range(25)]
+        def fail(_prompt, _tokens, _schema):
+            raise RuntimeError("provider unavailable")
+        with mock.patch.object(PIPELINE, "call_trooper", fail), mock.patch.dict(os.environ, {"STAGED_ACTION_SHORT_REPAIR_CONCURRENCY": "3"}):
+            self.assertIs(PIPELINE.repair_short_actions(actions, ["Reviewer: Send the document."]), actions)
+
+    def test_parallel_batches_cannot_overwrite_another_batchs_candidate(self):
+        import re
+        actions = [{"owner": "Reviewer", "action": "send", "evidenceIds": ["turn_1"]} for _ in range(25)]
+        def reply(prompt, _tokens, _schema):
+            numbers = [int(n) for n in re.findall(r"(?m)^(\d+)\. Owner:", prompt)]
+            rows = [{"candidateNumber": n, "action": f"Send document {n} to the reviewer"} for n in numbers]
+            if numbers[0] != 1:
+                rows.append({"candidateNumber": 1, "action": "Overwrite a different candidate wrongly"})
+            return {"repairs": rows}
+        with mock.patch.object(PIPELINE, "call_trooper", reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SHORT_REPAIR_CONCURRENCY": "3"}):
+            result = PIPELINE.repair_short_actions(actions, ["Reviewer: Send the document."])
+        self.assertEqual(result[0]["action"], "Send document 1 to the reviewer")
+        self.assertEqual(len(result), 25)
