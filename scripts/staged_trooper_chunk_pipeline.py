@@ -1629,13 +1629,30 @@ def repair_short_actions(actions: list[dict[str, Any]], turns: list[str]) -> lis
         cited = "\n".join(f"  Turn {turn}: {turns[turn - 1]}" for turn in evidence_turn_numbers(action, len(turns))[:6])
         fragments.append(f"{number}. Owner: {action.get('owner', 'Not stated')}\nFragment: {action.get('action', '')}\nCited turns:\n{cited}")
     repaired: dict[int, str] = {}
+    batches = [(start, fragments[start:start + 12]) for start in range(0, len(fragments), 12)]
     try:
-        for start in range(0, len(fragments), 12):
-            batch = fragments[start:start + 12]
-            result = call_trooper(SHORT_ACTION_REPAIR_PROMPT.format(fragments="\n\n".join(batch)), 1500, SHORT_ACTION_REPAIR_SCHEMA)
+        concurrency = max(1, min(3, int(os.environ.get("STAGED_ACTION_SHORT_REPAIR_CONCURRENCY", "1"))))
+    except ValueError:
+        concurrency = 1
+
+    def analyse(batch: tuple[int, list[str]]) -> tuple[int, int, dict[str, Any]]:
+        start, fragments_batch = batch
+        result = call_trooper(SHORT_ACTION_REPAIR_PROMPT.format(fragments="\n\n".join(fragments_batch)), 1500, SHORT_ACTION_REPAIR_SCHEMA)
+        return start, len(fragments_batch), result
+
+    try:
+        if concurrency == 1 or len(batches) == 1:
+            results = [analyse(batch) for batch in batches]
+        else:
+            # Only the Agent's private prepared-transcript caller opts in.
+            # Requests still use the existing shared in-process semaphore.
+            # map retains input order, including global candidate numbering.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(concurrency, len(batches))) as pool:
+                results = list(pool.map(analyse, batches))
+        for start, size, result in results:
             for row in result.get("repairs", []) if isinstance(result.get("repairs"), list) else []:
                 number = row.get("candidateNumber") if isinstance(row, dict) else None
-                if isinstance(number, int) and start + 1 <= number <= start + len(batch):
+                if isinstance(number, int) and start + 1 <= number <= start + size:
                     repaired[number] = clean(row.get("action"))
     except Exception:
         return actions

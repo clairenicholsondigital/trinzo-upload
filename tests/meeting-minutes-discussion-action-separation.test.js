@@ -149,3 +149,10 @@ test('indirect reported contact planning is nominated generically but factual di
  f.discussion[0].points[0].text='Morgan Taylor and Priya Shah discuss the calibration codes and documentation.';
  assert.equal(S.prepare(f.discussion,f.actions,f.sourceUnits,f.reviewFlags).candidates.length,0);
 });
+
+for(const firstReply of [{},null])test('a malformed or unavailable first proposal can receive the one bounded repair: '+JSON.stringify(firstReply),async()=>{
+ const f=fixture(),propose=f.options.propose;let calls=0;
+ f.options.propose=async(...args)=>++calls===1?firstReply:propose(...args);
+ const result=await run(f);assert.equal(result.audit.applied,true);assert.equal(calls,2);
+ assert.equal(result.audit.rejectedAttempts[0].reason,'invalid_proposal');
+});

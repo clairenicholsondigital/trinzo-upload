@@ -42,4 +42,5 @@ function correctionMeaningIssue(original, corrected, sourceUnits = []) {
   return { sourceIds: [...new Set(sourceIds)] };
 }
 
-module.exports = { correctionMeaningIssue };
+const commitmentClauses = value => clauses(value).filter(clause => new RegExp(assertions.source, 'i').test(clause));
+module.exports = { correctionMeaningIssue, commitmentClauses };

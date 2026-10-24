@@ -171,7 +171,8 @@ async function generatePreparedTrooperStage(stage, preparedTranscriptText, optio
       scriptArgs.push('--meeting-type', String(options.meetingType).trim());
     }
     const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
-      Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000));
+      Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000),
+      options.shortRepairConcurrency === 3 ? { STAGED_ACTION_SHORT_REPAIR_CONCURRENCY: '3' } : {});
     return stagedStageResult(stage, result, {
       source: 'prepared_minilm_v3',
       preparedLength: preparedText.length,
