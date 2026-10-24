@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { filingProvenance } = require('./meetingMinutesFilingProvenance');
+const { filingProvenance, generatedFilingRecord, filingOriginsFit } = require('./meetingMinutesFilingProvenance');
 const { orderedEntries } = require('../public/meeting-minutes-filing-order');
 
 // This is application review state, not part of the Microsoft response schema.
@@ -68,7 +68,7 @@ function normalizeUnassignedSupportingDetails(values = []) {
           ...(item.filingOrigins || [origin(item)])].map(value => [JSON.stringify(value), value])).values()];
         const completeHistory = new Set([...(old.mergedFromIds || []), ...(item.mergedFromIds || [])]);
         completeHistory.delete(id);
-        if (origins.length > 1000 || completeHistory.size > 1000) { rows.push(item); continue; }
+        if (!filingOriginsFit(origins) || completeHistory.size > 1000) { rows.push(item); continue; }
         old.filingOrigins = origins;
       }
       if (item.filingMergeProtected) old.filingMergeProtected = true;
@@ -102,7 +102,7 @@ function consolidateExactFilingDuplicates(rows) {
       const history = [...new Set([...(old.mergedFromIds || []), row.id, ...(row.mergedFromIds || [])])]
         .filter(id => id !== old.id);
       const combined = [...new Map([...origins(old), ...origins(row)].map(value => [JSON.stringify(value), value])).values()];
-      if (history.length <= 1000 && combined.length <= 1000) {
+      if (history.length <= 1000 && filingOriginsFit(combined)) {
         old.mergedFromIds = history;
         old.filingOrigins = combined;
         continue;
@@ -118,9 +118,22 @@ function collectUnassignedSupportingDetails(record, context = {}) {
   const retained = [];
   const visit = value => {
     if (!value || typeof value !== 'object') return;
-    retained.push(...normalizeUnassignedSupportingDetails([{ ...value,
-      originalTopic: context.originalTopic || value.originalTopic,
-      placementReason: context.placementReason || value.placementReason }]));
+    const originalTopic = context.originalTopic || value.originalTopic;
+    const placementReason = context.placementReason || value.placementReason;
+    let filingRecord = value;
+    // Only the internal generated handoff can archive a recognized discovery
+    // leaf/envelope and project its filing representation. Never unlock an
+    // existing protected row or discard unknown/reviewer/nested metadata.
+    if (generatedFilingRecord(value) && (value.primaryEvidenceIds !== undefined
+      || value.discoveryDisposition !== undefined || value.candidateId !== undefined)) {
+      const origin = { id: value.id, ...(originalTopic ? { originalTopic } : {}),
+        ...(placementReason ? { placementReason } : {}), generatedRecord: JSON.parse(JSON.stringify(value)) };
+      if (!filingProvenance({ filingOrigins: [origin] }).filingMergeProtected
+        && filingOriginsFit([origin])) filingRecord = { id: value.id, text: value.text,
+        evidenceIds: value.evidenceIds, ...(value.reviewFlagIds ? { reviewFlagIds: value.reviewFlagIds } : {}),
+        filingOrigins: [origin] };
+    }
+    retained.push(...normalizeUnassignedSupportingDetails([{ ...filingRecord, originalTopic, placementReason }]));
     for (const child of Array.isArray(value.supportingDetails) ? value.supportingDetails : []) visit(child);
   };
   visit(record);

@@ -211,8 +211,9 @@ function normaliseDatePhrasesDeep(value) {
     if (value instanceof Date) return value;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return value;
+    // Filing origins are historical records, never presentation prose.
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
-      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' ? item : normaliseDatePhrasesDeep(item)]));
+      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' || key === 'filingOrigins' ? item : normaliseDatePhrasesDeep(item)]));
   }
   return value;
 }
