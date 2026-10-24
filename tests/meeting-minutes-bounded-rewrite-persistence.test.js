@@ -209,3 +209,82 @@ test('a literal save preserves a verified ten-source paragraph and all recoverab
   assert.equal((await request('post', '/restore-combined-discussion')).statusCode, 200);
   assert.deepEqual(saved.discussion, original);
 });
+
+async function resetExistingSurvivor() {
+  await reset();
+  saved.sourceUnits = V.normaliseSourceUnits(Array.from({ length: 12 }, (_, i) => ({ id: `T${String(i + 1).padStart(4, '0')}`,
+    speaker: 'Morgan Lee', text: i === 9 ? 'The maintenance interval was reduced as mitigation.'
+      : 'The seal fault caused alarms and the maintenance interval was reduced as mitigation, with a documentation check outstanding.' })));
+  saved.rawTranscript = saved.sourceUnits.map(s => s.text).join(' ');
+  saved.preparedTranscript = V.preparedTranscriptFromUnits(saved.sourceUnits);
+  const evidenceIds = saved.sourceUnits.slice(0, 8).map(s => s.id);
+  original = [{ topic: 'Maintenance', points: [
+    { id: 'fuller', text: 'The seal fault caused alarms and the maintenance interval was reduced as mitigation, with a documentation check outstanding.',
+      evidenceIds, primaryEvidenceIds: evidenceIds, reviewFlagIds: [], supportingDetails: [
+        { id: 'detail', text: 'An earlier review also covered the seal fault.', evidenceIds: ['T0009'], reviewFlagIds: ['detail-warning'], originalTopic: 'Maintenance' }
+      ] },
+    { id: 'short', text: 'The maintenance interval was reduced.', evidenceIds: ['T0010'], primaryEvidenceIds: ['T0010'], reviewFlagIds: [], supportingDetails: [] }
+  ], decisions: [], openQuestions: [] }];
+  const result = await C.consolidate(original, saved.sourceUnits, {
+    nominationMode: 'directional',
+    assess: async (_, p) => ({ version: C.VERSION, packetHash: p.packetHash, results: p.candidates.map(c => ({ id: c.id, relation: 'covered', survivorId: 'fuller' })) }),
+    verify: async (_, p, selected) => ({ version: C.VERSION, packetHash: p.packetHash, results: selected.map(c => ({ id: c.id, survivorId: c.survivorId,
+      checks: c.rows.flatMap(r => r.clauses.map((_, clauseIndex) => ({ recordId: r.record.id, clauseIndex, supported: true, retained: true, sourceIds: ['T0010'] }))) })) })
+  });
+  assert.equal(result.audit.applied, true);
+  saved.discussion = result.discussion; saved.qualityState.discussion.claimConsolidation = result.audit;
+  saved.reviewFlags = [{ id: 'detail-warning', kind: 'timing', status: 'open', correctionNote: '', message: 'Review the supporting analysis.', evidenceIds: ['T0009'] }];
+}
+test('unchanged owned save/reopen preserves nine-source existing survivor, child warning and exact restoration', async () => {
+  await resetExistingSurvivor();const expected = copy(saved.discussion), archive = copy(saved.qualityState.discussion.claimConsolidation);
+  for (const includeDiscussion of [true, false]) {
+    const before = (await request('get')).body.draft;
+    assert.equal(before.canRestoreCombinedDiscussion, true);
+    const res = await request('patch', '', { ...(includeDiscussion ? { discussion: before.discussion } : {}), qualityState: { discussion: { claimConsolidation: { forged: true } } } });
+    assert.equal(res.statusCode, 200); assert.deepEqual(saved.discussion, expected);
+    assert.deepEqual(saved.qualityState.discussion.claimConsolidation, archive);
+    assert.ok(saved.discussion[0].points[0].evidenceIds.includes('T0010'));
+    assert.deepEqual(saved.discussion[0].points[0].supportingDetails, expected[0].points[0].supportingDetails);
+    assert.equal((await request('get')).body.draft.canRestoreCombinedDiscussion, true);
+  }
+  for (const includeEvidence of [false, true]) {
+    const draft = api.meetingAgentDraftPayload(saved);
+    const zip = await JSZip.loadAsync(await generateMeetingMinutesAgentDocx(api.meetingAgentDraftForDocx(draft), includeEvidence));
+    const xml = await zip.file('word/document.xml').async('string');
+    assert.ok(xml.includes(expected[0].points[0].text));
+    assert.equal(xml.includes(expected[0].points[0].supportingDetails[0].text), includeEvidence, 'supporting context follows the existing evidence-appendix option');
+    assert.ok(!xml.includes('The maintenance interval was reduced.</w:t>'));
+    assert.ok(!xml.includes('discussion-directional-coverage'));
+    const pdf = await generateStagedMinutesPdf(api.meetingAgentDraftForPdf(draft, includeEvidence));
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-'); assert.ok(pdf.length > 1000);
+  }
+  const restored = await request('post', '/restore-combined-discussion');
+  assert.equal(restored.statusCode, 200); assert.deepEqual(saved.discussion, original);
+});
+test('unchanged server-created legacy existing-survivor proof is preserved too', async () => {
+  await resetExistingSurvivor();delete saved.qualityState.discussion.claimConsolidation.method;
+  const expected = copy(saved.discussion);
+  const before = (await request('get')).body.draft;
+  assert.equal((await request('patch', '', { discussion: before.discussion })).statusCode, 200);
+  assert.deepEqual(saved.discussion, expected);assert.equal(C.canRestore(saved.discussion,saved.sourceUnits,saved.qualityState.discussion.claimConsolidation),true);
+});
+for (const [name, change, body] of [
+  ['changed wording', () => {}, before => { const rows=copy(before.discussion);rows[0].points[0].text='Reviewer changed the maintenance interpretation.';return {discussion:rows}; }],
+  ['changed date', () => {}, () => ({details:{...saved.details,meetingDate:'2026-10-22'}})],
+  ['changed source', () => { saved.sourceUnits[0].text='Source content changed.'; }, before => ({discussion:before.discussion})],
+  ['malformed archive', () => { saved.qualityState.discussion.claimConsolidation.originalHash='invalid'; }, before => ({discussion:before.discussion})],
+]) test('save preservation cannot retain stale proof: '+name, async () => {
+  await resetExistingSurvivor();change();const before=(await request('get')).body.draft;
+  const res=await request('patch','',body(before));assert.equal(res.statusCode,200);
+  assert.equal((await request('get')).body.draft.canRestoreCombinedDiscussion,false);
+  if(name==='changed wording') assert.equal(saved.discussion[0].points[0].text,'Reviewer changed the maintenance interpretation.');
+});
+test('another user cannot save a trusted existing-survivor proof', async () => {
+  await resetExistingSurvivor();const before=copy(saved);const r=await request('patch','',{},'other-user');assert.equal(r.statusCode,404);assert.equal(writes,0);assert.deepEqual(saved,before);
+});
+test('missing original in a server archive does not turn an ordinary save into a server failure', async () => {
+  await resetExistingSurvivor();delete saved.qualityState.discussion.claimConsolidation.original;
+  const before=await request('get');assert.equal(before.statusCode,200);assert.equal(before.body.draft.canRestoreCombinedDiscussion,false);
+  assert.equal((await request('patch','',{discussion:before.body.draft.discussion})).statusCode,200);
+  assert.equal((await request('get')).body.draft.canRestoreCombinedDiscussion,false);
+});

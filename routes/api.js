@@ -3,6 +3,7 @@ const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConso
 const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
+const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
@@ -17128,6 +17129,17 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       });
       claimConsolidation = discussionOwnParent.combine(claimConsolidation, ownParent, draft.sourceUnits);
     }
+    // One unchanged existing survivor at most. This does not enable the broad
+    // semantic merger or loosen its guards. Any provider veto keeps both rows.
+    if (boundedRewrite && !/^(?:0|false|no|off)$/i.test(String(
+      process.env.MEETING_MINUTES_AGENT_DISCUSSION_DIRECTIONAL_COVERAGE_V1 || '1'))) {
+      const directional = await discussionClaims.consolidate(claimConsolidation.discussion, draft.sourceUnits, {
+        nominationMode: 'directional',
+        assess: (prompt, packet) => rewriteCall('directional-proposal', prompt, packet),
+        verify: (prompt, packet) => rewriteCall('directional-verification', prompt, packet)
+      });
+      claimConsolidation = discussionDirectional.combine(claimConsolidation, directional, draft.sourceUnits);
+    }
     finalDiscussion = claimConsolidation.discussion;
     const finalPublication = discussionPublicationCoverage(finalDiscussion, refereeDiscussionDispositions, ensemble,
       { unassignedSupportingDetails: retainedUnassignedSupportingDetails, withheldRows: fidelityWithheldRows });
@@ -18405,14 +18417,13 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
     const discussionProof = draft.qualityState?.discussion?.claimConsolidation;
-    if (!dateChanged && discussionProof?.method === discussionRewrite.VERSION
-      && discussionProof.ledger?.some(entry => entry.nominationKind === 'partial_overlap'
-        && entry.citationAllocation?.method === 'independently_verified_witnesses')
+    if (!dateChanged && !dateConfirmedByReviewer
       && discussionClaims.canRestore(draft.discussion, draft.sourceUnits, discussionProof)
       && (!Array.isArray(req.body?.discussion)
         || discussionClaims.hash(req.body.discussion) === discussionClaims.hash(publishedBeforeSave.discussion))) {
+      // The proof comes only from the owned server draft, never the request.
       // An unchanged save is not another source judgement. Keep the verified
-      // rewrite/citations and restoration hash together, including paragraphs
+      // existing survivor/rewrite and restoration hash together, including paragraphs
       // whose complete proof needs more than the lexical picker's eight refs.
       normalised.discussion = structuredClone(draft.discussion);
     }

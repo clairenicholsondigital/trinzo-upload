@@ -152,18 +152,26 @@ function verified(packet, proposed, response) {
   return accepted;
 }
 async function consolidate(discussion, sourceUnits, options = {}) {
-  const original = clone(discussion), packet = await prepare(original, sourceUnits, options);
+  const directional = options.nominationMode === 'directional';
+  const original = clone(discussion), packet = directional
+    ? require('./discussionDirectionalCoverage').prepare(original, sourceUnits, options)
+    : await prepare(original, sourceUnits, options);
   const audit = { version: VERSION, inputHash: packet.inputHash, sourceHash: packet.sourceHash,
+    ...(directional ? { method: require('./discussionDirectionalCoverage').VERSION } : {}),
     original: clone(original), packetHash: packet.packetHash, candidates: packet.candidates.length, ledger: [], applied: false };
   const unchanged = reason => ({ discussion: clone(original), audit: { ...audit, reason } });
   if (!packet.candidates.length) return unchanged('no_candidates');
   if (typeof options.assess !== 'function' || typeof options.verify !== 'function') return unchanged('assessment_unavailable');
   let selected, approved;
   try {
-    selected = proposals(packet, await options.assess(proposalPrompt(packet), packet));
+    const assessment = await options.assess(proposalPrompt(packet), packet);
+    if (directional && !require('./discussionDirectionalCoverage').responseShape(assessment, 'proposal')) return unchanged('invalid_assessment');
+    selected = proposals(packet, assessment);
     if (!selected) return unchanged('invalid_assessment');
     if (!selected.length) return unchanged('no_proved_coverage');
-    approved = verified(packet, selected, await options.verify(verificationPrompt(packet, selected), packet, selected));
+    const verification = await options.verify(verificationPrompt(packet, selected), packet, selected);
+    if (directional && !require('./discussionDirectionalCoverage').responseShape(verification, 'verification')) return unchanged('invalid_verification');
+    approved = verified(packet, selected, verification);
     if (!approved) return unchanged('invalid_verification');
   } catch { return unchanged('assessment_failed'); }
   if (hash(discussion) !== packet.inputHash || hash(sourceUnits) !== packet.sourceHash) return unchanged('stale_input');
@@ -193,13 +201,15 @@ async function consolidate(discussion, sourceUnits, options = {}) {
   return { discussion: result, audit };
 }
 function canRestore(discussion, sourceUnits, audit) {
-  return audit?.version === VERSION && audit.applied === true && audit.ledger?.length > 0
+  return Array.isArray(discussion) && Array.isArray(sourceUnits)
+    && audit?.version === VERSION && audit.applied === true
+    && Array.isArray(audit.original) && Array.isArray(audit.ledger) && audit.ledger.length > 0
     && audit.sourceHash === hash(sourceUnits) && audit.originalHash === hash(audit.original)
     && Array.isArray(audit.affectedTopics) && audit.affectedTopics.length > 0
-    && new Set(audit.affectedTopics.map(topic => topic.index)).size === audit.affectedTopics.length
-    && audit.affectedTopics.every(topic => Number.isInteger(topic.index) && topic.index >= 0
+    && audit.affectedTopics.every(topic => topic && Number.isInteger(topic.index) && topic.index >= 0
       && discussion[topic.index] && audit.original[topic.index]
-      && hash(discussion[topic.index]) === topic.finalHash);
+      && hash(discussion[topic.index]) === topic.finalHash)
+    && new Set(audit.affectedTopics.map(topic => topic.index)).size === audit.affectedTopics.length;
 }
 function restore(discussion, sourceUnits, audit) {
   if (!canRestore(discussion, sourceUnits, audit)) return null;
