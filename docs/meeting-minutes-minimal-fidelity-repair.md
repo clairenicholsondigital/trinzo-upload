@@ -71,3 +71,14 @@ first proposal without `results` could make the duplicate-veto comparison hash
 `undefined`, preventing a valid second proposal from being checked. The fix only
 runs that comparison when the original results array exists; semantic vetoes and
 all admission checks remain unchanged.
+
+## Independent selector batches
+
+The remaining profile delay was inside each selector's sequence of independent
+batches. The Agent now also opts into at most two concurrent batches within each
+of its two independent checks. Both forward and reverse checks, their batch
+membership, prompts, per-batch retries, local/global candidate mapping and strict
+consensus remain unchanged. Ordered results are combined only after every batch
+succeeds; an omitted/invalid result still rejects that check. At most four selector
+requests overlap, under the existing request semaphore. Other callers retain the
+sequential batch default. No sample, source check or deadline is removed.
