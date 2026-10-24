@@ -1954,45 +1954,61 @@ def selector_batches(blocks: list[tuple[int, str]]) -> list[list[tuple[int, str]
     return batches
 
 
-def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]] | None:
+def retrieval_batch_decisions(batch: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]]:
+    expected = {number for number, _ in batch}
+    by_number = dict(batch)
+    returned: dict[int, dict[str, Any]] = {}
+    last_error = ""
+    for attempt in range(4):
+        remaining = expected - set(returned)
+        global_numbers = sorted(remaining)
+        local_to_global = {local: number for local, number in enumerate(global_numbers, 1)}
+        request_blocks = [
+            re.sub(r"^\d+\.", f"{local}.", by_number[number], count=1)
+            for local, number in local_to_global.items()
+        ]
+        try:
+            result = call_trooper(retrieval_selector_prompt(
+                guidance, "\n\n".join(request_blocks)),
+                1600, RETRIEVAL_SELECTOR_SCHEMA)
+            last_error = ""
+        except Exception as error:
+            result = {}
+            last_error = clean(error)
+        candidate_rows = {}
+        for row in result.get("decisions", []):
+            normalised = normalise_retrieval_decision(row, set(local_to_global))
+            if normalised is None:
+                continue
+            global_number = local_to_global[normalised["candidateNumber"]]
+            candidate_rows[global_number] = {**normalised, "candidateNumber": global_number}
+        returned.update(candidate_rows)
+        if set(returned) == expected:
+            break
+        if attempt < 3:
+            time.sleep(0.25 + random.uniform(0, 0.25))
+    if set(returned) != expected:
+        missing = ",".join(str(number) for number in sorted(expected - set(returned)))
+        detail = f" ({last_error})" if last_error else ""
+        raise RuntimeError(f"Selector batch omitted candidate numbers: {missing}{detail}")
+    return returned
+
+
+def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]]:
+    batches = selector_batches(blocks)
+    try:
+        concurrency = max(1, min(2, int(os.environ.get("STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY", "1"))))
+    except ValueError:
+        concurrency = 1
     decisions: dict[int, dict[str, Any]] = {}
-    for batch in selector_batches(blocks):
-        expected = {number for number, _ in batch}
-        by_number = dict(batch)
-        returned: dict[int, dict[str, Any]] = {}
-        last_error = ""
-        for attempt in range(4):
-            remaining = expected - set(returned)
-            global_numbers = sorted(remaining)
-            local_to_global = {local: number for local, number in enumerate(global_numbers, 1)}
-            request_blocks = [
-                re.sub(r"^\d+\.", f"{local}.", by_number[number], count=1)
-                for local, number in local_to_global.items()
-            ]
-            try:
-                result = call_trooper(retrieval_selector_prompt(
-                    guidance, "\n\n".join(request_blocks)),
-                    1600, RETRIEVAL_SELECTOR_SCHEMA)
-                last_error = ""
-            except Exception as error:
-                result = {}
-                last_error = clean(error)
-            candidate_rows = {}
-            for row in result.get("decisions", []):
-                normalised = normalise_retrieval_decision(row, set(local_to_global))
-                if normalised is None:
-                    continue
-                global_number = local_to_global[normalised["candidateNumber"]]
-                candidate_rows[global_number] = {**normalised, "candidateNumber": global_number}
-            returned.update(candidate_rows)
-            if set(returned) == expected:
-                break
-            if attempt < 3:
-                time.sleep(0.25 + random.uniform(0, 0.25))
-        if set(returned) != expected:
-            missing = ",".join(str(number) for number in sorted(expected - set(returned)))
-            detail = f" ({last_error})" if last_error else ""
-            raise RuntimeError(f"Selector batch omitted candidate numbers: {missing}{detail}")
+    if concurrency == 1 or len(batches) <= 1:
+        results = [retrieval_batch_decisions(batch, guidance) for batch in batches]
+    else:
+        # The two independent selectors are retained. Only independent batches
+        # within each selector overlap, still under TROOPER_INFLIGHT.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(concurrency, len(batches))) as pool:
+            results = list(pool.map(lambda batch: retrieval_batch_decisions(batch, guidance), batches))
+    for returned in results:
         decisions.update(returned)
     return decisions
 

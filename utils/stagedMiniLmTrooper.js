@@ -172,7 +172,8 @@ async function generatePreparedTrooperStage(stage, preparedTranscriptText, optio
     }
     const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
       Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000),
-      options.shortRepairConcurrency === 3 ? { STAGED_ACTION_SHORT_REPAIR_CONCURRENCY: '3' } : {});
+      { ...(options.shortRepairConcurrency === 3 ? { STAGED_ACTION_SHORT_REPAIR_CONCURRENCY: '3' } : {}),
+        ...(options.selectorBatchConcurrency === 2 ? { STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY: '2' } : {}) });
     return stagedStageResult(stage, result, {
       source: 'prepared_minilm_v3',
       preparedLength: preparedText.length,

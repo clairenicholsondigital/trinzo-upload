@@ -1074,3 +1074,51 @@ class AgentShortRepairConcurrencyTests(unittest.TestCase):
             result = PIPELINE.repair_short_actions(actions, ["Reviewer: Send the document."])
         self.assertEqual(result[0]["action"], "Send document 1 to the reviewer")
         self.assertEqual(len(result), 25)
+
+
+class AgentSelectorBatchConcurrencyTests(unittest.TestCase):
+    def blocks(self):
+        return [(n, f"{n}. Owner: Reviewer\nDraft: Send report {n}\nEvidence:\n  Turn 1: Please send the report.")
+                for n in range(101, 117)]
+
+    def reply(self, prompt):
+        import re
+        return {"decisions": [{"candidateNumber": int(local), "decision": "KEEP", "rejectionCode": "NONE", "evidenceTurns": [1]}
+                              for local, _global in re.findall(r"(?m)^(\d+)\. Owner: Reviewer\nDraft: Send report (\d+)", prompt)]}
+
+    def test_parallel_batches_preserve_exact_prompts_and_global_mapping(self):
+        import threading
+        prompts = []
+        def serial_reply(prompt, _tokens, _schema):
+            prompts.append(prompt)
+            return self.reply(prompt)
+        with mock.patch.object(PIPELINE, "call_trooper", serial_reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY": "1"}):
+            serial = PIPELINE.retrieval_decisions(self.blocks(), "Keep source-supported tasks.")
+        expected = sorted(prompts)
+        prompts.clear()
+        barrier = threading.Barrier(2, timeout=3)
+        def parallel_reply(prompt, tokens, schema):
+            barrier.wait()
+            return serial_reply(prompt, tokens, schema)
+        with mock.patch.object(PIPELINE, "call_trooper", parallel_reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY": "2"}):
+            parallel = PIPELINE.retrieval_decisions(self.blocks(), "Keep source-supported tasks.")
+        self.assertEqual(parallel, serial)
+        self.assertEqual(list(parallel), list(serial))
+        self.assertEqual(sorted(prompts), expected)
+        self.assertEqual(set(parallel), set(range(101, 117)))
+
+    def test_parallel_batch_omission_still_rejects_the_whole_check(self):
+        def reply(prompt, _tokens, _schema):
+            return {"decisions": []} if "Send report 109" in prompt else self.reply(prompt)
+        with mock.patch.object(PIPELINE, "call_trooper", reply), mock.patch.object(PIPELINE.time, "sleep", lambda _: None), mock.patch.dict(os.environ, {"STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY": "2"}):
+            with self.assertRaisesRegex(RuntimeError, "omitted candidate numbers"):
+                PIPELINE.retrieval_decisions(self.blocks(), "Keep source-supported tasks.")
+
+    def test_parallel_local_numbers_cannot_donate_decisions_to_other_batches(self):
+        def reply(prompt, _tokens, _schema):
+            result = self.reply(prompt)
+            result["decisions"].append({"candidateNumber": 99, "decision": "KEEP", "rejectionCode": "NONE", "evidenceTurns": [1]})
+            return result
+        with mock.patch.object(PIPELINE, "call_trooper", reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY": "2"}):
+            decisions = PIPELINE.retrieval_decisions(self.blocks(), "Keep source-supported tasks.")
+        self.assertEqual(set(decisions), set(range(101, 117)))
