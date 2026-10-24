@@ -42,3 +42,11 @@ test('private proof survives owned save while client proof injection is ignored'
  }finally{db.getMeetingMinutesAgentDraft=get;db.updateMeetingMinutesAgentDraft=update;}
 });
 test('provider failure remains separate and recovery never exceeds two target actions',async()=>{const actions=[action,{...action,id:'two'},{...action,id:'three'}],items=V.timingCheckItems(actions,units,{meetingDate:'2026-10-24'});let calls=0;const results=items.map(i=>({...invalid,id:i.id}));const r=await R.review(actions,items,results,units,{meetingDate:'2026-10-24',request:async()=>{calls++;throw Error('provider unavailable');}});assert.equal(calls,2);assert.equal(r.audit.requestFailures.length,2);assert.ok(r.audit.requestFailures.every(r=>r.type==='provider_request_failed'));assert.ok(r.actions.every(a=>a.timingDecision.status==='unresolved'));});
+test('only an unchanged generated warning for the fully proved timing can retire',()=>{
+ const F=require('../utils/meetingMinutesTimingFlags'),p=R.packet(action,item(),units,'2026-10-24'),q=proposal(p),proof={packet:p,proposal:q,verification:{packetHash:p.packetHash,proposalHash:R.hash(q),checks:Object.fromEntries(R.checks.map(k=>[k,true]))}};
+ const reader=R.bindingReader([proof],units,'2026-10-24'),flag=V.normaliseFlag(F.actionTimingIssueFlag({code:'timing_check_unresolved'},action,'Confirm this timing.'),0);
+ const checked=V.applyTimingCheckResults([action],[item()],[correct],{meetingDate:'2026-10-24',verifiedBindingFor:reader}).actions[0];checked.reviewFlagIds=[flag.id];
+ assert.deepEqual(F.reconcileActionTimingWarnings([checked],[flag],units,{meetingDate:'2026-10-24',verifiedBindingFor:reader}).flags,[]);
+ for(const edited of [{...flag,message:flag.message+' Reviewer note.'},{...flag,status:'confirmed'}])assert.equal(F.reconcileActionTimingWarnings([checked],[edited],units,{meetingDate:'2026-10-24',verifiedBindingFor:reader}).flags.length,1);
+ assert.equal(F.reconcileActionTimingWarnings([checked],[flag],units,{meetingDate:'2026-10-24'}).flags.length,1);
+});

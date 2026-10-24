@@ -58,7 +58,7 @@ function reconcileActionTimingWarnings(actions = [], flags = [], units = [], opt
   for (const flag of allFlags) {
     const issue = normaliseSystemTimingIssue(flag.systemTimingIssue);
     if (!issue || !untouched(flag) || protectedReferences.has(flag.id)
-      || !['timing_inference_unresolved', 'timing_source_unresolved'].includes(issue.code)) continue;
+      || !['timing_inference_unresolved', 'timing_source_unresolved', 'timing_check_unresolved'].includes(issue.code)) continue;
     if (list.some(row => (row.reviewFlagIds || []).includes(flag.id)
       && (isReviewerAuthored(row) || !sameWork(issue.origin, row)))) continue;
     const candidates = list.filter(row => !isReviewerAuthored(row) && sameWork(issue.origin, row));
@@ -68,6 +68,10 @@ function reconcileActionTimingWarnings(actions = [], flags = [], units = [], opt
     const reasons = candidates.map(row => {
       const decision = row.timingDecision;
       if (!Timing.assessmentMatches(row, units, options.meetingDate, decision)) return '';
+      const proved = options.verifiedBindingFor?.(row);
+      if (proved?.status === 'supported' && ['verified','qualified'].includes(decision.status)
+        && JSON.stringify(timingValue(row.timing)) === JSON.stringify(issue.origin.timing)) return 'own_timing_independently_proved';
+      if (issue.code === 'timing_check_unresolved') return '';
       if (issue.code === 'timing_inference_unresolved') {
         if (!['verified', 'qualified'].includes(decision.status) || !row.timing?.wording && !row.timing?.exactDate) return '';
         const binding = options.verifiedBindingFor?.(row) || Timing.assessTimingSourceBinding(row, units, { meetingDate: options.meetingDate });
