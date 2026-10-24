@@ -3230,7 +3230,7 @@ function timingCheckPrompt(items = [], meetingDate = '') {
     `For "qualified", also give qualificationQuote: the exact later words that explicitly qualify or replace the earlier timing; preferredTiming: the exact preferred/ideal timing words; and fallbackTiming: the exact contingency or hard-stop timing words, or empty when there is no separate fallback. Do not use "qualified" unless preferredTiming is present verbatim and every non-empty timing field is a contiguous transcript quote.`,
     'Check the complete timing object, including exactDate-only proposals. Do not calculate or invent an ISO date. A broad week, month, range, bound, preference or fallback must not become a single agreed day. The app verifies calendar derivation independently.',
     'For "correct", also quote timingQuote and stepQuote from the passage. Keep hedges such as probably, presumably, ideally and hopefully; they are meaningful qualifications, not firm deadlines. An unrelated later date is not a fallback.',
-    'Every quote must be copied verbatim from the passage as one contiguous span of at most 25 words. Never paraphrase a quote. If source-to-step binding is uncertain, return verdict "uncertain" rather than asserting "correct".',
+    'Never quote the timing object or another item as passage evidence. If the proposed timing is absent and no source-supported alternative exists, return uncertain with empty quotes rather than inventing a quote. Every quote must be copied verbatim from the passage as one contiguous span of at most 25 words. Never paraphrase a quote. If source-to-step binding is uncertain, return verdict "uncertain" rather than asserting "correct".',
     'Return only this JSON object: {"schemaVersion":1,"results":[{"id":"","verdict":"","timingQuote":"","stepQuote":"","correctTiming":"","qualificationQuote":"","preferredTiming":"","fallbackTiming":"","reason":""}]}',
     `ITEMS:\n${JSON.stringify(items.map((item) => ({ id: item.id, action: item.action, owners: item.owners, timing: item.timing, timingDecision: item.timingDecision, passage: item.passage })))}`
   ].join('\n\n');
@@ -3263,6 +3263,7 @@ function timingDecisionAfterChange(action, timing, item, options = {}, reason = 
 }
 
 function correctTimingStepBound(action, item, row, options = {}) {
+  if (options.verifiedBindingFor?.(action)?.status === 'supported') return true;
   if (actionPredicateSupported(action.action, row.stepQuote)
     && commitmentIsAboutAction(row.stepQuote, action.action)) return true;
   // A complete source turn can answer "when?" with "I'll do it Friday".
@@ -3492,7 +3493,7 @@ function applySourceTimingCheckResults(actions = [], items = [], results = [], o
       && quotedVerbatim(row.timingQuote, item.passage) && quotedVerbatim(row.stepQuote, item.passage)
       && correctTimingStepBound(action, item, row, options)) {
       const assessed = TimingIntegrity.assessActionTiming(action, timingItemSourceUnits(item), {
-        meetingDate: options.meetingDate || item.meetingDate
+        meetingDate: options.meetingDate || item.meetingDate, verifiedBindingFor: options.verifiedBindingFor
       });
       for (const issue of assessed.issues) {
         const flag = normaliseFlag({ kind: 'timing', message: issue.message,

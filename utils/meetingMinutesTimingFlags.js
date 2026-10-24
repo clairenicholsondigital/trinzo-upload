@@ -70,7 +70,7 @@ function reconcileActionTimingWarnings(actions = [], flags = [], units = [], opt
       if (!Timing.assessmentMatches(row, units, options.meetingDate, decision)) return '';
       if (issue.code === 'timing_inference_unresolved') {
         if (!['verified', 'qualified'].includes(decision.status) || !row.timing?.wording && !row.timing?.exactDate) return '';
-        const binding = Timing.assessTimingSourceBinding(row, units, { meetingDate: options.meetingDate });
+        const binding = options.verifiedBindingFor?.(row) || Timing.assessTimingSourceBinding(row, units, { meetingDate: options.meetingDate });
         return binding.status === 'supported' ? 'own_timing_now_source_supported' : '';
       }
       const oldWording = issue.origin.timing.wording;
