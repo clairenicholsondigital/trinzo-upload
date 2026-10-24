@@ -70,3 +70,19 @@ test('reported planning with a known participant possessive work phrase stays ta
   assert.equal(isPureFutureAssignment("Morgan and Priya discuss plans to complete the checklist and Priya's review of the worksheet; Priya will update the register.", people), true);
   assert.equal(isPureFutureAssignment("Morgan and Priya discuss plans to complete the checklist and Priya's review has identified a safety defect.", people), false);
 });
+
+test('unknown metadata and merge histories block automatic filing; known generated trees retain exact restoration history', () => {
+  const record = { id: 'task', text: 'Morgan will prepare the checklist.', evidenceIds: ['T0001'],
+    primaryEvidenceIds: ['T0001'], supportingDetails: [] };
+  for (const extra of [{ customQualification: 'Preserve this field.' }, { mergedFromIds: ['previous'] }]) {
+    const input = [{ topic: 'Inspection', points: [{ ...record, ...extra }], decisions: [], openQuestions: [] }];
+    let calls = 0;
+    assert.deepEqual(retainPureFutureAssignments(input, people, () => { calls++; return true; }).discussion, input);
+    assert.equal(calls, 0, 'the collector cannot silently discard unfamiliar state');
+  }
+  const withChild = { ...record, supportingDetails: [{ id: 'child', text: 'The checklist covers the calibration fixture.', evidenceIds: ['T0002'] }] };
+  const result = retainPureFutureAssignments([{ topic: 'Inspection', points: [withChild], decisions: [], openQuestions: [] }], people, () => true);
+  assert.deepEqual(result.retained[0].originalRecord, withChild);
+  assert.equal(result.retained[0].originalTopic, 'Inspection');
+  assert.notEqual(result.retained[0].originalRecord, withChild);
+});

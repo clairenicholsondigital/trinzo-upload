@@ -10,6 +10,8 @@ Reconstructed primaries use core-source citations. Supporting details retain the
 
 A final, bounded task-only publication guard protects against the real-data regression exposed by independent classification. It files executable future assignments by known meeting participants, including reported task-only recaps when every clause satisfies the boundary. It preserves the complete record through the existing collector and preserves the model's raw core verdict. Publication accounting reports such a core as Needs filing, never successfully published. Mixed factual clauses, conditions, uncertain grammar, decisions, open questions and reviewer-owned topics/subtrees are protected. This is not an action extractor, semantic deduplicator or a blanket future-tense filter.
 
+Automatic filing additionally requires a recognized generated tree within the existing archive size limit. Unfamiliar fields, malformed descendants and prior merge histories block that handoff. Each accepted handoff retains an exact original record tree and original topic in its private quality audit, as well as the reviewable filing rows, so flattening the filing display cannot erase restoration history.
+
 ## Microsoft configuration
 
 `config/meeting-minutes-discussion-materiality-policy.json` records exact, generic discussion-only replacements against the previously active referee policy. Apply the replacements only after verifying the expected source text and retain the old active configuration for rollback. Do not replace the input-variable decorator or the output schema. No model migration is included.
