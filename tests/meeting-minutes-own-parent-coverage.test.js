@@ -3,6 +3,18 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const C = require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const F = require('./helpers/discussion-own-parent-fixture');
 const { O, copy, sourceUnits, discussion, options, inventory, verification } = F;
+test('generated origin metadata reaches assessment and survives exact restoration', async () => {
+  const input=copy(discussion); input[0].points[0].supportingDetails[0].originalTopic='Inlet maintenance';
+  const result=await O.consolidate(input,sourceUnits,options());
+  assert.equal(result.audit.applied,true);
+  assert.equal(result.audit.ledger[0].originalChild.originalTopic,'Inlet maintenance');
+  assert.deepEqual(C.restore(result.discussion,sourceUnits,result.audit),input);
+});
+for(const origin of ['', 'x'.repeat(221), 'bad\u0000topic', {name:'topic'}])
+test('malformed origin remains protected: '+JSON.stringify(origin),()=>{
+  const input=copy(discussion);input[0].points[0].supportingDetails[0].originalTopic=origin;
+  assert.equal(O.prepare(input,sourceUnits).candidates.length,0);
+});
 test('own-parent proof removes only a covered child, keeping parent wording, warning, evidence and complete restore', async () => {
   const before = copy(discussion), sources = copy(sourceUnits);
   const result = await O.consolidate(before, sources, options());

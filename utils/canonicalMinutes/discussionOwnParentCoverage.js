@@ -17,7 +17,13 @@ const only = (row, keys) => row && typeof row === 'object' && !Array.isArray(row
 const quoteIn = (text, quote) => typeof quote === 'string' && Boolean(quote.trim()) && text.includes(quote);
 const question = text => /[?"“”«»]|\b(?:asks?|asked|asking|queries|queried|unresolved|undecided)\b/i.test(text);
 function clean(record) {
-  return safety.mergeableRecord(record) && record.text.length <= 1600 && !question(record.text)
+  // Origin is app-generated navigation metadata, not a coverage assertion.
+  // Recognise it only here; archive the complete original record unchanged.
+  const { originalTopic, ...shape } = record || {};
+  const originValid = originalTopic === undefined || typeof originalTopic === 'string'
+    && originalTopic.trim().length > 0 && originalTopic.length <= 220
+    && !/[\u0000-\u001f\u007f]/.test(originalTopic);
+  return originValid && safety.mergeableRecord(shape) && record.text.length <= 1600 && !question(record.text)
     && record.simulationSource === undefined && record.simulationParentId === undefined;
 }
 function prepare(discussion, sourceUnits, options = {}) {

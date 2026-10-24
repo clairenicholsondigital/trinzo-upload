@@ -75,6 +75,7 @@ const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { batchRefereeCandidates, normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
 const discussionMaterialityPolicy = require('../config/meeting-minutes-discussion-materiality-policy.json');
 const { retainPureFutureAssignments } = require('../utils/meetingMinutesDiscussionTaskBoundary');
+const { carryExactDiscussionProvenance } = require('../utils/meetingMinutesExactDiscussionProvenance');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults, ownerSupported, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
@@ -14232,7 +14233,9 @@ function reconstructMissingRefereeDiscussion(discussion = [], dispositions = [],
     reconstructedTargetIds.push(targetId);
   }
   return {
-    discussion: normaliseAgentResult({ discussion: result }, sourceUnits, 'discussion', options).discussion,
+    discussion: carryExactDiscussionProvenance(result,
+      normaliseAgentResult({ discussion: result }, sourceUnits, 'discussion', options).discussion),
+    exactPublicationOrigins: result,
     reconstructedTargetIds,
     referencedTargetIds: [...groups.keys()],
     unresolvedTargetIds: [...groups.keys()].filter((id) => !existingIds.has(id))
@@ -14836,7 +14839,8 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     }
     return false;
   };
-  return normaliseAgentResult({ discussion: topics }, sourceUnits, 'discussion', options).discussion.map((topic) => ({
+  return carryExactDiscussionProvenance(topics,
+    normaliseAgentResult({ discussion: topics }, sourceUnits, 'discussion', options).discussion).map((topic) => ({
     ...topic,
     points: (topic.points || []).filter((record) => keepParent(record, topic))
       .map((record) => ({ ...record, supportingDetails: consolidateSupportingDetails(record)
@@ -17085,7 +17089,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     const literalSupportCleanup = foldLiteralParentSupportingRepeats(discussionFlagState.content.discussion);
     const discussionSourceCoverage = reconcileDiscussionClauseSources(literalSupportCleanup.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: timingAnchor });
-    finalDiscussion = discussionSourceCoverage.discussion;
+    finalDiscussion = carryExactDiscussionProvenance(reconstructed.exactPublicationOrigins,
+      discussionSourceCoverage.discussion);
     // The bounded editor has its own opt-in. It never enables the older
     // semantic/claim flags, and shares their private topic-scoped restore path.
     const boundedRewrite = /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_BOUNDED_REWRITE_V1 || '0'));
