@@ -24,3 +24,15 @@ test('warned material stays explicitly protected even in a diagnostic nomination
   assert.equal(p.nominations[0].warningProtected,true);assert.equal(p.nominations[0].automaticPlacementAllowed,false);
 });
 test('zero diagnostic budget yields no nominations',()=>{assert.equal(nominate(make(),{limit:0}).nominations.length,0);});
+test('a rationale-only citation never becomes automatic approval for a proposed plan',()=>{
+ const d=make();d.sourceUnits=[{id:'T1',speaker:'Morgan',text:'This allows us to use your software expertise.'}];
+ d.discussion[0].points[0].text='A separate software track is being considered. Focused software expertise would help.';
+ d.unassignedSupportingDetails[0]={...d.unassignedSupportingDetails[0],text:'A separate software track allows focused software expertise.',filingOrigins:[{id:'origin',generatedRecord:{text:'A separate software track allows focused software expertise.',evidenceIds:['T1']}}]};
+ const saved=structuredClone(d),p=nominate(d);assert.equal(p.mode,'shadow_only');assert.ok(p.nominations.every(n=>n.automaticPlacementAllowed===false));assert.deepEqual(d,saved);
+});
+test('a facility question cannot acquire confirmed-location status through filing',()=>{
+ const d=make();d.sourceUnits=[{id:'T1',speaker:'Morgan',text:'Is that storage facility in North Quay?'}];
+ d.discussion[0].points[0].text='The final storage arrangement and storage facility were discussed. Other transport requirements remain open.';
+ d.unassignedSupportingDetails[0].text='The storage facility is in North Quay.';
+ const saved=structuredClone(d),p=nominate(d);assert.ok(p.nominations.every(n=>n.automaticPlacementAllowed===false));assert.deepEqual(d,saved);
+});

@@ -1122,3 +1122,41 @@ class AgentSelectorBatchConcurrencyTests(unittest.TestCase):
         with mock.patch.object(PIPELINE, "call_trooper", reply), mock.patch.dict(os.environ, {"STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY": "2"}):
             decisions = PIPELINE.retrieval_decisions(self.blocks(), "Keep source-supported tasks.")
         self.assertEqual(set(decisions), set(range(101, 117)))
+
+class AgentSelectorProtocolTests(unittest.TestCase):
+    def test_invalid_status_and_empty_evidence_are_retried_with_contract_feedback(self):
+        replies = [
+            {"decisions": [{"candidateNumber": 1, "decision": "COMMITTED", "rejectionCode": "NONE", "evidenceTurns": [10]},
+                           {"candidateNumber": 2, "decision": "REMOVE", "rejectionCode": "NO_SUPPORTED_TASK", "evidenceTurns": []}]},
+            {"decisions": [{"candidateNumber": 1, "decision": "KEEP", "rejectionCode": "NONE", "evidenceTurns": [10]},
+                           {"candidateNumber": 2, "decision": "REMOVE", "rejectionCode": "DISCUSSION_ONLY", "evidenceTurns": [20]}]},
+        ]
+        calls = []
+        def reply(prompt, tokens, schema):
+            calls.append((prompt, schema))
+            return replies.pop(0)
+        with mock.patch.dict(os.environ, {"STAGED_AGENT_SELECTOR_PROTOCOL": "1"}), mock.patch.object(PIPELINE, "call_trooper", reply), mock.patch.object(PIPELINE.time, "sleep"), mock.patch.object(PIPELINE, "selector_diagnostic"):
+            result = PIPELINE.retrieval_batch_decisions([(23,"23. Owner: Morgan"),(24,"24. Owner: Morgan")], "Evidence only")
+        self.assertEqual(set(result), {23,24})
+        self.assertIn("Previous response left invalid/missing rows", calls[1][0])
+        self.assertEqual(calls[0][1]["json_schema"]["schema"]["properties"]["decisions"]["items"]["properties"]["evidenceTurns"]["minItems"], 1)
+        self.assertNotIn("minItems", PIPELINE.RETRIEVAL_SELECTOR_SCHEMA["json_schema"]["schema"]["properties"]["decisions"]["items"]["properties"]["evidenceTurns"])
+
+    def test_duplicate_or_boolean_numbers_cannot_complete_a_private_batch(self):
+        for number in (True, 1):
+            row = {"candidateNumber":number,"decision":"KEEP","rejectionCode":"NONE","evidenceTurns":[1]}
+            rows = [row] if number is True else [row,row]
+            with mock.patch.dict(os.environ, {"STAGED_AGENT_SELECTOR_PROTOCOL":"1"}), mock.patch.object(PIPELINE,"call_trooper",return_value={"decisions":rows}), mock.patch.object(PIPELINE.time,"sleep"), mock.patch.object(PIPELINE,"selector_diagnostic"):
+                with self.assertRaisesRegex(RuntimeError,"omitted candidate numbers: 23"):
+                    PIPELINE.retrieval_batch_decisions([(23,"23. Owner: Morgan")],"Evidence only")
+
+    def test_terminal_failure_signal_is_typed_bounded_and_contains_no_provider_text(self):
+        import io
+        with mock.patch.dict(os.environ, {"STAGED_AGENT_SELECTOR_FAILURE_TOKEN":"a"*48}), mock.patch.object(PIPELINE,"_SELECTOR_FAILURE_SENT",False), mock.patch.object(PIPELINE.sys,"stderr",new_callable=io.StringIO) as output:
+            PIPELINE.signal_selector_failure(RuntimeError("Selector batch omitted candidate numbers: 23,24 (private provider content)"))
+            PIPELINE.signal_selector_failure(RuntimeError("again"))
+            lines=output.getvalue().splitlines()
+        self.assertEqual(len(lines),1)
+        payload=json.loads(lines[0].split(" ",1)[1])
+        self.assertEqual(payload["missingNumbers"],[23,24])
+        self.assertNotIn("private provider content",lines[0])

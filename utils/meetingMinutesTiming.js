@@ -638,7 +638,8 @@
     const value = action.timing, date = clean(value.exactDate), wording = clean(value.wording);
     const issue = (code, message, preserveValue) => issues.push({ code, message, field: 'exactDate', ...(preserveValue ? { preserveValue: true } : {}) });
     const wordingDate = resolveExactDate(wording, opts.meetingDate);
-    const binding = assessTimingSourceBinding(action, units, opts);
+    const verifiedBinding = typeof opts.verifiedBindingFor === 'function' && opts.verifiedBindingFor(action);
+    const binding = verifiedBinding || assessTimingSourceBinding(action, units, opts);
     if (!human && wording && binding.status === 'unsupported') {
       issues.push({ code: wordingDate ? 'unsupported_date_wording' : 'unsupported_timing_wording', field: 'all', message: `The timing wording "${wording}" is not supported by source wording bound to this action.`, sourceEvidenceIds: binding.conflictingSourceIds });
     } else if (!human && wording && (!date || isValidCalendarDate(date)) && binding.status === 'unresolved') {
@@ -661,7 +662,7 @@
     if (issues.some(item => !item.preserveValue) && !human) {
       action = rejectActionTiming(action, units, { meetingDate: opts.meetingDate, field: issues.some(item => item.field === 'all') ? 'all' : 'exactDate', reason: issues.map(item => item.code).join(',') });
       decision = action.timingDecision;
-    } else if (!human && decision?.status === 'unresolved' && decision.checkerStatus) {
+    } else if (!human && !verifiedBinding && decision?.status === 'unresolved' && decision.checkerStatus) {
       // A lexical source match cannot overturn a source-bound semantic
       // checker's explicit uncertainty or a missing/invalid check result.
       if (!issues.some(item => item.code === 'timing_source_unresolved')) issues.push({ code: 'timing_check_unresolved', field: 'wording', preserveValue: true, message: `The timing check is ${decision.checkerStatus}; confirm this action's timing before treating it as verified.`, sourceEvidenceIds: decision.sourceEvidenceIds });

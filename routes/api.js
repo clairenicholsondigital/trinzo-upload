@@ -1,3 +1,5 @@
+const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
+const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
@@ -11162,6 +11164,8 @@ async function buildPrivateStagedCandidateLedger(draft, stage = '') {
     meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
     shortRepairConcurrency: 3,
     selectorBatchConcurrency: 2,
+    selectorProtocol: /^(?:1|true)$/i.test(process.env.MEETING_MINUTES_AGENT_SELECTOR_PROTOCOL_V1 || '0'),
+    selectorFailureSignal: true,
     // Long transcripts routinely finish just beyond the previous 150-second
     // boundary. This work is private and prewarmed, so allow it to finish and
     // populate the cache instead of killing useful work near completion.
@@ -11678,7 +11682,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -12445,6 +12449,11 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
         actions.push(record);
         restored.push(record);
       }
+      continue;
+    }
+    const contactIndex = actions.findIndex(existing => reconcileDetailedContacts(existing, record));
+    if (contactIndex >= 0) {
+      actions[contactIndex] = reconcileDetailedContacts(actions[contactIndex], record).record;
       continue;
     }
     // New source-bound semantic reconciliation supplies exact, immutable
@@ -13484,6 +13493,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
   };
   for (const original of Array.isArray(records) ? records : []) {
     const record = structuredClone(original);
+    const contactIndex = merged.findIndex(existing => reconcileDetailedContacts(existing, record));
+    if (contactIndex >= 0) {
+      merged[contactIndex] = reconcileDetailedContacts(merged[contactIndex], record).record;
+      continue;
+    }
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     let complementaryDuplicate = null;
     let documentWorkflowDuplicate = null;
@@ -17550,6 +17564,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       gateTranscriptShapedActions(timingChecked.actions, draft.sourceUnits, draft.draftId, 'published'), draft.draftId)
   };
   traceOwners('gate+foldUnowned', timingChecked.actions, draft.draftId);
+  let timingRecoveryAudit = null;
   if (meetingMinutesTimingCheckEnabled()) {
     // The model says which step each timing was spoken for, quoting the
     // passage; applyTimingCheckResults verifies every quote before changing
@@ -17563,7 +17578,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       { optional: true, responseKind: 'timing_check', maxAttempts: 2, candidateCount: batch.length,
         validateResult: result => meetingAgentReviewPacketError(batch, result, ['correct', 'qualified', 'belongs_to_other_step', 'past_event', 'misread', 'uncertain']) }
     )))).flatMap((result) => (Array.isArray(result?.results) ? result.results : []));
-    const reviewed = applyTimingCheckResults(timingChecked.actions, timingItems, timingResults, { meetingDate: timingAnchor });
+    const recoveryStartedAt = Date.now();
+    const reviewed = /^(?:0|false)$/i.test(process.env.MEETING_MINUTES_AGENT_TIMING_RECOVERY_V1 || '1')
+      ? applyTimingCheckResults(timingChecked.actions,timingItems,timingResults,{meetingDate:timingAnchor})
+      : await timingRecovery.review(timingChecked.actions, timingItems, timingResults, draft.sourceUnits, {
+      meetingDate: timingAnchor, nominalEnabled: /^(?:1|true)$/i.test(process.env.MEETING_MINUTES_AGENT_NOMINAL_TIMING_PROOF_V1 || '0'),
+      request: (part,prompt,budget) => call('critic-timing-recovery-'+part,prompt,{optional:true,silentOptionalFailure:true,responseKind:part==='isolated'?'timing_check':'correction_check',maxAttempts:1,independentBudgetMs:budget,attemptTimeoutMs:budget})
+    });
+    stageDeadlineAt += Date.now()-recoveryStartedAt;
+    timingRecoveryAudit = reviewed.audit;
     if (reviewed.rejected.length) console.log(JSON.stringify({
       event: 'meeting_agent_timing_check_rejected', journeyId: draft.draftId, rejected: reviewed.rejected
     }));
@@ -17875,7 +17898,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const finalSurvival = reconcileFinalApprovedActions(finalDedupedActions, displayEligibleApproved);
   const finalSiblingTiming = reconcileSiblingTimingDecisions(finalSurvival.actions, draft.sourceUnits, { meetingDate: timingAnchor });
   const finalTiming = finaliseActionTimings(finalSiblingTiming.actions, draft.sourceUnits, {
-    meetingDate: timingAnchor, assessments: draft.qualityState?.actions?.timingAssessments || []
+    meetingDate: timingAnchor, assessments: draft.qualityState?.actions?.timingAssessments || [],
+    verifiedBindingFor: timingRecovery.bindingReader(timingRecoveryAudit?.proofs, draft.sourceUnits, timingAnchor)
   });
   const finalActions = finalTiming.actions;
   const finalTimedStepCoverage = timedStepCoverage(sourceActionCandidates, finalActions, draft.sourceUnits, { meetingDate: timingAnchor });
@@ -17902,7 +17926,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   ]), isUsefulMeetingAgentReviewFlag);
   const reconciledTimingWarnings = require('../utils/meetingMinutesTimingFlags').reconcileActionTimingWarnings(
     assembledActionFlagState.content.actions, assembledActionFlagState.flags, draft.sourceUnits,
-    { meetingDate: timingAnchor, proposals: [proposal, draft.pendingProposal], otherRecords: [draft.discussion, draft.meetingObjectives] }
+    { meetingDate: timingAnchor, verifiedBindingFor: timingRecovery.bindingReader(timingRecoveryAudit?.proofs,draft.sourceUnits,timingAnchor), proposals: [proposal, draft.pendingProposal], otherRecords: [draft.discussion, draft.meetingObjectives] }
   );
   const actionFlagState = { ...assembledActionFlagState,
     content: { ...assembledActionFlagState.content, actions: reconciledTimingWarnings.actions },
@@ -17978,6 +18002,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         discussion: { ...(draft.qualityState?.discussion || {}), claimConsolidation: separatedDiscussion.audit },
         actions: {
         timingPolicyVersion: TIMING_POLICY_VERSION,
+        ...(timingRecoveryAudit ? { timingRecovery: timingRecoveryAudit } : {}),
         timingReview: timingChecked.accounting || { expected: 0, received: 0, complete: false, disabled: true },
         timedStepCoverage: { initial: initialTimedStepCoverage, final: finalTimedStepCoverage },
         timingAssessments: [...finalTiming.assessments, ...proposalTiming.assessments],
@@ -18476,6 +18501,10 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       normalised.actions = discussionActionSeparation.preserveUnchangedPairedActions(normalised.actions,
         draft.actions, req.body?.actions, publishedBeforeSave.actions, pairedProof);
     }
+    // Reuse only server-owned nominal proofs on an unchanged action/date save.
+    if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = timingRecovery.preserveUnchangedActions(
+      normalised.actions, draft.actions || [], req.body?.actions, draft.qualityState?.actions?.timingRecovery?.proofs,
+      draft.sourceUnits, meetingAgentTimingAnchor(draft));
     // Save normalisation must not undo a generated multi-clause source repair.
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;

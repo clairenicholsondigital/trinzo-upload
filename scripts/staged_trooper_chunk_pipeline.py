@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import sys
+import copy
 import concurrent.futures
 import random
 import threading
@@ -1154,6 +1156,7 @@ def call_trooper(prompt: str, max_tokens: int, schema: dict[str, Any]) -> dict[s
         try:
             with TROOPER_INFLIGHT:
                 with urllib.request.urlopen(request, timeout=180) as response:
+                    selector_diagnostic("provider_response", status=getattr(response, "status", None), attempt=attempt+1)
                     payload = json.loads(response.read().decode())
             content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
             start = content.find("{")
@@ -1161,6 +1164,7 @@ def call_trooper(prompt: str, max_tokens: int, schema: dict[str, Any]) -> dict[s
                 raise RuntimeError("Trooper returned no JSON object")
             return json.JSONDecoder().raw_decode(content[start:])[0]
         except urllib.error.HTTPError as error:
+            selector_diagnostic("provider_retry", status=error.code, attempt=attempt+1)
             try:
                 error.detail = error.read().decode("utf-8", "replace")[:300]
             except Exception:
@@ -1954,11 +1958,42 @@ def selector_batches(blocks: list[tuple[int, str]]) -> list[list[tuple[int, str]
     return batches
 
 
+_SELECTOR_CONTEXT = threading.local()
+_SELECTOR_FAILURE_LOCK = threading.Lock()
+_SELECTOR_FAILURE_SENT = False
+
+
+def selector_protocol_enabled() -> bool:
+    return os.environ.get("STAGED_AGENT_SELECTOR_PROTOCOL", "0") == "1"
+
+
+def selector_diagnostic(event: str, **data: Any) -> None:
+    if selector_protocol_enabled() or os.environ.get("STAGED_AGENT_SELECTOR_DIAGNOSTICS", "0") == "1":
+        with _SELECTOR_FAILURE_LOCK:
+            print("STAGED_SELECTOR_DIAGNOSTIC " + json.dumps({"event": event, **data}), file=sys.stderr, flush=True)
+
+
+def signal_selector_failure(error: Exception) -> None:
+    global _SELECTOR_FAILURE_SENT
+    token = os.environ.get("STAGED_AGENT_SELECTOR_FAILURE_TOKEN", "")
+    if not re.fullmatch(r"[a-f0-9]{48}", token):
+        return
+    missing = re.search(r"Selector batch omitted candidate numbers: ([0-9,]+)", str(error))
+    numbers = [int(n) for n in missing.group(1).split(",")] if missing else []
+    with _SELECTOR_FAILURE_LOCK:
+        if _SELECTOR_FAILURE_SENT:
+            return
+        _SELECTOR_FAILURE_SENT = True
+        print("STAGED_SELECTOR_FAILURE " + json.dumps({"version": 1, "token": token,
+            "code": "STAGED_SELECTOR_FAILED", "missingNumbers": numbers[:1000], "attempts": 4}), file=sys.stderr, flush=True)
+
+
 def retrieval_batch_decisions(batch: list[tuple[int, str]], guidance: str) -> dict[int, dict[str, Any]]:
     expected = {number for number, _ in batch}
     by_number = dict(batch)
     returned: dict[int, dict[str, Any]] = {}
     last_error = ""
+    feedback = ""
     for attempt in range(4):
         remaining = expected - set(returned)
         global_numbers = sorted(remaining)
@@ -1968,21 +2003,44 @@ def retrieval_batch_decisions(batch: list[tuple[int, str]], guidance: str) -> di
             for local, number in local_to_global.items()
         ]
         try:
+            schema = RETRIEVAL_SELECTOR_SCHEMA
+            if selector_protocol_enabled():
+                schema = copy.deepcopy(schema)
+                schema["json_schema"]["schema"]["properties"]["decisions"]["items"]["properties"]["evidenceTurns"]["minItems"] = 1
+            protocol = ('\nReturn ONLY {"decisions":[{"candidateNumber":1,"decision":"KEEP",'
+                '"rejectionCode":"NONE","evidenceTurns":[1]}]}. '
+                'decision is ONLY KEEP or REMOVE, never COMMITTED, REQUIRED, PROPOSED or DISCUSSION_ONLY. '
+                'Every decision needs at least one supplied original transcript turn number. '
+                'Candidate numbers are local to this request. ' + feedback) if selector_protocol_enabled() else ''
             result = call_trooper(retrieval_selector_prompt(
-                guidance, "\n\n".join(request_blocks)),
-                1600, RETRIEVAL_SELECTOR_SCHEMA)
+                guidance + protocol, "\n\n".join(request_blocks)),
+                1600, schema)
             last_error = ""
         except Exception as error:
             result = {}
             last_error = clean(error)
         candidate_rows = {}
-        for row in result.get("decisions", []):
+        invalid = []
+        rows = result.get("decisions", []) if isinstance(result, dict) else []
+        rows = rows if isinstance(rows, list) else []
+        number_counts = {}
+        for row in rows:
+            number = row.get("candidateNumber") if isinstance(row, dict) else None
+            if isinstance(number, int) and not isinstance(number, bool):
+                number_counts[number] = number_counts.get(number, 0) + 1
+        for row in rows:
             normalised = normalise_retrieval_decision(row, set(local_to_global))
-            if normalised is None:
+            if normalised is None or selector_protocol_enabled() and (
+                type(row.get("candidateNumber")) is not int or number_counts.get(row.get("candidateNumber")) != 1):
+                invalid.append("invalid decision/code, empty evidence, duplicate or out-of-range candidate")
                 continue
             global_number = local_to_global[normalised["candidateNumber"]]
             candidate_rows[global_number] = {**normalised, "candidateNumber": global_number}
         returned.update(candidate_rows)
+        feedback = "Previous response left invalid/missing rows. Re-evaluate only these remaining candidates under the exact schema; do not copy extraction status labels into decision." if invalid or set(returned) != expected else ""
+        selector_diagnostic("batch_attempt", expectedNumbers=sorted(expected), localToGlobal=local_to_global,
+            attempt=attempt+1, acceptedNumbers=sorted(candidate_rows), missingNumbers=sorted(expected-set(returned)),
+            invalidRows=len(invalid), providerFailed=bool(last_error))
         if set(returned) == expected:
             break
         if attempt < 3:
@@ -2001,13 +2059,21 @@ def retrieval_decisions(blocks: list[tuple[int, str]], guidance: str) -> dict[in
     except ValueError:
         concurrency = 1
     decisions: dict[int, dict[str, Any]] = {}
+    terminal = getattr(_SELECTOR_CONTEXT, "strict", False)
+    def run_batch(batch):
+        try:
+            return retrieval_batch_decisions(batch, guidance)
+        except Exception as error:
+            if terminal:
+                signal_selector_failure(error)
+            raise
     if concurrency == 1 or len(batches) <= 1:
-        results = [retrieval_batch_decisions(batch, guidance) for batch in batches]
+        results = [run_batch(batch) for batch in batches]
     else:
         # The two independent selectors are retained. Only independent batches
         # within each selector overlap, still under TROOPER_INFLIGHT.
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(concurrency, len(batches))) as pool:
-            results = list(pool.map(lambda batch: retrieval_batch_decisions(batch, guidance), batches))
+            results = list(pool.map(run_batch, batches))
     for returned in results:
         decisions.update(returned)
     return decisions
@@ -2083,8 +2149,14 @@ def select_retrieval_grounded_actions(actions: list[dict[str, Any]], turns: list
             f"Draft: {action.get('action', '')}\nStatus: {action.get('status', '')}\nEvidence:\n{lines}"))
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            first_future = pool.submit(retrieval_decisions, blocks, guidance)
-            second_future = pool.submit(retrieval_decisions, list(reversed(blocks)), guidance)
+            def check_order(ordered):
+                _SELECTOR_CONTEXT.strict = strict_consensus
+                try:
+                    return retrieval_decisions(ordered, guidance)
+                finally:
+                    _SELECTOR_CONTEXT.strict = False
+            first_future = pool.submit(check_order, blocks)
+            second_future = pool.submit(check_order, list(reversed(blocks)))
             first, second = first_future.result(), second_future.result()
     except Exception:
         if strict_consensus:
