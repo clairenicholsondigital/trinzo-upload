@@ -21,7 +21,7 @@ function similarity(left, right) {
  * Preserve a disposition-only Referee result as a valid result. Core rows are
  * their own propositions; supporting rows point to the nearest evidenced core.
  */
-function normaliseRefereeDispositions(dispositions = [], candidates = []) {
+function normaliseRefereeDispositions(dispositions = [], candidates = [], options = {}) {
   const rows = Array.isArray(dispositions) ? dispositions : [];
   const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
     .map((candidate) => [text(candidate?.candidateId), candidate]).filter(([candidateId]) => candidateId));
@@ -33,6 +33,11 @@ function normaliseRefereeDispositions(dispositions = [], candidates = []) {
     if (disposition === 'core') return { ...row, candidateId, targetId: explicitTargetId || candidateId };
     if (disposition !== 'supporting' || !cores.length) return { ...row, candidateId };
     if (explicitTargetId) return { ...row, candidateId, targetId: explicitTargetId };
+    // Structured discussion permits useful context with no approved parent.
+    // A nearest-word guess is not evidence of a parent-child relationship.
+    // Preserve legacy adapters explicitly; only the structured discussion
+    // handoff opts into this lossless, untargeted route.
+    if (options.preserveUntargetedSupporting === true) return { ...row, candidateId };
     const candidate = candidatesById.get(candidateId);
     const best = cores
       .map((core, coreIndex) => {
@@ -57,11 +62,11 @@ function batchRefereeCandidates(candidates = [], batchSize = 5) {
   return batches;
 }
 
-function normaliseRefereeOutput(source = {}, candidates = []) {
+function normaliseRefereeOutput(source = {}, candidates = [], options = {}) {
   if (!source || typeof source !== 'object' || !Array.isArray(source.candidateDispositions)) return null;
   return {
     ...source,
-    candidateDispositions: normaliseRefereeDispositions(source.candidateDispositions, candidates)
+    candidateDispositions: normaliseRefereeDispositions(source.candidateDispositions, candidates, options)
   };
 }
 
