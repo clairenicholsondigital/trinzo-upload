@@ -4,6 +4,7 @@ const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinute
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
 const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
+const discussionActionSeparation = require('../utils/canonicalMinutes/discussionActionSeparation');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
@@ -11919,6 +11920,8 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   // full before/after snapshots on every save was pure weight.
   safe.canRestoreCombinedDiscussion = discussionClaims.canRestore(safe.discussion, draft.sourceUnits,
     draft.qualityState?.discussion?.claimConsolidation) === true;
+  safe.canRestorePairedDiscussionActions = safe.canRestoreCombinedDiscussion
+    && Boolean(draft.qualityState?.discussion?.claimConsolidation?.separationActionRevisions?.length);
   safe.canRestoreCombinedActions = Boolean(originalEnquiryActions(draft));
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
   // The client only needs to know a redo exists and what it is called.
@@ -17900,6 +17903,33 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     event: 'meeting_agent_discussion_action_dedupe', journeyId: draft.draftId,
     dropped: discussionActionDedupe.dropped
   }));
+  // Compare only against the finished accepted register. Failed or incomplete
+  // proofs keep discussion verbatim; never turn an action into source truth.
+  let separatedDiscussion = discussionActionSeparation.restoreChangedActionCoverage(discussionActionDedupe.discussion,
+    actionFlagState.content.actions, draft.sourceUnits, draft.qualityState?.discussion?.claimConsolidation);
+  const separationCoverageRestored = separatedDiscussion.restored;
+  separatedDiscussion.audit ||= { applied: false, reason: 'no_prior_archive' };
+  let separationAudit = null;
+  const existingSeparation = separatedDiscussion.audit?.method === discussionActionSeparation.VERSION
+    && separatedDiscussion.audit.applied && discussionClaims.canRestore(separatedDiscussion.discussion, draft.sourceUnits, separatedDiscussion.audit);
+  if (!existingSeparation && /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_BOUNDED_REWRITE_V1 || '0'))
+    && !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_ACTION_SEPARATION_V1 || '1'))) {
+    const separationCall = (part, prompt, packet) => call('critic-discussion-action-separation-' + part, prompt, {
+      optional: true, silentOptionalFailure: true, responseKind: 'correction_check', maxAttempts: 1,
+      independentBudgetMs: 45000, attemptTimeoutMs: 45000, candidateCount: packet.candidates.length
+    });
+    const separation = await discussionActionSeparation.separate(separatedDiscussion.discussion,
+      actionFlagState.content.actions, draft.sourceUnits,
+      [...(draft.reviewFlags || []), ...actionFlagState.flags].filter((flag, index, flags) => flags.findIndex(f => f.id === flag.id) === index), {
+        propose: (prompt, packet) => separationCall('proposal', prompt, packet),
+        verify: (prompt, packet) => separationCall('verification', prompt, packet)
+      });
+    separationAudit = separation.audit;
+    separatedDiscussion = discussionActionSeparation.combine(separatedDiscussion, separation, draft.sourceUnits);
+  }
+  const separationPublishedActions = separatedDiscussion.actions || actionFlagState.content.actions;
+  const discussionSeparated = separationAudit?.applied === true
+    && separatedDiscussion.audit?.packetHash === separationAudit.packetHash;
   // Proposals were assembled before the final checks. Their timing must agree
   // with finished source-bound decisions before either automatic or manual
   // review can apply them.
@@ -17912,7 +17942,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       timingAssessments: [...(draft.qualityState?.actions?.timingAssessments || []), ...finalTiming.assessments]
     }
   } });
-  const finalProposal = removePublishedActionProposalDuplicates(proposalTiming.proposal, actionFlagState.content.actions);
+  const finalProposal = removePublishedActionProposalDuplicates(proposalTiming.proposal, separationPublishedActions);
   const finalMaterializationReview = materializationReview.accounting.complete ? materializationReview
     : reconcileRefereeActionMaterialization(unresolvedActionMaterializations, ensemble,
       hybridCandidateDispositions(ensemble, actionFlagState.content.actions,
@@ -17920,14 +17950,16 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       draft.sourceUnits, settledRefereeActionDispositions);
   return {
     changes: {
-      actions: actionFlagState.content.actions,
-      ...(discussionActionDedupe.dropped.length ? { discussion: discussionActionDedupe.discussion } : {}),
+      actions: separationPublishedActions,
+      ...(discussionActionDedupe.dropped.length || discussionSeparated || separationCoverageRestored ? { discussion: separatedDiscussion.discussion } : {}),
       pendingProposal: finalProposal.changes.length
-        ? preselectActionProposal(finalProposal, actionFlagState.content.actions, draft.sourceUnits) : null,
+        ? preselectActionProposal(finalProposal, separationPublishedActions, draft.sourceUnits) : null,
       candidateLedger,
       passProvenance: [...(draft.passProvenance || []), ...measuredProvenance].slice(-40),
       passCache,
-      qualityState: { ...(draft.qualityState || {}), actions: {
+      qualityState: { ...(draft.qualityState || {}),
+        discussion: { ...(draft.qualityState?.discussion || {}), claimConsolidation: separatedDiscussion.audit },
+        actions: {
         timingPolicyVersion: TIMING_POLICY_VERSION,
         timingReview: timingChecked.accounting || { expected: 0, received: 0, complete: false, disabled: true },
         timedStepCoverage: { initial: initialTimedStepCoverage, final: finalTimedStepCoverage },
@@ -17954,6 +17986,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         finalLifecycleRejectedCount,
         finalActionSurvivalRestoredCount: finalSurvival.restored.length,
         discussionActionDuplicateCount: discussionActionDedupe.dropped.length,
+        discussionActionSeparationCount: discussionSeparated ? separationAudit.ledger.length : 0,
+        sourceClarificationCorrectionCount: discussionSeparated ? separationAudit.ledger.filter(entry => entry.revisedAction).length : 0,
+        discussionActionSeparationCoverageRestored: Boolean(separationCoverageRestored),
+        discussionActionSeparationAssessment: { method: discussionActionSeparation.VERSION, applied: discussionSeparated,
+          candidates: separationAudit?.candidates || 0, reason: separationAudit?.reason || (existingSeparation ? 'existing_pair_preserved' : 'disabled'),
+          packetHash: separationAudit?.packetHash || '', diagnostics: separationAudit?.diagnostics || [], rejectedAttempts: separationAudit?.rejectedAttempts || [] },
         actionScreenDuplicateCount,
         acceptedActionEligibleCount: acceptedActionAccounting.eligibleCount,
         acceptedActionRestoredCount: acceptedActionAccounting.restored.length,
@@ -18413,11 +18451,31 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
         || sameEnquiryActionSnapshot(req.body.actions, publishedBeforeSave.actions))) {
       normalised.actions = structuredClone(draft.actions);
     }
+    // This proof is owned server state. Keep independently verified paired
+    // action witnesses on an unchanged save instead of repicking citations.
+    const pairedProof = draft.qualityState?.discussion?.claimConsolidation;
+    if (!dateChanged && !dateConfirmedByReviewer
+      && discussionClaims.canRestore(draft.discussion, draft.sourceUnits, pairedProof)) {
+      normalised.actions = discussionActionSeparation.preserveUnchangedPairedActions(normalised.actions,
+        draft.actions, req.body?.actions, publishedBeforeSave.actions, pairedProof);
+    }
     // Save normalisation must not undo a generated multi-clause source repair.
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
     const discussionProof = draft.qualityState?.discussion?.claimConsolidation;
-    if (!dateChanged && !dateConfirmedByReviewer
+    const unchangedDiscussionSubmission = !Array.isArray(req.body?.discussion)
+      || discussionClaims.hash(req.body.discussion) === discussionClaims.hash(publishedBeforeSave.discussion);
+    const actionSubmissionChanged = Array.isArray(req.body?.actions)
+      && discussionClaims.hash(req.body.actions) !== discussionClaims.hash(publishedBeforeSave.actions);
+    const restoredActionCoverage = !dateChanged && unchangedDiscussionSubmission && actionSubmissionChanged
+      ? discussionActionSeparation.restoreChangedActionCoverage(draft.discussion, normalised.actions, draft.sourceUnits, discussionProof)
+      : { restored: false };
+    if (restoredActionCoverage.restored) {
+      normalised.discussion = restoredActionCoverage.discussion;
+      qualityState = { ...(qualityState || {}), discussion: { ...(qualityState?.discussion || {}),
+        claimConsolidation: restoredActionCoverage.audit } };
+    }
+    if (!restoredActionCoverage.restored && !dateChanged && !dateConfirmedByReviewer
       && discussionClaims.canRestore(draft.discussion, draft.sourceUnits, discussionProof)
       && (!Array.isArray(req.body?.discussion)
         || discussionClaims.hash(req.body.discussion) === discussionClaims.hash(publishedBeforeSave.discussion))) {
@@ -18738,6 +18796,34 @@ function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, 
       ...(freshDraft.qualityState && typeof freshDraft.qualityState === 'object' ? freshDraft.qualityState : {}),
       [stage]: resultChanges.qualityState[stage]
     };
+  }
+  if (stage === 'actions') {
+    const proposed = resultChanges.qualityState?.discussion?.claimConsolidation;
+    const current = resultChanges.qualityState?.actions;
+    if (proposed?.method === discussionActionSeparation.VERSION && proposed.applied
+      && current?.discussionActionSeparationCount > 0) {
+      const publishable = Array.isArray(changes.discussion)
+        && sourceDraft.details?.meetingDate === freshDraft.details?.meetingDate
+        && discussionClaims.canRestore(changes.discussion, normaliseSourceUnits(freshDraft.sourceUnits), proposed);
+      if (publishable) {
+        changes.qualityState = { ...(changes.qualityState || {}), discussion: { ...(freshDraft.qualityState?.discussion || {}),
+          claimConsolidation: proposed, generatedFingerprint: meetingAgentDiscussionFingerprint(changes.discussion) } };
+      } else {
+        if (Array.isArray(changes.actions)) changes.actions = discussionActionSeparation.restorePairedActions(changes.actions, proposed);
+        delete changes.discussion;
+        changes.qualityState = { ...(changes.qualityState || {}), actions: { ...(changes.qualityState?.actions || {}),
+          discussionActionSeparationCount: 0, sourceClarificationCorrectionCount: 0,
+          deferredDiscussionActionSeparation: { ...proposed, applied: false, reason: 'discussion_or_source_changed_before_publication' } } };
+      }
+    } else if (current?.discussionActionSeparationCoverageRestored && Array.isArray(changes.discussion)) {
+      const restored = discussionActionSeparation.restoreChangedActionCoverage(sourceDraft.discussion || [],
+        resultChanges.actions || [], sourceDraft.sourceUnits || [], sourceDraft.qualityState?.discussion?.claimConsolidation);
+      if (restored.restored && discussionClaims.hash(restored.discussion) === discussionClaims.hash(changes.discussion)
+        && discussionClaims.hash(restored.audit) === discussionClaims.hash(proposed)) {
+        changes.qualityState = { ...(changes.qualityState || {}), discussion: { ...(freshDraft.qualityState?.discussion || {}),
+          claimConsolidation: proposed, generatedFingerprint: meetingAgentDiscussionFingerprint(changes.discussion) } };
+      }
+    }
   }
   return { conflictFields: [], changes };
 }
@@ -19428,6 +19514,20 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
       existingActions: fresh.actions || [], reservedActions: reserved, generationKey
     }).actions : original;
   if (Array.isArray(changes.actions)) changes.actions = allocated;
+  const separation = changes.qualityState?.discussion?.claimConsolidation;
+  if (Array.isArray(changes.actions) && Array.isArray(changes.discussion)
+    && separation?.method === discussionActionSeparation.VERSION && separation.applied) {
+    const bound = discussionActionSeparation.rebindActionIdentities(original, allocated, separation);
+    if (!bound) {
+      const reverted = discussionActionSeparation.revertGeneratedPair(input, separation);
+      return admitMeetingAgentGeneratedActionChanges(fresh, { ...reverted, qualityState: { ...reverted.qualityState,
+        discussion: { ...reverted.qualityState.discussion, claimConsolidation: separation.priorAudit || { ...separation, applied: false, reason: 'identity_binding_failed' } },
+        actions: { ...reverted.qualityState.actions, discussionActionSeparationCount: 0, sourceClarificationCorrectionCount: 0,
+          deferredDiscussionActionSeparation: { ...separation, applied: false, reason: 'identity_binding_failed' } }
+      } }, generationKey);
+    }
+    changes.qualityState = { ...changes.qualityState, discussion: { ...changes.qualityState.discussion, claimConsolidation: bound } };
+  }
   const semantic = changes.qualityState?.actions?.semanticReconciliation;
   if (Array.isArray(changes.actions) && semantic?.applied && semantic.receipts?.length) {
     const bound = semantic.receipts.map(receipt => {
@@ -19558,6 +19658,12 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       // The generated action register was not applied, so it cannot justify
       // removing a corresponding row from the reviewer's Discussion.
       delete changes.discussion;
+      const separation = changes.qualityState?.discussion?.claimConsolidation;
+      if (separation?.method === discussionActionSeparation.VERSION && separation.applied) {
+        changes.qualityState = { ...changes.qualityState, discussion: { ...(fresh.qualityState?.discussion || {}) },
+          actions: { ...changes.qualityState.actions, discussionActionSeparationCount: 0, sourceClarificationCorrectionCount: 0,
+            deferredDiscussionActionSeparation: { ...separation, applied: false, deferredToProposal: true } } };
+      }
       // Flags raised on rows that were not applied would point at nothing.
       const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
       incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
@@ -20187,10 +20293,12 @@ router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-discussion'
     }
     const qualityState = { ...draft.qualityState, discussion: { ...draft.qualityState.discussion,
       claimConsolidation: { ...audit, applied: false, restored: true } } };
-    const saved = await saveMeetingAgentDraft(draft, req, { discussion, qualityState,
-      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, 'Restore combined paragraphs')].slice(-30),
+    const actions = req.body?.restorePairedActions === true
+      ? discussionActionSeparation.restorePairedActions(draft.actions, audit) : draft.actions;
+    const saved = await saveMeetingAgentDraft(draft, req, { discussion, actions, qualityState,
+      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, actions !== draft.actions ? 'Restore original discussion and action wording' : 'Restore combined paragraphs')].slice(-30),
       redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),
-        ...meetingAgentDerivedStaleStages(draft, { ...draft, discussion })])] });
+        ...meetingAgentDerivedStaleStages(draft, { ...draft, discussion, actions })])] });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
   } catch (error) { return sendMeetingAgentFailure(res, error); }
 });
