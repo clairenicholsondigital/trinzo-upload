@@ -1,6 +1,7 @@
 'use strict';
 const { isSinglePersonAssignment } = require('./discussionShape');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
+const { generatedFilingRecord } = require('./meetingMinutesFilingProvenance');
 
 // A narrow publication veto, not an action extractor or a replacement verdict.
 // Only unambiguous executable future assignments are filed. Mixed facts,
@@ -35,15 +36,22 @@ function isPureFutureAssignment(value, people = []) {
 function retainPureFutureAssignments(discussion = [], people = [], retain) {
   const retained = [];
   const protectedTree = record => isReviewerAuthored(record)
-    || (record?.supportingDetails || []).some(protectedTree);
+    || (Array.isArray(record?.supportingDetails) ? record.supportingDetails : []).some(protectedTree);
+  const recognizedTree = record => generatedFilingRecord({ ...record, supportingDetails: [] })
+    && (record.supportingDetails === undefined || Array.isArray(record.supportingDetails)
+      && record.supportingDetails.length <= 50 && record.supportingDetails.every(recognizedTree));
   const topics = discussion.map(topic => {
     if (isReviewerAuthored(topic) || /^manual-topic-/.test(String(topic.id || ''))) return topic;
     const points = (topic.points || []).filter(record => {
-      if (protectedTree(record) || !isPureFutureAssignment(record.text, people)) return true;
+      if (protectedTree(record) || !recognizedTree(record)
+        || Buffer.byteLength(JSON.stringify(record), 'utf8') > 128 * 1024
+        || !isPureFutureAssignment(record.text, people)) return true;
+      const originalRecord = structuredClone(record);
       if (typeof retain !== 'function' || retain(record, {
         originalTopic: record.originalTopic || topic.topic, placementReason: 'action_only_discussion'
       }) !== true) return true;
-      retained.push({ id: record.id, reason: 'action_only_discussion' });
+      retained.push({ id: record.id, reason: 'action_only_discussion',
+        originalTopic: topic.topic, originalRecord });
       return false;
     });
     return { ...topic, points };
