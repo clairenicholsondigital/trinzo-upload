@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs/promises');
+const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -16,18 +17,59 @@ function runJson(script, args, timeoutMs, extraEnv = {}) {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let terminalFailure = null;
+    let failureBuffer = '';
+    const diagnostics = [];
+    const signalToken = extraEnv.STAGED_AGENT_SELECTOR_FAILURE_TOKEN;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
     }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => {
+      const data = chunk.toString('utf8'); stderr += data;
+      if (!signalToken || terminalFailure) return;
+      failureBuffer += data;
+      const lines = failureBuffer.split('\n'); failureBuffer = lines.pop().slice(-8192);
+      for (const line of lines) {
+        if (line.startsWith('STAGED_SELECTOR_DIAGNOSTIC ') && line.length <= 8192) {
+          try {
+            const entry = JSON.parse(line.slice('STAGED_SELECTOR_DIAGNOSTIC '.length));
+            const allowed = ['event','expectedNumbers','localToGlobal','attempt','acceptedNumbers','missingNumbers','invalidRows','providerFailed','status'];
+            const metadata = value => typeof value === 'boolean' || value === null || Number.isSafeInteger(value)
+              || Array.isArray(value) && value.length <= 1000 && value.every(Number.isSafeInteger)
+              || value && typeof value === 'object' && Object.keys(value).length <= 1000
+                && Object.entries(value).every(([k,v])=>/^\d+$/.test(k) && Number.isSafeInteger(v));
+            if (['batch_attempt','provider_response','provider_retry'].includes(entry.event)
+              && Object.entries(entry).every(([k,v])=>allowed.includes(k) && (k==='event'||metadata(v)))) {
+              diagnostics.push(entry); if (diagnostics.length > 64) diagnostics.shift();
+            }
+          } catch { /* Never retain free-form provider text as diagnostic metadata. */ }
+          continue;
+        }
+        if (!line.startsWith('STAGED_SELECTOR_FAILURE ') || line.length > 8192) continue;
+        try {
+          const signal = JSON.parse(line.slice('STAGED_SELECTOR_FAILURE '.length));
+          if (signal.version !== 1 || signal.token !== signalToken || signal.code !== 'STAGED_SELECTOR_FAILED'
+            || !Array.isArray(signal.missingNumbers) || signal.missingNumbers.length > 1000
+            || !signal.missingNumbers.every(n => Number.isSafeInteger(n) && n > 0)) continue;
+          terminalFailure = { code: signal.code, missingNumbers: signal.missingNumbers, attempts: 4 };
+          clearTimeout(timer); child.kill('SIGKILL'); break;
+        } catch { /* Untrusted/malformed stderr is not a terminal signal. */ }
+      }
+    });
     child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      if (terminalFailure) {
+        const error = new Error('Private staged selector failed before completing both source checks.');
+        error.code = 'STAGED_SELECTOR_FAILED'; error.retryable = true; error.details = terminalFailure; error.diagnostics = diagnostics;
+        reject(error); return;
+      }
       if (timedOut) {
         const error = new Error(`Staged MiniLM/Trooper process timed out after ${timeoutMs}ms.`);
         error.code = 'STAGED_TIMEOUT';
+        error.diagnostics = diagnostics;
         error.retryable = true;
         error.details = stderr.slice(0, 2000);
         reject(error);
@@ -35,6 +77,7 @@ function runJson(script, args, timeoutMs, extraEnv = {}) {
       }
       if (code !== 0) {
         const error = new Error(`Staged MiniLM/Trooper process failed (${code ?? signal}).`);
+        error.diagnostics = diagnostics;
         error.details = stderr.slice(0, 2000);
         reject(error);
         return;
@@ -173,7 +216,8 @@ async function generatePreparedTrooperStage(stage, preparedTranscriptText, optio
     const result = await runJson('staged_trooper_chunk_pipeline.py', scriptArgs,
       Number(options.timeoutMs || process.env.STAGED_TROOPER_CHUNK_TIMEOUT_MS || 600000),
       { ...(options.shortRepairConcurrency === 3 ? { STAGED_ACTION_SHORT_REPAIR_CONCURRENCY: '3' } : {}),
-        ...(options.selectorBatchConcurrency === 2 ? { STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY: '2' } : {}) });
+        ...(options.selectorBatchConcurrency === 2 ? { STAGED_ACTION_SELECTOR_BATCH_CONCURRENCY: '2' } : {}),
+        ...(stage === 'actions' && options.selectorProtocol === true ? { STAGED_AGENT_SELECTOR_PROTOCOL: '1', STAGED_AGENT_SELECTOR_FAILURE_TOKEN: crypto.randomBytes(24).toString('hex') } : {}) });
     return stagedStageResult(stage, result, {
       source: 'prepared_minilm_v3',
       preparedLength: preparedText.length,
