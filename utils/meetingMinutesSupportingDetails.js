@@ -116,9 +116,10 @@ function consolidateExactFilingDuplicates(rows) {
 
 function collectUnassignedSupportingDetails(record, context = {}) {
   const retained = [];
-  const visit = value => {
+  const visit = (value, inheritedTopic = context.originalTopic) => {
     if (!value || typeof value !== 'object') return;
-    const originalTopic = context.originalTopic || value.originalTopic;
+    // A proposed/current parent is a fallback label, not the detail's origin.
+    const originalTopic = value.originalTopic || inheritedTopic;
     const placementReason = context.placementReason || value.placementReason;
     let filingRecord = value;
     // Only the internal generated handoff can archive a recognized discovery
@@ -134,7 +135,7 @@ function collectUnassignedSupportingDetails(record, context = {}) {
         filingOrigins: [origin] };
     }
     retained.push(...normalizeUnassignedSupportingDetails([{ ...filingRecord, originalTopic, placementReason }]));
-    for (const child of Array.isArray(value.supportingDetails) ? value.supportingDetails : []) visit(child);
+    for (const child of Array.isArray(value.supportingDetails) ? value.supportingDetails : []) visit(child, originalTopic);
   };
   visit(record);
   for (const child of Array.isArray(context.supportingDetails) ? context.supportingDetails : []) visit(child);

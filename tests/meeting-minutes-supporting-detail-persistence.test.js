@@ -106,6 +106,54 @@ async function documentXml(draft, evidence) {
   return zip.file('word/document.xml').async('string');
 }
 
+test('supporting subject survives PATCH GET, failed filing, undo redo and export projection', async () => {
+  reset();
+  const S = require('../utils/meetingMinutesSupportingDetails');
+  const { rehomeSupportingDetails, unitIndex } = require('../utils/canonicalMinutes/discussionOrganiser');
+  const wording = 'Supplier insurance confirmation remains outstanding.';
+  saved.sourceUnits.push({ id: 'T0004', speaker: 'Priya Shah', text: wording });
+  saved.discussion = api.compactDiscussionPropositions(saved.discussion, [], saved.sourceUnits, {
+    promoteMaterialSupporting: false,
+    supportingCandidates: [{ mergeTarget: 'main', candidate: { candidateId: 'insurance-context',
+      topic: 'Supplier insurance', text: wording, evidenceIds: ['T0004'], reviewFlagIds: ['detail-review'] } }]
+  });
+  const first = await request('get');
+  const after = await request('patch', '', { discussion: first.discussion });
+  const reloaded = await request('get');
+  for (const draft of [after, reloaded]) {
+    assert.equal(draft.discussion[0].points[0].supportingDetails[0].originalTopic, 'Supplier insurance');
+  }
+  // Rehome the generated inventory, before a reviewer explicitly chooses a
+  // destination; the save boundary below only persists this lossless handoff.
+  const generated = copy(first.discussion), retained = [];
+  rehomeSupportingDetails(generated, unitIndex(saved.sourceUnits), {
+    onUnassignedSupportingDetail: (detail, context) => {
+      retained.push(...S.collectUnassignedSupportingDetails(detail, context)); return true;
+    }
+  });
+  assert.equal(retained[0].originalTopic, 'Supplier insurance');
+  const filed = await request('patch', '', { discussion: generated,
+    unassignedSupportingDetails: [...reloaded.unassignedSupportingDetails, ...retained],
+    reviewDecisionLabel: 'Retain unresolved context for filing' });
+  const loaded = await request('get');
+  for (const draft of [filed, loaded]) {
+    const row = draft.unassignedSupportingDetails.find(r => r.id === 'insurance-context');
+    assert.equal(row.originalTopic, 'Supplier insurance');
+    assert.equal(row.placementReason, 'no_subject_match');
+    assert.equal(row.text, wording);
+    assert.deepEqual(row.evidenceIds, ['T0004']);
+    assert.deepEqual(row.reviewFlagIds, ['detail-review']);
+    assert.deepEqual(mainContent(draft), mainContent(first));
+    assert.ok(!(await documentXml(api.meetingAgentDraftForDocx(draft), false)).includes(wording));
+    assert.ok(api.meetingAgentDraftForPdf(draft, true).supportingDetails.some(r => r.text === wording));
+  }
+  const undone = await request('post', '/undo', { changeId: filed.lastUndo.id });
+  assert.equal(undone.discussion[0].points[0].supportingDetails[0].originalTopic, 'Supplier insurance');
+  const redone = await request('post', '/redo', {});
+  assert.equal(redone.unassignedSupportingDetails.find(r => r.id === 'insurance-context').originalTopic, 'Supplier insurance');
+  assert.equal(providerCalls, 0);
+});
+
 test('direct filing promotion survives real PATCH GET undo redo and Word export without consuming another occurrence', async () => {
   reset();
   for (let i = 4; i <= 15; i++) saved.sourceUnits.push({ id:'T'+String(i).padStart(4,'0'), speaker:'Morgan Taylor', text:longText });

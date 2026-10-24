@@ -140,3 +140,50 @@ test('legacy, mismatched and wholly failed contracts keep the existing fallback'
     assert.deepEqual(p.candidates, s.candidates);
   }
 });
+
+test('the production compact selection still consumes exact settled discovery records', () => {
+  for (const kind of ['supporting', 'merge', 'reject']) {
+    const s = setup(kind);
+    const contract = A.meetingMinutesAgentRefereeContract('discussion', s.candidates, 'request');
+    assert.ok(contract.candidates.every(c => !c.record), 'exercise the real compact wire boundary');
+    const before = JSON.stringify({ contract, candidates: s.candidates, baseline: s.baseline });
+    const p = A.discussionRefereeFallbackPlan(s.result, contract, s.candidates, s.baseline);
+    assert.equal(p.active, true);
+    assert.deepEqual(p.dispositions, s.result.candidateDispositions);
+    assert.deepEqual(p.discussion.flatMap(t => t.points).map(r => r.id), ['missing-row']);
+    assert.deepEqual(new Set(p.routedRecords.map(r => r.record.id)), new Set(['main-row', 'context-row']));
+    assert.equal(JSON.stringify({ contract, candidates: s.candidates, baseline: s.baseline }), before);
+  }
+});
+
+test('compact binding declines stale or ambiguous identities and preserves protected record trees', () => {
+  const mutations = [
+    s => { s.candidates[1].text += ' Different claim.'; },
+    s => { s.candidates[1].evidenceIds = ['T0099']; },
+    s => { s.candidates.push(clone(s.candidates[1])); },
+    s => { s.candidates[1].reviewerAuthored = true; },
+    s => { s.candidates[1].record.reviewerAuthored = true; },
+    s => { s.candidates[1].record.supportingDetails = [row('child', 'Keep the qualification.')]; }
+  ];
+  for (const mutate of mutations) {
+    const s = setup('reject');
+    const contract = A.meetingMinutesAgentRefereeContract('discussion', s.candidates, 'request');
+    mutate(s);
+    const p = A.discussionRefereeFallbackPlan(s.result, contract, s.candidates, s.baseline);
+    assert.ok(p.discussion.flatMap(t => t.points).some(r => r.id === 'context-row'));
+  }
+});
+
+test('recordless cluster members bind privately without consuming an unresolved supplied member', () => {
+  const s = setup();
+  const member = candidate('extra', row('extra-row', 'Supplier approval also covers packing documentation.'));
+  s.candidates.push(member);
+  s.baseline[0].points.push(member.record);
+  const compact = s.contract.candidates.map(({ record, ...c }) => c);
+  compact[0].clusterMembers = [member, s.candidates[2]].map(({ record, ...c }) => c);
+  const contract = A.meetingMinutesAgentRefereeContract('discussion', compact, 'request', { selected: true });
+  const p = A.discussionRefereeFallbackPlan(s.result, contract, s.candidates, s.baseline);
+  assert.deepEqual(p.discussion[0].points.map(r => r.id), ['missing-row']);
+  assert.ok(p.routedRecords.some(r => r.record.id === 'extra-row'));
+  assert.ok(p.candidates.some(c => c.candidateId === 'missing'));
+});

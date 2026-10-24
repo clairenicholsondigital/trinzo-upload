@@ -927,6 +927,8 @@ function normalisePoint(value, units, prefix, index, options = {}) {
         ...reviewerProvenance(source, options),
         ...reviewerMergeHistory(source, 'mergedFromIds', detailId, options),
         ...reviewerFilingProvenance(source, options),
+        ...(typeof source.originalTopic === 'string' && text(source.originalTopic, 220)
+          ? { originalTopic: text(source.originalTopic, 220) } : {}),
         ...(source.placementStatus === 'unresolved' ? {
           placementStatus: 'unresolved', placementReason: text(source.placementReason, 100)
         } : {}),
@@ -941,6 +943,8 @@ function normalisePoint(value, units, prefix, index, options = {}) {
     ...reviewerProvenance(candidate, options),
     ...reviewerMergeHistory(candidate, 'mergedFromIds', pointId, options),
     ...reviewerFilingProvenance(candidate, options),
+    ...(typeof candidate.originalTopic === 'string' && text(candidate.originalTopic, 220)
+      ? { originalTopic: text(candidate.originalTopic, 220) } : {}),
     text: pointText,
     ...(['core', 'supporting', 'reject'].includes(candidate.discoveryDisposition)
       ? { discoveryDisposition: candidate.discoveryDisposition } : {}),
