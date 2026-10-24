@@ -1,3 +1,4 @@
+const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
@@ -12447,6 +12448,11 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
       }
       continue;
     }
+    const contactIndex = actions.findIndex(existing => reconcileDetailedContacts(existing, record));
+    if (contactIndex >= 0) {
+      actions[contactIndex] = reconcileDetailedContacts(actions[contactIndex], record).record;
+      continue;
+    }
     // New source-bound semantic reconciliation supplies exact, immutable
     // original-to-final receipts. No raw-ID skip list: changed wording, source,
     // timing or metadata invalidates the receipt and work is restored normally.
@@ -13484,6 +13490,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
   };
   for (const original of Array.isArray(records) ? records : []) {
     const record = structuredClone(original);
+    const contactIndex = merged.findIndex(existing => reconcileDetailedContacts(existing, record));
+    if (contactIndex >= 0) {
+      merged[contactIndex] = reconcileDetailedContacts(merged[contactIndex], record).record;
+      continue;
+    }
     const candidate = { recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record };
     let complementaryDuplicate = null;
     let documentWorkflowDuplicate = null;
