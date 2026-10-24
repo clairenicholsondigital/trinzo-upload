@@ -732,3 +732,55 @@ test('full reviewer wording requires the save boundary and authorship; generated
   }));
   assert.equal(V.normaliseAgentResult(copy(candidate), saved.sourceUnits, '', options).discussion.length, 80);
 });
+
+test('generated source archives survive real PATCH GET undo redo and export without changing other content', async () => {
+  reset();
+  const S = require('../utils/meetingMinutesSupportingDetails');
+  const generated = { id: 'generated-one', text: saved.sourceUnits[2].text,
+    evidenceIds: ['T0003'], reviewFlagIds: [], primaryEvidenceIds: ['T0003'],
+    discoveryDisposition: 'supporting', supportingDetails: [] };
+  saved.unassignedSupportingDetails = S.mergeUnassignedSupportingDetails(
+    S.collectUnassignedSupportingDetails(generated, { originalTopic: 'Equipment', placementReason: 'no_subject_match' }),
+    S.collectUnassignedSupportingDetails({ id: 'generated-two', text: generated.text, evidenceIds: ['T0003'] },
+      { originalTopic: 'Inspection', placementReason: 'no_subject_match' }));
+  const first = await request('get'), retained = first.unassignedSupportingDetails[0];
+  assert.equal(first.unassignedSupportingDetails.length, 1);
+  assert.deepEqual(retained.filingOrigins[0].generatedRecord, generated);
+  const discussion = copy(first.discussion);
+  discussion[0].points.push({ ...retained, reviewerAuthored: true, supportingDetails: [] });
+  const filed = await request('patch','',{ discussion, unassignedSupportingDetails: [], reviewDecisionLabel: 'File retained context' });
+  const check = draft => {
+    const point = draft.discussion[0].points.find(p => p.id === retained.id);
+    assert.ok(point);assert.deepEqual(point.filingOrigins,retained.filingOrigins);
+    assert.deepEqual(point.mergedFromIds,retained.mergedFromIds);
+    assert.deepEqual(draft.actions,first.actions);
+    assert.deepEqual(draft.discussion[0].points[0],first.discussion[0].points[0]);
+  };
+  check(filed);check(await request('get'));
+  const xml = await documentXml(api.meetingAgentDraftForDocx(filed),false);
+  assert.ok(xml.includes(generated.text));
+  const pdf = api.meetingAgentDraftForPdf(filed,false);
+  assert.equal(pdf.discussion.flatMap(t => t.points).filter(t => t === generated.text).length,1);
+  const undone = await request('post','/undo',{changeId:filed.lastUndo.id});
+  assert.deepEqual(undone.unassignedSupportingDetails,first.unassignedSupportingDetails);
+  assert.equal(undone.discussion[0].points.length,1);
+  check(await request('post','/redo',{}));
+});
+
+test('saved and published filing archives retain verbatim historical glossary and date wording', async () => {
+  reset();
+  const S = require('../utils/meetingMinutesSupportingDetails');
+  const text = 'The supplier scheduled the meds app review for monday, July 1st at half two.';
+  saved.sourceUnits[2].text = text;
+  const generated = { id: 'historical-generated', text, evidenceIds: ['T0003'], reviewFlagIds: [],
+    primaryEvidenceIds: ['T0003'], discoveryDisposition: 'supporting', supportingDetails: [] };
+  const retained = S.collectUnassignedSupportingDetails(generated,{ originalTopic: 'Equipment', placementReason: 'no_subject_match' })[0];
+  saved.unassignedSupportingDetails=[retained];
+  const initial=await request('get'),discussion=copy(initial.discussion);
+  discussion[0].points.push({...initial.unassignedSupportingDetails[0],reviewerAuthored:true});
+  const filed=await request('patch','',{discussion,unassignedSupportingDetails:[]});
+  const expected=retained.filingOrigins;
+  for(const d of [filed,await request('get'),api.meetingAgentDraftForDocx(filed)]) {
+    assert.deepEqual(d.discussion[0].points.find(p=>p.id===retained.id).filingOrigins,expected);
+  }
+});

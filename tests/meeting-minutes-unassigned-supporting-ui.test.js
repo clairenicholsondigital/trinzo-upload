@@ -402,3 +402,46 @@ test('an existing uncertain placement keeps its parent and shows a plain review 
     assert.deepEqual(f.errors, []);
   } finally { await f.close(); }
 });
+
+test('generated filing archive survives browser filing, promotion, demotion and reload', { timeout: 90000 }, async () => {
+  const S = require('../utils/meetingMinutesSupportingDetails');
+  const initial = draft();
+  const generated = { id: 'generated-one', text: 'The calibration archive contains the revised supplier certificate.',
+    evidenceIds: ['T0002'], reviewFlagIds: [], primaryEvidenceIds: ['T0002'],
+    discoveryDisposition: 'supporting', supportingDetails: [] };
+  const copy = { id: 'generated-two', text: generated.text, evidenceIds: ['T0002'], reviewFlagIds: [] };
+  initial.sourceUnits[1].text = generated.text;
+  initial.unassignedSupportingDetails = S.mergeUnassignedSupportingDetails(
+    S.collectUnassignedSupportingDetails(generated, { originalTopic: 'Equipment', placementReason: 'no_subject_match' }),
+    S.collectUnassignedSupportingDetails(copy, { originalTopic: 'Inspection', placementReason: 'no_subject_match' }));
+  assert.equal(initial.unassignedSupportingDetails.length, 1);
+  const expected = structuredClone(initial.unassignedSupportingDetails[0]);
+  const f = await fixture(initial);
+  const check = () => {
+    const rows = f.saved().discussion.flatMap(t => ['points','decisions','openQuestions']
+      .flatMap(k => t[k].flatMap(r => [r,...(r.supportingDetails || [])])))
+      .concat(f.saved().unassignedSupportingDetails);
+    const retained = rows.filter(r => r.id === expected.id);
+    assert.equal(retained.length, 1);
+    assert.deepEqual(retained[0].filingOrigins, expected.filingOrigins);
+    assert.deepEqual(retained[0].mergedFromIds, expected.mergedFromIds);
+    assert.equal(retained[0].text, expected.text);
+  };
+  try {
+    const { page } = f;
+    const row = await openPool(page);
+    await row.locator('[data-supporting-destination]').selectOption('0:points:0');
+    await Promise.all([page.waitForResponse(r => r.request().method() === 'PATCH'), row.locator('[data-file-supporting]').click()]);
+    await settled(page);check();
+    await page.reload();await settled(page);check();
+    await page.click('#omittedDetailsPanel > summary');
+    await Promise.all([page.waitForResponse(r => r.request().method() === 'PATCH'),
+      page.locator('[data-promote-supporting][data-topic-index="0"][data-parent-field="points"]').click()]);
+    await settled(page);check();
+    const promoted = page.locator('[data-record-row][data-row-topic="0"][data-row-field="points"][data-row-index="1"]');
+    await promoted.locator('.record-menu > summary').click();
+    await Promise.all([page.waitForResponse(r => r.request().method() === 'PATCH'), promoted.locator('[data-demote-record]').click()]);
+    await settled(page);check();await page.reload();await settled(page);check();
+    assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});

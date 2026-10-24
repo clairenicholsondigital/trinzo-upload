@@ -103,8 +103,9 @@ function normaliseKnownTermsDeep(value) {
     if (value instanceof Date) return value;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return value;
+    // Filing origins are historical records, never presentation prose.
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
-      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' ? item : normaliseKnownTermsDeep(item)]));
+      key === 'occurrenceId' || key === 'keptActionOccurrenceIds' || key === 'filingOrigins' ? item : normaliseKnownTermsDeep(item)]));
   }
   return value;
 }
