@@ -13297,10 +13297,16 @@ function bundleSameRecipientDeliveries(records = []) {
     const frame = actionDeliveryFrame(record);
     const owners = exactActionOwners(record);
     if (!frame || !owners.length) return;
-    // If both fields already state a dependency in different words, retain
-    // them separately rather than appending a second version of the condition.
-    if (record.timing?.kind === 'dependency' && ACTION_DEPENDENCY_CLAUSE.test(record.action || '')
-      && !String(record.action || '').toLowerCase().includes(String(record.timing.wording || '').toLowerCase())) return;
+    // Refuse timing synthesis when the action already carries a condition
+    // but its separate timing is not literally present. The timing kind may
+    // be misclassified; before/after conditions can be deadlines or targets.
+    // Keep this check local: the shared dependency parser also controls task
+    // identity and must not change as part of a delivery-formatting fix.
+    const timing = record.timing || {};
+    const inlineCondition = /\b(?:once|before|after|when|as soon as|following|until|by)\b\s+\S/i.test(record.action || '');
+    const timingWording = String(timing.wording || '').trim().replace(/[.]+$/, '').toLowerCase();
+    if (timing.kind && timing.kind !== 'not_stated' && inlineCondition
+      && (!timingWording || !String(record.action || '').toLowerCase().includes(timingWording))) return;
     const key = `${owners.join('|')}::${frame.recipientKey}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ record, frame, index });
