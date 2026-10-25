@@ -26,6 +26,7 @@ function normaliseSemanticPolicy(value) {
     ...(ACTION_SCOPES.has(value.scope) ? { scope: value.scope } : {}),
     ...(ACTION_SCOPES.has(value.scope)&&value.containedRequirements===true?{containedRequirements:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),
+    ...(ACTION_SCOPES.has(value.scope)&&value.referenceContracts===true?{referenceContracts:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.contactParaphrases===true?{contactParaphrases:true}:{}) });
 }
 function captureSemanticPolicy(env = process.env) {
@@ -42,6 +43,7 @@ function captureSemanticPolicy(env = process.env) {
     ...(contained?{containedRequirements:true}:{}),
     ...(dependencies?{qualifiedDependencies:true}:{}),
     ...(contacts?{contactParaphrases:true}:{}),
+    referenceContracts:/^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_ACTION_PROOF_CONTRACT_V2||'0')),
     maxCandidates: enquiries || survivors ? 2 : contained || dependencies || contacts ? 1 : env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
     batchSize: env.MEETING_MINUTES_AGENT_SEMANTIC_BATCH_SIZE,
     budgetMs: env.MEETING_MINUTES_AGENT_SEMANTIC_BUDGET_MS,

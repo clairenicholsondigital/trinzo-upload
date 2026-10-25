@@ -25,4 +25,14 @@ function unitTokens(value) {
   return text.match(/[£€$%‰]|(?<![\p{L}'’])(?:[yzafpnumcdhkMGTPEZYµμ]?(?:mol|Hz|Pa|m|g|s|A|K|N|J|W|C|V|L|l))(?![\p{L}'’])/gu) || [];
 }
 
-module.exports = { numberedIdentifiers, quantityTokens, unitTokens };
+// Versioned proof-only disambiguation. Keep the shared tokenizer unchanged.
+// "as" is also the SI symbol for attoseconds: explicit measurements and
+// declarations must remain protected. Only clear conjunction + grammatical
+// continuation can remove that false candidate from a source-review facet.
+function proofUnitTokens(value) {
+  const text = String(value || ''), units = unitTokens(text);
+  const measured = /\b(?:attoseconds?|units?)\b|\b(?:units?(?:\s+of)?|in)\s+as\b|\b(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand)\s*as\b/i.test(text);
+  const conjunction = /\b[a-z][a-z'-]+\s+as\s+(?:[a-z][a-z'-]*ing|a|an|the|we|you|they|he|she|it)\b/i.test(text);
+  return !measured && conjunction ? units.filter(unit => unit !== 'as') : units;
+}
+module.exports = { numberedIdentifiers, quantityTokens, unitTokens, proofUnitTokens };
