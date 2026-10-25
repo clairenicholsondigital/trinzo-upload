@@ -180,3 +180,48 @@ test('a source-stated overdue period remains a timed obligation despite being in
     timing: { kind: 'deadline', wording: 'last week', exactDate: '' } };
   assert.equal(timedStepCoverage(inventory, [row], source, options).complete, true);
 });
+
+
+test('descriptive commitment wording with wholly retrospective timing creates no timed work', () => {
+  for (const text of [
+    'The changes are to do with the battery, as we said when we talked earlier.',
+    'The purpose of this process is to help us locate clauses, which we have done before and know about.',
+    "Part of our process now is to help locate clauses, which I've done before and know about."
+  ]) {
+    const source = [{ id: 'T0001', speaker: 'Morgan', text }];
+    const inventory = actionCandidateInventory(source), before = structuredClone(inventory);
+    assert.ok(inventory.length, 'discovery still retains the descriptive source');
+    const coverage = timedStepCoverage(inventory, [], source, options);
+    assert.equal(coverage.expected, 0, text);
+    assert.deepEqual(inventory, before, 'no discovery candidates or evidence are removed');
+  }
+});
+
+test('descriptive language cannot suppress a real assignment, future condition or ambiguous timing', () => {
+  for (const text of [
+    'Morgan is to send the revised report tomorrow.',
+    'We will send the revised report tomorrow.',
+    'I must send the report; it was due last week.',
+    'The changes are to do with the battery; I will send the revised report tomorrow.',
+    'The purpose of the review is to send the revised report Friday.',
+    'The purpose of the review is to send the report when approval arrives.',
+    'The changes are to do with the battery when approval arrives.',
+    'The changes are to do with the battery before testing; we have reviewed this before and know about it.',
+    'The purpose of the review is to send the report before Friday; we have done this before and know about it.',
+    'The changes are to do with the battery when we talked earlier; I must review the report before we submit it.',
+    'The changes are to do with the battery when we talked earlier; we will review them tomorrow.'
+  ]) {
+    const source = [{ id: 'T0001', speaker: 'Morgan', text }];
+    assert.ok(timedStepCoverage(actionCandidateInventory(source), [], source, options).expected > 0, text);
+  }
+});
+
+test('accepted source context and independent cue types remain eligible despite descriptive grammar', () => {
+  const text = 'The changes are to do with the battery when we talked earlier.';
+  const source = [{ id: 'T0001', speaker: 'Morgan', text }];
+  const [candidate] = actionCandidateInventory(source);
+  for (const cueKinds of [['commitment', 'acceptance'], ['request'], undefined]) {
+    const coverage = timedStepCoverage([{ ...candidate, cueKinds }], [], source, options);
+    assert.equal(coverage.expected, 1);
+  }
+});

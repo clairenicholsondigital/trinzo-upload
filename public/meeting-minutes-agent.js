@@ -1302,7 +1302,7 @@
         + '</div><div class="omitted-detail-actions">' + suggestion + control + promote
         + evidenceBlock(detail.evidenceIds, 'unassigned-' + detailId + '-' + index) + '</div></article>';
     }
-    return '<section class="omitted-topic" data-needs-filing><h3>Needs filing (' + pool.length + ' retained entries)</h3><p class="muted">Choose where each detail belongs before deciding whether to add it to the minutes.</p><div class="omitted-detail-list">'
+    return '<section class="omitted-topic" data-needs-filing><h3>Optional retained material (' + pool.length + ' entries)</h3><p class="muted">These entries are not included in the main minutes. File or add an entry only if you want to include it.</p><div class="omitted-detail-list">'
       + window.MeetingMinutesFilingOrder.groupedEntries(pool, state.draft.sourceUnits).map(function (group) {
         if (group.entries.length === 1) return occurrence(group.entries[0], true, 1);
         return '<section data-identical-filing-group><p>' + escapeHtml(group.text) + '</p><details data-keep-open="filing-group-'
@@ -1327,7 +1327,7 @@
     var pool = (state.draft && state.draft.unassignedSupportingDetails) || [];
     var count = grouped.reduce(function (total, group) { return total + group.rows.length; }, 0) + (Array.isArray(pool) ? pool.length : 0);
     if (!count) return '';
-    return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Review additional details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details were left out of the draft. Check whether anything should be included.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
+    return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Optional additional details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details are not included in the main minutes. You can add anything useful; there is no need to include every entry. Any linked warnings still need checking before including the detail.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
       return '<section class="omitted-topic"><h3>' + escapeHtml(group.topic.topic || 'Untitled topic') + '</h3><div class="omitted-detail-list">' + group.rows.map(function (row) {
         var detailId = row.detail.id || (group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex);
         return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(row.detail.text || '') + '</p>' + retainedWarningNotices(row.detail, 'supporting-' + detailId + '-' + group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex) + (row.detail.placementStatus === 'unresolved' ? '<p class="muted">Placement needs review.</p>' : '') + '</div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
@@ -1954,7 +1954,7 @@
             if ((detail.reviewFlagIds || []).indexOf(flagId) >= 0) return {
               stage: 2,
               elementId: recordDomId('supporting', detail.id, ti + '-' + ctxField + '-' + ii + '-' + di),
-              label: 'Supporting context',
+              label: 'Supporting context', retained: true,
               text: detail.text || '',
               field: 'text'
             };
@@ -1965,13 +1965,13 @@
     var unfiledTargets = (state.draft.unassignedSupportingDetails || []).map(function (detail, index) {
       return { detail: detail, index: index };
     }).filter(function (entry) { return (entry.detail.reviewFlagIds || []).indexOf(flagId) >= 0; });
-    if (unfiledTargets.length > 1) return { ambiguous: true, label: 'Several retained details',
+    if (unfiledTargets.length > 1) return { ambiguous: true, retained: true, label: 'Several retained details',
       text: unfiledTargets.map(function (entry) { return entry.detail.text || ''; }).join('; ') };
     if (unfiledTargets.length === 1) {
       var unfiled = unfiledTargets[0];
       return { stage: 2, elementId: recordDomId('unassigned-supporting',
         (unfiled.detail.id || ('unassigned-' + unfiled.index)) + '-' + unfiled.index, unfiled.index),
-        label: 'Retained detail awaiting filing', text: unfiled.detail.text || '', field: 'text' };
+        label: 'Retained detail', retained: true, text: unfiled.detail.text || '', field: 'text' };
     }
     var linkedActions = (state.draft.actions || []).map(function (action, index) {
       return { action: action, index: index };
@@ -2107,7 +2107,7 @@
         : flag.message;
       var candidateText = reviewCandidateForFlag(flag, target);
       var candidateLabel = target
-        ? (target.proposal ? 'Proposed minutes text' : 'In the minutes · ' + target.label)
+        ? (target.proposal ? 'Proposed minutes text' : (target.retained ? 'Not in the main minutes · ' : 'In the minutes · ') + target.label)
         : 'Transcript detail to consider';
       var body = '';
       if (candidateText) {
@@ -2117,9 +2117,9 @@
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += (candidateText ? '' : '<div class="flag-target"><span>' + escapeHtml(candidateLabel) + '</span>')
-          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">Open in minutes</button></div>';
+          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.retained ? 'Open retained detail' : 'Open in minutes') + '</button></div>';
       } else if (target && target.ambiguous) {
-        body += '<p>This check is linked to several actions. Review those rows directly.</p></div>';
+        body += '<p>' + (target.retained ? 'This check is linked to several retained details. Review those entries before including them.' : 'This check is linked to several actions. Review those rows directly.') + '</p></div>';
       } else if (candidateText) {
         body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
       } else {

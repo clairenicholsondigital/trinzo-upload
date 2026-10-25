@@ -126,7 +126,7 @@ class FrontendContractTest(unittest.TestCase):
         # The omitted-details review is one shared panel, and its open state
         # survives the same re-render path as the other evidence disclosures.
         self.assertIn('id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"', client)
-        self.assertIn('Review additional details (', client)
+        self.assertIn('Optional additional details (', client)
         self.assertIn('Add to minutes', client)
         self.assertIn('function restoreDisclosures', client)
         # Adding a discussion point is now a visible per-topic action rather
@@ -206,7 +206,7 @@ class FrontendContractTest(unittest.TestCase):
         # Omitted details are now stated once in one shared review panel above
         # the topic cards rather than repeated below every topic.
         self.assertNotIn('Not included in main minutes', client)
-        self.assertIn('These details were left out of the draft. Check whether anything should be included.', client)
+        self.assertIn('These details are not included in the main minutes. You can add anything useful; there is no need to include every entry. Any linked warnings still need checking before including the detail.', client)
         self.assertIn('Add to minutes', client)
         self.assertIn('Move to additional details', client)
         self.assertIn('.record-row+.record-row', page)

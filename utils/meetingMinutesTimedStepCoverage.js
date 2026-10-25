@@ -1,6 +1,7 @@
 'use strict';
 
 const Timing = require('./meetingMinutesTiming');
+const { actionEvidenceDisposition } = require('./meetingMinutesAgentV2');
 
 // This is an accounting signal for the existing recovery pass, not an action
 // extractor. Only already inventoried, accepted work can enter this check.
@@ -38,6 +39,32 @@ function focusedTimingGroups(value) {
   return groups.map(group => group.expressions);
 }
 
+// Discovery deliberately favours recall. Bare "is to" / "are to" also
+// nominate descriptions, however; those alone cannot establish timed work.
+// Reassess only the two unambiguous descriptive constructions, leaving the
+// inventory, original evidence and every independently accepted cue intact.
+function descriptiveCommitmentOnly(candidate) {
+  if (!Array.isArray(candidate.cueKinds) || candidate.cueKinds.length !== 1
+    || candidate.cueKinds[0] !== 'commitment') return false;
+  const original = String(candidate.focusText || '');
+  const descriptive = original
+    .replace(/\b(?:is|are)\s+to\s+do\s+with\b/gi, 'relates to')
+    .replace(/\b((?:purpose|aim|function|role|part)\s+of\s+[^.;!?]{1,100}?)\s+(?:is|are)\s+to\b/gi, '$1 describes');
+  if (descriptive === original) return false;
+  // A description may still define future work ("the purpose of the review
+  // is to send the report Friday"). Exclude only wholly retrospective timing;
+  // any date, future condition or ambiguous expression keeps its check.
+  const expressions = [...original.matchAll(TIME)];
+  const historicalWhen = /^when\b.*\b(?:talked|discussed|spoke|said|met|reviewed)\b.*\b(?:earlier|previously)\b/i;
+  const priorExperience = /\b(?:have|has|had|[a-z]+['’]ve|[a-z]+['’]d)\s+(?:\w+\s+){0,4}(?:done|seen|used|reviewed|discussed)(?:\s+\w+){0,4}\s*$/i;
+  if (!expressions.length || !expressions.every(match => historicalWhen.test(match[0])
+    || /^before\s+(?:and|but)\b/i.test(match[0])
+      && priorExperience.test(original.slice(0, match.index)))) return false;
+  // A genuine assignment elsewhere in the same focus must still be checked.
+  return !['committed', 'accepted_request', 'conditional_commitment']
+    .includes(actionEvidenceDisposition(descriptive, descriptive));
+}
+
 function timedStepCoverage(candidates = [], actions = [], units = [], options = {}) {
   const included = new Map(units.filter(unit => unit.classification !== 'remove' || unit.restored).map(unit => [unit.id, unit]));
   const accepted = candidates.filter(candidate => included.has(candidate.focusEvidenceId)
@@ -46,7 +73,8 @@ function timedStepCoverage(candidates = [], actions = [], units = [], options = 
     // independent source-stated timed step merely by citing a nearby turn.
     && candidate.sourcePass !== 'discussion_row' && !/^candidate-discussion-/.test(candidate.candidateId || '')
     && canon(candidate.focusText) && canon(included.get(candidate.focusEvidenceId).text).includes(canon(candidate.focusText))
-    && ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate.dispositionHint));
+    && ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate.dispositionHint)
+    && !descriptiveCommitmentOnly(candidate));
   // The inventory also contains whole turns. Prefer its existing focused
   // clauses so a compound turn is not counted again as another missing action.
   const clauseFocus = new Set(accepted.filter(candidate => /^candidate-clause-/.test(candidate.candidateId || '')).map(candidate => candidate.focusEvidenceId));
