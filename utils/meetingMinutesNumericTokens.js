@@ -31,7 +31,7 @@ function unitTokens(value) {
 // continuation can remove that false candidate from a source-review facet.
 function proofUnitTokens(value) {
   const text = String(value || ''), units = unitTokens(text);
-  const measured = /\battoseconds?\b|\b(?:units?(?:\s+of)?|in)\s+as\b|\b(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand)\s*as\b/i.test(text);
+  const measured = /\b(?:attoseconds?|units?)\b|\b(?:units?(?:\s+of)?|in)\s+as\b|\b(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand)\s*as\b/i.test(text);
   const conjunction = /\b[a-z][a-z'-]+\s+as\s+(?:[a-z][a-z'-]*ing|a|an|the|we|you|they|he|she|it)\b/i.test(text);
   return !measured && conjunction ? units.filter(unit => unit !== 'as') : units;
 }
