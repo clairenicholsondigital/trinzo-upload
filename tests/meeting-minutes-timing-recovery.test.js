@@ -8,6 +8,29 @@ const correct={id:'a1',verdict:'correct',timingQuote:'this week',stepQuote:'the 
 const invalid={...correct,timingQuote:'next Tuesday'};
 test('isolated protocol recovery cannot launder a foreign quote',async()=>{let calls=0;const r=await R.review([action],[item()],[invalid],units,{meetingDate:'2026-10-24',request:async()=>{calls++;return {results:[invalid]};}});assert.equal(calls,1);assert.equal(r.audit.outcomes[0].category,'own_quote_invalid');assert.equal(r.actions[0].timingDecision.status,'unresolved');assert.deepEqual(r.audit.originalResults,[invalid]);});
 test('uncertain is retained as uncertainty, never certification',async()=>{const r=await R.review([action],[item()],[invalid],units,{meetingDate:'2026-10-24',request:async()=>({results:[{id:'a1',verdict:'uncertain',reason:'No own timing evidence',timingQuote:'',stepQuote:''}]})});assert.equal(r.accounting.items[0].status,'uncertain');assert.equal(r.audit.outcomes[0].category,'semantic_uncertainty');});
+test('a verbatim retry reports the remaining binding failure without certifying or resampling it',async()=>{
+ let calls=0;
+ const r=await R.review([action],[item()],[invalid],units,{meetingDate:'2026-10-24',nominalEnabled:true,
+  request:async(part)=>{assert.equal(part,'isolated');calls++;return {results:[correct]};}});
+ assert.equal(calls,1);assert.equal(r.audit.proofs.length,0);
+ assert.deepEqual(r.audit.originalResults,[invalid]);
+ assert.equal(r.audit.attempts[0].originalState.reason,'correct_quotes_not_verbatim_or_complete');
+ assert.equal(r.audit.attempts[0].outcome.reason,'correct_step_not_bound_to_action');
+ assert.equal(r.accounting.items[0].status,'rejected');
+ assert.equal(r.audit.outcomes[0].category,'source_binding_unproved');
+ assert.equal(r.actions[0].timingDecision.status,'unresolved');
+ assert.equal(r.actions[0].timingDecision.checkerReason,'correct_step_not_bound_to_action');
+ assert.equal(r.flags.length,1);assert.match(r.flags[0].message,/correct step not bound to action/);
+ assert.equal(r.actions[0].action,action.action);assert.deepEqual(r.actions[0].owners,action.owners);
+ assert.deepEqual(r.actions[0].timing,action.timing);
+});
+test('malformed, duplicate and foreign isolated responses never replace the original rejection',async()=>{
+ for(const rows of [[{...correct,id:'foreign'}],[correct,correct],[{...correct,timingQuote:12}],[invalid]]){
+  const r=await R.review([action],[item()],[invalid],units,{meetingDate:'2026-10-24',request:async()=>({results:rows})});
+  assert.equal(r.audit.outcomes[0].category,'own_quote_invalid');
+  assert.equal(r.actions[0].timingDecision.status,'unresolved');assert.deepEqual(r.audit.originalResults,[invalid]);
+ }
+});
 test('valid uncertainty is not retried',async()=>{const r=await R.review([action],[item()],[{id:'a1',verdict:'uncertain',reason:'unclear'}],units,{meetingDate:'2026-10-24',request:async()=>assert.fail('semantic uncertainty must not be resampled')});assert.equal(r.audit.calls,0);});
 test('missing and duplicate results are accounted separately from binding',()=>{assert.equal(R.category({status:'duplicate',reason:'duplicate_result_id'}),'response_protocol_failure');assert.equal(R.category({status:'rejected',reason:'correct_step_not_bound_to_action'}),'source_binding_unproved');});
 function proposal(p){return {version:R.VERSION,packetHash:p.packetHash,decision:'supported',claims:[{originalQuote:action.action,sourceId:'T0001',quote:'the inspection codes through to Alex for clarification'}],owner:{sourceId:'T0001',quote:'Nora'},work:{sourceId:'T0001',quote:'the inspection codes through to Alex for clarification'},timing:{sourceId:'T0001',quote:'this week'}};}

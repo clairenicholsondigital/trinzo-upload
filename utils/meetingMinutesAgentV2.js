@@ -3218,6 +3218,7 @@ function timingCheckItems(actions = [], units = [], options = {}) {
 function timingCheckPrompt(items = [], meetingDate = '') {
   return [
     'ACTION_CRITIC_TIMING',
+    require('./meetingMinutesTimingInstructions'),
     "You check whether each action's timing belongs to that action. Each item gives an action, the timing attached to it, and the transcript passage it was drawn from. The passage is the only authority.",
     `The meeting took place on ${meetingDate || 'an unstated date'}. Do not calculate dates.`,
     'For each item decide one verdict:',
