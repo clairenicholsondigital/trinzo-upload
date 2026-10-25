@@ -210,7 +210,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true})
+    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true,contactReviews:policy.contactReviews===true})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)
@@ -357,7 +357,10 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
             elapsedMs:Date.now()-callStarted,timings:error.callTimings||[],failed:true,errorCode:error.code||failurePrefix+'_review_failure'});
           throw error;
         }
-        const passed=referenceReview.assess(review,response.result).modelPassed;
+        const assessment=referenceReview.assess(review,response.result);
+        const passed=assessment.modelPassed && (review.instructionComparison!=='contact_review'
+          || assessment.relationship?.relation==='same_obligation'
+            && assessment.sourceRoles.every(row=>row.basis==='commitment'));
         if(challenge||!passed)providerAssessed.add(candidate.candidateId);
         if(!passed)throw Object.assign(new Error('Source review veto'),{code:failurePrefix+'_independent_veto'});
         responses.push(response.result);

@@ -16,7 +16,7 @@ function normaliseSemanticPolicy(value) {
     return Object.freeze({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
       mode: 'off', maxCandidates: 64, batchSize: 4, budgetMs: 90000, attemptTimeoutMs: 60000 });
   }
-  const narrow = value.contactParaphrases===true || value.containedRequirements===true || value.qualifiedDependencies===true || ['bounded_existing_survivors','contact_and_existing_survivors','contained_requirements','qualified_dependencies'].includes(value.scope);
+  const narrow = value.contactReviews===true || value.contactParaphrases===true || value.containedRequirements===true || value.qualifiedDependencies===true || ['bounded_existing_survivors','contact_and_existing_survivors','contained_requirements','qualified_dependencies'].includes(value.scope);
   return Object.freeze({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
     mode: MODES.has(value.mode) && (value.scope === undefined || ACTION_SCOPES.has(value.scope)) ? value.mode : 'off',
     maxCandidates: bounded(value.maxCandidates, ['contained_requirements','qualified_dependencies','contact_paraphrases'].includes(value.scope) ? 1 : narrow ? 2 : 64, 1, ['contained_requirements','qualified_dependencies','contact_paraphrases'].includes(value.scope) ? 1 : narrow ? 2 : 128),
@@ -27,14 +27,16 @@ function normaliseSemanticPolicy(value) {
     ...(ACTION_SCOPES.has(value.scope)&&value.containedRequirements===true?{containedRequirements:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.referenceContracts===true?{referenceContracts:true}:{}),
-    ...(ACTION_SCOPES.has(value.scope)&&value.contactParaphrases===true?{contactParaphrases:true}:{}) });
+    ...(ACTION_SCOPES.has(value.scope)&&value.contactParaphrases===true?{contactParaphrases:true}:{}),
+    ...(ACTION_SCOPES.has(value.scope)&&value.contactReviews===true&&value.contactParaphrases===true?{contactReviews:true}:{}) });
 }
 function captureSemanticPolicy(env = process.env) {
   const broadMode = String(env.MEETING_MINUTES_AGENT_SEMANTIC_RECONCILIATION_V1 || 'off').trim().toLowerCase();
   const enquiries = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTACT_ENQUIRY_DEDUPE_V1 || '0'));
   const survivors = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_BOUNDED_SURVIVOR_DEDUPE_V1 || '0'));
   const contained = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTAINED_REQUIREMENTS_V1 || '0'));
-  const contacts = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTACT_PARAPHRASE_V1 || '0'));
+  const contactReviews = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTACT_REVIEW_V1 || '0'));
+  const contacts = contactReviews || broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTACT_PARAPHRASE_V1 || '0'));
   const dependencies = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_QUALIFIED_DEPENDENCY_DEDUPE_V1 || '0'));
   const scope = survivors ? (enquiries ? 'contact_and_existing_survivors' : 'bounded_existing_survivors') : (enquiries?'contact_enquiries':contained?'contained_requirements':dependencies?'qualified_dependencies':'contact_paraphrases');
   return normaliseSemanticPolicy({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
@@ -43,6 +45,7 @@ function captureSemanticPolicy(env = process.env) {
     ...(contained?{containedRequirements:true}:{}),
     ...(dependencies?{qualifiedDependencies:true}:{}),
     ...(contacts?{contactParaphrases:true}:{}),
+    ...(contactReviews?{contactReviews:true}:{}),
     referenceContracts:/^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_ACTION_PROOF_CONTRACT_V2||'0')),
     maxCandidates: enquiries || survivors ? 2 : contained || dependencies || contacts ? 1 : env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
     batchSize: env.MEETING_MINUTES_AGENT_SEMANTIC_BATCH_SIZE,
