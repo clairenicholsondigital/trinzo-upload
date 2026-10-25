@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const contained = require('./containedRequirement');
+const dependency = require('./qualifiedDependency');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
@@ -220,12 +221,13 @@ function prepareActionReconciliation(input = {}) {
         sourceHash: hash(unit), text: String(unit.text || ''), speaker: String(unit.speaker || '') })) };
   });
   const candidates = []; const unresolved = []; const maxCandidates = Math.min(limit(input.maxCandidates, 64),
-    input.scope==='contained_requirements' ? 1 : ['bounded_existing_survivors','contact_and_existing_survivors'].includes(input.scope) ? 2 : Infinity);
+    ['contained_requirements','qualified_dependencies'].includes(input.scope) ? 1 : ['bounded_existing_survivors','contact_and_existing_survivors'].includes(input.scope) ? 2 : Infinity);
   const ordered = [...rows].sort((a, b) => a.ref.localeCompare(b.ref));
   // Preserve contact checks' existing priority within the unchanged pair budget.
   const classes = input.scope === 'contact_and_existing_survivors' ? ['contact_enquiries', 'bounded_existing_survivors'] : [input.scope];
   if(input.containedRequirements===true && input.scope!=='contained_requirements')classes.push('contained_requirements');
-  let containedCount=0;
+  if(input.qualifiedDependencies===true && input.scope!=='qualified_dependencies')classes.push('qualified_dependencies');
+  let containedCount=0,dependencyCount=0;
   for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
     if (left.protected || right.protected) continue;
@@ -233,6 +235,9 @@ function prepareActionReconciliation(input = {}) {
     const containedDirection=nominationClass==='contained_requirements'&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
     if(nominationClass==='contained_requirements'&&(!containedDirection||containedCount>=1))continue;
+    const dependencyDirection=nominationClass==='qualified_dependencies'&&input.qualifiedDependencies===true
+      ?dependency.direction(left.action,right.action,rows.map(row=>row.action)):null;
+    if(nominationClass==='qualified_dependencies'&&(!dependencyDirection||dependencyCount>=1))continue;
     if (nominationClass === 'contact_enquiries' && !contact) continue;
     if (nominationClass === 'bounded_existing_survivors'
       && (input.scope === 'contact_and_existing_survivors' && contact || !boundedSurvivorPair(left.action, right.action))) continue;
@@ -246,15 +251,16 @@ function prepareActionReconciliation(input = {}) {
       leftRef: left.ref, rightRef: right.ref,
       nomination: { sharedEvidence, commonContentWords: common },
       ...(containedDirection?{containedRequirement:{survivorRef:containedDirection.parent===left.action?left.ref:right.ref}}:{}),
+      ...(dependencyDirection?{qualifiedDependency:{survivorRef:dependencyDirection.parent===left.action?left.ref:right.ref}}:{}),
       leftIntoRight: mechanicalCoverage(left.action, right.action),
       rightIntoLeft: mechanicalCoverage(right.action, left.action) };
     if(candidates.some(candidate=>candidate.candidateId===pair.candidateId))continue;
-    if (candidates.length < maxCandidates) { candidates.push(pair);if(containedDirection)containedCount++; }
+    if (candidates.length < maxCandidates) { candidates.push(pair);if(containedDirection)containedCount++;if(dependencyDirection)dependencyCount++; }
     else unresolved.push({ candidateId: pair.candidateId, refs: [left.ref, right.ref], reason: 'candidate_budget_exhausted' });
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
-    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}) },
+    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}) },
     ...(isActionOnlySemanticScope(input.scope) ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }
@@ -360,8 +366,9 @@ function validateCoverage(packet, proof, original, survivor) {
     && !canonical(spans.map(span => span.quote).join(' ')).includes(canonical(survivor.action.timing.wording))) {
     return 'timing_context_without_direct_source_support';
   }
-  const conflicts = contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action));
+  const conflicts = dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action)));
   if (conflicts.length) return conflicts.join(',');
+  if(proof.qualifiedDependency)return dependency.validMapping(packet,proof,original,survivor)?'':'invalid_dependency_clause_mapping';
   if(proof.containedRequirement)return contained.validMapping(packet,proof,original,survivor)?'':'invalid_contained_clause_mapping';
   if (proof.semanticProof) return semanticCoverage(packet, proof, original, survivor);
   return mechanicalCoverage(original.action, survivor.action).covered ? '' : 'missing_semantic_coverage_proof';
@@ -461,7 +468,7 @@ function applyActionReconciliation(packet, envelope, options = {}) {
       const proof = decision.coverage.find(item => item.originalRef === ref);
       const sourceError = validateCoverage(packet, proof, original, survivor);
       if (sourceError) entry.reasons.push(sourceError);
-      entry.reasons.push(...contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action)));
+      entry.reasons.push(...dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action))));
     }
     entry.reasons = unique(entry.reasons);
     if (entry.reasons.length) {
