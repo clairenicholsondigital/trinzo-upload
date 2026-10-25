@@ -10998,6 +10998,15 @@ function meetingAgentDispositionError(result, candidates = [], contract = {}, ta
       && dispositionValid(item) && targetValid(item) && !unmaterialized.has(candidateId);
   });
   if (materializationIssues.length) error.unresolvedMaterializations = materializationIssues;
+  // A complete, valid structured response cannot materialize a positive group:
+  // this protocol has no group-to-atomic mapping. Another model call cannot
+  // supply one. Keep the failure and its evidence; only skip that futile repair.
+  error.structurallyUnwritableGroupsOnly = code === 'unmaterialized_referee_action'
+    && route === 'structured_prompt'
+    && materializationIssues.every((issue) => issue.reason === 'group_requires_atomic_action_mapping')
+    && dispositions.every(dispositionValid)
+    && error.validCandidateDispositions.length + materializationIssues.length === expectedIds.length;
+
   if (code === 'unmaterialized_referee_action') {
     error.invalidCandidateIds = [...unmaterialized];
     error.invalidReasons = materializationIssues.map((item) => `${item.candidateId}: ${item.reason}`);
@@ -16433,7 +16442,18 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
             batchMaterializationIssues.push(...(error.unresolvedMaterializations || []));
           }
         });
-      if (!batchResult) {
+      if (!batchResult && batchError?.structurallyUnwritableGroupsOnly === true) {
+        const valid = batchError.validCandidateDispositions;
+        batchUnresolvedIds.push(...batchError.unresolvedMaterializations.map((issue) => issue.candidateId));
+        batchDegradedSources.push(`Referee ${batchLabel} batch contains grouped follow-ups without a supported atomic mapping; review remains required. The unsupported group repair was not retried.`);
+        batchResult = {
+          schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
+          requestId: batchContract.requestId, stage: batchContract.stage,
+          expectedCandidateCount: batchCandidates.length, returnedDispositionCount: valid.length,
+          repairAttempted: false, candidateDispositions: valid,
+          discussion: [], actions: [], actionProposals: [], reviewFlags: []
+        };
+      } else if (!batchResult) {
         const retainedValid = Array.isArray(batchError?.validCandidateDispositions)
           ? batchError.validCandidateDispositions : [];
         // A strict error normally carries no partial Referee output. In that
