@@ -90,6 +90,7 @@ const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinu
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { selectSupportingDetailParent } = require('../utils/canonicalMinutes/supportingDetailPlacement');
+const filingAliases = require('../utils/meetingMinutesFilingAliases');
 const { normalizeUnassignedSupportingDetails, orderedFilingSupportingDetails, collectUnassignedSupportingDetails, mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
 const { discussionSelectionCoverage, discussionPublicationCoverage } = require('../utils/meetingMinutesDiscussionCoverage');
 const {
@@ -11719,7 +11720,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'filingAliasReconciliation']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -16790,8 +16791,10 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       .filter(candidate => candidate.text && !isRawTranscriptDiscussionPoint(candidate.text))
       .map(candidate => ({ candidate })));
     const unassignedSupportingDetails = [];
+    const filingAliasHandoffs = [];
     const retainUnassignedSupportingDetail = (detail, context = {}) => {
       const retained = collectUnassignedSupportingDetails(detail, context);
+      if (discussionCoveragePolicyForRun(draft).filingAliases && filingAliasHandoffs.length <= 2400) filingAliasHandoffs.push(structuredClone({ record: detail, context }));
       if (!retained.length) return false;
       unassignedSupportingDetails.push(...retained);
       return true;
@@ -17231,8 +17234,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       deduped: postPromotion.dropped.length,
       diagnostics: structureDiagnostics
     }));
+    // Coalesce only proven candidate/original aliases from this generated
+    // handoff. Existing reviewer filing state never grants alias permission.
+    const filingAliasReconciliation = filingAliases.reconcile(
+      normalizeUnassignedSupportingDetails(unassignedSupportingDetails), candidateLedger, draft.sourceUnits, {
+        enabled: discussionCoveragePolicyForRun(draft).filingAliases === true,
+        handoffs: filingAliasHandoffs, priorRows: draft.unassignedSupportingDetails || [], discussion: finalDiscussion
+      });
     const retainedUnassignedSupportingDetails = withoutRepresentedUnassignedDetails(
-      mergeUnassignedSupportingDetails(draft.unassignedSupportingDetails, unassignedSupportingDetails), finalDiscussion
+      mergeUnassignedSupportingDetails(draft.unassignedSupportingDetails, filingAliasReconciliation.rows), finalDiscussion
     );
     // Reconcile review links on unfiled context too. Primary/recovery flag
     // definitions may be recoverable only through the existing flag registry.
@@ -17366,6 +17376,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           supportingDetailCount: supportingRecords.length,
           literalSupportingRepeatsFolded: literalSupportCleanup.foldedCount,
           claimConsolidation: claimConsolidation.audit,
+          ...(discussionCoveragePolicyForRun(draft).filingAliases ? { filingAliasReconciliation: filingAliasReconciliation.audit } : {}),
           discussionSourceCoverage: discussionSourceCoverage.audit,
           unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
