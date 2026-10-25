@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const contained = require('./canonicalMinutes/containedRequirement');
 const dependency = require('./canonicalMinutes/qualifiedDependency');
+const contactPurpose = require('./canonicalMinutes/contactParaphrase');
 const referenceReview = require('./meetingMinutesActionReferenceReview');
 const { semanticPolicyForRun, isActionOnlySemanticScope } = require('./meetingMinutesSemanticPolicy');
 const actionReconciliation = require('./canonicalMinutes/actionSemanticReconciliation');
@@ -209,7 +210,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true})
+    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)
@@ -218,10 +219,10 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   // Hard contradictions cannot be overruled by provider similarity. Keep those
   // candidates explicitly unresolved without spending a request on deletion.
   const candidates = packet.candidates.filter(item => decisions.get(item.candidateId)?.relation==='unresolved'
-    && (stage!=='actions' || item.containedRequirement || item.qualifiedDependency || [item.leftIntoRight,item.rightIntoLeft].some(direction =>
+    && (stage!=='actions' || item.containedRequirement || item.qualifiedDependency || item.contactParaphrase || [item.leftIntoRight,item.rightIntoLeft].some(direction =>
       !direction?.reasons?.some(reason=>reason!=='directional_wording_not_proved'))));
-  const independentCandidates=candidates.filter(item=>item.containedRequirement||item.qualifiedDependency);
-  const legacyCandidates=candidates.filter(item=>!item.containedRequirement&&!item.qualifiedDependency);
+  const independentCandidates=candidates.filter(item=>item.containedRequirement||item.qualifiedDependency||item.contactParaphrase);
+  const legacyCandidates=candidates.filter(item=>!item.containedRequirement&&!item.qualifiedDependency&&!item.contactParaphrase);
   const priorCache = draft.qualityState?.[stage]?.semanticReconciliation?.cache || [];
   const deterministicAssessed = new Set(base.decisions.filter(item => item.relation !== 'unresolved').map(item => item.candidateId));
   const providerAttempted = new Set(), providerAssessed = new Set();
@@ -325,13 +326,13 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   // Optional independently reviewed classes have their own failure boundary. They
   // cannot roll back qualified legacy checks and never retries a semantic veto.
   for(const candidate of independentCandidates) {
-    const proofClass=candidate.qualifiedDependency?dependency:contained;
-    const prefix=candidate.qualifiedDependency?'qualified-dependency':'contained-requirement';
-    const failurePrefix=candidate.qualifiedDependency?'qualified_dependency':'contained';
+    const proofClass=candidate.contactParaphrase?contactPurpose:candidate.qualifiedDependency?dependency:contained;
+    const prefix=candidate.contactParaphrase?'contact-paraphrase':candidate.qualifiedDependency?'qualified-dependency':'contained-requirement';
+    const failurePrefix=candidate.contactParaphrase?'contact_paraphrase':candidate.qualifiedDependency?'qualified_dependency':'contained';
     try {
       const context=promptContext(packet,[candidate]);
       if(context.contextFailure)throw Object.assign(new Error(context.contextFailure),{code:context.contextFailure});
-      const parent=packet.rows.find(row=>row.ref===(candidate.qualifiedDependency||candidate.containedRequirement).survivorRef);
+      const parent=packet.rows.find(row=>row.ref===(candidate.contactParaphrase||candidate.qualifiedDependency||candidate.containedRequirement).survivorRef);
       const child=packet.rows.find(row=>[candidate.leftRef,candidate.rightRef].includes(row.ref)&&row.ref!==parent.ref);
       const responses=[];
       for(const challenge of [false,true]) {
