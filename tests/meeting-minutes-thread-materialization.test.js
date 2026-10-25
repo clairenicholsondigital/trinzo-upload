@@ -85,14 +85,14 @@ function response(candidates, rows, extra = {}) {
     candidateDispositions: rows, discussion: [], actions: [], actionProposals: [], ...extra } };
 }
 
-test('published/proposed groups require repair while valid atomic and rejected siblings survive', () => {
+test('published/proposed groups stay unresolved without futile repair while valid siblings survive', () => {
   for (const type of ['action_thread', 'action_chain']) for (const kind of ['publish', 'proposal']) {
     const candidates = [atomic(), group(type), { ...atomic('aside'), text: 'Meeting aside.' }];
     const rows = [disposition('send', 'publish'), disposition('group', kind), disposition('aside', 'reject')];
     const { result, contract } = response(candidates, rows);
     const error = A.meetingAgentDispositionError(result, candidates, contract);
     assert.equal(error?.code, 'unmaterialized_referee_action');
-    assert.equal(error.retryable, true);
+    assert.equal(error.structurallyUnwritableGroupsOnly, true);
     assert.deepEqual(error.invalidCandidateIds, ['group']);
     assert.deepEqual(error.validCandidateDispositions, [rows[0], rows[2]]);
     assert.deepEqual(A.meetingAgentRefereeRepairCandidates(candidates, error.validCandidateDispositions)
@@ -108,6 +108,27 @@ test('published/proposed groups require repair while valid atomic and rejected s
     assert.equal(A.shouldStopMeetingAgentRefereeBatches(error, error), false, 'healthy later batches must continue');
     assert.equal(A.meetingAgentFailureClass(error), 'response_contract');
     assert.equal(A.meetingAgentInfrastructureFailure(error), false);
+  }
+});
+
+test('missing, duplicate, malformed and mixed atomic failures retain the repair path', () => {
+  const candidates = [atomic(), group()];
+  const rows = [disposition('send', 'publish'), disposition('group', 'publish')];
+  for (const mutate of [
+    r => { r.candidateDispositions.pop(); },
+    r => { r.candidateDispositions.push(copy(r.candidateDispositions[0])); },
+    r => { r.expectedCandidateCount = 99; },
+    r => { r.candidateDispositions[1].reason = ''; },
+    r => { r.candidateDispositions[1].evidenceIds = null; },
+    r => { r.candidateDispositions[0].targetId = 'unknown'; },
+    r => { delete r.requestId; }
+  ]) {
+    const { result, contract } = response(candidates, copy(rows));
+    mutate(result);
+    const error = A.meetingAgentDispositionError(result, candidates, contract);
+    assert.ok(error);
+    assert.equal(error.structurallyUnwritableGroupsOnly, false);
+    assert.ok(A.meetingAgentRefereeRepairCandidates(candidates, error.validCandidateDispositions).length);
   }
 });
 
@@ -201,7 +222,8 @@ test('a reasoned rejected/completed/suggestion group is not published by overlap
   }
 });
 
-test('the actual pipeline repairs only invalid groups once, retains siblings and persists a visible unresolved review', async () => {
+for (const fault of ['none', 'missing_atomic', 'malformed_group']) test(`the actual pipeline preserves actions and visible unresolved review (${fault})`, async () => {
+  let injected = false;
   const calls = [];
   const primaryActions = [atomic().record, { ...atomic('check', 'Check the supplier register.', ['T0002']).record,
     owners: ['Jordan'] }];
@@ -217,6 +239,16 @@ test('the actual pipeline repairs only invalid groups once, retains siblings and
         candidateDispositions: payload.candidateEnsemble.map(candidate => disposition(candidate.candidateId,
           ['action_thread', 'action_chain'].includes(candidate.recordType) || candidate.sourcePass === 'primary' ? 'publish' : 'reject',
           candidate.evidenceIds)), discussion: [], actions: [], actionProposals: [] };
+      if (!payload.repairAttempt && !injected && fault !== 'none') {
+        const index = payload.candidateEnsemble.findIndex(candidate => fault === 'missing_atomic'
+          ? candidate.recordType === 'action' && candidate.sourcePass === 'primary'
+          : ['action_thread', 'action_chain'].includes(candidate.recordType));
+        if (index >= 0) {
+          injected = true;
+          if (fault === 'missing_atomic') result.candidateDispositions.splice(index, 1);
+          else result.candidateDispositions[index].reason = '';
+        }
+      }
     } else if (prompt.startsWith('ACTION_DISCOVERY')) result = { discussion: [], actions: primaryActions };
     else result = { discussion: [], actions: [], actionProposals: [], candidateDispositions: [], results: [] };
     return { ok: true, status: 200, text: async () => JSON.stringify(result) };
@@ -233,12 +265,14 @@ test('the actual pipeline repairs only invalid groups once, retains siblings and
   const initial = calls.filter(call => !call.repairAttempt);
   const repairs = calls.filter(call => call.repairAttempt);
   assert.ok(initial.length > 1, 'the real scheduler continues across multiple ordinary batches');
-  assert.ok(repairs.length > 0, 'an accepted group reaches the existing subset repair path');
-  for (const repair of repairs) {
-    assert.ok(repair.candidateEnsemble.every(candidate => ['action_thread', 'action_chain'].includes(candidate.recordType)));
-    const original = initial.find(call => `${call.requestId}:repair` === repair.requestId);
-    assert.ok(original);
-    assert.equal(repairs.filter(call => call.requestId === repair.requestId).length, 1, 'one bounded subset repair only');
+  if (fault === 'none') assert.equal(repairs.length, 0, 'complete positive group responses cannot be repaired by this protocol');
+  else {
+    assert.equal(injected, true);
+    assert.ok(repairs.length > 0, 'genuinely incomplete or malformed responses still receive repair');
+    for (const repair of repairs) {
+      assert.ok(initial.some(call => `${call.requestId}:repair` === repair.requestId));
+      assert.equal(repairs.filter(call => call.requestId === repair.requestId).length, 1);
+    }
   }
   assert.equal(new Set(initial.flatMap(call => call.expectedCandidateIds)).size,
     initial.reduce((sum, call) => sum + call.expectedCandidateCount, 0), 'no successful sibling is resent');

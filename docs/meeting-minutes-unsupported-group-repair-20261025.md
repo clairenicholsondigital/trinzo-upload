@@ -1,0 +1,9 @@
+# Unsupported grouped-action repairs
+
+The ACTION_REFEREE protocol cannot express a validated positive group-to-atomic mapping. A complete response that publishes an action_thread/action_chain consequently fails materialization regardless of another call's wording or target alias. Captured validation from the last private five-transcript run found five such initial batches (33 group issues), followed by four equally unsupported repair responses and one 90-second repair timeout. Eight atomic-only initial batches were healthy.
+
+Skip the existing subset repair only when the structured response has complete, correct accounting, valid dispositions/reasons/evidence arrays, and every remaining failure is group_requires_atomic_action_mapping. Retain all contract-valid siblings, unresolved IDs, source references, accepted disposition/reason in materialization issues, incomplete accounting and visible follow-up flags. Record the skipped repair in degradation history. Do not turn acceptance into rejection, approve children or donate fields. Continue later batches, including all-group batches represented by an empty partial result.
+
+Missing/duplicate IDs, incorrect counts, malformed dispositions, connected fallback responses, empty atomic wording and unknown atomic targets continue through existing repair. Mixed atomic/group failures also continue through repair. Tests exercise actual generation and persistence with complete positive groups, missing atomic verdicts and malformed group verdicts. Public warnings and accepted sibling actions must survive every case.
+
+This closes unnecessary repair calls only. Group materialization, cross-batch duplicate task comparison and reviewer-facing duplication remain open. No Microsoft schema, flags, cache, library drafts, frontend or unrelated routes change. The separate global-register prototype is not wired into production.
