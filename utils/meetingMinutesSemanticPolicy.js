@@ -4,7 +4,7 @@
 // Never consult current flags when resuming such a run.
 const SEMANTIC_POLICY_VERSION = 1;
 const SEMANTIC_TASK_VERSION = 'existing-survivor-v2';
-const ACTION_SCOPES = new Set(['contact_enquiries', 'bounded_existing_survivors', 'contact_and_existing_survivors']);
+const ACTION_SCOPES = new Set(['contact_enquiries', 'bounded_existing_survivors', 'contact_and_existing_survivors', 'contained_requirements']);
 const isActionOnlySemanticScope = scope => ACTION_SCOPES.has(scope);
 const MODES = new Set(['off', 'shadow', 'on']);
 function bounded(value, fallback, low, high) {
@@ -16,24 +16,27 @@ function normaliseSemanticPolicy(value) {
     return Object.freeze({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
       mode: 'off', maxCandidates: 64, batchSize: 4, budgetMs: 90000, attemptTimeoutMs: 60000 });
   }
-  const narrow = ['bounded_existing_survivors','contact_and_existing_survivors'].includes(value.scope);
+  const narrow = value.containedRequirements===true || ['bounded_existing_survivors','contact_and_existing_survivors','contained_requirements'].includes(value.scope);
   return Object.freeze({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
     mode: MODES.has(value.mode) && (value.scope === undefined || ACTION_SCOPES.has(value.scope)) ? value.mode : 'off',
-    maxCandidates: bounded(value.maxCandidates, narrow ? 2 : 64, 1, narrow ? 2 : 128),
+    maxCandidates: bounded(value.maxCandidates, value.scope==='contained_requirements' ? 1 : narrow ? 2 : 64, 1, value.scope==='contained_requirements' ? 1 : narrow ? 2 : 128),
     batchSize: bounded(value.batchSize, 4, 1, 8),
     budgetMs: bounded(value.budgetMs, 90000, 10000, narrow ? 90000 : 180000),
     attemptTimeoutMs: bounded(value.attemptTimeoutMs, 60000, 10000, narrow ? 60000 : 90000),
-    ...(ACTION_SCOPES.has(value.scope) ? { scope: value.scope } : {}) });
+    ...(ACTION_SCOPES.has(value.scope) ? { scope: value.scope } : {}),
+    ...(ACTION_SCOPES.has(value.scope)&&value.containedRequirements===true?{containedRequirements:true}:{}) });
 }
 function captureSemanticPolicy(env = process.env) {
   const broadMode = String(env.MEETING_MINUTES_AGENT_SEMANTIC_RECONCILIATION_V1 || 'off').trim().toLowerCase();
   const enquiries = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTACT_ENQUIRY_DEDUPE_V1 || '0'));
   const survivors = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_BOUNDED_SURVIVOR_DEDUPE_V1 || '0'));
-  const scope = survivors ? (enquiries ? 'contact_and_existing_survivors' : 'bounded_existing_survivors') : 'contact_enquiries';
+  const contained = broadMode === 'off' && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_CONTAINED_REQUIREMENTS_V1 || '0'));
+  const scope = survivors ? (enquiries ? 'contact_and_existing_survivors' : 'bounded_existing_survivors') : (enquiries?'contact_enquiries':'contained_requirements');
   return normaliseSemanticPolicy({ version: SEMANTIC_POLICY_VERSION, taskVersion: SEMANTIC_TASK_VERSION,
-    mode: enquiries || survivors ? 'on' : broadMode,
-    ...(enquiries || survivors ? { scope } : {}),
-    maxCandidates: enquiries || survivors ? 2 : env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
+    mode: enquiries || survivors || contained ? 'on' : broadMode,
+    ...(enquiries || survivors || contained ? { scope } : {}),
+    ...(contained?{containedRequirements:true}:{}),
+    maxCandidates: enquiries || survivors ? 2 : contained ? 1 : env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
     batchSize: env.MEETING_MINUTES_AGENT_SEMANTIC_BATCH_SIZE,
     budgetMs: env.MEETING_MINUTES_AGENT_SEMANTIC_BUDGET_MS,
     attemptTimeoutMs: env.MEETING_MINUTES_AGENT_SEMANTIC_TIMEOUT_MS });

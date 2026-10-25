@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const contained = require('./canonicalMinutes/containedRequirement');
+const referenceReview = require('./meetingMinutesActionReferenceReview');
 const { semanticPolicyForRun, isActionOnlySemanticScope } = require('./meetingMinutesSemanticPolicy');
 const actionReconciliation = require('./canonicalMinutes/actionSemanticReconciliation');
 const { materializeSemanticDecisions } = require('./meetingMinutesSemanticProofTransport');
@@ -206,7 +208,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope})
+    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)
@@ -215,16 +217,18 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   // Hard contradictions cannot be overruled by provider similarity. Keep those
   // candidates explicitly unresolved without spending a request on deletion.
   const candidates = packet.candidates.filter(item => decisions.get(item.candidateId)?.relation==='unresolved'
-    && (stage!=='actions' || [item.leftIntoRight,item.rightIntoLeft].some(direction =>
+    && (stage!=='actions' || item.containedRequirement || [item.leftIntoRight,item.rightIntoLeft].some(direction =>
       !direction?.reasons?.some(reason=>reason!=='directional_wording_not_proved'))));
+  const containedCandidates=candidates.filter(item=>item.containedRequirement);
+  const legacyCandidates=candidates.filter(item=>!item.containedRequirement);
   const priorCache = draft.qualityState?.[stage]?.semanticReconciliation?.cache || [];
   const deterministicAssessed = new Set(base.decisions.filter(item => item.relation !== 'unresolved').map(item => item.candidateId));
   const providerAttempted = new Set(), providerAssessed = new Set();
-  const cache=[],calls=[],failures=[];
+  const cache=[],calls=[],failures=[],containedFailures=[];
   const deadlineAt=started+policy.budgetMs;
   const groups=stage==='actions'&&policy.scope==='contact_and_existing_survivors'
-    ?[candidates.filter(candidate=>contactCandidate(packet,candidate)),candidates.filter(candidate=>!contactCandidate(packet,candidate))]
-    :[candidates];
+    ?[legacyCandidates.filter(candidate=>contactCandidate(packet,candidate)),legacyCandidates.filter(candidate=>!contactCandidate(packet,candidate))]
+    :[legacyCandidates];
   const batches=groups.flatMap(group=>Array.from({length:Math.ceil(group.length/policy.batchSize)},(_,i)=>group.slice(i*policy.batchSize,(i+1)*policy.batchSize)));
   for(let index=0;index<batches.length;index++) {
     const batch=batches[index];
@@ -317,6 +321,52 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         invalidCandidateIds:error.invalidCandidateIds || [],invalidReasons:error.invalidReasons || []});
     }
   }
+  // The optional content-requirement class has its own failure boundary. It
+  // cannot roll back qualified legacy checks and never retries a semantic veto.
+  for(const candidate of containedCandidates) {
+    try {
+      const context=promptContext(packet,[candidate]);
+      if(context.contextFailure)throw Object.assign(new Error(context.contextFailure),{code:context.contextFailure});
+      const parent=packet.rows.find(row=>row.ref===candidate.containedRequirement.survivorRef);
+      const child=packet.rows.find(row=>[candidate.leftRef,candidate.rightRef].includes(row.ref)&&row.ref!==parent.ref);
+      const responses=[];
+      for(const challenge of [false,true]) {
+        if(Date.now()+1000>=deadlineAt||typeof options.ask!=='function')throw Object.assign(new Error('Contained review unavailable'),
+          {code:typeof options.ask==='function'?'semantic_budget_exhausted':'semantic_provider_unavailable'});
+        const review=contained.reviewPacket(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),challenge);
+        const prompt=referenceReview.prompt(review),promptHash=hash(prompt);
+        const pass=challenge?'contained-requirement-challenge':'contained-requirement-source';
+        const validate=value=>{const reason=referenceReview.validate(review,value);return reason?Object.assign(new Error(reason),{code:reason,retryable:false}):null;};
+        const cached=priorCache.find(item=>item.promptHash===promptHash&&!validate(item.result));
+        const callStarted=Date.now();providerAttempted.add(candidate.candidateId);
+        let response;
+        try {
+          response=cached?{result:cached.result,timings:[]}:await options.ask(prompt,{pass:`actions:${pass}`,requestId:review.requestId,
+            responseKind:'semantic_reconciliation',maxAttempts:1,deadlineAt,attemptTimeoutMs:policy.attemptTimeoutMs,validateResult:validate});
+          const error=validate(response?.result);if(error)throw error;
+          cache.push({promptHash,result:response.result});
+          calls.push({stage,pass,requestId:review.requestId,candidateCount:1,candidateIds:[candidate.candidateId],
+            elapsedMs:Date.now()-callStarted,timings:response.timings||[],cached:Boolean(cached),outputChars:JSON.stringify(response.result).length});
+        }catch(error){
+          calls.push({stage,pass,requestId:review.requestId,candidateCount:1,candidateIds:[candidate.candidateId],
+            elapsedMs:Date.now()-callStarted,timings:error.callTimings||[],failed:true,errorCode:error.code||'contained_review_failure'});
+          throw error;
+        }
+        const passed=referenceReview.assess(review,response.result).modelPassed;
+        if(challenge||!passed)providerAssessed.add(candidate.candidateId);
+        if(!passed)throw Object.assign(new Error('Source review veto'),{code:'contained_independent_veto'});
+        responses.push(response.result);
+      }
+      const certificate=contained.certify(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),...responses);
+      const decision={candidateId:candidate.candidateId,relation:'equivalent',survivorRef:parent.ref,
+        coverage:contained.coverage(packet,parent,child,certificate)};
+      const probe=emptyEnvelope(packet,[...decisions.values()].map(item=>item.candidateId===candidate.candidateId?decision:item));
+      const checked=actionReconciliation.applyActionReconciliation(packet,probe,{actions:original,sourceUnits,meetingDate:options.meetingDate||''});
+      if(!checked.ledger.some(item=>item.candidateId===candidate.candidateId&&item.status==='merged'))
+        throw Object.assign(new Error('Contained proof failed existing preservation checks'),{code:'contained_preservation_veto'});
+      decisions.set(candidate.candidateId,decision);
+    }catch(error){containedFailures.push({candidateIds:[candidate.candidateId],reason:error.code||error.message||'contained_review_failure'});}
+  }
   const envelope=failures.length?null:emptyEnvelope(packet,[...decisions.values()]);
   let reconciled=stage==='actions'?actionReconciliation.applyActionReconciliation(packet,envelope,{actions:original,sourceUnits,
     meetingDate:options.meetingDate || ''}):discussionReconciliation.applyDiscussionReconciliation(original,packet,envelope,
@@ -349,7 +399,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const quality = {policy,packetHash:packet.packetHash,sourceHash:packet.sourceHash,inputHash:packet.inputHash,
     stats:{...reconciled.stats,...(stage === 'actions' ? {assessed} : {})},assessment,
     ledger:reconciled.ledger || [],receipts:reconciled.receipts || [],
-    unresolved:[...(reconciled.unresolved || []),...failures],cache,calls,elapsedMs:Date.now()-started,
+    unresolved:[...(reconciled.unresolved || []),...failures,...containedFailures],cache,calls,elapsedMs:Date.now()-started,
     original:structuredClone(original),mode:policy.mode,applied:policy.mode==='on' && !failures.length};
   const changes={...result.changes,...(quality.applied?{[stage]:reconciled[stage]}:{}),
     qualityState:{...(draft.qualityState || {}),...(result.changes.qualityState || {}),[stage]:{
