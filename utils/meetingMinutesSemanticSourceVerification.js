@@ -6,6 +6,15 @@ const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==
   ?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,stable(value[key])])):value;
 const hash=value=>crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 const positive=decision=>['equivalent','left_covered_by_right','right_covered_by_left'].includes(decision?.relation);
+const canonical=value=>String(value||'').normalize('NFKC').replace(/[’]/g,"'").replace(/\s+/g,' ').trim().toLowerCase();
+function ownerWitness(unit,owner){
+  const name=canonical(owner);
+  if(!name)return false;
+  if(canonical(unit?.speaker)===name)return true;
+  const text=canonical(unit?.text),at=text.indexOf(name);
+  return at>=0&&!/[\p{L}\p{N}]/u.test(text[at-1]||'')
+    &&!/[\p{L}\p{N}]/u.test(text[at+name.length]||'');
+}
 
 function verificationPrompt(packet,candidates,rows,sourceUnits,policy){
   return 'ACTION_CRITIC_SEMANTIC_SOURCE_VERIFICATION\n'
@@ -43,12 +52,20 @@ function verificationError(packet,candidates,response){
         ||new Set(check.sourceIds).size!==check.sourceIds.length||check.sourceIds.some(id=>!sources.get(id))
         ||check.supported&&!check.sourceIds.length) return 'invalid_source_clause_result';
       keys.add(key);
+      // A positive answer must provide the owner witness the prompt requires.
+      // Presence is necessary, never proof of an assignment or acceptance.
+      // Genuine unresolved/false verdicts remain vetoes, not repair requests.
+      if(decision.relation==='equivalent'&&check.supported&&check.retained){
+        const original=rows.get(check.originalRef);
+        if(!original.action.owners?.length||original.action.owners.some(owner=>
+          !check.sourceIds.some(id=>ownerWitness(sources.get(id),owner)))) return 'missing_source_owner_witness';
+      }
     }
     if(decision.relation==='equivalent'&&decision.checks.some(check=>!check.supported||!check.retained)) return 'contradictory_source_verdict';
   }
   return '';
 }
-function bindSourceVerification(packet,envelope,verification){
+function bindSourceVerification(packet,envelope,verification,options={}){
   const expected=packet.candidates.filter(candidate=>envelope.decisions.some(item=>item.candidateId===candidate.candidateId&&positive(item)))
     .map(candidate=>({...candidate,survivorRef:envelope.decisions.find(item=>item.candidateId===candidate.candidateId).survivorRef}));
   const error=verificationError(packet,expected,verification);
@@ -59,6 +76,7 @@ function bindSourceVerification(packet,envelope,verification){
     if(!positive(decision)) return decision;
     const review=reviews.get(decision.candidateId);
     if(review?.relation!=='equivalent') return {candidateId:decision.candidateId,relation:'unresolved'};
+    const allocate=options.independentWitnessCandidateIds?.includes(decision.candidateId)===true;
     return {...decision,coverage:(decision.coverage || []).map(proof=>{
       const semantic=proof?.semanticProof;
       if(!semantic) return proof;
@@ -79,9 +97,11 @@ function bindSourceVerification(packet,envelope,verification){
           sourceIds:[...ids],verdict:'supported',retained:true};
         const sourceOperationReview={...certificate,reviewHash:hash(certificate)};
         return {...mapping,sourceOperationReview,facets:Object.fromEntries(['operation','object'].map(facet=>[facet,{
-          ...mapping.facets[facet],sourceSpans:spans([...(mapping.facets[facet].sourceSpans || []).map(span=>span.unitId),...ids])}]))};
+          ...mapping.facets[facet],sourceSpans:spans(allocate?ids:[...(mapping.facets[facet].sourceSpans || []).map(span=>span.unitId),...ids])}]))};
       });
-      return {...proof,sourceSpans:spans([...(proof.sourceSpans || []).map(span=>span.unitId),...added]),
+      return {...proof,sourceSpans:spans(allocate?added:[...(proof.sourceSpans || []).map(span=>span.unitId),...added]),
+        ...(allocate?{sourceAllocation:{method:'independent-action-witnesses-v1',
+          proposedSourceIds:[...new Set((proof.sourceSpans||[]).map(span=>span.unitId))],verifiedSourceIds:[...new Set(added)]}}:{}),
         semanticProof:{...semantic,clauses}};
     })};
   });
@@ -100,4 +120,4 @@ function sourceOperationReviewValid(review,packet,original,survivor,mapping,clau
   return review.sourceIds.every(id=>sources.get(id)&&['operation','object'].every(facet=>
     mapping.facets?.[facet]?.sourceSpans?.some(span=>(span.unitId??span.sourceId)===id&&span.quote===sources.get(id).text)));
 }
-module.exports={VERSION,verificationPrompt,verificationError,bindSourceVerification,sourceOperationReviewValid};
+module.exports={VERSION,verificationPrompt,verificationError,bindSourceVerification,sourceOperationReviewValid,ownerWitness};

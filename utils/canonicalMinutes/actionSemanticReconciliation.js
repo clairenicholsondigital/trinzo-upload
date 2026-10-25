@@ -8,6 +8,7 @@ const { convertSpokenNumbers } = require('../spokenNumbers');
 const { normaliseUkCurrency } = require('./textNormalisation');
 const { numberedIdentifiers, quantityTokens, unitTokens } = require('../meetingMinutesNumericTokens');
 const { actionProvenanceSignature, validOccurrenceId } = require('../meetingMinutesActionIdentity');
+const { isActionOnlySemanticScope } = require('../meetingMinutesSemanticPolicy');
 const comparisonNumbers = value => normaliseUkCurrency(convertSpokenNumbers(String(value || '')).text);
 const { actionIsSafelyCovered, conflictingTimings } = require('./actionDuplicateCoverage');
 const { commitmentVariantCovered, commitmentCanBeRepresented, conflictingRecipients,
@@ -173,6 +174,32 @@ function mechanicalCoverage(part, whole) {
   return { covered: Boolean(covered), reasons: covered ? [] : ['directional_wording_not_proved'] };
 }
 
+// A small nomination class for reordered wording, not a proof of equivalence.
+// Unknown metadata, reviewer work and qualified occurrences stay protected.
+const BOUNDED_FIELDS = new Set(['id', 'action', 'owners', 'timing', 'evidenceIds', 'occurrenceId', 'reviewFlagIds', 'timingDecision']);
+function boundedSurvivorPair(left, right) {
+  const eligible = row => row && Object.keys(row).every(key => BOUNDED_FIELDS.has(key))
+    && !isReviewerAuthored(row) && row.owners?.length === 1 && String(row.owners[0]).trim()
+    && row.timing?.kind === 'not_stated' && !row.timing.wording && !row.timing.exactDate
+    && !row.reviewFlagIds?.length && row.evidenceIds?.length > 0 && row.evidenceIds.length <= 8
+    && !row.timingDecision?.rejectedExactDates?.length && !row.timingDecision?.rejectedWordings?.length
+    && (!row.timingDecision || row.timingDecision.reason === 'no_timing_value'
+      && row.timingDecision.binding?.status === 'not_stated')
+    && !/[\d"“”:;()[\]{}?]|\b(?:if|unless|after|before|once|when|until|pending|following|without|not|never|only|either|or|maybe|perhaps|probably|possibly|presumably|ideally|tentatively|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|days?|weeks?|months?|years?|hours?|minutes?|seconds?|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midnight|asap|soon|immediately)\b/i.test(row.action)
+    && !/[.!?]/.test(String(row.action).replace(/[.!?]+$/, ''))
+    && !/\b(?:and|then)\s+(?:send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|buy|purchase|fit|install|sign|take|address)\b/i.test(row.action)
+    && instructionClauses(row.action).length === 1 && operationSequence(row.action).length === 1;
+  if (!eligible(left) || !eligible(right) || words(left.action)[0] !== words(right.action)[0]
+    || !equal(owners(left), owners(right))
+    || !(left.evidenceIds || []).some(id => right.evidenceIds.includes(id))
+    || new Set([...left.evidenceIds, ...right.evidenceIds]).size > 8
+    || hardConflicts(left, right).length || hardConflicts(right, left).length) return false;
+  const a = contentWords(words(left.action).slice(1).join(' '));
+  const b = contentWords(words(right.action).slice(1).join(' '));
+  const common = a.filter(word => b.includes(word)).length;
+  return common >= 3 && common / Math.max(a.length, b.length) >= 0.8;
+}
+
 function prepareActionReconciliation(input = {}) {
   const actions = Array.isArray(input.actions) ? input.actions : [];
   const sourceUnits = sourceRows(input.sourceUnits);
@@ -191,12 +218,19 @@ function prepareActionReconciliation(input = {}) {
       witnesses: sourceUnits.filter(unit => evidence.has(unit.id)).map(unit => ({ sourceId: unit.id,
         sourceHash: hash(unit), text: String(unit.text || ''), speaker: String(unit.speaker || '') })) };
   });
-  const candidates = []; const unresolved = []; const maxCandidates = limit(input.maxCandidates, 64);
+  const candidates = []; const unresolved = []; const maxCandidates = Math.min(limit(input.maxCandidates, 64),
+    ['bounded_existing_survivors','contact_and_existing_survivors'].includes(input.scope) ? 2 : Infinity);
   const ordered = [...rows].sort((a, b) => a.ref.localeCompare(b.ref));
-  for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
+  // Preserve contact checks' existing priority within the unchanged pair budget.
+  const classes = input.scope === 'contact_and_existing_survivors' ? ['contact_enquiries', 'bounded_existing_survivors'] : [input.scope];
+  for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
     if (left.protected || right.protected) continue;
-    if (input.scope === 'contact_enquiries' && !sameEnquiryPair(left.action, right.action)) continue;
+    const contact = sameEnquiryPair(left.action, right.action);
+    if (nominationClass === 'contact_enquiries' && !contact) continue;
+    if (nominationClass === 'bounded_existing_survivors'
+      && (input.scope === 'contact_and_existing_survivors' && contact || !boundedSurvivorPair(left.action, right.action))) continue;
+    if (input.scope !== undefined && !isActionOnlySemanticScope(input.scope)) continue;
     const leftWords = contentWords(left.action.action); const rightWords = contentWords(right.action.action);
     const common = leftWords.filter(word => rightWords.includes(word)).length;
     const sharedEvidence = (left.action.evidenceIds || []).some(id => (right.action.evidenceIds || []).includes(id));
@@ -213,7 +247,7 @@ function prepareActionReconciliation(input = {}) {
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
     policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24) },
-    ...(input.scope === 'contact_enquiries' ? { scope: input.scope } : {}) };
+    ...(isActionOnlySemanticScope(input.scope) ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }
 function validateEnvelope(packet, envelope) {

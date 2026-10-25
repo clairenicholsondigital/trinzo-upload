@@ -151,3 +151,36 @@ test('source reviews bind exact source, original clause and survivor instead of 
   assert.equal(action.applyActionReconciliation(packet,bad,{sourceUnits}).actions.length,2);
  }
 });
+
+test('bounded independent witness allocation archives tentative citations but never removes original action evidence',()=>{
+ const f=fixture(),extra={id:'T3',speaker:'Coordinator',text:'Unrelated administrative chatter.'};
+ const units=[...f.sourceUnits,extra],packet=action.prepareActionReconciliation({actions:f.rows,sourceUnits:units});
+ const expanded=structuredClone(f.expanded),review=structuredClone(f.review);
+ for(const value of [expanded,review]){value.packetHash=packet.packetHash;value.sourceHash=packet.sourceHash;}
+ const span={unitId:'T3',start:0,end:extra.text.length,quote:extra.text};
+ for(const proof of expanded.decisions[0].coverage){
+  proof.sourceSpans.push(span);
+  for(const mapping of proof.semanticProof.clauses)for(const facet of ['operation','object'])mapping.facets[facet].sourceSpans.push(span);
+ }
+ const legacy=verify.bindSourceVerification(packet,expanded,review);
+ assert.equal(legacy.error,'');
+ assert.ok(action.applyActionReconciliation(packet,legacy.envelope,{sourceUnits:units}).actions[0].evidenceIds.includes('T3'));
+ const allocated=verify.bindSourceVerification(packet,expanded,review,{independentWitnessCandidateIds:[f.candidate.candidateId]});
+ assert.equal(allocated.error,'');
+ const proof=allocated.envelope.decisions[0].coverage[0];
+ assert.equal(proof.sourceAllocation.method,'independent-action-witnesses-v1');
+ assert.deepEqual(proof.sourceAllocation.proposedSourceIds,['T1','T2','T3']);
+ assert.deepEqual(proof.sourceAllocation.verifiedSourceIds,['T1','T2']);
+ const result=action.applyActionReconciliation(packet,allocated.envelope,{sourceUnits:units});
+ assert.equal(result.actions.length,1);assert.deepEqual(result.actions[0].evidenceIds,['T1','T2']);
+ assert.ok(result.receipts.every(r=>action.validateReconciliationReceipt(r,r.original,result.actions[0],units)));
+});
+test('source-owner validation rejects name substrings and preserves explicit unresolved outcomes',()=>{
+ assert.equal(verify.ownerWitness({speaker:'Coordinator',text:'Morgan Leeds will review it.'},'Morgan Lee'),false);
+ assert.equal(verify.ownerWitness({speaker:'Morgan Lee',text:'No, I will not take that on.'},'Morgan Lee'),true,'identity presence alone is never an ownership decision');
+ const f=fixture(),missing=structuredClone(f.review);missing.decisions[0].checks.forEach(check=>check.sourceIds=[]);
+ assert.equal(verify.verificationError(f.packet,f.packet.candidates,missing),'invalid_source_clause_result');
+ const veto=structuredClone(f.review);veto.decisions[0].relation='unresolved';veto.decisions[0].checks.forEach(check=>{check.supported=false;check.retained=false;check.sourceIds=[];});
+ assert.equal(verify.verificationError(f.packet,f.packet.candidates,veto),'');
+ assert.equal(action.applyActionReconciliation(f.packet,verify.bindSourceVerification(f.packet,f.expanded,veto).envelope,{sourceUnits:f.sourceUnits}).actions.length,2);
+});

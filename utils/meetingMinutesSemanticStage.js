@@ -1,10 +1,11 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { semanticPolicyForRun } = require('./meetingMinutesSemanticPolicy');
+const { semanticPolicyForRun, isActionOnlySemanticScope } = require('./meetingMinutesSemanticPolicy');
 const actionReconciliation = require('./canonicalMinutes/actionSemanticReconciliation');
 const { materializeSemanticDecisions } = require('./meetingMinutesSemanticProofTransport');
-const { verificationPrompt, verificationError, bindSourceVerification } = require('./meetingMinutesSemanticSourceVerification');
+const { verificationPrompt, verificationError, bindSourceVerification, ownerWitness } = require('./meetingMinutesSemanticSourceVerification');
+const { sameEnquiryPair } = require('./canonicalMinutes/contactEnquiry');
 const discussionReconciliation = require('./canonicalMinutes/discussionReconciliation');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const RELATIONS = new Set(['equivalent','left_covered_by_right','right_covered_by_left','distinct','partial_overlap','unresolved']);
@@ -69,11 +70,50 @@ function semanticPrimaryStructureError(packet, candidates, response) {
   return error;
 }
 
+function contactCandidate(packet, candidate) {
+  const rows=[candidate.leftRef,candidate.rightRef].map(ref=>packet.rows.find(row=>row.ref===ref));
+  return rows.every(row=>row?.action)&&sameEnquiryPair(rows[0].action,rows[1].action);
+}
 function promptContext(packet, candidates, maxChars = 48000) {
   const refs = new Set(candidates.flatMap(item => [item.leftRef,item.rightRef]));
   const rows = packet.rows.filter(row => refs.has(row.ref));
   const evidence = new Set(rows.flatMap(row => (row.action || row.original)?.evidenceIds || []));
   const sourceUnits = packet.sourceUnits || [];
+  const contactOnly=packet.scope==='contact_enquiries'||packet.scope==='contact_and_existing_survivors'
+    &&candidates.every(candidate=>contactCandidate(packet,candidate));
+  const boundedContext=isActionOnlySemanticScope(packet.scope)&&!contactOnly;
+  const mandatory=new Set();
+  let contextFailure='';
+  if(boundedContext){
+    const counts=new Map();sourceUnits.forEach(unit=>counts.set(unit.id,(counts.get(unit.id)||0)+1));
+    const anchors=sourceUnits.flatMap((unit,index)=>evidence.has(unit.id)?[index]:[]);
+    if(anchors.length!==evidence.size||anchors.some(index=>counts.get(sourceUnits[index].id)!==1)) contextFailure='ambiguous_or_missing_source';
+    anchors.forEach(index=>mandatory.add(index));
+    for(const row of rows)for(const owner of row.action.owners||[]){
+      // Supply complete nearby identity/acceptance exchanges, not an isolated
+      // acknowledgment selected by keyword rank. This is context, not proof.
+      let found=false;
+      for(const anchor of anchors){
+        if(ownerWitness(sourceUnits[anchor],owner)){
+          found=true;
+          for(let at=Math.max(0,anchor-2);at<=Math.min(sourceUnits.length-1,anchor+2);at++)mandatory.add(at);
+          continue;
+        }
+        const nearby=sourceUnits.flatMap((unit,index)=>ownerWitness(unit,owner)
+          &&Math.abs(index-anchor)<=8?[index]:[]);
+        const before=nearby.filter(index=>index<anchor).sort((a,b)=>b-a)[0];
+        const after=nearby.filter(index=>index>anchor).sort((a,b)=>a-b)[0];
+        for(const index of [before,after].filter(Number.isInteger)){
+          found=true;
+          for(let at=Math.min(anchor,index);at<=Math.max(anchor,index);at++)mandatory.add(at);
+        }
+      }
+      if(!found)contextFailure='owner_context_unavailable';
+    }
+    if(mandatory.size>32||[...mandatory].some(index=>counts.get(sourceUnits[index].id)!==1
+      ||typeof sourceUnits[index].text!=='string'||!sourceUnits[index].text.trim())
+      ||[...mandatory].reduce((n,index)=>n+JSON.stringify(sourceUnits[index]).length,0)>maxChars) contextFailure='mandatory_context_overflow';
+  }
   const preferred = new Set();
   sourceUnits.forEach((unit,index) => {
     if (evidence.has(unit.id)) for(let at=Math.max(0,index-4);at<=Math.min(sourceUnits.length-1,index+4);at+=1) preferred.add(at);
@@ -84,14 +124,18 @@ function promptContext(packet, candidates, maxChars = 48000) {
     + [...new Set(String(unit.text || '').toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) || [])].filter(token=>tokens.has(token)).length}))
     .sort((a,b)=>b.score-a.score || a.index-b.index);
   let used=0; const selected=[];
-  for(const item of ordered) {
-    // Contact-only checks use the same citation capacity as publication.
-    // Supply their recorded evidence first, then nearby context; do not let
-    // unrelated conversations donate witnesses and overflow the archive.
-    if(packet.scope==='contact_enquiries' && selected.length>=8) break;
-    const size=JSON.stringify(item.unit).length;
-    if(used+size>maxChars) continue;
-    selected.push(item);used+=size;
+  if(!contextFailure){
+    for(const index of [...mandatory].sort((a,b)=>a-b)){
+      const unit=sourceUnits[index];selected.push({unit,index});used+=JSON.stringify(unit).length;
+    }
+    const sourceLimit=contactOnly?8:boundedContext?32:Infinity;
+    for(const item of ordered){
+      if(selected.length>=sourceLimit)break;
+      if(mandatory.has(item.index))continue;
+      const size=JSON.stringify(item.unit).length;
+      if(used+size>maxChars)continue;
+      selected.push(item);used+=size;
+    }
   }
   const promptRows = rows.map(row => row.action ? { ref: row.ref, action: { action: row.action.action,
     owners: row.action.owners, timing: row.action.timing,
@@ -101,7 +145,8 @@ function promptContext(packet, candidates, maxChars = 48000) {
   // Prior generated citations may be wrong. Do not anchor the new independent
   // source assessment to them; the frozen full packet still retains them.
   return {rows:promptRows,sourceUnits:selected.sort((a,b)=>a.index-b.index).map(item=>({id:item.unit.id,
-    speaker:item.unit.speaker,timestamp:item.unit.timestamp,text:item.unit.text})),sourceContextComplete:selected.length===sourceUnits.length};
+    speaker:item.unit.speaker,timestamp:item.unit.timestamp,text:item.unit.text})),sourceContextComplete:selected.length===sourceUnits.length,
+    ...(contextFailure?{contextFailure}: {})};
 }
 
 function semanticReconciliationPrompt(packet, candidates, stage, policy, context = {}) {
@@ -155,7 +200,7 @@ function emptyEnvelope(packet, decisions) { return {version:packet.version,packe
 async function reconcileGeneratedSemanticStage(result, draft, stage, options = {}) {
   const policy = semanticPolicyForRun(draft,options.policy);
   if(policy.mode==='off' || !['actions','discussion'].includes(stage) || !result?.changes) return result;
-  if(policy.scope==='contact_enquiries' && stage!=='actions') return result;
+  if(isActionOnlySemanticScope(policy.scope) && stage!=='actions') return result;
   const original = result.changes[stage];
   if(!Array.isArray(original)) return result;
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
@@ -177,14 +222,22 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const providerAttempted = new Set(), providerAssessed = new Set();
   const cache=[],calls=[],failures=[];
   const deadlineAt=started+policy.budgetMs;
-  for(let index=0;index<candidates.length;index+=policy.batchSize) {
-    const batch=candidates.slice(index,index+policy.batchSize);
+  const groups=stage==='actions'&&policy.scope==='contact_and_existing_survivors'
+    ?[candidates.filter(candidate=>contactCandidate(packet,candidate)),candidates.filter(candidate=>!contactCandidate(packet,candidate))]
+    :[candidates];
+  const batches=groups.flatMap(group=>Array.from({length:Math.ceil(group.length/policy.batchSize)},(_,i)=>group.slice(i*policy.batchSize,(i+1)*policy.batchSize)));
+  for(let index=0;index<batches.length;index++) {
+    const batch=batches[index];
+    const preparedContext=promptContext(packet,batch);
+    if(preparedContext.contextFailure){
+      failures.push({candidateIds:batch.map(item=>item.candidateId),reason:preparedContext.contextFailure});continue;
+    }
     if(Date.now()+1000>=deadlineAt || typeof options.ask!=='function') {
       failures.push({candidateIds:batch.map(item=>item.candidateId),reason:typeof options.ask==='function'?'semantic_budget_exhausted':'semantic_provider_unavailable'});
       continue;
     }
     const prompt=semanticReconciliationPrompt(packet,batch,stage,policy,options.context || {});
-    const promptHash=hash(prompt),pass=`semantic-reconciliation-${Math.floor(index/policy.batchSize)+1}`;
+    const promptHash=hash(prompt),pass=`semantic-reconciliation-${index+1}`;
     const requestId=`${stage}:${pass}:${promptHash.slice(0,16)}`;
     const suppliedSources = promptContext(packet,batch).sourceUnits;
     const validate = value => semanticSuppliedSourceError(value,suppliedSources)
@@ -237,7 +290,10 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
               validateResult: check, onResult: (value, attempt) => { reviewResponses.push({attempt:attempt.attempt,result:value}); } });
           const reviewError = check(reviewed?.result);
           if (reviewError) throw reviewError;
-          const bound = bindSourceVerification(packet, expanded, reviewed.result);
+          const bound = bindSourceVerification(packet, expanded, reviewed.result, {
+            independentWitnessCandidateIds: isActionOnlySemanticScope(packet.scope) && packet.scope !== 'contact_enquiries'
+              ? verificationCandidates.filter(candidate => !contactCandidate(packet,candidate)).map(candidate => candidate.candidateId) : []
+          });
           if (bound.error) throw Object.assign(new Error(bound.error), { code: bound.error });
           expanded = bound.envelope;
         } catch(error) {

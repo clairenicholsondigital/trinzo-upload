@@ -7,6 +7,8 @@ const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinute
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
 const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
+const discussionMainPoint = require('../utils/canonicalMinutes/discussionMainPointCoverage');
+const discussionPointDecision = require('../utils/canonicalMinutes/discussionPointDecisionCoverage');
 const discussionActionSeparation = require('../utils/canonicalMinutes/discussionActionSeparation');
 const minimalFidelityRepair = require('../utils/meetingMinutesMinimalFidelityRepair');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
@@ -33,7 +35,8 @@ const {
 const { extractTextFromUpload } = require('../utils/transcript');
 const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
 const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
-const { captureSemanticPolicy, normaliseSemanticPolicy, semanticPolicyForRun, semanticPolicyForFingerprint } = require('../utils/meetingMinutesSemanticPolicy');
+const { isActionOnlySemanticScope, captureSemanticPolicy, normaliseSemanticPolicy, semanticPolicyForRun, semanticPolicyForFingerprint } = require('../utils/meetingMinutesSemanticPolicy');
+const { normaliseDiscussionCoveragePolicy, captureDiscussionCoveragePolicy, discussionCoveragePolicyForRun, discussionCoveragePolicyForFingerprint } = require('../utils/meetingMinutesDiscussionCoveragePolicy');
 const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
 const { validateReconciliationReceipt, rebindReconciliationReceipt } = require('../utils/canonicalMinutes/actionSemanticReconciliation');
@@ -521,6 +524,7 @@ function normaliseMeetingAgentGeneration(generation) {
     status,
     bootId: meetingMinutesAgentText(generation.bootId, 80),
     semanticPolicy: normaliseSemanticPolicy(generation.semanticPolicy),
+    discussionCoveragePolicy: normaliseDiscussionCoveragePolicy(generation.discussionCoveragePolicy),
     startedAt: meetingMinutesAgentText(generation.startedAt, 40),
     error: meetingMinutesAgentText(generation.error, 400),
     pass: meetingMinutesAgentText(generation.pass, 80),
@@ -11434,6 +11438,7 @@ function meetingAgentStageInputFingerprint(draft = {}, stage = '') {
     timingPolicyVersion: TIMING_POLICY_VERSION,
     timingContext: meetingAgentPromptDetails(draft).timingContext,
     semanticPolicy: semanticPolicyForFingerprint(draft),
+    discussionCoveragePolicy: discussionCoveragePolicyForFingerprint(draft),
     stage,
     transcript: draft.transcriptSha256 || '',
     prepared: crypto.createHash('sha256').update(preparedTranscript).digest('hex'),
@@ -11612,7 +11617,8 @@ function startStageSpeculation(draft = {}, userId = '', options = {}) {
     preview: null, passCache: null, result: null, error: null, promise: null
   };
   const speculativeDraft = { ...draft, generation: null,
-    _semanticPolicy: semanticPolicyForFingerprint(draft) };
+    _semanticPolicy: semanticPolicyForFingerprint(draft),
+    _discussionCoveragePolicy: discussionCoveragePolicyForFingerprint(draft) };
   entry.promise = meetingAgentCallContext.run({ background: true, draftId, stage }, () =>
     generateHybridMeetingAgentStage(speculativeDraft, stage, {
       onProgress: async (progress) => { entry.progress = { ...entry.progress, ...progress }; },
@@ -15754,7 +15760,7 @@ async function finishMeetingAgentSemanticStage(result, draft, stage, options = {
   }
   // Freeze the same visible presentation that save/publication will expose,
   // before creating content-bound proofs. Keep source and receipt metadata raw.
-  if (policy.mode !== 'off' && (policy.scope !== 'contact_enquiries' || stage === 'actions')
+  if (policy.mode !== 'off' && (!isActionOnlySemanticScope(policy.scope) || stage === 'actions')
     && ['actions', 'discussion'].includes(stage) && cleaned?.changes?.[stage]) {
     const numbered = normaliseMeetingAgentMinuteNumbers({ [stage]: cleaned.changes[stage] });
     const format = value => normaliseMeetingAgentKnownTerms(normaliseDatePhrasesDeep(normalisePresentationCurrency(value)));
@@ -15792,7 +15798,7 @@ async function finishMeetingAgentSemanticStage(result, draft, stage, options = {
       publicationComplete: final.complete };
   }
   const semantic = reconciled?.changes?.qualityState?.[stage]?.semanticReconciliation;
-  if (policy.scope === 'contact_enquiries' && stage !== 'actions') return reconciled;
+  if (isActionOnlySemanticScope(policy.scope) && stage !== 'actions') return reconciled;
   if (!semantic || policy.mode === 'off') return reconciled;
   if (stage === 'actions' && semantic.applied && semantic.receipts?.length && reconciled.changes.pendingProposal) {
     const proposal = reconciled.changes.pendingProposal;
@@ -17246,6 +17252,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       });
       claimConsolidation = discussionDirectional.combine(claimConsolidation, directional, draft.sourceUnits);
     }
+    if (boundedRewrite && discussionCoveragePolicyForRun(draft).mainPoint) {
+      const mainPoint = await discussionMainPoint.consolidate(claimConsolidation.discussion, draft.sourceUnits, {
+        inventory: (prompt, packet) => rewriteCall('main-point-inventory', prompt, packet),
+        verify: (prompt, packet) => rewriteCall('main-point-verification', prompt, packet)
+      });
+      claimConsolidation = discussionMainPoint.combine(claimConsolidation, mainPoint, draft.sourceUnits);
+    }
+    if (boundedRewrite && discussionCoveragePolicyForRun(draft).pointDecision) {
+      const pointDecision = await discussionPointDecision.consolidate(claimConsolidation.discussion, draft.sourceUnits, {
+        assess: (prompt, packet) => rewriteCall('point-decision-proposal', prompt, packet),
+        verify: (prompt, packet) => rewriteCall('point-decision-verification', prompt, packet)
+      });
+      claimConsolidation = discussionPointDecision.combine(claimConsolidation, pointDecision, draft.sourceUnits);
+    }
     finalDiscussion = claimConsolidation.discussion;
     const finalPublication = discussionPublicationCoverage(finalDiscussion, refereeDiscussionDispositions, ensemble,
       { unassignedSupportingDetails: retainedUnassignedSupportingDetails, withheldRows: fidelityWithheldRows });
@@ -18158,6 +18178,7 @@ async function startInitialMeetingAgentProcessing(draft, req) {
   const generation = {
     stage,
     semanticPolicy: captureSemanticPolicy(),
+    discussionCoveragePolicy: captureDiscussionCoveragePolicy(),
     status: 'running',
     bootId: MEETING_AGENT_BOOT_ID,
     startedAt: new Date().toISOString(),
@@ -18833,7 +18854,7 @@ const MEETING_AGENT_RETRY_MS = [5000, 15000, 30000];
 
 function publicMeetingAgentGeneration(generation) {
   if (!generation) return null;
-  const { bootId: _bootId, semanticPolicy: _semanticPolicy, ...rest } = generation;
+  const { bootId: _bootId, semanticPolicy: _semanticPolicy, discussionCoveragePolicy: _discussionCoveragePolicy, ...rest } = generation;
   return rest;
 }
 
@@ -19691,7 +19712,7 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
     }
     changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
       semanticReconciliation: { ...semantic, receipts: bound, identityBinding: { complete: true },
-        ...(semantic.policy?.scope === 'contact_enquiries' ? { restoreSnapshot: structuredClone(allocated) } : {}) }
+        ...(isActionOnlySemanticScope(semantic.policy?.scope) ? { restoreSnapshot: structuredClone(allocated) } : {}) }
     } };
   }
   const proposal = changes.pendingProposal;
@@ -20037,6 +20058,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requir
     const generation = {
       stage,
       semanticPolicy: captureSemanticPolicy(),
+      discussionCoveragePolicy: captureDiscussionCoveragePolicy(),
       status: 'running',
       bootId: MEETING_AGENT_BOOT_ID,
       startedAt: new Date().toISOString(),
@@ -20132,7 +20154,7 @@ router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => 
       throw error;
     }
     const result = await generateMeetingAgentStage({ ...draft,
-      _semanticPolicy: captureSemanticPolicy() }, stage, req.body?.instruction);
+      _semanticPolicy: captureSemanticPolicy(), _discussionCoveragePolicy: captureDiscussionCoveragePolicy() }, stage, req.body?.instruction);
     if (instruction) {
       const before = stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
       const after = stage === 'discussion' ? result.normalised.discussion : result.normalised.actions;

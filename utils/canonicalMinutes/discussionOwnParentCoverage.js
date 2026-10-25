@@ -262,4 +262,4 @@ function combine(previous, next, sourceUnits) {
       .map(index => ({ index, finalHash: C.hash(next.discussion[index]) })) };
   return { discussion: next.discussion, audit };
 }
-module.exports = { VERSION, prepare, inventoryPrompt, inventories, verificationPrompt, verified, consolidate, combine };
+module.exports = { VERSION, prepare, inventoryPrompt, inventories, verificationPrompt, verified, consolidate, combine, protectedQuote };
