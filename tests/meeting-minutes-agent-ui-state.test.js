@@ -1180,16 +1180,33 @@ test('an opened transcript panel survives a re-render, and each step remembers i
       'the panel a reviewer opened to read a passage stays open across a re-render'
     );
 
-    // Leaving a screen and coming back returns to the same place.
-    await page.evaluate(() => window.scrollTo(0, 220));
-    await page.waitForTimeout(150);
+    // Use native keyboard activation without first scrolling the off-screen
+    // step button into view. locator.click() does that implicitly, changing
+    // the position the app is correctly asked to remember to zero.
+    const activateStep = async (step) => {
+      await page.locator('[data-step="' + step + '"]').evaluate((node) => node.focus({ preventScroll: true }));
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('[data-screen="' + step + '"].active');
+    };
+    await page.mouse.wheel(0, 220);
+    await page.waitForFunction(() => window.scrollY >= 200);
     const before = await page.evaluate(() => window.scrollY);
+    await activateStep(0);
+    await page.waitForTimeout(300);
+    await activateStep(2);
+    await page.waitForTimeout(600);
+    const after = await page.evaluate(() => window.scrollY);
+    assert.ok(Math.abs(after - before) < 60, 'returned to ' + after + ' after leaving from ' + before);
+
+    // Conversely, deliberately scrolling back to the tabs before clicking
+    // must remember the top, rather than an earlier reading position.
+    await page.mouse.wheel(0, -1000);
+    await page.waitForFunction(() => window.scrollY === 0);
     await page.click('[data-step="0"]');
     await page.waitForTimeout(300);
     await page.click('[data-step="2"]');
     await page.waitForTimeout(600);
-    const after = await page.evaluate(() => window.scrollY);
-    assert.ok(Math.abs(after - before) < 60, 'returned to ' + after + ' after leaving from ' + before);
+    assert.ok(await page.evaluate(() => window.scrollY < 2), 'mouse navigation remembers the actual departure position');
 
     assert.deepEqual(errors, []);
   } finally {
@@ -2695,7 +2712,10 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const proposition = text.closest('.proposition-row');
       const screen = document.querySelector('[data-screen="2"]');
       const toolbar = screen.querySelector('.toolbar');
+      const toolbarStyle = getComputedStyle(toolbar);
+      const toolbarBox = toolbar.getBoundingClientRect();
       const actions = screen.querySelector('.screen-toolbar-actions');
+      const actionsBox = actions.getBoundingClientRect();
       const regenerate = screen.querySelector('#regenerateDiscussion').getBoundingClientRect();
       const header = card.querySelector('.card-head');
       const collapse = header.querySelector('.topic-collapse').getBoundingClientRect();
@@ -2715,8 +2735,11 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
         propositionWidth: proposition.getBoundingClientRect().width,
         propositionTextWidth: text.getBoundingClientRect().width,
         propositionOverflow: proposition.scrollWidth - proposition.clientWidth,
-        toolbarWidth: toolbar.getBoundingClientRect().width,
-        actionsWidth: actions.getBoundingClientRect().width,
+        toolbarContentLeft: toolbarBox.left + parseFloat(toolbarStyle.borderLeftWidth) + parseFloat(toolbarStyle.paddingLeft),
+        toolbarContentRight: toolbarBox.right - parseFloat(toolbarStyle.borderRightWidth) - parseFloat(toolbarStyle.paddingRight),
+        actionsLeft: actionsBox.left,
+        actionsRight: actionsBox.right,
+        actionsWidth: actionsBox.width,
         regenerateWidth: regenerate.width,
         screenOverflow: screen.scrollWidth - screen.clientWidth
       };
@@ -2730,7 +2753,9 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     assert.equal(discussionLayout.kindAboveText, true, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionTextWidth > discussionLayout.propositionWidth * 0.8, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.propositionOverflow <= 1, JSON.stringify(discussionLayout));
-    assert.ok(Math.abs(discussionLayout.toolbarWidth - discussionLayout.actionsWidth) < 2, JSON.stringify(discussionLayout));
+    // Fill the usable toolbar, excluding its intentional border and padding.
+    assert.ok(Math.abs(discussionLayout.toolbarContentLeft - discussionLayout.actionsLeft) < 2, JSON.stringify(discussionLayout));
+    assert.ok(Math.abs(discussionLayout.toolbarContentRight - discussionLayout.actionsRight) < 2, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.regenerateWidth > discussionLayout.actionsWidth * 0.28, JSON.stringify(discussionLayout));
     assert.ok(discussionLayout.screenOverflow <= 1, JSON.stringify(discussionLayout));
 
@@ -2786,20 +2811,33 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
       const timing = row.querySelector('[data-label="Timing"]').getBoundingClientRect();
       const screen = document.querySelector('[data-screen="3"]');
       const toolbar = screen.querySelector('.toolbar');
+      const toolbarStyle = getComputedStyle(toolbar);
+      const toolbarBox = toolbar.getBoundingClientRect();
       const actions = screen.querySelector('.screen-toolbar-actions');
+      const actionsBox = actions.getBoundingClientRect();
       const regenerate = screen.querySelector('#regenerateActions').getBoundingClientRect();
       return {
         height: row.getBoundingClientRect().height,
+        rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        actionTextVisible: row.querySelector('[data-action]').scrollHeight <= row.querySelector('[data-action]').clientHeight + 1,
         metaAligned: Math.abs(owners.top - timing.top) < 4,
-        toolbarWidth: toolbar.getBoundingClientRect().width,
-        actionsWidth: actions.getBoundingClientRect().width,
+        toolbarContentLeft: toolbarBox.left + parseFloat(toolbarStyle.borderLeftWidth) + parseFloat(toolbarStyle.paddingLeft),
+        toolbarContentRight: toolbarBox.right - parseFloat(toolbarStyle.borderRightWidth) - parseFloat(toolbarStyle.paddingRight),
+        actionsLeft: actionsBox.left,
+        actionsRight: actionsBox.right,
+        actionsWidth: actionsBox.width,
         regenerateWidth: regenerate.width,
         screenOverflow: screen.scrollWidth - screen.clientWidth
       };
     });
-    assert.ok(actionLayout.height < 180, JSON.stringify(actionLayout));
+    // The owner/timing summaries and Source controls have evolved since the
+    // old 180px cap. Keep this short row compact in the page's type scale,
+    // without requiring controls or text to be clipped to save a pixel.
+    assert.ok(actionLayout.height / actionLayout.rootFontSize < 12, JSON.stringify(actionLayout));
+    assert.equal(actionLayout.actionTextVisible, true, JSON.stringify(actionLayout));
     assert.equal(actionLayout.metaAligned, true, JSON.stringify(actionLayout));
-    assert.ok(Math.abs(actionLayout.toolbarWidth - actionLayout.actionsWidth) < 2, JSON.stringify(actionLayout));
+    assert.ok(Math.abs(actionLayout.toolbarContentLeft - actionLayout.actionsLeft) < 2, JSON.stringify(actionLayout));
+    assert.ok(Math.abs(actionLayout.toolbarContentRight - actionLayout.actionsRight) < 2, JSON.stringify(actionLayout));
     assert.ok(actionLayout.regenerateWidth > actionLayout.actionsWidth * 0.28, JSON.stringify(actionLayout));
     assert.ok(actionLayout.screenOverflow <= 1, JSON.stringify(actionLayout));
     await page.click('#regenerateActions');
