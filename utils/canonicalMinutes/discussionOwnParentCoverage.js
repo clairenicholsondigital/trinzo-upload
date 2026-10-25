@@ -106,7 +106,7 @@ function inventoryPrompt(packet) {
     + 'uncertainty, negation, scope, cause, conditions and agreement status. Same topic is insufficient. '
     + 'Explicit quantities, attribution and object-specific quality are separate assertions; related subject matter does not preserve them. '
     + 'Find exact unchanged parent spans retaining every assertion AND exact transcript witnesses supporting the child and the claimed parent meaning. '
-    + 'Quote the COMPLETE original child sentence as childQuote for each atomic claim; overlaps are allowed. '
+    + 'For childQuote use the shortest exact contiguous child span expressing that atomic assertion WITH its subject and all governing qualifications. Overlap when necessary to retain shared attribution, negation, conditions or uncertainty. Do not copy a compound sentence for each claim when its clauses map to different parent spans. All meaningful child words must be covered across the inventory. '
     + 'For parentQuote choose the shortest contiguous span retaining the child assertion AND its qualifications. '
     + 'The quote need not include separate extra parent detail. Always inspect the FULL parent for contradictions; never cherry-pick past one. '
     + 'Unique detail, ambiguous referent, unsupported wording or any doubt requires decline. '
@@ -120,7 +120,14 @@ function figures(text) {
     ...(text.toLowerCase().match(/\b[a-z]+\b/g) || []).map(numberWordsToValue)
       .filter(value => value !== null).map(String)]);
 }
+// Local comparison only: about/approximately directly modifying a quantity are
+// the same approximation, never equivalent to an unqualified quantity. Original
+// quotes, records, source witnesses and hashes remain byte-for-byte unchanged.
+function comparisonText(text) {
+  return text.replace(/\b(?:about|approximately)\s+(?=(?:\d+(?:[.,]\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred)\b)/gi, 'approximately ');
+}
 function protectedQuote(child, parent) {
+  child = comparisonText(child); parent = comparisonText(parent);
   // These are rejection guards, never a semantic equivalence proof. Evaluate
   // mapped spans, not the whole parent with its unrelated extra qualifications.
   return figures(child).every(value => figures(parent).includes(value))
@@ -162,7 +169,7 @@ function verificationPrompt(packet, candidates) {
     + 'only if supplied sources establish the same referent. An additional deadline can coexist with an already retained broader schedule; '
     + 'a new prerequisite must not negate or weaken a child promise. '
     + 'The full child and full unchanged parent are authoritative. Independently find NEW exact parent and source quotes. '
-    + 'Use the shortest contiguous parent span retaining the assertion and all its qualifications, excluding separate extra detail. '
+    + 'For claimChecks use the shortest contiguous parent span retaining the atomic assertion and all its qualifications. For sentenceChecks use ONE contiguous parent span retaining EVERY assertion and qualification of the COMPLETE child sentence, even when this requires a longer span covering several clauses. A fragment covering just one atomic claim is insufficient for a sentenceCheck. '
     + 'Still inspect the full parent for contradictions. '
     + 'For EVERY inventory claim check support and full parent retention. Independently reread EVERY child sentence and check ALL its assertions '
     + 'were inventoried, are source-supported and fully retained. Related text or identical citations do not prove coverage. '
@@ -206,6 +213,18 @@ function verified(packet, candidates, response) {
         if (!check.supported || !check.retained || check.allClaimsListed === false
           || !protectedQuote(originalQuote, check.parentQuote)) valid = false;
       }
+    }
+    // A positive sentence verdict cannot hide one of the independently checked
+    // atomic assertions. Require exhaustive child-span coverage and a single
+    // unchanged parent span containing EVERY corresponding challenge witness.
+    for (const [index, sentence] of c.childSentences.entries()) {
+      const claims = c.claims.filter(claim => sentence.includes(claim.childQuote));
+      const sentenceCheck = result.sentenceChecks.find(check => check.sentenceIndex === index);
+      if (!B.coversText(sentence, claims.map(claim => claim.childQuote))
+        || claims.some(claim => {
+          const check = result.claimChecks.find(check => check.claimId === claim.id);
+          return !check || !quoteIn(sentenceCheck.parentQuote, check.parentQuote);
+        })) valid = false;
     }
     if (valid) accepted.push({ ...clone(c), checks: clone(result) });
   }
