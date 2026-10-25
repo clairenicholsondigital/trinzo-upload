@@ -17280,6 +17280,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     if (/^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_OWN_PARENT_COVERAGE_V1 || '0'))) {
       const ownParent = await discussionOwnParent.consolidate(claimConsolidation.discussion, draft.sourceUnits, {
         warnedChildren: discussionCoveragePolicyForRun(draft).warnedOwnParent === true,
+        presentConsideration: discussionCoveragePolicyForRun(draft).presentConsideration === true,
         reviewFlags: discussionFlagState.flags,
         inventory: (prompt, packet) => rewriteCall('own-parent-inventory', prompt, packet),
         verify: (prompt, packet) => rewriteCall('own-parent-verification', prompt, packet)
