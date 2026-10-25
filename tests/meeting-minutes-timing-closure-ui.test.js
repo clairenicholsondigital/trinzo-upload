@@ -142,3 +142,43 @@ test('ordinary unscoped action timing warnings still infer the action and focus 
   assert.equal(calls.some(call => call.pathname?.includes('generate')), false, 'warning navigation never invokes generation');
   assert.deepEqual(errors, []);
 });
+
+for (const location of ['supporting', 'unassigned', 'ambiguous']) {
+  test(`warnings on ${location} retained material never describe it as published minutes`, async t => {
+    const initial = fixture({ id: 'retained-check', kind: 'uncertain_fact', message: 'Check the retained qualification before including it.' });
+    const detail = { id: 'retained-1', text: 'Optional source qualification.', evidenceIds: ['T0001'], reviewFlagIds: ['retained-check'] };
+    if (location === 'supporting') initial.discussion[0].points[0].supportingDetails = [detail];
+    else initial.unassignedSupportingDetails = location === 'ambiguous' ? [detail, { ...detail, id: 'retained-2' }] : [detail];
+    const { page, errors, calls } = await agentPage(t, initial);
+    const card = page.locator('#flagList .review-queue-item');
+    assert.match(await card.innerText(), /Not in the main minutes/);
+    assert.doesNotMatch(await card.innerText(), /In the minutes ·|several actions/);
+    assert.equal(await card.getByRole('button', { name: 'Mark checked', exact: true }).count(), 1);
+    if (location === 'ambiguous') {
+      assert.equal(await card.locator('[data-view-flag-target]').count(), 0);
+      assert.match(await card.innerText(), /several retained details/);
+    } else {
+      await card.getByRole('button', { name: 'Open retained detail', exact: true }).click();
+      assert.equal(await page.locator('#omittedDetailsPanel').evaluate(node => node.open), true);
+      assert.equal(await page.locator('#omittedDetailsPanel').isVisible(), true);
+      assert.match(await page.locator('#omittedDetailsPanel > summary').innerText(), /Optional additional details/);
+      if (location === 'unassigned') {
+        assert.match(await page.locator('[data-needs-filing]').innerText(), /Optional retained material/);
+        assert.doesNotMatch(await page.locator('[data-needs-filing]').innerText(), /Choose where each detail belongs/);
+      }
+    }
+    assert.equal(await page.locator('#flagList .review-queue-item').count(), 1, 'labels never resolve a warning');
+    assert.equal(calls.some(call => call.method === 'PATCH' || call.pathname?.includes('generate')), false);
+    assert.deepEqual(errors, []);
+  });
+}
+
+test('published occurrences retain priority over a retained occurrence sharing the same warning', async t => {
+  const initial = fixture({ id: 'shared-check', kind: 'uncertain_fact', message: 'Check the qualification.' });
+  initial.discussion[0].points[0].reviewFlagIds = ['shared-check'];
+  initial.unassignedSupportingDetails = [{ id: 'retained-1', text: 'Retained qualification.', evidenceIds: ['T0001'], reviewFlagIds: ['shared-check'] }];
+  const { page, errors } = await agentPage(t, initial);
+  assert.match(await page.locator('#flagList .review-queue-item').innerText(), /In the minutes · Discussion sentence/);
+  assert.equal(await page.getByRole('button', { name: 'Open in minutes', exact: true }).count(), 1);
+  assert.deepEqual(errors, []);
+});
