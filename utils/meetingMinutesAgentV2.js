@@ -1003,10 +1003,14 @@ function mergeDiscussionSourceMetadata(winner, other) {
   }
 }
 
-function dedupePointList(values = []) {
+function dedupePointList(values = [], options = {}) {
+  const coreIds = new Set(Array.isArray(options.authoritativeCoreIds) ? options.authoritativeCoreIds : []);
+  const numbers = row => String(row?.text || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || [];
   const kept = [];
   for (const value of values) {
-    const duplicate = kept.find((existing) => recordSimilarity(existing, value) >= 0.86);
+    const duplicate = kept.find((existing) => !(coreIds.has(existing.id) && coreIds.has(value.id)
+      && JSON.stringify(numbers(existing)) !== JSON.stringify(numbers(value)))
+      && recordSimilarity(existing, value) >= 0.86);
     if (!duplicate) kept.push(value);
     else {
       mergeDiscussionSourceMetadata(duplicate, value);
@@ -1058,7 +1062,7 @@ function normaliseDiscussion(candidate = {}, units = [], options = {}) {
   const reviewerSave = options.preserveReviewerEdits === true;
   const normaliseRows = (rows, prefix) => {
     const normalised = normalisePointList(rows, units, prefix, options);
-    return reviewerSave ? normalised : dedupePointList(normalised);
+    return reviewerSave ? normalised : dedupePointList(normalised, options);
   };
   const topics = discussionTopicItems(candidate).slice(0, reviewerSave ? undefined : 80).map((item, index) => {
     const topic = text(item?.topic, 220) || 'Discussion';
@@ -1087,9 +1091,9 @@ function normaliseDiscussion(candidate = {}, units = [], options = {}) {
     const existing = options.mergeTopics === false ? null
       : merged.find((item) => tokenOverlap(comparisonText(item.topic), comparisonText(topic.topic)) >= 0.82);
     if (!existing) { merged.push(topic); continue; }
-    existing.points = dedupePointList([...existing.points, ...topic.points]);
-    existing.decisions = dedupePointList([...existing.decisions, ...topic.decisions]);
-    existing.openQuestions = dedupePointList([...existing.openQuestions, ...topic.openQuestions]);
+    existing.points = dedupePointList([...existing.points, ...topic.points], options);
+    existing.decisions = dedupePointList([...existing.decisions, ...topic.decisions], options);
+    existing.openQuestions = dedupePointList([...existing.openQuestions, ...topic.openQuestions], options);
   }
   // A high-confidence decision should not also be shown as an unresolved
   // question or ordinary point. Prefer the more useful record type.
