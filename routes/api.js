@@ -297,6 +297,7 @@ const {
   actionCompletenessCheckPrompt,
   applyActionCompletenessResults,
   reconcileRecordFlags,
+  reconcileUsefulRecordFlags,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   commitmentCheckItems,
   commitmentCheckPrompt,
@@ -11234,6 +11235,7 @@ function startPrivateStagedCandidateLedger(draft, stage) {
   if (existing) return existing.promise;
   const entry = {
     expiresAt: Date.now() + PRIVATE_STAGED_CACHE_TTL_MS,
+    sourceHash: crypto.createHash('sha256').update(JSON.stringify(normaliseSourceUnits(draft.sourceUnits))).digest('hex'),
     status: 'preparing',
     startedAt: new Date().toISOString(),
     completedAt: '',
@@ -11243,6 +11245,7 @@ function startPrivateStagedCandidateLedger(draft, stage) {
     () => buildPrivateStagedCandidateLedger(draft, stage),
     stage === 'discussion' ? 2 : 1
   ).then((value) => {
+    entry.value = value;
     entry.status = 'ready';
     entry.completedAt = new Date().toISOString();
     return value;
@@ -11267,6 +11270,24 @@ async function awaitPrivateStagedCandidateLedger(draft, stage, maxWaitMs = 12000
   } finally {
     clearTimeout(timer);
   }
+}
+
+function peekReadyPrivateStagedCandidateLedger(draft, stage) {
+  prunePrivateStagedCandidateCache();
+  const entry = privateStagedCandidateCache.get(privateStagedCandidateCacheKey(draft, stage));
+  if (!entry) return { status: 'absent', rows: [] };
+  if (entry.status !== 'ready') return { status: 'pending', rows: [] };
+  if (!Array.isArray(entry.value)) return { status: 'unavailable', rows: [] };
+  if (entry.sourceHash !== crypto.createHash('sha256')
+    .update(JSON.stringify(normaliseSourceUnits(draft.sourceUnits))).digest('hex')) return { status: 'stale', rows: [] };
+  const rows = cachedStagedCandidatesForStage({ ...draft, candidateLedger: entry.value }, stage);
+  if (rows.length !== entry.value.filter(row => row.sourcePass === 'staged'
+    && (stage === 'actions' ? row.recordType === 'action'
+      : ['discussion_point', 'decision', 'open_question', 'objective'].includes(row.recordType))).length) {
+    return { status: 'stale', rows: [] };
+  }
+  // A completed extractor cannot mutate the ensemble after adjudication starts.
+  return { status: 'ready', rows: structuredClone(rows) };
 }
 
 function meetingAgentActionPrimaryPromptForDraft(draft = {}) {
@@ -16109,6 +16130,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   let stagedCandidateElapsedMs = 0;
   let stagedCandidatesFromPrewarm = false;
   let stagedJoinPending = false;
+  let stagedJoinStatus = cachedStaged.length ? 'cached' : 'pending';
   const stagedPromise = cachedStaged.length
     ? Promise.resolve(cachedStaged)
     : awaitPrivateStagedCandidateLedger(draft, stage, Number(process.env.MEETING_MINUTES_AGENT_STAGED_JOIN_WAIT_MS || 12000)).then((rows) => {
@@ -16117,8 +16139,10 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         return [];
       }
       stagedCandidatesFromPrewarm = true;
+      stagedJoinStatus = 'ready';
       return rows;
     }).catch((error) => {
+      stagedJoinStatus = 'failed';
       degradedSources.push(`Staged candidate extraction failed: ${error.message}`);
       return [];
     }).finally(() => { stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt; });
@@ -16237,6 +16261,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     }
     stagedCandidateElapsedMs = Date.now() - stagedCandidateStartedAt;
   }
+  const stagedCandidateJoin = { initial: stagedJoinStatus, atAdjudication: stagedJoinStatus,
+    adoptedWithoutWait: false };
+  if (stage === 'actions' && stagedJoinPending && !stagedAll.length) {
+    // Discovery can outlast the first join timeout. Adopt only a result that
+    // is ALREADY ready for these exact inputs; do not wait or start new work.
+    const ready = peekReadyPrivateStagedCandidateLedger(draft, stage);
+    stagedCandidateJoin.atAdjudication = ready.status;
+    if (ready.status === 'ready') {
+      stagedAll = ready.rows;
+      stagedCandidatesFromPrewarm = true;
+      stagedCandidateJoin.adoptedWithoutWait = true;
+    }
+  }
+  stagedCandidateJoin.usedCount = stagedAll.length;
   const primaryParsed = primaryResult || {
     schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
     meetingObjectives: [], discussion: [], actions: [], actionProposals: [],
@@ -17150,7 +17188,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     );
     // Reconcile review links on unfiled context too. Primary/recovery flag
     // definitions may be recoverable only through the existing flag registry.
-    const discussionFlagState = reconcileRecordFlags({ discussion: finalDiscussion,
+    const discussionFlagState = reconcileUsefulRecordFlags({ discussion: finalDiscussion,
       supportingDetails: retainedUnassignedSupportingDetails }, [...refereeFlags,
       ...(quantifiedGrounding.flags || []), ...(finalQuantifiedGrounding.flags || []),
       ...supersededContextFlags, ...attributionFlags, ...fidelityFlags, ...roleConflicts.flags], isUsefulMeetingAgentReviewFlag);
@@ -18044,7 +18082,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         completedPasses, recoveryUsed: Boolean(recovery), degradedSources,
         completedAt: new Date().toISOString(), passImpact,
         callPerformance: meetingAgentCallPerformance(measuredProvenance),
-        stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs,
+        stageElapsedMs: Date.now() - stageStartedAt, stagedCandidateElapsedMs, stagedCandidateJoin,
         stagedCandidatesFromCache: cachedStaged.length > 0 || stagedCandidatesFromPrewarm,
         automaticCount: actionFlagState.content.actions.length, proposalCount: proposal.changes.length,
         highConfidencePromotionCount,
@@ -20687,6 +20725,7 @@ router.stagedEvaluation = {
   buildPrivateStagedCandidateLedger,
   stagedCandidateLedgerFromResult,
   cachedStagedCandidatesForStage,
+  peekReadyPrivateStagedCandidateLedger,
   prewarmPrivateStagedCandidateLedgers,
   meetingAgentActionPrimaryPromptForDraft,
   borrowOwnersFromTwin,

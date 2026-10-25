@@ -822,6 +822,12 @@ function reconcileRecordFlags(content = {}, flags = [], isUseful = () => true) {
   return { content: copy, flags: [...(Array.isArray(flags) ? flags : []), ...recovered], recovered: recovered.length };
 }
 
+// Agent cleanup must see the same actionable warning state as publication.
+// Leave the shared reconciler's default treatment of supplied flags unchanged.
+function reconcileUsefulRecordFlags(content = {}, flags = [], isUseful = isUsefulReviewFlag) {
+  return reconcileRecordFlags(content, (Array.isArray(flags) ? flags : []).filter(isUseful), isUseful);
+}
+
 function isSalientCoverageFlag(flag = {}) {
   return /^coverage-detail-/i.test(String(flag.id || ''))
     || String(flag.message || flag.text || '').startsWith(COVERAGE_FLAG_MESSAGE);
@@ -6112,8 +6118,21 @@ function applyDiscussionFidelityResults(discussion = [], items = [], results = [
     }
     const suppliedTemporalEvidence = verdict && ['supported', 'corrected'].includes(verdict.verdict)
       && Object.prototype.hasOwnProperty.call(verdict, 'temporalEvidence');
+    const temporalReview = suppliedTemporalEvidence
+      || Temporal.temporalClaim(source.item.row, temporalContext(source.item, source.record));
+    if (changed && !meaningRejected && state.status === 'rejected'
+      && verdict?.verdict === 'corrected' && !temporalReview) {
+      const flag = normaliseFlag({
+        id: stableId('flag-fidelity-meaning', `${source.record.id}|${source.item.row}|${state.reason}`, 0),
+        kind: 'uncertain_fact',
+        message: `A proposed factual correction could not be verified safely. The original wording was retained: "${text(source.item.row, 300)}". Check it against the cited source.`,
+        evidenceIds: changed.evidenceIds || []
+      }, flags.length);
+      flags.push(flag);
+      changed = { ...changed, reviewFlagIds: [...new Set([...(changed.reviewFlagIds || []), flag.id])] };
+    }
     if (changed && !meaningRejected && !['supported', 'corrected', 'uncertain'].includes(state.status)
-      && (suppliedTemporalEvidence || Temporal.temporalClaim(source.item.row, temporalContext(source.item, source.record)))) {
+      && temporalReview) {
       const flag = normaliseFlag({ kind: 'timing',
         message: `Cannot verify the timing in "${text(source.item.row, 260)}": ${text(state.reason, 180).replace(/_/g, ' ')}. Confirm it against the cited source.`,
         evidenceIds: changed.evidenceIds || [] }, flags.length);
@@ -7622,6 +7641,7 @@ module.exports = {
   timingCheckEnabled,
   statedCalendarDate,
   reconcileRecordFlags,
+  reconcileUsefulRecordFlags,
   discussionActionCandidates,
   mentionedPeople,
   describesUsualPractice,
