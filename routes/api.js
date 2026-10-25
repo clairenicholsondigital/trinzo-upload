@@ -17236,13 +17236,16 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     }));
     // Coalesce only proven candidate/original aliases from this generated
     // handoff. Existing reviewer filing state never grants alias permission.
-    const filingAliasReconciliation = filingAliases.reconcile(
-      normalizeUnassignedSupportingDetails(unassignedSupportingDetails), candidateLedger, draft.sourceUnits, {
+    const mergedUnassignedSupportingDetails = mergeUnassignedSupportingDetails(
+      draft.unassignedSupportingDetails, unassignedSupportingDetails);
+    const filingAliasReconciliation = discussionCoveragePolicyForRun(draft).filingAliases
+      ? filingAliases.reconcile(
+      mergedUnassignedSupportingDetails, candidateLedger, draft.sourceUnits, {
         enabled: discussionCoveragePolicyForRun(draft).filingAliases === true,
         handoffs: filingAliasHandoffs, priorRows: draft.unassignedSupportingDetails || [], discussion: finalDiscussion
-      });
+      }) : { rows: mergedUnassignedSupportingDetails, audit: { applied: false, reason: 'disabled' } };
     const retainedUnassignedSupportingDetails = withoutRepresentedUnassignedDetails(
-      mergeUnassignedSupportingDetails(draft.unassignedSupportingDetails, filingAliasReconciliation.rows), finalDiscussion
+      filingAliasReconciliation.rows, finalDiscussion
     );
     // Reconcile review links on unfiled context too. Primary/recovery flag
     // definitions may be recoverable only through the existing flag registry.
