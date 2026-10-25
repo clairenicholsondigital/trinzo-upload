@@ -6,6 +6,7 @@ const C = require('./discussionClaimConsolidation');
 const clauses = require('./discussionClauseConsolidation');
 const safety = require('./discussionMergeSafety');
 const rewriteNomination = require('./discussionRewriteNomination');
+const crossMention = require('./discussionCrossMentionNomination');
 const { numberWordsToValue } = require('./textNormalisation');
 const VERSION = 'discussion-bounded-rewrite-v1';
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -15,9 +16,16 @@ const sentences = text => [...new Intl.Segmenter('en', { granularity: 'sentence'
 const hasOnly = (row, keys) => row && typeof row === 'object' && !Array.isArray(row)
   && Object.keys(row).every(key => keys.includes(key));
 const question = text => /[?"“”«»]|\b(?:asked|asks?|asking|queries|queried|unresolved|undecided)\b/i.test(text);
-const figures = text => unique([...(text.match(/\d+(?:[.,]\d+)?/g) || []),
-  ...(text.toLowerCase().match(/\b[a-z]+\b/g) || []).map(word => numberWordsToValue(word))
-    .filter(value => value !== null).map(String)]).sort();
+const figures = input => {
+  const ordinals = { first:1, second:2, third:3, fourth:4, fifth:5, sixth:6, seventh:7, eighth:8, ninth:9, tenth:10 };
+  const roles = [];
+  const text = input.replace(/\b(\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)[ -]party\b/gi,
+    (_, value) => { roles.push('party-role-' + (ordinals[value.toLowerCase()] || parseInt(value,10))); return ''; });
+  return unique([...roles, ...(text.match(/\d+(?:[.,]\d+)?/g) || []),
+    ...(text.toLowerCase().match(/\b[a-z]+\b/g) || []).map(word => numberWordsToValue(word))
+      .filter(value => value !== null).map(String)]).sort();
+};
+
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function eligible(record) {
   return safety.mergeableRecord(record) && !record.reviewFlagIds?.length
@@ -30,8 +38,10 @@ async function prepare(discussion, sourceUnits, options = {}) {
     : (await C.prepare(discussion, sourceUnits, { maxCandidates: 6, encode: options.encode })).candidates;
   const partial = options.partialOverlap === true && options.withinRecordOnly !== true
     ? await rewriteNomination.nominate(discussion, sourceUnits, { eligible, encode: options.encode }) : [];
+  const cross = options.crossMention === true && options.withinRecordOnly !== true
+    ? await crossMention.nominate(discussion, sourceUnits, { eligible, encode: options.encode }) : [];
   const raw = [...singles.map(c => ({ rows: [{ path: c.path, record: c.record }] })),
-    ...pairs.map(c => ({ rows: c.rows })), ...partial.map(c => ({ rows: c.rows, partial: true }))];
+    ...pairs.map(c => ({ rows: c.rows })), ...partial.map(c => ({ rows: c.rows, partial: true })), ...cross.map(c => ({ rows: c.rows, cross: true }))];
   const counts = safety.identityCounts(discussion), sources = new Map(), duplicate = new Set();
   for (const source of sourceUnits || []) {
     if (sources.has(source.id)) duplicate.add(source.id);
@@ -62,11 +72,12 @@ async function prepare(discussion, sourceUnits, options = {}) {
       for (const source of [sourceUnits[index - 1], sourceUnits[index + 1]])
         if (source && !duplicate.has(source.id) && typeof source.text === 'string') context.add(source.id);
     }
-    if (nomination.partial) {
+    if (nomination.partial || nomination.cross) {
       // This path may preserve different qualifications/claims. Supply the
       // complete local exchange, not just one turn beside truncated citations.
-      // The existing 24-unit/48k limits still apply; no remote search or donated
-      // claims, and independent source verification remains mandatory.
+      // Partial overlap keeps its existing 24-unit limit; the separate
+      // cross-mention class permits 40 units. Both retain the 48k character
+      // limit, with no remote search or donated claims.
       const first = Math.max(0, Math.min(...anchorIndices) - 8);
       const last = Math.min(sourceUnits.length - 1, Math.max(...anchorIndices) + 8);
       const expanded = sourceUnits.slice(first, last + 1);
@@ -74,14 +85,14 @@ async function prepare(discussion, sourceUnits, options = {}) {
       expanded.forEach(unit => context.add(unit.id));
     }
     const supplied = sourceUnits.filter(source => context.has(source.id));
-    if (supplied.length > 24 || supplied.some(source => !source.text.trim() || source.text.length > 12000)
+    if (supplied.length > (nomination.cross ? 40 : 24) || supplied.some(source => !source.text.trim() || source.text.length > 12000)
       || JSON.stringify(supplied).length > 48000) continue;
-    const metadata = safety.reconcileMetadata(rows.map(row => row.record), rows[0].record, { completeArchive: true });
+    const metadata = safety.reconcileMetadata(rows.map(row => row.record), rows[0].record, { completeArchive: true, deferEvidenceAllocation: Boolean(nomination.cross) });
     if (!metadata) continue;
     const members = rows.map(row => ({ path: clone(row.path), record: clone(row.record), sentences: sentences(row.record.text) }));
     candidates.push({ id: 'rewrite-' + C.hash(members).slice(0, 24), rows: members,
       sourceUnits: clone(supplied), metadata,
-      ...(nomination.partial ? { nominationKind: 'partial_overlap' } : {}) });
+      ...(nomination.partial ? { nominationKind: 'partial_overlap' } : nomination.cross ? { nominationKind: 'cross_mention' } : {}) });
     rows.forEach(row => used.add(row.record.id));
     if (candidates.length >= Math.min(3, Math.max(1, options.maxCandidates ?? 3))) break;
   }
@@ -121,6 +132,8 @@ function providerCandidates(candidates, independent = false) {
   return candidates.map(c => ({ id: c.id,
     rows: c.rows.map(row => ({ recordId: row.record.id, originalText: row.record.text, sentences: row.sentences })),
     sourceUnits: c.sourceUnits,
+    ...(c.inventory && !independent ? { protectedSourceWords: protectedSourceWords(c),
+      maximumCharacters: Math.min(1600, c.rows.reduce((n, r) => n + r.record.text.length, 0) - 1) } : {}),
     ...(c.inventory ? { inventory: c.inventory.map(row => ({ recordId: row.recordId,
       claims: row.claims.map(claim => independent
         ? { id: claim.id, text: claim.text, originalQuote: claim.originalQuote } : claim) })) } : {}),
@@ -181,7 +194,7 @@ function proposalPrompt(packet, candidates) {
     + 'Preserve EVERY claim in the originals/inventory, including distinct reasons, object-specific qualifications, attribution, '
     + 'actor/recipient, uncertainty, negation, dependencies, dates/numbers, phase and proposal-versus-agreement. '
     + 'No missing-information recovery, invented cause, repair of doubtful wording or new agreement. If not safely possible, decline. '
-    + 'Prefer concise grammatical prose over simply choosing one incomplete existing paragraph. '
+    + 'Prefer concise grammatical prose over simply choosing one incomplete existing paragraph. Keep every protectedSourceWords token verbatim and stay within maximumCharacters. These conservative vocabulary constraints are never proof that a claim is supported. '
     + 'Return ONLY {version:"' + VERSION + '",packetHash:"' + packet.packetHash
     + '",results:[{id,decision:"rewrite"|"decline",text:"rewrite only"}]}. One result per candidate.\nDATA\n'
     + JSON.stringify({ candidates: providerCandidates(candidates) });
@@ -190,14 +203,17 @@ function proposalPrompt(packet, candidates) {
 // words shared by the originals and supplied evidence cannot disappear in this
 // optional editor. Semantic synonyms may therefore retain the original rather
 // than gain an unsafe edit. No transcript-specific adjective/phrase list.
-function sourceWordsRetained(candidate, output) {
+function protectedSourceWords(candidate) {
   const stop = new Set('the and but are was were been being for from this that these those they their them his her our also have has had does did some there with'.split(' '));
   const words = text => new Set((text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [])
     .filter(word => word.length >= 3 && !stop.has(word)));
   const originals = words(candidate.rows.map(row => row.record.text).join(' '));
   const source = words(candidate.sourceUnits.map(unit => unit.text).join(' '));
-  const after = words(output);
-  return [...originals].filter(word => source.has(word)).every(word => after.has(word));
+  return [...originals].filter(word => source.has(word));
+}
+function sourceWordsRetained(candidate, output) {
+  const after = new Set(output.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+  return protectedSourceWords(candidate).every(word => after.has(word));
 }
 function protectedNames(before, after, candidate) {
   const namedSpeakers = candidate.sourceUnits.map(source => source.speaker).filter(name => typeof name === 'string' && name.trim());
@@ -217,7 +233,7 @@ function proposals(packet, candidates, response) {
       || /[\u0000-\u001f\u007f]/.test(text) || question(text) || !/[.!]$/.test(text)
       || !equal(figures(before), figures(text)) || !protectedNames(before, text, candidate)
       || !sourceWordsRetained(candidate, text)) continue;
-    if (candidate.nominationKind === 'partial_overlap') {
+    if (['partial_overlap','cross_mention'].includes(candidate.nominationKind)) {
       const normalized = value => value.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, ' ').trim();
       const required = unique(candidate.rows.flatMap(row => safety.qualifiers(row.record.text)));
       const after = safety.qualifiers(text);
@@ -225,7 +241,9 @@ function proposals(packet, candidates, response) {
       // Conservative vetoes only: even an approving model cannot discard an
       // original qualification. Awkward paraphrases retain both originals.
       if (required.some(value => !after.includes(value))
-        || conditions.some(value => !normalized(text).includes(value))) continue;
+        || conditions.some(value => candidate.nominationKind === 'cross_mention'
+          ? !safety.conditions(text).some(after => after === value || after.startsWith(value + ' '))
+          : !normalized(text).includes(value))) continue;
     }
     accepted.push({ ...clone(candidate), text, outputSentences: sentences(text),
       selectionHash: C.hash({ candidate: candidate.id, inventory: candidate.inventory, text }) });
@@ -250,14 +268,16 @@ function verificationPrompt(packet, candidates) {
     + 'outputChecks:[{sentenceIndex,supported:true|false,noNewClaims:true|false,sourceWitnesses:[{sourceId,quote}]}]}]}. '
     + 'Exactly one check per supplied claim, original sentence and output sentence; indexes start at zero. Quotes are exact contiguous substrings. '
     + 'A missing output quote is empty and MUST set retained=false.\nDATA\n'
-    + JSON.stringify({ candidates: providerCandidates(candidates, true) });
+    + (candidates.some(c => c.nominationKind === 'cross_mention')
+      ? 'For each cross-mention candidate also return processChecks:{sameOperatingProcess:boolean,sharedFactsConsolidated:boolean,distinctEventsKeptSeparate:boolean}. All must be independently true. Related topics alone are insufficient. Do not turn a tentative understanding into an agreement or turn brief holding into no holding. ' : '')
+    + JSON.stringify({ candidates: providerCandidates(candidates, true), crossMentionIds: candidates.filter(c => c.nominationKind === 'cross_mention').map(c => c.id) });
 }
 function verified(packet, candidates, response) {
   if (!envelope(packet, response, candidates)) return null;
   const accepted = [], diagnostics = [];
   for (const result of response.results) {
     const c = candidates.find(c => c.id === result.id);
-    if (!hasOnly(result, ['id', 'selectionHash', 'claimChecks', 'originalChecks', 'outputChecks'])
+    if (!hasOnly(result, ['id', 'selectionHash', 'claimChecks', 'originalChecks', 'outputChecks', ...(c.nominationKind === 'cross_mention' ? ['processChecks'] : [])])
       || result.selectionHash !== c.selectionHash) return null;
     const claims = c.inventory.flatMap(r => r.claims), seen = new Set();
     if (!Array.isArray(result.claimChecks) || result.claimChecks.length !== claims.length) return null;
@@ -290,6 +310,10 @@ function verified(packet, candidates, response) {
         || typeof check.noNewClaims !== 'boolean' || !checkedWitnesses(c, check)) return null;
       outputKeys.add(check.sentenceIndex);
     }
+    if (c.nominationKind === 'cross_mention' && (!hasOnly(result.processChecks, ['sameOperatingProcess','sharedFactsConsolidated','distinctEventsKeptSeparate'])
+      || !['sameOperatingProcess','sharedFactsConsolidated','distinctEventsKeptSeparate'].every(k => result.processChecks[k] === true))) {
+      diagnostics.push({ id:c.id, reason:'same_process_or_improvement_not_proved' }); continue;
+    }
     const failedClaims = result.claimChecks.filter(ch => !ch.supported || !ch.retained);
     const failedOriginals = result.originalChecks.filter(ch => !ch.allClaimsListed || !ch.supported || !ch.retained);
     const failedOutput = result.outputChecks.filter(ch => !ch.supported || !ch.noNewClaims);
@@ -302,7 +326,7 @@ function verified(packet, candidates, response) {
     // Original references (including unused context/filler) remain losslessly
     // archived with every original row; they are not automatically citations
     // for rewritten prose. Never prune the verifier's witnesses to fit a cap.
-    const verifiedAllocation = c.nominationKind === 'partial_overlap';
+    const verifiedAllocation = ['partial_overlap','cross_mention'].includes(c.nominationKind);
     const evidenceIds = verifiedAllocation ? usedSources : unique([...c.metadata.evidenceIds, ...usedSources]);
     if (evidenceIds.length > 12) { diagnostics.push({ id: c.id, reason: 'citation_overflow' }); continue; }
     accepted.push({ ...clone(c), metadata: { ...c.metadata, evidenceIds,

@@ -97,7 +97,11 @@ function reconcileMetadata(records, survivor, options = {}) {
   const mergedFromIds = unique(records.flatMap(record => [
     ...(record.mergedFromIds || []), ...(record.id === survivor.id || (options.survivingIds || []).includes(record.id) ? [] : [record.id])
   ])).filter(id => id !== survivor.id);
-  if (evidenceIds.length > 12 || mergedFromIds.length > 1000) return null;
+  // A candidate may archive more old citations than its new paragraph needs.
+  // Only the full-inventory rewrite path may defer allocation; publication
+  // still requires every independently verified witness and at most 12 IDs.
+  const limit = options.completeArchive === true && options.deferEvidenceAllocation === true ? 24 : 12;
+  if (evidenceIds.length > limit || mergedFromIds.length > 1000) return null;
   const primaryEvidenceIds = unique(ordered.flatMap(record => record.primaryEvidenceIds || []));
   const metadata = { evidenceIds, reviewFlagIds: unique(ordered.flatMap(record => record.reviewFlagIds || [])),
     ...(mergedFromIds.length ? { mergedFromIds } : {}),
