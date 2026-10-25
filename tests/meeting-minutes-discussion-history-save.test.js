@@ -77,6 +77,7 @@ function patchHarness(initial) {
     originalEnquiryActions,
     sameEnquiryActionSnapshot,
     timingRecovery: require('../utils/meetingMinutesTimingRecovery'),
+    actionUnion: require('../utils/meetingMinutesActionUnionRewrite'),
     discussionRewrite: require('../utils/canonicalMinutes/discussionBoundedRewrite'),
     discussionClaims: require('../utils/canonicalMinutes/discussionClaimConsolidation'),
     discussionActionSeparation: require('../utils/canonicalMinutes/discussionActionSeparation'),

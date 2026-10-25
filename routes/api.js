@@ -1,3 +1,4 @@
+const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
 const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
@@ -8943,7 +8944,7 @@ function unionActionDiscoveryResults(first, second) {
   const list = (value) => (Array.isArray(value) ? value : []);
   return {
     ...first,
-    actions: dedupeHybridActionRecords([...list(first.actions), ...list(second.actions)]),
+    actions: dedupeHybridActionRecords([...list(first.actions), ...list(second.actions)], { independentDiscovery: true }),
     actionProposals: dedupeHybridActionProposals([...list(first.actionProposals), ...list(second.actionProposals)]),
     candidateDispositions: [...list(first.candidateDispositions), ...list(second.candidateDispositions)],
     reviewFlags: mergeMeetingAgentFlags(list(first.reviewFlags), list(second.reviewFlags))
@@ -11682,7 +11683,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -12461,7 +12462,8 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
     // timing or metadata invalidates the receipt and work is restored normally.
     const semanticallyRepresented = Array.isArray(options.receipts) && actions.some(existing =>
       options.receipts.some(receipt => validateReconciliationReceipt(receipt, record, existing, options.sourceUnits || [])));
-    if (semanticallyRepresented) continue;
+    if (semanticallyRepresented || (options.unionReceipts || []).some(receipt => actions.some(existing =>
+      actionUnion.valid(receipt, record, existing, options.sourceUnits || [], options.meetingDate)))) continue;
     // Use the same directional, lossless variant proof as the final deduper.
     // If its survivor needs an approved row's extra detail, enrich that single
     // instruction rather than restoring a second wording of the same task.
@@ -13508,6 +13510,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
         || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)
         || actionContainmentConflict(record, existing)) return false;
+      // Independent extraction IDs are local to each response. Keep distinct
+      // review/document instructions intact for the later source-bound union;
+      // broad containment can otherwise discard a mandatory operation here.
+      if (options.independentDiscovery && record.action !== existing.action
+        && [record, existing].every(row => /^review and (?:document|record|update|revise|amend|edit)\b/i.test(row.action))) return false;
       if (timingsDifferOnlyByWeekdayPreposition(record, existing)) {
         // Optional weekday wording may unblock a preserved instruction, but
         // must not admit a looser owner, operation or deliverable match.
@@ -13546,7 +13553,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         && !sameDocumentDeliveryWorkflow(record, existing)
         && !sameCanonicalDocumentWorkflow(record, existing)
         && !wayToParaphraseOf(record, existing) && !wayToParaphraseOf(existing, record)) return false;
-      if (sameCanonicalDocumentWorkflow(record, existing)) {
+      if (!options.independentDiscovery && sameCanonicalDocumentWorkflow(record, existing)) {
         canonicalDocumentWorkflowDuplicate = existing;
         return true;
       }
@@ -13642,6 +13649,8 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       merged.push(record);
       continue;
     }
+    if (options.independentDiscovery && (!commitmentCanBeRepresented(record, preferred)
+      || !commitmentCanBeRepresented(duplicate, preferred))) { merged.push(record); continue; }
     const combinedEvidence = stableEvidence([duplicate, record]);
     const duplicateOwners = duplicate.owners || []; const recordOwners = record.owners || [];
     const ownersCompatible = !duplicateOwners.length || !recordOwners.length
@@ -15222,6 +15231,8 @@ function isPersonalErrandAction(value = '') {
 }
 
 function semanticReceiptCoversActionProposal(record = {}, published = [], options = {}) {
+  if ((options.unionReceipts || []).some(receipt => published.some(survivor =>
+    actionUnion.valid(receipt, record, survivor, options.sourceUnits || [], options.meetingDate)))) return true;
   if (!Array.isArray(options.receipts) || isReviewerAuthored(record)) return false;
   // Only an unchanged original covered by an exact CURRENT survivor qualifies.
   // Identity differences at generated admission never grant an ID-wide exemption.
@@ -15699,7 +15710,7 @@ async function verifyMeetingAgentSummaryTiming(draft, values, call) {
   return applySummaryTemporalCheckResults(values, items, results, options);
 }
 
-async function finishMeetingAgentGeneratedStage(result, draft, stage, options = {}) {
+async function finishMeetingAgentSemanticStage(result, draft, stage, options = {}) {
   // Bind witnesses to the exact prepared-source schema persisted by payload(),
   // including legacy callers lacking default source fields. Raw transcript
   // storage remains separate and is never rewritten by this boundary.
@@ -15798,6 +15809,29 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
       stageElapsedMs: Number(state.stageElapsedMs || 0) + semantic.elapsedMs
     } }
   } };
+}
+
+async function finishMeetingAgentGeneratedStage(result, draft, stage, options = {}) {
+  const finished = await finishMeetingAgentSemanticStage(result, draft, stage, options);
+  if (stage !== 'actions' || !Array.isArray(finished?.changes?.actions)
+    || !/^(?:1|true|yes|on)$/i.test(process.env.MEETING_MINUTES_AGENT_WORKFLOW_UNION_V1 || '0')) return finished;
+  const started = Date.now();
+  const checked = await actionUnion.rewrite(finished.changes.actions, normaliseSourceUnits(draft.sourceUnits), {
+    meetingDate: meetingAgentTimingAnchor(draft), protectedIds: draft.keptActionOccurrenceIds || [],
+    ask: options.unionAsk || options.semanticAsk || askPowerAutomateMeetingMinutesAgentWithRetry
+  });
+  const state = finished.changes.qualityState || draft.qualityState || {};
+  const changes = { ...finished.changes, actions: checked.actions, qualityState: { ...state, actions: {
+    ...state.actions, actionUnionRewrite: checked.audit, automaticCount: checked.actions.length,
+    stageElapsedMs: Number(state.actions?.stageElapsedMs || 0) + Date.now() - started
+  } } };
+  if (checked.audit.applied && changes.pendingProposal?.changes) {
+    checked.audit.coveredProposalChanges = changes.pendingProposal.changes.filter(change => change.type === 'add'
+      && checked.audit.receipts.some(r => checked.actions.some(a => actionUnion.valid(r, change.after, a, draft.sourceUnits))));
+    const remaining = changes.pendingProposal.changes.filter(change => !checked.audit.coveredProposalChanges.includes(change));
+    changes.pendingProposal = remaining.length ? { ...changes.pendingProposal, changes: remaining } : null;
+  }
+  return { ...finished, changes };
 }
 
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
@@ -17134,6 +17168,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     });
     let claimConsolidation = boundedRewrite
       ? await discussionRewrite.consolidate(finalDiscussion, draft.sourceUnits, {
+        crossMention: /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_CROSS_MENTION_V1 || '0')),
         partialOverlap: /^(?:1|true|yes|on)$/i.test(String(
           process.env.MEETING_MINUTES_AGENT_DISCUSSION_PARTIAL_OVERLAP_REWRITE_V1 || '0')),
         inventory: (prompt, packet) => rewriteCall('inventory', prompt, packet),
@@ -18505,6 +18540,9 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = timingRecovery.preserveUnchangedActions(
       normalised.actions, draft.actions || [], req.body?.actions, draft.qualityState?.actions?.timingRecovery?.proofs,
       draft.sourceUnits, meetingAgentTimingAnchor(draft));
+    if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = actionUnion.preserveUnchanged(
+      normalised.actions, draft.actions || [], req.body?.actions, draft.qualityState?.actions?.actionUnionRewrite,
+      draft.sourceUnits, meetingAgentTimingAnchor(draft));
     // Save normalisation must not undo a generated multi-clause source repair.
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
@@ -19574,6 +19612,25 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
     }
     changes.qualityState = { ...changes.qualityState, discussion: { ...changes.qualityState.discussion, claimConsolidation: bound } };
   }
+  const union = changes.qualityState?.actions?.actionUnionRewrite;
+  if (Array.isArray(changes.actions) && union?.applied) {
+    const bound = union.receipts.map(receipt => {
+      const candidates = original.flatMap((row, index) => {
+        const proof = actionUnion.rebind(receipt, row, allocated[index], normaliseSourceUnits(fresh.sourceUnits));
+        return proof ? [proof] : [];
+      });
+      return candidates.length === 1 ? candidates[0] : null;
+    });
+    if (bound.some(receipt => !receipt)) return admitMeetingAgentGeneratedActionChanges(fresh, { ...input,
+      actions: structuredClone(union.original),
+      pendingProposal: union.coveredProposalChanges?.length ? { ...(input.pendingProposal || {stage:'actions'}),
+        changes: [...(input.pendingProposal?.changes || []), ...union.coveredProposalChanges] } : input.pendingProposal,
+      qualityState: { ...changes.qualityState, actions: { ...changes.qualityState.actions,
+        actionUnionRewrite: { ...union, applied:false, receipts:[], reason:'identity_binding_failed' } } }
+    }, generationKey);
+    changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
+      actionUnionRewrite: { ...union, receipts:bound, identityBinding:{complete:true} } } };
+  }
   const semantic = changes.qualityState?.actions?.semanticReconciliation;
   if (Array.isArray(changes.actions) && semantic?.applied && semantic.receipts?.length) {
     const bound = semantic.receipts.map(receipt => {
@@ -20158,7 +20215,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     const reconciledActions = mergePublishedActionEvidence(publishedBase, combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
       buildProposal('actions', reconciledActions, combined), reconciledActions,
-      { receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
+      { unionReceipts: draft.qualityState?.actions?.actionUnionRewrite?.applied ? draft.qualityState.actions.actionUnionRewrite.receipts : [],
+        meetingDate: meetingAgentTimingAnchor(draft), receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
         ? draft.qualityState.actions.semanticReconciliation.receipts : [], sourceUnits: draft.sourceUnits }
     ), actionChains);
     // Never re-propose an action the reviewer deleted since it was generated.
@@ -20181,7 +20239,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       ])],
       pendingProposal: (() => {
         const finalProposal = removePublishedActionProposalDuplicates(proposal, reconciledActions,
-          { receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
+          { unionReceipts: draft.qualityState?.actions?.actionUnionRewrite?.applied ? draft.qualityState.actions.actionUnionRewrite.receipts : [],
+        meetingDate: meetingAgentTimingAnchor(draft), receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
             ? draft.qualityState.actions.semanticReconciliation.receipts : [], sourceUnits: draft.sourceUnits });
         return finalProposal.changes.length ? preselectActionProposal(finalProposal, reconciledActions, draft.sourceUnits) : null;
       })(),

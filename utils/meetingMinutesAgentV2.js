@@ -541,7 +541,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     return evidenceScoreProfile(indexes.map((index) => context.directTexts[index]).join(' '));
   };
   const suppliedIds = [...new Set((Array.isArray(supplied) ? supplied : []).map((id) => text(id, 30)).filter(Boolean))];
-  const cacheKey = `${TimingIntegrity.TIMING_POLICY_VERSION}|${options.meetingDate || ''}|${options.action ? 'a' : 'p'}|${text(value, 5000)}|${suppliedIds.join(',')}`;
+  const cacheKey = `${TimingIntegrity.TIMING_POLICY_VERSION}|${options.meetingDate || ''}|${options.action ? 'a' : 'p'}|${options.preserveDiscussionEvidence === true ? '12' : '8'}|${text(value, 5000)}|${suppliedIds.join(',')}`;
   const cached = context.resolutionCache.get(cacheKey);
   if (cached) return { ...cached, evidenceIds: [...cached.evidenceIds], invalidIds: [...cached.invalidIds], weakIds: [...cached.weakIds] };
   const finish = (result) => {
@@ -552,7 +552,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   const invalidIds = suppliedIds.filter((id) => !known.has(id));
   const validIds = suppliedIds.filter((id) => known.has(id));
   const selectedSuppliedIds = () => {
-    if (!claimedCalendarDate) return validIds.slice(0, 8);
+    if (!claimedCalendarDate) return validIds.slice(0, options.preserveDiscussionEvidence === true ? 12 : 8);
     const defining = validIds.filter(id => TimingIntegrity.explicitCalendarDates(rows[indexById.get(id)]?.text, options.meetingDate).includes(claimedCalendarDate));
     const qualifications = validIds.filter(id => /\b(?:prefer(?:red|ably)?|ideally|fallback|contingency|hard stop|instead)\b/i.test(rows[indexById.get(id)]?.text || '')
       && defining.some(anchor => Math.abs(indexById.get(id) - indexById.get(anchor)) <= 16));
@@ -896,7 +896,7 @@ function normalisePoint(value, units, prefix, index, options = {}) {
   if (!pointText) return null;
   const pointId = text(candidate.id, 80) || stableId(prefix, pointText, index);
   const suppliedIds = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean);
-  const resolved = resolveEvidence(pointText, units, candidate.evidenceIds, { meetingDate: options.meetingDate });
+  const resolved = resolveEvidence(pointText, units, candidate.evidenceIds, { meetingDate: options.meetingDate, preserveDiscussionEvidence: true });
   if (options.preserveReviewerEdits === true && candidate.reviewerAuthored === true && candidate.filingOrigins?.length) {
     const validSuppliedIds = [...new Set(suppliedIds.filter(id => evidenceContextFor(units).known.has(id)))];
     if (validSuppliedIds.length) resolved.evidenceIds = validSuppliedIds;
