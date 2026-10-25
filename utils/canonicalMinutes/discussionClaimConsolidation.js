@@ -59,6 +59,7 @@ async function prepare(discussion, sourceUnits, options = {}) {
     if (a.path[0] !== b.path[0] || a.record.id === b.record.id
       || !a.record.evidenceIds.some(id => b.record.evidenceIds.includes(id))) continue;
     const sameKind = a.kind === b.kind;
+    if (options.pointDecisionOnly === true && sameKind) continue;
     const point = a.kind === 'points' ? a : b, decision = a.kind === 'decisions' ? a : b;
     if (sameKind ? !safety.claimsCompatible(a.record.text, b.record.text)
       : !safety.claimsCompatible(point.record.text, decision.record.text, { allowAdditionalBounds: true })) continue;
