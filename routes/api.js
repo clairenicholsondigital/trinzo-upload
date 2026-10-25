@@ -14658,9 +14658,23 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       || (compatibleTopic && (lexical >= 0.58 || (sharedEvidence && lexical >= 0.24)));
   };
   const rows = flattenHybridDiscussion(discussion);
+  // A typed core decision must not lose the main position to a longer
+  // supporting paraphrase. This list is supplied only from settled referee
+  // accounting, never inferred from a heading, similarity or record label.
+  const authoritativeCoreIds = new Set(Array.isArray(options.authoritativeCoreIds) ? options.authoritativeCoreIds : []);
+  const rowIds = new Map(); for (const row of rows) rowIds.set(row.record?.id, (rowIds.get(row.record?.id) || 0) + 1);
+  const sources = new Map(); for (const unit of sourceUnits) sources.set(unit.id, sources.has(unit.id) ? null : unit);
+  const authoritativeCore = row => authoritativeCoreIds.has(row.record?.id) && rowIds.get(row.record?.id) === 1
+    && row.record?.evidenceIds?.length && row.record.evidenceIds.every(id => sources.get(id)?.text)
+    && !isReviewerAuthored(row.record);
   const groups = [];
   for (const row of rows) {
-    const group = groups.find((items) => items.some((other) => compatible(other, row)));
+    const group = groups.find((items) => items.some((other) => compatible(other, row))
+      && !items.some(other => authoritativeCore(other) && authoritativeCore(row)
+        && (() => { const numbers = value => String(value || '').match(/\b\d+(?:[.,]\d+)?%?\b/g) || [];
+          return JSON.stringify(numbers(other.record.text)) !== JSON.stringify(numbers(row.record.text))
+            || numericActionEditIssue(other.record.text, row.record.text)
+            || numericActionEditIssue(row.record.text, other.record.text); })()));
     if (group) group.push(row); else groups.push([row]);
   }
   const topics = [];
@@ -14674,6 +14688,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     const clientReady = (item) => !isRawTranscriptDiscussionPoint(item.record?.text);
     const ordered = [...group].sort((left, right) => (kindRank[right.recordType] || 0) - (kindRank[left.recordType] || 0)
       || Number(clientReady(right)) - Number(clientReady(left))
+      || Number(authoritativeCore(right)) - Number(authoritativeCore(left))
       || String(right.record?.text || '').length - String(left.record?.text || '').length);
     const selected = ordered[0];
     const mergedFromIds = [...new Set(group.flatMap(item => [
@@ -16786,6 +16801,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         meetingDate: timingAnchor,
         supportingCandidates,
         supportingSubjectPolicy: discussionCoveragePolicyForRun(draft).supportingSubjects ? 'meeting_minutes_v2' : undefined,
+        authoritativeCoreIds: discussionCoveragePolicyForRun(draft).corePriority && preserveStructuredDecisions
+          ? refereeDiscussionDispositions.filter(row => (row.disposition || row.classification) === 'core')
+            .map(row => refereeDiscussionTargetId(row) || row.candidateId) : [],
         onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
         // The Referee remains authoritative by default. A separately gated
         // deterministic marginal-information pass can recover a genuinely
