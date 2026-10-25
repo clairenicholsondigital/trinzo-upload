@@ -128,3 +128,10 @@ test('actual background save, public projection and Word/PDF exports retain one 
   const projection=api.meetingAgentDraftForPdf(payload,evidence);const pdf=await generateStagedMinutesPdf(projection);assert.equal(pdf.subarray(0,5).toString(),'%PDF-');assert.ok(pdf.length>1000);
  }
 });
+
+test('an interrupted second review is not counted as a completed provider assessment',async()=>{
+ let calls=0;
+ const output=await run(original(),{ask:async(prompt,options)=>{if(++calls===2)throw Error('challenge unavailable');return ask(prompt,options);}});
+ const audit=output.changes.qualityState.actions.semanticReconciliation;
+ assert.deepEqual(output.changes.actions,original());assert.equal(calls,2);assert.equal(audit.assessment.providerAttempted,1);assert.equal(audit.assessment.providerAssessed,0);
+});

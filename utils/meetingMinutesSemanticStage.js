@@ -352,8 +352,9 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
             elapsedMs:Date.now()-callStarted,timings:error.callTimings||[],failed:true,errorCode:error.code||'contained_review_failure'});
           throw error;
         }
-        providerAssessed.add(candidate.candidateId);
-        if(!referenceReview.assess(review,response.result).modelPassed)throw Object.assign(new Error('Source review veto'),{code:'contained_independent_veto'});
+        const passed=referenceReview.assess(review,response.result).modelPassed;
+        if(challenge||!passed)providerAssessed.add(candidate.candidateId);
+        if(!passed)throw Object.assign(new Error('Source review veto'),{code:'contained_independent_veto'});
         responses.push(response.result);
       }
       const certificate=contained.certify(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),...responses);
