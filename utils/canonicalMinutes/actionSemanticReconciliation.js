@@ -229,13 +229,16 @@ function prepareActionReconciliation(input = {}) {
   if(input.containedRequirements===true && input.scope!=='contained_requirements')classes.push('contained_requirements');
   if(input.qualifiedDependencies===true && input.scope!=='qualified_dependencies')classes.push('qualified_dependencies');
   if(input.contactParaphrases===true)classes.push('contact_paraphrases');
+  if(input.contactReviews===true)classes.push('contact_reviews');
   let containedCount=0,dependencyCount=0,contactPurposeCount=0;
   for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
     if (left.protected || right.protected) continue;
     const contactDirection=nominationClass==='contact_paraphrases'&&input.contactParaphrases===true
-      ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action)):null;
-    if(nominationClass==='contact_paraphrases'&&(!contactDirection||contactPurposeCount>=1))continue;
+      ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action)):nominationClass==='contact_reviews'&&input.contactReviews===true
+        ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action),true):null;
+    if(['contact_paraphrases','contact_reviews'].includes(nominationClass)&&(!contactDirection||contactPurposeCount>=1))continue;
+    if(nominationClass==='contact_reviews'&&!contactPurpose.reviewShape(contactDirection.parent,contactDirection.child))continue;
     const contact = sameEnquiryPair(left.action, right.action);
     const containedDirection=nominationClass==='contained_requirements'&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
@@ -266,7 +269,7 @@ function prepareActionReconciliation(input = {}) {
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
-    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}) },
+    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}),...(input.contactReviews===true?{contactReviews:true}:{}) },
     ...(isActionOnlySemanticScope(input.scope) ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }
