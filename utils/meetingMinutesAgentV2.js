@@ -2637,6 +2637,86 @@ function speakerIsOwner(speaker, owners = []) {
       || (speakerWords.length === 1 && speakerWords[0] === ownerWords[0]);
   });
 }
+
+// An identity match is not an acceptance of this work. In particular, a
+// completed part of a workstream must not become the commitment anchor for
+// its outstanding part merely because both mention the same subject.
+function currentOwnerWork(unit, owners, units) {
+  const key = ownerIdentityKey(unit?.speaker || '');
+  if (!key || !owners.some(owner => ownerIdentityKey(normaliseOwnerIdentity(owner, units)) === key)) return false;
+  const value = String(unit.text || '');
+  if (!OWNER_FIRST_PERSON.test(value)
+    || /^(?:(?:okay|so|right|well)[,. ]+)*(?:can|could|should|would|will)\s+i\b/i.test(value)
+    || /\bi\s+(?:cannot|can't|won't|will not|shall not)|\bi['’]ll\s+(?:not|never)\b/i.test(value)) return false;
+  const finishedPart = /\bi(?:['’]ve|\s+have)\s+(?:already\s+|just\s+|now\s+)?(?:added|drafted)\b/i.test(value);
+  return !finishedPart;
+}
+
+const ACTION_SOURCE_GENERIC_WORDS = new Set(['required', 'remaining', 'outstanding', 'include', 'including', 'explain', 'resolve', 'complete',
+  'annual', 'monthly', 'weekly', 'daily', 'final', 'current', 'previous', 'latest', 'original']);
+const ACTION_SOURCE_TOPIC_CHANGE = /\b(?:moving on|next (?:item|topic)|while we['’]re on|turning to)\b/i;
+const actionSourceStem = word => word.length > 4 ? word.replace(/(?:ing|ed|s)$/, '').replace(/e$/, '') : word;
+const ACTION_SOURCE_OPERATIONS = new Set(ACTION_VERB_GROUPS.flat().map(actionSourceStem));
+function actionSourceSubjects(value, objectsOnly = false) {
+  return new Set(actionSubjectWords(String(value || '').replace(/-/g, ' '))
+    .filter(word => !ACTION_SOURCE_GENERIC_WORDS.has(word) && !COMMON_SPEECH_WORDS.has(word))
+    .map(actionSourceStem).filter(word => !objectsOnly || !ACTION_SOURCE_OPERATIONS.has(word)));
+}
+
+function sourceNamesActionWork(action, value, objectsOnly = false) {
+  const subjects = actionSourceSubjects(action, objectsOnly);
+  const source = actionSourceSubjects(value, objectsOnly);
+  const shared = [...subjects].filter(word => source.has(word)).length;
+  return shared >= 2 || subjects.size === 1 && shared === 1 && predicateSupportsAction(action, value);
+}
+
+// Preserve only an already supplied, bounded assignment/ongoing-work exchange.
+// This is citation provenance, not an ownership or semantic coverage verdict.
+// Unrelated supplied citations still take the existing remapping path.
+function connectedSuppliedActionEvidence(action, owners, units, suppliedIds) {
+  const context = evidenceContextFor(units);
+  const supplied = [...new Set(suppliedIds || [])].filter(id => context.known.has(id));
+  if (!owners.length || !supplied.length || supplied.length > 8) return [];
+  if (supplied.some(id => context.rows.filter(row => row.id === id).length !== 1)) return [];
+  const namedAssignment = value => owners.some(owner => {
+    if (!context.connectedActionGivenIdentities) {
+      context.connectedActionGivenIdentities = new Map();
+      for (const name of [...context.speakers, ...mentionedPeople(units)]) {
+        const display = canonicalSpeakerDisplayName(name), first = ownerIdentityTokens(display)[0];
+        if (!first) continue;
+        const ids = context.connectedActionGivenIdentities.get(first) || new Set();
+        ids.add(ownerIdentityKey(display)); context.connectedActionGivenIdentities.set(first, ids);
+      }
+    }
+    const full = normaliseOwnerIdentity(owner, units);
+    const first = ownerIdentityTokens(full)[0];
+    if (!first || context.connectedActionGivenIdentities.get(first)?.size !== 1) return false;
+    const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return assignsWorkTo(first, value) || addressedRequestTo(first, value)
+      || new RegExp(`\\b${escaped}\\b[^.!?]{0,100}\\byou(?:['’]ll|\\s+will)\\b`, 'i').test(value);
+  });
+  const retained = new Set();
+  for (const id of supplied) {
+    const at = context.indexById.get(id), anchor = context.rows[at];
+    if (!sourceNamesActionWork(action, anchor.text)) continue;
+    const ownAnchor = owners.some(owner => ownerIdentityKey(normaliseOwnerIdentity(owner, units)) === ownerIdentityKey(anchor.speaker));
+    if (!ownAnchor && !namedAssignment(anchor.text)) continue;
+    for (const otherId of supplied) {
+      const other = context.indexById.get(otherId);
+      if (Math.abs(other - at) > 2 || !currentOwnerWork(context.rows[other], owners, units)) continue;
+      const bridge = context.rows.slice(Math.min(at, other), Math.max(at, other) + 1);
+      if (bridge.some(row => ACTION_SOURCE_TOPIC_CHANGE.test(row.text))) continue;
+      for (const sourceId of supplied) {
+        const index = context.indexById.get(sourceId);
+        if (index >= Math.min(at, other) - 2 && index <= Math.max(at, other) + 2
+          && !context.rows.slice(Math.min(index, at), Math.max(index, at) + 1)
+            .some(row => ACTION_SOURCE_TOPIC_CHANGE.test(row.text))) retained.add(sourceId);
+      }
+    }
+  }
+  return supplied.filter(id => retained.has(id));
+}
+
 function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []) {
   if (!owners.length || !evidenceIds.length) return evidenceIds;
   const cited = new Set(evidenceIds);
@@ -2648,13 +2728,25 @@ function anchorOwnerCommitment(action, owners = [], units = [], evidenceIds = []
     .filter((unit) => !cited.has(unit.id) && speakerIsOwner(unit.speaker, owners));
   let best = null;
   for (const unit of nearby) {
+    if (!currentOwnerWork(unit, owners, units)) continue;
     const unitTokens = new Set(contentTokens(unit.text));
     const shared = actionTokens.filter((token) => unitTokens.has(token)).length;
     const predicateMatch = predicateSupportsAction(action, unit.text);
+    // A later "I'll review that" can carry the commitment while the intervening
+    // turns continue naming the work. An explicit different subject or a topic
+    // change breaks that link; the operation alone is never sufficient.
+    const at = evidenceContext.indexById.get(unit.id);
+    const anaphoric = predicateMatch && !actionSourceSubjects(unit.text).size && citedIndexes.some(index => {
+      const bridge = evidenceContext.rows.slice(Math.min(index, at) + 1, Math.max(index, at));
+      return (sourceNamesActionWork(action, evidenceContext.rows[index].text)
+        || bridge.some(row => sourceNamesActionWork(action, row.text)))
+        && bridge.every(row => !ACTION_SOURCE_TOPIC_CHANGE.test(row.text)
+          && (!actionSourceSubjects(row.text).size || sourceNamesActionWork(action, row.text)));
+    });
+    if (!sourceNamesActionWork(action, unit.text, true) && !anaphoric) continue;
     if (shared < 2 && !predicateMatch) continue;
     const disposition = actionEvidenceDisposition(action, `${unit.speaker}: ${unit.text}`);
     if (!['committed', 'accepted_request', 'conditional_commitment'].includes(disposition)) continue;
-    const at = evidenceContext.indexById.get(unit.id);
     const distance = citedIndexes.length && Number.isInteger(at)
       ? Math.min(...citedIndexes.map((index) => Math.abs(index - at))) : COMMITMENT_ANCHOR_RADIUS;
     const score = shared * 10 + Number(predicateMatch) * 8 - distance;
@@ -2786,7 +2878,9 @@ function retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, r
     const index = context.indexById.get(id);
     return owners.length && Number.isInteger(index) && timingOnlyAnswer(context.rows[index]) && !timingAnswer(index);
   }));
-  return [...new Set([...directTimingIds, ...retained, ...(resolvedIds || []).filter((id) => !unrelatedAnswers.has(id))])].slice(0, 8);
+  const connected = connectedSuppliedActionEvidence(action, owners, units, suppliedIds)
+    .filter(id => !unrelatedAnswers.has(id));
+  return [...new Set([...directTimingIds, ...connected, ...retained, ...(resolvedIds || []).filter((id) => !unrelatedAnswers.has(id))])].slice(0, 8);
 }
 
 function backfillActionCommitmentEvidence(actions = [], units = [], options = {}) {
@@ -6875,8 +6969,13 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       resolved.evidenceIds = [];
     }
     const owners = splitOwners(item?.owners || item?.owner).map((owner) => normaliseOwnerIdentity(owner, units));
-    const fieldEvidenceIds = retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds, item?.timing, options);
-    let evidenceIds = anchorOwnerCommitment(action, owners, units, fieldEvidenceIds);
+    // Saving reviewer content is not a new source-allocation decision. Keep
+    // their valid references; the existing support/owner checks may flag them.
+    const preserveEvidence = options.preserveReviewerEdits === true || isReviewerAuthored(item);
+    const fieldEvidenceIds = preserveEvidence
+      ? [...new Set(suppliedIds)].filter(id => evidenceContextFor(units).known.has(id)).slice(0, 8)
+      : retainSuppliedActionFieldEvidence(action, owners, units, suppliedIds, resolved.evidenceIds, item?.timing, options);
+    let evidenceIds = preserveEvidence ? fieldEvidenceIds : anchorOwnerCommitment(action, owners, units, fieldEvidenceIds);
     const evidenceText = evidenceWindowText(units, evidenceIds, 1);
     const disposition = actionEvidenceDisposition(action, evidenceText);
     if (options.enforceEvidence !== false && !evidenceIds.length) return null;
