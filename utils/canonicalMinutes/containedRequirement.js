@@ -81,12 +81,13 @@ function sourceIds(packet,response){
   :section.kind==='relationship'?section.refs:[]);
  return [...new Set(ids.map(id=>packet.sourceCatalog.find(ref=>ref.id===id)?.unitId).filter(Boolean))];
 }
-function certify(parent,child,sourceUnits,contextSourceIds,primary,challenge){
+function certify(parent,child,sourceUnits,contextSourceIds,primary,challenge,options={}){
  const match=shape(parent,child);if(!match)throw Error('contained_shape_not_eligible');
  const atomic=require('./actionSemanticReconciliation').prepareActionReconciliation({actions:[parent,child],sourceUnits});
  if(atomic.rows.some(row=>row.clauses.length!==1))throw Error('contained_compound_instruction');
  const N=require('../meetingMinutesActionReferenceReview');
- const first=reviewPacket(parent,child,sourceUnits,contextSourceIds,false),second=reviewPacket(parent,child,sourceUnits,contextSourceIds,true);
+ const reviewOptions=options.contextualUnits===true?{contextualUnits:true}:{};
+ const first=reviewPacket(parent,child,sourceUnits,contextSourceIds,false,reviewOptions),second=reviewPacket(parent,child,sourceUnits,contextSourceIds,true,reviewOptions);
  for(const [packet,response] of [[first,primary],[second,challenge]]){
   const assessment=N.assess(packet,response);
   if(assessment.contractError||!assessment.modelPassed||!(match.kind==='issue_paraphrase'?['same_obligation']:match.kind==='content_instruction'?['same_obligation','discarded_requirement_of_survivor']:['discarded_requirement_of_survivor']).includes(assessment.relationship?.relation)
@@ -96,16 +97,16 @@ function certify(parent,child,sourceUnits,contextSourceIds,primary,challenge){
  if(evidenceIds.length>8)throw Error('contained_evidence_capacity');
  if(evidenceIds.some(id=>sourceUnits.filter(unit=>unit.id===id).length!==1||sourceUnits.some(unit=>unit.id===id&&unit.classification==='remove'&&!unit.restored)))throw Error('contained_ineligible_source');
  const expected={...structuredClone(parent),evidenceIds,reviewFlagIds:[]};
- const body={version:VERSION,sourceHash:hash(sourceUnits),parent:structuredClone(parent),child:structuredClone(child),contextSourceIds:[...contextSourceIds],
+ const body={version:VERSION,...(options.contextualUnits===true?{unitContextVersion:1}:{}),sourceHash:hash(sourceUnits),parent:structuredClone(parent),child:structuredClone(child),contextSourceIds:[...contextSourceIds],
   primary:structuredClone(primary),challenge:structuredClone(challenge),expectedSurvivor:expected};
  return {...body,reviewHash:hash(body)};
 }
 function valid(packet,certificate,original,survivor){
- if(!certificate||certificate.version!==VERSION||certificate.sourceHash!==hash(packet.sourceUnits||[]))return false;
+ if(!certificate||certificate.unitContextVersion!==undefined&&certificate.unitContextVersion!==1||certificate.version!==VERSION||certificate.sourceHash!==hash(packet.sourceUnits||[]))return false;
  const {reviewHash,...body}=certificate;if(hash(body)!==reviewHash)return false;
  if(![certificate.parent,certificate.child].some(row=>hash(row)===hash(original.action)))return false;
  if(![certificate.parent,certificate.expectedSurvivor].some(row=>actionProvenanceSignature(row)===actionProvenanceSignature(survivor.action)))return false;
- try{return certify(certificate.parent,certificate.child,packet.sourceUnits,certificate.contextSourceIds,certificate.primary,certificate.challenge).reviewHash===reviewHash;}catch{return false;}
+ try{return certify(certificate.parent,certificate.child,packet.sourceUnits,certificate.contextSourceIds,certificate.primary,certificate.challenge,{contextualUnits:certificate.unitContextVersion===1}).reviewHash===reviewHash;}catch{return false;}
 }
 function conflicts(packet,proof,original,survivor,reasons){
  if(!proof?.containedRequirement)return reasons;

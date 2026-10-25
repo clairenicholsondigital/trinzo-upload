@@ -334,12 +334,12 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
       if(context.contextFailure)throw Object.assign(new Error(context.contextFailure),{code:context.contextFailure});
       const parent=packet.rows.find(row=>row.ref===(candidate.contactParaphrase||candidate.qualifiedDependency||candidate.containedRequirement).survivorRef);
       const child=packet.rows.find(row=>[candidate.leftRef,candidate.rightRef].includes(row.ref)&&row.ref!==parent.ref);
-      const responses=[];
+      const responses=[],reviewOptions=policy.referenceContracts===true&&proofClass===contained?{contextualUnits:true}:{};
       for(const challenge of [false,true]) {
         if(Date.now()+1000>=deadlineAt||typeof options.ask!=='function')throw Object.assign(new Error('Independent review unavailable'),
           {code:typeof options.ask==='function'?'semantic_budget_exhausted':'semantic_provider_unavailable'});
-        const review=proofClass.reviewPacket(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),challenge);
-        const prompt=referenceReview.prompt(review),promptHash=hash(prompt);
+        const review=proofClass.reviewPacket(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),challenge,reviewOptions);
+        const prompt=referenceReview.prompt(review,{completeContract:policy.referenceContracts===true}),promptHash=hash(prompt);
         const pass=prefix+(challenge?'-challenge':'-source');
         const validate=value=>{const reason=referenceReview.validate(review,value);return reason?Object.assign(new Error(reason),{code:reason,retryable:false}):null;};
         const cached=priorCache.find(item=>item.promptHash===promptHash&&!validate(item.result));
@@ -362,7 +362,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         if(!passed)throw Object.assign(new Error('Source review veto'),{code:failurePrefix+'_independent_veto'});
         responses.push(response.result);
       }
-      const certificate=proofClass.certify(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),...responses);
+      const certificate=proofClass.certify(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),...responses,reviewOptions);
       const decision={candidateId:candidate.candidateId,relation:'equivalent',survivorRef:parent.ref,
         coverage:proofClass.coverage(packet,parent,child,certificate)};
       const probe=emptyEnvelope(packet,[...decisions.values()].map(item=>item.candidateId===candidate.candidateId?decision:item));

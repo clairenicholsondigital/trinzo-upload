@@ -16,18 +16,19 @@ function assertRegister(register) {
  const {packetHash,...body}=register;
  if(hash(body)!==packetHash) throw Error('changed_global_register');
 }
-function facets(row) {
+function facets(row,options={}) {
  const result=[{field:'instruction',value:row.action.action},{field:'owners',value:row.action.owners||[]}];
  if(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(row.action.action))result.push({field:'contentTiming',value:row.action.action});
  const timing=row.action.timing;
  if(timing && (timing.kind!=='not_stated'||timing.wording||timing.exactDate)) result.push({field:'timing',value:timing});
- for(const [field,value] of Object.entries(row.facets)) {
+ for(const [field,raw] of Object.entries(row.facets)) {
+  const value=field==='units'&&options.contextualUnits===true?require('./meetingMinutesNumericTokens').proofUnitTokens(row.action.action):raw;
   if(['owners','timing','timingStatus'].includes(field))continue;
   if(Array.isArray(value)?value.length:Boolean(value))result.push({field,value});
  }
  return result.map(f=>({...f,facetId:hash([row.ref,f.field,f.value]).slice(0,24)}));
 }
-function prepare(register,comparisonId,survivorRef) {
+function prepare(register,comparisonId,survivorRef,options={}) {
  assertRegister(register);
  const comparison=register.comparisons.find(c=>c.comparisonId===comparisonId);
  if(!comparison||![comparison.leftRef,comparison.rightRef].includes(survivorRef))throw Error('invalid_bound_pair_or_survivor');
@@ -38,12 +39,12 @@ function prepare(register,comparisonId,survivorRef) {
  if(sourceIds.size!==register.sourceUnits.length)throw Error('ambiguous_source_ids');
  const prepared=R.prepareActionReconciliation({actions:originals.map(row=>row.action),sourceUnits:register.sourceUnits});
  const rows=prepared.rows.map((row,i)=>({ref:originals[i].ref,recordHash:row.recordHash,action:clone(row.action),
-  facets:facets({...row,ref:originals[i].ref}),unresolvedSourceIds:clone(originals[i].unresolvedSourceIds),
+  facets:facets({...row,ref:originals[i].ref},options),unresolvedSourceIds:clone(originals[i].unresolvedSourceIds),
   ownerWitnesses:(row.action.owners||[]).map(owner=>({owner,sourceIds:register.sourceUnits.filter(unit=>row.action.evidenceIds?.includes(unit.id)&&ownerWitness(unit,owner)).map(unit=>unit.id)}))}));
  const survivor=rows.find(row=>row.ref===survivorRef);
  const checks=rows.flatMap(row=>row.facets.map(f=>({...f,originalRef:row.ref,originalHash:row.recordHash,
   ownershipWitnessRequired:['instruction','owners'].includes(f.field),exactSelfRetention:row.ref===survivorRef&&row.recordHash===survivor.recordHash})));
- const body={version:VERSION,registerHash:register.packetHash,comparisonId,
+ const body={version:VERSION,...(options.contextualUnits===true?{unitContextVersion:1}:{}),registerHash:register.packetHash,comparisonId,
   survivorRef,survivorHash:survivor.recordHash,rows,checks,sourceUnits:clone(register.sourceUnits),
   // Context stays global, but only this explicitly bound pair is adjudicated.
   globalInventory:register.rows.map(row=>({ref:row.ref,recordHash:hash(row.action),action:clone(row.action)})),
