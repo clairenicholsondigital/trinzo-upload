@@ -27,9 +27,11 @@ function sourceNames(options = {}) {
   ].flatMap(words).map(tokenKey));
 }
 
-function subjectTokens(value, names) {
+// Optional agent policy: incidental acquisition/location words cannot name a subject.
+const INCIDENTAL = new Set('upon arrival arrive arrived arriving site onsite obtain obtained obtaining receive received receiving'.split(' '));
+function subjectTokens(value, names, strict = false) {
   return new Set(words(value).map(tokenKey).filter(token => !GENERIC_KEYS.has(token)
-    && !names.has(token) && !/\d/.test(token)));
+    && !names.has(token) && (!strict || !INCIDENTAL.has(token)) && !/\d/.test(token)));
 }
 
 function acronymTokens(value) {
@@ -49,19 +51,25 @@ const sharedCount = (left, right) => [...left].filter(token => right.has(token))
  */
 function selectSupportingDetailParent(detail = {}, candidates = [], options = {}) {
   const rows = (Array.isArray(candidates) ? candidates : []).filter(candidate => candidate?.record);
+  const strict = options.subjectPolicy === 'meeting_minutes_v2';
+  const acceptExplicit = (target, reason) => {
+    if (!strict) return matched(target, reason);
+    const checked = selectSupportingDetailParent(detail, [target], { ...options, explicitTarget: '' });
+    return checked.target ? matched(target, reason) : unresolved('explicit_target_subject_mismatch');
+  };
   const explicitTarget = id(options.explicitTarget ?? detail.mergeTarget ?? detail.targetId ?? detail.primaryId);
   if (explicitTarget) {
     const exact = rows.filter(candidate => id(candidate.record.id) === explicitTarget);
-    if (exact.length === 1) return matched(exact[0], 'explicit_target');
+    if (exact.length === 1) return acceptExplicit(exact[0], 'explicit_target');
     if (exact.length > 1) return unresolved('ambiguous_explicit_target');
     const aliases = rows.filter(candidate => (Array.isArray(candidate.record.mergedFromIds)
       ? candidate.record.mergedFromIds : []).some(alias => id(alias) === explicitTarget));
-    if (aliases.length === 1) return matched(aliases[0], 'explicit_target_alias');
+    if (aliases.length === 1) return acceptExplicit(aliases[0], 'explicit_target_alias');
     return unresolved(aliases.length ? 'ambiguous_explicit_target' : 'explicit_target_missing');
   }
 
   const names = sourceNames(options);
-  const detailTokens = subjectTokens(detail.text || detail.action || '', names);
+  const detailTokens = subjectTokens(detail.text || detail.action || '', names, strict);
   if (!detailTokens.size) return unresolved('no_subject_match');
   const detailText = detail.text || detail.action || '';
   const detailAcronyms = acronymTokens(detailText);
@@ -70,7 +78,7 @@ function selectSupportingDetailParent(detail = {}, candidates = [], options = {}
       || /^manual-topic-/.test(String(candidate.topic.id || '')))))
     .map(target => {
       const recordText = target.record.text || target.record.action || '';
-      const recordTokens = subjectTokens(recordText, names);
+      const recordTokens = subjectTokens(recordText, names, strict);
       const recordShared = sharedCount(detailTokens, recordTokens);
       const bodyMatch = recordShared >= 2 && recordShared / detailTokens.size >= 0.5
         && recordShared / Math.max(1, recordTokens.size) >= 0.25;

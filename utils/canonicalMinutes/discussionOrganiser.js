@@ -510,7 +510,7 @@ function demoteUnreadyRows(topics, index, options = {}) {
   const sourceUnits = [...(index?.byId?.values() || [])];
   for (const { topic, row } of pending) {
     const { supportingDetails = [], ...detail } = row.record;
-    const placement = selectSupportingDetailParent(detail, candidates, { sourceUnits });
+    const placement = selectSupportingDetailParent(detail, candidates, { sourceUnits, subjectPolicy: options.supportingSubjectPolicy });
     const destinationLocked = placement.target && (reviewerTopic(placement.target.topic)
       || isReviewerAuthored(placement.target.record));
     if (placement.target && !destinationLocked) {
@@ -725,9 +725,9 @@ function rehomeSupportingDetails(topics, index, options = {}) {
     const hasExplicitTarget = [detail.mergeTarget, detail.targetId, detail.primaryId]
       .some(value => String(value || '').trim());
     const currentPlacement = hasExplicitTarget ? { target: null }
-      : selectSupportingDetailParent(detail, [parent], { sourceUnits });
+      : selectSupportingDetailParent(detail, [parent], { sourceUnits, subjectPolicy: options.supportingSubjectPolicy });
     const placement = currentPlacement.target ? currentPlacement
-      : selectSupportingDetailParent(detail, candidates, { sourceUnits });
+      : selectSupportingDetailParent(detail, candidates, { sourceUnits, subjectPolicy: options.supportingSubjectPolicy });
     if (!placement.target) {
       retainUnresolved(parent, detail, placement.reason);
       continue;
