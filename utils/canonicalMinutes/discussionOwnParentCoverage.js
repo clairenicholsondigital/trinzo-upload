@@ -94,7 +94,8 @@ function prepare(discussion, sourceUnits, options = {}) {
         candidates.push({ id: 'own-parent-' + C.hash([ti, kind, ri, ci, parent, child]).slice(0, 24),
           path: [ti, kind, ri, ci], parent: clone(parent), child: clone(child),
           childSentences: sentences(child.text), sourceUnits: clone(supplied), history,
-          ...(preservation ? { warningPreservation: preservation } : {}) });
+          ...(preservation ? { warningPreservation: preservation } : {}),
+          ...(options.presentConsideration === true ? { considerationContextVersion: 1 } : {}) });
       });
     });
   });
@@ -159,7 +160,14 @@ function figures(text) {
 // Local comparison only: about/approximately directly modifying a quantity are
 // the same approximation, never equivalent to an unqualified quantity. Original
 // quotes, records, source witnesses and hashes remain byte-for-byte unchanged.
-function comparisonText(text) {
+function comparisonText(text, options = {}) {
+  // Present progressive passive and active consideration express the same
+  // unresolved status. This is opt-in to this own-parent proof only; never
+  // treat bare/past/perfect "considered" as current consideration. Keep the
+  // original quoted text and all source bindings unchanged.
+  if (options.presentConsideration === true) {
+    text = text.replace(/\b(is|are|am)\s+being\s+considered\b/gi, '$1 considering');
+  }
   return text.replace(/\b(?:about|approximately)\s+(?=(?:\d+(?:[.,]\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred)\b)/gi, 'approximately ');
 }
 function protectedQuote(child, parent, options = {}) {
@@ -172,7 +180,15 @@ function protectedQuote(child, parent, options = {}) {
     const actual = (parent.match(/\b[A-Za-z][A-Za-z0-9'’-]*\b/g) || []).map(key).filter(word => set.has(word));
     return JSON.stringify(required) === JSON.stringify(actual);
   };
-  child = comparisonText(child); parent = comparisonText(parent);
+  if (options.presentConsideration === true && [child, parent].some(text => /\b(?:is|are|am)\s+being\s+considered\b/i.test(text))) {
+    // A present passive must not bypass the guard against a past, perfect,
+    // future, discontinued or compound consideration statement. If either
+    // span is ambiguous, leave the child in place for a human reviewer.
+    const current = text => (text.match(/\b(?:considered|considering)\b/gi) || []).length === 1
+      && /\b(?:is|are|am)\s+(?:being\s+considered|considering)\b/i.test(text);
+    if (!current(child) || !current(parent)) return false;
+  }
+  child = comparisonText(child, options); parent = comparisonText(parent, options);
   // These are rejection guards, never a semantic equivalence proof. Evaluate
   // mapped spans, not the whole parent with its unrelated extra qualifications.
   return figures(child).every(value => figures(parent).includes(value))
@@ -202,7 +218,7 @@ function inventories(packet, response) {
       seen.add(claim.id);
     }
     if (!B.coversText(c.child.text, result.claims.map(claim => claim.childQuote))) return null;
-    if (result.claims.some(claim => !protectedQuote(claim.childQuote, claim.parentQuote, { literalCaseNames: Boolean(c.warningPreservation) }))) continue;
+    if (result.claims.some(claim => !protectedQuote(claim.childQuote, claim.parentQuote, { literalCaseNames: Boolean(c.warningPreservation), presentConsideration: c.considerationContextVersion === 1 }))) continue;
     accepted.push({ ...clone(c), claims: clone(result.claims), inventoryReason: result.reason || '' });
   }
   return accepted;
@@ -258,7 +274,7 @@ function verified(packet, candidates, response) {
         const originalQuote = kind === 'sentenceChecks' ? c.childSentences[check[key]]
           : c.claims.find(claim => claim.id === check[key]).childQuote;
         if (!check.supported || !check.retained || check.allClaimsListed === false
-          || !protectedQuote(originalQuote, check.parentQuote, { literalCaseNames: Boolean(c.warningPreservation) })) valid = false;
+          || !protectedQuote(originalQuote, check.parentQuote, { literalCaseNames: Boolean(c.warningPreservation), presentConsideration: c.considerationContextVersion === 1 })) valid = false;
       }
     }
     // A positive sentence verdict cannot hide one of the independently checked
