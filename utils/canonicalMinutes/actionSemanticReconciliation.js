@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const contained = require('./containedRequirement');
 const dependency = require('./qualifiedDependency');
+const contactPurpose = require('./contactParaphrase');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
@@ -227,10 +228,14 @@ function prepareActionReconciliation(input = {}) {
   const classes = input.scope === 'contact_and_existing_survivors' ? ['contact_enquiries', 'bounded_existing_survivors'] : [input.scope];
   if(input.containedRequirements===true && input.scope!=='contained_requirements')classes.push('contained_requirements');
   if(input.qualifiedDependencies===true && input.scope!=='qualified_dependencies')classes.push('qualified_dependencies');
-  let containedCount=0,dependencyCount=0;
+  if(input.contactParaphrases===true)classes.push('contact_paraphrases');
+  let containedCount=0,dependencyCount=0,contactPurposeCount=0;
   for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
     if (left.protected || right.protected) continue;
+    const contactDirection=nominationClass==='contact_paraphrases'&&input.contactParaphrases===true
+      ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action)):null;
+    if(nominationClass==='contact_paraphrases'&&(!contactDirection||contactPurposeCount>=1))continue;
     const contact = sameEnquiryPair(left.action, right.action);
     const containedDirection=nominationClass==='contained_requirements'&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
@@ -250,17 +255,18 @@ function prepareActionReconciliation(input = {}) {
     const pair = { candidateId: `pair-${hash([left.ref, right.ref]).slice(0, 24)}`,
       leftRef: left.ref, rightRef: right.ref,
       nomination: { sharedEvidence, commonContentWords: common },
+      ...(contactDirection?{contactParaphrase:{survivorRef:contactDirection.parent===left.action?left.ref:right.ref}}:{}),
       ...(containedDirection?{containedRequirement:{survivorRef:containedDirection.parent===left.action?left.ref:right.ref}}:{}),
       ...(dependencyDirection?{qualifiedDependency:{survivorRef:dependencyDirection.parent===left.action?left.ref:right.ref}}:{}),
       leftIntoRight: mechanicalCoverage(left.action, right.action),
       rightIntoLeft: mechanicalCoverage(right.action, left.action) };
     if(candidates.some(candidate=>candidate.candidateId===pair.candidateId))continue;
-    if (candidates.length < maxCandidates) { candidates.push(pair);if(containedDirection)containedCount++;if(dependencyDirection)dependencyCount++; }
+    if (candidates.length < maxCandidates) { candidates.push(pair);if(containedDirection)containedCount++;if(dependencyDirection)dependencyCount++;if(contactDirection)contactPurposeCount++; }
     else unresolved.push({ candidateId: pair.candidateId, refs: [left.ref, right.ref], reason: 'candidate_budget_exhausted' });
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
-    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}) },
+    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}) },
     ...(isActionOnlySemanticScope(input.scope) ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }
@@ -366,8 +372,9 @@ function validateCoverage(packet, proof, original, survivor) {
     && !canonical(spans.map(span => span.quote).join(' ')).includes(canonical(survivor.action.timing.wording))) {
     return 'timing_context_without_direct_source_support';
   }
-  const conflicts = dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action)));
+  const conflicts = contactPurpose.conflicts(packet,proof,original,survivor,dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action))));
   if (conflicts.length) return conflicts.join(',');
+  if(proof.contactParaphrase)return contactPurpose.validMapping(packet,proof,original,survivor)?'':'invalid_contact_clause_mapping';
   if(proof.qualifiedDependency)return dependency.validMapping(packet,proof,original,survivor)?'':'invalid_dependency_clause_mapping';
   if(proof.containedRequirement)return contained.validMapping(packet,proof,original,survivor)?'':'invalid_contained_clause_mapping';
   if (proof.semanticProof) return semanticCoverage(packet, proof, original, survivor);
@@ -468,7 +475,7 @@ function applyActionReconciliation(packet, envelope, options = {}) {
       const proof = decision.coverage.find(item => item.originalRef === ref);
       const sourceError = validateCoverage(packet, proof, original, survivor);
       if (sourceError) entry.reasons.push(sourceError);
-      entry.reasons.push(...dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action))));
+      entry.reasons.push(...contactPurpose.conflicts(packet,proof,original,survivor,dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action)))));
     }
     entry.reasons = unique(entry.reasons);
     if (entry.reasons.length) {
