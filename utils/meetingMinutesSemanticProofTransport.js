@@ -17,10 +17,10 @@ function materializeSemanticDecisions(packet, response, stage) {
   }
   function expand(proof) {
     if(stage==='actions') {
-      if(proof&&typeof proof==='object'){proof={...proof};delete proof.containedRequirement;}
+      if(proof&&typeof proof==='object'){proof={...proof};delete proof.containedRequirement;delete proof.qualifiedDependency;}
       if(proof?.semanticProof) {
         const copied=structuredClone(proof);
-        delete copied.containedRequirement;
+        delete copied.containedRequirement;delete copied.qualifiedDependency;
         if(Array.isArray(copied.semanticProof.clauses)) copied.semanticProof.clauses=copied.semanticProof.clauses.map(mapping=>{
           if(!mapping || typeof mapping!=='object') return mapping;
           const {sourceOperationReview: _untrustedReview,...rest}=mapping; return rest;

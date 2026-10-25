@@ -38,12 +38,12 @@ function direction(left,right,all=[left,right]){
  }
  return null;
 }
-function reviewPacket(parent,child,sourceUnits,contextSourceIds,challenge){
+function reviewPacket(parent,child,sourceUnits,contextSourceIds,challenge,reviewOptions={}){
  const context=sourceUnits.filter(unit=>contextSourceIds.includes(unit.id));
  if(context.length!==contextSourceIds.length||new Set(contextSourceIds).size!==contextSourceIds.length)throw Error('contained_context_changed');
  if(context.length>32||context.reduce((n,unit)=>n+JSON.stringify(unit).length,0)>48000||[...parent.evidenceIds,...child.evidenceIds].some(id=>!contextSourceIds.includes(id)))throw Error('contained_incomplete_or_oversized_context');
  const register=require('../meetingMinutesActionReviewRegister').prepare({actions:[parent,child],sourceUnits:context});
- return require('../meetingMinutesActionReferenceReview').prepare(register,register.comparisons[0].comparisonId,register.rows[0].ref,{challenge});
+ return require('../meetingMinutesActionReferenceReview').prepare(register,register.comparisons[0].comparisonId,register.rows[0].ref,{challenge,...reviewOptions});
 }
 function sourceIds(packet,response){
  const sections=response.decisions||[];
@@ -96,4 +96,4 @@ function validMapping(packet,proof,original,survivor){
  const expected=coverage({...packet,rows:[parentRow,originalRow]},parentRow,originalRow,certificate)[1];
  return hash(proof.semanticProof)===hash(expected.semanticProof)&&hash(proof.sourceSpans)===hash(expected.sourceSpans);
 }
-module.exports={VERSION,eligible,shape,direction,reviewPacket,certify,valid,conflicts,coverage,validMapping};
+module.exports={VERSION,eligible,shape,direction,reviewPacket,certify,valid,conflicts,coverage,validMapping,sourceIds};
