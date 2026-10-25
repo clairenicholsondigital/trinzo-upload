@@ -12778,6 +12778,7 @@ async function finalisePromotedDiscussion(discussion = [], options = {}) {
       labelSimilarity: 0.6,
       mergeRestatements: true,
       preserveVisibleRows: options.includeAllDetails === true,
+      supportingSubjectPolicy: options.supportingSubjectPolicy,
       onRestatements: options.onRestatements,
       onUnassignedSupportingDetail: options.onUnassignedSupportingDetail
     });
@@ -14737,7 +14738,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
     if (records.some((record) => hybridContentTokenOverlap(record.text, item.record?.text) >= 0.9
       && mayDiscardSupportingDetail(item.record, record))) continue;
     const selection = selectSupportingDetailParent(item.record || {},
-      records.map(record => ({ topic: topic.topic, record })), { sourceUnits });
+      records.map(record => ({ topic: topic.topic, record })), { sourceUnits, subjectPolicy: options.supportingSubjectPolicy });
     if (!selection.target) {
       retainUnassigned(item.record, { originalTopic: item.topic, placementReason: selection.reason });
       continue;
@@ -14782,7 +14783,7 @@ function compactDiscussionPropositions(discussion = [], recovered = [], sourceUn
       continue;
     }
     const selection = selectSupportingDetailParent({ ...candidate, text: detailText }, allPrimary,
-      { explicitTarget, sourceUnits });
+      { explicitTarget, sourceUnits, subjectPolicy: options.supportingSubjectPolicy });
     if (!selection.target) {
       retainUnassigned({
         ...candidate,
@@ -16784,6 +16785,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       ? compactDiscussionPropositions(refereeDiscussion, recoveredDiscussion, draft.sourceUnits, {
         meetingDate: timingAnchor,
         supportingCandidates,
+        supportingSubjectPolicy: discussionCoveragePolicyForRun(draft).supportingSubjects ? 'meeting_minutes_v2' : undefined,
         onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
         // The Referee remains authoritative by default. A separately gated
         // deterministic marginal-information pass can recover a genuinely
@@ -16813,7 +16815,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       // the degraded path where validation matters most.
       finalDiscussion = (compactEnabled || structuredReferee)
         ? compactDiscussionPropositions(baselineDiscussion, [], draft.sourceUnits, {
-          meetingDate: timingAnchor, onUnassignedSupportingDetail: retainUnassignedSupportingDetail
+          meetingDate: timingAnchor, supportingSubjectPolicy: discussionCoveragePolicyForRun(draft).supportingSubjects ? 'meeting_minutes_v2' : undefined, onUnassignedSupportingDetail: retainUnassignedSupportingDetail
         })
         : baselineDiscussion;
       degradedSources.push(`The structured discussion referee covered only ${compactSufficiency.coveredTopicCount} of ${compactSufficiency.baselineTopicCount} discovered topic groups; the evidence-normalised discovery draft was retained for completeness.`);
@@ -16844,6 +16846,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           // Measured 2026-09-27 on the 21 live drafts: 3 of 377 rows, all
           // restatements, gold discussion recall unchanged (263/270).
           mergeRestatements: meetingMinutesDiscussionRestatementsEnabled(),
+          supportingSubjectPolicy: discussionCoveragePolicyForRun(draft).supportingSubjects ? 'meeting_minutes_v2' : undefined,
           onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
           onRestatements: (merges) => console.log(JSON.stringify({ event: 'meeting_agent_discussion_restatements', journeyId: draft.draftId, merges }))
         };
@@ -17062,6 +17065,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         organise: meetingMinutesAgentDiscussionOrganiseEnabled(),
         onUnassignedSupportingDetail: retainUnassignedSupportingDetail,
         includeAllDetails,
+        supportingSubjectPolicy: discussionCoveragePolicyForRun(draft).supportingSubjects ? 'meeting_minutes_v2' : undefined,
         rewritePartialOverlaps,
         onPartialOverlapConsolidated: ({ candidates, applied }) => console.log(JSON.stringify({
           event: 'meeting_agent_post_promotion_overlap_consolidation', journeyId: draft.draftId,
