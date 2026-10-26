@@ -1727,7 +1727,7 @@
       return '<tr id="' + escapeHtml(targetId) + '" class="action-row' + (kept ? ' action-kept' : '') + '" data-action-row="' + index + '" data-action-id="' + escapeHtml(item.id || '') + '" data-action-occurrence-id="' + escapeHtml(actionOccurrence(item)) + '"><td data-label="Action"><div class="action-main">' + grip + '<textarea rows="1" data-action-index="' + index + '" data-action aria-label="Action ' + (index + 1) + '">' + escapeHtml(item.action || '') + '</textarea></div>' + decisions + transcriptPanel + '</td><td data-label="Owners">' + ownerEditor(item, index) + '</td><td data-label="Timing">' + timingEditor(timing, index, actionOccurrence(item)) + '</td></tr>';
     }).join('') || '<tr class="empty-actions-row"><td colspan="3" class="muted">' + escapeHtml(emptyActionsMessage) + '</td></tr>';
     if (state.draft && state.draft.canRestoreCombinedActions) {
-      document.getElementById('actionsBody').insertAdjacentHTML('beforeend', '<tr><td colspan="3"><button class="secondary quiet compact" data-restore-combined-actions type="button">Restore separate actions</button></td></tr>');
+      document.getElementById('actionsBody').insertAdjacentHTML('beforeend', '<tr><td colspan="3"><button class="secondary quiet compact" data-restore-combined-actions type="button">' + (state.draft.canRestorePhaseActions ? 'Restore original action wording' : 'Restore separate actions') + '</button></td></tr>');
     }
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
@@ -3170,7 +3170,8 @@
   async function restoreCombinedActions() {
     if (!state.draft || !state.draft.canRestoreCombinedActions) return;
     try { await saveDraftNow(); } catch (error) { return setStatus(error.message, true, 'actions'); }
-    setBusy(true, 'Restoring separate actions...', 'actions');
+    var restoringPhase = state.draft.canRestorePhaseActions;
+    setBusy(true, restoringPhase ? 'Restoring original action wording...' : 'Restoring separate actions...', 'actions');
     draftWritesInFlight += 1;
     try {
       var payload = await jsonRequest(draftUrl('/restore-combined-actions'), {
@@ -3178,7 +3179,7 @@
         body: JSON.stringify({ revision: state.draft.revision })
       });
       activeFinalEdit = null; endUndoGroup(); adoptDraft(payload.draft);
-      setStatus('Separate actions restored.', false, 'actions');
+      setStatus(restoringPhase ? 'Original action wording restored.' : 'Separate actions restored.', false, 'actions');
     } catch (error) { setStatus(error.message, true, 'actions'); }
     finally { setBusy(false); endDraftWrite(); }
   }

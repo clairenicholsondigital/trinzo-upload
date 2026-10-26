@@ -5,6 +5,10 @@ Branch: `fix/ai018-protected-work-proof`
 Base: `7107e5dc1ec828d855a8c5cbc05e8ea6a88d8936`  
 Plan: [AI-018 research plan](https://github.com/clairenicholsondigital/trinzo-upload/blob/ea1a2ab14747d5dfc09de39fdf1e3734388d8d12/docs/AI018_PROTECTED_TIMING_IMPLEMENTATION_PLAN.md)
 
+## Historical result
+
+This records the earlier one-row merge gate only. See [the subsequent two-phase correction](AI018_PHASE_CORRECTION_RESULT.md) for the implemented follow-up and its current release status. The common-timing veto below remains valid.
+
 ## Outcome
 
 **The plan's first safety gate did not pass. AI-018 is not fully fixed.**
