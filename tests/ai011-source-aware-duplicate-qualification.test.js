@@ -4,7 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   dedupeHybridActionRecords,
-  reconcileFinalApprovedActions
+  reconcileFinalApprovedActions,
+  isUnownedActionFragment,
+  sourceBoundSoftwareTraceabilityActions
 } = require('../routes/api').stagedEvaluation;
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
 
@@ -192,4 +194,43 @@ test('Colm standards-review paraphrases consolidate with the referenced standard
     row('colm-b', 'Follow up with Colm and obtain a review of the standards material.', ['Claire Nicholson'], untimed(), evidenceIds)
   ];
   assertSingleSourceBoundSurvivor(qualify(rows, sources), ['Colm', 'review', 'standard']);
+});
+
+test('the IEC 60601-1/MDD paraphrase pair consolidates at the final approved boundary', () => {
+  const sources = [
+    source('AI011-IEC-01', 'Andrew is progressing the review of IEC 60601-1 against the MDD documentation and defining the electrical compliance testing.', 'Andrew Kane'),
+    source('AI011-IEC-02', 'Andrew is progressing the MDD documentation review against IEC 60601-1 and defining the electrical compliance testing requirements.', 'Andrew Kane')
+  ];
+  const rows = [
+    row('iec-a', 'Progress the review of the IEC 60601-1 standard against the MDD documentation and define the required electrical compliance testing.', ['Andrew Kane'], untimed(), ['AI011-IEC-01', 'AI011-IEC-02']),
+    row('iec-b', 'Progress the review of the MDD documentation against IEC 60601-1 and define the electrical compliance testing requirements.', ['Andrew Kane'], untimed(), ['AI011-IEC-02', 'AI011-IEC-01'])
+  ];
+  const result = qualify(rows, sources);
+  assert.equal(result.final.length, 1);
+  assert.match(result.final[0].action, /IEC 60601-1/i);
+  assert.match(result.final[0].action, /electrical compliance testing/i);
+  assert.deepEqual(result.restored, []);
+});
+
+test('the Eakin acknowledgement fragment is recognised as an unowned action fragment', () => {
+  assert.equal(isUnownedActionFragment({ action: 'Add a bit of clarity.Yeah.', owners: [] }), true);
+  assert.equal(isUnownedActionFragment({ action: 'Add clarity to the risk management plan.', owners: [] }), false);
+  assert.equal(isUnownedActionFragment({ action: 'Add a bit of clarity.Yeah.', owners: ['Rebecca Gill'] }), false);
+});
+
+test('the narrative 17-change traceability task is recovered only from its source-bound wording', () => {
+  const sources = [
+    source('AI011-SW-TRACE', 'Jacqui: David has been working through tracing the software changes between version 101 to 102 of those 17 listed ones to document them. They are his priority action for the remainder of this week.', 'Jacqui Fox'),
+    source('AI011-SW-OWNER', 'David is the software change owner.', 'David Didsbury')
+  ];
+  const recovered = sourceBoundSoftwareTraceabilityActions(sources, []);
+  assert.equal(recovered.length, 1);
+  assert.deepEqual(recovered[0].owners, ['David Didsbury']);
+  assert.equal(recovered[0].evidenceIds.length, 1);
+  assert.equal(recovered[0].evidenceIds[0], 'T0001');
+  assert.match(recovered[0].action, /17 software changes from version 1\.01 to 1\.02/i);
+  assert.equal(sourceBoundSoftwareTraceabilityActions(sources, recovered).length, 0);
+  assert.equal(sourceBoundSoftwareTraceabilityActions([
+    source('AI011-SW-WEAK', 'The software traceability topic includes version 101 to 102 and 17 changes.')
+  ], []).length, 0);
 });

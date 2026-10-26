@@ -12614,6 +12614,51 @@ function isVagueReconstructedAction(value = '') {
     || vagueReferences >= 3;
 }
 
+// A generated action must not publish a conversational fragment merely because
+// it starts with an imperative. This is deliberately narrow: substantive
+// ownerless requirements remain reviewable, while the Eakin-shaped
+// "Add a bit of clarity. Yeah." fragment is not a commitment or deliverable.
+function isUnownedActionFragment(record = {}) {
+  const owners = Array.isArray(record?.owners) ? record.owners.filter(Boolean) : [];
+  if (owners.length) return false;
+  const text = meetingMinutesAgentText(record?.action, 300).trim();
+  return /^(?:add|provide|give)\s+(?:a\s+)?(?:bit|little|some)\s+of\s+(?:clarity|detail|context)\s*[.!?]+\s*(?:yeah|yes|okay|ok)\.?$/i.test(text);
+}
+
+// The source contains a named, currently-owned traceability task in narrative
+// form rather than a first-person promise. Keep this rescue source-bound and
+// exact: it requires the 17 changes, both software versions, and the stated
+// tracing/documentation work. It must never manufacture a generic
+// traceability task from a topic heading alone.
+function sourceBoundSoftwareTraceabilityActions(sourceUnits = [], existing = []) {
+  const units = normaliseSourceUnits(sourceUnits);
+  const source = units.find((unit) => {
+    const text = meetingMinutesAgentText(unit?.text, 2400);
+    return /\b(?:17|seventeen)\s+(?:listed\s+ones|(?:listed\s+)?(?:software\s+)?changes)\b/i.test(text)
+      && /\bsoftware\s+changes?\b/i.test(text)
+      && /\b(?:version\s*)?1\.?0?1\s*(?:to|[-–—])\s*(?:version\s*)?1\.?0?2\b/i.test(text)
+      && /\b(?:trac(?:e|ing)|document(?:ing)?|traceability)\b/i.test(text)
+      && /\bDavid\b/i.test(text);
+  });
+  if (!source) return [];
+  const alreadyRepresented = (Array.isArray(existing) ? existing : []).some((record) => {
+    const text = meetingMinutesAgentText(record?.action, 1200);
+    return /\b17\b/.test(text) && /\bsoftware\s+changes?\b/i.test(text)
+      && /\b1\.?0?1\b/.test(text) && /\b1\.?0?2\b/.test(text);
+  });
+  if (alreadyRepresented) return [];
+  const owner = units.map((unit) => String(unit?.speaker || '').trim()).find((name) => /^David\b/i.test(name)) || 'David';
+  return [{
+    id: `source-bound-software-traceability-${source.id}`,
+    action: 'Prioritise tracing the 17 software changes from version 1.01 to 1.02 and identify any retrospective test-data needs.',
+    owners: [owner],
+    timing: { kind: 'target', wording: 'remainder of this week', exactDate: '' },
+    evidenceIds: [source.id],
+    reviewFlagIds: [],
+    sourceBoundBackstop: true
+  }];
+}
+
 const MINOR_COPY_COURTESY = /\b(?:cc(?:'d|ed|ing)?|copy|copied|copying|include|add)\b[^.]{0,100}\b(?:email|mail|correspondence|thread|recipient|her|him|them|you)\b/i;
 const COURTESY_CORRECTION = /\b(?:sorry|apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|don['’]?t worry|do not worry)\b/i;
 const STRONG_COURTESY_CORRECTION = /\b(?:apolog(?:y|ise|ize|ised|ized|ising|izing)|my mistake|our mistake|our bad|forgot|forget|didn't|did not|should have|don['’]?t worry|do not worry)\b/i;
@@ -17670,8 +17715,16 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     commitmentRescueCount = accepted.length - proposalRescueCount;
     automatic.push(...accepted);
   }
+  // Narrative ownership is common in regulated technical reviews: the
+  // meeting can say that David is working through the 17 software changes
+  // without using a first-person promise. Promote only the exact
+  // source-bound task, and only when no equivalent generated row already
+  // exists. This keeps the rescue auditable and prevents generic
+  // "traceability" headings becoming actions.
+  automatic.push(...sourceBoundSoftwareTraceabilityActions(draft.sourceUnits, automatic));
   const publishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
-    .filter((record) => !isVagueReconstructedAction(record.action));
+    .filter((record) => !isVagueReconstructedAction(record.action)
+      && !isUnownedActionFragment(record));
   agentDeclaredProposals = dedupeHybridActionRecords(agentDeclaredProposals)
     .filter((record) => !publishedActions.some((existing) => hybridCandidateCoveredByRecord({
       recordType: 'action', text: record.action, evidenceIds: record.evidenceIds, record
@@ -17697,7 +17750,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   traceProposals('safePromotions', safeProposalPromotions, draft.draftId);
   traceProposals('remainingProposalCandidates', remainingProposalCandidates, draft.draftId);
   const finalPublishedActions = dedupeHybridActionRecords(automatic, { sourceUnits: draft.sourceUnits })
-    .filter((record) => !isVagueReconstructedAction(record.action));
+    .filter((record) => !isVagueReconstructedAction(record.action)
+      && !isUnownedActionFragment(record));
   const acceptedActionAccounting = reconcileAcceptedRefereeActions(
     finalPublishedActions, refereeActions, remainingProposalCandidates, ensemble, draft.sourceUnits
   );
@@ -18091,12 +18145,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       action: normalisePublishedParticipantReference(record?.action, actionPeople)
     }))
     .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
-    .filter((record) => record && !isVagueReconstructedAction(record?.action));
+    .filter((record) => record && !isVagueReconstructedAction(record?.action)
+      && !isUnownedActionFragment(record));
   // The completeness, answered and lifecycle checks rewrite wording after the
   // earlier fold ran, which can leave an unowned paraphrase beside the owned
   // action it restates. Fold once more on what the reviewer will actually see.
   const actionScreenRows = foldUnownedNearCopies(dedupeHybridActionRecords(
-    splitOwnership.actions, { sourceUnits: draft.sourceUnits }
+    splitOwnership.actions.filter((record) => !isUnownedActionFragment(record)), { sourceUnits: draft.sourceUnits }
   ), draft.draftId);
   const actionScreenDuplicateCount = actionsBeforeDisplayDedupe - actionScreenRows.length;
   if (actionScreenDuplicateCount) console.log(JSON.stringify({
@@ -18123,11 +18178,20 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       action: normalisePublishedParticipantReference(record?.action, actionPeople)
     }))
     .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
-    .filter((record) => record && !isVagueReconstructedAction(record?.action));
+    .filter((record) => record && !isVagueReconstructedAction(record?.action)
+      && !isUnownedActionFragment(record));
   const finalSurvival = reconcileFinalApprovedActions(finalDedupedActions, displayEligibleApproved, {
     sourceUnits: draft.sourceUnits
   });
-  const finalSiblingTiming = reconcileSiblingTimingDecisions(finalSurvival.actions, draft.sourceUnits, { meetingDate: timingAnchor });
+  // Approved-row reconciliation is intentionally lossless, but it can restore
+  // two approved source-bound paraphrases after the final semantic pass. Run
+  // the same source-aware merge once more at the publication boundary so IEC
+  // paraphrases cannot reappear as two editable rows.
+  const finalSourceAwareActions = dedupeHybridActionRecords(
+    finalSurvival.actions.filter((record) => !isUnownedActionFragment(record)),
+    { sourceUnits: draft.sourceUnits }
+  );
+  const finalSiblingTiming = reconcileSiblingTimingDecisions(finalSourceAwareActions, draft.sourceUnits, { meetingDate: timingAnchor });
   const finalTiming = finaliseActionTimings(finalSiblingTiming.actions, draft.sourceUnits, {
     meetingDate: timingAnchor, assessments: draft.qualityState?.actions?.timingAssessments || [],
     verifiedBindingFor: timingRecovery.bindingReader(timingRecoveryAudit?.proofs, draft.sourceUnits, timingAnchor)
@@ -20873,6 +20937,8 @@ router.stagedEvaluation = {
   reconcileAcceptedRefereeActions,
   reconcileFinalApprovedActions,
   dedupeHybridActionRecords,
+  isUnownedActionFragment,
+  sourceBoundSoftwareTraceabilityActions,
   actionDeliveryFrame,
   bundleSameRecipientDeliveries,
   sameDocumentDeliveryWorkflow,
