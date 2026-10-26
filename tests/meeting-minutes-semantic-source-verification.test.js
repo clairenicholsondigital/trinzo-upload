@@ -250,3 +250,44 @@ test('an uncited competing initial in the full source inventory vetoes a shorter
  const prompt=verify.verificationPrompt(packet,packet.candidates,packet.rows,f.sourceUnits,{}),data=JSON.parse(prompt.split('\nDATA\n')[1]);
  assert.deepEqual(data.ownerSpeakerWitnesses,[{owner:'Maya Patel',speakerLabels:[]}]);
 });
+
+function exactSelfFixture(...args){
+ const f=fixture(...args);f.review.selfRetentionMethod='exact-same-record-v1';
+ for(const check of f.review.decisions[0].checks)if(check.originalRef===f.survivor.ref)delete check.retained;
+ return f;
+}
+test('exact elected self-retention needs source support but no model retention opinion',()=>{
+ for(const repeated of [false,true]){
+ const f=exactSelfFixture(repeated),bound=verify.bindSourceVerification(f.packet,f.expanded,f.review);
+ assert.equal(bound.error,'');const out=action.applyActionReconciliation(f.packet,bound.envelope,{sourceUnits:f.sourceUnits});
+ assert.equal(out.actions.length,1);assert.ok(out.receipts.every(r=>action.validateReconciliationReceipt(r,r.original,out.actions[0],f.sourceUnits)));
+ const self=bound.envelope.decisions[0].coverage.find(p=>p.originalRef===f.survivor.ref);
+ assert.equal(self.semanticProof.clauses[0].sourceOperationReview.retentionMethod,'exact-same-record-v1');
+ }
+});
+test('an exact-self marker cannot approve unsupported sources, lost other-row meaning or unknown witnesses',()=>{
+ for(const fault of ['source','other-retention','owner']){
+  const f=fault==='owner'?exactSelfFixture(false,'Another colleague will handle a different task.'):exactSelfFixture(),decision=f.review.decisions[0];
+  if(fault==='source')decision.checks.find(c=>c.originalRef===f.survivor.ref).supported=false;
+  if(fault==='other-retention')decision.checks.find(c=>c.originalRef!==f.survivor.ref).retained=false;
+  if(fault==='owner')decision.checks.find(c=>c.originalRef===f.survivor.ref).sourceIds=['T1'];
+  assert.ok(verify.bindSourceVerification(f.packet,f.expanded,f.review).error,fault);
+ }
+});
+test('exact-self handling preserves explicit unresolved verdicts and old genuine self vetoes',()=>{
+ const f=exactSelfFixture();f.review.decisions[0].relation='unresolved';
+ const bound=verify.bindSourceVerification(f.packet,f.expanded,f.review);
+ assert.equal(bound.error,'');assert.equal(action.applyActionReconciliation(f.packet,bound.envelope,{sourceUnits:f.sourceUnits}).actions.length,2);
+ const old=fixture();old.review.decisions[0].relation='unresolved';old.review.decisions[0].checks.find(c=>c.originalRef===old.survivor.ref).retained=false;
+ const legacy=verify.bindSourceVerification(old.packet,old.expanded,old.review);
+ assert.equal(legacy.error,'');assert.equal(action.applyActionReconciliation(old.packet,legacy.envelope,{sourceUnits:old.sourceUnits}).actions.length,2);
+});
+test('new self mode rejects model overrides, unknown methods and missing retention for other originals',()=>{
+ for(const fault of ['override','method','other']){
+  const f=exactSelfFixture();
+  if(fault==='override')f.review.decisions[0].checks.find(c=>c.originalRef===f.survivor.ref).retained=true;
+  if(fault==='method')f.review.selfRetentionMethod='unknown-method';
+  if(fault==='other')delete f.review.decisions[0].checks.find(c=>c.originalRef!==f.survivor.ref).retained;
+  assert.ok(verify.bindSourceVerification(f.packet,f.expanded,f.review).error,fault);
+ }
+});
