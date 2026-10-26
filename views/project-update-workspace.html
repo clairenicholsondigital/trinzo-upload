@@ -279,22 +279,45 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--so
   }
 }
 /* Internal AI Tasks: scoped styles, no changes to other project stages. */
-.ai-tasks .task-summary {display:flex;gap:.5rem;flex-wrap:wrap;margin:.75rem 0}
-.ai-tasks .task-row {display:flex;gap:.65rem;align-items:flex-start;padding:.7rem 0;border-top:1px solid var(--border)}
-.ai-tasks .task-row input[type="checkbox"] {width:auto;margin-top:.5rem;flex:0 0 auto}
-.ai-tasks .task-open {flex:1;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}
-.ai-tasks .task-row-meta {display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.35rem;color:var(--muted)}
-.ai-tasks .task-filters {display:flex;gap:.6rem;flex-wrap:wrap;align-items:end}
+.ai-tasks .section-title-row {align-items:flex-end}
+.ai-tasks .section-title-row .intro {margin:0}
+.ai-tasks button.primary {background:var(--accent);border:1px solid var(--accent);color:#fff;border-radius:8px;padding:.6rem 1rem;font-weight:600;line-height:1.1}
+.ai-tasks button.primary:hover {background:var(--accent-600);border-color:var(--accent-600)}
+.ai-tasks .task-summary {display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0}
+.ai-tasks .task-filters {display:flex;gap:.6rem .75rem;flex-wrap:wrap;align-items:end;padding-bottom:1rem;border-bottom:1px solid var(--border)}
 .ai-tasks .task-filters label {flex:1;min-width:130px}
-.ai-tasks .task-filters .task-completed {display:flex;align-items:center;min-width:160px;flex:0 1 auto}
-.ai-tasks .task-completed input {width:auto}
+.ai-tasks .task-filters .task-completed {display:flex;align-items:center;gap:.5rem;min-width:0;flex:0 1 auto;min-height:2.5rem;color:var(--text);font-weight:600}
+.ai-tasks .task-completed input {width:1.1rem;height:1.1rem;margin:0;accent-color:var(--accent)}
+.ai-tasks #aiTaskList {display:grid;gap:.6rem;margin-top:1rem}
+.ai-tasks .task-row {display:flex;gap:.75rem;align-items:flex-start;padding:.85rem 1rem;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border-strong);border-radius:10px;box-shadow:var(--shadow-sm);transition:border-color .12s,box-shadow .12s}
+.ai-tasks .task-row:hover {border-color:var(--brand-200);box-shadow:var(--shadow)}
+.ai-tasks .task-row[data-status="To do"] {border-left-color:var(--border-strong)}
+.ai-tasks .task-row[data-status="In progress"] {border-left-color:var(--accent)}
+.ai-tasks .task-row[data-status="Blocked"] {border-left-color:var(--danger-text)}
+.ai-tasks .task-row[data-status="Done"] {border-left-color:var(--ok-text);background:var(--soft)}
+.ai-tasks .task-row input[type="checkbox"] {width:1.15rem;height:1.15rem;margin:.15rem 0 0;flex:0 0 auto;accent-color:var(--accent);cursor:pointer}
+.ai-tasks .task-open {display:block;flex:1;min-width:0;margin:0;padding:0;background:none;border:0;border-radius:0;color:var(--text);font-weight:400;text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.ai-tasks .task-title {display:block;color:var(--heading);font-weight:700;font-size:1rem;line-height:1.35}
+.ai-tasks .task-id {color:var(--accent-700);margin-right:.2rem}
+.ai-tasks .task-open:hover .task-title, .ai-tasks .task-open:focus-visible .task-title {color:var(--accent-700);text-decoration:underline}
+.ai-tasks .task-row[data-status="Done"] .task-title {color:var(--muted);text-decoration:line-through}
+.ai-tasks .task-row-meta {display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .4rem;margin-top:.5rem}
+.ai-tasks .task-chip {display:inline-flex;align-items:center;border:1px solid var(--border-strong);border-radius:999px;padding:.12rem .55rem;font-size:.78rem;font-weight:700;line-height:1.4;background:var(--surface);color:var(--muted)}
+.ai-tasks .task-priority[data-priority="P0"], .ai-tasks .task-state[data-status="Blocked"] {color:var(--danger-text);background:var(--danger-bg);border-color:var(--danger-border)}
+.ai-tasks .task-priority[data-priority="P1"] {color:var(--warn-text);background:var(--warn-bg);border-color:var(--warn-border)}
+.ai-tasks .task-priority[data-priority="P2"], .ai-tasks .task-state[data-status="In progress"] {color:var(--info-text);background:var(--info-bg);border-color:var(--info-border)}
+.ai-tasks .task-state[data-status="Done"] {color:var(--ok-text);background:var(--ok-bg);border-color:var(--ok-border)}
+.ai-tasks .task-detail {color:var(--muted);font-size:.82rem}
+.ai-tasks .task-detail + .task-detail::before {content:"·";margin-right:.4rem}
+.ai-tasks .task-detail {margin-left:.15rem}
+.ai-tasks #reloadAiTasks {padding:.6rem .95rem;font-weight:600;line-height:1.1;font-size:.94rem}
 .ai-tasks .task-editor {margin-top:1rem}
 .ai-tasks .task-editor [name="description"] {min-height:9rem}
 .ai-tasks .task-comment {padding:.7rem 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
 .ai-tasks .task-comment p {white-space:pre-wrap}
 .ai-tasks .task-links a {overflow-wrap:anywhere}
 .ai-tasks [hidden] {display:none!important}
-@media(max-width:600px){.ai-tasks .form-grid {grid-template-columns:1fr}.ai-tasks .form-grid .wide {grid-column:auto}}
+@media(max-width:600px){.ai-tasks .form-grid {grid-template-columns:1fr}.ai-tasks .form-grid .wide {grid-column:auto}.ai-tasks .section-title-row > button.primary {width:100%}.ai-tasks #reloadAiTasks {margin-left:auto}.ai-tasks .task-row {padding:.75rem .8rem;gap:.65rem}}
 </style>
   <link rel="stylesheet" href="/static/trinzo.css">
   <script defer src="/static/trinzo.js"></script>
