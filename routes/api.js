@@ -10857,9 +10857,18 @@ function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = []
 }
 
 function refereeActionMaterializationIssues(dispositions = [], candidates = [], targetCandidates = candidates) {
-  const byId = new Map((Array.isArray(candidates) ? candidates : [])
-    .map((candidate) => [String(candidate?.candidateId || ''), candidate]));
-  const targetIds = new Set((targetCandidates || []).map((candidate) => String(candidate?.candidateId || '')));
+  const uniqueById = (rows) => {
+    const result = new Map();
+    for (const candidate of Array.isArray(rows) ? rows : []) {
+      const id = String(candidate?.candidateId || '');
+      if (id) result.set(id, result.has(id) ? null : candidate);
+    }
+    return result;
+  };
+  // An ID must identify one writable action. Mere membership, or the last
+  // record winning a duplicate ID, cannot establish an atomic mapping.
+  const byId = uniqueById(candidates);
+  const targetsById = uniqueById(targetCandidates);
   return (Array.isArray(dispositions) ? dispositions : []).flatMap((item) => {
     const disposition = item?.disposition || item?.classification;
     if (!['publish', 'proposal', 'core', 'keep'].includes(disposition)) return [];
@@ -10870,11 +10879,18 @@ function refereeActionMaterializationIssues(dispositions = [], candidates = [], 
     // Group IDs describe source context, not writable action records. The
     // current Referee protocol has no validated group-to-atomic mapping; a
     // target alias alone must not approve its children or donate their fields.
-    if (['action_thread', 'action_chain'].includes(candidate?.recordType)) reason = 'group_requires_atomic_action_mapping';
-    else if (candidate?.recordType && candidate.recordType !== 'action') reason = 'candidate_is_not_an_action';
+    if (!byId.has(candidateId)) reason = 'action_candidate_not_found';
+    else if (!candidate) reason = 'ambiguous_action_candidate';
+    else if (['action_thread', 'action_chain'].includes(candidate.recordType)) reason = 'group_requires_atomic_action_mapping';
+    else if (candidate.recordType !== 'action') reason = 'candidate_is_not_an_action';
     else if (candidate?.recordType === 'action'
       && !meetingMinutesAgentText(candidate.record?.action || candidate.text, 1200)) reason = 'action_wording_missing';
-    else if (targetId && !targetIds.has(targetId)) reason = 'action_target_not_found';
+    else if (targetId && !targetsById.has(targetId)) reason = 'action_target_not_found';
+    else if (targetId && !targetsById.get(targetId)) reason = 'ambiguous_action_target';
+    else if (targetId && (targetsById.get(targetId).recordType !== 'action'
+      || !meetingMinutesAgentText(targetsById.get(targetId).record?.action || targetsById.get(targetId).text, 1200))) {
+      reason = 'action_target_not_writable';
+    }
     if (!reason) return [];
     return [{ candidateId, disposition, recordType: candidate?.recordType || '', targetId, reason,
       refereeReason: meetingMinutesAgentText(item?.reason, 500),

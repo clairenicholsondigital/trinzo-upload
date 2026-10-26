@@ -298,3 +298,29 @@ for (const fault of ['none', 'missing_atomic', 'malformed_group']) test(`the act
   assert.equal(publicDraft.actions.some(row => /football/i.test(row.action)), false);
   assert.deepEqual(forbidden, [], 'no network, subprocess, provider or database side effects');
 });
+
+for(const recordType of [undefined,''])test('a positive candidate without an atomic type stays unresolved: '+recordType,()=>{
+ const candidate={...atomic(),recordType},candidates=[candidate],rows=[disposition('send','publish')],{result,contract}=response(candidates,rows);
+ assert.equal(A.meetingAgentDispositionError(result,candidates,contract)?.code,'unmaterialized_referee_action');
+ const rebuilt=A.reconstructRefereeActions(rows,candidates,units);assert.equal(rebuilt.actions.length,0);
+ assert.equal(rebuilt.unresolvedMaterializations[0].reason,'candidate_is_not_an_action');
+ assert.equal(A.meetingAgentRefereeAccountedForAllCandidates(result,contract,'structured_prompt'),false);
+});
+for(const target of [group(),{candidateId:'group',recordType:'discussion_point',text:'A discussion only.'},{candidateId:'group',recordType:'action',text:'',record:{action:''}}])test('a known target ID must identify a writable atomic action: '+target.recordType,()=>{
+ const candidates=[atomic(),target],rows=[{...disposition('send','publish'),targetId:'group'},disposition('group','reject')],{result,contract}=response(candidates,rows);
+ const error=A.meetingAgentDispositionError(result,candidates,contract);assert.equal(error?.code,'unmaterialized_referee_action');
+ assert.equal(error.structurallyUnwritableGroupsOnly,false);
+ const rebuilt=A.reconstructRefereeActions(rows,candidates,units);assert.equal(rebuilt.actions.length,0);
+ assert.equal(rebuilt.unresolvedMaterializations[0].reason,'action_target_not_writable');
+ assert.equal(A.meetingAgentRefereeAccountedForAllCandidates(result,contract,'structured_prompt'),false);
+});
+test('an alias target with duplicate identities cannot be resolved by last-write-wins',()=>{
+ const candidates=[atomic(),atomic('target'),{...atomic('target'),text:'Review a different report.'}],rows=[{...disposition('send','publish'),targetId:'target'}];
+ const rebuilt=A.reconstructRefereeActions(rows,candidates,units);assert.equal(rebuilt.actions.length,0);
+ assert.equal(rebuilt.unresolvedMaterializations[0].reason,'ambiguous_action_target');
+});
+test('a candidate with duplicate identities cannot be reconstructed from the last record',()=>{
+ const candidates=[atomic(),{...atomic(),text:'Review a different report.'}],rows=[disposition('send','publish')];
+ const rebuilt=A.reconstructRefereeActions(rows,candidates,units);assert.equal(rebuilt.actions.length,0);
+ assert.equal(rebuilt.unresolvedMaterializations[0].reason,'ambiguous_action_candidate');
+});
