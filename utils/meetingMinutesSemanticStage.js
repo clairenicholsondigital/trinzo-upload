@@ -210,7 +210,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true,contactReviews:policy.contactReviews===true})
+    protectedActionIds:draft.keptActionIds || [],protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true,contactReviews:policy.contactReviews===true})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)
