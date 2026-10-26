@@ -1096,6 +1096,31 @@ def count_by_field(segments: list[dict[str, Any]], field: str, allowed: list[str
     return counts
 
 
+def describe_project_health(overall: str, assessed: int, mentioned: int, configured: int | None = None, attention_items: list[str] | None = None) -> str:
+    """Describe the final assessment without extending meeting coverage to a whole project."""
+    reasons = {
+        "red": "Overall health: Red. Current evidence indicates serious delivery problems requiring review.",
+        "amber": "Overall health: Amber. Current evidence indicates delivery risks or issues requiring review.",
+        "green": "Overall health: Green, based on the evidence assessed in this meeting.",
+        "blue": "Overall health: Complete for the work assessed in this meeting.",
+        "unknown": "Overall health: Not yet assessed. There is insufficient current evidence to establish project health.",
+    }
+    reason = reasons.get(overall, reasons["unknown"])
+    if overall in {"red", "amber"} and attention_items:
+        labels = list(dict.fromkeys(str(item).replace("_", " ") for item in attention_items if item))[:3]
+        if labels:
+            reason += f" Items requiring attention: {', '.join(labels)}."
+    if configured is not None:
+        coverage = f"This meeting assessed {assessed} of {configured} configured milestones."
+        if assessed < configured:
+            coverage += " The remaining milestones have not been reassessed."
+    else:
+        coverage = f"This meeting assessed {assessed} of {mentioned} mentioned workstreams." if mentioned else "No workstreams were assessed in this meeting."
+    if assessed == 0 and overall in {"green", "amber", "red", "blue"}:
+        coverage += " The headline is based on meeting-level health signals, not milestone coverage."
+    return f"{reason} {coverage}"
+
+
 def build_project_health_summary(segments: list[dict[str, Any]]) -> dict[str, Any]:
     rag_counts = count_by_field(segments, "agreed_rag_status", ["green", "amber", "red", "blue", "unknown"])
     delivery_counts = count_by_field(
@@ -1127,23 +1152,36 @@ def build_project_health_summary(segments: list[dict[str, Any]]) -> dict[str, An
         if "newly_added" in segment.get("status_modifiers", [])
     ]
 
-    if rag_counts.get("red", 0) > 0 or delivery_counts.get("blocked", 0) > 1:
+    assessed = [segment for segment in segments if
+        segment.get("agreed_rag_status") in {"green", "amber", "red", "blue"}
+        or segment.get("delivery_status") in {"complete", "completed", "in_review", "in_progress", "scheduled", "blocked", "awaiting_input", "delayed", "on_track", "at_risk", "off_track"}]
+    if rag_counts.get("red", 0) > 0 or delivery_counts.get("off_track", 0) > 0 or delivery_counts.get("blocked", 0) > 1:
         overall_health = "red"
-    elif delivery_counts.get("blocked", 0) > 0 or rag_counts.get("amber", 0) >= 2:
+    elif delivery_counts.get("blocked", 0) > 0 or rag_counts.get("amber", 0) > 0 or any(
+        segment.get("delivery_status") in {"awaiting_input", "delayed", "at_risk"} for segment in assessed
+    ):
         overall_health = "amber"
+    elif not assessed:
+        overall_health = "unknown"
+    elif len(assessed) == len(segments) and all(
+        (segment.get("agreed_rag_status") == "blue" or (segment.get("agreed_rag_status") not in {"green", "amber", "red"} and segment.get("delivery_status") in {"complete", "completed"}))
+        for segment in assessed
+    ):
+        overall_health = "blue"
     else:
         overall_health = "green"
 
-    if key_blockers:
-        overall_health_reason = f"Most workstreams are green or amber, but {key_blockers[0]['milestone']} remains blocked pending further input."
-    elif attention_items:
-        overall_health_reason = f"Most workstreams are stable, but {', '.join(attention_items[:3])} still require attention."
-    else:
-        overall_health_reason = "No blocked workstreams were detected and most milestones are on track or complete."
+    health_attention_items = [segment.get("milestone", "") for segment in segments
+        if segment.get("agreed_rag_status") in {"red", "amber"}
+        or segment.get("delivery_status") in {"blocked", "awaiting_input", "delayed", "at_risk", "off_track"}]
+    overall_health_reason = describe_project_health(overall_health, len(assessed), len(segments), attention_items=health_attention_items)
 
     return {
         "overall_health": overall_health,
         "overall_health_reason": overall_health_reason,
+        "health_attention_items": health_attention_items,
+        "assessed_segment_count": len(assessed),
+        "segment_count": len(segments),
         "rag_counts": rag_counts,
         "delivery_status_counts": delivery_counts,
         "key_blockers": key_blockers,

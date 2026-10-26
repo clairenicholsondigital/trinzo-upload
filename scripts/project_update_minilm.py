@@ -25,10 +25,10 @@ if str(SCRIPT_DIR) not in sys.path:
 
 try:
     from meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend, embedding_similarity
-    from python_llm import analyse as analyse_project_update
+    from python_llm import analyse as analyse_project_update, build_project_health_summary, describe_project_health
 except ModuleNotFoundError:  # pragma: no cover - defensive fallback for unusual import paths
     from scripts.meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend, embedding_similarity  # type: ignore
-    from scripts.python_llm import analyse as analyse_project_update  # type: ignore
+    from scripts.python_llm import analyse as analyse_project_update, build_project_health_summary, describe_project_health  # type: ignore
 
 
 HEALTH_AREA_PROTOTYPES = {
@@ -633,17 +633,25 @@ def infer_overall_health_from_sentences(current: str, sentences: list[str], risk
     joined = " ".join(sentences).lower()
     project_substance = bool(re.search(r"\b(project|milestone|risk|status|schedule|delivery|release|sprint)\b", joined))
     reschedule_only = "reschedule this project review call" in joined and not re.search(r"\b(milestone|risk|status|schedule|delivery|release|sprint)\b", joined)
-    if not joined or not project_substance or reschedule_only:
+    if reschedule_only:
         return "unknown"
+    if not joined or not project_substance:
+        return current if current in {"green", "amber", "red", "blue"} else "unknown"
     if any(cue in joined for cue in ["major regression", "completely blocks", "blocks our release"]):
         return "red"
+    if current == "red":
+        return "red"
     if "minor risk" in joined and any(cue in joined for cue in ["managing it", "managing this", "health looks green", "tracking fine"]):
-        return current or "green"
+        return "green" if current == "unknown" else current or "green"
     current_status = health_to_report_status(current)
-    if current_status == "on_track" and not any(cue in joined for cue in ["at risk", "roadblock", "obstacle", "slipping", "behind schedule", "declining", "hurdle", "revoked", "haven't", "can't ", "cannot", "unable", "credentials"]):
-        return current
+    explicit_green = bool(re.search(
+        r"\b(?:overall\s+(?:project\s+)?(?:status|health)|project\s+(?:status|health)|health\s+looks)\s+(?:(?:is|looks|still|remains)\s+)*green\b|\b(?:on schedule|on track)\b", joined))
+    if (current_status == "on_track" or (current == "unknown" and explicit_green)) and not any(cue in joined for cue in ["at risk", "roadblock", "obstacle", "slipping", "behind schedule", "declining", "hurdle", "revoked", "haven't", "can't ", "cannot", "unable", "credentials"]):
+        return "green"
     if risks or any(cue in joined for cue in ["at risk", "risk", "roadblock", "obstacle", "slipping", "behind schedule", "declining", "hurdle", "revoked", "haven't", "can't ", "cannot", "unable", "credentials"]):
         return "amber"
+    if current in {"amber", "green", "blue"}:
+        return current
     return current or "unknown"
 
 
@@ -1600,8 +1608,6 @@ def build_report_payload(
     project_context: dict[str, Any] | None = None,
     backend: MiniLMBackend | None = None,
 ) -> dict[str, Any]:
-    summary = result.get("project_health_summary", {})
-    overall = summary.get("overall_health", "unknown")
     minilm_first_context = minilm_first_context or {}
     minilm_project_signals = minilm_first_context.get("rankedProjectSignals", []) if isinstance(minilm_first_context.get("rankedProjectSignals", []), list) else []
     if not minilm_project_signals:
@@ -1651,7 +1657,22 @@ def build_report_payload(
     risk_suggestions.extend(infer_transcript_risks(source_sentences, risk_suggestions))
 
     report_milestones = build_context_first_milestones(all_segments, project_context, backend=backend, diagnostics=diagnostics)
-    overall = infer_overall_health_from_sentences(overall, source_sentences, risk_suggestions)
+    # Use assessed extraction and accepted current progress, then describe
+    # the final status after the existing transcript-health inference.
+    # An empty legacy summary is never evidence for Green.
+    health_summary = build_project_health_summary(enriched_segments)
+    configured = (project_context or {}).get("activeMilestones", [])
+    coverage_rows = report_milestones if configured else all_segments
+    current_rows = [row for row in coverage_rows if row.get("transcript_update_status") != "carried_forward"]
+    coverage = build_project_health_summary(current_rows)
+    baseline_health = health_summary["overall_health"]
+    if baseline_health == "unknown" and coverage["overall_health"] in {"green", "blue"}:
+        # Accepted current progress supports Green; completing an inferred item
+        # does not establish completion of the whole project.
+        baseline_health = "green"
+    overall = infer_overall_health_from_sentences(baseline_health, source_sentences, risk_suggestions)
+    reason = describe_project_health(overall, coverage["assessed_segment_count"], len(current_rows), len(configured) if configured else None, build_project_health_summary(all_segments)["health_attention_items"])
+    diagnostics["healthCoverage"] = {"assessed": coverage["assessed_segment_count"], "mentioned": len(current_rows), "configured": len(configured) if configured else None}
 
     minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
     minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
@@ -1660,7 +1681,7 @@ def build_report_payload(
         "reportStatus": "draft",
         "overallHealth": health_to_report_status(overall),
         "overallHealthRag": overall,
-        "summary": summary.get("overall_health_reason", "Project update analysed from transcript."),
+        "summary": reason,
         "keyUpdates": [clean_text(item) for item in key_updates if clean_text(item)],
         "healthAreas": build_fixed_health_areas(overall, diagnostics, project_context),
         "milestones": report_milestones,
@@ -1676,7 +1697,7 @@ def build_report_payload(
     return normalise_report_payload(report)
 
 
-def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewriter) -> tuple[dict[str, Any], dict[str, Any]]:
+def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewriter, *, preserve_health_summary: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
     diagnostics = {
         "rewriterAvailable": rewriter.available,
         "rewriterModelName": rewriter.model_name,
@@ -1685,6 +1706,11 @@ def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewrite
         "rewriteEdits": [],
         "rewriteRuntimeMs": 0.0,
     }
+    if preserve_health_summary:
+        # This generated summary is a deterministic statement of final health
+        # and coverage. A prose model must not change its assessment or scope.
+        diagnostics["rewriterReason"] = "Evidence-based health summary retained without prose rewriting."
+        return report, diagnostics
     if not rewriter.available:
         return report, diagnostics
 
@@ -1725,8 +1751,8 @@ def build_project_update_output(
         backend=backend,
     )
 
-    rewriter = LocalMinutesRewriter.load(enabled=use_rewrite)
-    report, rewrite_diagnostics = rewrite_report_summary(report, rewriter)
+    rewriter = LocalMinutesRewriter.load(enabled=False)
+    report, rewrite_diagnostics = rewrite_report_summary(report, rewriter, preserve_health_summary=True)
     timing_total = round((time.perf_counter() - started) * 1000, 2)
 
     return {
@@ -1735,7 +1761,7 @@ def build_project_update_output(
         "mode": "project_update_minilm",
         "projectReport": report,
         "modelDiagnostics": {
-            "pipelineOrder": ["minilm_first_context", "rules_structuring", "minilm_segment_enrichment", "qwen_rewrite"],
+            "pipelineOrder": ["minilm_first_context", "rules_structuring", "minilm_segment_enrichment", "health_summary_consistency"],
             "minilmFirstContext": minilm_first_context.get("diagnostics", {}),
             **semantic_diagnostics,
             **rewrite_diagnostics,
