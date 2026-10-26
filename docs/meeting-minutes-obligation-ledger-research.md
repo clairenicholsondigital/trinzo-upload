@@ -47,6 +47,48 @@ node scripts/meeting_minutes_obligation_ledger_research.js prepare-review output
 node scripts/meeting_minutes_obligation_ledger_research.js validate-review review-dir/review-packet.json review-response.json
 ```
 
-Input is `{sourceUnits:[{id,speaker,text}],members:[{ref,focusEvidenceId}],sourceHash,meetingDate}`. Extra candidate descriptions are omitted. Source hash refers to the frozen complete source snapshot; sourceUnits can be the supplied bounded context. This does not claim complete-transcript coverage when context was omitted. Output files are private and never overwritten. Validation distinguishes invalid responses (exit 1), valid semantic vetoes (exit 2) and a complete source review (exit 0). Every outcome reports `automaticClosureAllowed:false`; completeness never establishes target coverage.
+Version-2 input is `{sourceUnits:[{id,speaker,text}],members:[{ref,focusEvidenceId,focusQuote}],sourceHash,meetingDate}`; an explicit `focusMode:"whole_unit"` can replace `focusQuote`. Extra candidate descriptions are omitted. Source hash refers to the frozen complete source snapshot; sourceUnits can be the supplied bounded context. This does not claim complete-transcript coverage when context was omitted. Output files are private and never overwritten. Validation distinguishes invalid responses (exit 1), valid semantic vetoes (exit 2) and a complete source review (exit 0). Every outcome reports `automaticClosureAllowed:false`; completeness never establishes target coverage.
 
 Private exact requests/replies, wire failures and saved-evidence results are retained in `/root/trinzo-shared-obligation-research-20261026` and `/root/trinzo-obligation-ledger-research-20261026`. No production cache reset, draft write or fresh generation was performed.
+
+## Exact focus binding (second qualification batch)
+
+Version 2 requires an explicit literal `focusQuote` for each member, or an explicit `focusMode:"whole_unit"` declaration. Generated `text` is never a fallback. The app resolves a quote only when it occurs exactly once, including overlapping occurrences, in exactly one identified source unit. It preserves original spelling and whitespace. The packet includes its UTF-16 start/end offsets, exact quotation, source-unit identity and SHA-256 hash of the JSON-encoded original source text. Full context remains available: a focus beginning after “not” is not a positive commitment, and a pronoun can still need an earlier request.
+
+Missing, repeated, changed or normalized quotations fail preparation. Ambiguous source IDs fail too. Changing a span changes the packet fingerprint; old version-1 packets and responses cannot be silently reused. Provider source quotations must also be uniquely located and overlap an actual supplied focus span. A quotation from another clause of the same turn is insufficient. None of these structural checks establishes semantic equivalence or complete retention.
+
+Updated CLI input example:
+
+```json
+{
+  "sourceHash": "hash-of-frozen-full-source-snapshot",
+  "meetingDate": "2026-10-26",
+  "sourceUnits": [{"id":"T1","speaker":"Nora Patel","text":"I will write the letter, and I will take a photograph tomorrow."}],
+  "members": [
+    {"ref":"M1","focusEvidenceId":"T1","focusQuote":"write the letter"},
+    {"ref":"M2","focusEvidenceId":"T1","focusQuote":"take a photograph tomorrow"}
+  ]
+}
+```
+
+Whole-unit inputs must explicitly use `focusMode:"whole_unit"` and omit `focusQuote`. Supplying both is invalid. Version-1 callers must add this explicit focus declaration; no automatic whole-turn fallback is provided.
+
+Seventeen local tests cover binding, ambiguous/repeated quotes, Unicode and UTF-16 offsets, cross-clause rejection, retained negation/context, packet freshness, legacy response rejection, malformed provider output and private offline CLI artifacts. Saved-evidence preparation verifies all **138 member occurrences in 30 unresolved groups** without changing the source, actions or review decisions.
+
+Live qualification details and the remaining semantic limitations are recorded below. This remains a held research PR; no application runtime imports this protocol.
+
+### Version-2 qualification outcome
+
+The new live Microsoft run passes **20/21 controls**, using 59 provider calls. These include the original 17 cases plus same-turn supporting work, clipped negation, clipped condition and an unrelated literal directive in the same turn. This is a new run, not a claim that earlier classification failures are permanently eliminated.
+
+The clipped-condition case fails qualification. Its ledger reason acknowledges safety approval, but its literal source span excludes the condition. The independent completeness reviewer nevertheless claims all qualifications are preserved. The target checker returns `unclear`, correctly explaining that the target lacks the approval condition. Thus this is an evidence/completeness defect, not an observed unsafe final acceptance. The failed control is preserved, not weakened or rerun into a pass.
+
+Four saved groups require another 11 calls. In the council chain, the explicit required word is now recognised as absent from the target. In the broader council thread, both the word and the separate photograph are recognised as absent. However, the model inventories the whole letter promise and its overlapping clauses as separate records, even while explaining they are parts of one obligation. Both source stages accept that structure. Target retention still falsely calls the *whole* promise retained, despite its missing required word; the separate word record receives a correct negative verdict. This contradictory per-record result remains an independent blocker even though the group does not qualify overall. The chain has no photograph focus member: neighbouring photograph work must not be counted as a chain obligation merely because it appears in its context.
+
+The other saved groups produce an uncertain planning item with no target retention, and a not-outstanding notes item respectively. These results are research judgements, not authorization to close either existing review item. All research responses preserve `safeForAutomaticClosure:false`.
+
+**Decision:** exact focus preparation and validation are implemented and locally tested; semantic cleanup remains unqualified. This PR stays draft and is not merged or deployed. The production deployment remains PR 157. No runtime files, review decisions, cache entries or library drafts were changed. All 60 drafts and the environment were checked against the previous deployment's preservation receipt.
+
+**Next bounded work:** separate the immutable member audit from the source inventory's overlapping focus descriptions, so a full promise and its nested clauses do not encourage one obligation per member. Any overlapping-focus grouping must describe source geometry only, never equate independent tasks. Separately require complete operation/qualification witnesses against actual target text, with deterministic vetoes for explicitly required literal wording. Preserve the clipped-condition failure and contradictory full-promise retention as mandatory negative controls, alongside separate tasks in one turn, antecedents, refusals, completed work, ownership, recipient and timing safeguards. Do not activate automatic closure until these saved counterexamples genuinely fail acceptance.
+
+Private artifacts for this batch, including exact requests, replies, all failed controls, saved-group results and source-binding checks, are in `/root/trinzo-exact-focus-research-20261026`. There were 70 Microsoft research calls in total, zero production writes and no new transcript generation.
