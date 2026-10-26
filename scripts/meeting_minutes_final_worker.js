@@ -8,6 +8,8 @@ const {
 const { processMeetingMinutesJob } = require('../utils/meetingMinutesGenerator');
 const { processProjectUpdateJob } = require('../utils/projectUpdateGenerator');
 
+const settingsStore = require('../utils/settingsStore');
+
 const WORKER_ID = process.env.MEETING_MINUTES_WORKER_ID || `minutes-final-${process.pid}`;
 const POLL_MS = Number(process.env.MEETING_MINUTES_WORKER_POLL_MS || 5000);
 
@@ -21,11 +23,16 @@ async function runLoop() {
 
   while (true) {
     try {
+      await settingsStore.refreshIfStale();
       const job = await claimNextGenerationJob(WORKER_ID);
       if (!job) {
         await sleep(POLL_MS);
         continue;
       }
+
+      // This process has no API traffic. Load edits committed since the last
+      // poll before executing a newly claimed job and writing its Python copy.
+      await settingsStore.refresh();
 
       console.log(JSON.stringify({
         event: 'meeting_minutes_worker_claimed',

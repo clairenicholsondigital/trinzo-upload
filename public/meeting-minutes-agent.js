@@ -1049,6 +1049,7 @@
       meetingLocation: document.getElementById('meetingLocation').value.trim() || DEFAULT_MEETING_LOCATION,
       meetingType: meetingTypeValue(document.getElementById('meetingType').value),
       clientAttendeeLabel: document.getElementById('clientAttendeeLabelSelect').value === 'External' ? 'External' : 'Client',
+      ...(state.draft.details && state.draft.details.attendeeSidesReviewed ? { attendeeSidesReviewed: true } : {}),
       internalAttendees: internalAttendees,
       clientAttendees: clientAttendees,
       allAttendees: internalAttendees.concat(clientAttendees)

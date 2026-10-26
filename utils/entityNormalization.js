@@ -8,20 +8,65 @@ function key(value) {
   return clean(value).toLowerCase().normalize('NFKD').replace(/[^a-z0-9'’-]+/g, ' ').trim();
 }
 
+const settingsStore = require('./settingsStore');
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Confirmed person aliases that must never be shown as separate people. This is
-// intentionally an exact, boundary-safe replacement: the transcript repeatedly
-// labels Rebecca Gill as "Rebecca Cuckoo", and that spelling must be corrected
-// consistently even when no attendee list is available yet.
-const FIXED_PERSON_ALIASES = Object.freeze([
-  { pattern: /\bRebecca\s+Cuckoo\b/giu, replacement: 'Rebecca Gill' },
+// intentionally an exact, boundary-safe replacement. Every multi-word "other
+// spelling" on the Settings page People list is one (Teams labels Rebecca Gill
+// as "Rebecca Cuckoo"), and it is corrected consistently even when no attendee
+// list is available yet.
+const CODE_PERSON_ALIASES = Object.freeze([
   // Confirmed Teams ASR substitution. Word boundaries avoid partial changes
   // inside a different name while still correcting possessive/hyphenated use.
   { pattern: /\bColby\b/giu, replacement: 'Cody' }
 ]);
 
+function spellingPattern(spelling, flags = 'giu') {
+  const body = clean(spelling).split(/\s+/).map(escapeRegExp).join('\\s+').replace(/,\\s\+/g, ',\\s*');
+  return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, flags);
+}
+
+let personAliasCache = { version: -1, aliases: [] };
+
+// Multi-word other spellings from the People list, longest first, then the
+// aliases kept in code.
+function fixedPersonAliases() {
+  const version = settingsStore.version();
+  if (personAliasCache.version === version) return personAliasCache.aliases;
+  const fromSettings = [];
+  for (const person of settingsStore.getPeople()) {
+    for (const spelling of person.spellings || []) {
+      if (clean(spelling).split(/\s+/).length < 2 || key(spelling) === key(person.name)) continue;
+      fromSettings.push({ spelling: clean(spelling), replacement: person.name });
+    }
+  }
+  fromSettings.sort((left, right) => right.spelling.length - left.spelling.length);
+  const aliases = [
+    ...fromSettings.map((item) => ({ pattern: spellingPattern(item.spelling), replacement: item.replacement, spelling: item.spelling })),
+    ...CODE_PERSON_ALIASES
+  ];
+  personAliasCache = { version, aliases };
+  return aliases;
+}
+
 function normaliseFixedPersonAliases(value) {
   let output = String(value == null ? '' : value);
-  for (const alias of FIXED_PERSON_ALIASES) output = output.replace(alias.pattern, alias.replacement);
+  for (const alias of fixedPersonAliases()) output = output.replace(alias.pattern, alias.replacement);
+  return output;
+}
+
+// "Smith, Stuart M" is how some directories export names. Those spellings (the
+// ones with a comma) are corrected in the transcript itself, before the models
+// read it; other spellings are corrected in what the minutes print.
+function normaliseDirectoryNameSpellings(value) {
+  let output = String(value == null ? '' : value);
+  for (const alias of fixedPersonAliases()) {
+    if (alias.spelling && alias.spelling.includes(',')) output = output.replace(alias.pattern, alias.replacement);
+  }
   return output;
 }
 
@@ -59,23 +104,6 @@ function damerauLevenshtein(left, right) {
   return matrix[a.length][b.length];
 }
 
-// People who are always on the internal side of a meeting, never client or
-// external, whatever the transcript or a model says. Teams and speech recognition
-// spell these names several ways, so a name counts as one of them when the first
-// name and surname are each a listed spelling or a close misspelling of one.
-const ALWAYS_INTERNAL_PEOPLE = Object.freeze([
-  {
-    name: 'Advait Dharmadhikari',
-    firstNames: ['advait', 'advaith', 'adwait', 'adwaith', 'advaitt', 'advayt', 'adveit'],
-    surnames: ['dharmadhikari', 'dharmadhikary', 'dharmadikari', 'darmadhikari', 'dharmadhikaari']
-  },
-  {
-    name: 'Saki Arimoto',
-    firstNames: ['saki', 'sakki', 'sakie', 'saaki'],
-    surnames: ['arimoto', 'arimotto', 'arrimoto', 'arimotoh']
-  }
-]);
-
 const PERSON_TITLE_TOKENS = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'san']);
 
 function personTokens(value) {
@@ -104,25 +132,71 @@ function surnameMatches(token, person) {
   return closeToAny(token, person.surnames, token.length >= 8 ? 2 : 1);
 }
 
-// Returns the canonical name when the value is one of the always-internal people,
-// otherwise ''. Accepts the first name alone, the surname alone, a surname initial
-// ("Advait D"), "Surname, First" and close misspellings of either part.
-function alwaysInternalAttendeeName(value) {
-  const tokens = personTokens(value);
-  if (!tokens.length || tokens.length > 3) return '';
-  for (const person of ALWAYS_INTERNAL_PEOPLE) {
-    const [first] = tokens;
-    const last = tokens[tokens.length - 1];
-    if (tokens.length === 1) {
-      if (firstNameMatches(first, person) || surnameMatches(first, person)) return person.name;
-      continue;
+let peopleIndexCache = { version: -1, people: [], exact: new Map() };
+
+// Each person on the Settings page People list, with the first names and
+// surnames their name and other spellings allow.
+function knownPeopleIndex() {
+  const version = settingsStore.version();
+  if (peopleIndexCache.version === version) return peopleIndexCache;
+  const exact = new Map();
+  const people = [];
+  for (const person of settingsStore.getPeople()) {
+    const firstNames = [];
+    const surnames = [];
+    for (const form of [person.name, ...(person.spellings || [])]) {
+      const tokens = personTokens(form);
+      exact.set(tokens.join(' '), exact.has(tokens.join(' ')) && exact.get(tokens.join(' ')) !== person ? null : person);
+      if (tokens.length < 2) continue;
+      if (!firstNames.includes(tokens[0])) firstNames.push(tokens[0]);
+      const surname = tokens[tokens.length - 1];
+      if (surname.length > 1 && !surnames.includes(surname)) surnames.push(surname);
     }
-    const firstOk = firstNameMatches(first, person);
-    const surnameOk = surnameMatches(last, person);
-    const initialOk = last.length === 1 && last === person.surnames[0][0];
-    if (firstOk && (surnameOk || initialOk)) return person.name;
+    if (firstNames.length && surnames.length) people.push({ person, firstNames, surnames });
   }
-  return '';
+  peopleIndexCache = { version, people, exact };
+  return peopleIndexCache;
+}
+
+function personMatches(tokens, entry) {
+  const [first] = tokens;
+  const last = tokens[tokens.length - 1];
+  if (tokens.length === 1) {
+    // A surname alone only counts when it is long enough not to be a common
+    // word or first name ("Thomas", "Ryan", "Gill").
+    return firstNameMatches(first, entry) || (first.length >= 7 && surnameMatches(first, entry));
+  }
+  const firstOk = firstNameMatches(first, entry);
+  const surnameOk = surnameMatches(last, entry);
+  const initialOk = last.length === 1 && last === entry.surnames[0][0];
+  return firstOk && (surnameOk || initialOk);
+}
+
+// Returns the person on the People list this name refers to, or null. Accepts
+// the name or an other spelling exactly, the first name alone, a long surname
+// alone, a surname initial ("Advait D"), "Surname, First" and close
+// misspellings of either part. A name that could be two people matches neither.
+function knownPerson(value) {
+  const tokens = personTokens(value);
+  if (!tokens.length) return null;
+  const index = knownPeopleIndex();
+  const exact = index.exact.get(tokens.join(' '));
+  if (exact) return exact;
+  if (exact === null || tokens.length > 3) return null;
+  const matches = index.people.filter((entry) => personMatches(tokens, entry));
+  return matches.length === 1 ? matches[0].person : null;
+}
+
+function knownPersonName(value) {
+  return knownPerson(value)?.name || '';
+}
+
+// Returns the proper name when the value is someone listed as Internal on the
+// People list, otherwise ''. Internal people are always internal, never client,
+// whatever the transcript or a model says.
+function alwaysInternalAttendeeName(value) {
+  const person = knownPerson(value);
+  return person?.side === 'internal' ? person.name : '';
 }
 
 function isAlwaysInternalAttendee(value) {
@@ -280,8 +354,10 @@ function normaliseAttendeeReferences(text, attendees = []) {
 }
 
 module.exports = {
-  ALWAYS_INTERNAL_PEOPLE,
   alwaysInternalAttendeeName,
+  knownPerson,
+  knownPersonName,
+  normaliseDirectoryNameSpellings,
   isAlwaysInternalAttendee,
   damerauLevenshtein,
   extractMentionedPeople,
