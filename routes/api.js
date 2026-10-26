@@ -10403,6 +10403,16 @@ function meetingAgentFlowUrlFor(prompt = '', options = {}) {
   return /:primary-2$/.test(String(options.pass || '')) ? direct : main;
 }
 
+// Typed upstream failures use their own envelope, independent of the requested
+// success schema. Recognising one never makes it a successful minutes result:
+// the retry wrapper still raises meetingAgentResultError before validation.
+function meetingAgentHasTypedError(value) {
+  const error = value && typeof value === 'object' && !Array.isArray(value) ? value.error : null;
+  return Boolean(error && typeof error === 'object' && !Array.isArray(error)
+    && typeof error.code === 'string' && error.code.trim()
+    && typeof error.message === 'string' && error.message.trim());
+}
+
 async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   const webhookUrl = meetingAgentFlowUrlFor(prompt, options);
   if (!webhookUrl) {
@@ -10429,7 +10439,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   const controller = new AbortController();
   const timeoutMs = Math.max(10000, Number(options.timeoutMs || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000));
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let response;
+  let response, rawBody;
   try {
     response = await fetch(webhookUrl, {
       method: 'POST',
@@ -10437,6 +10447,9 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
       body: JSON.stringify({ input: { prompt } }),
       signal: controller.signal
     });
+    // Headers alone are not a completed call. Keep the deadline and active
+    // slot until the full response body has arrived.
+    rawBody = await response.text();
   } catch (error) {
     if (error?.name === 'AbortError') {
       const timeoutError = new Error('The meeting-minutes agent did not reply in time.');
@@ -10455,7 +10468,6 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     release();
   }
 
-  const rawBody = await response.text();
   // Optional private diagnostics must see the wire body before parsing can
   // reject it. Never attach source content to errors or public/log metadata.
   if (typeof options.onRawResponse === 'function') {
@@ -10509,7 +10521,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind)
       && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       && Array.isArray(candidate.results);
-    if (isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
+    if (meetingAgentHasTypedError(candidate) || isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
       || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult
       || isTopicArrangementResult || isTimingCheckResult || isSemanticReconciliationResult) {
       structured = candidate;
@@ -10532,6 +10544,12 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     throw error;
   }
   const parsedResult = structured;
+  // Direct generation/audit callers have no retry wrapper to raise this.
+  // Preserve the existing referee hand-off (including its decoded audit),
+  // but never let another caller normalise a provider failure as empty output.
+  if (options.responseKind !== 'referee' && meetingAgentHasTypedError(parsedResult)) {
+    throw meetingAgentResultError(parsedResult);
+  }
   const flatDiscussionDiscovery = options.responseKind === 'discussion_discovery'
     && Array.isArray(parsedResult?.discussionCandidates);
   const anchoredDiscussionDiscovery = options.responseKind === 'anchored_discussion_discovery'
@@ -10545,6 +10563,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     && Array.isArray(parsedResult?.decisions);
   if (!parsedResult || typeof parsedResult !== 'object'
     || (options.responseKind !== 'referee'
+      && !meetingAgentHasTypedError(parsedResult)
       && !timingCheck
       && !flatDiscussionDiscovery
       && !anchoredDiscussionDiscovery
@@ -10573,7 +10592,10 @@ function meetingAgentResultError(result) {
   const error = new Error(message);
   error.code = code;
   error.statusCode = 502;
-  error.retryable = /(?:system|timeout|noresponse|no_response|invalid_.+_structure|missing_candidate_dispositions|child|handoff)/i.test(code);
+  error.retryable = /(?:system|timeout|noresponse|no_response|invalid_.+_structure|missing_candidate_dispositions|child|handoff)/i.test(code)
+    // The route explicitly reports a transient hand-off failure. Keep this
+    // bounded exception separate from semantic/validation retry hints.
+    || (code === 'microsoft_route_failure' && reported?.retryable === true);
   if (typeof reported === 'object') {
     error.invalidCandidateIds = [...new Set((Array.isArray(reported.invalidCandidateIds)
       ? reported.invalidCandidateIds : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean))];
@@ -11083,7 +11105,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
         || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000);
       const attemptTimeoutMs = Number.isFinite(remaining)
         ? Math.max(10000, Math.min(configuredAttemptTimeoutMs, remaining))
-        : undefined;
+        : configuredAttemptTimeoutMs;
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
         paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass,
         ...(typeof options.onFailure === 'function' ? {
