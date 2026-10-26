@@ -50,10 +50,21 @@ else{
  test('client browser can read but cannot open editing controls',async()=>{
   const c=await browser.newContext();await c.addCookies([{name:'auth_session',value:'fixture-client',url:origin}]);try{const page=await c.newPage();await page.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());await page.goto(origin+'/settings');await page.waitForSelector('.settings-row');assert.equal(await page.locator('#addPerson').isVisible(),false);assert.equal(await page.locator('.row-edit').count(),0);assert.equal(await page.locator('#historyPanel').isVisible(),false);}finally{await c.close();}
  });
- test('reviewer move to Client persists through actual owned save, refresh and publication',async()=>{
+ test('directory side overrides a reviewer move through actual owned save, refresh and publication',async()=>{
   const r=await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{headers:headers('admin')});assert.equal(r.status,200);const draft=(await r.json()).draft;
-  const response=await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{method:'PATCH',headers:headers('admin'),body:JSON.stringify({revision:draft.revision,details:{...draft.details,internalAttendees:['Jacqui Fox'],clientAttendees:['Saki Arimoto']}})});const saved=await response.json();assert.equal(response.status,200,JSON.stringify(saved));assert(saved.draft.details.clientAttendees.includes('Saki Arimoto'));assert.equal(saved.draft.details.attendeeSidesReviewed,true);
-  const reread=await(await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{headers:headers('admin')})).json();assert.deepEqual(reread.draft.details,saved.draft.details);assert.equal((await db.getMeetingMinutesAgentDraft(draftId,1)).details.attendeeSidesReviewed,true);
+  const response=await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{method:'PATCH',headers:headers('admin'),body:JSON.stringify({revision:draft.revision,details:{...draft.details,internalAttendees:['Jacqui Fox'],clientAttendees:['Saki Arimoto']}})});const saved=await response.json();assert.equal(response.status,200,JSON.stringify(saved));assert(saved.draft.details.internalAttendees.includes('Saki Arimoto'));assert(!saved.draft.details.clientAttendees.includes('Saki Arimoto'));
+  const reread=await(await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{headers:headers('admin')})).json();assert.deepEqual(reread.draft.details,saved.draft.details);assert((await db.getMeetingMinutesAgentDraft(draftId,1)).details.internalAttendees.includes('Saki Arimoto'));
+ });
+ test('directory edits control reopening and regenerated attendee extraction without rewriting saved history',async()=>{
+  const before=(await pool.query('SELECT * FROM meeting_minutes_agent_drafts WHERE id=$1',[draftId])).rows[0];
+  const saki=(await req()).data.people.find(p=>p.name==='Saki Arimoto');
+  assert.equal((await req('/people/'+saki.id,{method:'PUT',body:{name:saki.name,side:'client',spellings:saki.spellings}})).status,200);
+  const reopened=await(await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{headers:headers('admin')})).json();
+  assert(reopened.draft.details.clientAttendees.includes('Saki Arimoto'));
+  const extracted=require('../routes/api').stagedEvaluation.extractStagedDetailsFromTranscript('Review transcript\n\nJacqui Fox   0:05\nWe reviewed the schedule.\n\nSaki Arimoto   0:12\nI will check the report.','fixture.vtt');
+  const regenerated=require('../utils/meetingMinutesAgentV2').sanitiseDetails(extracted.screens.details);
+  assert(regenerated.clientAttendees.includes('Saki Arimoto'));
+  assert.deepEqual((await pool.query('SELECT * FROM meeting_minutes_agent_drafts WHERE id=$1',[draftId])).rows[0],before);
  });
  test('separate worker process refreshes edits and gives Python the current settings snapshot',async()=>{
   const code=`const rl=require('readline').createInterface({input:process.stdin});const s=require('./utils/settingsStore');rl.on('line',async()=>{await s.refresh();console.log(JSON.stringify({people:s.getPeople(),terms:s.getTerms(),snapshot:process.env.TRINZO_SETTINGS_SNAPSHOT}));});`;

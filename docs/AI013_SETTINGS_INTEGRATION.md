@@ -2,12 +2,12 @@
 
 26 October 2026. Integration of PR #61 onto current main, including PR #67/AI-010 and all released minutes and project-report safeguards.
 
-## Proposed behaviour
+## Behaviour
 
-The reviewer-precedence rule below is tested in the isolated branch but awaits the explicit AI-020 decision. This document does not record acceptance or authorise merging before that decision.
+AI-020 was resolved by the user on 26 October 2026: **Directory classification always takes precedence.** The earlier reviewer-precedence recommendation and isolated proposal were not deployed and are superseded.
 
 - Signed-in colleagues can view `/settings`; only administrators can add, edit or delete people/glossary entries and read change history. Audit identity comes from the authenticated session.
-- The directory supplies names, alternative spellings and default Internal/Client classifications. A reviewer saving explicit attendee lists marks them reviewed in the existing draft JSON; later normalisation respects that choice. Newly generated/unreviewed lists retain directory classification. No extra database field or historical backfill is needed for this marker.
+- The directory supplies names, alternative spellings and authoritative Internal/Client classifications. For listed people it overrides a per-meeting move in either direction on save, reopen and regeneration. Administrators correct the side in Settings; unlisted people remain manually assignable. Existing stored history is not bulk rewritten, although current display/classification uses the directory. No extra draft metadata or schema field is introduced for reviewer overrides.
 - Exact registered names and aliases are looked up before fuzzy-name length limits. Two or more people sharing a first name remain ambiguous, including the third and later entries. Existing short-given-name safeguards remain: a shared surname does not turn Sami/Suki/Maki into Saki.
 - Glossary validation rejects collisions across the same separator variants and acronym plurals the runtime corrector accepts. Valid own-term spellings such as `Med Envoy` -> `MedEnvoy` remain supported. Terms, meanings and aliases remain data, not executable instructions.
 - Settings schema creation and once-only seeding share a transaction and cross-process advisory lock. Deleting a seeded row is not undone by refresh, migration reruns or new processes. Existing rows are not overwritten by seed inserts.
@@ -16,9 +16,9 @@ The reviewer-precedence rule below is tested in the isolated branch but awaits t
 
 ## Evidence
 
-301 scoped Node checks passed across Settings, names/attendees/terminology, minutes V2, project reports/editing/approval/history/health and Tasks. After adding three further acceptance cases, all nine actual Settings integration checks passed (304 distinct scoped checks overall). All 112 relevant Python checks, 20 unchanged project reference examples and the normal frontend build passed.
+All 307 scoped Node checks passed across Settings, names/attendees/terminology, minutes V2, project reports/editing/approval/history/health, the latest Tasks input filter and the agreed directory-precedence policy. All 112 relevant Python checks, 20 unchanged project reference examples and the normal frontend build passed.
 
-The Settings integration uses actual session authentication and PostgreSQL in the explicit disposable `trinzo_tasks_test` database, with a private schema. It exercises permissions, desktop/mobile edits, refresh persistence, audit authors, deletion, reviewer-side save/readback, independent-process and Python snapshot delivery, actual worker execution of an offline/no-save project job, simultaneous fresh setup, repeatable migration and last-good-settings recovery. Tests call no external AI services and do not modify production reports or minutes.
+The Settings integration uses actual session authentication and PostgreSQL in the explicit disposable `trinzo_tasks_test` database, with a private schema. It exercises permissions, desktop/mobile edits, refresh persistence, audit authors, deletion, directory-precedence save/readback, independent-process and Python snapshot delivery, actual worker execution of an offline/no-save project job, simultaneous fresh setup, repeatable migration and last-good-settings recovery. Tests call no external AI services and do not modify production reports or minutes.
 
 The existing first-name ambiguity test now provides synthetic directory rows through the real Settings store rather than patching the retired hardcoded constant; all original assertions for two through six shared first names remain. Merge conflict resolution retains the already released filing, timing and review-accounting imports and behaviour.
 

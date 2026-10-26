@@ -5,7 +5,7 @@ const { validOccurrenceId, actionProvenanceSignature, findActionOccurrenceIndex,
 const TimingIntegrity = require('./meetingMinutesTiming');
 const { normaliseSystemTimingIssue, actionTimingIssueFlag } = require('./meetingMinutesTimingFlags');
 const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutesReviewAccounting');
-const { alwaysInternalAttendeeName, knownPersonName, normaliseFixedPersonAliases } = require('./entityNormalization');
+const { alwaysInternalAttendeeName, knownPersonName, knownPerson, normaliseFixedPersonAliases } = require('./entityNormalization');
 const { normaliseDomainTerms } = require('./domainTerms');
 const { convertSpokenNumbers } = require('./spokenNumbers');
 const { alignEllipticalDateRangesWithEvidence } = require('./spokenForms');
@@ -154,11 +154,12 @@ function sanitiseDetails(candidate = {}) {
     else if (!clientAttendees.length) internalAttendees.push(...unassigned);
     else clientAttendees.push(...unassigned);
   }
-  // People listed as Internal on the Settings page are always internal, whichever
-  // list the transcript, a model or an earlier save put them in.
-  const alwaysInternal = candidate.attendeeSidesReviewed === true ? []
-    : clientAttendees.filter((name) => alwaysInternalAttendeeName(name));
-  if (alwaysInternal.length) internalAttendees = names([...internalAttendees, ...alwaysInternal]);
+  // AI-020: the directory overrides either explicit list on every save and
+  // re-generation. Correct a listed person's side in Settings, not per meeting.
+  const listedInternal = clientAttendees.filter(name => knownPerson(name)?.side === 'internal');
+  const listedClient = internalAttendees.filter(name => knownPerson(name)?.side === 'client');
+  internalAttendees = names([...internalAttendees.filter(name => knownPerson(name)?.side !== 'client'), ...listedInternal]);
+  clientAttendees = names([...clientAttendees.filter(name => knownPerson(name)?.side !== 'internal'), ...listedClient]);
   const internalKeys = new Set(internalAttendees.map(attendeeKey));
   clientAttendees = clientAttendees.filter((name) => !internalKeys.has(attendeeKey(name)));
   const allAttendees = names([...suppliedAll, ...internalAttendees, ...clientAttendees]);
@@ -168,7 +169,6 @@ function sanitiseDetails(candidate = {}) {
     meetingLocation: text(candidate.meetingLocation, 200) || DEFAULT_MEETING_LOCATION,
     meetingType: text(candidate.meetingType, 200),
     clientAttendeeLabel: candidate.clientAttendeeLabel === 'External' ? 'External' : 'Client',
-    ...(candidate.attendeeSidesReviewed === true ? { attendeeSidesReviewed: true } : {}),
     internalAttendees,
     clientAttendees,
     allAttendees

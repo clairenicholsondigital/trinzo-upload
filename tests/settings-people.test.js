@@ -117,13 +117,20 @@ test('explicitly registered four-word names and aliases resolve before fuzzy tok
   assert.equal(knownPersonName('Unlisted Person With Four Words'),'');
 });
 
-test('a reviewer-selected Client side survives repeated sanitising and later directory changes', () => {
-  const reviewed = sanitiseDetails({internalAttendees:['Jacqui Fox'],clientAttendees:['Saki Arimoto'],attendeeSidesReviewed:true});
-  assert.deepEqual(reviewed.clientAttendees,['Saki Arimoto']);
-  assert.equal(reviewed.attendeeSidesReviewed,true);
-  assert.deepEqual(sanitiseDetails(reviewed),reviewed);
-  withPeople([{name:'Another Person',side:'internal',spellings:[]}]);
-  assert.deepEqual(sanitiseDetails(reviewed),reviewed);
-  const inferred = sanitiseDetails({allAttendees:['Jacqui Fox','Saki Arimoto','Rebecca Gill']});
-  assert.deepEqual(inferred.internalAttendees,['Jacqui Fox','Saki Arimoto']);
+test('directory classification overrides explicit reviewer lists in both directions', () => {
+  const details = sanitiseDetails({internalAttendees:['Rebecca Gill'],clientAttendees:['Saki Arimoto'],attendeeSidesReviewed:true});
+  assert.deepEqual(details.internalAttendees,['Saki Arimoto']);
+  assert.deepEqual(details.clientAttendees,['Rebecca Gill']);
+  assert.equal(details.attendeeSidesReviewed,undefined);
+  assert.deepEqual(sanitiseDetails(details),details);
+  withPeople([{name:'Saki Arimoto',side:'client',spellings:[]}],{without:['Saki Arimoto']});
+  const updated=sanitiseDetails(details);
+  assert.deepEqual(updated.internalAttendees,[]);
+  assert.deepEqual(updated.clientAttendees,['Rebecca Gill','Saki Arimoto']);
+});
+
+test('people absent from the directory remain manually assignable', () => {
+  const details=sanitiseDetails({internalAttendees:['Zephyr Quill'],clientAttendees:['Rowan Unlisted']});
+  assert.deepEqual(details.internalAttendees,['Zephyr Quill']);
+  assert.deepEqual(details.clientAttendees,['Rowan Unlisted']);
 });

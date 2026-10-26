@@ -18691,8 +18691,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       throw error;
     }
     assertMeetingAgentDateInput(req.body?.details || {}, req.body?.actions || [], draft);
-    const details = sanitiseMeetingAgentDetails(req.body?.details
-      ? { ...req.body.details, attendeeSidesReviewed: true } : draft.details);
+    const details = sanitiseMeetingAgentDetails(req.body?.details || draft.details);
     const dateChanged = details.meetingDate !== sanitiseMeetingAgentDetails(draft.details).meetingDate;
     const dateConfirmedByReviewer = (req.body?.reviewFlags || []).some(flag =>
       flag?.id === 'meeting-date-source-check' && flag.status === 'confirmed'
