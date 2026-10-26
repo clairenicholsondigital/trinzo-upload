@@ -573,7 +573,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const risks = asArray(projectReport.risks);
     const actions = asArray(projectReport.actions);
     const statusDiagnostics = projectReport.statusClassifierDiagnostics || payload.statusClassifierDiagnostics || {};
-    const statusOptions = ['draft', 'in_review', 'approved', 'archived'];
+    const statusOptions = ['draft', 'in_review', ...(report.reportStatus === 'approved' ? ['approved'] : []), 'archived'];
     const currentStatus = report.reportStatus || projectReport.reportStatus;
     if (currentStatus && !statusOptions.includes(currentStatus)) statusOptions.push(currentStatus);
     const approvalText = report.approvedAt
@@ -581,7 +581,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       : 'Not approved yet. Approve only after the report is good enough to become future project memory.';
     const statusLabel = String(report.reportStatus || projectReport.reportStatus || 'draft').toLowerCase();
     const reviewBanner = statusLabel === 'approved'
-      ? '<div class="safeguard-banner success"><strong>Approved report:</strong> this has been marked approved. Re-check any edits before exporting or sharing a new copy.</div>'
+      ? '<div class="safeguard-banner success"><strong>Approved report:</strong> edits will create an unapproved working copy. Click Approve report to approve the revised content.</div>'
       : `<div class="safeguard-banner warning"><strong>Draft / review required:</strong> this report is ${escapeHtml(friendlyLabel(statusLabel))}. Check evidence, dates, risks and actions before approval or client sharing.</div>`;
     const statusCrossCheck = statusDiagnostics && Object.keys(statusDiagnostics).length
       ? `<div class="item"><div class="label">Status cross-check</div><div class="value">${statusDiagnostics.decisionUse === 'diagnostics_only' ? 'Review aid only' : 'Review before use'}</div><div class="muted">${escapeHtml(statusDiagnostics.reason || `${statusDiagnostics.itemCount || 0} signal${Number(statusDiagnostics.itemCount || 0) === 1 ? '' : 's'} found`)}</div></div>`
@@ -612,6 +612,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           </div>
           <button id="exportReportPdfBtn" type="button">Export PDF</button>
           <button id="saveReportBtn" class="primary" type="button">Save report</button>
+          <button id="approveReportBtn" type="button">Approve report</button>
         </div>
         <p class="intro summary">${escapeHtml(projectReport.summary || 'No summary saved for this report.')}</p>
         ${reviewBanner}
@@ -631,7 +632,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       ${overallSummarySection}
       <section class="panel edit-panel">
         <h2>Edit report</h2>
-        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave to the server after a short pause. The detailed milestone, risk and action rows are editable directly in their report tables below.</p>
+        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave as an unapproved working copy. Click Approve report after reviewing; the last approved version remains project memory until reapproval or archiving. The detailed milestone, risk and action rows are editable directly in their report tables below.</p>
         <div class="grid">
           <label>Report name
             <input id="reportNameEditor" type="text" value="${escapeHtml(report.reportName || `Report ${report.reportId}`)}" />
@@ -800,8 +801,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       queueAutosave();
     }
 
-    async function saveReport(automatic) {
+    async function saveReport(automatic, approve = false) {
       clearTimeout(autosaveTimer);
+      if (saving && approve) { setSaveStatus('Wait for the current save to finish, then click Approve report again.'); return; }
       if (saving) { pendingSave = true; pendingManual = pendingManual || !automatic; return; }
       let editedReport;
       try {
@@ -820,18 +822,23 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             reportName: nameEditor.value,
-            reportStatus: statusEditor.value,
+            reportStatus: approve ? 'approved' : statusEditor.value === 'approved' ? 'draft' : statusEditor.value,
             projectReport: editedReport,
             changeSummary: automatic ? 'Autosaved draft from report detail page.' : 'Saved from report detail page.',
-            autosave: automatic
+            autosave: automatic,
+            approve: approve && !automatic,
+            baseVersionId: report.versions?.[0]?.versionId
           })
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result || result.ok === false) {
           throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         }
-        setSaveStatus(`${automatic ? 'Autosaved server draft' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
+        setSaveStatus(`${approve ? 'Approved' : automatic ? 'Autosaved server draft' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
         report = result.report;
+        if (savedSerial === editSerial) {
+          statusEditor.value = report.reportStatus;
+        }
         if (savedSerial === editSerial) reportHasUnsavedChanges = false;
         if (!automatic && savedSerial === editSerial && !pendingSave) renderDetail(result.report);
         else if (savedSerial !== editSerial) setSaveStatus('Unsaved changes — saving the latest edits next.');
@@ -873,6 +880,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       } catch (error) { setSaveStatus(error.message || 'Could not copy report data.', 'error'); }
     });
     saveButton.addEventListener('click', () => saveReport(false));
+    document.getElementById('approveReportBtn').addEventListener('click', () => saveReport(false, true));
     exportButton.addEventListener('click', () => window.print());
   }
 

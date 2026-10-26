@@ -16,6 +16,18 @@ from project_knowledge_embeddings import embed_texts
 STOPWORDS = {"the", "and", "for", "with", "that", "this", "from", "into", "are", "was", "were", "has", "have", "will", "project", "update"}
 
 
+# Manual background/decision items remain independent. Report-derived items
+# must belong to the exact current approved snapshot of the same project/report.
+APPROVED_SOURCE_FILTER = """
+AND ((i.source_report_id IS NULL AND i.source_report_version_id IS NULL)
+  OR EXISTS (SELECT 1 FROM project_reports r
+    JOIN project_report_versions v ON v.id=r.approved_version_id AND v.report_id=r.id
+    WHERE r.project_id=i.project_id AND r.id=i.source_report_id
+      AND v.id=i.source_report_version_id AND v.change_type='approved'
+      AND r.report_status<>'archived'))
+"""
+
+
 def db_kwargs() -> dict[str, Any]:
     if os.getenv("DATABASE_URL"):
         return {"dsn": os.environ["DATABASE_URL"]}
@@ -80,7 +92,8 @@ def retrieve(project_id: int, query: str, top_k: int = 8, item_types: list[str] 
                            i.created_at
                     FROM project_knowledge_chunks c
                     JOIN project_knowledge_items i ON i.id = c.item_id
-                    WHERE c.project_id = %s AND i.status = 'active' AND c.embedding_status = 'embedded' AND c.embedding IS NOT NULL
+                    WHERE c.project_id = %s AND i.project_id=c.project_id AND i.status = 'active' AND c.embedding_status = 'embedded' AND c.embedding IS NOT NULL
+                    {APPROVED_SOURCE_FILTER}
                     {type_filter}
                     ORDER BY c.embedding <=> %s::vector, i.created_at DESC
                     LIMIT %s
@@ -116,7 +129,8 @@ def retrieve(project_id: int, query: str, top_k: int = 8, item_types: list[str] 
                        c.chunk_text, ({score_expr})::float AS score, i.created_at
                 FROM project_knowledge_chunks c
                 JOIN project_knowledge_items i ON i.id = c.item_id
-                WHERE c.project_id = %s AND i.status = 'active' {type_filter}
+                WHERE c.project_id = %s AND i.project_id=c.project_id AND i.status = 'active' {type_filter}
+                  {APPROVED_SOURCE_FILTER}
                   AND ({' OR '.join(clauses)})
                 ORDER BY score DESC, i.created_at DESC
                 LIMIT %s

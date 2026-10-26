@@ -183,10 +183,10 @@ async function listProjectReports(limit = 50, filters = {}) {
   return result.rows;
 }
 
-async function getProjectReportDetail(reportId) {
+async function getProjectReportDetail(reportId, runQuery = query) {
   const id = Number(reportId);
   if (!Number.isFinite(id) || id <= 0) return null;
-  const result = await query(
+  const result = await runQuery(
     `SELECT
        r.id AS "reportId",
        p.id AS "projectId",
@@ -195,6 +195,9 @@ async function getProjectReportDetail(reportId) {
        COALESCE(r.file_name, '') AS "fileName",
        COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text) AS "reportName",
        r.report_status AS "reportStatus",
+       r.approved_version_id AS "approvedVersionId",
+       r.approved_at AS "approvedAt",
+       r.approved_by AS "approvedBy",
        r.created_at AS "createdAt",
        r.updated_at AS "updatedAt",
        (
@@ -235,100 +238,68 @@ async function getProjectReportDetail(reportId) {
 
 async function saveProjectReportDetail(reportId, payload = {}) {
   const id = Number(reportId);
-  if (!Number.isFinite(id) || id <= 0) {
-    const error = new Error('Valid report id is required.');
-    error.statusCode = 400;
-    throw error;
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw Object.assign(new Error('Valid report id is required.'), { statusCode: 400 });
   }
-
-  const existing = await getProjectReportDetail(id);
-  if (!existing) return null;
-
-  const latest = Array.isArray(existing.versions) && existing.versions[0] ? existing.versions[0] : {};
-  const latestPayload = latest.payload && typeof latest.payload === 'object' ? latest.payload : {};
-  const projectReport = payload.projectReport && typeof payload.projectReport === 'object'
-    ? payload.projectReport
-    : latestPayload.projectReport;
-  if (!projectReport || typeof projectReport !== 'object') {
-    const error = new Error('Project report payload is required.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const allowedStatuses = new Set(['draft', 'in_review', 'approved', 'archived']);
-  const requestedStatus = String(payload.reportStatus || projectReport.reportStatus || existing.reportStatus || 'draft').trim();
-  const reportStatus = allowedStatuses.has(requestedStatus) ? requestedStatus : 'draft';
-  const reportName = Object.prototype.hasOwnProperty.call(payload, 'reportName')
-    ? String(payload.reportName || '').trim()
-    : String(existing.reportName || existing.fileName || '').trim();
-  const nextVersion = Number(latest.versionNumber || 0) + 1;
-  const isAutosave = payload.autosave === true;
-  const nextPayload = {
-    ...latestPayload,
-    projectReport: {
-      ...projectReport,
-      reportStatus,
-      updatedAt: new Date().toISOString()
-    }
-  };
-
-  const isApproved = reportStatus === 'approved';
   const client = await getPgPool().connect();
-  let newVersionId = null;
+  let approvedSource = null;
   try {
     await client.query('BEGIN');
-    await client.query(
-      `UPDATE project_reports
-       SET report_status = $1,
-           file_name = $2,
-           approved_at = CASE WHEN $1 = 'approved' THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
-           approved_by = CASE WHEN $1 = 'approved' THEN $3 ELSE approved_by END,
-           updated_at = NOW()
-       WHERE id = $4`,
-      [reportStatus, reportName || `Report ${id}`, payload.savedBy || 'OpenClaw', id]
-    );
-    if (isAutosave && latest.changeType === 'autosave' && Number(latest.versionId || 0) > 0 && !isApproved) {
-      await client.query(
-        `UPDATE project_report_versions
-         SET change_summary = $1,
-             saved_by = $2,
-             report_payload = $3,
-             created_at = NOW()
-         WHERE id = $4 AND report_id = $5`,
-        [payload.changeSummary || 'Autosaved draft from report detail page.', payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload), Number(latest.versionId), id]
-      );
-      newVersionId = Number(latest.versionId);
-    } else {
-      const inserted = await client.query(
-        `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id`,
-        [id, nextVersion, isApproved ? 'approved' : isAutosave ? 'autosave' : 'user_edit', payload.changeSummary || (isAutosave ? 'Autosaved draft from report detail page.' : 'Saved from report detail page.'), payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]
-      );
-      newVersionId = inserted.rows[0].id;
+    const locked = await client.query('SELECT id FROM project_reports WHERE id = $1 FOR UPDATE', [id]);
+    if (!locked.rows.length) { await client.query('ROLLBACK'); return null; }
+    const existing = await getProjectReportDetail(id, client.query.bind(client));
+    const latest = existing.versions?.[0] || {};
+    if (payload.baseVersionId != null && Number(payload.baseVersionId) !== Number(latest.versionId)) {
+      throw Object.assign(new Error('This report changed in another session. Reload before saving or approving; keep a copy of your edits.'), { statusCode: 409 });
+    }
+    const latestPayload = latest.payload || {};
+    const projectReport = payload.projectReport || latestPayload.projectReport;
+    if (!projectReport || typeof projectReport !== 'object' || Array.isArray(projectReport)) {
+      throw Object.assign(new Error('Project report payload is required.'), { statusCode: 400 });
+    }
+    const isAutosave = payload.autosave === true;
+    const isApproved = payload.approve === true && !isAutosave;
+    if (isApproved && (payload.baseVersionId == null || existing.reportStatus === 'archived')) {
+      throw Object.assign(new Error('Reload the current non-archived report before explicitly approving it.'), { statusCode: 409 });
     }
     if (isApproved) {
-      await client.query('UPDATE project_reports SET approved_version_id = $1 WHERE id = $2', [newVersionId, id]);
+      const core = (await client.query('SELECT id,milestone_name FROM project_core_milestones WHERE project_id=$1 AND is_active=TRUE', [existing.projectId])).rows;
+      const reviewed = (Array.isArray(projectReport.milestones) ? projectReport.milestones : []).map(row => {
+        const milestoneId = row.milestoneId == null || row.milestoneId === '' ? null : Number(row.milestoneId);
+        if (milestoneId !== null && (!Number.isSafeInteger(milestoneId) || milestoneId <= 0)) {
+          throw Object.assign(new Error('A valid project milestone ID is required.'), { statusCode: 400 });
+        }
+        return { row, source: {}, milestoneId, assess: true };
+      });
+      resolveProjectMilestones(reviewed, core);
+    }
+    const requestedStatus = payload.reportStatus || projectReport.reportStatus || existing.reportStatus;
+    // Editing retains the last approved pointer, but never approves the working copy.
+    const reportStatus = isApproved ? 'approved' : ['draft', 'in_review', 'archived'].includes(requestedStatus) ? requestedStatus : 'draft';
+    const reportName = Object.hasOwn(payload, 'reportName') ? String(payload.reportName || '').trim() : existing.reportName;
+    const nextPayload = { ...latestPayload, projectReport: { ...projectReport, reportStatus, updatedAt: new Date().toISOString() } };
+    await client.query(`UPDATE project_reports SET report_status=$1, file_name=$2,
+      approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,
+      approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END,
+      approved_version_id=CASE WHEN $1='archived' THEN NULL ELSE approved_version_id END,
+      updated_at=NOW() WHERE id=$5`, [reportStatus, reportName || `Report ${id}`, isApproved, payload.savedBy || 'OpenClaw', id]);
+    // Immutable versions make baseVersionId a reliable concurrency boundary.
+    const inserted = await client.query(`INSERT INTO project_report_versions
+      (report_id,version_number,change_type,change_summary,saved_by,report_payload) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [id, Number(latest.versionNumber || 0) + 1, isApproved ? 'approved' : isAutosave ? 'autosave' : 'user_edit',
+      payload.changeSummary || (isApproved ? 'Explicitly approved reviewed report.' : 'Saved working copy.'), payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]);
+    const versionId = inserted.rows[0].id;
+    if (isApproved) {
+      await client.query('UPDATE project_reports SET approved_version_id=$1 WHERE id=$2', [versionId, id]);
+      approvedSource = { projectId: existing.projectId, reportId: id, reportVersionId: versionId, periodLabel: existing.periodLabel, payload: nextPayload };
     }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
-  } finally {
-    client.release();
-  }
-
+  } finally { client.release(); }
   const saved = await getProjectReportDetail(id);
-  if (isApproved) {
-    saved.knowledgeIngestion = await ingestApprovedProjectReportVersion({
-      projectId: saved.projectId,
-      reportId: saved.reportId,
-      reportVersionId: newVersionId || Number(saved?.versions?.[0]?.versionId || 0),
-      periodLabel: saved.periodLabel,
-      payload: nextPayload,
-      createdAt: saved.updatedAt || saved.createdAt
-    });
-  }
+  if (approvedSource) saved.knowledgeIngestion = await ingestApprovedProjectReportVersion(approvedSource);
   return saved;
 }
 
@@ -1109,64 +1080,14 @@ async function getProjectContext(projectName = '', limit = 5) {
   }
   const projectId = Number(project.projectId);
 
-  const activeMilestonesResult = await query(`
-SELECT json_build_object(
-  'milestoneId', m.id,
-  'milestoneName', m.milestone_name,
-  'comparisonKey', regexp_replace(lower(m.milestone_name), '[^a-z0-9]+', '_', 'g'),
-  'category', m.category,
-  'description', COALESCE(m.description, ''),
-  'baselineFinishDate', m.baseline_finish_date,
-  'forecastFinishDate', m.forecast_finish_date,
-  'isOfficial', m.is_official,
-  'officialLabel', COALESCE(m.official_label, ''),
-  'officialAt', m.official_at,
-  'latestAssessment', latest.assessment,
-  'previousAssessment', previous.assessment
-) AS payload
-FROM project_core_milestones m
-LEFT JOIN LATERAL (
-  SELECT json_build_object(
-    'assessmentId', a.id,
-    'reportVersionId', a.report_version_id,
-    'reportId', v.report_id,
-    'status', a.status,
-    'trend', a.trend,
-    'confidence', a.confidence,
-    'summary', COALESCE(a.summary, ''),
-    'forecastFinishDate', a.forecast_finish_date,
-    'createdAt', v.created_at
-  ) AS assessment
-  FROM project_report_milestone_assessments a
-  JOIN project_report_versions v ON v.id = a.report_version_id
-  WHERE a.milestone_id = m.id
-  ORDER BY v.created_at DESC, a.id DESC
-  LIMIT 1
-) latest ON TRUE
-LEFT JOIN LATERAL (
-  SELECT json_build_object(
-    'assessmentId', a.id,
-    'reportVersionId', a.report_version_id,
-    'reportId', v.report_id,
-    'status', a.status,
-    'trend', a.trend,
-    'confidence', a.confidence,
-    'summary', COALESCE(a.summary, ''),
-    'forecastFinishDate', a.forecast_finish_date,
-    'createdAt', v.created_at
-  ) AS assessment
-  FROM project_report_milestone_assessments a
-  JOIN project_report_versions v ON v.id = a.report_version_id
-  JOIN project_reports r ON r.id = v.report_id
-  WHERE a.milestone_id = m.id
-    AND r.report_status <> 'archived'
-    AND (latest.assessment IS NULL OR a.id <> ((latest.assessment->>'assessmentId')::BIGINT))
-  ORDER BY v.created_at DESC, a.id DESC
-  LIMIT 1
-) previous ON TRUE
-WHERE m.project_id = $1 AND m.is_active = TRUE
-ORDER BY m.sort_order, m.id;`, [projectId]);
-  const activeMilestones = activeMilestonesResult.rows.map((row) => row.payload);
+  const activeMilestonesResult = await query(`SELECT json_build_object(
+    'milestoneId',id,'milestoneName',milestone_name,
+    'comparisonKey',regexp_replace(lower(milestone_name),'[^a-z0-9]+','_','g'),
+    'category',category,'description',COALESCE(description,''),
+    'baselineFinishDate',baseline_finish_date,'forecastFinishDate',forecast_finish_date,
+    'isOfficial',is_official,'officialLabel',COALESCE(official_label,''),'officialAt',official_at
+  ) AS payload FROM project_core_milestones WHERE project_id=$1 AND is_active=TRUE ORDER BY sort_order,id`, [projectId]);
+  const activeMilestones = activeMilestonesResult.rows.map(row => row.payload);
 
   const activeRisksResult = await query(`
 SELECT json_build_object(
@@ -1186,101 +1107,19 @@ WHERE project_id = $1 AND is_active = TRUE
 ORDER BY id;`, [projectId]);
   const activeRisks = activeRisksResult.rows.map((row) => row.payload);
 
-  const recentReportsResult = await query(`
-SELECT json_build_object(
-  'reportId', r.id,
-  'reportVersionId', v.id,
-  'versionNumber', v.version_number,
-  'periodLabel', COALESCE(rp.period_label, ''),
-  'fileName', COALESCE(r.file_name, ''),
-  'reportStatus', r.report_status,
-  'createdAt', r.created_at,
-  'updatedAt', r.updated_at,
-  'versionCreatedAt', v.created_at,
-  'overallHealth', COALESCE(v.report_payload->'projectReport'->>'overallHealth', ''),
-  'overallHealthRag', COALESCE(v.report_payload->'projectReport'->>'overallHealthRag', ''),
-  'summary', COALESCE(v.report_payload->'projectReport'->>'summary', ''),
-  'comparisonSnapshot', COALESCE(v.report_payload->'projectReport'->'comparisonSnapshot', '{}'::jsonb)
-) AS payload
-FROM project_reports r
-LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
-JOIN LATERAL (
-  SELECT id, version_number, report_payload, created_at
-  FROM project_report_versions
-  WHERE report_id = r.id
-  ORDER BY version_number DESC, id DESC
-  LIMIT 1
-) v ON TRUE
-WHERE r.project_id = $1
-  AND r.report_status <> 'archived'
-ORDER BY v.created_at DESC, r.id DESC
-LIMIT $2;`, [projectId, safeLimit]);
-  const recentReports = recentReportsResult.rows.map((row) => row.payload);
-
-  const healthHistoryResult = await query(`
-SELECT json_build_object(
-  'area', h.area,
-  'status', h.status,
-  'trend', h.trend,
-  'confidence', h.confidence,
-  'rationale', COALESCE(h.rationale, ''),
-  'reportVersionId', h.report_version_id,
-  'reportId', v.report_id,
-  'createdAt', v.created_at
-) AS payload
-FROM project_report_health h
-JOIN project_report_versions v ON v.id = h.report_version_id
-JOIN project_reports r ON r.id = v.report_id
-WHERE r.project_id = $1
-  AND r.report_status <> 'archived'
-ORDER BY v.created_at DESC, h.area
-LIMIT $2;`, [projectId, safeLimit * 5]);
-  const healthHistory = healthHistoryResult.rows.map((row) => row.payload);
-
-  const milestoneHistoryResult = await query(`
-SELECT json_build_object(
-  'milestoneId', m.id,
-  'milestoneName', m.milestone_name,
-  'comparisonKey', regexp_replace(lower(m.milestone_name), '[^a-z0-9]+', '_', 'g'),
-  'status', a.status,
-  'trend', a.trend,
-  'confidence', a.confidence,
-  'summary', COALESCE(a.summary, ''),
-  'forecastFinishDate', a.forecast_finish_date,
-  'reportVersionId', a.report_version_id,
-  'reportId', v.report_id,
-  'createdAt', v.created_at
-) AS payload
-FROM project_report_milestone_assessments a
-JOIN project_core_milestones m ON m.id = a.milestone_id
-JOIN project_report_versions v ON v.id = a.report_version_id
-JOIN project_reports r ON r.id = v.report_id
-WHERE r.project_id = $1
-  AND r.report_status <> 'archived'
-ORDER BY v.created_at DESC, a.id DESC
-LIMIT $2;`, [projectId, safeLimit * 25]);
-  const milestoneHistory = milestoneHistoryResult.rows.map((row) => row.payload);
-
-  const riskSuggestionsResult = await query(`
-SELECT json_build_object(
-  'riskSuggestionId', s.id,
-  'riskTitle', s.risk_title,
-  'description', COALESCE(s.description, ''),
-  'suggestedMitigation', COALESCE(s.suggested_mitigation, ''),
-  'confidence', s.confidence,
-  'reviewStatus', s.review_status,
-  'reportVersionId', s.report_version_id,
-  'reportId', v.report_id,
-  'createdAt', v.created_at
-) AS payload
-FROM project_ai_risk_suggestions s
-JOIN project_report_versions v ON v.id = s.report_version_id
-JOIN project_reports r ON r.id = v.report_id
-WHERE r.project_id = $1
-  AND r.report_status <> 'archived'
-ORDER BY v.created_at DESC, s.id DESC
-LIMIT $2;`, [projectId, safeLimit * 10]);
-  const riskSuggestions = riskSuggestionsResult.rows.map((row) => row.payload);
+  // Read the reviewed JSON itself: legacy approvals have no assessment rows
+  // for their approved version, and generated rows predate reviewer corrections.
+  const approvedReportsResult = await query(`SELECT
+    r.id AS "reportId",v.id AS "reportVersionId",v.version_number AS "versionNumber",
+    COALESCE(rp.period_label,'') AS "periodLabel",COALESCE(r.file_name,'') AS "fileName",
+    'approved' AS "reportStatus",r.created_at AS "createdAt",v.created_at AS "updatedAt",
+    v.created_at AS "versionCreatedAt",v.report_payload->'projectReport' AS "projectReport"
+    FROM project_reports r JOIN project_report_versions v ON v.id=r.approved_version_id AND v.report_id=r.id
+    LEFT JOIN project_reporting_periods rp ON rp.id=r.reporting_period_id
+    WHERE r.project_id=$1 AND r.report_status<>'archived' AND v.change_type='approved'
+    ORDER BY v.created_at DESC,v.id DESC`, [projectId]);
+  const { approvedProjectHistory } = require('./projectApprovedHistory');
+  const { recentReports, healthHistory, milestoneHistory, riskSuggestions } = approvedProjectHistory(approvedReportsResult.rows, activeMilestones, safeLimit);
 
   const latestSnapshotResult = await query(`
 SELECT json_build_object(
@@ -1297,6 +1136,10 @@ SELECT json_build_object(
 ) AS payload
 FROM project_context_snapshots
 WHERE project_id = $1
+  AND (source_report_version_id IS NULL OR EXISTS (
+    SELECT 1 FROM project_reports r JOIN project_report_versions v ON v.id=r.approved_version_id AND v.report_id=r.id
+    WHERE r.project_id=$1 AND r.report_status<>'archived' AND v.change_type='approved'
+      AND v.id=project_context_snapshots.source_report_version_id))
 ORDER BY created_at DESC, id DESC
 LIMIT 1;`, [projectId]);
   const latestSnapshot = latestSnapshotResult.rows[0]?.payload || null;
@@ -2886,7 +2729,10 @@ async function ingestApprovedProjectReportVersion({ projectId, reportId, reportV
   const client = await getPgPool().connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE project_knowledge_items SET status = $2, updated_at = NOW() WHERE source_report_version_id = $1', [versionId, 'archived']);
+    const eligible = await client.query(`SELECT r.id FROM project_reports r JOIN project_report_versions v ON v.id=r.approved_version_id AND v.report_id=r.id
+      WHERE r.id=$1 AND r.project_id=$2 AND v.id=$3 AND v.change_type='approved' AND r.report_status<>'archived' FOR UPDATE OF r`, [reportId, projectId, versionId]);
+    if (!eligible.rows.length) { await client.query('ROLLBACK'); return { ok: false, itemsCreated: 0, error: 'Report version is no longer the active approval.' }; }
+    await client.query("UPDATE project_knowledge_items SET status='archived',updated_at=NOW() WHERE source_report_id=$1 AND project_id=$2", [reportId, projectId]);
     let itemsCreated = 0;
     let chunksCreated = 0;
     for (const item of candidates) {
@@ -3098,16 +2944,8 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
   SELECT $1, $3, 'Transcript', $2, $4::date, $5::date, $6, TRUE
   WHERE NOT EXISTS (SELECT 1 FROM existing) AND $7::bigint IS NULL
   RETURNING id
-), updated AS (
-  UPDATE project_core_milestones
-  SET baseline_finish_date = COALESCE($4::date, baseline_finish_date),
-      forecast_finish_date = COALESCE($5::date, forecast_finish_date)
-  WHERE id IN (SELECT id FROM existing)
-  RETURNING id
 )
 SELECT id::text FROM inserted
-UNION ALL
-SELECT id::text FROM updated
 UNION ALL
 SELECT id::text FROM existing
 LIMIT 1`,
