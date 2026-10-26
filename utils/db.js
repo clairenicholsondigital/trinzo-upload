@@ -1,3 +1,4 @@
+const { bindingsFor, resolveProjectMilestones } = require('./projectMilestoneBinding');
 const { Pool } = require('pg');
 const { migrateDraftPayload: migrateMeetingAgentDraftPayload } = require('./meetingMinutesAgentV2');
 
@@ -2553,6 +2554,7 @@ function quarterEndDate(label) {
 
 function toMilestoneAssessmentStatus(status) {
   const value = String(status || '').toLowerCase();
+  if (['completed','on_track','at_risk','delayed','blocked','not_started','unknown'].includes(value)) return value;
   if (value === 'complete') return 'completed';
   if (['in_progress', 'scheduled', 'in_review'].includes(value)) return 'on_track';
   if (value === 'awaiting_input') return 'at_risk';
@@ -2912,8 +2914,6 @@ async function ingestApprovedProjectReportVersion({ projectId, reportId, reportV
 
 async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, sourceFingerprint, result }) {
   const report = result?.projectReport || {};
-  const segments = Array.isArray(result?.segments) ? result.segments : [];
-  const reportMilestones = Array.isArray(report?.milestones) ? report.milestones : [];
   const risks = Array.isArray(report?.risks) ? report.risks : [];
   const healthAreas = report?.healthAreas && typeof report.healthAreas === 'object' ? report.healthAreas : {};
   const name = projectName || 'Project update test';
@@ -2952,17 +2952,7 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     }
     return id;
   };
-  const itemKey = (item) => String(item?.comparison_key || item?.milestone || item?.milestoneName || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  const segmentForDraft = (milestoneDraft, index) => {
-    const draftKey = itemKey(milestoneDraft);
-    return segments.find((item) => itemKey(item) === draftKey) || segments[index] || {};
-  };
-  const milestoneDraftFor = (segment, index) => {
-    const segmentKey = itemKey(segment);
-    return reportMilestones[index]
-      || reportMilestones.find((item) => itemKey(item) === segmentKey)
-      || {};
-  };
+  const candidateBindings = bindingsFor(result);
 
   let projectId = Number(requestedProjectId || 0);
   if (Number.isFinite(projectId) && projectId > 0) {
@@ -2979,6 +2969,7 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     projectId = Number(existingByName.rows[0]?.id) || null;
   }
   if (!projectId) {
+    if (candidateBindings.some(binding => binding.milestoneId)) throw Object.assign(new Error('Milestone IDs require their existing project.'), { statusCode: 400 });
     projectId = parseId(
       (await query(
         `INSERT INTO projects (project_name, description, status, updated_at)
@@ -2989,6 +2980,13 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
       'project'
     );
   }
+
+  // Validate target IDs/names before creating report/version records. Only a
+  // supported row can create a fresh assessment; carried context is not evidence.
+  const coreRows = candidateBindings.length
+    ? (await query('SELECT id, milestone_name FROM project_core_milestones WHERE project_id=$1 AND is_active=TRUE', [projectId])).rows
+    : [];
+  const milestoneBindings = resolveProjectMilestones(candidateBindings, coreRows);
 
   const existingPeriod = await query(
     `SELECT id FROM project_reporting_periods
@@ -3076,28 +3074,29 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     );
   }
 
-  const milestoneRows = reportMilestones.length ? reportMilestones : segments;
-  const milestoneCount = milestoneRows.length;
-  for (let index = 0; index < milestoneCount; index += 1) {
-    const milestoneDraft = reportMilestones.length ? (milestoneRows[index] || {}) : milestoneDraftFor(segments[index] || {}, index);
-    const segment = reportMilestones.length ? segmentForDraft(milestoneDraft, index) : (segments[index] || {});
+  for (let index = 0; index < milestoneBindings.length; index += 1) {
+    const binding = milestoneBindings[index];
+    if (!binding.assess) continue;
+    const milestoneDraft = binding.row;
+    const segment = binding.source;
     const milestoneName = milestoneDraft.milestone || segment.milestone || `Milestone ${index + 1}`;
     const baselineFinishDate = milestoneDraft.baseline_finish_date || milestoneDraft.baselineDeadline || milestoneDraft.deadline;
     const forecastFinishDate = milestoneDraft.forecast_finish_date || milestoneDraft.forecastDeadline || milestoneDraft.deadline;
     const deliveryStatus = segment.delivery_status || milestoneDraft.delivery_status || milestoneDraft.status;
     const trend = normaliseProjectTrend(milestoneDraft.trend || segment.trend || 'stable');
-    const confidence = segment.delivery_status_confidence || milestoneDraft.delivery_status_confidence || segment.confidence || milestoneDraft.confidence;
+    const confidence = segment.delivery_status_confidence ?? milestoneDraft.delivery_status_confidence ?? segment.confidence ?? milestoneDraft.confidence;
     const summary = segment.normalised_evidence_summary || milestoneDraft.normalised_evidence_summary || segment.excerpt || milestoneDraft.excerpt || segment.status_resolution_note || '';
     const milestoneResult = await query(
       `WITH existing AS (
   SELECT id FROM project_core_milestones
-  WHERE project_id = $1 AND milestone_name = $2 AND is_active = TRUE
+  WHERE project_id = $1 AND is_active = TRUE
+    AND (($7::bigint IS NOT NULL AND id=$7) OR ($7::bigint IS NULL AND milestone_name=$2))
   ORDER BY id
   LIMIT 1
 ), inserted AS (
   INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, baseline_finish_date, forecast_finish_date, sort_order, is_active)
   SELECT $1, $3, 'Transcript', $2, $4::date, $5::date, $6, TRUE
-  WHERE NOT EXISTS (SELECT 1 FROM existing)
+  WHERE NOT EXISTS (SELECT 1 FROM existing) AND $7::bigint IS NULL
   RETURNING id
 ), updated AS (
   UPDATE project_core_milestones
@@ -3112,25 +3111,23 @@ SELECT id::text FROM updated
 UNION ALL
 SELECT id::text FROM existing
 LIMIT 1`,
-      [projectId, milestoneName, reportingPeriodId, toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), index]
+      [projectId, milestoneName, reportingPeriodId, toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), index, binding.coreId]
     );
-    const milestoneId = Number(milestoneResult.rows[0]?.id);
+    const milestoneId = parseId(milestoneResult.rows[0], 'milestone');
     await query(
       `INSERT INTO project_report_milestone_assessments
        (report_version_id, milestone_id, status, trend, confidence, summary, forecast_finish_date)
        VALUES ($1, $2, $3, $4, $5, $6, $7::date)`,
       [reportVersionId, milestoneId, toMilestoneAssessmentStatus(deliveryStatus), trend, clampConfidence(confidence), summary, toDateParam(forecastFinishDate)]
     );
-    const evidence = Array.isArray(segment.semantic_evidence) && segment.semantic_evidence.length
-      ? segment.semantic_evidence
-      : (segment.evidence || []).slice(0, 3).map((text) => ({ text, confidence: segment.confidence || 0.5 }));
+    const evidence = binding.evidence;
     for (const evidenceItem of evidence.slice(0, 3)) {
-      const turnIndex = Number.isFinite(Number(evidenceItem.turnIndex)) ? Number(evidenceItem.turnIndex) : null;
+      const turnIndex = evidenceItem.turnIndex != null && evidenceItem.turnIndex !== '' && Number.isFinite(Number(evidenceItem.turnIndex)) ? Number(evidenceItem.turnIndex) : null;
       await query(
         `INSERT INTO project_report_evidence
          (report_version_id, linked_type, linked_id, evidence_text, speaker, turn_index, confidence)
          VALUES ($1, 'milestone', $2, $3, $4, $5, $6)`,
-        [reportVersionId, milestoneId, evidenceItem.text || '', evidenceItem.speaker || '', turnIndex, clampConfidence(evidenceItem.score || evidenceItem.confidence || segment.confidence)]
+        [reportVersionId, milestoneId, evidenceItem.text || '', evidenceItem.speaker || '', turnIndex, clampConfidence(evidenceItem.score ?? evidenceItem.confidence ?? segment.confidence)]
       );
     }
   }

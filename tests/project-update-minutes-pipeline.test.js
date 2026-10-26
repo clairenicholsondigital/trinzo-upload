@@ -17,7 +17,7 @@ const roundTrip = value => JSON.parse(JSON.stringify(value));
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
 function resetStore() {
-  store = { nextId: 100, jobs: [], versions: [], sources: new Map(), duplicateHashes: [], savedResponses: [], scripts: [] };
+  store = { nextId: 100, jobs: [], versions: [], sources: new Map(), duplicateHashes: [], savedResponses: [], scripts: [], coreMilestones: [], assessments: [], evidence: [] };
 }
 
 async function query(sql, params = []) {
@@ -43,6 +43,13 @@ async function query(sql, params = []) {
     store.versions.push({ id, reportId: params[0], payload: JSON.parse(params[1]) });
     return { rows: [{ id }] };
   }
+  if (/^SELECT id, milestone_name FROM project_core_milestones/.test(text)) return { rows: store.coreMilestones.filter(m=>m.project_id===params[0]) };
+  if (/^WITH existing AS/.test(text)) {
+    const found=store.coreMilestones.find(m=>params[6]?m.id===params[6]:m.milestone_name===params[1]);
+    return {rows:[{id:found?.id||store.nextId++}]};
+  }
+  if (/^INSERT INTO project_report_milestone_assessments/.test(text)) {store.assessments.push(roundTrip(params));return {rows:[]};}
+  if (/^INSERT INTO project_report_evidence/.test(text)) {store.evidence.push(roundTrip(params));return {rows:[]};}
   if (/^INSERT INTO project_report_sources /.test(text)) {
     const version = store.versions.at(-1);
     store.sources.set(params[4], { reportId: params[0], reportVersionId: version.id, transcriptSha256: params[4] });
@@ -179,4 +186,58 @@ test('persistence distinguishes action-only snapshots and still deduplicates unc
   assert.equal((await save(before, 'not-a-valid-fingerprint')).saved, true);
   assert.equal((await save(after, undefined)).duplicate, true);
   assert.deepEqual(store.duplicateHashes.slice(3), [hash(transcriptText), hash(transcriptText)]);
+});
+
+
+async function persistMilestones(milestones,segments,core=[{id:201,project_id:7,milestone_name:'Data migration phase 1'}]) {
+  resetStore();store.coreMilestones=core;
+  return db.saveProjectUpdateDraft({projectId:7,projectName:'Fixture project',periodLabel:'Q4 2026',sourceType:'text',transcriptText:'Synthetic source for milestone binding.',result:{segments,projectReport:{milestones}}});
+}
+const milestoneRow=extra=>({milestoneId:201,milestone:'Data migration phase 1',comparison_key:'data_migration_phase_1',...extra});
+const unrelatedSegment={milestone:'unclassified',comparison_key:'unclassified',delivery_status:'blocked',normalised_evidence_summary:'Unrelated discussion',semantic_evidence:[{text:'Unrelated discussion',score:.9}]};
+test('carried-forward milestones never borrow positional transcript assessments or evidence',async()=>{
+ await persistMilestones([milestoneRow({transcript_update_status:'carried_forward',delivery_status:'on_track'})],[unrelatedSegment]);
+ assert.equal(store.assessments.length,0);assert.equal(store.evidence.length,0);
+});
+test('unique exact-key bindings retain their own evidence after segment reordering',async()=>{
+ const correct={milestone:'Data migration phase 1',delivery_status:'complete',normalised_evidence_summary:'Migration finished',semantic_evidence:[{text:'Migration finished',score:.8}]};
+ for(const segments of [[unrelatedSegment,correct],[correct,unrelatedSegment]]) {await persistMilestones([milestoneRow({})],segments);assert.equal(store.assessments[0][1],201);assert.equal(store.assessments[0][2],'completed');assert.equal(store.evidence[0][2],'Migration finished');}
+});
+test('accepted semantic renames persist report-owned evidence instead of rematching by position',async()=>{
+ await persistMilestones([milestoneRow({transcript_update_status:'updated_from_transcript',matchedBy:'semantic',matchScore:.85,delivery_status:'blocked',normalised_evidence_summary:'Cutover awaits approval',semantic_evidence:[{text:'Cutover awaits approval',score:.85}]})],[unrelatedSegment,{milestone:'Phase 1 data cutover',delivery_status:'blocked'}]);
+ assert.equal(store.assessments[0][2],'blocked');assert.equal(store.assessments[0][5],'Cutover awaits approval');assert.equal(store.evidence[0][2],'Cutover awaits approval');
+});
+test('ambiguous raw keys and conflicting milestone IDs cannot support an assessment',async()=>{
+ const named={milestone:'Data migration phase 1',delivery_status:'blocked',evidence:['Named source']};
+ for(const segments of [[named,{...named,evidence:['Conflicting source']}],[{...named,milestoneId:202}]]) {await persistMilestones([milestoneRow({})],segments);assert.equal(store.assessments.length,0);assert.equal(store.evidence.length,0);}
+});
+test('foreign or stale milestone IDs fail before report records are created',async()=>{
+ await assert.rejects(persistMilestones([milestoneRow({milestoneId:999,transcript_update_status:'updated_from_transcript',delivery_status:'blocked',evidence:['Source']})],[]),/milestone.*project|project.*milestone/i);
+ assert.equal(store.versions.length,0);assert.equal(store.assessments.length,0);
+});
+test('existing milestone IDs retain canonical project names instead of creating renamed duplicates',async()=>{
+ await persistMilestones([milestoneRow({milestone:'Renamed display label',transcript_update_status:'updated_from_transcript',delivery_status:'blocked',evidence:['Source']})],[]);
+ assert.equal(store.assessments[0][1],201);
+});
+test('ambiguous baseline labels require an explicit project milestone ID',async()=>{
+ await assert.rejects(persistMilestones([{milestone:'Data migration phase 1'}],[{milestone:'Data migration phase 1',delivery_status:'blocked',evidence:['Source']}],[{id:201,project_id:7,milestone_name:'Data migration phase 1'},{id:202,project_id:7,milestone_name:'Data migration phase 1'}]),/ambiguous.*milestone|milestone.*ambiguous/i);
+ assert.equal(store.versions.length,0);
+});
+test('canonical statuses and legacy aliases survive supported persistence',async()=>{
+ for(const [input,expected] of [['completed','completed'],['on_track','on_track'],['at_risk','at_risk'],['blocked','blocked'],['delayed','delayed'],['not_started','not_started'],['unknown','unknown'],['complete','completed'],['in_progress','on_track'],['awaiting_input','at_risk']]) {await persistMilestones([milestoneRow({transcript_update_status:'updated_from_transcript',delivery_status:input,evidence:['Milestone source']})],[]);assert.equal(store.assessments[0][2],expected,input);}
+});
+test('legacy named segments remain self-bound while unclassified material is not assigned to a milestone',async()=>{
+ await persistMilestones([],[{milestone:'Data migration phase 1',delivery_status:'complete',evidence:['Completed migration']}]);assert.equal(store.assessments[0][1],201);assert.equal(store.evidence[0][2],'Completed migration');
+ await persistMilestones([],[unrelatedSegment]);assert.equal(store.assessments.length,0);assert.equal(store.evidence.length,0);
+});
+test('a foreign source ID cannot bypass project validation through a name-only report row', async () => {
+  await assert.rejects(persistMilestones([{ milestone: 'Data migration phase 1' }], [{
+    milestoneId: 999, milestone: 'Data migration phase 1', delivery_status: 'blocked', evidence: ['Source']
+  }]), /milestone.*project|project.*milestone/i);
+  assert.equal(store.versions.length, 0);
+});
+test('repeated assessments for one target are rejected before creating report records', async () => {
+  const row = milestoneRow({ transcript_update_status: 'updated_from_transcript', delivery_status: 'blocked', evidence: ['Source'] });
+  await assert.rejects(persistMilestones([row, { ...row }], []), /repeated milestone/i);
+  assert.equal(store.versions.length, 0);
 });
