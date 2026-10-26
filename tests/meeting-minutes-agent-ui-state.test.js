@@ -912,7 +912,7 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     await page.click('[data-view-flag-target]');
     await page.waitForFunction(() => document.querySelector('[data-screen="2"]').classList.contains('active'));
     assert.equal(await page.locator('#minutes-discussion-discussion-1').count(), 1);
-    assert.match(await page.textContent('#omittedDetailsPanel'), /These details were left out of the draft/i);
+    assert.match(await page.textContent('#omittedDetailsPanel'), /These details are not included in the main minutes/i);
     assert.match(await page.textContent('#omittedDetailsPanel'), /report incorporates the final comments/i);
     assert.equal(await page.locator('#omittedDetailsPanel .omitted-detail-kind').count(), 0, 'the shared panel does not repeat a label above every detail');
     assert.equal(await page.locator('.supporting-context').count(), 0, 'omitted details use one shared review panel');

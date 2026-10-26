@@ -91,6 +91,7 @@ function assessment(packet, responses) {
  return reviewed.accepted[0];
 }
 function valid(receipt, original, survivor, units, date=receipt?.packet?.meetingDate) {
+ if(receipt?.version==='compilation-union-v1')return require('./meetingMinutesCompilationUnion').valid(receipt,original,survivor,units,date);
  try {
   if(receipt?.version!==VERSION||receipt.packet.sourceHash!==hash(V.normaliseSourceUnits(units))||receipt.packet.meetingDate!==date)return false;
   const {packetHash,...body}=receipt.packet;if(hash(body)!==packetHash)return false;
@@ -111,6 +112,7 @@ function rebind(receipt, before, after, units) {
 }
 async function rewrite(actions, units, options={}) {
  const original=clone(actions),packet=prepare(actions,units,options.meetingDate||'',options.protectedIds||[]);
+ if(!packet&&options.compilation===true)return require('./meetingMinutesCompilationUnion').rewrite(actions,units,options);
  const audit={version:VERSION,original,receipts:[],applied:false,reason:packet?'assessment_unavailable':'no_candidates',calls:0};
  if(!packet||typeof options.ask!=='function')return {actions:original,audit};
  const deadline=Date.now()+120000,responses={};
@@ -137,6 +139,7 @@ async function rewrite(actions, units, options={}) {
  }catch(error){return {actions:original,audit:{...audit,reason:'assessment_failed',errorCode:error.code||error.message,responses}};}
 }
 function restore(actions, audit, units) {
+ if(audit?.version==='compilation-union-v1')return require('./meetingMinutesCompilationUnion').restore(actions,audit,units);
  if(!audit?.applied||!audit.receipts?.length||!audit.receipts.every(r=>actions.some(a=>valid(r,r.packet.originalActions[0],a,units))))return null;
  return clone(audit.original);
 }

@@ -5,6 +5,9 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const sameEnquiryActionSnapshot = (left, right) => JSON.stringify(stable(left)) === JSON.stringify(stable(right));
 function originalEnquiryActions(draft) {
+  const union=draft.qualityState?.actions?.actionUnionRewrite;
+  if(union?.version==='compilation-union-v1'&&union.applied&&!draft.keptActionIds?.length&&!draft.keptActionOccurrenceIds?.length)
+    return require('./meetingMinutesCompilationUnion').restore(draft.actions,union,draft.sourceUnits||[],draft.details?.meetingDate||'');
   const audit = draft.qualityState?.actions?.semanticReconciliation;
   if (!audit?.applied || !isActionOnlySemanticScope(audit.policy?.scope) || !audit.receipts?.length
     || !Array.isArray(audit.original) || !Array.isArray(audit.restoreSnapshot)

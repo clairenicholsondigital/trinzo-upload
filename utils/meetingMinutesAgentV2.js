@@ -749,6 +749,7 @@ function normaliseFlag(flag = {}, index = 0) {
     correctionNote: text(flag.correctionNote, 500),
     ...(isReviewerAuthored(flag) ? { reviewerAuthored: true } : {}),
     ...(systemTimingIssue ? { systemTimingIssue } : {}),
+    ...(['not_applied_addition','not_applied_noop','not_applied_duplicate','not_outstanding','coverage_unresolved'].includes(flag.reviewDisposition) ? {reviewDisposition:flag.reviewDisposition} : {}),
     ...(['executiveSummary', 'meetingObjectives', 'timedStepCoverage'].includes(flag.temporalField)
       ? { temporalField: flag.temporalField } : {})
   });

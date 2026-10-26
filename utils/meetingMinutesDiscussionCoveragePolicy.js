@@ -5,6 +5,7 @@ function normaliseDiscussionCoveragePolicy(value){
     pointDecision:value?.version===1&&value.pointDecision===true,
     ...(value?.version===1&&value.supportingSubjects===true?{supportingSubjects:true}:{}),
     ...(value?.version===1&&value.filingAliases===true?{filingAliases:true}:{}),
+    ...(value?.version===1&&value.citedFilingAliases===true?{citedFilingAliases:true}:{}),
     ...(value?.version===1&&value.presentConsideration===true?{presentConsideration:true}:{}),
     ...(value?.version===1&&value.warnedOwnParent===true?{warnedOwnParent:true}:{}),
     ...(value?.version===1&&value.corePriority===true?{corePriority:true}:{})});
@@ -15,6 +16,7 @@ function captureDiscussionCoveragePolicy(env=process.env){
     pointDecision:enabled(env.MEETING_MINUTES_AGENT_DISCUSSION_POINT_DECISION_COVERAGE_V1),
     supportingSubjects:enabled(env.MEETING_MINUTES_AGENT_SUPPORTING_SUBJECT_V2),
     filingAliases:enabled(env.MEETING_MINUTES_AGENT_FILING_ALIASES_V1),
+    citedFilingAliases:enabled(env.MEETING_MINUTES_AGENT_CITED_FILING_ALIASES_V1),
     presentConsideration:enabled(env.MEETING_MINUTES_AGENT_OWN_PARENT_CONSIDERATION_V1),
     warnedOwnParent:enabled(env.MEETING_MINUTES_AGENT_WARNED_OWN_PARENT_V1),
     corePriority:enabled(env.MEETING_MINUTES_AGENT_REFEREED_CORE_PRIORITY_V1)});

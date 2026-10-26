@@ -38,6 +38,7 @@ function filingReviewFlags(draft = {}, current = draft.reviewFlags || []) {
     (record?.supportingDetails || []).forEach(visit);
   };
   (draft.unassignedSupportingDetails || []).forEach(visit);
+  (draft.excludedSupportingDetails || []).forEach(entry=>visit(entry.record));
   // Also retain diagnostics after a reviewer moves an unfiled record.
   for (const topic of draft.discussion || []) for (const kind of ['points', 'decisions', 'openQuestions']) {
     for (const record of topic[kind] || []) if (record.filingOrigins?.length || record.originalTopic) visit(record);
