@@ -212,6 +212,7 @@ The two tables below form **one canonical register joined by Task ID**, not sepa
 | AI-013 | **Resolve the separately scoped admin-settings PR #61.** Review held people-list/glossary administration if prioritised; do not make it a pilot dependency without evidence. | Shared | P3 | In progress | Technical | C |
 | AI-014 | **Keep semantic cleanup experiments held.** PRs #132/#155 have no automatic-cleanup authority; reconsider only if later prioritised and qualification succeeds. | Meeting minutes | P3 | Blocked | Research | C |
 | AI-015 | **Obtain separate approval before implementing an internal Tasks tab.** Any future task list belongs exclusively to the internal AI project; Markdown remains authoritative until then. | Project updates | P3 | Awaiting input | Decision | C |
+| AI-016 | **Run an AI-011 repetition-focused colleague pilot.** A colleague completes the independent minutes journey and records which repeated rows cost review effort, caused confusion or created correction risk. | Meeting minutes | P2 | To do | Validation | B |
 
 ### Evidence, ownership and next actions
 
@@ -227,13 +228,14 @@ The two tables below form **one canonical register joined by Task ID**, not sepa
 | AI-008 | Project assessment: four P0 defects and no successful live approval cycle | None | Unassigned | AI-001, AI-002, AI-003, AI-004, AI-005, AI-006 | After the fixes, exercise one full cycle plus a follow-on report; expand only if needed. | Yes |
 | AI-009 | Neither assessment proves routine first-time-user usability | None | Unassigned | AI-007, AI-008 for combined use; AI-007 alone for a minutes-only decision | Agree the next usage boundary from observed results, separately for each tool. | Yes |
 | AI-010 | Existing open project-flow work; section 7 | [#67](https://github.com/clairenicholsondigital/trinzo-upload/pull/67) | Unassigned | No pilot-gating dependency established | Review/test the existing PR if scheduled; do not duplicate its changes. | No |
-| AI-011 | Eakin's two overlapping action pairs; variable output repetition | Related safeguards already deployed; research #132/#155 remains separate | Unassigned | AI-007 feedback before expanding scope | Record which repetitions actually cost reviewers effort; prioritise only demonstrated cases. | No |
+| AI-011 | Eakin's two overlapping action pairs; variable output repetition | Related safeguards already deployed; research #132/#155 remains separate | Unassigned | AI-016; AI-007 feedback before expanding scope | Use AI-016 evidence to prioritise only demonstrated repetitions, then implement the narrowest source-aware rule. | No |
 | AI-012 | Section 4: 63 primary groups, 128 optional retained entries; no timing study | Existing grouping fixes are completed, not new tasks | Unassigned | AI-007 | Measure actual review effort and unclear terminology before proposing more controls. | No |
 | AI-013 | Existing open admin-settings work, not a readiness finding | [#61](https://github.com/clairenicholsondigital/trinzo-upload/pull/61) | Unassigned | No pilot-gating dependency established | Keep scope isolated; review the existing change only if separately prioritised. | No |
 | AI-014 | Failed semantic qualification and contradictory retention judgements; source binding alone does not prove meaning | Draft [#132](https://github.com/clairenicholsondigital/trinzo-upload/pull/132), [#155](https://github.com/clairenicholsondigital/trinzo-upload/pull/155) | Unassigned | Qualification failures; no decision to resume as a pilot requirement | Leave held. No additional architecture or research phase is commissioned here. | No |
 | AI-015 | Current documentation request's explicit future-import boundary | None | Unassigned | Separate implementation approval; retain these IDs | Await that approval; do not create application tasks, schema, navigation or permissions. | Yes |
+| AI-016 | AI-011 qualification and Eakin pilot records; colleague evidence still missing | None | Unassigned | AI-005, AI-006 | Ask one participating colleague to upload, review, correct, save, reopen and export a representative minutes draft, recording repetition corrections and review time. | Yes |
 
-**Counts:** P0 **4**; P1 **0**; P2 **8**; P3 **3**. Statuses: To do **7**, In progress **2**, Blocked **2**, Awaiting input **4**, Done **0**. External-input tasks: **AI-005, AI-006, AI-007, AI-008, AI-009, AI-015 — six**. The future Tasks-tab decision is not a pilot dependency. Completed work is summarised in section 7, not duplicated as outstanding tasks.
+**Counts:** P0 **4**; P1 **0**; P2 **9**; P3 **3**. Statuses: To do **8**, In progress **2**, Blocked **2**, Awaiting input **4**, Done **0**. External-input tasks: **AI-005, AI-006, AI-007, AI-008, AI-009, AI-015, AI-016 — seven**. The future Tasks-tab decision is not a pilot dependency. Completed work is summarised in section 7, not duplicated as outstanding tasks.
 
 ## 11. Internal pilot requirements
 
@@ -245,7 +247,7 @@ The two tables below form **one canonical register joined by Task ID**, not sepa
 
 ### B. Internal pilot and feedback
 
-- Start AI-007 now with one willing colleague and a representative internal meeting.
+- Start AI-007 now with one willing colleague and a representative internal meeting. For the AI-011 repetition question, record the narrower evidence requested by **AI-016** in the same journey rather than treating general pilot completion as proof of a deduplication benefit.
 - Once the project blockers are corrected, run AI-008: correct/save/reopen/approve a report, then create a follow-on update and inspect its baseline.
 - Record actual completion, manual corrections, review time, duplicate work, unclear instructions and any need for developer help. Do not invent pass percentages or assume reduced card counts prove usability.
 - The older project checklist proposes 3–5 transcripts for broader learning. Begin with one full cycle; it is not necessary to require five new runs before learning from a person.
