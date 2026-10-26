@@ -10,7 +10,7 @@
   "nearDuplicateCase": {
     "id": "EAKIN-002",
     "level": "action",
-    "sourceAnchors": ["Andrew 0:09", "Claire 0:16"],
+    "sourceAnchors": ["Claire 0:09", "Claire 0:16"],
     "variants": [
       "Send an email requesting review of the revised documents after completing the rewrites and responses to feedback.",
       "Send an email requesting review after completing the document rewrites and responses to feedback comments."

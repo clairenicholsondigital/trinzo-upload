@@ -9,6 +9,7 @@ const {
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
 
 const timing = (wording, kind = 'dependency') => ({ kind, wording, exactDate: '' });
+const untimed = () => ({ kind: 'not_stated', wording: '', exactDate: '' });
 
 function source(id, text, speaker = 'Morgan Lee') {
   return { id, speaker, text };
@@ -36,7 +37,7 @@ function assertSourceBound(rows, sourceUnits) {
 function qualify(rows, sourceUnits) {
   assertSourceBound(rows, sourceUnits);
   const commitment = mergeCommitmentDuplicates(structuredClone(rows)).actions;
-  const hybrid = dedupeHybridActionRecords(structuredClone(rows));
+  const hybrid = dedupeHybridActionRecords(structuredClone(rows), { sourceUnits });
   const final = reconcileFinalApprovedActions(hybrid, structuredClone(rows));
   return { commitment, hybrid, final: final.actions, restored: final.restored };
 }
@@ -131,4 +132,64 @@ test('Canva webinar discussion remains separate when the source-bound owner scop
   assert.equal(result.commitment.length, 2);
   assert.equal(result.hybrid.length, 2);
   assert.equal(result.final.length, 2);
+});
+
+function assertSingleSourceBoundSurvivor(result, expectedParts) {
+  for (const stage of [result.commitment, result.hybrid, result.final]) {
+    assert.equal(stage.length, 1);
+    for (const part of expectedParts) assert.match(stage[0].action, new RegExp(part, 'i'));
+  }
+  assert.deepEqual(result.restored, []);
+}
+
+test('GSOP review follow-up paraphrases consolidate with reviewer and procedure context retained', () => {
+  const sources = [
+    source('AI011-GSOP-01', "Claire will follow up on Louise's review of the GSOP procedure documentation.", 'Claire Nicholson'),
+    source('AI011-GSOP-02', 'Claire will follow up on the GSOP procedure review with Louise.', 'Claire Nicholson')
+  ];
+  const evidenceIds = sources.map(item => item.id);
+  const rows = [
+    row('gsop-a', "Follow up on Louise's review of the GSOP procedure documentation.", ['Claire Nicholson'], untimed(), evidenceIds),
+    row('gsop-b', 'Follow up on the GSOP procedure review with Louise.', ['Claire Nicholson'], untimed(), evidenceIds)
+  ];
+  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['GSOP', 'Louise', 'review']);
+});
+
+test('document-review email paraphrases consolidate without inventing a recipient', () => {
+  const sources = [
+    source('AI011-DOC-01', 'Claire will send an email requesting review of the revised documents after completing the rewrites and responses to feedback.', 'Claire Nicholson'),
+    source('AI011-DOC-02', 'Claire will send an email requesting review after completing the document rewrites and responses to feedback comments.', 'Claire Nicholson')
+  ];
+  const evidenceIds = sources.map(item => item.id);
+  const rows = [
+    row('doc-a', 'Send an email requesting review of the revised documents after completing the rewrites and responses to feedback.', ['Claire Nicholson'], untimed(), evidenceIds),
+    row('doc-b', 'Send an email requesting review after completing the document rewrites and responses to feedback comments.', ['Claire Nicholson'], untimed(), evidenceIds)
+  ];
+  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['email', 'review', 'rewrites', 'feedback']);
+});
+
+test('software-change compilation paraphrases consolidate while retaining the reviewed quantity', () => {
+  const sources = [
+    source('AI011-SW-01', 'Claire will compile the referenced software changes into the summary report as part of the design and technical file change documentation.', 'Claire Nicholson'),
+    source('AI011-SW-02', 'Claire will compile the reviewed software changes into the design and technical file summary reporting using the output from the review of the 17 changes.', 'Claire Nicholson')
+  ];
+  const evidenceIds = sources.map(item => item.id);
+  const rows = [
+    row('sw-a', 'Compile the referenced software changes into the summary report as part of the design and technical file change documentation.', ['Claire Nicholson'], untimed(), evidenceIds),
+    row('sw-b', 'Compile the reviewed software changes into the design and technical file summary reporting using the output from the review of the 17 changes.', ['Claire Nicholson'], untimed(), evidenceIds)
+  ];
+  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['compile', 'software changes', 'design', 'technical file', '17']);
+});
+
+test('Colm standards-review paraphrases consolidate with the referenced standard retained', () => {
+  const sources = [
+    source('AI011-COLM-01', 'Claire will follow up with Colm to review the referenced standard.', 'Claire Nicholson'),
+    source('AI011-COLM-02', 'Claire will follow up with Colm and obtain a review of the standards material.', 'Claire Nicholson')
+  ];
+  const evidenceIds = sources.map(item => item.id);
+  const rows = [
+    row('colm-a', 'Follow up with Colm to review the referenced standard.', ['Claire Nicholson'], untimed(), evidenceIds),
+    row('colm-b', 'Follow up with Colm and obtain a review of the standards material.', ['Claire Nicholson'], untimed(), evidenceIds)
+  ];
+  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['Colm', 'review', 'standard']);
 });
