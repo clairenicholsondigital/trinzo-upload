@@ -124,7 +124,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionPublication');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred, sourceBoundRoleClarificationDuplicate } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
+const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText, sourceBoundReviewTimingContext } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -12550,6 +12550,28 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
       actions[contactIndex] = reconcileDetailedContacts(actions[contactIndex], record).record;
       continue;
     }
+    const contextualReviewIndex = actions.findIndex(existing =>
+      sourceBoundReviewTimingContext(record, existing, options.sourceUnits || []));
+    if (contextualReviewIndex >= 0) {
+      const existing = actions[contextualReviewIndex];
+      const preferred = sourceBoundReviewTimingContext(record, existing, options.sourceUnits || []);
+      const recovery = {};
+      for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+        if (Array.isArray(existing[key]) || Array.isArray(record[key])) {
+          recovery[key] = [...new Set([...(existing[key] || []), ...(record[key] || [])])];
+        }
+      }
+      for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+        if (existing[key] || record[key]) recovery[key] = preferred[key] || existing[key] || record[key];
+      }
+      actions[contextualReviewIndex] = {
+        ...preferred,
+        evidenceIds: [...new Set([...(existing.evidenceIds || []), ...(record.evidenceIds || [])])],
+        reviewFlagIds: [...new Set([...(existing.reviewFlagIds || []), ...(record.reviewFlagIds || [])])],
+        ...recovery
+      };
+      continue;
+    }
     // New source-bound semantic reconciliation supplies exact, immutable
     // original-to-final receipts. No raw-ID skip list: changed wording, source,
     // timing or metadata invalidates the receipt and work is restored normally.
@@ -13604,9 +13626,14 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     let canonicalDocumentWorkflowDuplicate = null;
     let losslessPreferred = null;
     let sourceAwareDuplicate = null;
+    let contextualReviewDuplicate = null;
     let roleClarificationDuplicate = null;
     let weekdayTimingReconciliation = null;
     const duplicate = merged.find((existing) => {
+      if (sourceBoundReviewTimingContext(record, existing, options.sourceUnits || [])) {
+        contextualReviewDuplicate = existing;
+        return true;
+      }
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
         || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)) return false;
       // Independent extraction IDs are local to each response. Keep distinct
@@ -13710,6 +13737,24 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     });
     if (!duplicate) {
       merged.push(record);
+      continue;
+    }
+    if (contextualReviewDuplicate === duplicate) {
+      const preferred = sourceBoundReviewTimingContext(record, duplicate, options.sourceUnits || []);
+      const recovery = {};
+      for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+        if (Array.isArray(duplicate[key]) || Array.isArray(record[key])) {
+          recovery[key] = [...new Set([...(duplicate[key] || []), ...(record[key] || [])])];
+        }
+      }
+      for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+        if (duplicate[key] || record[key]) recovery[key] = preferred[key] || duplicate[key] || record[key];
+      }
+      Object.assign(duplicate, preferred, {
+        evidenceIds: stableEvidence([duplicate, record]),
+        reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24),
+        ...recovery
+      });
       continue;
     }
     if (weekdayTimingReconciliation) {
