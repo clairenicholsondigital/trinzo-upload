@@ -40,7 +40,7 @@ test('empty-target discussion and action prompts do not acquire extra catalogue 
 
 // Execute the actual retry function with an isolated provider stub. No network,
 // real transcripts, credentials, library, timers or database writes are used.
-function retryHarness(ask) {
+function retryHarness(ask, reportedError = () => null) {
   const from=source.indexOf('async function askPowerAutomateMeetingMinutesAgentWithRetry(');
   const to=source.indexOf('\nfunction normaliseStagedCandidateResult',from);
   assert.ok(from>=0&&to>from);
@@ -48,7 +48,7 @@ function retryHarness(ask) {
   const context={Date,Number,Math,JSON,Promise,process:{env:{}},
     setTimeout:callback=>{callback();},MEETING_AGENT_RETRY_MS:[0,0],
     meetingMinutesAgentText:(v,n)=>String(v||'').slice(0,n),
-    askPowerAutomateMeetingMinutesAgent:ask,meetingAgentResultError:()=>null,
+    askPowerAutomateMeetingMinutesAgent:ask,meetingAgentResultError:reportedError,
     meetingAgentFailureClass:A.meetingAgentFailureClass,refereeFailureSnapshot:audit.refereeFailureSnapshot,
     console:{warn:value=>warnings.push(value)}};
   vm.runInNewContext(source.slice(from,to)+'\nthis.run=askPowerAutomateMeetingMinutesAgentWithRetry;',context);
@@ -178,14 +178,16 @@ test('the production referee call actually wires rejection capture to the durabl
 });
 
 function transportHarness(body, status = 200) {
-  const start=source.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
+  const helper=source.indexOf('function meetingAgentHasTypedError(');
+  const start=helper>=0?helper:source.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
   const end=source.indexOf('\nfunction meetingAgentResultError',start);let calls=0;
+  const state={timeoutCleared:false,slotReleased:false};let beforeBodyRead;
   const context={URL,AbortController,Number,Math,JSON,Set,process:{env:{}},
-    setTimeout:()=>0,clearTimeout:()=>{},meetingAgentFlowUrlFor:()=> 'https://example.invalid/referee',
-    acquireMeetingAgentCallSlot:async()=>()=>{},parseJsonLenient:A.parseJsonLenient,
-    fetch:async()=>{calls++;return {ok:status>=200&&status<300,status,text:async()=>body};}};
+    setTimeout:()=>0,clearTimeout:()=>{state.timeoutCleared=true;},meetingAgentFlowUrlFor:()=> 'https://example.invalid/referee',
+    acquireMeetingAgentCallSlot:async()=>()=>{state.slotReleased=true;},parseJsonLenient:A.parseJsonLenient,meetingAgentResultError:A.meetingAgentResultError,
+    fetch:async()=>{calls++;return {ok:status>=200&&status<300,status,text:async()=>{beforeBodyRead={...state};return typeof body==='function'?body():body;}};}};
   vm.runInNewContext(source.slice(start,end)+'\nthis.ask=askPowerAutomateMeetingMinutesAgent;',context);
-  return {ask:context.ask,get calls(){return calls;}};
+  return {ask:context.ask,get calls(){return calls;},get state(){return state;},get beforeBodyRead(){return beforeBodyRead;}};
 }
 test('malformed response bodies reach the private failure audit before structural parsing rejects them',async()=>{
   const exact=' {"output":"PRIVATE malformed reply udimed"}\n',transport=transportHarness(exact),h=retryHarness(transport.ask);let capture;
@@ -220,5 +222,55 @@ test('wire evidence participates in entry limits and stays private in both stage
     assert.deepEqual(h.stored.qualityState[stage].refereeFailureAudit,privateJournal);
     assert.ok(!JSON.stringify(A.publicMeetingAgentDraft(h.stored)).includes('PRIVATE exact wire'));
     assert.equal(h.stored.qualityState[stage].refereeFailureAudit.entries[0].wireReply.value,'PRIVATE exact wire udimed');
+  }
+});
+
+test('typed provider error envelopes remain errors for every supported response kind',async()=>{
+  const envelope={error:{code:'microsoft_route_failure',message:'The Microsoft agent route did not return a response.',retryable:true}};
+  for(const responseKind of [undefined,'referee','semantic_reconciliation','timing_check','discussion_discovery','anchored_discussion_discovery','anchored_action_discovery','topic_arrangement']){
+    const t=transportHarness(JSON.stringify(envelope)),h=retryHarness(t.ask,A.meetingAgentResultError);let capture;
+    await assert.rejects(h.run('exact request',{maxAttempts:1,responseKind,onFailure:x=>{capture=x;}}),e=>e.code==='microsoft_route_failure'&&e.retryable===true);
+    assert.equal(t.calls,1);
+    if(responseKind==='referee')assert.deepEqual(capture.rawReply.value,envelope);
+    else assert.equal(capture.rawReply.reason,'no_reply');
+    assert.equal(capture.wireReply.value,JSON.stringify(envelope));
+  }
+});
+test('unknown shapes remain invalid and provider retry hints cannot authorize semantic retries',async()=>{
+  for(const body of ['{"Done":true}','{"error":{"message":"No code"}}','{"error":{"code":""}}']){
+    const t=transportHarness(body),h=retryHarness(t.ask,A.meetingAgentResultError);
+    await assert.rejects(h.run('request',{maxAttempts:1,responseKind:'semantic_reconciliation'}),e=>e.code==='power_automate_invalid_structure');
+  }
+  for(const [code,retryable,expected]of [['invalid_referee_output',true,false],['microsoft_route_failure',false,false],['microsoft_route_failure','true',false],['microsoft_route_failure',true,true]])assert.equal(A.meetingAgentResultError({error:{code,message:'Failure',retryable}}).retryable,expected);
+});
+test('a retryable provider route failure can recover within the unchanged attempt limit',async()=>{
+  let calls=0;const h=retryHarness(async()=>++calls===1?{error:{code:'microsoft_route_failure',message:'Route failed.',retryable:true}}:{decisions:[]},A.meetingAgentResultError);
+  const result=await h.run('request',{maxAttempts:2,responseKind:'semantic_reconciliation'});
+  assert.equal(calls,2);assert.deepEqual(result.result,{decisions:[]});assert.equal(result.timings[0].errorCode,'microsoft_route_failure');
+});
+test('explicit per-attempt timeouts apply with or without an overall deadline',async()=>{
+  const observed=[],h=retryHarness(async(prompt,options)=>{observed.push(options.timeoutMs);return {ok:true};});
+  await h.run('request',{maxAttempts:1,attemptTimeoutMs:17000});assert.equal(observed.pop(),17000);
+  await h.run('request',{maxAttempts:1,attemptTimeoutMs:17000,deadlineAt:Date.now()+60000});assert.equal(observed.pop(),17000);
+  await h.run('request',{maxAttempts:1,attemptTimeoutMs:60000,deadlineAt:Date.now()+18000});assert(observed.at(-1)>=17000&&observed.at(-1)<=18000);
+});
+
+test('direct generation and audit calls cannot normalise typed provider errors into empty minutes',async()=>{
+  const envelope={error:{code:'microsoft_route_failure',message:'No route reply.',retryable:true}};
+  const t=transportHarness(JSON.stringify(envelope));
+  await assert.rejects(t.ask('request'),e=>e.code==='microsoft_route_failure'&&e.retryable===true);
+  assert.equal(t.calls,1);
+});
+
+test('the attempt deadline and active-call slot cover reading the full response body',async()=>{
+  const t=transportHarness('{"actions":[],"discussion":[]}');
+  await t.ask('request',{paced:true});
+  assert.equal(t.beforeBodyRead.timeoutCleared,false,'body reading must still be under the deadline');
+  assert.equal(t.beforeBodyRead.slotReleased,false,'a body in flight still occupies its call slot');
+  assert.equal(t.state.timeoutCleared,true);assert.equal(t.state.slotReleased,true);
+  for(const [name,code]of [['AbortError','power_automate_timeout'],['Error','power_automate_unreachable']]){
+    const broken=transportHarness(()=>{throw Object.assign(Error('PRIVATE body failure'),{name});});
+    await assert.rejects(broken.ask('request',{paced:true}),e=>e.code===code);
+    assert.equal(broken.state.timeoutCleared,true);assert.equal(broken.state.slotReleased,true);
   }
 });
