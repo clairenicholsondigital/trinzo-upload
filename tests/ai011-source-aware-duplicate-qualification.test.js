@@ -120,6 +120,40 @@ test('Zimmer responsibility rows remain separate when source-bound owners differ
   assert.equal(result.final.length, 2);
 });
 
+test('source-bound responsibility paraphrase with the same work and weekday has one published row', () => {
+  const sources = [source('ROLE-01', 'Morgan will clarify who is in charge of the renewal and determine the next steps.')];
+  const rows = [
+    row('role-a', 'Clarify who is responsible for the renewal and determine the next steps.', [], timing('Tuesday', 'target'), ['ROLE-01']),
+    row('role-b', 'Clarify who is in charge of the renewal and determine the next steps.', [], timing('on Tuesday', 'target'), ['ROLE-01'])
+  ];
+  rows[0].reviewFlagIds = ['flag-a'];
+  rows[1].reviewFlagIds = ['flag-b'];
+  rows[0]._weakEvidenceIds = ['old-source'];
+  const result = qualify(rows, sources);
+  assert.equal(result.hybrid.length, 1);
+  assert.equal(result.final.length, 1);
+  assert.equal(result.published.length, 1);
+  assert.match(result.published[0].action, /in charge of/);
+  assert.deepEqual(new Set(result.published[0].reviewFlagIds), new Set(['flag-a', 'flag-b']));
+  assert.deepEqual(result.published[0]._weakEvidenceIds, ['old-source']);
+});
+
+test('responsibility wording cannot merge distinct owners, dates, work or unsupported citations', () => {
+  const sources = [source('ROLE-01', 'Morgan will clarify who is in charge of the renewal and determine the next steps.')];
+  const base = row('role-a', 'Clarify who is in charge of the renewal and determine the next steps.', ['Morgan Lee'], timing('on Tuesday', 'target'), ['ROLE-01']);
+  const variants = [
+    row('owner', 'Clarify who is responsible for the renewal and determine the next steps.', ['Casey Green'], timing('Tuesday', 'target'), ['ROLE-01']),
+    row('date', 'Clarify who is responsible for the renewal and determine the next steps.', ['Morgan Lee'], timing('Wednesday', 'target'), ['ROLE-01']),
+    row('work', 'Clarify who is responsible for the contract and determine the next steps.', ['Morgan Lee'], timing('Tuesday', 'target'), ['ROLE-01']),
+    row('source', 'Clarify who is responsible for the renewal and determine the next steps.', ['Morgan Lee'], timing('Tuesday', 'target'), ['ROLE-02'])
+  ];
+  for (const variant of variants) {
+    assert.equal(dedupeHybridActionRecords([base, variant], { sourceUnits: sources }).length, 2, variant.id);
+  }
+  const reviewer = { ...variants[0], id: 'reviewer', owners: ['Morgan Lee'], reviewerAuthored: true };
+  assert.equal(dedupeHybridActionRecords([base, reviewer], { sourceUnits: sources }).length, 2);
+});
+
 test('Canva webinar discussion remains separate when the source-bound owner scope expands', () => {
   const sources = [
     source('AI011-C01', 'Morgan will update the Canva webinar slides.'),
