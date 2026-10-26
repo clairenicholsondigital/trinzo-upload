@@ -11937,7 +11937,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
     discussion: visibleDiscussion,
     actions: visibleActions,
     pendingProposal: visibleProposal,
-    reviewFlags: visibleReviewFlags
+    reviewFlags: require('../utils/meetingMinutesCoverageEvidence').coverageEvidenceFlags(draft, visibleReviewFlags)
   });
   const generation = meetingAgentGenerationState(safe.generation);
   const completedAt = generation ? meetingAgentStageGeneratedAt(draft, generation.stage) : '';

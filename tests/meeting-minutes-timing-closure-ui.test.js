@@ -115,8 +115,14 @@ for (const temporalField of ['timedStepCoverage', 'unverifiedSourceTiming']) {
     }));
     const card = page.locator('#flagList .review-queue-item');
     assert.equal(await card.locator('[data-view-flag-target]').count(), 0);
-    assert.match(await card.innerText(), /Transcript detail to consider/);
-    assert.match(await card.innerText(), /not currently represented in the minutes/);
+    if (temporalField === 'timedStepCoverage') {
+      assert.match(await card.innerText(), /Passage with unverified action coverage/);
+      assert.match(await card.innerText(), /Coverage is uncertain/);
+      assert.doesNotMatch(await card.innerText(), /not currently represented in the minutes/);
+    } else {
+      assert.match(await card.innerText(), /Transcript detail to consider/);
+      assert.match(await card.innerText(), /not currently represented in the minutes/);
+    }
     assert.doesNotMatch(await card.innerText(), /In the minutes · Action timing/);
     await page.click('[data-step="3"]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1);
