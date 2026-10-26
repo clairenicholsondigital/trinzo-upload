@@ -31,3 +31,5 @@ None qualifies for automatic removal. Blockers include a standalone neighbour-co
 ## Next boundary
 
 Resolve request/acceptance lifecycle at the end of the complete exchange, with explicit request-to-acceptance source bindings, instead of inheriting uncertainty from the first utterance. Test acceptance, refusal, correction and another-task acceptance separately. Keep adjacent background as context evidence for a focus claim rather than a separate member obligation. Continue pair qualification with complete original-description retention and exact existing survivor selection. Preserve every held semantic veto, date/condition/quantity/recipient check and reviewer-authored or kept occurrence. Broad automatic group closure remains unqualified.
+
+The subsequent bounded source-status correction and the still-held broader inventory experiment are documented in [Final-exchange source status](meeting-minutes-final-exchange-source-status.md). The next-boundary section above records the state at this earlier release.

@@ -291,3 +291,65 @@ test('new self mode rejects model overrides, unknown methods and missing retenti
   assert.ok(verify.bindSourceVerification(f.packet,f.expanded,f.review).error,fault);
  }
 });
+
+test('final-exchange source status is independently required on each original clause and survives receipt validation',()=>{
+ const {packet,expanded,review,sourceUnits}=fixture(true);
+ review.sourceStatusMethod=verify.SOURCE_STATUS_METHOD;
+ for(const decision of review.decisions)for(const check of decision.checks)check.sourceStatus='outstanding';
+ assert.equal(verify.verificationError(packet,packet.candidates,review),'');
+ const bound=verify.bindSourceVerification(packet,expanded,review);
+ assert.equal(bound.error,'');
+ for(const mapping of bound.envelope.decisions[0].coverage.flatMap(proof=>proof.semanticProof.clauses)){
+  assert.equal(mapping.sourceOperationReview.sourceStatusMethod,verify.SOURCE_STATUS_METHOD);
+  assert.equal(mapping.sourceOperationReview.sourceStatus,'outstanding');
+ }
+ const result=action.applyActionReconciliation(packet,bound.envelope,{sourceUnits});
+ assert.equal(result.actions.length,1);
+ assert.ok(result.receipts.every(receipt=>action.validateReconciliationReceipt(receipt,receipt.original,result.actions[0],sourceUnits)));
+ const proof=bound.envelope.decisions[0].coverage[0],mapping=proof.semanticProof.clauses[0];
+ const original=packet.rows.find(row=>row.ref===proof.originalRef),survivor=packet.rows.find(row=>row.ref===proof.survivorRef);
+ for(const change of [{sourceStatus:'not_outstanding'},{sourceStatus:'uncertain'},{sourceStatusMethod:'unknown'}]){
+  const certificate={...mapping.sourceOperationReview,...change};
+  // Re-seal the changed value so rejection proves the status rule, not merely
+  // the ordinary checksum check.
+  const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'
+   ?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,stable(value[key])])):value;
+  const {reviewHash,...body}=certificate;
+  certificate.reviewHash=require('node:crypto').createHash('sha256').update(JSON.stringify(stable(body))).digest('hex');
+  assert.equal(verify.sourceOperationReviewValid(certificate,packet,original,survivor,mapping,0),false);
+ }
+});
+
+test('described but completed or uncertain work cannot authorize a new source-status merge',()=>{
+ const {packet,expanded,review,sourceUnits}=fixture();
+ review.sourceStatusMethod=verify.SOURCE_STATUS_METHOD;
+ for(const check of review.decisions[0].checks)check.sourceStatus='outstanding';
+ for(const status of ['not_outstanding','uncertain'])for(let index=0;index<review.decisions[0].checks.length;index++){
+  const response=structuredClone(review);response.decisions[0].checks[index].sourceStatus=status;
+  assert.equal(verify.verificationError(packet,packet.candidates,response),'contradictory_source_status');
+  assert.equal(verify.bindSourceVerification(packet,expanded,response).envelope,null);
+  assert.equal(action.applyActionReconciliation(packet,expanded,{sourceUnits}).actions.length,2);
+  response.decisions[0].relation='unresolved';
+  assert.equal(verify.verificationError(packet,packet.candidates,response),'');
+  const vetoed=verify.bindSourceVerification(packet,expanded,response);
+  assert.equal(vetoed.envelope.decisions[0].relation,'unresolved');
+  assert.equal(action.applyActionReconciliation(packet,vetoed.envelope,{sourceUnits}).actions.length,2);
+ }
+});
+
+test('source status rejects missing or unknown new fields without reinterpreting legacy certificates',()=>{
+ const {packet,expanded,review,sourceUnits}=fixture();
+ assert.equal(verify.verificationError(packet,packet.candidates,review),'');
+ const legacy=verify.bindSourceVerification(packet,expanded,review);
+ const legacyResult=action.applyActionReconciliation(packet,legacy.envelope,{sourceUnits});
+ assert.equal(legacyResult.actions.length,1);
+ assert.ok(legacyResult.receipts.every(receipt=>action.validateReconciliationReceipt(receipt,receipt.original,legacyResult.actions[0],sourceUnits)));
+ for(const status of [undefined,null,'completed',true]){
+  const response=structuredClone(review);response.sourceStatusMethod=verify.SOURCE_STATUS_METHOD;
+  for(const check of response.decisions[0].checks)check.sourceStatus='outstanding';
+  response.decisions[0].checks[0].sourceStatus=status;
+  assert.equal(verify.verificationError(packet,packet.candidates,response),'invalid_source_status');
+ }
+ const unknown=structuredClone(review);unknown.sourceStatusMethod='unknown';
+ assert.equal(verify.verificationError(packet,packet.candidates,unknown),'invalid_source_verification_envelope');
+});
