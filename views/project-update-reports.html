@@ -140,9 +140,14 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     <section class="panel"><h1>Project update reports</h1><p class="intro">Loading saved reports...</p></section>
   </main>
 </div>
+<script src="/static/project-report-editor.js"></script>
 <script>
 (function () {
   const app = document.getElementById('app');
+  let reportHasUnsavedChanges = false;
+  window.addEventListener('beforeunload', event => {
+    if (reportHasUnsavedChanges) { event.preventDefault(); event.returnValue = ''; }
+  });
 
   function authedFetch(url, options = {}) {
     return fetch(url, { credentials: 'same-origin', ...options });
@@ -176,23 +181,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   }
 
   function dateInputValue(value) {
-    if (!value) return '';
     const text = String(value || '').trim();
-    const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (isoDate) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
-    const slashDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (slashDate) {
-      const first = Number(slashDate[1]);
-      const second = Number(slashDate[2]);
-      const day = first > 12 ? first : second;
-      const month = first > 12 ? second : first;
-      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        return `${slashDate[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      }
-    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
     const date = new Date(text);
-    if (Number.isNaN(date.getTime())) return '';
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text ? text : '';
   }
 
   function friendlyLabel(value) {
@@ -307,25 +299,6 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     return parsed;
   }
 
-  function updateEditedReportField(path, value) {
-    const editor = document.getElementById('projectReportJsonEditor');
-    if (!editor) return;
-    let report;
-    try {
-      report = parseEditedReport();
-    } catch (error) {
-      return;
-    }
-    const parts = path.split('.');
-    let node = report;
-    parts.slice(0, -1).forEach((part) => {
-      if (!node[part] || typeof node[part] !== 'object') node[part] = {};
-      node = node[part];
-    });
-    node[parts[parts.length - 1]] = value;
-    editor.value = JSON.stringify(report, null, 2);
-  }
-
   function linesValue(value) {
     if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean).join('\n');
     return String(value || '').trim();
@@ -335,25 +308,27 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     return String(value || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
   }
 
-  function fieldValue(row, field) {
-    const node = row.querySelector(`[data-field="${field}"]`);
-    return node ? node.value.trim() : '';
-  }
-
   function editableCell(field, value, label, tag = 'textarea') {
     const escaped = escapeHtml(value || '');
     if (tag === 'input') return `<input aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}" type="text" value="${escaped}" />`;
-    if (tag === 'date') return `<input aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}" type="date" value="${escapeHtml(dateInputValue(value))}" />`;
+    if (tag === 'date') {
+      // Preserve qualified, relative or ambiguous dates as editable wording.
+      if (value && !dateInputValue(value)) return editableCell(field, value, label, 'input');
+      return `<input aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}" type="date" value="${escapeHtml(dateInputValue(value))}" />`;
+    }
     if (tag === 'select-trend') {
       const options = ['', 'stable', 'improving', 'deteriorating', 'replanned', 'new_update', 'unknown'];
+      if (value && !options.includes(String(value))) options.push(String(value));
       return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
     }
     if (tag === 'select-delivery') {
       const options = ['', 'not_started', 'on_track', 'at_risk', 'delayed', 'blocked', 'completed', 'unknown'];
+      if (value && !options.includes(String(value))) options.push(String(value));
       return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
     }
     if (tag === 'select-health') {
       const options = ['', 'on_track', 'at_risk', 'off_track', 'blocked', 'completed', 'green', 'amber', 'red'];
+      if (value && !options.includes(String(value))) options.push(String(value));
       return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
     }
     return `<textarea aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${escaped}</textarea>`;
@@ -381,7 +356,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('agreed_rag_status', item.agreed_rag_status || item.rag_status || '', `Milestone ${index + 1} RAG`, 'select-health')}</td>
         <td>${editableCell('health_assessment', item.health_assessment || '', `Milestone ${index + 1} health assessment`)}</td>
         <td>${editableCell('normalised_evidence_summary', item.normalised_evidence_summary || item.excerpt || '', `Milestone ${index + 1} summary`)}</td>
-        <td>${editableCell('next_steps', linesValue(combinedNextSteps(item)), `Milestone ${index + 1} next steps`)}</td>
+        <td>${editableCell('next_steps', linesValue(item.next_steps), `Milestone ${index + 1} next steps`)}${linesValue(item.blocking_factors) ? `<p class="muted">Blockers (retained): ${escapeHtml(linesValue(item.blocking_factors))}</p>` : ''}</td>
         <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Open row</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
   }
@@ -402,7 +377,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <tr data-action-edit-row>
         <td>${editableCell('action', action.action || action.meetingActionPoint || '', `Action ${index + 1}`)}</td>
         <td>${editableCell('owner', action.owner || action.meetingActionPointOwner || '', `Action ${index + 1} owner`, 'input')}</td>
-        <td>${editableCell('deadline', action.deadline || action.meetingActionPointDeadline || '', `Action ${index + 1} deadline`, 'date')}</td>
+        <td>${editableCell('deadline', action.deadline || action.meetingActionPointDeadline || '', `Action ${index + 1} deadline`, 'input')}</td>
         <td>${editableCell('relatedMilestone', action.related_milestone || action.relatedMilestone || '', `Action ${index + 1} milestone`)}</td>
         <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Open row</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
@@ -469,7 +444,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         field.dispatchEvent(new Event('input', { bubbles: true }));
         field.dispatchEvent(new Event('change', { bubbles: true }));
       });
-      queueAutosave();
+      // Field events above schedule the owning editor's autosave.
       close();
     });
     const firstField = modal.querySelector('[data-modal-field-index]');
@@ -599,6 +574,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const actions = asArray(projectReport.actions);
     const statusDiagnostics = projectReport.statusClassifierDiagnostics || payload.statusClassifierDiagnostics || {};
     const statusOptions = ['draft', 'in_review', 'approved', 'archived'];
+    const currentStatus = report.reportStatus || projectReport.reportStatus;
+    if (currentStatus && !statusOptions.includes(currentStatus)) statusOptions.push(currentStatus);
     const approvalText = report.approvedAt
       ? `${report.approvedBy ? `Approved by ${report.approvedBy}` : 'Approved'} on ${dateValue(report.approvedAt)}`
       : 'Not approved yet. Approve only after the report is good enough to become future project memory.';
@@ -759,7 +736,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const summaryEditor = document.getElementById('reportSummaryEditor');
     const jsonEditor = document.getElementById('projectReportJsonEditor');
     const copySavedProjectReportBtn = document.getElementById('copySavedProjectReportBtn');
-    let autosaveTimer = null;
+    let autosaveTimer = null, saving = false, pendingSave = false, pendingManual = false, editSerial = 0;
 
     function setSaveStatus(text, type) {
       statusNode.textContent = text || '';
@@ -777,52 +754,16 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       node.style.height = `${Math.max(node.scrollHeight, 72)}px`;
     }
 
+    const losslessEditor = window.ProjectReportEditor.create(projectReport, [
+      { key: 'milestones', selector: '[data-milestone-edit-row]', render: data => document.getElementById('milestoneEditorRows').innerHTML = renderMilestoneEditorRows(data) },
+      { key: 'risks', selector: '[data-risk-edit-row]', render: data => document.getElementById('riskEditorRows').innerHTML = renderRiskEditorRows(data) },
+      { key: 'actions', selector: '[data-action-edit-row]', render: data => document.getElementById('actionEditorRows').innerHTML = renderActionEditorRows(data) },
+      { key: 'healthAreas', selector: '[data-health-area-row]', object: true, render: data => document.getElementById('healthAreaEditorRows').innerHTML = renderHealthAreaEditorRows(data) }
+    ], [{ key: 'summary', node: summaryEditor }, { key: 'reportStatus', node: statusEditor }]);
     function syncStructuredEditorsToJson() {
-      const reportData = parseEditedReport();
-      reportData.summary = summaryEditor.value;
-      reportData.reportStatus = statusEditor.value;
-
-      const nextHealthAreas = {};
-      document.querySelectorAll('[data-health-area-row]').forEach((row) => {
-        const key = row.getAttribute('data-health-area-row');
-        const existing = (reportData.healthAreas && reportData.healthAreas[key]) || {};
-        const evidenceNotes = fieldValue(row, 'evidenceNotes');
-        nextHealthAreas[key] = {
-          ...existing,
-          status: fieldValue(row, 'status'),
-          trend: fieldValue(row, 'trend'),
-          evidenceNotes,
-          evidence: evidenceNotes ? [{ text: evidenceNotes }] : []
-        };
-      });
-      if (Object.keys(nextHealthAreas).length) reportData.healthAreas = nextHealthAreas;
-
-      reportData.milestones = Array.from(document.querySelectorAll('[data-milestone-edit-row]')).map((row) => ({
-        milestone: fieldValue(row, 'milestone'),
-        baseline_finish_date: fieldValue(row, 'baseline_finish_date'),
-        forecast_finish_date: fieldValue(row, 'forecast_finish_date'),
-        delivery_status: fieldValue(row, 'delivery_status'),
-        agreed_rag_status: fieldValue(row, 'agreed_rag_status'),
-        health_assessment: fieldValue(row, 'health_assessment'),
-        normalised_evidence_summary: fieldValue(row, 'normalised_evidence_summary'),
-        next_steps: linesArray(fieldValue(row, 'next_steps'))
-      })).filter((item) => Object.values(item).some((value) => Array.isArray(value) ? value.length : String(value || '').trim()));
-
-      reportData.risks = Array.from(document.querySelectorAll('[data-risk-edit-row]')).map((row) => ({
-        riskTitle: fieldValue(row, 'riskTitle'),
-        description: fieldValue(row, 'description'),
-        suggestedMitigation: fieldValue(row, 'suggestedMitigation'),
-        relatedMilestone: fieldValue(row, 'relatedMilestone')
-      })).filter((item) => Object.values(item).some((value) => String(value || '').trim()));
-
-      reportData.actions = Array.from(document.querySelectorAll('[data-action-edit-row]')).map((row) => ({
-        action: fieldValue(row, 'action'),
-        owner: fieldValue(row, 'owner'),
-        deadline: fieldValue(row, 'deadline'),
-        relatedMilestone: fieldValue(row, 'relatedMilestone')
-      })).filter((item) => Object.values(item).some((value) => String(value || '').trim()));
-
+      const reportData = losslessEditor.sync(parseEditedReport());
       jsonEditor.value = JSON.stringify(reportData, null, 2);
+      wireStructuredEditors();
       return reportData;
     }
 
@@ -861,6 +802,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
 
     async function saveReport(automatic) {
       clearTimeout(autosaveTimer);
+      if (saving) { pendingSave = true; pendingManual = pendingManual || !automatic; return; }
       let editedReport;
       try {
         editedReport = syncStructuredEditorsToJson();
@@ -868,6 +810,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         setSaveStatus(error.message || 'Project report data is invalid.', 'error');
         return;
       }
+      saving = true;
+      const savedSerial = editSerial;
       saveButton.disabled = true;
       setSaveStatus(automatic ? 'Autosaving server draft...' : 'Saving report...');
       try {
@@ -888,38 +832,45 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         }
         setSaveStatus(`${automatic ? 'Autosaved server draft' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
         report = result.report;
-        if (!automatic) renderDetail(result.report);
+        if (savedSerial === editSerial) reportHasUnsavedChanges = false;
+        if (!automatic && savedSerial === editSerial && !pendingSave) renderDetail(result.report);
+        else if (savedSerial !== editSerial) setSaveStatus('Unsaved changes — saving the latest edits next.');
       } catch (error) {
         setSaveStatus(error.message || 'Could not save report.', 'error');
       } finally {
+        saving = false;
         saveButton.disabled = false;
+        if (pendingSave || savedSerial !== editSerial) {
+          const nextAutomatic = !pendingManual;
+          pendingSave = pendingManual = false;
+          clearTimeout(autosaveTimer);
+          autosaveTimer = setTimeout(() => saveReport(nextAutomatic), 0);
+        }
       }
     }
 
     function queueAutosave() {
+      reportHasUnsavedChanges = true;
+      editSerial++;
       setSaveStatus('Unsaved changes — server autosave will run shortly.');
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(() => saveReport(true), 900);
     }
 
     nameEditor.addEventListener('input', queueAutosave);
-    summaryEditor.addEventListener('input', () => {
-      updateEditedReportField('summary', summaryEditor.value);
-      queueAutosave();
-    });
-    statusEditor.addEventListener('change', () => {
-      updateEditedReportField('reportStatus', statusEditor.value);
-      queueAutosave();
-    });
+    summaryEditor.addEventListener('input', queueAutosave);
+    statusEditor.addEventListener('change', queueAutosave);
     jsonEditor.addEventListener('input', queueAutosave);
     wireStructuredEditors();
     document.getElementById('addMilestoneRowBtn').addEventListener('click', () => appendRows(document.getElementById('milestoneEditorRows'), renderMilestoneEditorRows([{}])));
     document.getElementById('addRiskRowBtn').addEventListener('click', () => appendRows(document.getElementById('riskEditorRows'), renderRiskEditorRows([{}])));
     document.getElementById('addActionRowBtn').addEventListener('click', () => appendRows(document.getElementById('actionEditorRows'), renderActionEditorRows([{}])));
     copySavedProjectReportBtn.addEventListener('click', async () => {
-      syncStructuredEditorsToJson();
-      await navigator.clipboard.writeText(jsonEditor.value || '{}');
-      setSaveStatus('Project report data copied to clipboard.', 'success');
+      try {
+        syncStructuredEditorsToJson();
+        await navigator.clipboard.writeText(jsonEditor.value || '{}');
+        setSaveStatus('Project report data copied to clipboard.', 'success');
+      } catch (error) { setSaveStatus(error.message || 'Could not copy report data.', 'error'); }
     });
     saveButton.addEventListener('click', () => saveReport(false));
     exportButton.addEventListener('click', () => window.print());

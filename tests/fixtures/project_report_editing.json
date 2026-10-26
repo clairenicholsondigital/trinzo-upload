@@ -1,0 +1,113 @@
+{
+  "reportId": 42,
+  "projectId": 19,
+  "projectName": "Internal test",
+  "reportName": "Report fixture",
+  "reportStatus": "draft",
+  "versions": [
+    {
+      "versionId": 1,
+      "versionNumber": 1,
+      "changeType": "ai_generated",
+      "payload": {
+        "untouchedWrapper": {
+          "sourceId": "fixture"
+        },
+        "projectReport": {
+          "summary": "Original summary",
+          "reportStatus": "draft",
+          "overallHealth": "Amber",
+          "unknownTop": {
+            "keep": true
+          },
+          "healthAreas": {
+            "scope": {
+              "status": "special_review",
+              "trend": "custom",
+              "evidence": [
+                {
+                  "text": "Supported quotation",
+                  "source": "T01",
+                  "span": [
+                    1,
+                    2
+                  ]
+                }
+              ],
+              "extra": 1
+            }
+          },
+          "milestones": [
+            {
+              "milestoneId": 101,
+              "milestone": "First",
+              "baseline_finish_date": "2026-11-01",
+              "forecast_finish_date": "Target: after approval",
+              "delivery_status": "special_delivery",
+              "trend": "stable",
+              "blocking_factors": [
+                "Approval needed"
+              ],
+              "next_steps": [
+                "Run check"
+              ],
+              "evidence": [
+                {
+                  "source": "T02"
+                }
+              ]
+            },
+            {
+              "milestoneId": 102,
+              "milestone": "Second",
+              "trend": "improving",
+              "evidence": [
+                {
+                  "source": "T03"
+                }
+              ]
+            },
+            {
+              "milestoneId": 103,
+              "milestone": "Third",
+              "trend": "deteriorating",
+              "semantic_evidence": [
+                {
+                  "source": "T04"
+                }
+              ]
+            }
+          ],
+          "risks": [
+            {
+              "riskTitle": "Supply",
+              "description": "Delay possible",
+              "confidence": 0.8,
+              "core_risk_id": 77
+            }
+          ],
+          "actions": [
+            {
+              "action": "Send report",
+              "meetingActionPointOwner": "Alex",
+              "deadline": "Target: on Wednesday",
+              "related_milestone": "First",
+              "source": {
+                "id": "T05"
+              },
+              "actionConfidence": 0.9
+            },
+            {
+              "action": "Review results",
+              "owner": "Sam",
+              "deadline": "Dependent on: approval",
+              "extra": {
+                "keep": true
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
