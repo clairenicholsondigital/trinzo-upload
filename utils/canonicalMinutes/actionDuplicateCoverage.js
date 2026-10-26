@@ -47,6 +47,34 @@ function sameActionText(left = {}, right = {}) {
   return Boolean(a && a === b);
 }
 
+// A review "on Wednesday" and the same review "Wednesday before the
+// Thursday meeting" can be two descriptions of one occurrence. Admit the
+// longer context only when a citation shared by both rows explicitly states
+// both the review day and the later meeting day. No inferred calendar dates.
+function sourceBoundReviewTimingContext(left = {}, right = {}, sourceUnits = []) {
+  if (isReviewerAuthored(left) || isReviewerAuthored(right)
+    || !sameActionText(left, right) || !ownerKey(left) || ownerKey(left) !== ownerKey(right)
+    || !/^review\b/.test(actionText(left.action))) return null;
+  const a = left.timing || {}; const b = right.timing || {};
+  if (a.kind !== 'target' || b.kind !== 'target' || a.exactDate || b.exactDate) return null;
+  const weekday = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
+  const short = new RegExp(`^(?:on )?${weekday}$`);
+  const long = new RegExp(`^(?:on )?${weekday} before the ${weekday} meeting$`);
+  const parse = (shortRow, longRow) => {
+    const day = actionText(shortRow.timing.wording).match(short);
+    const context = actionText(longRow.timing.wording).match(long);
+    if (!day || !context || day[1] !== context[1] || day[1] === context[2]) return null;
+    const shared = new Set((shortRow.evidenceIds || []).map(String));
+    return sourceUnits.some(unit => shared.has(String(unit.id))
+      && (longRow.evidenceIds || []).some(id => String(id) === String(unit.id))
+      && new RegExp(`\\breview\\b[^.!?]{0,100}\\b(?:on )?${day[1]}\\b[^.!?]{0,100}`
+        + `\\b(?:then|before|by the time)\\b[^.!?]{0,100}\\bmeeting\\b[^.!?]{0,100}`
+        + `\\b(?:on )?${context[2]}\\b`, 'i').test(unit.text || ''))
+      ? longRow : null;
+  };
+  return parse(left, right) || parse(right, left);
+}
+
 // The same sentence can legitimately describe two people's work or two dated
 // occurrences. Do not let an "identical text" shortcut discard that distinction.
 function exactActionIdentityConflict(left = {}, right = {}) {
@@ -144,5 +172,6 @@ function actionContainmentConflict(left = {}, right = {}) {
 
 module.exports = {
   actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText,
-  conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict
+  conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict,
+  sourceBoundReviewTimingContext
 };

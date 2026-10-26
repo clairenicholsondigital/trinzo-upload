@@ -49,3 +49,22 @@ tracking-system destination absent from the cited passage. The webinar-content
 pair remains separate because one row adds a marketing-plan dependency and
 the other contains content-decision detail. Neither is safe to solve through
 the same narrow deduper rule.
+
+## Source-bound review timing follow-up
+
+The saved draft 467 contains two identical marketing-plan review instructions
+for Saki. Their target wordings are “on Wednesday” and “Wednesday before the
+Thursday meeting”. Both cite T0050, which explicitly says to review on
+Wednesday and describes the meeting on Thursday. A bounded comparison now
+retains the second row's fuller timing and unites citations and review flags.
+It requires identical action wording and owner, a shared real source unit, and
+the review day and later meeting day stated in that unit. Different deadlines,
+owners, dates, work, missing citations or reviewer-authored rows remain apart.
+
+An in-memory replay of the saved 23-row action list with this follow-up and
+the earlier Zimmer rule produces 21 rows; final approved-action preservation
+does not restore either copy. The draft itself was not changed. The webinar
+invitation rows remain three because their prerequisites and one row's cited
+evidence do not justify choosing a single complete instruction. The Olympus
+agenda wording and marketing-plan drafting scope also remain unresolved.
+Fresh generation and colleague review are still needed before closing AI-011.

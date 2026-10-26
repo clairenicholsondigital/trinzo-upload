@@ -73,6 +73,50 @@ test('marketing-plan review keeps source-bound Wednesday timing variants separat
   assert.equal(result.final.length, 2);
 });
 
+test('same review with an explicitly sourced later-meeting context has one complete row', () => {
+  const sources = [source('REVIEW-01', 'You review on Wednesday, and then we go into the meeting on Thursday.')];
+  const rows = [
+    row('review-short', 'Review the draft before the meeting.', ['Morgan Lee'], timing('on Wednesday', 'target'), ['REVIEW-01']),
+    row('review-context', 'Review the draft before the meeting.', ['Morgan Lee'], timing('Wednesday before the Thursday meeting', 'target'), ['REVIEW-01'])
+  ];
+  rows[0].reviewFlagIds = ['first-review'];
+  rows[1].reviewFlagIds = ['second-review'];
+  const result = qualify(rows, sources);
+  assert.equal(result.hybrid.length, 1);
+  assert.equal(result.final.length, 1);
+  assert.equal(result.published.length, 1);
+  assert.equal(result.published[0].timing.wording, 'Wednesday before the Thursday meeting');
+  assert.deepEqual(new Set(result.published[0].reviewFlagIds), new Set(['first-review', 'second-review']));
+  assert.deepEqual(result.restored, []);
+  for (const [published, approved] of [[rows[0], rows[1]], [rows[1], rows[0]]]) {
+    const reconciled = reconcileFinalApprovedActions([published], [approved], { sourceUnits: sources });
+    assert.equal(reconciled.actions.length, 1);
+    assert.equal(reconciled.actions[0].timing.wording, 'Wednesday before the Thursday meeting');
+    assert.deepEqual(new Set(reconciled.actions[0].reviewFlagIds), new Set(['first-review', 'second-review']));
+  }
+});
+
+test('review timing context cannot hide a distinct occurrence or unsupported meeting', () => {
+  const sourceText = 'You review on Wednesday, and then we go into the meeting on Thursday.';
+  const first = row('review-a', 'Review the draft before the meeting.', ['Morgan Lee'], timing('on Wednesday', 'target'), ['REVIEW-01']);
+  const context = row('review-b', first.action, first.owners, timing('Wednesday before the Thursday meeting', 'target'), ['REVIEW-01']);
+  const variants = [
+    { ...context, owners: ['Casey Green'] },
+    { ...context, evidenceIds: ['REVIEW-02'] },
+    { ...context, timing: timing('Wednesday before the Friday meeting', 'target') },
+    { ...context, timing: timing('Wednesday before the Thursday meeting', 'deadline') },
+    { ...context, timing: { ...context.timing, exactDate: '2026-10-28' } },
+    { ...context, reviewerAuthored: true },
+    { ...context, action: 'Review the other draft before the meeting.' }
+  ];
+  for (const variant of variants) {
+    assert.equal(dedupeHybridActionRecords([first, variant], { sourceUnits: [source('REVIEW-01', sourceText)] }).length, 2);
+  }
+  assert.equal(dedupeHybridActionRecords([first, context], {
+    sourceUnits: [source('REVIEW-01', 'You review on Wednesday, and meet the client on Thursday.')]
+  }).length, 2);
+});
+
 test('webinar invitations keep different source-bound prerequisites separate', () => {
   const sources = [
     source('AI011-W01', 'Morgan will send the webinar invitations once the attendee list is approved.'),
