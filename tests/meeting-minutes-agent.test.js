@@ -1014,7 +1014,9 @@ test('structured referee validation binds request, stage and declared accounting
 
 test('action referee lifecycle labels are deterministically adapted to publication dispositions', () => {
   const candidates = [
-    { candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }
+    { candidateId: 'A1', recordType: 'action', text: 'Send the equipment report.' },
+    { candidateId: 'A2', recordType: 'action', text: 'Review the equipment report.' },
+    { candidateId: 'A3', recordType: 'action', text: 'Prepare the equipment list.' }
   ];
   const contract = { requestId: 'request-action', stage: 'ACTION_REFEREE' };
   const adapted = normaliseMeetingAgentRefereeContractResult({
@@ -1055,7 +1057,9 @@ test('discussion referee enum drift is normalised without promoting an unclassif
 });
 
 test('referee validation retains valid rows so repair targets only malformed candidates', () => {
-  const candidates = [{ candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }];
+  const candidates = [{ candidateId: 'A1', recordType: 'action', text: 'Send the equipment report.' },
+    { candidateId: 'A2', recordType: 'action', text: 'Review the equipment report.' },
+    { candidateId: 'A3', recordType: 'action', text: 'Prepare the equipment list.' }];
   const contract = { requestId: 'request-partial', stage: 'ACTION_REFEREE' };
   const result = {
     requestId: contract.requestId, stage: contract.stage,
@@ -1073,7 +1077,9 @@ test('referee validation retains valid rows so repair targets only malformed can
 });
 
 test('referee validation retains complete rows when another candidate is missing', () => {
-  const candidates = [{ candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }];
+  const candidates = [{ candidateId: 'A1', recordType: 'action', text: 'Send the equipment report.' },
+    { candidateId: 'A2', recordType: 'action', text: 'Review the equipment report.' },
+    { candidateId: 'A3', recordType: 'action', text: 'Prepare the equipment list.' }];
   const contract = { requestId: 'request-missing', stage: 'ACTION_REFEREE' };
   const result = {
     requestId: contract.requestId, stage: contract.stage,
@@ -1202,7 +1208,7 @@ test('batched referee results merge deterministically in the original candidate 
   assert.equal(merged.expectedCandidateCount, 4);
   assert.equal(merged.returnedDispositionCount, 4);
   assert.equal(merged.repairAttempted, true);
-  assert.equal(meetingAgentDispositionError(merged, contract.expectedCandidateIds.map((candidateId) => ({ candidateId })), contract), null);
+  assert.equal(meetingAgentDispositionError(merged, contract.expectedCandidateIds.map((candidateId) => ({ candidateId, recordType: 'action', text: 'Send the equipment report.' })), contract), null);
 });
 
 test('strict referee errors retain invalid candidate diagnostics for targeted repair', () => {
