@@ -18,6 +18,7 @@ Unadmitted report rows are excluded from the returned/saved milestone list, with
 
 - **445 Python regression tests passed**, including five new test methods and shared positive/adverse admission cases.
 - **129 relevant Node tests passed**, with an explicit disposable PostgreSQL database. This includes 12 milestone-admission persistence tests, existing cross-milestone binding checks, report approval/history, browser save/reload, editor recovery, fallback generation and minutes-to-project handoff.
+- After rebasing onto main including PR #174 (`7107e5dc1ec828d855a8c5cbc05e8ea6a88d8936`), **148 Node checks passed**: the same 129 relevant checks plus 19 AI-011 checks from the concurrent release.
 - **20/20 project-update reference examples passed** without MiniLM enabled. These are regression checks, not independent human pilot results.
 - Meeting-agent build and whitespace checks passed.
 - Read-only local replay of the saved sources for reports **40 and 41** reproduced one accidental “All Over The Place” milestone per source under the base implementation and none under the patch. Sources and production reports were not changed; no external AI services were called.
