@@ -123,7 +123,7 @@ const {
   isSourceSupportedMaterialDetail
 } = require('../utils/canonicalMinutes/discussionPublication');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
-const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
@@ -8912,7 +8912,7 @@ function meetingMinutesAgentPrimaryUnionEnabled() {
 function meetingMinutesCommitmentDedupeEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_COMMITMENT_DEDUPE_V1 || '1'));
 }
-async function dedupeCommitmentsSemantically(actions = [], journeyId = '', step = '') {
+async function dedupeCommitmentsSemantically(actions = [], journeyId = '', step = '', sourceUnits = []) {
   const list = Array.isArray(actions) ? actions : [];
   if (!meetingMinutesCommitmentDedupeEnabled() || list.length < 2) return list;
   const texts = list.map((action) => meetingMinutesAgentText(action?.action, 1600));
@@ -8926,7 +8926,7 @@ async function dedupeCommitmentsSemantically(actions = [], journeyId = '', step 
       }
     }
   } catch (error) { cosines = null; /* the lexical levers still apply */ }
-  const merged = mergeCommitmentDuplicates(list, { cosines: cosines || undefined });
+  const merged = mergeCommitmentDuplicates(list, { cosines: cosines || undefined, sourceUnits });
   if (merged.merged.length) console.log(JSON.stringify({
     event: 'meeting_agent_commitment_duplicates', journeyId, step, semantic: Boolean(cosines), merged: merged.merged
   }));
@@ -12568,12 +12568,14 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
     }
     const represented = actions.some((existing) => existing === record || (!exactActionIdentityConflict(record, existing)
       && !conflictingTimings(record, existing)
-      && !actionContainmentConflict(record, existing)
       && !isReviewerAuthored(existing)
-      // A loose deliverable match is only a nomination. The published row
-      // must retain this approved instruction's scope and relationships too.
-      && commitmentCanBeRepresented(record, existing)
-      && (actionIsLosslesslyCovered(record, existing)
+      && (sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })
+        || (!actionContainmentConflict(record, existing)
+          // A loose deliverable match is only a nomination. The published row
+          // must retain this approved instruction's scope and relationships too.
+          && commitmentCanBeRepresented(record, existing)))
+      && (sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })
+        || actionIsLosslesslyCovered(record, existing)
         || (!sameActionText(record, existing)
           && strictActionDeliverableMatch(record, existing, { includeDocumentation: true })
           && strictActionDeliverableMatch(existing, record, { includeDocumentation: true })
@@ -13599,11 +13601,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     let documentWorkflowDuplicate = null;
     let canonicalDocumentWorkflowDuplicate = null;
     let losslessPreferred = null;
+    let sourceAwareDuplicate = null;
     let weekdayTimingReconciliation = null;
     const duplicate = merged.find((existing) => {
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
-        || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)
-        || actionContainmentConflict(record, existing)) return false;
+        || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)) return false;
       // Independent extraction IDs are local to each response. Keep distinct
       // review/document instructions intact for the later source-bound union;
       // broad containment can otherwise discard a mandatory operation here.
@@ -13617,6 +13619,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         if (!actionIsLosslesslyCovered(record, existing)
           && !actionIsLosslesslyCovered(existing, record)) return false;
       }
+      if (sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })) {
+        sourceAwareDuplicate = existing;
+        return true;
+      }
+      if (actionContainmentConflict(record, existing)) return false;
       // Existing document workflows construct a combined instruction rather
       // than dropping a step. They may retain one step's additional gate;
       // conflicting quantities, polarity or two different gates still block.
@@ -13712,6 +13719,14 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       const reviewFlagIds = [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])];
       Object.assign(duplicate, losslessPreferred, { evidenceIds: evidenceIds.sort((left, right) =>
         Number(String(left).match(/\d+/)?.[0] || Infinity) - Number(String(right).match(/\d+/)?.[0] || Infinity)), reviewFlagIds });
+      continue;
+    }
+    if (sourceAwareDuplicate === duplicate) {
+      const preferred = sourceAwarePreferred(duplicate, record);
+      Object.assign(duplicate, preferred, {
+        evidenceIds: stableEvidence([duplicate, record]),
+        reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24)
+      });
       continue;
     }
     let preferred = preference(record) > preference(duplicate)
@@ -17816,7 +17831,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     traceOwners('separated', separated.actions, draft.draftId);
     const deduped = mergeDuplicateCommitments(separated.actions);
     traceOwners('mergeDuplicateCommitments', deduped.actions, draft.draftId);
-    const dedupedActions = await dedupeCommitmentsSemantically(deduped.actions, draft.draftId, 'merged');
+    const dedupedActions = await dedupeCommitmentsSemantically(deduped.actions, draft.draftId, 'merged', draft.sourceUnits);
     const ownersChecked = applyRequesterOwnerRule(dedupedActions, draft.sourceUnits);
     traceOwners('applyRequesterOwnerRule', ownersChecked.actions, draft.draftId);
     const softened = softenBestEffortCompletion(ownersChecked.actions, draft.sourceUnits);
@@ -18102,14 +18117,16 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   traceOwners('presenterAidGate(final)', presenterAidGate.actions, draft.draftId);
   // Later passes (lifecycle, answered, salvage) can add a second wording of a
   // commitment after the merge above, so the finished list is read once more.
-  const finalDedupedActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final'))
+  const finalDedupedActions = (await dedupeCommitmentsSemantically(presenterAidGate.actions, draft.draftId, 'final', draft.sourceUnits))
     .map((record) => ({
       ...record,
       action: normalisePublishedParticipantReference(record?.action, actionPeople)
     }))
     .map((record) => stripMinorCommunicationCourtesy(record, draft.sourceUnits))
     .filter((record) => record && !isVagueReconstructedAction(record?.action));
-  const finalSurvival = reconcileFinalApprovedActions(finalDedupedActions, displayEligibleApproved);
+  const finalSurvival = reconcileFinalApprovedActions(finalDedupedActions, displayEligibleApproved, {
+    sourceUnits: draft.sourceUnits
+  });
   const finalSiblingTiming = reconcileSiblingTimingDecisions(finalSurvival.actions, draft.sourceUnits, { meetingDate: timingAnchor });
   const finalTiming = finaliseActionTimings(finalSiblingTiming.actions, draft.sourceUnits, {
     meetingDate: timingAnchor, assessments: draft.qualityState?.actions?.timingAssessments || [],

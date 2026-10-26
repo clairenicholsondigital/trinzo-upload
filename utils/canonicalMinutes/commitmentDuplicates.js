@@ -58,6 +58,53 @@ function stem(token) {
 function words(value) {
   return String(value || '').toLowerCase().replace(/(\w)[-\/](\w)/g, '$1 $2').replace(/[’']/g, '').match(/[a-z0-9]{2,}/g) || [];
 }
+
+// A deliberately narrow source-bound paraphrase proof. This is not a general
+// semantic matcher: it only admits an untimed pair owned by the same person,
+// citing at least one of the same source units, with the same operation family,
+// no conflicting recipient/destination or quantities, and enough shared
+// object vocabulary to identify one occurrence. The shared citation is the
+// occurrence boundary; without it, similar work remains separate.
+const SOURCE_PARAPHRASE_STOP = new Set([
+  ...STOP, 'again', 'also', 'complete', 'completing', 'completed', 'document',
+  'documents', 'documentation', 'material', 'part', 'referenced', 'reviewed',
+  'using', 'output', 'summary', 'report', 'reporting', 'change', 'changes',
+  'comments', 'responses', 'feedback', 'revised', 'requesting', 'obtain'
+]);
+function sourceParaphraseTokens(value = '') {
+  return new Set(words(value).map(stem).filter(token => token.length > 2 && !SOURCE_PARAPHRASE_STOP.has(token)));
+}
+function sourceParaphraseEvidence(left = {}, right = {}, sourceUnits = []) {
+  const known = new Set((Array.isArray(sourceUnits) ? sourceUnits : []).map(unit => String(unit.id)));
+  const rightIds = new Set((right.evidenceIds || []).map(String));
+  return (left.evidenceIds || []).map(String).filter(id => rightIds.has(id) && (!known.size || known.has(id)));
+}
+function sourceAwareParaphraseDuplicate(left = {}, right = {}, options = {}) {
+  if (!options.sourceUnits?.length || isReviewerAuthored(left) || isReviewerAuthored(right)) return false;
+  if (exactOwners(left) !== exactOwners(right) || conflictingTimings(left, right)) return false;
+  if (left.timing?.kind !== 'not_stated' || right.timing?.kind !== 'not_stated') return false;
+  const sharedEvidence = sourceParaphraseEvidence(left, right, options.sourceUnits);
+  if (!sharedEvidence.length || conflictingRecipients(left.action, right.action)
+    || conflictingDestinations(left.action, right.action) || differentFigures(left.action, right.action)) return false;
+  const leftVerb = verbClass(leadVerb(left.action));
+  const rightVerb = verbClass(leadVerb(right.action));
+  const sameReviewObject = /\breview\b/i.test(left.action) && /\breview\b/i.test(right.action);
+  if (leftVerb && rightVerb && leftVerb !== rightVerb && !sameReviewObject) return false;
+  if (dependsOn(left.action, right.action) || dependsOn(right.action, left.action)) return false;
+  const leftTokens = sourceParaphraseTokens(left.action);
+  const rightTokens = sourceParaphraseTokens(right.action);
+  const shared = [...leftTokens].filter(token => rightTokens.has(token));
+  const union = new Set([...leftTokens, ...rightTokens]);
+  return shared.length >= 3 && shared.length / Math.max(union.size, 1) >= 0.34;
+}
+function sourceAwarePreferred(left = {}, right = {}) {
+  const score = record => {
+    const tokens = sourceParaphraseTokens(record.action);
+    const numbers = words(record.action).filter(token => /\d/.test(token)).length;
+    return tokens.size + Math.min(3, numbers) * 2 + Math.min(3, (record.evidenceIds || []).length) * 0.1;
+  };
+  return score(right) > score(left) ? right : left;
+}
 // Wording length is not completeness: a verbose review can omit a short,
 // concrete requirement in another version. Compare detail words only after a
 // pair has passed the separate deliverable/ownership/timing checks.
@@ -551,6 +598,9 @@ function commitmentDuplicate(a = {}, b = {}, options = {}) {
   if (exactActionIdentityConflict(a, b)) return { duplicate: false, reason: 'different owners or timing' };
   if (conflictingTimings(a, b)) return { duplicate: false, reason: 'different timing' };
   if (!ownersCompatible(a, b)) return { duplicate: false, reason: 'different owners' };
+  if (sourceAwareParaphraseDuplicate(a, b, options)) {
+    return { duplicate: true, reason: 'same source-bound occurrence with compatible paraphrase' };
+  }
   if (protectedMeaningConflict(a, b)) return { duplicate: false, reason: 'different explicit scope' };
   if (sameActionText(a, b)) return { duplicate: true, reason: 'identical' };
   if (reconcileCommitmentVariants(a, b)) {
@@ -625,9 +675,23 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
     + Math.min(6, (r.evidenceIds || []).length) + Math.min(30, String(r.action || '').split(/\s+/).length) / 30;
   const kept = []; const merged = [];
   list.forEach((action, index) => {
-    const at = kept.findIndex((k) => commitmentDuplicate(k.record, action, { cosine: cosineOf(k.index, index) }).duplicate);
+    const at = kept.findIndex((k) => commitmentDuplicate(k.record, action, {
+      cosine: cosineOf(k.index, index), sourceUnits: options.sourceUnits
+    }).duplicate);
     if (at < 0) { kept.push({ record: action, index }); return; }
     const existing = kept[at].record;
+    const sourceAware = sourceAwareParaphraseDuplicate(existing, action, options);
+    if (sourceAware) {
+      const winner = sourceAwarePreferred(existing, action);
+      kept[at] = { index: winner === action ? index : kept[at].index, record: {
+        ...winner,
+        evidenceIds: [...new Set([...(winner.evidenceIds || []), ...(existing.evidenceIds || []), ...(action.evidenceIds || [])])],
+        reviewFlagIds: [...new Set([...(winner.reviewFlagIds || []), ...(existing.reviewFlagIds || []), ...(action.reviewFlagIds || [])])]
+      } };
+      merged.push({ removed: String((winner === action ? existing : action).action || '').slice(0, 160),
+        into: String(winner.action || '').slice(0, 160), reason: 'same source-bound occurrence with compatible paraphrase' });
+      return;
+    }
     const reconciled = reconcileCommitmentVariants(existing, action);
     if (reconciled) {
       kept[at] = { index: reconciled.record.id === action.id ? index : kept[at].index, record: reconciled.record };
@@ -665,4 +729,4 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
   return { actions: kept.map((k) => k.record), merged };
 }
 
-module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, commitmentVariantCovered, reconcileCommitmentVariants, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
+module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, commitmentVariantCovered, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
