@@ -1,6 +1,7 @@
 'use strict';
 
-// Identity evidence for the two source-promise promotion shortcuts only.
+// Source-only speaker identity. Promotion shortcuts may resolve short names;
+// consumers which can remove work must use the full-label-only resolver.
 // Do not infer people from generated owners, prose or Settings aliases.
 function speakerLabel(value) {
   const raw = String(value || '').normalize('NFKC').toLowerCase().trim()
@@ -47,7 +48,24 @@ function sourceSpeakerIdentityScope(sourceUnits = []) {
       byFirst.get(label.first).add(identity);
     }
   }
+  const fullLabelCounts = new Map();
+  const familyKey = label => JSON.stringify([label.first, label.key.split(' ').at(-1)]);
+  for (const label of full.values()) {
+    const family = familyKey(label);
+    fullLabelCounts.set(family, (fullLabelCounts.get(family) || 0) + 1);
+  }
   return {
+    // Full source labels only. Consumers which can remove work must never
+    // inherit resolve()'s first-name convenience used by promotion checks.
+    resolveFull(value) {
+      const label = speakerLabel(value);
+      if (!label || label.count < 2) return null;
+      // A full middle name is also a possible competing person. Removing
+      // work cannot shorten an initialled source identity in that situation,
+      // even though promotion's existing resolver has a looser alias rule.
+      if (!full.has(label.key) && fullLabelCounts.get(familyKey(label)) !== 1) return null;
+      return identities.get(label.key) || null;
+    },
     resolve(value) {
       const label = speakerLabel(value);
       if (!label) return null;

@@ -2,7 +2,7 @@
 // Source and retention diagnostics; returns unchanged originals, never edits.
 const R={prepareActionReconciliation:(...args)=>require('./canonicalMinutes/actionSemanticReconciliation').prepareActionReconciliation(...args),mechanicalCoverage:(...args)=>require('./canonicalMinutes/actionSemanticReconciliation').mechanicalCoverage(...args)};
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
-const { ownerWitness } = require('./meetingMinutesSemanticSourceVerification');
+const { sourceOwnerWitnessScope } = require('./meetingMinutesSemanticSourceVerification');
 const { hash } = require('./meetingMinutesProofHash');
 const VERSION = 'action-facet-review-v1';
 const clone = value => structuredClone(value);
@@ -38,6 +38,7 @@ function prepare(register,comparisonId,survivorRef,options={}) {
  const sourceIds=new Set(register.sourceUnits.map(s=>s.id));
  if(sourceIds.size!==register.sourceUnits.length)throw Error('ambiguous_source_ids');
  const prepared=R.prepareActionReconciliation({actions:originals.map(row=>row.action),sourceUnits:register.sourceUnits});
+ const ownerWitness=sourceOwnerWitnessScope(register.sourceUnits);
  const rows=prepared.rows.map((row,i)=>({ref:originals[i].ref,recordHash:row.recordHash,action:clone(row.action),
   facets:facets({...row,ref:originals[i].ref},options),unresolvedSourceIds:clone(originals[i].unresolvedSourceIds),
   ownerWitnesses:(row.action.owners||[]).map(owner=>({owner,sourceIds:register.sourceUnits.filter(unit=>row.action.evidenceIds?.includes(unit.id)&&ownerWitness(unit,owner)).map(unit=>unit.id)}))}));
@@ -73,6 +74,7 @@ function error(packet,response) {
  if(!Array.isArray(response.decisions)||response.decisions.length!==packet.checks.length)return 'incomplete_facet_accounting';
  const required=new Map(packet.checks.map(check=>[check.facetId,check])),seen=new Set();
  const sources=new Map(packet.sourceUnits.map(source=>[source.id,source]));
+ const ownerWitness=sourceOwnerWitnessScope(packet.sourceUnits);
  const survivor=packet.rows.find(row=>row.ref===packet.survivorRef);
  for(const check of response.decisions){
   const original=required.get(check?.facetId);

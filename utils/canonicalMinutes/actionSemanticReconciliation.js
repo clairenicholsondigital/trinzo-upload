@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const contained = require('./containedRequirement');
 const dependency = require('./qualifiedDependency');
 const contactPurpose = require('./contactParaphrase');
-const { ownerWitness } = require('../meetingMinutesSemanticSourceVerification');
+const { sourceOwnerWitnessScope } = require('../meetingMinutesSemanticSourceVerification');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
@@ -356,9 +356,10 @@ function validateCoverage(packet, proof, original, survivor) {
   // Lexical grounding is a conservative necessary check, not a semantic oracle.
   // A real quote or the model's claim of equivalence alone authorizes nothing.
   const sourceWords = contentWords(spans.map(span => span.quote).join(' '));
+  const ownerWitness=sourceOwnerWitnessScope(packet.sourceUnits);
   for (const witness of [original, survivor]) {
     if (!proof.semanticProof && !subset(contentWords(witness.action.action), sourceWords)) return 'wording_not_directly_source_grounded';
-    if (!owners(witness.action).every(owner => spans.some(span => ownerWitness({speaker:span.unit.speaker,text:span.quote},owner)))) return 'owner_not_source_grounded';
+    if (!owners(witness.action).every(owner => spans.some(span => ownerWitness({id:span.unit.id,speaker:span.unit.speaker,text:span.quote},owner)))) return 'owner_not_source_grounded';
   }
   const sourceComparison = comparisonNumbers(spans.map(span => span.quote).join(' '));
   const sourceFacets = protectedFacets({ action: sourceComparison });
