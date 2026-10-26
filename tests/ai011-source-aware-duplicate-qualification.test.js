@@ -36,9 +36,9 @@ function assertSourceBound(rows, sourceUnits) {
 
 function qualify(rows, sourceUnits) {
   assertSourceBound(rows, sourceUnits);
-  const commitment = mergeCommitmentDuplicates(structuredClone(rows)).actions;
+  const commitment = mergeCommitmentDuplicates(structuredClone(rows), { sourceUnits }).actions;
   const hybrid = dedupeHybridActionRecords(structuredClone(rows), { sourceUnits });
-  const final = reconcileFinalApprovedActions(hybrid, structuredClone(rows));
+  const final = reconcileFinalApprovedActions(hybrid, structuredClone(rows), { sourceUnits });
   return { commitment, hybrid, final: final.actions, restored: final.restored };
 }
 
