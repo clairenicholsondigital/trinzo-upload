@@ -1,0 +1,272 @@
+{
+  "plan": {
+    "version": 1,
+    "projectId": 19,
+    "snapshotSha256": "7d8c16a468be2e9bc698931550b839f3c3490c37a57fa25d5e8adb2641c994bc",
+    "tasks": [
+      {
+        "taskId": "AI-001",
+        "title": "Preserve report data during editing",
+        "description": "Preserve report data during editing. Summary-only edits retain action timing, milestone evidence and untouched metadata.\n\nArea: Project updates\n\nEvidence: PU-1; intercepted report-42 autosave\n\nExisting work: None identified\n\nDependencies: None known\n\nNext action: Correct non-lossy field serialisation and verify summary-only edit/save/reload.\n\nExternal input: No",
+        "status": "To do",
+        "priority": "P0",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "PU-1",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md#pu-1"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-002",
+        "title": "Stop cross-milestone evidence assignment",
+        "description": "Stop cross-milestone evidence assignment. Assessments use their own matched evidence; unmatched rows remain unassessed; affected saved data is corrected.\n\nArea: Project updates\n\nEvidence: PU-2; live Overview and isolated matching reproduction\n\nExisting work: None identified\n\nDependencies: None known\n\nNext action: Remove positional evidence fallback and identify the affected saved assessments.\n\nExternal input: No",
+        "status": "To do",
+        "priority": "P0",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "PU-2",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md#pu-2"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-003",
+        "title": "Bind authoritative project history to approval",
+        "description": "Bind authoritative project history to approval. Later reports use the reviewed approved version, excluding unapproved/archived assessments from the authoritative baseline.\n\nArea: Project updates\n\nEvidence: PU-3; draft 41 feeding report 42\n\nExisting work: None identified\n\nDependencies: None known\n\nNext action: Test approved-version context selection and propagation of reviewed corrections.\n\nExternal input: No",
+        "status": "To do",
+        "priority": "P0",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "PU-3",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md#pu-3"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-004",
+        "title": "Make headline health evidence-based",
+        "description": "Make headline health evidence-based. Insufficient coverage is explicit and the summary agrees with the final health assessment.\n\nArea: Project updates\n\nEvidence: PU-4; zero-assessment reproduction and report-42 contradiction\n\nExisting work: None identified\n\nDependencies: None known\n\nNext action: Add the bounded insufficient-coverage and final-summary consistency correction.\n\nExternal input: No",
+        "status": "To do",
+        "priority": "P0",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "PU-4",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md#pu-4"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-005",
+        "title": "Confirm pilot access and reviewers",
+        "description": "Confirm pilot access and reviewers. Intended users can sign in and named participants agree to take part. Existing access may already satisfy this.\n\nArea: Shared\n\nEvidence: Both assessments; self-registration disabled\n\nExisting work: None\n\nDependencies: None known\n\nNext action: Confirm existing access and who will review; Advait/Saki are suggested, not committed owners.\n\nExternal input: Yes\n\nOriginal snapshot status: Awaiting input. Imported as To do; input or a decision is still required.",
+        "status": "To do",
+        "priority": "P2",
+        "category": "External dependency",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-006",
+        "title": "Confirm representative pilot inputs",
+        "description": "Confirm representative pilot inputs. Choose an internal transcript/project and validate the existing milestones, standing risks and background; do not assume data must be created from scratch.\n\nArea: Shared\n\nEvidence: Existing project pilot checklist; current project 19 already contains 19 milestones\n\nExisting work: None\n\nDependencies: None known\n\nNext action: Agree one suitable internal transcript and confirm the chosen project's baseline is representative.\n\nExternal input: Yes\n\nOriginal snapshot status: Awaiting input. Imported as To do; input or a decision is still required.",
+        "status": "To do",
+        "priority": "P2",
+        "category": "External dependency",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-007",
+        "title": "Complete the first independent minutes journey",
+        "description": "Complete the first independent minutes journey. A colleague uploads, reviews, corrects, saves, reopens and exports real minutes; record completion, corrections, confusion and actual review time.\n\nArea: Meeting minutes\n\nEvidence: Minutes assessment: fresh live full journey unverified; no measured review time\n\nExisting work: None\n\nDependencies: AI-005, AI-006\n\nNext action: Ask one participating colleague to follow the walkthrough and record observed results.\n\nExternal input: Yes",
+        "status": "To do",
+        "priority": "P2",
+        "category": "Validation",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-008",
+        "title": "Validate the corrected project-report cycle",
+        "description": "Validate the corrected project-report cycle. Verify information-preserving edits, approval and a subsequent update using the corrected baseline, then trial with a colleague.\n\nArea: Project updates\n\nEvidence: Project assessment: four P0 defects and no successful live approval cycle\n\nExisting work: None\n\nDependencies: AI-001, AI-002, AI-003, AI-004, AI-005, AI-006\n\nNext action: After the fixes, exercise one full cycle plus a follow-on report; expand only if needed.\n\nExternal input: Yes",
+        "status": "Blocked",
+        "priority": "P2",
+        "category": "Validation",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-009",
+        "title": "Decide whether routine internal use is justified",
+        "description": "Decide whether routine internal use is justified. Use observed pilot results to agree what can be used routinely and any remaining limits.\n\nArea: Shared\n\nEvidence: Neither assessment proves routine first-time-user usability\n\nExisting work: None\n\nDependencies: AI-007, AI-008 for combined use; AI-007 alone for a minutes-only decision\n\nNext action: Agree the next usage boundary from observed results, separately for each tool.\n\nExternal input: Yes\n\nOriginal snapshot status: Awaiting input. Imported as To do; input or a decision is still required.",
+        "status": "To do",
+        "priority": "P2",
+        "category": "Decision",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-010",
+        "title": "Resolve existing project-flow PR #67",
+        "description": "Resolve existing project-flow PR #67. Review the existing attribution/filtering/duplicate/fallback work without treating it as the four P0 fixes.\n\nArea: Project updates\n\nEvidence: Existing open project-flow work; section 7\n\nExisting work: #67\n\nDependencies: No pilot-gating dependency established\n\nNext action: Review/test the existing PR if scheduled; do not duplicate its changes.\n\nExternal input: No",
+        "status": "In progress",
+        "priority": "P2",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "#67",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/pull/67"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-011",
+        "title": "Address recurring minutes repetition when justified by pilot evidence",
+        "description": "Address recurring minutes repetition when justified by pilot evidence. Correct demonstrated overlapping actions or discussion repetition without losing distinct work or qualifications.\n\nArea: Meeting minutes\n\nEvidence: Eakin's two overlapping action pairs; variable output repetition\n\nExisting work: Related safeguards already deployed; research #132/#155 remains separate\n\nDependencies: AI-007 feedback before expanding scope\n\nNext action: Record which repetitions actually cost reviewers effort; prioritise only demonstrated cases.\n\nExternal input: No",
+        "status": "To do",
+        "priority": "P2",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-012",
+        "title": "Evaluate review burden and terminology using pilot feedback",
+        "description": "Evaluate review burden and terminology using pilot feedback. Establish whether checks/retained material and their explanations obstruct routine review; change only demonstrated friction.\n\nArea: Meeting minutes\n\nEvidence: Section 4: 63 primary groups, 128 optional retained entries; no timing study\n\nExisting work: Existing grouping fixes are completed, not new tasks\n\nDependencies: AI-007\n\nNext action: Measure actual review effort and unclear terminology before proposing more controls.\n\nExternal input: No",
+        "status": "To do",
+        "priority": "P2",
+        "category": "Usability",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-013",
+        "title": "Resolve the separately scoped admin-settings PR #61",
+        "description": "Resolve the separately scoped admin-settings PR #61. Review held people-list/glossary administration if prioritised; do not make it a pilot dependency without evidence.\n\nArea: Shared\n\nEvidence: Existing open admin-settings work, not a readiness finding\n\nExisting work: #61\n\nDependencies: No pilot-gating dependency established\n\nNext action: Keep scope isolated; review the existing change only if separately prioritised.\n\nExternal input: No",
+        "status": "In progress",
+        "priority": "P3",
+        "category": "Technical",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "#61",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/pull/61"
+          }
+        ]
+      },
+      {
+        "taskId": "AI-014",
+        "title": "Keep semantic cleanup experiments held",
+        "description": "Keep semantic cleanup experiments held. PRs #132/#155 have no automatic-cleanup authority; reconsider only if later prioritised and qualification succeeds.\n\nArea: Meeting minutes\n\nEvidence: Failed semantic qualification and contradictory retention judgements; source binding alone does not prove meaning\n\nExisting work: Draft #132, #155\n\nDependencies: Qualification failures; no decision to resume as a pilot requirement\n\nNext action: Leave held. No additional architecture or research phase is commissioned here.\n\nExternal input: No",
+        "status": "Blocked",
+        "priority": "P3",
+        "category": "Research",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          },
+          {
+            "label": "#132",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/pull/132"
+          },
+          {
+            "label": "#155",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/pull/155"
+          }
+        ]
+      }
+    ],
+    "excluded": [
+      {
+        "taskId": "AI-015",
+        "reason": "Separate implementation approval was given in the current request; this decision is satisfied."
+      }
+    ]
+  },
+  "approvalHash": "12f17ec3730738c7a605c4976dcbeb945d3da57808f3aee9801831ce5d6f511a"
+}
