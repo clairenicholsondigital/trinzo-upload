@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings | Trinzo</title>
+<link rel="stylesheet" href="/static/trinzo.css">
+<link rel="stylesheet" href="/static/trinzo-fonts.css">
+<style>
+.settings-page *{box-sizing:border-box}
+.settings-page [hidden]{display:none!important}
+.settings-hero{border-top:3px solid var(--brand)}
+.settings-hero h1{margin:0}
+.settings-hero .intro{max-width:68ch;margin:.4rem 0 0}
+.settings-tabs{display:flex;gap:.4rem;max-width:440px;margin:0 0 .9rem}
+.settings-tab{flex:1;min-height:44px;padding:.5rem .75rem;border:1px solid var(--border-strong);border-radius:var(--radius-pill);background:var(--surface);color:var(--accent-700);font:inherit;font-weight:700;cursor:pointer}
+.settings-tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.settings-tab .count{margin-left:.35rem;font-weight:400;opacity:.85}
+.list-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;margin-bottom:.8rem}
+.list-tools input{min-height:44px;width:100%}
+.list-tools .button{min-height:44px;white-space:nowrap}
+.tab-help{margin:-.25rem 0 .8rem;font-size:.88rem}
+.group-title{display:flex;align-items:center;gap:.45rem;margin:1rem 0 .45rem;font-size:.95rem}
+.group-title:first-child{margin-top:0}
+.group-count{display:inline-grid;place-items:center;min-width:1.5rem;height:1.5rem;padding:0 .4rem;border-radius:999px;background:var(--soft-2);color:var(--muted);font-size:.75rem}
+.settings-list{display:grid;gap:.45rem;margin:0;padding:0;list-style:none}
+.settings-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem;align-items:center;padding:.65rem .8rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
+.settings-row[data-side="internal"]{border-left:3px solid var(--accent)}
+.settings-row[data-side="client"]{border-left:3px solid var(--warn-text)}
+.row-main{min-width:0}
+.row-title{display:block;color:var(--heading);font-weight:700;overflow-wrap:anywhere}
+.row-sub{display:block;margin-top:.1rem;color:var(--muted);font-size:.84rem;overflow-wrap:anywhere}
+.row-edit{min-height:40px;padding:.35rem .85rem}
+.settings-form{display:grid;gap:.75rem;padding:.9rem;border:1px solid var(--brand-200);border-radius:var(--radius-sm);background:var(--brand-050)}
+.settings-form label{display:grid;gap:.3rem}
+.settings-form input,.settings-form textarea{width:100%;font-size:1rem}
+.settings-form textarea{min-height:5.5rem}
+.field-hint{margin:0;color:var(--muted);font-size:.82rem;font-weight:400}
+.side-choice{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin:0;padding:0;border:0}
+.side-choice legend{margin-bottom:.3rem;color:var(--heading);font-weight:600;font-size:.9rem}
+.side-choice input{position:absolute;opacity:0;pointer-events:none}
+.side-choice span{display:block;min-height:44px;padding:.6rem;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);color:var(--accent-700);text-align:center;font-weight:700;cursor:pointer}
+.side-choice input:checked+span{background:var(--accent);border-color:var(--accent);color:#fff}
+.side-choice input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.form-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+.form-actions button{min-height:44px;padding:.5rem 1rem}
+.form-actions .delete{margin-left:auto}
+.form-error{margin:0}
+.empty-state{padding:1.5rem 1rem;text-align:center;color:var(--muted)}
+.history summary{cursor:pointer;color:var(--accent-700);font-weight:700}
+.history-list{display:grid;gap:.4rem;margin:.75rem 0 0;padding:0;list-style:none;font-size:.86rem}
+.history-list li{padding:.45rem 0;border-bottom:1px solid var(--border)}
+.history-list time{color:var(--muted)}
+@media(max-width:520px){
+  body{padding:.75rem}
+  .settings-page .panel{padding:1rem}
+  .list-tools{grid-template-columns:1fr}
+  .form-actions .button,.form-actions button{flex:1}
+  .form-actions .delete{margin-left:0;flex-basis:100%}
+}
+</style>
+<script defer src="/static/trinzo.js"></script>
+<script defer src="/static/settings.js"></script>
+</head>
+<body class="settings-page">
+<main class="container">
+  <nav class="nav" aria-label="Primary navigation"><a href="/meeting-minutes-agent">Meeting Minutes Agent</a><a href="/jobs">Library</a><a href="/insights">Insights</a><a href="/settings" aria-current="page">Settings</a></nav>
+
+  <section class="panel settings-hero">
+    <h1>Settings</h1>
+    <p class="intro">Manage the people and terms used by the minutes tools. Changes are used in processing and display. Previously saved versions are kept.</p>
+  </section>
+
+  <section class="panel" aria-live="polite">
+    <div id="settingsMessage" class="message" hidden></div>
+    <div class="settings-tabs" role="tablist" aria-label="Settings lists">
+      <button id="peopleTab" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="peoplePanel" data-tab="people">People<span id="peopleCount" class="count"></span></button>
+      <button id="termsTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="termsPanel" data-tab="terms">Glossary<span id="termsCount" class="count"></span></button>
+    </div>
+
+    <div id="peoplePanel" role="tabpanel" aria-labelledby="peopleTab">
+      <p class="tab-help muted">For people on this list, the directory’s Internal or Client setting takes precedence when minutes are saved or generated. Change their side here to correct it. People not on the list can be moved during review.</p>
+      <div class="list-tools">
+        <input id="peopleSearch" type="search" placeholder="Search people" aria-label="Search people" autocomplete="off">
+        <button id="addPerson" class="button" type="button" hidden>+ Add person</button>
+      </div>
+      <div id="peopleForm" hidden></div>
+      <div id="peopleList"><p class="empty-state">Loading…</p></div>
+    </div>
+
+    <div id="termsPanel" role="tabpanel" aria-labelledby="termsTab" hidden>
+      <p class="tab-help muted">Wrong spellings are corrected to the term in new minutes, in any capitals, with or without spaces.</p>
+      <div class="list-tools">
+        <input id="termsSearch" type="search" placeholder="Search glossary" aria-label="Search glossary" autocomplete="off">
+        <button id="addTerm" class="button" type="button" hidden>+ Add term</button>
+      </div>
+      <div id="termsForm" hidden></div>
+      <div id="termsList"><p class="empty-state">Loading…</p></div>
+    </div>
+  </section>
+
+  <section id="historyPanel" class="panel" hidden>
+    <details id="history" class="history">
+      <summary>Recent changes</summary>
+      <ul id="historyList" class="history-list"></ul>
+    </details>
+  </section>
+</main>
+</body>
+</html>

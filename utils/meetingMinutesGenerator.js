@@ -49,6 +49,7 @@ function parsePythonJson(rawOutput, scriptName) {
 }
 
 async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs = [], options = {}) {
+  await require('./settingsStore').refreshIfStale();
   validateTranscriptText(transcriptText);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-transcript-'));

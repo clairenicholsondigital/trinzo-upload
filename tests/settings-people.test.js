@@ -1,0 +1,136 @@
+'use strict';
+
+// The People list on the Settings page drives who the agent treats as internal
+// or client, and which other spellings resolve to whom.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const settingsStore = require('../utils/settingsStore');
+const { DEFAULT_PEOPLE } = require('../utils/settingsDefaults');
+const {
+  alwaysInternalAttendeeName,
+  knownPersonName,
+  normaliseFixedPersonAliases,
+  normaliseDirectoryNameSpellings
+} = require('../utils/entityNormalization');
+const { sanitiseDetails } = require('../utils/meetingMinutesAgentV2');
+const { extractStagedDetailsFromTranscript } = require('../routes/api').stagedEvaluation;
+const { validatePerson } = require('../utils/settingsDb');
+
+test.afterEach(() => settingsStore.resetToDefaults());
+
+function withPeople(extra, { without = [] } = {}) {
+  settingsStore.setSettings({
+    people: [...DEFAULT_PEOPLE.filter((person) => !without.includes(person.name)), ...extra]
+  });
+}
+
+test('the built-in list keeps everyone who was hardcoded, on the same side', () => {
+  for (const name of ['Jacqui Fox', 'Conor Flynn', 'Claire Nicholson', 'Stuart Smith', 'Advait Dharmadhikari', 'Saki Arimoto']) {
+    assert.equal(alwaysInternalAttendeeName(name), name, name);
+  }
+  for (const name of ['Rebecca Gill', 'Ciaran Ryan', 'Claire Doherty']) {
+    assert.equal(knownPersonName(name), name, name);
+    assert.equal(alwaysInternalAttendeeName(name), '', name);
+  }
+  assert.equal(knownPersonName('Smith, Stuart M'), 'Stuart Smith');
+  assert.equal(knownPersonName('Rebecca Cuckoo'), 'Rebecca Gill');
+});
+
+test('a person added on the page is internal straight away, misspellings included', () => {
+  assert.equal(alwaysInternalAttendeeName('Niamh Brennan'), '');
+  withPeople([{ name: 'Niamh Brennan', side: 'internal', spellings: ['Neve Brennan'] }]);
+  assert.equal(alwaysInternalAttendeeName('Niamh Brennan'), 'Niamh Brennan');
+  assert.equal(alwaysInternalAttendeeName('Neve Brennan'), 'Niamh Brennan');
+  assert.equal(alwaysInternalAttendeeName('Brennan, Niamh'), 'Niamh Brennan');
+  assert.equal(alwaysInternalAttendeeName('Niamh Brenan'), 'Niamh Brennan');
+  const details = sanitiseDetails({ internalAttendees: ['Jacqui Fox'], clientAttendees: ['Neve Brennan', 'Rebecca Gill'] });
+  assert.deepEqual(details.internalAttendees, ['Jacqui Fox', 'Niamh Brennan']);
+  assert.deepEqual(details.clientAttendees, ['Rebecca Gill']);
+});
+
+test('moving someone to Client on the page stops them being forced internal', () => {
+  withPeople([{ name: 'Saki Arimoto', side: 'client', spellings: [] }], { without: ['Saki Arimoto'] });
+  assert.equal(alwaysInternalAttendeeName('Saki Arimoto'), '');
+  const details = sanitiseDetails({ internalAttendees: ['Jacqui Fox'], clientAttendees: ['Saki Arimoto'] });
+  assert.deepEqual(details.clientAttendees, ['Saki Arimoto']);
+});
+
+test('removing someone from the page means they are no longer known', () => {
+  withPeople([], { without: ['Advait Dharmadhikari'] });
+  assert.equal(knownPersonName('Advait Dharmadhikari'), '');
+  assert.equal(alwaysInternalAttendeeName('Adwait Dharmadikari'), '');
+});
+
+test('a first name shared by two listed people matches neither', () => {
+  assert.equal(knownPersonName('Claire'), '');
+  withPeople([{ name: 'Jacqui Byrne', side: 'client', spellings: [] }]);
+  assert.equal(knownPersonName('Jacqui'), '');
+  assert.equal(knownPersonName('Jacqui Fox'), 'Jacqui Fox');
+});
+
+test('a short, common surname alone is not taken as a listed person', () => {
+  for (const name of ['Thomas', 'Ryan', 'Gill', 'Kane']) assert.equal(knownPersonName(name), '', name);
+});
+
+test('full-name other spellings are corrected in printed text; directory forms also in the transcript', () => {
+  withPeople([{ name: 'Niamh Brennan', side: 'internal', spellings: ['Neve Brennan', 'Brennan, Niamh A'] }]);
+  assert.equal(normaliseFixedPersonAliases('Neve Brennan will send it.'), 'Niamh Brennan will send it.');
+  assert.equal(normaliseFixedPersonAliases('Neve Brennanson will send it.'), 'Neve Brennanson will send it.');
+  assert.equal(normaliseDirectoryNameSpellings('Brennan, Niamh A   0:05'), 'Niamh Brennan   0:05');
+  assert.equal(normaliseDirectoryNameSpellings('Neve Brennan   0:05'), 'Neve Brennan   0:05');
+  assert.equal(normaliseDirectoryNameSpellings('Smith, Stuart M   0:05'), 'Stuart Smith   0:05');
+});
+
+test('Teams speakers are bucketed from the People list as it stands', () => {
+  const transcript = [
+    'Project review transcript', '',
+    'Jacqui Fox   0:05', 'Morning everyone.', '',
+    'Niamh Brennan   0:12', 'I have the test results.', '',
+    'Rebecca Gill   0:31', 'Thanks, that works for us.'
+  ].join('\n');
+  const before = sanitiseDetails(extractStagedDetailsFromTranscript(transcript, 'review.vtt').screens.details);
+  assert.ok(before.clientAttendees.includes('Niamh Brennan'), JSON.stringify(before));
+  withPeople([{ name: 'Niamh Brennan', side: 'internal', spellings: [] }]);
+  const after = sanitiseDetails(extractStagedDetailsFromTranscript(transcript, 'review.vtt').screens.details);
+  assert.ok(after.internalAttendees.includes('Niamh Brennan'), JSON.stringify(after));
+  assert.ok(!after.clientAttendees.includes('Niamh Brennan'), JSON.stringify(after));
+});
+
+test('the People form rejects missing, duplicate and clashing entries', () => {
+  const others = [{ name: 'Jacqui Fox', spellings: ['J Fox'] }];
+  assert.throws(() => validatePerson({ name: '', side: 'internal' }, others), /Add the person’s name/);
+  assert.throws(() => validatePerson({ name: 'Niamh', side: '' }, others), /Choose Internal or Client/);
+  assert.throws(() => validatePerson({ name: 'jacqui fox', side: 'client' }, others), /already on the list/);
+  assert.throws(() => validatePerson({ name: 'Niamh', side: 'client', spellings: ['J Fox'] }, others), /already used for Jacqui Fox/);
+  assert.deepEqual(
+    validatePerson({ name: '  Niamh  Brennan ', side: 'client', spellings: 'Neve Brennan\n\nneve brennan\nNiamh Brennan' }, others),
+    { name: 'Niamh Brennan', side: 'client', spellings: ['Neve Brennan'] }
+  );
+});
+
+test('explicitly registered four-word names and aliases resolve before fuzzy token limits', () => {
+  withPeople([{name:'Nora Anne Marie Patel',side:'internal',spellings:['Patel, Nora Anne Marie']}]);
+  assert.equal(knownPersonName('Nora Anne Marie Patel'),'Nora Anne Marie Patel');
+  assert.equal(knownPersonName('Patel, Nora Anne Marie'),'Nora Anne Marie Patel');
+  assert.equal(knownPersonName('Unlisted Person With Four Words'),'');
+});
+
+test('directory classification overrides explicit reviewer lists in both directions', () => {
+  const details = sanitiseDetails({internalAttendees:['Rebecca Gill'],clientAttendees:['Saki Arimoto'],attendeeSidesReviewed:true});
+  assert.deepEqual(details.internalAttendees,['Saki Arimoto']);
+  assert.deepEqual(details.clientAttendees,['Rebecca Gill']);
+  assert.equal(details.attendeeSidesReviewed,undefined);
+  assert.deepEqual(sanitiseDetails(details),details);
+  withPeople([{name:'Saki Arimoto',side:'client',spellings:[]}],{without:['Saki Arimoto']});
+  const updated=sanitiseDetails(details);
+  assert.deepEqual(updated.internalAttendees,[]);
+  assert.deepEqual(updated.clientAttendees,['Rebecca Gill','Saki Arimoto']);
+});
+
+test('people absent from the directory remain manually assignable', () => {
+  const details=sanitiseDetails({internalAttendees:['Zephyr Quill'],clientAttendees:['Rowan Unlisted']});
+  assert.deepEqual(details.internalAttendees,['Zephyr Quill']);
+  assert.deepEqual(details.clientAttendees,['Rowan Unlisted']);
+});

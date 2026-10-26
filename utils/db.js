@@ -3826,6 +3826,7 @@ module.exports = {
   hasDatabaseConfig,
   getDatabaseConfigError,
   query,
+  withTransaction,
   runPsql,
   createAuthUser,
   findAuthUserByEmail,

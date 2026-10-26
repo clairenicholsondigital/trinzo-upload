@@ -19,19 +19,11 @@ const syntheticPeople = firstNames.flatMap((firstName, index) =>
 
 // Exercise the actual route extraction with a larger directory. Only the route's
 // directory data changes; the real normalization functions and source stay intact.
-const routePath = require.resolve('../routes/api');
-const routeModule = new Module(routePath, module);
-routeModule.filename = routePath;
-routeModule.paths = Module._nodeModulePaths(path.dirname(routePath));
-const routeRequire = routeModule.require.bind(routeModule);
-routeModule.require = (request) => request === '../utils/entityNormalization'
-  ? {
-      ...entityNormalization,
-      ALWAYS_INTERNAL_PEOPLE: [...entityNormalization.ALWAYS_INTERNAL_PEOPLE, ...syntheticPeople]
-    }
-  : routeRequire(request);
-routeModule._compile(fs.readFileSync(routePath, 'utf8'), routePath);
-const { extractStagedDetailsFromTranscript } = routeModule.exports.stagedEvaluation;
+const settingsStore = require('../utils/settingsStore');
+const { DEFAULT_PEOPLE } = require('../utils/settingsDefaults');
+const { extractStagedDetailsFromTranscript } = require('../routes/api').stagedEvaluation;
+test.beforeEach(() => settingsStore.setSettings({ people: [...DEFAULT_PEOPLE, ...syntheticPeople.map(person => ({ name: person.name, side: 'internal', spellings: [] }))] }));
+test.afterEach(() => settingsStore.resetToDefaults());
 
 function extract(speakerNames) {
   const transcript = [

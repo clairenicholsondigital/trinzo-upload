@@ -30,31 +30,55 @@ const DOMAIN_TERMS = [
   { canonical: 'IEC 27427', aliases: ['27427'], category: 'standard' }
 ];
 
-// General domain mishearing corrections (any transcript can contain these —
-// they are not tied to one meeting). Used by the terminology-QA "check these
-// terms" surface.
-const AUTO_CORRECTIONS = [
-  { original: 'Udemed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
-  { original: 'Udimed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
-  { original: 'Deta Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
-  { original: 'DD Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
-  { original: 'T Inc', replacement: 'DITA', reason: 'Recognised organisation name correction' },
-  { original: 'Medsap', replacement: 'MDSAP', reason: 'Recognised terminology correction' },
-  { original: 'Meds app', replacement: 'MDSAP', reason: 'Recognised terminology correction' },
-  { original: 'S-BOM', replacement: 'SBOM', reason: 'Recognised terminology correction' },
-  { original: 'Kappa', replacement: 'CAPA', reason: 'Recognised terminology correction' },
-  { original: 'Kappas', replacement: 'CAPAs', reason: 'Recognised terminology correction' },
-  // Teams' transcription of "Cognidocs" (the document-control system) - confirmed on T761.
-  { original: 'call me docs', replacement: 'Cognidocs', reason: 'Recognised terminology correction' },
-  { original: 'call me doc', replacement: 'Cognidocs', reason: 'Recognised terminology correction' },
-  // British spelling throughout published minutes, regardless of which the transcript used.
-  { original: 'labeling', replacement: 'labelling', reason: 'British spelling' },
-  { original: 'labeled', replacement: 'labelled', reason: 'British spelling' }
-];
+const settingsStore = require('./settingsStore');
+
+// Mishearing corrections ("Teams writes Kappa, it should be CAPA") come from
+// the Settings page Glossary: each term's "Teams sometimes writes" spellings.
+// The defaults are in utils/settingsDefaults.js.
+//
+// A wrong spelling matches in any case, with spaces or hyphens between its
+// words or none ("call me docs", "call-me-docs", "callmedocs"), and never
+// inside a longer word. An acronym keeps a plural ("Kappas" -> "CAPAs").
+const { isAcronymTerm } = require('./settingsTermMatching');
+
+let correctionCache = { version: -1, rules: [], pairs: [] };
+
+function glossaryCorrections() {
+  const version = settingsStore.version();
+  if (correctionCache.version === version) return correctionCache;
+  const rules = [];
+  const pairs = [];
+  for (const entry of settingsStore.getTerms()) {
+    const term = String(entry.term || '').trim();
+    const heardAs = (entry.heardAs || []).map((item) => String(item || '').trim()).filter(Boolean)
+      .sort((left, right) => right.length - left.length);
+    if (!term || !heardAs.length) continue;
+    const plural = isAcronymTerm(term);
+    const alternation = heardAs
+      .map((item) => item.split(/[\s-]+/).filter(Boolean).map(escapeRegExp).join('[\\s-]*'))
+      .join('|');
+    rules.push({
+      term,
+      pattern: new RegExp(`(?<![\\p{L}\\p{N}])(?:${alternation})${plural ? '(s?)' : '()'}(?![\\p{L}\\p{N}])`, 'giu')
+    });
+    for (const original of heardAs) {
+      pairs.push({ original, replacement: term, reason: 'Recognised terminology correction' });
+      if (plural) pairs.push({ original: `${original}s`, replacement: `${term}s`, reason: 'Recognised terminology correction' });
+    }
+  }
+  correctionCache = { version, rules, pairs };
+  return correctionCache;
+}
+
+// The same corrections as original/replacement pairs, for the terminology
+// review ("check these terms") surface.
+function autoCorrections() {
+  return glossaryCorrections().pairs;
+}
 
 // ---- Corrections applied to the TRANSCRIPT, before any model sees it ------
 //
-// AUTO_CORRECTIONS above rewrite what is printed. These rewrite what the
+// The glossary corrections above rewrite what is printed. These rewrite what the
 // models read, which is the only way to fix a phrase the transcript states
 // correctly but a reader can misunderstand.
 //
@@ -158,13 +182,11 @@ function mentionsDomainTerm(value) {
 }
 
 function normaliseDomainTerms(value) {
-  return String(value == null ? '' : value)
-    .replace(/\b(?:udimed|udemed)\b/gi, 'EUDAMED')
-    // "call me docs" / "Call Me Doc" / "call-me-docs" / "callmedocs" is Teams
-    // mishearing Cognidocs, the document-control system.
-    .replace(/\bcall[\s-]*me[\s-]*docs?\b/gi, 'Cognidocs')
-    .replace(/\b(?:deta|dd|t)\s+inc\b/gi, 'DITA')
-    .replace(/\b(?:medsap|meds[\s-]*app)\b/gi, 'MDSAP');
+  let output = String(value == null ? '' : value);
+  for (const rule of glossaryCorrections().rules) {
+    output = output.replace(rule.pattern, (match, plural) => `${rule.term}${plural ? 's' : ''}`);
+  }
+  return output;
 }
 
 function normaliseDomainTermsDeep(value) {
@@ -186,7 +208,9 @@ const normaliseUdimedDeep = normaliseDomainTermsDeep;
 
 module.exports = {
   DOMAIN_TERMS,
-  AUTO_CORRECTIONS,
+  // Kept for older imports; the list follows the Settings page Glossary.
+  get AUTO_CORRECTIONS() { return autoCorrections(); },
+  autoCorrections,
   TRANSCRIPT_PHRASE_CORRECTIONS,
   applyTranscriptPhraseCorrections,
   DOMAIN_TERM_PATTERN,

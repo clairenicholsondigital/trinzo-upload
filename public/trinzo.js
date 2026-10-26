@@ -10,7 +10,8 @@
     { href: primaryHomeUrl, label: 'Meeting Minutes Agent' },
     { href: '/jobs', label: 'Library' },
     { href: '/insights', label: 'Insights' },
-    { href: aiTeamProjectUrl, label: 'AI team project' }
+    { href: aiTeamProjectUrl, label: 'AI team project' },
+    { href: '/settings', label: 'Settings' }
   ];
 
   function normalisedPath(value) {
