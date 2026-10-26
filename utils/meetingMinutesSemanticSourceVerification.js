@@ -11,9 +11,14 @@ function ownerWitness(unit,owner){
   const name=canonical(owner);
   if(!name)return false;
   if(canonical(unit?.speaker)===name)return true;
-  const text=canonical(unit?.text),at=text.indexOf(name);
-  return at>=0&&!/[\p{L}\p{N}]/u.test(text[at-1]||'')
-    &&!/[\p{L}\p{N}]/u.test(text[at+name.length]||'');
+  const text=canonical(unit?.text);
+  // An earlier substring is not a veto on a later complete name. Inspect
+  // complete Unicode code points at each boundary, including combining marks.
+  for(let at=text.indexOf(name);at>=0;at=text.indexOf(name,at+1)){
+    if(!/[\p{L}\p{N}\p{M}]$/u.test(text.slice(0,at))
+      &&!/^[\p{L}\p{N}\p{M}]/u.test(text.slice(at+name.length))) return true;
+  }
+  return false;
 }
 
 function verificationPrompt(packet,candidates,rows,sourceUnits,policy){

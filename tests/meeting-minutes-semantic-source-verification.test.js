@@ -4,9 +4,10 @@ const assert=require('node:assert/strict');
 const action=require('../utils/canonicalMinutes/actionSemanticReconciliation');
 const {materializeSemanticDecisions}=require('../utils/meetingMinutesSemanticProofTransport');
 const verify=require('../utils/meetingMinutesSemanticSourceVerification');
-function fixture(repeatedClauses=false){
+function fixture(repeatedClauses=false,ownerText=''){
  const sourceUnits=[{id:'T1',speaker:'Coordinator',text:'Maya will ensure Sam gets the archive metadata.'},
   {id:'T2',speaker:'Maya',text:"I'll handle that."}];
+ if(ownerText)for(const unit of sourceUnits){unit.speaker='Coordinator';unit.text=ownerText;}
  const rows=['Send the archive metadata to Sam.','Provide Sam with the archive metadata.']
   .map(text=>repeatedClauses?`${text}; ${text}`:text)
   .map((text,index)=>({id:'a'+index,action:text,owners:['Maya'],evidenceIds:['T1','T2'],reviewFlagIds:[],timing:{kind:'not_stated',wording:'',exactDate:''}}));
@@ -183,4 +184,41 @@ test('source-owner validation rejects name substrings and preserves explicit unr
  const veto=structuredClone(f.review);veto.decisions[0].relation='unresolved';veto.decisions[0].checks.forEach(check=>{check.supported=false;check.retained=false;check.sourceIds=[];});
  assert.equal(verify.verificationError(f.packet,f.packet.candidates,veto),'');
  assert.equal(action.applyActionReconciliation(f.packet,verify.bindSourceVerification(f.packet,f.expanded,veto).envelope,{sourceUnits:f.sourceUnits}).actions.length,2);
+});
+
+for(const text of [
+ 'Morgan Leeds is unavailable; Morgan Lee will review it.',
+ 'XMorgan Lee will not review it; Morgan Lee accepted.',
+ 'Morgan Leeds, XMorgan Lee, and Morgan Lee confirmed the assignment.'
+]) test('a later complete owner mention is not hidden by an earlier substring: '+text,()=>{
+ assert.equal(verify.ownerWitness({speaker:'Coordinator',text},'Morgan Lee'),true);
+});
+for(const text of [
+ '𐐀Morgan Lee will review it.',
+ 'Morgan Lee𐐀 will review it.',
+ 'Morgan Lee\u0327 will review it.',
+ 'x\u0327Morgan Lee will review it.'
+]) test('Unicode letters and combining marks cannot create a false owner boundary: '+text,()=>{
+ assert.equal(verify.ownerWitness({speaker:'Coordinator',text},'Morgan Lee'),false);
+});
+test('later identity evidence does not bypass the independent source verdict',()=>{
+ const f=fixture(),veto=structuredClone(f.review);
+ veto.decisions[0].relation='unresolved';
+ for(const check of veto.decisions[0].checks){check.supported=false;check.retained=false;}
+ assert.equal(verify.bindSourceVerification(f.packet,f.expanded,veto).error,'');
+ assert.equal(action.applyActionReconciliation(f.packet,verify.bindSourceVerification(f.packet,f.expanded,veto).envelope,{sourceUnits:f.sourceUnits}).actions.length,2);
+});
+
+for(const [text,expected] of [
+ ['MayaX mentioned the archive metadata; Maya will ensure Sam gets the archive metadata.',true],
+ ['𐐀Maya will ensure Sam gets the archive metadata.',false],
+ ['x\u0327Maya will ensure Sam gets the archive metadata.',false]
+]) test('source verdict and final reconciliation use the same complete owner boundary: '+text,()=>{
+ const f=fixture(false,text),bound=verify.bindSourceVerification(f.packet,f.expanded,f.review);
+ assert.equal(bound.error,expected?'':'missing_source_owner_witness');
+ if(expected){
+  const result=action.applyActionReconciliation(f.packet,bound.envelope,{sourceUnits:f.sourceUnits});
+  assert.equal(result.actions.length,1);
+  assert.ok(result.receipts.every(receipt=>action.validateReconciliationReceipt(receipt,receipt.original,result.actions[0],f.sourceUnits)));
+ }else assert.equal(bound.envelope,null);
 });
