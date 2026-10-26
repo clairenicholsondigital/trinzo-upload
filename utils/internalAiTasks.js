@@ -3,6 +3,7 @@
 // are restricted to this persistent project ID, independently of its name.
 const PROJECT_ID = 19;
 const STATUSES = ['To do', 'In progress', 'Blocked', 'Done'];
+const AFFECTED_TOOLS = ['', 'Project updates', 'Meeting minutes', 'Shared'];
 const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 const CATEGORIES = ['Technical', 'Usability', 'Validation', 'Decision', 'External dependency', 'Research'];
 function problem(message, statusCode = 400) { return Object.assign(new Error(message), { statusCode }); }
@@ -26,7 +27,7 @@ function references(value) {
     return { label: text(ref.label || url.slice(0,240), 240, 'Source label', true), url };
   });
 }
-const editable = ['title','description','nextAction','currentImplications','planToFix','fixDetails','status','priority','category','owner','dueDate','sourceReferences'];
+const editable = ['title','description','nextAction','currentImplications','planToFix','fixDetails','affectedTool','status','priority','category','owner','dueDate','sourceReferences'];
 function fields(body, patch = false) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !editable.includes(k) && !(patch && k === 'revision'))) throw problem('Unsupported task fields.');
   if (patch && (!Number.isSafeInteger(body.revision) || body.revision < 1)) throw problem('Reload the task before saving it.');
@@ -39,8 +40,8 @@ function fields(body, patch = false) {
       if (v === '' || v === null) out[key] = null;
       else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0,10) === v) out[key] = v;
       else throw problem('Choose a valid due date.');
-    } else if (['status','priority','category'].includes(key)) {
-      const allowed = key === 'status' ? STATUSES : key === 'priority' ? PRIORITIES : CATEGORIES;
+    } else if (['status','priority','category','affectedTool'].includes(key)) {
+      const allowed = key === 'status' ? STATUSES : key === 'priority' ? PRIORITIES : key === 'affectedTool' ? AFFECTED_TOOLS : CATEGORIES;
       if (!allowed.includes(v)) throw problem(`Choose a valid ${key}.`); out[key] = v;
     } else out[key] = text(v, key === 'nextAction' ? 2000 : ['description','currentImplications','planToFix','fixDetails'].includes(key) ? 20000 : 240, key, key === 'title');
   }
@@ -49,8 +50,8 @@ function fields(body, patch = false) {
   return out;
 }
 // This allowlist, used for every browser-facing query, deliberately excludes
-// implementation guidance and import metadata. There is no guidance HTTP API.
-const PUBLIC_COLUMNS = `task_key AS "taskId", project_id AS "projectId", title, description, next_action AS "nextAction", current_implications AS "currentImplications", plan_to_fix AS "planToFix", fix_details AS "fixDetails", status, priority, category, owner,
+// root cause, implementation guidance and import metadata. Neither private field has an HTTP API.
+const PUBLIC_COLUMNS = `task_key AS "taskId", project_id AS "projectId", title, description, next_action AS "nextAction", affected_tool AS "affectedTool", current_implications AS "currentImplications", plan_to_fix AS "planToFix", fix_details AS "fixDetails", status, priority, category, owner,
   due_date::text AS "dueDate", source_references AS "sourceReferences", revision,
   created_by_name AS "createdBy", updated_by_name AS "updatedBy", created_at AS "createdAt", updated_at AS "updatedAt", completed_at AS "completedAt"`;
 function createStore(query) {
@@ -79,13 +80,13 @@ function createStore(query) {
   async function create(body,user) {
     const a=actor(user),f=fields(body);
     const result=await query(`WITH n AS (SELECT nextval('internal_ai_task_number_seq')::text AS value)
-      INSERT INTO internal_ai_tasks(project_id,task_key,title,description,status,priority,category,owner,due_date,source_references,created_by,created_by_name,updated_by,updated_by_name,completed_at,current_implications,plan_to_fix,fix_details,next_action)
-      SELECT $1,'AI-'||lpad(n.value,greatest(3,length(n.value)),'0'),$2,$3,$4,$5,$6,$7,$8::date,$9::jsonb,$10,$11,$10,$11,CASE WHEN $4='Done' THEN NOW() ELSE NULL END,$12,$13,$14,$15 FROM n
-      RETURNING task_key`,[PROJECT_ID,f.title,f.description||'',f.status||'To do',f.priority||'P2',f.category||'Technical',f.owner||'',f.dueDate||null,JSON.stringify(f.sourceReferences||[]),a.id,a.name,f.currentImplications||'',f.planToFix||'',f.fixDetails||'',f.nextAction||'']);
+      INSERT INTO internal_ai_tasks(project_id,task_key,title,description,status,priority,category,owner,due_date,source_references,created_by,created_by_name,updated_by,updated_by_name,completed_at,current_implications,plan_to_fix,fix_details,next_action,affected_tool)
+      SELECT $1,'AI-'||lpad(n.value,greatest(3,length(n.value)),'0'),$2,$3,$4,$5,$6,$7,$8::date,$9::jsonb,$10,$11,$10,$11,CASE WHEN $4='Done' THEN NOW() ELSE NULL END,$12,$13,$14,$15,$16 FROM n
+      RETURNING task_key`,[PROJECT_ID,f.title,f.description||'',f.status||'To do',f.priority||'P2',f.category||'Technical',f.owner||'',f.dueDate||null,JSON.stringify(f.sourceReferences||[]),a.id,a.name,f.currentImplications||'',f.planToFix||'',f.fixDetails||'',f.nextAction||'',f.affectedTool||'']);
     return get(result.rows[0].task_key);
   }
   async function update(taskId,body,user) {
-    const a=actor(user),f=fields(body,true),map={nextAction:'next_action',currentImplications:'current_implications',planToFix:'plan_to_fix',fixDetails:'fix_details',dueDate:'due_date',sourceReferences:'source_references'};
+    const a=actor(user),f=fields(body,true),map={affectedTool:'affected_tool',nextAction:'next_action',currentImplications:'current_implications',planToFix:'plan_to_fix',fixDetails:'fix_details',dueDate:'due_date',sourceReferences:'source_references'};
     const params=[PROJECT_ID,taskId,body.revision,a.id,a.name];
     const assignments=Object.entries(f).map(([key,value])=>{params.push(key==='sourceReferences'?JSON.stringify(value):value);return `${map[key]||key}=$${params.length}${key==='sourceReferences'?'::jsonb':key==='dueDate'?'::date':''}`;});
     if (Object.hasOwn(f,'status')) {params.push(f.status);assignments.push(`completed_at=CASE WHEN $${params.length}='Done' THEN COALESCE(completed_at,NOW()) ELSE NULL END`);}
@@ -105,4 +106,4 @@ function createStore(query) {
   }
   return {access,get,list,create,update,comment};
 }
-module.exports={PROJECT_ID,STATUSES,PRIORITIES,CATEGORIES,actor,scope,fields,references,problem,createStore};
+module.exports={PROJECT_ID,STATUSES,PRIORITIES,CATEGORIES,AFFECTED_TOOLS,actor,scope,fields,references,problem,createStore};
