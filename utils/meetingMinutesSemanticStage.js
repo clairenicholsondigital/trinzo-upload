@@ -282,7 +282,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         const check = value => {
           const unsupplied = semanticSuppliedSourceError(value,context.sourceUnits);
           if (unsupplied) { unsupplied.retryable = false; return unsupplied; }
-          const reason = verificationError(packet, verificationCandidates, value);
+          const reason = verificationError(packet, verificationCandidates, value, {requireSourceStatus:true});
           if (!reason) return null;
           const error = new Error('Independent source verification did not account for the supplied instructions.');
           error.code = reason; error.retryable = false; return error;
@@ -298,6 +298,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
           const reviewError = check(reviewed?.result);
           if (reviewError) throw reviewError;
           const bound = bindSourceVerification(packet, expanded, reviewed.result, {
+            requireSourceStatus: true,
             independentWitnessCandidateIds: isActionOnlySemanticScope(packet.scope) && packet.scope !== 'contact_enquiries'
               ? verificationCandidates.filter(candidate => !contactCandidate(packet,candidate)).map(candidate => candidate.candidateId) : []
           });

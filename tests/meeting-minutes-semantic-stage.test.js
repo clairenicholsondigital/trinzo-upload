@@ -163,3 +163,35 @@ test('prompt uses a stable existing Microsoft route and presents sources solely 
  assert.ok(data.candidates[0].eligibleSurvivorRefs.length);
  assert.ok(data.rows.every(item=>packet.rows.some(original=>original.ref===item.ref)));
 });
+
+test('new source checks cannot bypass final-exchange status through legacy-shaped responses',async()=>{
+ const verify=require('../utils/meetingMinutesSemanticSourceVerification');
+ for(const scenario of ['missing-method','uncertain-positive','completed-unresolved','outstanding-positive']){
+  const {records}=semanticFixture();let sourceCalls=0;
+  const output=await reconcileGeneratedSemanticStage(result(records),{sourceUnits},'actions',{
+   policy:policy('on'),ask:async(prompt,options)=>{
+    const data=JSON.parse(prompt.slice(prompt.indexOf('\nDATA\n')+6));let response;
+    if(prompt.startsWith('ACTION_CRITIC_SEMANTIC_SOURCE_VERIFICATION')){
+     sourceCalls++;
+     response={version:data.version,packetHash:data.packetHash,sourceHash:data.sourceHash,inputHash:data.inputHash,
+      ...(scenario!=='missing-method'?{sourceStatusMethod:verify.SOURCE_STATUS_METHOD}:{}),
+      decisions:data.candidates.map(candidate=>({candidateId:candidate.candidateId,survivorRef:candidate.survivorRef,
+       relation:scenario==='completed-unresolved'?'unresolved':'equivalent',checks:candidate.requiredChecks.map(check=>({...check,supported:true,retained:true,sourceIds:['T1'],sourceStatus:scenario==='uncertain-positive'?'uncertain':scenario==='completed-unresolved'?'not_outstanding':'outstanding'}))}))};
+    }else{
+     const survivor=data.rows.find(item=>item.action.action.startsWith('Send'));
+     response={version:data.version,packetHash:data.packetHash,sourceHash:data.sourceHash,inputHash:data.inputHash,
+      decisions:data.candidates.map(candidate=>({candidateId:candidate.candidateId,relation:'equivalent',survivorRef:survivor.ref,
+       coverage:[candidate.leftRef,candidate.rightRef].map(originalRef=>({originalRef,survivorRef:survivor.ref,sourceIds:['T1'],clauseMap:[{originalClauseIndex:0,survivorClauseIndex:0,sourceIds:['T1']}]}))}))};
+    }
+    return {result:response,timings:[]};
+   }});
+  const q=output.changes.qualityState.actions.semanticReconciliation;
+  assert.equal(sourceCalls,1,scenario);
+  assert.equal(output.changes.actions.length,scenario==='outstanding-positive'?1:2,scenario);
+  if(scenario==='missing-method'||scenario==='uncertain-positive'){
+   assert.equal(q.applied,false,scenario);
+   assert.ok(q.unresolved.some(item=>item.reason===(scenario==='missing-method'?'missing_source_status_method':'contradictory_source_status')),scenario);
+   assert.equal(q.cache.length,0,scenario+' must not cache approval');
+  }
+ }
+});

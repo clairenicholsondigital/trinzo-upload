@@ -95,11 +95,11 @@ test('unavailable or rejected source verification retains both complete actions'
 function response(prompt, negative=false) {
   const data=JSON.parse(prompt.slice(prompt.indexOf('\nDATA\n')+6));
   const verify=prompt.startsWith('ACTION_CRITIC_SEMANTIC_SOURCE_VERIFICATION');
-  return {version:data.version,packetHash:data.packetHash,inputHash:data.inputHash,sourceHash:data.sourceHash,
+  return {version:data.version,packetHash:data.packetHash,inputHash:data.inputHash,sourceHash:data.sourceHash,...(verify?{sourceStatusMethod:data.sourceStatusMethod,selfRetentionMethod:data.selfRetentionMethod}:{}),
     decisions:data.candidates.map(c=>{
       const survivor=verify ? c.survivorRef : data.rows.find(r=>r.action.action.includes('certification')).ref;
       return verify ? {candidateId:c.candidateId,survivorRef:survivor,relation:negative?'unresolved':'equivalent',
-        checks:c.requiredChecks.map(check=>({...check,supported:!negative,retained:!negative,sourceIds:['T0001']}))}
+        checks:c.requiredChecks.map(check=>({...check,supported:!negative,sourceStatus:negative?'uncertain':'outstanding',...(check.originalRef===survivor?{}:{retained:!negative}),sourceIds:['T0001']}))}
         : {candidateId:c.candidateId,survivorRef:survivor,relation:'equivalent',
           coverage:[c.leftRef,c.rightRef].map(ref=>({originalRef:ref,survivorRef:survivor,sourceIds:['T0001'],
             clauseMap:[{originalClauseIndex:0,survivorClauseIndex:0,sourceIds:['T0001']}]}))};
@@ -112,6 +112,7 @@ for(const negative of [false,true]) test('independent verification '+(negative?'
       calls++;const result=response(prompt,negative);const error=opts.validateResult(result);if(error)throw error;return {result,timings:[]};
     }});
   const q=output.changes.qualityState.actions.semanticReconciliation;
+  assert.ok(q.calls.every(call=>!call.failed),'Must exercise a valid semantic verdict rather than a contract failure');
   assert.equal(calls,2);
   assert.equal(output.changes.actions.length,negative?2:1);
   if(!negative){

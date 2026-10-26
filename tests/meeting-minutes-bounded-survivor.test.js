@@ -54,9 +54,9 @@ test('contact candidates keep priority within the unchanged two-pair budget',()=
 });
 function answer(prompt,negative=false) {
   const data=JSON.parse(prompt.slice(prompt.indexOf('\nDATA\n')+6)),verify=prompt.startsWith('ACTION_CRITIC_SEMANTIC_SOURCE_VERIFICATION');
-  return {version:data.version,packetHash:data.packetHash,inputHash:data.inputHash,sourceHash:data.sourceHash,decisions:data.candidates.map(c=>{
+  return {version:data.version,packetHash:data.packetHash,inputHash:data.inputHash,sourceHash:data.sourceHash,...(verify?{sourceStatusMethod:data.sourceStatusMethod,selfRetentionMethod:data.selfRetentionMethod}:{}),decisions:data.candidates.map(c=>{
     const survivor=verify?c.survivorRef:data.rows.find(r=>r.action.action.includes('process documents')).ref;
-    return verify?{candidateId:c.candidateId,survivorRef:survivor,relation:negative?'unresolved':'equivalent',checks:c.requiredChecks.map(check=>({...check,supported:!negative,retained:!negative,sourceIds:['T0001']}))}
+    return verify?{candidateId:c.candidateId,survivorRef:survivor,relation:negative?'unresolved':'equivalent',checks:c.requiredChecks.map(check=>({...check,supported:!negative,sourceStatus:negative?'uncertain':'outstanding',...(check.originalRef===survivor?{}:{retained:!negative}),sourceIds:['T0001']}))}
       :{candidateId:c.candidateId,survivorRef:survivor,relation:'equivalent',coverage:[c.leftRef,c.rightRef].map(ref=>({originalRef:ref,survivorRef:survivor,sourceIds:['T0001'],clauseMap:[{originalClauseIndex:0,survivorClauseIndex:0,sourceIds:['T0001']}]}))};
   })};
 }
@@ -67,6 +67,7 @@ for(const negative of [false,true])test('source verifier '+(negative?'vetoes':'a
   });
   assert.equal(calls,2);assert.equal(out.changes.actions.length,negative?2:1);
   const q=out.changes.qualityState.actions.semanticReconciliation;
+  assert.ok(q.calls.every(call=>!call.failed),'Must exercise a valid semantic verdict rather than a contract failure');
   assert.equal(q.receipts.length,negative?0:1);
   if(!negative){
     assert.equal(out.changes.actions[0].action,rows[1].action);
