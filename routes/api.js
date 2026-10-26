@@ -18127,7 +18127,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const finalSurvival = reconcileFinalApprovedActions(finalDedupedActions, displayEligibleApproved, {
     sourceUnits: draft.sourceUnits
   });
-  const finalSiblingTiming = reconcileSiblingTimingDecisions(finalSurvival.actions, draft.sourceUnits, { meetingDate: timingAnchor });
+  // Approved-row reconciliation can restore a second wording after the last
+  // semantic pass. Apply the same guarded source-aware comparison to the
+  // final published list, preserving distinct or uncovered instructions.
+  const finalSourceAwareActions = dedupeHybridActionRecords(finalSurvival.actions, {
+    sourceUnits: draft.sourceUnits
+  });
+  const finalSiblingTiming = reconcileSiblingTimingDecisions(finalSourceAwareActions, draft.sourceUnits, { meetingDate: timingAnchor });
   const finalTiming = finaliseActionTimings(finalSiblingTiming.actions, draft.sourceUnits, {
     meetingDate: timingAnchor, assessments: draft.qualityState?.actions?.timingAssessments || [],
     verifiedBindingFor: timingRecovery.bindingReader(timingRecoveryAudit?.proofs, draft.sourceUnits, timingAnchor)

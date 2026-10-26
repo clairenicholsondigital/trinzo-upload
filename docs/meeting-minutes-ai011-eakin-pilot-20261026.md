@@ -1,4 +1,8 @@
-# AI-011 Eakin pilot repetition assessment — 26 October 2026
+# AI-011 Eakin generation review — 26 October 2026
+
+This is an automated review of a freshly generated draft, not a colleague's
+independent pilot. Human completion time and correction burden remain unmeasured
+and belong to the existing AI-005 pilot task.
 
 ## Run record
 
@@ -43,9 +47,11 @@ The electrical-testing topic states that testing pushes the software workstream 
 
 The draft says the team is “generally on time”, while also describing two weeks before holidays and only a month remaining on return. The reviewer flags this as uncertain detail. This is a wording/fidelity issue, not evidence for a deduplication rule.
 
-## Pilot conclusion
+## Generation review conclusion
 
-This run provides real pilot evidence for one narrow Discussion-level Task 11 candidate and two narrow action-level candidates. It does **not** justify broad semantic merging.
+This run provides saved-output evidence for one narrow Discussion-level candidate
+and two action-level candidates. It does **not** establish independent reviewer
+experience or justify broad semantic merging.
 
 The Actions stage adds two further narrow candidates:
 
@@ -70,11 +76,10 @@ with Rebecca about missing documentation are related but not interchangeable.
 
 ## Next qualification step
 
-The four demonstrated action-level cases are now seeded as source-bound
-transcript fixtures with their source anchors and retention requirements:
-GSOP follow-up, document-review email, software-change compilation and Colm
-standards review. The language-symbol repetition remains a separate
-Discussion-level bank case. Implement only the narrow action consolidations,
-then re-run the fixtures and the draft through save/reload and export checks.
-Keep the other overlap cases separate unless further pilot evidence proves
-they create reviewer burden.
+The four action cases are seeded as source-bound fixtures: GSOP follow-up,
+document-review email, software-change compilation and Colm standards review.
+The guarded implementation consolidates only the GSOP paraphrase; the others
+retain separate rows where one wording does not demonstrably cover the other.
+The language-symbol repetition remains a separate Discussion-level candidate.
+Review save/reload, export and real reviewer feedback before claiming a wider
+repetition improvement.

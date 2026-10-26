@@ -39,7 +39,8 @@ function qualify(rows, sourceUnits) {
   const commitment = mergeCommitmentDuplicates(structuredClone(rows), { sourceUnits }).actions;
   const hybrid = dedupeHybridActionRecords(structuredClone(rows), { sourceUnits });
   const final = reconcileFinalApprovedActions(hybrid, structuredClone(rows), { sourceUnits });
-  return { commitment, hybrid, final: final.actions, restored: final.restored };
+  const published = dedupeHybridActionRecords(final.actions, { sourceUnits });
+  return { commitment, hybrid, final: final.actions, published, restored: final.restored };
 }
 
 test('marketing-plan drafting keeps narrower and broader source-bound scope separate', () => {
@@ -135,7 +136,7 @@ test('Canva webinar discussion remains separate when the source-bound owner scop
 });
 
 function assertSingleSourceBoundSurvivor(result, expectedParts) {
-  for (const stage of [result.commitment, result.hybrid, result.final]) {
+  for (const stage of [result.commitment, result.hybrid, result.final, result.published]) {
     assert.equal(stage.length, 1);
     for (const part of expectedParts) assert.match(stage[0].action, new RegExp(part, 'i'));
   }
@@ -155,7 +156,7 @@ test('GSOP review follow-up paraphrases consolidate with reviewer and procedure 
   assertSingleSourceBoundSurvivor(qualify(rows, sources), ['GSOP', 'Louise', 'review']);
 });
 
-test('document-review email paraphrases consolidate without inventing a recipient', () => {
+test('document-review email paraphrases stay separate when full detail coverage is unproved', () => {
   const sources = [
     source('AI011-DOC-01', 'Claire will send an email requesting review of the revised documents after completing the rewrites and responses to feedback.', 'Claire Nicholson'),
     source('AI011-DOC-02', 'Claire will send an email requesting review after completing the document rewrites and responses to feedback comments.', 'Claire Nicholson')
@@ -165,10 +166,14 @@ test('document-review email paraphrases consolidate without inventing a recipien
     row('doc-a', 'Send an email requesting review of the revised documents after completing the rewrites and responses to feedback.', ['Claire Nicholson'], untimed(), evidenceIds),
     row('doc-b', 'Send an email requesting review after completing the document rewrites and responses to feedback comments.', ['Claire Nicholson'], untimed(), evidenceIds)
   ];
-  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['email', 'review', 'rewrites', 'feedback']);
+  const result = qualify(rows, sources);
+  assert.equal(result.commitment.length, 2);
+  assert.equal(result.hybrid.length, 2);
+  assert.equal(result.final.length, 2);
+  assert.equal(result.published.length, 2);
 });
 
-test('software-change compilation paraphrases consolidate while retaining the reviewed quantity', () => {
+test('software-change compilation paraphrases stay separate when either version has unique detail', () => {
   const sources = [
     source('AI011-SW-01', 'Claire will compile the referenced software changes into the summary report as part of the design and technical file change documentation.', 'Claire Nicholson'),
     source('AI011-SW-02', 'Claire will compile the reviewed software changes into the design and technical file summary reporting using the output from the review of the 17 changes.', 'Claire Nicholson')
@@ -178,10 +183,27 @@ test('software-change compilation paraphrases consolidate while retaining the re
     row('sw-a', 'Compile the referenced software changes into the summary report as part of the design and technical file change documentation.', ['Claire Nicholson'], untimed(), evidenceIds),
     row('sw-b', 'Compile the reviewed software changes into the design and technical file summary reporting using the output from the review of the 17 changes.', ['Claire Nicholson'], untimed(), evidenceIds)
   ];
-  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['compile', 'software changes', 'design', 'technical file', '17']);
+  const result = qualify(rows, sources);
+  assert.equal(result.commitment.length, 2);
+  assert.equal(result.hybrid.length, 2);
+  assert.equal(result.final.length, 2);
+  assert.match(result.final.map(item=>item.action).join(' '), /17/);
 });
 
-test('Colm standards-review paraphrases consolidate with the referenced standard retained', () => {
+test('same source and owner do not erase different approval conditions', () => {
+  const sources = [source('AUDIT-01','Alex will send the revised audit pack after legal approval and with the client review note.','Alex Morgan')];
+  const rows = [
+    row('legal','Send the revised audit pack after legal approval.',['Alex Morgan'],untimed(),['AUDIT-01']),
+    row('client','Send the revised audit pack with the client review note.',['Alex Morgan'],untimed(),['AUDIT-01'])
+  ];
+  const result = qualify(rows,sources);
+  assert.equal(result.commitment.length,2);
+  assert.equal(result.hybrid.length,2);
+  assert.equal(result.final.length,2);
+  assert.equal(result.published.length,2);
+});
+
+test('Colm standards-review paraphrases stay separate when the material scope is unproved', () => {
   const sources = [
     source('AI011-COLM-01', 'Claire will follow up with Colm to review the referenced standard.', 'Claire Nicholson'),
     source('AI011-COLM-02', 'Claire will follow up with Colm and obtain a review of the standards material.', 'Claire Nicholson')
@@ -191,5 +213,10 @@ test('Colm standards-review paraphrases consolidate with the referenced standard
     row('colm-a', 'Follow up with Colm to review the referenced standard.', ['Claire Nicholson'], untimed(), evidenceIds),
     row('colm-b', 'Follow up with Colm and obtain a review of the standards material.', ['Claire Nicholson'], untimed(), evidenceIds)
   ];
-  assertSingleSourceBoundSurvivor(qualify(rows, sources), ['Colm', 'review', 'standard']);
+  const result = qualify(rows, sources);
+  assert.equal(result.commitment.length, 2);
+  // Existing hybrid dedupe prefers one wording, but final preservation
+  // correctly restores the uncovered referenced-standard detail.
+  assert.equal(result.hybrid.length, 1);
+  assert.equal(result.final.length, 2);
 });

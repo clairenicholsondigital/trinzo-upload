@@ -95,7 +95,13 @@ function sourceAwareParaphraseDuplicate(left = {}, right = {}, options = {}) {
   const rightTokens = sourceParaphraseTokens(right.action);
   const shared = [...leftTokens].filter(token => rightTokens.has(token));
   const union = new Set([...leftTokens, ...rightTokens]);
-  return shared.length >= 3 && shared.length / Math.max(union.size, 1) >= 0.34;
+  if (shared.length < 3 || shared.length / Math.max(union.size, 1) < 0.34) return false;
+  // Shared source and vocabulary establish a candidate, not permission to
+  // discard a distinct condition, recipient or deliverable detail. Keep both
+  // rows unless the preferred wording covers every detail of the other.
+  const preferred = sourceAwarePreferred(left, right);
+  const removed = preferred === left ? right : left;
+  return commitmentDetailsCovered(removed, preferred);
 }
 function sourceAwarePreferred(left = {}, right = {}) {
   const score = record => {
