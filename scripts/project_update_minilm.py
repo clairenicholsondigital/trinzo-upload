@@ -1204,6 +1204,8 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
             "trend": latest.get("trend") or milestone.get("trend"),
             "summary": latest.get("summary") or milestone.get("description"),
             "createdAt": latest.get("createdAt"),
+            "reportId": latest.get("reportId"),
+            "reportVersionId": latest.get("reportVersionId"),
         }
         for key in {normalise_key(milestone.get("comparisonKey")), normalise_key(milestone.get("milestoneName"))}:
             if key and key not in previous_milestones:
@@ -1392,7 +1394,7 @@ def context_milestone_row(milestone: dict[str, Any]) -> dict[str, Any]:
         "comparison_key": normalise_key(milestone.get("comparisonKey") or milestone.get("milestoneName") or milestone.get("milestone")),
         "category": milestone.get("category", ""),
         "baseline_finish_date": milestone.get("baselineFinishDate") or milestone.get("baseline_finish_date") or "",
-        "forecast_finish_date": latest.get("forecastFinishDate") or milestone.get("forecastFinishDate") or milestone.get("forecast_finish_date") or "",
+        "forecast_finish_date": (latest.get("forecastFinishDate") or "") if "forecastFinishDate" in latest else (milestone.get("forecastFinishDate") or milestone.get("forecast_finish_date") or ""),
         "delivery_status": blank_unknown_status(status),
         "health_assessment": blank_unknown_status(status),
         "normalised_evidence_summary": summary,

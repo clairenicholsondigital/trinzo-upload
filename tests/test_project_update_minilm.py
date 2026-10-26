@@ -739,7 +739,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("router.post('/project-update-test/reports/bulk-delete', requireAuth", api)
         self.assertIn("router.post('/project-update-test/milestones', requireAuth", api)
         self.assertIn("saveProjectReportDetail", db)
-        self.assertIn("latest.changeType === 'autosave'", db)
+        # Autosaves are now immutable; the PostgreSQL approval-history suite
+        # verifies stale-save rejection and preservation of approved versions.
         self.assertIn("'autosave' : 'user_edit'", db)
         self.assertIn("deleteProjectReport", db)
         self.assertIn("updateProjectMilestone", db)

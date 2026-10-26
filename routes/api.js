@@ -8292,7 +8292,7 @@ router.post('/project-update-test/reports/bulk-delete', requireAuth, async (req,
 
 router.patch('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
   try {
-    const report = await saveProjectReportDetail(req.params.reportId, req.body || {});
+    const report = await saveProjectReportDetail(req.params.reportId, { ...(req.body || {}), savedBy: req.authUser?.email || 'Unknown' });
     if (!report) {
       return res.status(404).json({ ok: false, error: 'Project report not found.' });
     }
