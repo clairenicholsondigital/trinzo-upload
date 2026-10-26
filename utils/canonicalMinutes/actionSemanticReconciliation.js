@@ -6,6 +6,7 @@ const dependency = require('./qualifiedDependency');
 const contactPurpose = require('./contactParaphrase');
 const { sourceOwnerWitnessScope } = require('../meetingMinutesSemanticSourceVerification');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
+const { missingRequiredLiteralWording } = require('../meetingMinutesLiteralWording');
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
 const { convertSpokenNumbers } = require('../spokenNumbers');
@@ -130,6 +131,7 @@ function hardConflicts(part, whole) {
   if (!equal(a.conditions, b.conditions)) reasons.push('different_condition_or_dependency');
   if (!equal(a.modality, b.modality)) reasons.push('different_modality');
   if (a.disposition !== b.disposition) reasons.push('different_disposition');
+  if (missingRequiredLiteralWording(part.action,whole.action).length) reasons.push('required_literal_wording_would_be_lost');
   const calendarLike = /\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midnight|(?:this|next|last|previous|every|each)\s+(?:day|week|month|quarter|year))\b|\d{1,2}:\d{2}/i;
   if (calendarLike.test(String(part.action)) || calendarLike.test(String(whole.action))) {
     const { temporalMeaningRetained } = require('../meetingMinutesTemporalReview');
