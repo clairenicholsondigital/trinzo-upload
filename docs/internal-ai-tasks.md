@@ -90,3 +90,9 @@ Save and mark Done saves the current fields and completes the task in one revisi
 For this update, apply `sql/migrations/20261026_add_internal_ai_task_details.sql` after the initial Tasks migration and before deploying the updated application. It adds three non-null text columns with empty defaults and is safe to rerun. No existing task content or statuses are replaced.
 
 Task context update validation: 70 focused checks passed with no failures or skips, including an existing-row migration rerun, source-reference preservation on form saves, private-guidance protection, and desktop/mobile save-and-complete/reopen with fix details and comments retained after refresh. The database/browser checks used the isolated `trinzo_tasks_test` database.
+
+## Next action
+
+Each task has a public, editable Next action field (up to 2,000 characters), shown beneath its title/status chips in the list and separately in task details. It persists through edits, completion, reopening and refresh; text is escaped and existing project/admin restrictions apply. Apply `sql/migrations/20261026_add_internal_ai_task_next_action.sql` after the initial Tasks/context migrations and before deploying this update. The migration is additive and safe to rerun; it starts the new field empty without changing existing task content or status.
+
+The initial population copies next actions already recorded in the current persistent task descriptions. Completed AI-001 receives “No further action — fixed, deployed and verified.” No descriptions, plans, statuses or completion evidence are removed, and no new work is inferred. This is a one-off reviewed update, not ongoing synchronisation: future edits to descriptions or the Markdown snapshot do not overwrite Next action. New tasks can leave it empty until a next step is known. Private AI implementation guidance remains separate and protected.
