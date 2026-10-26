@@ -1,7 +1,8 @@
 /* Trinzo shared UI enhancements · /static/trinzo.js
    Progressive enhancement only — pages work without it.
    1. Prepend a clickable Trinzo brand logo to the primary nav.
-   2. Highlight the current page in the nav (aria-current). */
+   2. Highlight the current page in the nav (aria-current).
+   3. Open the calendar when a date field is clicked anywhere, not just on the icon. */
 (function () {
   var primaryHomeUrl = '/meeting-minutes-agent';
   var aiTeamProjectUrl = '/project-update-test?stage=process&projectId=19';
@@ -55,11 +56,36 @@
   }
 
   async function enhance() {
+    markAllDates();
     var nav = document.querySelector('nav.nav');
     if (nav) {
       reducePrimaryNavigation(nav);
       highlightCurrentPage(nav);
     }
+  }
+
+  document.addEventListener('click', function (event) {
+    var input = event.target;
+    if (!input || input.tagName !== 'INPUT' || input.type !== 'date') return;
+    if (input.disabled || input.readOnly || typeof input.showPicker !== 'function') return;
+    try { input.showPicker(); } catch (error) { /* not allowed here; native behaviour still works */ }
+  });
+
+  // Grey out the dd/mm/yyyy placeholder of an empty date field.
+  function markEmptyDate(input) { input.classList.toggle('is-empty', !input.value); }
+  ['input', 'change'].forEach(function (name) {
+    document.addEventListener(name, function (event) {
+      if (event.target && event.target.type === 'date') markEmptyDate(event.target);
+    });
+  });
+  function markAllDates() { document.querySelectorAll('input[type=date]').forEach(markEmptyDate); }
+  if (window.MutationObserver) {
+    var pending = false;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(function () { pending = false; markAllDates(); });
+    }).observe(document.documentElement, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') {
