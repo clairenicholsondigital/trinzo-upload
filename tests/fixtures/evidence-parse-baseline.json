@@ -1298,6 +1298,28 @@
     "hash": "d0119f282be92b0a"
   },
   {
+    "file": "scripts/transcript-tests/074_eakin_gsop_followup/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "unattributedTurns": 0,
+    "contentChars": 298,
+    "parsedChars": 247,
+    "coverage": 0.829,
+    "hash": "82dab8b4e47498df"
+  },
+  {
+    "file": "scripts/transcript-tests/075_eakin_document_review_request/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "unattributedTurns": 0,
+    "contentChars": 394,
+    "parsedChars": 341,
+    "coverage": 0.865,
+    "hash": "c09eddc8ffb7bbd7"
+  },
+  {
     "file": "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt",
     "turns": 65,
     "events": 113,
@@ -1318,6 +1340,28 @@
     "parsedChars": 4887,
     "coverage": 0.975,
     "hash": "dd729d12323ded0e"
+  },
+  {
+    "file": "scripts/transcript-tests/076_eakin_software_change_compilation/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "unattributedTurns": 0,
+    "contentChars": 421,
+    "parsedChars": 364,
+    "coverage": 0.865,
+    "hash": "d6853227ca1b38c4"
+  },
+  {
+    "file": "scripts/transcript-tests/077_eakin_colm_standards_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "unattributedTurns": 0,
+    "contentChars": 294,
+    "parsedChars": 243,
+    "coverage": 0.827,
+    "hash": "2c36d208e6730c33"
   },
   {
     "file": "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt",

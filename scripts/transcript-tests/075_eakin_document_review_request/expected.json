@@ -1,0 +1,22 @@
+{
+  "testName": "075_eakin_document_review_request",
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "send an email requesting review"
+    }
+  ],
+  "nearDuplicateCase": {
+    "id": "EAKIN-002",
+    "level": "action",
+    "sourceAnchors": ["Claire 0:09", "Claire 0:16"],
+    "variants": [
+      "Send an email requesting review of the revised documents after completing the rewrites and responses to feedback.",
+      "Send an email requesting review after completing the document rewrites and responses to feedback comments."
+    ],
+    "requiredSurvivor": ["send an email", "requesting review", "document rewrites", "responses to feedback"],
+    "mustPreserve": ["review request", "revised documents", "completion of rewrites and responses first"],
+    "doNotInvent": ["recipient"]
+  }
+}

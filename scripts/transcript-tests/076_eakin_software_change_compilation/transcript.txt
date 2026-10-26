@@ -1,0 +1,16 @@
+Eakin software change compilation
+
+Date: 26 October 2026
+Location: Online
+
+Claire 0:01
+The review covered 17 software changes.
+
+Andrew 0:08
+Compile the referenced software changes into the summary report as part of the design and technical file change documentation.
+
+Claire 0:16
+I will compile the reviewed software changes into the design and technical file summary reporting using the output from the review of the 17 changes.
+
+Andrew 0:24
+The report should retain the full reviewed set.

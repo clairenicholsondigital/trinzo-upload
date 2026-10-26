@@ -1,0 +1,22 @@
+{
+  "testName": "077_eakin_colm_standards_review",
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "follow up with Colm"
+    }
+  ],
+  "nearDuplicateCase": {
+    "id": "LIBRARY-483-002",
+    "level": "action",
+    "sourceAnchors": ["Andrew 0:08", "Claire 0:15"],
+    "variants": [
+      "Follow up with Colm to review the referenced standard.",
+      "Follow up with Colm and obtain a review of the standards material."
+    ],
+    "requiredSurvivor": ["Colm", "referenced standard", "review", "follow up"],
+    "mustPreserve": ["Colm", "referenced standard", "review request"],
+    "keepSeparateIf": ["different standard", "different deadline", "different review purpose"]
+  }
+}
