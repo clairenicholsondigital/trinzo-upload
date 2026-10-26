@@ -282,12 +282,12 @@ async function saveProjectReportDetail(reportId, payload = {}) {
       approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,
       approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END,
       approved_version_id=CASE WHEN $1='archived' THEN NULL ELSE approved_version_id END,
-      updated_at=NOW() WHERE id=$5`, [reportStatus, reportName || `Report ${id}`, isApproved, payload.savedBy || 'OpenClaw', id]);
+      updated_at=NOW() WHERE id=$5`, [reportStatus, reportName || `Report ${id}`, isApproved, payload.savedBy || 'Unknown user', id]);
     // Immutable versions make baseVersionId a reliable concurrency boundary.
     const inserted = await client.query(`INSERT INTO project_report_versions
       (report_id,version_number,change_type,change_summary,saved_by,report_payload) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
     [id, Number(latest.versionNumber || 0) + 1, isApproved ? 'approved' : isAutosave ? 'autosave' : 'user_edit',
-      payload.changeSummary || (isApproved ? 'Explicitly approved reviewed report.' : 'Saved working copy.'), payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]);
+      payload.changeSummary || (isApproved ? 'Explicitly approved reviewed report.' : 'Saved working copy.'), payload.savedBy || 'Unknown user', JSON.stringify(nextPayload)]);
     const versionId = inserted.rows[0].id;
     if (isApproved) {
       await client.query('UPDATE project_reports SET approved_version_id=$1 WHERE id=$2', [versionId, id]);
@@ -1919,6 +1919,14 @@ async function queueProjectUpdateGeneration(payload = {}) {
   };
 
   const result = await withTransaction(async (client) => {
+    // Serialise identity lookup and enqueue together, including requests from
+    // other web processes. Failed/cancelled jobs and archived reports allow retry.
+    if (projectId && inputPayload.sourceFingerprint) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`project-update:${projectId}:${inputPayload.sourceFingerprint}`]);
+      const existing = await findExistingProjectUpdateForSource(projectId, inputPayload.sourceFingerprint, client.query.bind(client));
+      if (existing) return { duplicate: true, ...existing };
+    }
     const meeting = await client.query(
       `INSERT INTO meetings (meeting_title, meeting_description, source, status, webhook_status, last_activity_at)
        VALUES ($1, $2, $3, 'queued', 'not_sent', NOW())
@@ -1943,6 +1951,7 @@ async function queueProjectUpdateGeneration(payload = {}) {
     return { meetingId: Number(meetingId), jobId: Number(job.rows[0].id) };
   });
 
+  if (result.duplicate) return result;
   return {
     ...result,
     status: 'queued',
@@ -2900,7 +2909,7 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
   const reportVersionId = parseId(
     (await query(
       `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-       VALUES ($1, 1, 'ai_generated', 'Initial AI-generated draft from /project-update-test.', 'OpenClaw', $2)
+       VALUES ($1, 1, 'ai_generated', 'Initial AI-generated draft.', 'Trinzo AI', $2)
        RETURNING id`,
       [reportId, JSON.stringify(result || {})]
     )).rows[0],
@@ -3454,7 +3463,57 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_agent_drafts (
 );
 CREATE INDEX IF NOT EXISTS idx_meeting_minutes_agent_drafts_user_updated
   ON meeting_minutes_agent_drafts (user_id, updated_at DESC);
+ALTER TABLE meeting_minutes_agent_drafts ADD COLUMN IF NOT EXISTS project_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_agent_drafts_user_project
+  ON meeting_minutes_agent_drafts (user_id, project_id, created_at DESC);
 `);
+}
+
+// Tags minutes with the project they were written for. Kept outside the
+// payload so it never changes the draft's revision or clashes with editor saves.
+async function linkMeetingMinutesAgentDraftToProject(draftId, userId, projectId) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const result = await query(
+    `UPDATE meeting_minutes_agent_drafts
+     SET project_id = $3
+     WHERE id = $1 AND user_id = $2
+     RETURNING id, project_id`,
+    [Number(draftId), Number(userId), Number(projectId)]
+  );
+  return result.rows[0] ? { draftId: String(result.rows[0].id), projectId: Number(result.rows[0].project_id) } : null;
+}
+
+// Finds a report or an in-flight job already built from exactly this source,
+// so the same minutes are not turned into a second project update.
+async function findExistingProjectUpdateForSource(projectId, sourceFingerprint, queryFn = query) {
+  const fingerprint = String(sourceFingerprint || '').toLowerCase();
+  if (!Number(projectId) || !/^[a-f0-9]{64}$/.test(fingerprint)) return null;
+  const report = await queryFn(
+    `SELECT r.id AS "reportId"
+     FROM project_report_sources s
+     JOIN project_reports r ON r.id = s.report_id
+     WHERE r.project_id = $1
+       AND s.transcript_sha256 = $2
+       AND r.report_status <> 'archived'
+     ORDER BY s.id DESC
+     LIMIT 1`,
+    [Number(projectId), fingerprint]
+  );
+  if (report.rows[0]) return { kind: 'report', reportId: Number(report.rows[0].reportId) };
+  if (queryFn === query) await ensureMeetingJobQueueSchema();
+  const job = await queryFn(
+    `SELECT id AS "jobId"
+     FROM meeting_jobs
+     WHERE job_type = 'project_update_generate'
+       AND status IN ('queued','running')
+       AND input_payload->>'sourceFingerprint' = $2
+       AND input_payload->>'projectId' = $1::text
+     ORDER BY id DESC
+     LIMIT 1`,
+    [Number(projectId), fingerprint]
+  );
+  if (job.rows[0]) return { kind: 'job', jobId: Number(job.rows[0].jobId) };
+  return null;
 }
 
 function meetingMinutesAgentDraftFromRow(row, includeTranscript = false) {
@@ -3473,6 +3532,7 @@ function meetingMinutesAgentDraftFromRow(row, includeTranscript = false) {
     updatedAt: row.updated_at || null,
     ...payload
   };
+  if (row.project_id !== undefined) draft.linkedProjectId = row.project_id === null ? null : Number(row.project_id);
   if (includeTranscript) draft.rawTranscript = row.raw_transcript || '';
   return draft;
 }
@@ -3536,18 +3596,24 @@ async function listMeetingMinutesAgentDraftPage(userId, options = {}) {
     title_asc: 'LOWER(title) ASC, created_at DESC, id DESC',
     title_desc: 'LOWER(title) DESC, created_at DESC, id DESC'
   }[sort];
+  const projectId = Number(options.projectId);
   const params = [Number(userId), search, status];
-  const where = `user_id = $1
+  let where = `user_id = $1
     AND ($2 = '' OR title ILIKE '%' || $2 || '%' OR file_name ILIKE '%' || $2 || '%')
     AND ($3 = '' OR status = $3)`;
+  if (Number.isSafeInteger(projectId) && projectId > 0) {
+    params.push(projectId);
+    where += `
+    AND project_id = $${params.length}`;
+  }
   const [countResult, rowsResult] = await Promise.all([
     query(`SELECT COUNT(*)::int AS total FROM meeting_minutes_agent_drafts WHERE ${where}`, params),
     query(
-      `SELECT id, revision, status, title, file_name, payload, created_at, updated_at
+      `SELECT id, revision, status, title, file_name, project_id, payload, created_at, updated_at
        FROM meeting_minutes_agent_drafts
        WHERE ${where}
        ORDER BY ${orderBy}
-       LIMIT $4 OFFSET $5`,
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset]
     )
   ]);
@@ -3776,6 +3842,8 @@ module.exports = {
   getMeetingMinutesAgentDraft,
   listMeetingMinutesAgentDrafts,
   listMeetingMinutesAgentDraftPage,
+  linkMeetingMinutesAgentDraftToProject,
+  findExistingProjectUpdateForSource,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,

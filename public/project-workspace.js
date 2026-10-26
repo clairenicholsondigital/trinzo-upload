@@ -22,8 +22,8 @@
   function tasksAvailable() { return tasksEnabled && String(PW.getSelectedProjectId()) === '19'; }
   function availableStages() { return STAGES.filter(stage => stage.key !== 'tasks' || tasksAvailable()); }
 
-  // process is mounted once and kept alive so in-progress transcript text is not
-  // lost when switching tabs; data stages rebuild on each activation for freshness.
+  // process is mounted once and kept alive so its status messages survive tab
+  // switches; data stages rebuild on each activation for freshness.
   const PERSISTENT_STAGES = new Set(['process']);
   const mounted = {};
 

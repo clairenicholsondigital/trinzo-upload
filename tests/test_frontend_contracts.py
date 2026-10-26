@@ -707,7 +707,8 @@ class FrontendContractTest(unittest.TestCase):
         # and queues a saved revision rather than processing raw input again.
         self.assertIn("return `/meeting-minutes-agent?${params.toString()}`", project_process)
         self.assertIn("params.set('projectId', String(ctx.projectId))", project_process)
-        self.assertIn("PW.request('/api/meeting-minutes-agent/drafts?limit=10')", project_process)
+        self.assertIn("`limit=10&projectId=${encodeURIComponent(ctx.projectId)}`", project_process)
+        self.assertIn("PW.request(`/api/meeting-minutes-agent/drafts?${query}`)", project_process)
         self.assertIn('data-minutes-revision="${escapeHtml(draft.revision)}"', project_process)
         self.assertIn("PW.request('from-minutes', {", project_process)
         self.assertIn("JSON.stringify({ draftId, revision, projectId: ctx.projectId", project_process)

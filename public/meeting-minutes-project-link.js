@@ -54,8 +54,28 @@
   if (hero && hero.parentNode) hero.parentNode.insertBefore(banner, hero.nextSibling);
   else document.body.insertBefore(banner, document.body.firstChild);
 
+  // Tag each minutes draft opened here with this project, once per draft, so
+  // the project's Process tab can list it.
+  var taggedDraftId = '';
+  function tagDraftWithProject() {
+    var draftId = currentDraftId();
+    if (!draftId || draftId === taggedDraftId) return;
+    taggedDraftId = draftId;
+    fetch('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId) + '/project-link', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: link.projectId })
+    }).then(function (response) {
+      if (!response.ok && taggedDraftId === draftId) taggedDraftId = '';
+    }).catch(function () {
+      if (taggedDraftId === draftId) taggedDraftId = '';
+    });
+  }
+
   var submitting = false;
   function refreshButton() {
+    tagDraftWithProject();
     createButton.disabled = submitting || !currentDraftId();
     unlinkButton.disabled = submitting;
     if (!currentDraftId() && !status.textContent) status.textContent = 'Upload a transcript first.';
@@ -99,6 +119,12 @@
         body: JSON.stringify({ draftId: draftId, revision: revision, projectId: link.projectId, projectName: link.projectName || '' })
       });
       var payload = await response.json().catch(function () { return null; });
+      if (payload && payload.duplicate && payload.existingUrl) {
+        status.textContent = (payload.error || 'A project update from these minutes already exists.') + ' ';
+        status.appendChild(el('a', { href: payload.existingUrl }, payload.kind === 'report' ? 'Open the existing report' : 'Follow it in the Library'));
+        status.appendChild(document.createTextNode('.'));
+        return;
+      }
       if (!response.ok || !payload || payload.ok === false) {
         throw new Error((payload && payload.error) || ('Request failed with status ' + response.status + '.'));
       }

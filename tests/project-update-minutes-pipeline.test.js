@@ -23,11 +23,14 @@ function resetStore() {
 async function query(sql, params = []) {
   const text = sql.trim();
   if (/^(?:ALTER TABLE|BEGIN|COMMIT|ROLLBACK)/.test(text)) return { rows: [] };
+  if (/^SELECT pg_advisory_xact_lock/.test(text)) return { rows: [] };
+  if (/FROM meeting_jobs/.test(text)) return { rows: [] };
   if (/^SELECT id FROM projects WHERE id/.test(text)) return { rows: [{ id: 7 }] };
   if (/^SELECT id FROM project_reporting_periods/.test(text)) return { rows: [{ id: 8 }] };
   if (/FROM project_report_sources s/.test(text)) {
-    store.duplicateHashes.push(params[2]);
-    const row = store.sources.get(params[2]);
+    const fingerprint = params.length === 2 ? params[1] : params[2];
+    if (params.length === 3) store.duplicateHashes.push(fingerprint);
+    const row = store.sources.get(fingerprint);
     return { rows: row ? [row] : [] };
   }
   if (/^INSERT INTO meetings /.test(text)) return { rows: [{ id: store.nextId++ }] };
@@ -167,6 +170,14 @@ test('legacy Python fallback retains the complete reviewed action register in bo
   assert.deepEqual(result.actions, actions);
   assert.deepEqual(store.versions[0].payload.projectReport.actions, actions);
   assert.deepEqual(store.scripts, ['project_update_minilm.py', 'python_llm.py']);
+  assert.deepEqual(store.versions[0].payload.projectReport.analyserFallback,
+    { used: true, script: 'python_llm.py', reason: 'Simulated primary failure' });
+});
+
+test('a report from the main analyser is not marked as a backup-analyser report', async () => {
+  resetStore();
+  const { result } = await runJob([], { fallback: false });
+  assert.equal(result.projectReport.analyserFallback, undefined);
 });
 
 test('persistence distinguishes action-only snapshots and still deduplicates unchanged or ordinary transcript sources', async () => {

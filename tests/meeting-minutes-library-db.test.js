@@ -17,7 +17,7 @@ function libraryDatabase() {
     async query(sql, params) {
       calls.push({ sql, params });
       if (sql.includes('COUNT(*)::int AS total')) return { rows: [{ total: 1 }] };
-      if (sql.includes('SELECT id, revision, status, title, file_name, payload, created_at, updated_at')) {
+      if (sql.includes('SELECT id, revision, status, title, file_name, project_id, payload, created_at, updated_at')) {
         return { rows: [{ id: 7, revision: 2, status: 'draft', title: 'Meeting', payload: {} }] };
       }
       return { rows: [] };
@@ -78,4 +78,18 @@ test('Library sort and status inputs cannot become SQL syntax', async () => {
     assert.deepEqual(Array.from(call.params.slice(0, 3)), [23, '', '']);
   }
   assert.match(reads[1].sql, /ORDER BY created_at DESC, id DESC/);
+});
+
+test('Library can be narrowed to one project without changing paging parameters', async () => {
+  const { list, calls } = libraryDatabase();
+  await list(12, { projectId: '17', limit: 5 });
+  const rows = calls.findLast((call) => call.sql.includes('LIMIT $5 OFFSET $6'));
+  assert.ok(rows, 'project filter shifts the paging placeholders');
+  assert.match(rows.sql, /AND project_id = \$4/);
+  assert.deepEqual(Array.from(rows.params.slice(3)), [17, 5, 0]);
+  for (const ignored of ['', '0', '-3', 'abc', '1.5']) {
+    await list(12, { projectId: ignored });
+    const unfiltered = calls.findLast((call) => call.sql.includes('LIMIT $4 OFFSET $5'));
+    assert.doesNotMatch(unfiltered.sql, /project_id =/, ignored);
+  }
 });
