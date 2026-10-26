@@ -7,6 +7,8 @@ const {
   reconcileFinalApprovedActions
 } = require('../routes/api').stagedEvaluation;
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const TimingIntegrity = require('../utils/meetingMinutesTiming');
+const { finaliseActionTimings } = require('../utils/meetingMinutesAgentV2');
 
 const timing = (wording, kind = 'dependency') => ({ kind, wording, exactDate: '' });
 const untimed = () => ({ kind: 'not_stated', wording: '', exactDate: '' });
@@ -94,6 +96,81 @@ test('same review with an explicitly sourced later-meeting context has one compl
     assert.equal(reconciled.actions[0].timing.wording, 'Wednesday before the Thursday meeting');
     assert.deepEqual(new Set(reconciled.actions[0].reviewFlagIds), new Set(['first-review', 'second-review']));
   }
+});
+
+test('one source-stated task keeps its complete timing phrase, calendar value and both warning sets', () => {
+  const sources = [source('VALVE-01',
+    "I'll replace the broken valve this weekend, Saturday morning probably, before it gets busy.")];
+  const action = 'Replace the broken valve.';
+  const full = row('valve-full', action, ['Morgan Lee'],
+    { kind: 'target', wording: 'this weekend, Saturday morning probably, before it gets busy', exactDate: '' },
+    ['VALVE-01']);
+  const dated = row('valve-date', action, ['Morgan Lee'],
+    { kind: 'target', wording: 'this weekend, Saturday morning probably', exactDate: '2026-08-08' },
+    ['VALVE-01']);
+  full.reviewFlagIds = ['full-timing-warning'];
+  dated.reviewFlagIds = ['date-timing-warning'];
+  full.timingDecision = { status: 'unresolved', checkerStatus: 'rejected', meetingDate: '2026-08-05',
+    binding: { status: 'unresolved', matchedSourceIds: [] }, rejectedWordings: [], rejectedExactDates: [] };
+  dated.timingDecision = { status: 'unresolved', checkerStatus: 'rejected', meetingDate: '2026-08-05',
+    binding: { status: 'supported', matchedSourceIds: ['VALVE-01'] }, rejectedWordings: [], rejectedExactDates: [] };
+  for (const item of [full, dated]) {
+    item.timingDecision = { ...item.timingDecision, version: TimingIntegrity.TIMING_POLICY_VERSION,
+      ...TimingIntegrity.timingAssessmentKey(item, sources, '2026-08-05') };
+  }
+  const result = qualify([full, dated], sources);
+  assert.equal(result.hybrid.length, 1);
+  assert.equal(result.final.length, 1);
+  assert.equal(result.published.length, 1);
+  assert.deepEqual(result.restored, []);
+  const survivor = result.published[0];
+  assert.equal(survivor.timing.wording, full.timing.wording);
+  assert.equal(survivor.timing.exactDate, dated.timing.exactDate);
+  assert.equal(survivor.timingDecision.status, 'unresolved');
+  assert.equal(survivor.timingDecision.checkerStatus, 'rejected');
+  assert.deepEqual(new Set(survivor.reviewFlagIds), new Set(full.reviewFlagIds.concat(dated.reviewFlagIds)));
+  const finalised = finaliseActionTimings([survivor], sources, { meetingDate: '2026-08-05' });
+  assert.equal(finalised.actions[0].timing.wording, full.timing.wording);
+  assert.equal(finalised.actions[0].timing.exactDate, dated.timing.exactDate);
+  assert.equal(finalised.actions[0].timingDecision.status, 'unresolved');
+  assert.ok(!finalised.flags.some(flag => /exact date was removed/i.test(flag.message)));
+  for (const [published, approved] of [[full, dated], [dated, full]]) {
+    const saved = reconcileFinalApprovedActions([published], [approved], { sourceUnits: sources });
+    assert.equal(saved.actions.length, 1);
+    assert.deepEqual(saved.actions[0].timing, survivor.timing);
+    assert.deepEqual(new Set(saved.actions[0].reviewFlagIds), new Set(survivor.reviewFlagIds));
+  }
+});
+
+test('timing completion refuses a different owner, source, check, date or qualifier', () => {
+  const sources = [source('VALVE-01',
+    "I'll replace the broken valve this weekend, Saturday morning probably, before it gets busy.")];
+  const action = 'Replace the broken valve.';
+  const full = row('valve-full', action, ['Morgan Lee'],
+    { kind: 'target', wording: 'this weekend, Saturday morning probably, before it gets busy', exactDate: '' },
+    ['VALVE-01']);
+  const dated = row('valve-date', action, ['Morgan Lee'],
+    { kind: 'target', wording: 'this weekend, Saturday morning probably', exactDate: '2026-08-08' },
+    ['VALVE-01']);
+  full.timingDecision = { status: 'unresolved', checkerStatus: 'rejected', meetingDate: '2026-08-05',
+    binding: { status: 'unresolved' }, rejectedWordings: [], rejectedExactDates: [] };
+  dated.timingDecision = { status: 'unresolved', checkerStatus: 'rejected', meetingDate: '2026-08-05',
+    binding: { status: 'supported', matchedSourceIds: ['VALVE-01'] }, rejectedWordings: [], rejectedExactDates: [] };
+  const variants = [
+    { ...dated, owners: ['Casey Green'] },
+    { ...dated, evidenceIds: ['VALVE-02'] },
+    { ...dated, timingDecision: { ...dated.timingDecision, checkerStatus: 'uncertain' } },
+    { ...dated, timingDecision: { ...dated.timingDecision, binding: { status: 'unresolved' } } },
+    { ...dated, timingDecision: { ...dated.timingDecision, rejectedExactDates: ['2026-08-08'] } },
+    { ...dated, timing: { ...dated.timing, exactDate: '2026-08-09' } },
+    { ...dated, timing: { ...dated.timing, wording: 'this weekend, Sunday morning probably' } },
+    { ...dated, reviewerAuthored: true }
+  ];
+  for (const variant of variants) {
+    assert.equal(dedupeHybridActionRecords([full, variant], { sourceUnits: sources }).length, 2);
+  }
+  assert.equal(dedupeHybridActionRecords([full, dated], { sourceUnits: [source('VALVE-01',
+    'I will replace the broken valve this weekend, Saturday morning probably.')] }).length, 2);
 });
 
 test('review timing context cannot hide a distinct occurrence or unsupported meeting', () => {

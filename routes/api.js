@@ -124,7 +124,7 @@ const {
 } = require('../utils/canonicalMinutes/discussionPublication');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred, sourceBoundRoleClarificationDuplicate } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText, sourceBoundReviewTimingContext } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
+const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText, sourceBoundReviewTimingContext, sourceBoundIdenticalActionTimingCompletion } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
@@ -12545,6 +12545,13 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
       }
       continue;
     }
+    const completedTimingIndex = actions.findIndex(existing =>
+      sourceBoundIdenticalActionTimingCompletion(record, existing, options.sourceUnits || []));
+    if (completedTimingIndex >= 0) {
+      actions[completedTimingIndex] = sourceBoundIdenticalActionTimingCompletion(
+        record, actions[completedTimingIndex], options.sourceUnits || []);
+      continue;
+    }
     const contactIndex = actions.findIndex(existing => reconcileDetailedContacts(existing, record));
     if (contactIndex >= 0) {
       actions[contactIndex] = reconcileDetailedContacts(actions[contactIndex], record).record;
@@ -13627,9 +13634,14 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     let losslessPreferred = null;
     let sourceAwareDuplicate = null;
     let contextualReviewDuplicate = null;
+    let completedTimingDuplicate = null;
     let roleClarificationDuplicate = null;
     let weekdayTimingReconciliation = null;
     const duplicate = merged.find((existing) => {
+      if (sourceBoundIdenticalActionTimingCompletion(record, existing, options.sourceUnits || [])) {
+        completedTimingDuplicate = existing;
+        return true;
+      }
       if (sourceBoundReviewTimingContext(record, existing, options.sourceUnits || [])) {
         contextualReviewDuplicate = existing;
         return true;
@@ -13737,6 +13749,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     });
     if (!duplicate) {
       merged.push(record);
+      continue;
+    }
+    if (completedTimingDuplicate === duplicate) {
+      merged[merged.indexOf(duplicate)] = sourceBoundIdenticalActionTimingCompletion(
+        record, duplicate, options.sourceUnits || []);
       continue;
     }
     if (contextualReviewDuplicate === duplicate) {
