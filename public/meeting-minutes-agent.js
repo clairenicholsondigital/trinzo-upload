@@ -2144,6 +2144,28 @@
     return [target.stage, target.elementId, target.field].join('|');
   }
 
+  function coverageComparisonHtml(flag) {
+    if (reviewFlagCategory(flag, null) !== 'coverage') return '';
+    var sourceCounts = new Map();
+    sourceUnits().forEach(function (unit) { sourceCounts.set(unit.id, (sourceCounts.get(unit.id) || 0) + 1); });
+    var ids = new Set((flag.evidenceIds || []).filter(function (id) { return sourceCounts.get(id) === 1; }));
+    var domCounts = new Map();
+    document.querySelectorAll('[id]').forEach(function (node) { domCounts.set(node.id, (domCounts.get(node.id) || 0) + 1); });
+    var related = ((state.draft && state.draft.actions) || []).map(function (action, index) {
+      return { action: action, elementId: actionDomId(action, index) };
+    }).filter(function (item) {
+      return item.action.action && domCounts.get(item.elementId) === 1
+        && (item.action.evidenceIds || []).some(function (id) { return ids.has(id); });
+    });
+    if (!related.length) return '';
+    return '<details class="flag-review-reason" data-coverage-related-actions><summary>Drafted actions sharing source lines (' + related.length + ')</summary>'
+      + '<p>These source links are for comparison. They do not establish that the work is covered.</p><ul>'
+      + related.map(function (item) {
+        return '<li><button class="secondary compact" type="button" data-view-coverage-action="' + escapeHtml(item.elementId)
+          + '" data-target-step="3" data-target-selector=":scope">' + escapeHtml(item.action.action) + '</button></li>';
+      }).join('') + '</ul></details>';
+  }
+
   function renderFlags() {
     var flags = (state.draft && state.draft.reviewFlags) || [];
     var open = flags.filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
@@ -2155,13 +2177,14 @@
       if (proposalChangeForFlag(flag)) return '';
       var label = reviewFlagLabel(flag);
       var target = flagTarget(flag);
+      var uncertainCoverage = !target && reviewFlagCategory(flag, target) === 'coverage';
       var displayMessage = target && target.proposal
         ? 'The agent found a possible addition that is not in the minutes yet.'
         : flag.message;
       var candidateText = reviewCandidateForFlag(flag, target);
       var candidateLabel = target
         ? (target.proposal ? 'Proposed minutes text' : (target.retained ? 'Not in the main minutes · ' : 'In the minutes · ') + target.label)
-        : 'Transcript detail to consider';
+        : uncertainCoverage ? 'Passage with unverified action coverage' : 'Transcript detail to consider';
       var body = '';
       if (candidateText && showTarget) {
         body += '<div class="flag-target' + (!target ? ' transcript-candidate' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span><blockquote>' + escapeHtml(candidateText) + '</blockquote>';
@@ -2174,10 +2197,15 @@
       } else if (showTarget && target && target.ambiguous) {
         body += '<p>' + (target.retained ? 'This check is linked to several retained details. Review those entries before including them.' : 'This check is linked to several actions. Review those rows directly.') + '</p></div>';
       } else if (showTarget && candidateText) {
-        body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
+        body += uncertainCoverage
+          ? '<p>Coverage is uncertain. Check the source before deciding whether anything needs adding.</p></div>'
+          : '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
       } else if (showTarget) {
-        body += '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
+        body += uncertainCoverage
+          ? '<div class="review-route-missing"><span>Coverage is uncertain. Check the source before deciding whether anything needs adding.</span></div>'
+          : '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
       }
+      if (showTarget && uncertainCoverage) body += coverageComparisonHtml(flag);
       var reviewMessage = conciseReviewMessage(displayMessage);
       body += reviewMessageAddsDetail(reviewMessage, label)
         ? '<details class="flag-review-reason"><summary><span>Why this was highlighted</span><span class="flag-kind">' + escapeHtml(label) + '</span></summary><div class="flag-message">' + escapeHtml(reviewMessage) + '</div></details>'
@@ -4126,15 +4154,16 @@
   });
 
   function openReviewTarget(targetButton) {
+    var elementId = targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget || targetButton.dataset.viewCoverageAction;
     if (targetButton.dataset.targetStep !== undefined) showStep(Number(targetButton.dataset.targetStep), { scroll:true });
     window.setTimeout(function () {
-        var target = document.getElementById(targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget);
+        var target = document.getElementById(elementId);
         if (!target) return;
         var topicCard = target.closest('.discussion-card');
         if (topicCard && topicCard.classList.contains('is-collapsed')) {
           var toggle = topicCard.querySelector('[data-toggle-topic]');
           if (toggle) toggle.click();
-          target = document.getElementById(targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget);
+          target = document.getElementById(elementId);
           if (!target) return;
         }
         // The jump to the item replaces the step's own landing position; without
@@ -4163,6 +4192,11 @@
   }
 
   document.getElementById('flagList').addEventListener('click', function (event) {
+    var comparisonButton = event.target.closest('[data-view-coverage-action]');
+    if (comparisonButton) {
+      openReviewTarget(comparisonButton);
+      return;
+    }
     var targetButton = event.target.closest('[data-view-flag-target]');
     if (targetButton) {
       openReviewTarget(targetButton);

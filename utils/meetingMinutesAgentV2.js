@@ -744,7 +744,11 @@ function normaliseFlag(flag = {}, index = 0) {
     id: text(flag.id, 80) || (systemTimingIssue ? stableId('flag-timing', JSON.stringify(systemTimingIssue), 0) : stableId('flag', `${kind}|${message}`, index)),
     kind,
     message,
-    evidenceIds: [...new Set((Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean))].slice(0, 8),
+    // Group materialization notices already carry up to twenty source anchors.
+    // Keep that bounded passage intact through save/reload; ordinary flags keep
+    // their existing citation budget. This does not certify action coverage.
+    evidenceIds: [...new Set((Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []).map((id) => text(id, 30)).filter(Boolean))]
+      .slice(0, flag.reviewDisposition === 'coverage_unresolved' ? 20 : 8),
     status: ['open', 'confirmed', 'corrected', 'dismissed'].includes(flag.status) ? flag.status : 'open',
     correctionNote: text(flag.correctionNote, 500),
     ...(isReviewerAuthored(flag) ? { reviewerAuthored: true } : {}),
