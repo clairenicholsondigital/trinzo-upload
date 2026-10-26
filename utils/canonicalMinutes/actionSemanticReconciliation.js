@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 const contained = require('./containedRequirement');
 const dependency = require('./qualifiedDependency');
 const contactPurpose = require('./contactParaphrase');
+const simpleObligation = require('./simpleObligation');
+const { ownerWitness } = require('../meetingMinutesSemanticSourceVerification');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
@@ -207,6 +209,7 @@ function prepareActionReconciliation(input = {}) {
   const actions = Array.isArray(input.actions) ? input.actions : [];
   const sourceUnits = sourceRows(input.sourceUnits);
   const protectedIds = new Set(input.protectedOccurrenceIds || []);
+  const protectedActionIds = new Set(input.protectedActionIds || []);
   const serials = new Map();
   const rows = actions.map((action, index) => {
     const record = clone(action); const recordHash = hash(record);
@@ -216,7 +219,7 @@ function prepareActionReconciliation(input = {}) {
       facets: protectedFacets(record), clauses: instructionClauses(record.action),
       clauseDescriptors: instructionClauses(record.action).map(text => ({ text,
         operation: words(text)[0] || '', object: words(text).slice(1).join(' ') })),
-      protected: isReviewerAuthored(record)
+      protected: isReviewerAuthored(record) || protectedActionIds.has(record.id)
         || Boolean(record.occurrenceId && protectedIds.has(record.occurrenceId)),
       witnesses: sourceUnits.filter(unit => evidence.has(unit.id)).map(unit => ({ sourceId: unit.id,
         sourceHash: hash(unit), text: String(unit.text || ''), speaker: String(unit.speaker || '') })) };
@@ -230,6 +233,7 @@ function prepareActionReconciliation(input = {}) {
   if(input.qualifiedDependencies===true && input.scope!=='qualified_dependencies')classes.push('qualified_dependencies');
   if(input.contactParaphrases===true)classes.push('contact_paraphrases');
   if(input.contactReviews===true)classes.push('contact_reviews');
+  if(input.simpleObligations===true)classes.push('simple_obligations');
   let containedCount=0,dependencyCount=0,contactPurposeCount=0;
   for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
@@ -239,6 +243,8 @@ function prepareActionReconciliation(input = {}) {
         ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action),true):null;
     if(['contact_paraphrases','contact_reviews'].includes(nominationClass)&&(!contactDirection||contactPurposeCount>=1))continue;
     if(nominationClass==='contact_reviews'&&!contactPurpose.reviewShape(contactDirection.parent,contactDirection.child))continue;
+    const simpleDirection=nominationClass==='simple_obligations' ? simpleObligation.direction(left.action,right.action,rows.map(r=>r.action),sourceUnits) : null;
+    if(nominationClass==='simple_obligations'&&!simpleDirection)continue;
     const contact = sameEnquiryPair(left.action, right.action);
     const containedDirection=nominationClass==='contained_requirements'&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
@@ -258,6 +264,7 @@ function prepareActionReconciliation(input = {}) {
     const pair = { candidateId: `pair-${hash([left.ref, right.ref]).slice(0, 24)}`,
       leftRef: left.ref, rightRef: right.ref,
       nomination: { sharedEvidence, commonContentWords: common },
+      ...(simpleDirection?{simpleObligation:{survivorRef:simpleDirection.parent===left.action?left.ref:right.ref}}:{}),
       ...(contactDirection?{contactParaphrase:{survivorRef:contactDirection.parent===left.action?left.ref:right.ref}}:{}),
       ...(containedDirection?{containedRequirement:{survivorRef:containedDirection.parent===left.action?left.ref:right.ref}}:{}),
       ...(dependencyDirection?{qualifiedDependency:{survivorRef:dependencyDirection.parent===left.action?left.ref:right.ref}}:{}),
@@ -269,7 +276,7 @@ function prepareActionReconciliation(input = {}) {
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
-    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}),...(input.contactReviews===true?{contactReviews:true}:{}) },
+    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}),...(input.contactReviews===true?{contactReviews:true}:{}),...(input.simpleObligations===true?{simpleObligations:true}:{}) },
     ...(isActionOnlySemanticScope(input.scope) ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }
@@ -356,8 +363,7 @@ function validateCoverage(packet, proof, original, survivor) {
   const sourceWords = contentWords(spans.map(span => span.quote).join(' '));
   for (const witness of [original, survivor]) {
     if (!proof.semanticProof && !subset(contentWords(witness.action.action), sourceWords)) return 'wording_not_directly_source_grounded';
-    if (!owners(witness.action).every(owner => spans.some(span => canonical(span.unit.speaker) === owner
-      || canonical(span.quote).includes(owner)))) return 'owner_not_source_grounded';
+    if (!owners(witness.action).every(owner => spans.some(span => ownerWitness({speaker:span.unit.speaker,text:span.quote},owner)))) return 'owner_not_source_grounded';
   }
   const sourceComparison = comparisonNumbers(spans.map(span => span.quote).join(' '));
   const sourceFacets = protectedFacets({ action: sourceComparison });
@@ -375,8 +381,9 @@ function validateCoverage(packet, proof, original, survivor) {
     && !canonical(spans.map(span => span.quote).join(' ')).includes(canonical(survivor.action.timing.wording))) {
     return 'timing_context_without_direct_source_support';
   }
-  const conflicts = contactPurpose.conflicts(packet,proof,original,survivor,dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action))));
+  const conflicts = simpleObligation.conflicts(packet,proof,original,survivor,contactPurpose.conflicts(packet,proof,original,survivor,dependency.conflicts(packet,proof,original,survivor,contained.conflicts(packet,proof,original,survivor,hardConflicts(original.action, survivor.action)))));
   if (conflicts.length) return conflicts.join(',');
+  if(proof.simpleObligation)return simpleObligation.validMapping(packet,proof,original,survivor)?'':'invalid_simple_obligation_mapping';
   if(proof.contactParaphrase)return contactPurpose.validMapping(packet,proof,original,survivor)?'':'invalid_contact_clause_mapping';
   if(proof.qualifiedDependency)return dependency.validMapping(packet,proof,original,survivor)?'':'invalid_dependency_clause_mapping';
   if(proof.containedRequirement)return contained.validMapping(packet,proof,original,survivor)?'':'invalid_contained_clause_mapping';
@@ -418,6 +425,7 @@ function proofSourceIds(coverage = []) {
 function buildDeterministicEnvelope(packet) {
   const byRef = new Map(packet.rows.map(row => [row.ref, row]));
   const decisions = packet.candidates.map(candidate => {
+    if(candidate.simpleObligation)return {candidateId:candidate.candidateId,relation:'unresolved'};
     const left = byRef.get(candidate.leftRef); const right = byRef.get(candidate.rightRef);
     const directions = [right, left].filter(survivor => [left, right]
       .every(original => mechanicalCoverage(original.action, survivor.action).covered))

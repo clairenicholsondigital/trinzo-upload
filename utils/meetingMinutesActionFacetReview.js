@@ -40,11 +40,11 @@ function prepare(register,comparisonId,survivorRef,options={}) {
  const prepared=R.prepareActionReconciliation({actions:originals.map(row=>row.action),sourceUnits:register.sourceUnits});
  const rows=prepared.rows.map((row,i)=>({ref:originals[i].ref,recordHash:row.recordHash,action:clone(row.action),
   facets:facets({...row,ref:originals[i].ref},options),unresolvedSourceIds:clone(originals[i].unresolvedSourceIds),
-  ownerWitnesses:(row.action.owners||[]).map(owner=>({owner,sourceIds:register.sourceUnits.filter(unit=>row.action.evidenceIds?.includes(unit.id)&&ownerWitness(unit,owner)).map(unit=>unit.id)}))}));
+  ownerWitnesses:(row.action.owners||[]).map(owner=>({owner,sourceIds:register.sourceUnits.filter(unit=>(options.contextualOwners===true||row.action.evidenceIds?.includes(unit.id))&&ownerWitness(unit,owner)).map(unit=>unit.id)}))}));
  const survivor=rows.find(row=>row.ref===survivorRef);
  const checks=rows.flatMap(row=>row.facets.map(f=>({...f,originalRef:row.ref,originalHash:row.recordHash,
   ownershipWitnessRequired:['instruction','owners'].includes(f.field),exactSelfRetention:row.ref===survivorRef&&row.recordHash===survivor.recordHash})));
- const body={version:VERSION,...(options.contextualUnits===true?{unitContextVersion:1}:{}),registerHash:register.packetHash,comparisonId,
+ const body={version:VERSION,...(options.contextualUnits===true?{unitContextVersion:1}:{}),...(options.contextualOwners===true?{ownerContextVersion:1}:{}),registerHash:register.packetHash,comparisonId,
   survivorRef,survivorHash:survivor.recordHash,rows,checks,sourceUnits:clone(register.sourceUnits),
   // Context stays global, but only this explicitly bound pair is adjudicated.
   globalInventory:register.rows.map(row=>({ref:row.ref,recordHash:hash(row.action),action:clone(row.action)})),

@@ -27,6 +27,7 @@ function normaliseSemanticPolicy(value) {
     ...(ACTION_SCOPES.has(value.scope)&&value.containedRequirements===true?{containedRequirements:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.referenceContracts===true?{referenceContracts:true}:{}),
+    ...(ACTION_SCOPES.has(value.scope)&&value.simpleObligations===true?{simpleObligations:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.compilationUnions===true?{compilationUnions:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.contactParaphrases===true?{contactParaphrases:true}:{}),
     ...(ACTION_SCOPES.has(value.scope)&&value.contactReviews===true&&value.contactParaphrases===true?{contactReviews:true}:{}) });
@@ -47,6 +48,7 @@ function captureSemanticPolicy(env = process.env) {
     ...(dependencies?{qualifiedDependencies:true}:{}),
     ...(contacts?{contactParaphrases:true}:{}),
     ...(contactReviews?{contactReviews:true}:{}),
+    simpleObligations:/^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_SIMPLE_OBLIGATIONS_V1||'0')),
     compilationUnions:/^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_COMPILATION_UNION_V1||'0')),
     referenceContracts:/^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_AGENT_ACTION_PROOF_CONTRACT_V2||'0')),
     maxCandidates: enquiries || survivors ? 2 : contained || dependencies || contacts ? 1 : env.MEETING_MINUTES_AGENT_SEMANTIC_MAX_CANDIDATES,
