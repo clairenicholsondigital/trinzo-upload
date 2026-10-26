@@ -2172,7 +2172,7 @@
     var panel = document.getElementById('reviewFlags');
     var wasHidden = panel.hidden;
     if (open.length && wasHidden) panel.open = false;
-    function renderCheck(flag, index, showTarget) {
+    function renderCheck(flag, index, showTarget, sharedSource) {
       if (flag.status !== 'open') return '';
       if (proposalChangeForFlag(flag)) return '';
       var label = reviewFlagLabel(flag);
@@ -2223,22 +2223,38 @@
       var evidence = '<details class="review-evidence" data-keep-open="' + escapeHtml(disclosureKey(flag.evidenceIds, 'flag-' + flag.id)) + '"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
         + (evidenceLines ? evidenceLines + ' line' + (evidenceLines === 1 ? '' : 's') : 'none linked')
         + '</span></summary><div class="review-evidence-body">' + evidenceHtml(flag.evidenceIds) + '</div></details>';
-      return '<div class="flag review-queue-item" data-review-flag-id="' + escapeHtml(flag.id) + '"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
+      return '<div class="flag review-queue-item" data-review-flag-id="' + escapeHtml(flag.id) + '"><div class="review-item-layout' + (sharedSource ? ' shared-source-check' : '') + '"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + (sharedSource ? '' : evidence) + '</div></div>';
     }
     var groups = new Map(), categories = { corrections: [], optional: [], coverage: [] }, targetCounts = new Map();
     document.querySelectorAll('[id]').forEach(function (node) { targetCounts.set(node.id, (targetCounts.get(node.id) || 0) + 1); });
+    var sourceCounts = new Map(), flagCounts = new Map();
+    sourceUnits().forEach(function (unit) { sourceCounts.set(unit.id, (sourceCounts.get(unit.id) || 0) + 1); });
+    flags.forEach(function (flag) { flagCounts.set(flag.id, (flagCounts.get(flag.id) || 0) + 1); });
+    function optionalSourceKey(flag, target, category) {
+      if (target || category !== 'optional' || flag.kind !== 'possible_missed_follow_up'
+        || flag.reviewDisposition !== 'not_applied_addition' || flag.reviewerAuthored || flag.correctionNote
+        || flag.temporalField || !flag.id || flagCounts.get(flag.id) !== 1) return '';
+      var ids = flag.evidenceIds;
+      if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length
+        || ids.some(function (id) { return typeof id !== 'string' || sourceCounts.get(id) !== 1; })) return '';
+      return JSON.stringify(ids.slice().sort());
+    }
     flags.forEach(function (flag, index) {
       if (flag.status !== 'open' || proposalChangeForFlag(flag)) return;
       var target = flagTarget(flag), category = reviewFlagCategory(flag, target);
+      var sharedSourceKey = optionalSourceKey(flag, target, category);
       // A unique DOM occurrence is a presentation key, never a merge proof.
-      // Unbound and ambiguous flags keep independent cards.
+      // Shared optional source text is presentation only. Every check keeps its
+      // own explanation, note and decision; ambiguous targets stay separate.
       var key = target && !target.ambiguous && target.elementId && targetCounts.get(target.elementId) === 1
-        ? category + '|' + target.stage + '|' + target.elementId + '|' + target.field : 'flag|' + index;
+        ? category + '|' + target.stage + '|' + target.elementId + '|' + target.field
+        : sharedSourceKey ? 'optional-source|' + sharedSourceKey : 'flag|' + index;
       var group = groups.get(key);
-      if (!group) { group = { category: category, entries: [] }; groups.set(key, group); categories[category].push(group); }
+      if (!group) { group = { category: category, entries: [], sharedSource: Boolean(sharedSourceKey) }; groups.set(key, group); categories[category].push(group); }
       group.entries.push({ flag: flag, index: index });
     });
     function renderGroup(group) {
+      var sharedSource = group.sharedSource && group.entries.length > 1;
       var bundles = [], byKey = new Map();
       group.entries.forEach(function (entry) {
         var targetKey = reviewTargetKey(entry.flag), key = targetKey && identicalReviewKey(entry.flag);
@@ -2248,21 +2264,24 @@
         bundle.push(entry);
       });
       var first = true;
-      return '<section class="review-occurrence" data-review-occurrence><div class="review-occurrence-checks">'
-        + (group.entries.length > 1 ? '<p class="muted">' + group.entries.length + ' checks for this item — each keeps its own decision.</p>' : '')
+      return '<section class="review-occurrence" data-review-occurrence' + (sharedSource ? ' data-shared-optional-source' : '') + '><div class="review-occurrence-checks">'
+        + (group.entries.length > 1 ? '<p class="muted">' + group.entries.length + (sharedSource ? ' independent checks share this source passage. Decide each separately.</p>' : ' checks for this item — each keeps its own decision.</p>') : '')
         + bundles.map(function (bundle) {
-          var entry = bundle[0], html = renderCheck(entry.flag, entry.index, first); first = false;
+          var entry = bundle[0], html = renderCheck(entry.flag, entry.index, first, sharedSource); first = false;
           if (bundle.length === 1) return html;
           return html + '<div class="flag-actions"><button class="secondary" type="button" data-confirm-identical-flags="' + escapeHtml(JSON.stringify(bundle.map(function (entry) { return entry.flag.id; })))
             + '" data-identical-review-key="' + escapeHtml(identicalReviewKey(entry.flag)) + '" data-identical-review-target="' + escapeHtml(reviewTargetKey(entry.flag)) + '">Mark all ' + bundle.length + ' identical checks as checked</button></div>'
             + '<details class="review-evidence" data-identical-review-copies data-keep-open="identical-checks:' + escapeHtml(entry.flag.id) + '"><summary>' + bundle.length + ' identical checks for this item — individual controls</summary>'
             + bundle.slice(1).map(function (copy) { return renderCheck(copy.flag, copy.index, false); }).join('') + '</details>';
-        }).join('') + '</div></section>';
+        }).join('') + (sharedSource
+          ? '<details class="review-evidence" data-shared-source-evidence data-keep-open="' + escapeHtml(disclosureKey(group.entries[0].flag.evidenceIds, 'shared-optional-source')) + '"><summary class="review-evidence-head"><strong>Shared source passage</strong></summary><div class="review-evidence-body">' + evidenceHtml(group.entries[0].flag.evidenceIds) + '</div></details>'
+          : '') + '</div></section>';
     }
     function section(kind, heading, description, optional) {
       var rows = categories[kind]; if (!rows.length) return '';
       var count = rows.reduce(function (n, row) { return n + row.entries.length; }, 0);
-      var title = heading + ' (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ', ' + count + ' check' + (count === 1 ? '' : 's') + ')';
+      var itemCount = rows.reduce(function (n, row) { return n + (row.sharedSource ? row.entries.length : 1); }, 0);
+      var title = heading + ' (' + itemCount + ' item' + (itemCount === 1 ? '' : 's') + ', ' + count + ' check' + (count === 1 ? '' : 's') + ')';
       var body = '<p class="muted">' + escapeHtml(description) + '</p>' + rows.map(renderGroup).join('');
       return optional ? '<details class="review-category" data-review-category="' + kind + '" data-keep-open="review-category:' + kind + '"><summary>' + escapeHtml(title) + '</summary>' + body + '</details>'
         : '<section class="review-category" data-review-category="' + kind + '"><h3>' + escapeHtml(title) + '</h3>' + body + '</section>';
