@@ -1,0 +1,21 @@
+{
+  "testName": "074_eakin_gsop_followup",
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "follow up on"
+    }
+  ],
+  "nearDuplicateCase": {
+    "id": "EAKIN-001",
+    "level": "action",
+    "sourceAnchors": ["Claire 0:08", "Louise 0:14"],
+    "variants": [
+      "Follow up on Louise's review of the GSOP procedure documentation.",
+      "Follow up on the GSOP procedure review with Louise."
+    ],
+    "requiredSurvivor": ["Louise", "GSOP", "procedure", "review", "follow up"],
+    "mustPreserve": ["Louise", "GSOP procedure context", "follow-up obligation"]
+  }
+}

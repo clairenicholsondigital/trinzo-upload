@@ -70,8 +70,11 @@ with Rebecca about missing documentation are related but not interchangeable.
 
 ## Next qualification step
 
-Add the three demonstrated source-bound duplicate cases (language Discussion,
-GSOP follow-up and document-review email) to regression fixtures with their
-transcript anchors. Implement only those narrow consolidations, then re-run
-the draft through save/reload and export checks. Keep the other overlap cases
-separate unless further pilot evidence proves they create reviewer burden.
+The four demonstrated action-level cases are now seeded as source-bound
+transcript fixtures with their source anchors and retention requirements:
+GSOP follow-up, document-review email, software-change compilation and Colm
+standards review. The language-symbol repetition remains a separate
+Discussion-level bank case. Implement only the narrow action consolidations,
+then re-run the fixtures and the draft through save/reload and export checks.
+Keep the other overlap cases separate unless further pilot evidence proves
+they create reviewer burden.

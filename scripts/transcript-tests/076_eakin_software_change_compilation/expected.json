@@ -1,0 +1,22 @@
+{
+  "testName": "076_eakin_software_change_compilation",
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "compile"
+    }
+  ],
+  "nearDuplicateCase": {
+    "id": "LIBRARY-483-001",
+    "level": "action",
+    "sourceAnchors": ["Andrew 0:08", "Claire 0:16"],
+    "variants": [
+      "Compile the referenced software changes into the summary report as part of the design and technical file change documentation.",
+      "Compile the reviewed software changes into the design and technical file summary reporting using the output from the review of the 17 changes."
+    ],
+    "requiredSurvivor": ["compile", "software changes", "design", "technical file", "summary", "17"],
+    "mustPreserve": ["compilation deliverable", "design/technical-file context", "quantity 17"],
+    "doNotMergeAcross": ["different version", "different document", "different review occurrence"]
+  }
+}
