@@ -143,17 +143,19 @@ test('a private audit checkpoint persists before stage completion without enteri
   assert.ok(!JSON.stringify(A.publicMeetingAgentDraft(h.stored)).includes('PRIVATE checkpoint'));
 });
 test('the production referee call actually wires rejection capture to the durable private checkpoint',async()=>{
-  const h=progressHarness(),c=contract([]),logs=[];let providerCalls=0,capturedError;
-  const result={requestId:'request',stage:'DISCUSSION_REFEREE',expectedCandidateCount:1,returnedDispositionCount:1,
-    candidateDispositions:[{candidateId:'child',disposition:'merge',targetId:'PRIVATE_BAD_TARGET',reason:'Covered.',evidenceIds:['T0001']}]};
+ for(const stage of ['discussion','actions']){
+  const atomic=stage==='discussion'?child:{...child,recordType:'action',text:'Send the tracker.',record:{action:'Send the tracker.',owners:['Nora Patel'],evidenceIds:['T0001']}};
+  const h=progressHarness(),c=A.meetingMinutesAgentRefereeContract(stage,[atomic],'request',{selected:true}),logs=[];let providerCalls=0,capturedError;
+  const result={requestId:'request',stage:c.stage,expectedCandidateCount:1,returnedDispositionCount:1,
+    candidateDispositions:[{candidateId:'child',disposition:stage==='discussion'?'merge':'publish',targetId:'PRIVATE_BAD_TARGET',reason:'Covered.',evidenceIds:['T0001']}]};
   const retry=retryHarness(async()=>{providerCalls++;return structuredClone(result);});
   const start=source.indexOf('  const call = async (pass, prompt, callOptions = {}) => {',source.indexOf('async function generateHybridMeetingAgentStageRaw('));
   const end=source.indexOf("\n\n  if (stage === 'summary')",start);
   assert.ok(start>0&&end>start);
   const context={Date,Math,Number,JSON,process:{env:{}},
-    stage:'discussion',draft:{draftId:'draft'},passCache:[],passProvenance:[],completedPasses:[],degradedSources:[],
+    stage,draft:{draftId:'draft'},passCache:[],passProvenance:[],completedPasses:[],degradedSources:[],
     stageDeadlineAt:Date.now()+5000,refereeFailureAudit:undefined,refereeAuditRunId:'fixture-run',
-    options:{onRefereeFailure:journal=>h.persist('draft','owner','discussion',{refereeFailureAudit:journal})},
+    options:{onRefereeFailure:journal=>h.persist('draft','owner',stage,{refereeFailureAudit:journal})},
     meetingMinutesAgentText:(v,n)=>String(v||'').slice(0,n),meetingAgentPassCacheKey:()=> 'fixture-hash',
     meetingMinutesAgentReplayPassCacheEnabled:()=>false,progress:async()=>{},
     meetingAgentPassTimingPolicy:()=>({deadlineAt:Date.now()+5000,attemptTimeoutMs:1000}),
@@ -163,13 +165,60 @@ test('the production referee call actually wires rejection capture to the durabl
   vm.runInNewContext(source.slice(start,end)+'\nthis.call=call;',context);
   const value=await context.call('referee-batch-1','PRIVATE exact request',{
     optional:true,maxAttempts:1,responseKind:'referee',refereeContract:c,requestId:c.requestId,
-    validateResult:r=>A.meetingAgentDispositionError(r,[child],c),captureError:e=>{capturedError=e;}});
-  assert.equal(value,null);assert.equal(providerCalls,1);assert.equal(capturedError.code,'invalid_referee_target');
-  const entry=h.stored.qualityState.discussion.refereeFailureAudit.entries[0];
+    validateResult:r=>A.meetingAgentDispositionError(r,[atomic],c),captureError:e=>{capturedError=e;}});
+  assert.equal(value,null);assert.equal(providerCalls,1);assert.equal(capturedError.code,stage==='discussion'?'invalid_referee_target':'unmaterialized_referee_action');
+  const entry=h.stored.qualityState[stage].refereeFailureAudit.entries[0];
   assert.equal(entry.prompt.value,'PRIVATE exact request');
   assert.equal(entry.rawReply.value.candidateDispositions[0].targetId,'PRIVATE_BAD_TARGET');
   assert.equal(entry.contract.value.requestId,c.requestId);
-  assert.equal(entry.validation.code,'invalid_referee_target');
+  assert.equal(entry.validation.code,capturedError.code);
   assert.ok(!logs.join('').includes('PRIVATE_BAD_TARGET'));
   assert.ok(!JSON.stringify(A.publicMeetingAgentDraft(h.stored)).includes('PRIVATE_BAD_TARGET'));
+ }
+});
+
+function transportHarness(body, status = 200) {
+  const start=source.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
+  const end=source.indexOf('\nfunction meetingAgentResultError',start);let calls=0;
+  const context={URL,AbortController,Number,Math,JSON,Set,process:{env:{}},
+    setTimeout:()=>0,clearTimeout:()=>{},meetingAgentFlowUrlFor:()=> 'https://example.invalid/referee',
+    acquireMeetingAgentCallSlot:async()=>()=>{},parseJsonLenient:A.parseJsonLenient,
+    fetch:async()=>{calls++;return {ok:status>=200&&status<300,status,text:async()=>body};}};
+  vm.runInNewContext(source.slice(start,end)+'\nthis.ask=askPowerAutomateMeetingMinutesAgent;',context);
+  return {ask:context.ask,get calls(){return calls;}};
+}
+test('malformed response bodies reach the private failure audit before structural parsing rejects them',async()=>{
+  const exact=' {"output":"PRIVATE malformed reply udimed"}\n',transport=transportHarness(exact),h=retryHarness(transport.ask);let capture;
+  await assert.rejects(h.run('exact request',{maxAttempts:1,responseKind:'referee',onFailure:x=>{capture=x;}}),e=>e.code==='power_automate_invalid_structure');
+  assert.equal(transport.calls,1);assert.equal(capture.wireReply.complete,true);
+  assert.equal(capture.wireReply.value,exact);assert.equal(capture.normalizedReply.reason,'no_reply');
+});
+test('non-JSON and HTTP error bodies retain exact private evidence without changing the failure code',async()=>{
+  for(const [body,status,code] of [['PRIVATE non-JSON reply',200,'power_automate_invalid_structure'],['PRIVATE upstream failure',503,'power_automate_http_503'],['',200,'power_automate_empty_response']]){
+    const transport=transportHarness(body,status),h=retryHarness(transport.ask);let capture;
+    await assert.rejects(h.run('request',{maxAttempts:1,responseKind:'referee',onFailure:x=>{capture=x;}}),e=>e.code===code);
+    assert.equal(transport.calls,1);assert.equal(capture.wireReply.value,body);
+  }
+});
+test('wire snapshots are optional, bounded and capture-hook failure leaves successful results intact',async()=>{
+  let passed;const h=retryHarness(async(prompt,options)=>{passed=options;return {ok:true};});
+  await h.run('request');assert.equal(passed.onRawResponse,undefined);
+  const transport=transportHarness('{"actions":[],"discussion":[]}');
+  const result=await transport.ask('request',{onRawResponse:()=>{throw Error('PRIVATE storage failure');}});
+  assert.deepEqual(JSON.parse(JSON.stringify(result)),{actions:[],discussion:[]});assert.equal(transport.calls,1);
+  const huge='x'.repeat(audit.MAX_SNAPSHOT_BYTES+10),large=retryHarness(transportHarness(huge).ask);let capture;
+  await assert.rejects(large.run('request',{maxAttempts:1,onFailure:x=>{capture=x;}}));
+  assert.equal(capture.wireReply.complete,false);assert.equal(capture.wireReply.value,undefined);assert.equal(capture.wireReply.sha256.length,64);
+});
+test('wire evidence participates in entry limits and stays private in both stage checkpoints',async()=>{
+  const snapshot=audit.refereeFailureSnapshot('x'.repeat(audit.MAX_SNAPSHOT_BYTES-2));
+  const journal=audit.appendRefereeFailureAudit(null,{prompt:snapshot,wireReply:snapshot,rawReply:snapshot,normalizedReply:snapshot,contract:snapshot});
+  assert.ok(Buffer.byteLength(JSON.stringify(journal.entries[0]))<=audit.MAX_ENTRY_BYTES);
+  for(const stage of ['discussion','actions']){
+    const h=progressHarness(),privateJournal=audit.appendRefereeFailureAudit(null,{wireReply:audit.refereeFailureSnapshot('PRIVATE exact wire udimed')});
+    await h.persist('draft','owner',stage,{refereeFailureAudit:privateJournal});
+    assert.deepEqual(h.stored.qualityState[stage].refereeFailureAudit,privateJournal);
+    assert.ok(!JSON.stringify(A.publicMeetingAgentDraft(h.stored)).includes('PRIVATE exact wire'));
+    assert.equal(h.stored.qualityState[stage].refereeFailureAudit.entries[0].wireReply.value,'PRIVATE exact wire udimed');
+  }
 });

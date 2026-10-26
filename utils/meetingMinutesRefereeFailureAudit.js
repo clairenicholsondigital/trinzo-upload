@@ -22,7 +22,7 @@ function appendRefereeFailureAudit(previous, input, now = Date.now()) {
   const entry = { ...structuredClone(input), version: VERSION, capturedAt: new Date(now).toISOString() };
   // Each component is already bounded, but a large target catalogue or several
   // near-limit components can overflow the total entry budget.
-  for (const key of ['contract', 'normalizedReply', 'rawReply', 'prompt']) {
+  for (const key of ['contract', 'normalizedReply', 'rawReply', 'wireReply', 'prompt']) {
     if (bytes(entry) <= MAX_ENTRY_BYTES) break;
     if (entry[key]?.complete) { delete entry[key].value; entry[key].complete = false; entry[key].reason = 'entry_budget'; }
   }
