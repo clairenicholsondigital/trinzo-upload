@@ -215,6 +215,7 @@ app.use('/api/meeting-agent', meetingAgentRoutes);
 app.use('/api/meeting-minutes-agent/testing', createBaselineTestingRouter({
   clearMemoryCaches: apiRoutes.stagedEvaluation.clearMeetingAgentMemoryCaches
 }));
+app.use('/api/project-update-test/projects/:projectId/tasks', authRoutes.requireAuth, require('./routes/internalAiTasks')());
 app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
 

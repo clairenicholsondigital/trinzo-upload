@@ -278,6 +278,23 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--so
     forced-color-adjust:none;
   }
 }
+/* Internal AI Tasks: scoped styles, no changes to other project stages. */
+.ai-tasks .task-summary {display:flex;gap:.5rem;flex-wrap:wrap;margin:.75rem 0}
+.ai-tasks .task-row {display:flex;gap:.65rem;align-items:flex-start;padding:.7rem 0;border-top:1px solid var(--border)}
+.ai-tasks .task-row input[type="checkbox"] {width:auto;margin-top:.5rem;flex:0 0 auto}
+.ai-tasks .task-open {flex:1;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}
+.ai-tasks .task-row-meta {display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.35rem;color:var(--muted)}
+.ai-tasks .task-filters {display:flex;gap:.6rem;flex-wrap:wrap;align-items:end}
+.ai-tasks .task-filters label {flex:1;min-width:130px}
+.ai-tasks .task-filters .task-completed {display:flex;align-items:center;min-width:160px;flex:0 1 auto}
+.ai-tasks .task-completed input {width:auto}
+.ai-tasks .task-editor {margin-top:1rem}
+.ai-tasks .task-editor [name="description"] {min-height:9rem}
+.ai-tasks .task-comment {padding:.7rem 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
+.ai-tasks .task-comment p {white-space:pre-wrap}
+.ai-tasks .task-links a {overflow-wrap:anywhere}
+.ai-tasks [hidden] {display:none!important}
+@media(max-width:600px){.ai-tasks .form-grid {grid-template-columns:1fr}.ai-tasks .form-grid .wide {grid-column:auto}}
 </style>
   <link rel="stylesheet" href="/static/trinzo.css">
   <script defer src="/static/trinzo.js"></script>
@@ -302,6 +319,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--so
 <script src="/static/project-stage-reports.js"></script>
 <script src="/static/project-stage-insights.js"></script>
 <script src="/static/project-stage-settings.js"></script>
+<script src="/static/project-stage-tasks.js"></script>
 <script src="/static/project-workspace.js"></script>
 </body>
 </html>

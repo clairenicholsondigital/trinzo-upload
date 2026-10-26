@@ -14,9 +14,13 @@
     { key: 'memory', no: 4, label: 'Memory', hint: 'Background docs, decisions & search' },
     { key: 'reports', no: 5, label: 'Reports', hint: 'Review previous updates' },
     { key: 'ask', no: 6, label: 'Ask', hint: 'Query this project' },
-    { key: 'settings', no: 7, label: 'Settings', hint: 'Project details' }
+    { key: 'settings', no: 7, label: 'Settings', hint: 'Project details' },
+    { key: 'tasks', no: 8, label: 'Tasks', hint: 'Internal AI development work' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
+  let tasksEnabled = false;
+  function tasksAvailable() { return tasksEnabled && String(PW.getSelectedProjectId()) === '19'; }
+  function availableStages() { return STAGES.filter(stage => stage.key !== 'tasks' || tasksAvailable()); }
 
   // process is mounted once and kept alive so in-progress transcript text is not
   // lost when switching tabs; data stages rebuild on each activation for freshness.
@@ -25,7 +29,7 @@
 
   function currentStageKey() {
     const requested = new URLSearchParams(location.search).get('stage');
-    return STAGE_KEYS.includes(requested) ? requested : 'insights';
+    return STAGE_KEYS.includes(requested) && (requested !== 'tasks' || tasksAvailable()) ? requested : 'insights';
   }
 
   function requestedProjectName() {
@@ -239,6 +243,7 @@
           <a id="openProjectMemoryBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('memory'))}" data-project-nav="memory">Memory</a>
           <a id="openProjectReportsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('reports'))}" data-project-nav="reports">Reports</a>
           <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask"><span class="project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span></a>
+          ${tasksAvailable() ? `<a id="openProjectTasksBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('tasks'))}" data-project-nav="tasks">Tasks</a>` : ''}
           <a id="openProjectSettingsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings">Settings</a>
         </nav>
       </section>
@@ -275,7 +280,7 @@
         <h2>Quick links</h2>
           <p class="muted">Use these when you want to jump directly to a project task.</p>
         <nav class="stage-tabs" aria-label="Workspace stages">
-        ${STAGES.map((stage) => `
+        ${availableStages().map((stage) => `
           <button type="button" class="stage-tab ${stage.key === activeKey ? 'active' : ''}" data-stage="${stage.key}" aria-current="${stage.key === activeKey ? 'page' : 'false'}">
             <span class="step-no">${stage.no}</span>
             <span><span class="step-label">${escapeHtml(stage.label)}</span> <span class="step-hint">${escapeHtml(stage.hint)}</span></span>
@@ -332,6 +337,7 @@
   }
 
   function showStage(project, stageKey) {
+    if (stageKey === 'tasks' && !tasksAvailable()) stageKey = 'insights';
     const panel = document.getElementById('stagePanel');
     if (!panel) return;
     updateProjectBarForStage(stageKey);
@@ -377,7 +383,8 @@
   }
 
   function goToStage(stageKey, push) {
-    if (!STAGE_KEYS.includes(stageKey)) stageKey = 'insights';
+    if (mounted.tasks && !mounted.tasks.hidden && !Stages.tasks.canLeave()) return;
+    if (!STAGE_KEYS.includes(stageKey) || (stageKey === 'tasks' && !tasksAvailable())) stageKey = 'insights';
     setStageInUrl(stageKey, !push);
     const project = PW.getProject(PW.getSelectedProjectId());
     if (project) showStage(project, stageKey);
@@ -391,6 +398,8 @@
     const reportsBtn = document.getElementById('openProjectReportsBtn');
     const askBtn = document.getElementById('openProjectAskBtn');
     const settingsBtn = document.getElementById('openProjectSettingsBtn');
+    const tasksBtn = document.getElementById('openProjectTasksBtn');
+    if (tasksBtn) tasksBtn.addEventListener('click', event => { event.preventDefault(); goToStage('tasks', true); });
 
     if (profileBtn) profileBtn.addEventListener('click', (event) => {
       event.preventDefault();
@@ -607,6 +616,10 @@
     } catch (error) {
       root.innerHTML = `<section class="panel"><h1>Project Updates</h1><p class="status error">${escapeHtml(error.message || 'Could not load projects.')}</p></section>`;
       return;
+    }
+    if (PW.getCachedProjects().some(project => String(project.projectId) === '19')) {
+      try { const access = await PW.request('projects/19/tasks/access'); tasksEnabled = String(access.projectId) === '19'; }
+      catch (_error) { tasksEnabled = false; }
     }
     const params = new URLSearchParams(location.search);
     if (params.get('choose') === 'project') {
