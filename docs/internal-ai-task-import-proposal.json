@@ -2,7 +2,7 @@
   "plan": {
     "version": 1,
     "projectId": 19,
-    "snapshotSha256": "7d8c16a468be2e9bc698931550b839f3c3490c37a57fa25d5e8adb2641c994bc",
+    "snapshotSha256": "63bba2e37a34dc8d37df0aa03e6e1ccf370ddeb9a46ce2985ab7424101b737c5",
     "tasks": [
       {
         "taskId": "AI-001",
@@ -187,7 +187,7 @@
       {
         "taskId": "AI-011",
         "title": "Address recurring minutes repetition when justified by pilot evidence",
-        "description": "Address recurring minutes repetition when justified by pilot evidence. Correct demonstrated overlapping actions or discussion repetition without losing distinct work or qualifications.\n\nArea: Meeting minutes\n\nEvidence: Eakin's two overlapping action pairs; variable output repetition\n\nExisting work: Related safeguards already deployed; research #132/#155 remains separate\n\nDependencies: AI-007 feedback before expanding scope\n\nNext action: Record which repetitions actually cost reviewers effort; prioritise only demonstrated cases.\n\nExternal input: No",
+        "description": "Address recurring minutes repetition when justified by pilot evidence. Correct demonstrated overlapping actions or discussion repetition without losing distinct work or qualifications.\n\nArea: Meeting minutes\n\nEvidence: Eakin's two overlapping action pairs; variable output repetition\n\nExisting work: Related safeguards already deployed; research #132/#155 remains separate\n\nDependencies: AI-016; AI-007 feedback before expanding scope\n\nNext action: Use AI-016 evidence to prioritise only demonstrated repetitions, then implement the narrowest source-aware rule.\n\nExternal input: No",
         "status": "To do",
         "priority": "P2",
         "category": "Technical",
@@ -259,6 +259,22 @@
             "url": "https://github.com/clairenicholsondigital/trinzo-upload/pull/155"
           }
         ]
+      },
+      {
+        "taskId": "AI-016",
+        "title": "Run an AI-011 repetition-focused colleague pilot",
+        "description": "Run an AI-011 repetition-focused colleague pilot. A colleague completes the independent minutes journey and records which repeated rows cost review effort, caused confusion or created correction risk.\n\nArea: Meeting minutes\n\nEvidence: AI-011 qualification and Eakin pilot records; colleague evidence still missing\n\nExisting work: None\n\nDependencies: AI-005, AI-006\n\nNext action: Ask one participating colleague to upload, review, correct, save, reopen and export a representative minutes draft, recording repetition corrections and review time.\n\nExternal input: Yes",
+        "status": "To do",
+        "priority": "P2",
+        "category": "Validation",
+        "owner": "",
+        "dueDate": null,
+        "sourceReferences": [
+          {
+            "label": "Project status snapshot",
+            "url": "https://github.com/clairenicholsondigital/trinzo-upload/blob/01b292494796bfece62f59ee162d7384c1353f1e/docs/CURRENT_PROJECT_STATUS.md"
+          }
+        ]
       }
     ],
     "excluded": [
@@ -268,5 +284,5 @@
       }
     ]
   },
-  "approvalHash": "12f17ec3730738c7a605c4976dcbeb945d3da57808f3aee9801831ce5d6f511a"
+  "approvalHash": "da358b31efcc7a0788ebc704c94e2d5c81133ae62863076a504e8c3457acfbe7"
 }

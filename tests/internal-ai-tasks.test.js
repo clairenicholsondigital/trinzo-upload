@@ -23,9 +23,9 @@ test('task forms reject guidance, identity, authorship and invalid enums/dates/l
 test('snapshot import proposal is exact, deduplicated, explicit about status mapping and no automatic synchronisation',()=>{
  const p=I.prepare(snapshot),stored=JSON.parse(fs.readFileSync(path.join(__dirname,'../docs/internal-ai-task-import-proposal.json')));
  assert.throws(()=>I.prepare(snapshot+'\nChanged after review'),/Snapshot changed/);
- assert.deepEqual(stored.plan,p);assert.equal(stored.approvalHash,I.digest(p));assert.equal(p.projectId,19);assert.equal(p.tasks.length,14);
- assert.deepEqual(p.tasks.map(t=>t.taskId),Array.from({length:14},(_,i)=>'AI-'+String(i+1).padStart(3,'0')));
- assert.deepEqual(p.tasks.reduce((a,t)=>(a[t.priority]=(a[t.priority]||0)+1,a),{}),{P0:4,P2:8,P3:2});
+ assert.deepEqual(stored.plan,p);assert.equal(stored.approvalHash,I.digest(p));assert.equal(p.projectId,19);assert.equal(p.tasks.length,15);
+ assert.deepEqual(p.tasks.map(t=>t.taskId),[...Array.from({length:14},(_,i)=>'AI-'+String(i+1).padStart(3,'0')),'AI-016']);
+ assert.deepEqual(p.tasks.reduce((a,t)=>(a[t.priority]=(a[t.priority]||0)+1,a),{}),{P0:4,P2:9,P3:2});
  assert.match(p.tasks.find(t=>t.taskId==='AI-005').description,/Original snapshot status: Awaiting input/);
  assert.equal(p.excluded[0].taskId,'AI-015');assert(!JSON.stringify(p).includes('ai_implementation_guidance'));
  const duplicate=structuredClone(p);duplicate.tasks.push(duplicate.tasks[0]);assert.throws(()=>I.validate(duplicate));

@@ -5,7 +5,7 @@ const {PROJECT_ID,fields,problem,actor}=require('./internalAiTasks');
 const digest=value=>crypto.createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 function markdownRows(section){return section.split('\n').filter(s=>/^\| AI-\d{3} \|/.test(s)).map(s=>s.trim().slice(1,-1).split('|').map(c=>c.trim()));}
 function plain(s){return s.replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/\*\*/g,'').replace(/`/g,'');}
-const SNAPSHOT_SHA256='7d8c16a468be2e9bc698931550b839f3c3490c37a57fa25d5e8adb2641c994bc';
+const SNAPSHOT_SHA256='63bba2e37a34dc8d37df0aa03e6e1ccf370ddeb9a46ce2985ab7424101b737c5';
 function prepare(markdown) {
   if(digest(markdown)!==SNAPSHOT_SHA256)throw problem('Snapshot changed. Review a new import proposal rather than silently reusing the initial mapping.');
   const delivery=markdown.split('### Delivery fields')[1]?.split('### Evidence, ownership and next actions')[0];
