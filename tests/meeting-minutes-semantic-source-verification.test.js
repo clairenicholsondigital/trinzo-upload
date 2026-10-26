@@ -4,13 +4,13 @@ const assert=require('node:assert/strict');
 const action=require('../utils/canonicalMinutes/actionSemanticReconciliation');
 const {materializeSemanticDecisions}=require('../utils/meetingMinutesSemanticProofTransport');
 const verify=require('../utils/meetingMinutesSemanticSourceVerification');
-function fixture(repeatedClauses=false,ownerText=''){
+function fixture(repeatedClauses=false,ownerText='',sourceSpeaker=''){
  const sourceUnits=[{id:'T1',speaker:'Coordinator',text:'Maya will ensure Sam gets the archive metadata.'},
-  {id:'T2',speaker:'Maya',text:"I'll handle that."}];
+  {id:'T2',speaker:sourceSpeaker||'Maya',text:"I'll handle that."}];
  if(ownerText)for(const unit of sourceUnits){unit.speaker='Coordinator';unit.text=ownerText;}
  const rows=['Send the archive metadata to Sam.','Provide Sam with the archive metadata.']
   .map(text=>repeatedClauses?`${text}; ${text}`:text)
-  .map((text,index)=>({id:'a'+index,action:text,owners:['Maya'],evidenceIds:['T1','T2'],reviewFlagIds:[],timing:{kind:'not_stated',wording:'',exactDate:''}}));
+  .map((text,index)=>({id:'a'+index,action:text,owners:[sourceSpeaker?'Maya Patel':'Maya'],evidenceIds:['T1','T2'],reviewFlagIds:[],timing:{kind:'not_stated',wording:'',exactDate:''}}));
  const packet=action.prepareActionReconciliation({actions:rows,sourceUnits});
  const candidate=packet.candidates[0],survivor=packet.rows.find(row=>row.ref===candidate.leftRef);
  const primary={version:packet.version,packetHash:packet.packetHash,sourceHash:packet.sourceHash,inputHash:packet.inputHash,
@@ -221,4 +221,32 @@ for(const [text,expected] of [
   assert.equal(result.actions.length,1);
   assert.ok(result.receipts.every(receipt=>action.validateReconciliationReceipt(receipt,receipt.original,result.actions[0],f.sourceUnits)));
  }else assert.equal(bound.envelope,null);
+});
+
+test('independent source checks admit a full source identity without replacing assignment or retention proof',()=>{
+ const f=fixture(false,'','Patel, Maya R');
+ const prompt=verify.verificationPrompt(f.packet,[{...f.candidate,survivorRef:f.survivor.ref}],f.packet.rows,f.packet.sourceUnits,{});
+ const data=JSON.parse(prompt.split('\nDATA\n')[1]);
+ assert.equal(data.ownerIdentityMethod,'source-full-speaker-identity-v1');
+ assert.deepEqual(data.ownerSpeakerWitnesses,[{owner:'Maya Patel',speakerLabels:['Patel, Maya R']}]);
+ assert.equal(verify.ownerWitness(f.sourceUnits[1],'Maya Patel'),false,'the unscoped literal checker stays exact');
+ assert.equal(verify.verificationError(f.packet,f.packet.candidates,f.review),'');
+ const out=action.applyActionReconciliation(f.packet,verify.bindSourceVerification(f.packet,f.expanded,f.review).envelope,{sourceUnits:f.sourceUnits});
+ assert.equal(out.actions.length,1);
+ assert.ok(out.receipts.every(r=>action.validateReconciliationReceipt(r,r.original,out.actions[0],f.sourceUnits)));
+ const missing=structuredClone(f.review);missing.decisions[0].checks.forEach(check=>check.sourceIds=['T1']);
+ assert.equal(verify.verificationError(f.packet,f.packet.candidates,missing),'missing_source_owner_witness');
+ for(const field of ['supported','retained']){
+  const veto=structuredClone(f.review);veto.decisions[0].relation='unresolved';veto.decisions[0].checks[0][field]=false;
+  const bound=verify.bindSourceVerification(f.packet,f.expanded,veto);assert.equal(bound.error,'');
+  assert.equal(action.applyActionReconciliation(f.packet,bound.envelope,{sourceUnits:f.sourceUnits}).actions.length,2);
+ }
+});
+test('an uncited competing initial in the full source inventory vetoes a shorter-name witness',()=>{
+ const f=fixture(false,'','Patel, Maya R'),extra={id:'T3',speaker:'Patel, Maya J',text:'I work on a separate project.'};
+ const units=[...f.sourceUnits,extra],packet=action.prepareActionReconciliation({actions:f.rows,sourceUnits:units});
+ const review=structuredClone(f.review);review.packetHash=packet.packetHash;review.sourceHash=packet.sourceHash;
+ assert.equal(verify.verificationError(packet,packet.candidates,review),'missing_source_owner_witness');
+ const prompt=verify.verificationPrompt(packet,packet.candidates,packet.rows,f.sourceUnits,{}),data=JSON.parse(prompt.split('\nDATA\n')[1]);
+ assert.deepEqual(data.ownerSpeakerWitnesses,[{owner:'Maya Patel',speakerLabels:[]}]);
 });

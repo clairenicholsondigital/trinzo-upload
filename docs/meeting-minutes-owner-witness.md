@@ -1,5 +1,7 @@
 # Complete source-owner witnesses
 
+Subsequent identity work is documented in [source-owner identities](meeting-minutes-source-owner-identities.md); the findings below describe the original boundary-check release.
+
 This bounded release changes the meeting-minutes semantic source checker, witness retrieval and final reconciliation through their existing shared `ownerWitness` helper. No identity aliases, inference, merge classes or runtime flags are added.
 
 ## Fixed defects

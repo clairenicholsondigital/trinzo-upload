@@ -8,7 +8,7 @@ const referenceReview = require('./meetingMinutesActionReferenceReview');
 const { semanticPolicyForRun, isActionOnlySemanticScope } = require('./meetingMinutesSemanticPolicy');
 const actionReconciliation = require('./canonicalMinutes/actionSemanticReconciliation');
 const { materializeSemanticDecisions } = require('./meetingMinutesSemanticProofTransport');
-const { verificationPrompt, verificationError, bindSourceVerification, ownerWitness } = require('./meetingMinutesSemanticSourceVerification');
+const { verificationPrompt, verificationError, bindSourceVerification, sourceOwnerWitnessScope } = require('./meetingMinutesSemanticSourceVerification');
 const { sameEnquiryPair } = require('./canonicalMinutes/contactEnquiry');
 const discussionReconciliation = require('./canonicalMinutes/discussionReconciliation');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -83,6 +83,7 @@ function promptContext(packet, candidates, maxChars = 48000) {
   const rows = packet.rows.filter(row => refs.has(row.ref));
   const evidence = new Set(rows.flatMap(row => (row.action || row.original)?.evidenceIds || []));
   const sourceUnits = packet.sourceUnits || [];
+  const ownerWitness=sourceOwnerWitnessScope(sourceUnits);
   const contactOnly=packet.scope==='contact_enquiries'||packet.scope==='contact_and_existing_survivors'
     &&candidates.every(candidate=>contactCandidate(packet,candidate));
   const boundedContext=isActionOnlySemanticScope(packet.scope)&&!contactOnly;
