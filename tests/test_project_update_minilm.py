@@ -355,7 +355,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         # Process now hands reviewed minutes to the queued report workflow.
         # The old inline raw-transcript widget is intentionally no longer mounted.
         self.assertIn("Open the Meeting Minutes Agent", process_stage)
-        self.assertIn("renderMinutesDrafts(container, ctx)", process_stage)
+        self.assertIn("renderMinutesDrafts(container, ctx, false)", process_stage)
         self.assertIn("PW.request('from-minutes'", process_stage)
         self.assertNotIn("buildTranscriptTestPage(", process_stage)
         self.assertIn("Project update meeting", process_stage)

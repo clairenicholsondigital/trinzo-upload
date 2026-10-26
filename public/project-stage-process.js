@@ -34,7 +34,8 @@
           <h2>2. Create the project update from minutes</h2>
           <p class="intro">Pick the finished minutes for this meeting. The draft report uses project memory as background, but its evidence comes from these minutes.</p>
           <p id="fromMinutesStatus" class="status" role="status" aria-live="polite" hidden></p>
-          <div id="minutesDraftList" class="empty-state">Loading your recent minutes…</div>
+          <div id="minutesDraftList" class="empty-state">Loading this project's minutes…</div>
+          <p><button type="button" class="secondary quiet" id="toggleAllMinutes" aria-pressed="false">Show all my minutes</button></p>
         </section>
       </div>
       <div class="process-subpanel" data-process-tab-panel="agenda" hidden>
@@ -49,7 +50,16 @@
     `;
     wireProcessSubtabs(container);
     renderMeetingAgenda(container, ctx);
-    renderMinutesDrafts(container, ctx);
+    renderMinutesDrafts(container, ctx, false);
+    const toggle = container.querySelector('#toggleAllMinutes');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const showAll = toggle.getAttribute('aria-pressed') !== 'true';
+        toggle.setAttribute('aria-pressed', showAll ? 'true' : 'false');
+        toggle.textContent = showAll ? "Show only this project's minutes" : 'Show all my minutes';
+        renderMinutesDrafts(container, ctx, showAll);
+      });
+    }
   }
 
   function draftUpdatedLabel(draft) {
@@ -57,15 +67,23 @@
     return value ? PW.displayDate(value) : '';
   }
 
-  async function renderMinutesDrafts(container, ctx) {
+  // By default only minutes written for this project are listed. Minutes are
+  // tagged when opened from this tab or sent to this project.
+  async function renderMinutesDrafts(container, ctx, showAll) {
     const target = container.querySelector('#minutesDraftList');
     if (!target) return;
+    const requestId = String(Date.now() + Math.random());
+    target.dataset.requestId = requestId;
     try {
-      const payload = await PW.request('/api/meeting-minutes-agent/drafts?limit=10');
+      const query = showAll ? 'limit=10' : `limit=10&projectId=${encodeURIComponent(ctx.projectId)}`;
+      const payload = await PW.request(`/api/meeting-minutes-agent/drafts?${query}`);
+      if (target.dataset.requestId !== requestId) return;
       const drafts = PW.asArray(payload.drafts);
       if (!drafts.length) {
         target.className = 'empty-state';
-        target.innerHTML = 'No minutes yet. Open the Meeting Minutes Agent above to process this meeting first.';
+        target.innerHTML = showAll
+          ? 'No minutes yet. Open the Meeting Minutes Agent above to process this meeting first.'
+          : 'No minutes for this project yet. Open the Meeting Minutes Agent above to process this meeting, or show all your minutes.';
         return;
       }
       target.className = 'minutes-draft-list';
@@ -117,7 +135,11 @@
       const jobUrl = payload.jobUrl || `/jobs/${encodeURIComponent(payload.jobId)}`;
       setStatus(`Project update queued. <a href="${escapeHtml(jobUrl)}">Follow it in the Library</a>; the draft report appears under Reports when it is ready.`, 'success');
     } catch (error) {
-      setStatus(escapeHtml(error.message || 'Could not create the project update.'), 'error');
+      const existingUrl = error.payload && error.payload.duplicate ? error.payload.existingUrl : '';
+      const link = existingUrl
+        ? ` <a href="${escapeHtml(existingUrl)}">${error.payload.kind === 'report' ? 'Open the existing report' : 'Follow it in the Library'}</a>.`
+        : '';
+      setStatus(`${escapeHtml(error.message || 'Could not create the project update.')}${link}`, 'error');
     } finally {
       delete button.dataset.submitting;
       button.disabled = false;

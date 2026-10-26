@@ -7,6 +7,8 @@ let savedDraft;
 let selectedProject;
 const queued = [];
 const reads = [];
+const links = [];
+let existingUpdate = null;
 const originals = {};
 const stubs = {
   getMeetingMinutesAgentDraft: async (id, userId) => {
@@ -14,7 +16,13 @@ const stubs = {
     return userId === 'reviewer' && savedDraft ? structuredClone(savedDraft) : null;
   },
   getProjectManagementDetail: async () => selectedProject,
+  linkMeetingMinutesAgentDraftToProject: async (draftId, userId, projectId) => {
+    links.push({ draftId, userId, projectId });
+    return { draftId: String(draftId), projectId };
+  },
+  saveProjectReportDetail: async (reportId, payload) => ({ reportId, savedBy: payload.savedBy }),
   queueProjectUpdateGeneration: async (payload) => {
+    if (existingUpdate) return { duplicate: true, ...existingUpdate };
     queued.push(structuredClone(payload));
     return { jobId: 'offline-job' };
   }
@@ -29,6 +37,8 @@ function reset() {
   selectedProject = { projectId: 17, projectName: 'Selected project' };
   queued.length = 0;
   reads.length = 0;
+  links.length = 0;
+  existingUpdate = null;
   savedDraft = {
     draftId: '123', revision: 4, status: 'complete', payloadVersion: 5,
     details: { meetingTitle: 'Supplier planning', meetingDate: '2026-10-21', meetingType: 'General' },
@@ -141,4 +151,56 @@ test('action-only minutes supply meaningful analyser context and empty minutes c
   savedDraft.actions = [];
   assert.equal((await request()).statusCode, 400);
   assert.equal(queued.length, 1);
+});
+
+test('tags the minutes with the project and refuses a second update from identical minutes', async () => {
+  reset();
+  assert.equal((await request()).statusCode, 202);
+  assert.deepEqual(links, [{ draftId: '123', userId: 'reviewer', projectId: 17 }]);
+
+  existingUpdate = { kind: 'report', reportId: 88 };
+  const duplicate = await request();
+  assert.equal(duplicate.statusCode, 409);
+  assert.equal(duplicate.body.duplicate, true);
+  assert.equal(duplicate.body.existingUrl, '/project-update-test/reports/88');
+
+  existingUpdate = { kind: 'job', jobId: 41 };
+  const inFlight = await request();
+  assert.equal(inFlight.statusCode, 409);
+  assert.equal(inFlight.body.existingUrl, '/jobs/41');
+  assert.equal(queued.length, 1);
+});
+
+const linkRoute = router.stack.find(layer => layer.route?.path === '/meeting-minutes-agent/drafts/:draftId/project-link').route;
+const linkHandler = linkRoute.stack.at(-1).handle;
+
+test('the project-link route validates input and only links the signed-in user\'s minutes', async () => {
+  reset();
+  async function link(params, body, userId = 'reviewer') {
+    const response = { statusCode: 200, status(code) { this.statusCode = code; return this; },
+      json(value) { this.body = value; return this; } };
+    await linkHandler({ params, body, authUser: { userId } }, response);
+    return response;
+  }
+  assert.equal((await link({ draftId: 'x' }, { projectId: 17 })).statusCode, 400);
+  assert.equal((await link({ draftId: '123' }, { projectId: 0 })).statusCode, 400);
+  const ok = await link({ draftId: '123' }, { projectId: 17 });
+  assert.equal(ok.statusCode, 200, JSON.stringify(ok.body));
+  assert.deepEqual(links.at(-1), { draftId: '123', userId: 'reviewer', projectId: 17 });
+  selectedProject = null;
+  assert.equal((await link({ draftId: '123' }, { projectId: 17 })).statusCode, 404);
+});
+
+const reportPatchRoute = router.stack.find(layer => layer.route?.path === '/project-update-test/reports/:reportId' && layer.route.methods.patch).route;
+const reportPatchHandler = reportPatchRoute.stack.at(-1).handle;
+
+test('saving or approving a report records the signed-in user, not a name from the request', async () => {
+  async function patch(authUser) {
+    const response = { statusCode: 200, status(code) { this.statusCode = code; return this; },
+      json(value) { this.body = value; return this; } };
+    await reportPatchHandler({ params: { reportId: '5' }, body: { reportStatus: 'approved', savedBy: 'Forged name' }, authUser }, response);
+    return response.body.report.savedBy;
+  }
+  assert.equal(await patch({ userId: 1, email: 'claire@example.test', fullName: 'Claire N' }), 'Claire N');
+  assert.equal(await patch({ userId: 1, email: 'claire@example.test', fullName: '' }), 'claire@example.test');
 });
