@@ -67,6 +67,7 @@ async function agentPage(t, initialDraft) {
   await page.goto(ORIGIN + '/meeting-minutes-agent?draftId=202');
   await page.waitForSelector('#saveStrip:not([hidden])');
   await page.click('#reviewQueueToggle');
+  await page.locator('#flagList details[data-review-category]').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
   await page.waitForSelector('#reviewFlags[open] .review-queue-item');
   return { page, errors, calls };
 }
@@ -122,7 +123,7 @@ for (const temporalField of ['timedStepCoverage', 'unverifiedSourceTiming']) {
     await page.getByRole('button', { name: 'Remove action from minutes', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action-row]').length === 0);
     assert.equal(await page.locator('#flagList .review-queue-item').count(), 1, 'removing a different action must not silently dismiss the missing-step/source warning');
-    assert.equal(await page.locator('#flagCount').innerText(), '1 check');
+    assert.equal(await page.locator('#flagCount').innerText(), temporalField === 'timedStepCoverage' ? '1 coverage notice' : '1 check');
     assert.deepEqual(errors, []);
   });
 }

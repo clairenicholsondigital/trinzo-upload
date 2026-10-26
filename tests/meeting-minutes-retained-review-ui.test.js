@@ -59,7 +59,7 @@ for (const status of ['confirmed', 'corrected', 'dismissed']) {
       await notice(page, 'attached-warning').first().locator('summary').click();
       const source = page.locator('#omittedDetailsPanel .omitted-detail-actions > details').first();
       await source.locator('summary').click();
-      await page.locator('#reviewQueueToggle').click();
+      await page.locator('#reviewQueueToggle').click(); await page.locator('#flagList details[data-review-category]').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
       if (status === 'corrected') {
         const note = page.locator('[data-flag-correction="0"]'); await note.locator('..').locator('..').evaluate(node => { node.open = true; });
         await note.fill('Checked against the original source.');
@@ -88,7 +88,7 @@ for (const status of ['confirmed', 'corrected', 'dismissed']) {
 test('Open in minutes reveals attached and nested unfiled targets without resolving or moving any record', async () => {
   const initial = draft(), f = await fixture(initial);
   try {
-    const { page } = f; await page.locator('#reviewQueueToggle').click();
+    const { page } = f; await page.locator('#reviewQueueToggle').click(); await page.locator('#flagList details[data-review-category]').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
     // The shared attached warning still has the existing paragraph target.
     const first = page.locator('#flagList [data-view-flag-target]').first();
     const targetId = await first.getAttribute('data-view-flag-target');
@@ -99,7 +99,7 @@ test('Open in minutes reveals attached and nested unfiled targets without resolv
     // Both retained texts are identical, so address the independent target by its occurrence ID.
     const button = page.locator('#flagList [data-view-flag-target*="unfiled-b"]');
     const id = await button.getAttribute('data-view-flag-target'); assert.ok(id);
-    if (!(await button.isVisible())) await page.locator('#reviewQueueToggle').click();
+    if (!(await button.isVisible())) await page.locator('#reviewQueueToggle').click(); await page.locator('#flagList details[data-review-category]').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
     await button.click();
     await page.waitForFunction(id => document.getElementById(id)?.getBoundingClientRect().height > 0, id);
     assert.equal(await page.locator('[data-identical-filing-group] > details').evaluate(node => node.open), true);
@@ -142,7 +142,7 @@ test('promoting supporting context preserves the warning target, history and exa
     assert.ok(promoted); assert.equal(promoted.text, initial.discussion[0].points[0].supportingDetails[0].text);
     assert.deepEqual(promoted.reviewFlagIds, ['attached-warning']); assert.deepEqual(promoted.evidenceIds, ['T0001']);
     assert.ok(promoted.mergedFromIds.includes('earlier-attached')); assert.equal(promoted.reviewerAuthored, true);
-    await page.locator('#reviewQueueToggle').click();
+    await page.locator('#reviewQueueToggle').click(); await page.locator('#flagList details[data-review-category]').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
     assert.equal(await page.locator('#flagList [data-view-flag-target="minutes-discussion-attached-a"]').count(), 1);
     await page.locator('#undoLastDecision').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-retained-warning="attached-warning"]').length === 2);

@@ -1288,6 +1288,8 @@
       }
       var detail = entry.detail, index = entry.index;
       var detailId = detail.id || ('unassigned-' + index);
+      var reviewKey = ((review && review.occurrences) || []).find(function (entry) { return entry.index === index; });
+      var leaveOut = reviewKey && reviewKey.key ? '<button class="secondary compact" data-leave-out-supporting="' + index + '" data-optional-key="' + escapeHtml(reviewKey.key) + '" type="button">Leave out of minutes</button>' : '';
       var control = destinations
         ? '<label>File under<select data-supporting-destination aria-label="File this detail under a discussion item"><option value="">Choose a discussion item…</option>' + destinations + '</select></label><button class="secondary compact" data-file-supporting="' + index + '" type="button" disabled>File detail</button>'
         : '<p class="muted">Add a discussion point, decision or open question first, then choose where to file this detail.</p>';
@@ -1299,7 +1301,7 @@
       return '<article class="omitted-detail" data-unassigned-supporting-row="' + index + '" data-filing-key="' + escapeHtml(JSON.stringify(detail))
         + '" id="' + escapeHtml(recordDomId('unassigned-supporting', detailId + '-' + index, index)) + '"><div class="omitted-detail-copy">'
         + (showText ? '<p>' + escapeHtml(detail.text || '') + '</p>' : '<p class="muted">Occurrence ' + number + '</p>') + warnings
-        + '</div><div class="omitted-detail-actions">' + suggestion + control + promote
+        + '</div><div class="omitted-detail-actions">' + leaveOut + suggestion + control + promote
         + evidenceBlock(detail.evidenceIds, 'unassigned-' + detailId + '-' + index) + '</div></article>';
     }
     return '<section class="omitted-topic" data-needs-filing><h3>Optional retained material (' + pool.length + ' entries)</h3><p class="muted">These entries are not included in the main minutes. File or add an entry only if you want to include it.</p><div class="omitted-detail-list">'
@@ -1310,6 +1312,14 @@
           + ' retained occurrences — review sources and file separately</summary>'
           + group.entries.map(function (entry, index) { return occurrence(entry, false, index + 1); }).join('') + '</details></section>';
       }).join('') + '</div></section>';
+  }
+
+  function excludedDetailsPanel() {
+    var entries = (state.draft && state.draft.excludedSupportingDetails) || [];
+    if (!entries.length) return '';
+    return '<details data-excluded-details data-keep-open="excluded-details"><summary>Left out of minutes (' + entries.length + ')</summary><p class="muted">Your choices are saved. These records and sources remain available to restore.</p>'
+      + entries.map(function (entry) { return '<article class="omitted-detail" id="minutes-excluded-' + escapeHtml(entry.key) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(entry.record.text) + '</p>' + retainedWarningNotices(entry.record, 'excluded-' + entry.key)
+        + '</div><div class="omitted-detail-actions"><button class="secondary compact" data-restore-excluded="' + escapeHtml(entry.key) + '" type="button">Restore optional detail</button>' + '<details class="review-evidence"><summary>Source when left out</summary>' + (entry.sources || []).map(function (unit) { return '<p><strong>' + escapeHtml(unit.speaker || unit.id) + '</strong> ' + escapeHtml(unit.text) + '</p>'; }).join('') + '</details></div></article>'; }).join('') + '</details>';
   }
 
   function omittedDetailsPanel(discussion) {
@@ -1326,13 +1336,14 @@
     var unassigned = unassignedSupportingDetailsPanel(discussion);
     var pool = (state.draft && state.draft.unassignedSupportingDetails) || [];
     var count = grouped.reduce(function (total, group) { return total + group.rows.length; }, 0) + (Array.isArray(pool) ? pool.length : 0);
-    if (!count) return '';
+    var excluded = excludedDetailsPanel();
+    if (!count && !excluded) return '';
     return '<details id="omittedDetailsPanel" class="omitted-details-panel" data-keep-open="omitted-details"><summary class="omitted-details-summary">Optional additional details (' + count + ')</summary><div class="omitted-details-body"><p class="muted omitted-details-intro">These details are not included in the main minutes. You can add anything useful; there is no need to include every entry. Any linked warnings still need checking before including the detail.</p><div class="omitted-topic-list">' + grouped.map(function (group) {
       return '<section class="omitted-topic"><h3>' + escapeHtml(group.topic.topic || 'Untitled topic') + '</h3><div class="omitted-detail-list">' + group.rows.map(function (row) {
         var detailId = row.detail.id || (group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex);
         return '<article class="omitted-detail" id="' + escapeHtml(recordDomId('supporting', detailId, detailId)) + '"><div class="omitted-detail-copy"><p>' + escapeHtml(row.detail.text || '') + '</p>' + retainedWarningNotices(row.detail, 'supporting-' + detailId + '-' + group.topicIndex + '-' + row.field + '-' + row.itemIndex + '-' + row.detailIndex) + (row.detail.placementStatus === 'unresolved' ? '<p class="muted">Placement needs review.</p>' : '') + '</div><div class="omitted-detail-actions"><button class="secondary compact" data-promote-supporting="' + row.detailIndex + '" data-parent-field="' + row.field + '" data-topic-index="' + group.topicIndex + '" data-item-index="' + row.itemIndex + '" type="button">Add to minutes</button>' + evidenceBlock(row.detail.evidenceIds, String(detailId)) + '</div></article>';
       }).join('') + '</div></section>';
-    }).join('') + unassigned + '</div></div></details>';
+    }).join('') + unassigned + excluded + '</div></div></details>';
   }
 
   // Offered only when there is somewhere to merge to.
@@ -1973,6 +1984,10 @@
         (unfiled.detail.id || ('unassigned-' + unfiled.index)) + '-' + unfiled.index, unfiled.index),
         label: 'Retained detail', retained: true, text: unfiled.detail.text || '', field: 'text' };
     }
+    var excludedTargets = (state.draft.excludedSupportingDetails || []).filter(function (entry) { return (entry.record.reviewFlagIds || []).indexOf(flagId) >= 0; });
+    if (excludedTargets.length === 1) return { stage:2,retained:true,elementId:'minutes-excluded-' + excludedTargets[0].key,
+      label:'Detail left out by reviewer',text:excludedTargets[0].record.text,field:'text' };
+    if (excludedTargets.length > 1) return { ambiguous:true,retained:true,label:'Several left-out details',text:excludedTargets.map(function (entry) { return entry.record.text; }).join('; ') };
     var linkedActions = (state.draft.actions || []).map(function (action, index) {
       return { action: action, index: index };
     }).filter(function (entry) { return (entry.action.reviewFlagIds || []).indexOf(flagId) >= 0; });
@@ -2006,6 +2021,9 @@
         proposal: true
       };
     }
+    // Missing-work/coverage notices are not field errors on an existing row.
+    // Shared evidence alone must not manufacture a published-action link.
+    if (flag.kind === 'possible_missed_follow_up') return null;
     var inferred = inferredActionForFlag(flag);
     if (inferred) return {
       stage: 3,
@@ -2026,27 +2044,42 @@
     }).map(function (flag) { return flag.id; });
   }
 
+  function reviewFlagCategory(flag, target) {
+    if (['not_applied_noop','not_applied_duplicate','not_outstanding'].indexOf(flag.reviewDisposition) >= 0 && !flag.reviewerAuthored && !flag.correctionNote) return 'optional';
+    if (target && !target.retained && !target.proposal) return 'corrections';
+    if (flag.reviewDisposition === 'coverage_unresolved' || /^action-materialization-/.test(String(flag.id || '')) || flag.temporalField === 'timedStepCoverage') return 'coverage';
+    if (target && (target.retained || target.proposal) || flag.kind === 'possible_missed_follow_up') return 'optional';
+    return 'corrections';
+  }
+
   function reviewQueueCounts() {
-    // Generated changes are applied automatically. Only genuine source-check
-    // warnings remain in the reviewer-facing queue.
-    var flags = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) {
-      return flag.status === 'open' && !proposalChangeForFlag(flag);
-    }).length;
-    return { flags: flags, total: flags };
+    var counts = {flags:0,total:0,primary:0,optional:0,coverage:0,items:0};
+    ((state.draft && state.draft.reviewFlags) || []).forEach(function (flag) {
+      if (flag.status !== 'open' || proposalChangeForFlag(flag)) return;
+      counts.flags++;var kind = reviewFlagCategory(flag,flagTarget(flag));
+      if (kind === 'corrections') counts.primary++;else counts[kind]++;
+    });
+    counts.total = counts.flags;
+    counts.items = document.querySelectorAll('#flagList [data-review-category="corrections"] [data-review-occurrence]').length || counts.primary;
+    return counts;
   }
 
   function updateReviewQueueSummary() {
     var counts = reviewQueueCounts();
     var panel = document.getElementById('reviewFlags');
     panel.hidden = counts.total === 0;
-    document.getElementById('flagCount').textContent = counts.flags
-      ? counts.flags + ' check' + (counts.flags === 1 ? '' : 's')
-      : 'Review complete';
+    var other = counts.optional + counts.coverage;
+    document.getElementById('flagCount').textContent = counts.primary
+      ? (other ? counts.items + ' item' + (counts.items === 1 ? '' : 's') + ' to check · ' + other + ' other check' + (other === 1 ? '' : 's')
+        : counts.items === counts.flags ? counts.flags + ' check' + (counts.flags === 1 ? '' : 's') : counts.items + ' item' + (counts.items === 1 ? '' : 's') + ' · ' + counts.flags + ' checks')
+      : counts.coverage ? counts.coverage + ' coverage notice' + (counts.coverage === 1 ? '' : 's') + (counts.optional ? ' · ' + counts.optional + ' optional' : '')
+        : counts.optional ? counts.optional + ' optional check' + (counts.optional === 1 ? '' : 's') : 'Review complete';
+    document.getElementById('reviewQueueToggle').title = counts.flags + ' total checks. ' + counts.primary + ' concern possible corrections; ' + counts.optional + ' concern optional material; ' + counts.coverage + ' concern coverage.';
     updateReviewQueueToggle(counts);
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) {
       intro.hidden = !counts.flags;
-      intro.textContent = 'A few details are worth a quick source check. They may already be right; open a minutes item only if you want to change it, then mark it checked.';
+      intro.textContent = 'Start with checks on the current minutes. Possible additions and processing notices are separate below. Each check keeps its own source, note and decision.';
     }
     updateFinishingBar();
   }
@@ -2060,7 +2093,7 @@
     if (!toggle || !panel) return;
     var open = Boolean(panel.open && !panel.hidden);
     toggle.hidden = counts.total === 0;
-    toggle.dataset.state = counts.flags ? 'warning' : 'clear';
+    toggle.dataset.state = counts.primary || counts.coverage ? 'warning' : 'clear';
     toggle.setAttribute('aria-expanded', String(open));
     var row = panel.closest('.workflow-utilities');
     if (row) row.classList.toggle('is-open', open);
@@ -2097,7 +2130,7 @@
     var panel = document.getElementById('reviewFlags');
     var wasHidden = panel.hidden;
     if (open.length && wasHidden) panel.open = false;
-    document.getElementById('flagList').innerHTML = flags.map(function (flag, index) {
+    function renderCheck(flag, index, showTarget) {
       if (flag.status !== 'open') return '';
       if (proposalChangeForFlag(flag)) return '';
       var label = reviewFlagLabel(flag);
@@ -2110,19 +2143,19 @@
         ? (target.proposal ? 'Proposed minutes text' : (target.retained ? 'Not in the main minutes · ' : 'In the minutes · ') + target.label)
         : 'Transcript detail to consider';
       var body = '';
-      if (candidateText) {
+      if (candidateText && showTarget) {
         body += '<div class="flag-target' + (!target ? ' transcript-candidate' : '') + '"><span>' + escapeHtml(candidateLabel) + '</span><blockquote>' + escapeHtml(candidateText) + '</blockquote>';
       }
-      if (target && !target.ambiguous) {
+      if (target && !target.ambiguous && showTarget) {
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += (candidateText ? '' : '<div class="flag-target"><span>' + escapeHtml(candidateLabel) + '</span>')
           + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.retained ? 'Open retained detail' : 'Open in minutes') + '</button></div>';
-      } else if (target && target.ambiguous) {
+      } else if (showTarget && target && target.ambiguous) {
         body += '<p>' + (target.retained ? 'This check is linked to several retained details. Review those entries before including them.' : 'This check is linked to several actions. Review those rows directly.') + '</p></div>';
-      } else if (candidateText) {
+      } else if (showTarget && candidateText) {
         body += '<p>This is not currently represented in the minutes. Add or correct the relevant item if it belongs.</p></div>';
-      } else {
+      } else if (showTarget) {
         body += '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
       }
       var reviewMessage = conciseReviewMessage(displayMessage);
@@ -2142,8 +2175,38 @@
       var evidence = '<details class="review-evidence" data-keep-open="' + escapeHtml(disclosureKey(flag.evidenceIds, 'flag-' + flag.id)) + '"><summary class="review-evidence-head"><strong>Source passage</strong><span class="muted">'
         + (evidenceLines ? evidenceLines + ' line' + (evidenceLines === 1 ? '' : 's') : 'none linked')
         + '</span></summary><div class="review-evidence-body">' + evidenceHtml(flag.evidenceIds) + '</div></details>';
-      return '<div class="flag review-queue-item"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
-    }).join('');
+      return '<div class="flag review-queue-item" data-review-flag-id="' + escapeHtml(flag.id) + '"><div class="review-item-layout"><div class="review-item-main">' + body + (actions ? '<div class="flag-actions">' + actions + '</div>' : '') + '</div>' + evidence + '</div></div>';
+    }
+    var groups = new Map(), categories = { corrections: [], optional: [], coverage: [] }, targetCounts = new Map();
+    document.querySelectorAll('[id]').forEach(function (node) { targetCounts.set(node.id, (targetCounts.get(node.id) || 0) + 1); });
+    flags.forEach(function (flag, index) {
+      if (flag.status !== 'open' || proposalChangeForFlag(flag)) return;
+      var target = flagTarget(flag), category = reviewFlagCategory(flag, target);
+      // A unique DOM occurrence is a presentation key, never a merge proof.
+      // Unbound and ambiguous flags keep independent cards.
+      var key = target && !target.ambiguous && target.elementId && targetCounts.get(target.elementId) === 1
+        ? category + '|' + target.stage + '|' + target.elementId + '|' + target.field : 'flag|' + index;
+      var group = groups.get(key);
+      if (!group) { group = { category: category, entries: [] }; groups.set(key, group); categories[category].push(group); }
+      group.entries.push({ flag: flag, index: index });
+    });
+    function renderGroup(group) {
+      return '<section class="review-occurrence" data-review-occurrence><div class="review-occurrence-checks">'
+        + (group.entries.length > 1 ? '<p class="muted">' + group.entries.length + ' checks for this item — each keeps its own decision.</p>' : '')
+        + group.entries.map(function (entry, index) { return renderCheck(entry.flag, entry.index, index === 0); }).join('')
+        + '</div></section>';
+    }
+    function section(kind, heading, description, optional) {
+      var rows = categories[kind]; if (!rows.length) return '';
+      var count = rows.reduce(function (n, row) { return n + row.entries.length; }, 0);
+      var title = heading + ' (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ', ' + count + ' check' + (count === 1 ? '' : 's') + ')';
+      var body = '<p class="muted">' + escapeHtml(description) + '</p>' + rows.map(renderGroup).join('');
+      return optional ? '<details class="review-category" data-review-category="' + kind + '" data-keep-open="review-category:' + kind + '"><summary>' + escapeHtml(title) + '</summary>' + body + '</details>'
+        : '<section class="review-category" data-review-category="' + kind + '"><h3>' + escapeHtml(title) + '</h3>' + body + '</section>';
+    }
+    document.getElementById('flagList').innerHTML = section('corrections', 'Check the current minutes', 'Check these possible problems against their sources. Unlinked checks keep their source passages below.', false)
+      + section('optional', 'Possible additions and retained material', 'These items are not included in the main minutes. Review them if you want to add or change something; leaving an item here does not add it.', true)
+      + section('coverage', 'Processing and coverage notices', 'The agent could not establish complete coverage for these passages. These notices do not prove that an action is missing. Sources and individual checks remain available.', true);
     restoreDisclosures(document.getElementById('flagList'));
     refreshRetainedWarningNotices();
     updateReviewQueueSummary();
@@ -2514,6 +2577,7 @@
       steer: state.draft.steer || '',
       discussion: state.draft.discussion,
       unassignedSupportingDetails: state.draft.unassignedSupportingDetails || [],
+      excludedSupportingDetails: (state.draft.excludedSupportingDetails || []).map(function (entry) { return { key:entry.key }; }),
       actions: state.draft.actions,
       executiveSummary: state.draft.executiveSummary || '',
       meetingObjectives: state.draft.meetingObjectives || [],
@@ -3342,6 +3406,30 @@
 
   document.getElementById('discussionScreen').addEventListener('click', function (event) {
     if (event.target.closest('[data-restore-combined-discussion]')) { restoreCombinedDiscussion(); return; }
+    var leaveOut = event.target.closest('[data-leave-out-supporting]');
+    var restoreExcluded = event.target.closest('[data-restore-excluded]');
+    if (leaveOut || restoreExcluded) {
+      readDiscussion();
+      var pool = state.draft.unassignedSupportingDetails || [], archived = state.draft.excludedSupportingDetails || [];
+      var occurrences = state.draft.filingReview && state.draft.filingReview.occurrences || [];
+      if (leaveOut) {
+        var index = Number(leaveOut.dataset.leaveOutSupporting), row = leaveOut.closest('[data-unassigned-supporting-row]'), detail = pool[index];
+        var key = leaveOut.dataset.optionalKey;
+        if (!detail || row.dataset.filingKey !== JSON.stringify(detail) || !occurrences.some(function (entry) { return entry.index === index && entry.key === key; })) { renderDiscussion(); return; }
+        if (archived.length >= 500) { setStatus('Restore an optional detail before leaving out another.',true,'discussion'); return; }
+        archived = archived.concat([{key:key,record:cloneEditorValue(detail),sources:(state.draft.sourceUnits||[]).filter(function (unit) { return (detail.evidenceIds||[]).indexOf(unit.id)>=0; }).map(cloneEditorValue)}]);pool.splice(index,1);
+        occurrences = occurrences.filter(function (entry) { return entry.index !== index; }).map(function (entry) { return {index:entry.index > index ? entry.index-1 : entry.index,key:entry.key}; });
+      } else {
+        var key = restoreExcluded.dataset.restoreExcluded, entry = archived.find(function (item) { return item.key === key; });
+        if (!entry) return;
+        pool.push(cloneEditorValue(entry.record));occurrences = occurrences.concat([{index:pool.length-1,key:key}]);
+        archived = archived.filter(function (item) { return item.key !== key; });
+      }
+      state.draft.unassignedSupportingDetails = pool;state.draft.excludedSupportingDetails = archived;
+      if (state.draft.filingReview) state.draft.filingReview.occurrences = occurrences;
+      markUndoStep(leaveOut ? 'leave optional detail out' : 'restore optional detail','');
+      renderDiscussion();renderFlags();scheduleSave();return;
+    }
     var promoteUnassigned = event.target.closest('[data-promote-unassigned]');
     var useSuggestion = event.target.closest('[data-use-filing-suggestion]');
     if (promoteUnassigned || useSuggestion) {

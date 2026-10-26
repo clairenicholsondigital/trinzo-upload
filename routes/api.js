@@ -4,6 +4,8 @@ const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detaile
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
+const optionalReview = require('../utils/meetingMinutesOptionalReview');
+const citedFilingAliases = require('../utils/meetingMinutesCitedFilingAliases');
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
 const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
@@ -10912,8 +10914,8 @@ function reconcileRefereeActionMaterialization(issues = [], candidates = [], dis
     const candidate = candidates.find((entry) => entry.candidateId === issue.candidateId);
     return normaliseMeetingAgentFlag({
       id: `action-materialization-${crypto.createHash('sha256').update(issue.candidateId).digest('hex').slice(0, 20)}`,
-      kind: 'possible_missed_follow_up',
-      message: `A possible follow-up could not be added as an action and still needs review. Check the cited source and add each missing action separately: ${meetingMinutesAgentText(candidate?.text || candidate?.record?.action, 240) || 'Review the cited source.'}`,
+      kind: 'possible_missed_follow_up', reviewDisposition:'coverage_unresolved',
+      message: `The agent could not establish complete action coverage for this passage. Some work may already be present. Check the source if you want to verify coverage: ${meetingMinutesAgentText(candidate?.text || candidate?.record?.action, 240) || 'Review the cited source.'}`,
       evidenceIds: issue.evidenceIds
     }, index);
   });
@@ -11720,7 +11722,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'filingAliasReconciliation']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'filingAliasReconciliation', 'citedFilingAliasReconciliation']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -11737,7 +11739,7 @@ function meetingAgentDraftPayload(draft = {}) {
   draft = meetingAgentWithLegacyDateReview(normaliseMeetingAgentMinuteNumbers(draft));
   const payloadFlags = reconcileMeetingAgentOrphanFlags(
     filingReviewFlags(draft).filter(isUsefulMeetingAgentReviewFlag),
-    [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)],
+    [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails), ...optionalReview.entries(draft).map(entry=>entry.record)],
     draft.pendingProposal
   );
   const payloadFlagIds = new Set(payloadFlags.map((flag) => String(flag.id)));
@@ -11754,7 +11756,7 @@ function meetingAgentDraftPayload(draft = {}) {
     details: sanitiseMeetingAgentDetails(draft.details),
     discussion: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.discussion, payloadFlagIds)),
     ...(Array.isArray(draft.unassignedSupportingDetails) ? {
-      unassignedSupportingDetails: normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)
+      unassignedSupportingDetails: optionalReview.active(normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails), draft)
     } : {}),
     actions: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.actions, payloadFlagIds)),
     reviewFlags: normaliseMeetingAgentKnownTermsDeep(payloadFlags),
@@ -11779,6 +11781,7 @@ function meetingAgentDraftPayload(draft = {}) {
     keptActionIds: normaliseKeptActionIds(draft.keptActionIds, draft.actions),
     keptActionOccurrenceIds: normaliseKeptActionOccurrenceIds(draft.keptActionOccurrenceIds,
       [...(draft.actions || []), ...(draft.removedActions || [])]),
+    ...(optionalReview.entries(draft).length ? { excludedSupportingDetails:optionalReview.entries(draft) } : {}),
     removedActions: normaliseMeetingAgentKnownTermsDeep(normaliseRemovedActions(draft.removedActions))
   };
 }
@@ -11890,7 +11893,7 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
   const minutes = { details, ...publication, preserveSummaryParagraphs: true };
   if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
-  const unassignedDetails = orderedFilingSupportingDetails(draft.unassignedSupportingDetails, draft.sourceUnits || []);
+  const unassignedDetails = orderedFilingSupportingDetails(optionalReview.active(draft.unassignedSupportingDetails || [], draft), draft.sourceUnits || []);
   minutes.supportingDetails = [
     ...publicationDiscussion.flatMap((topic) =>
       [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])].flatMap((record) =>
@@ -11922,14 +11925,14 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   const visibleProposal = filterIncompleteProposalChanges(publicFields.pendingProposal, draft.sourceUnits || []);
   const visibleReviewFlags = reconcileMeetingAgentOrphanFlags(
     filingReviewFlags(draft, publication.reviewFlags),
-    [...visibleDiscussion, ...visibleActions, ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)],
+    [...visibleDiscussion, ...visibleActions, ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails), ...optionalReview.entries(draft).map(entry=>entry.record)],
     visibleProposal
   );
   const safe = normaliseMeetingAgentKnownTermsDeep({
     ...publicFields,
     ...publication,
     ...(Array.isArray(draft.unassignedSupportingDetails) ? {
-      unassignedSupportingDetails: normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)
+      unassignedSupportingDetails: optionalReview.active(normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails), draft)
     } : {}),
     discussion: visibleDiscussion,
     actions: visibleActions,
@@ -11999,7 +12002,8 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
       resumeUrl: `/meeting-minutes-agent?draftId=${encodeURIComponent(safe.draftId || '')}`
     };
   }
-  safe.filingReview = filingSuggestions(safe);
+  safe.excludedSupportingDetails = optionalReview.entries(draft);
+  safe.filingReview = { ...filingSuggestions(safe), occurrences:optionalReview.keys(safe) };
   return safe;
 }
 
@@ -12230,7 +12234,7 @@ function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRow
 }
 
 const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
-  'details', 'steer', 'discussion', 'unassignedSupportingDetails', 'actions', 'executiveSummary',
+  'details', 'steer', 'discussion', 'unassignedSupportingDetails', 'excludedSupportingDetails', 'actions', 'executiveSummary',
   'meetingObjectives', 'reviewFlags', 'pendingProposal', 'staleStages',
   'currentStep', 'selectedStep', 'status',
   // Undoing a change has to restore what it did to the reviewer's own state
@@ -15870,7 +15874,8 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
     || !/^(?:1|true|yes|on)$/i.test(process.env.MEETING_MINUTES_AGENT_WORKFLOW_UNION_V1 || '0')) return finished;
   const started = Date.now();
   const checked = await actionUnion.rewrite(finished.changes.actions, normaliseSourceUnits(draft.sourceUnits), {
-    meetingDate: meetingAgentTimingAnchor(draft), protectedIds: draft.keptActionOccurrenceIds || [],
+    meetingDate: meetingAgentTimingAnchor(draft), protectedIds: [...(draft.keptActionOccurrenceIds || []),...(draft.keptActionIds || [])],
+    compilation:semanticPolicyForRun(draft,options.semanticPolicy).compilationUnions===true,
     ask: options.unionAsk || options.semanticAsk || askPowerAutomateMeetingMinutesAgentWithRetry
   });
   const state = finished.changes.qualityState || draft.qualityState || {};
@@ -17242,10 +17247,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       ? filingAliases.reconcile(
       mergedUnassignedSupportingDetails, candidateLedger, draft.sourceUnits, {
         enabled: discussionCoveragePolicyForRun(draft).filingAliases === true,
-        handoffs: filingAliasHandoffs, priorRows: draft.unassignedSupportingDetails || [], discussion: finalDiscussion
+        handoffs: filingAliasHandoffs, priorRows: [...(draft.unassignedSupportingDetails || []),...optionalReview.entries(draft).map(entry=>entry.record)], discussion: finalDiscussion
       }) : { rows: mergedUnassignedSupportingDetails, audit: { applied: false, reason: 'disabled' } };
+    const citedFilingAliasReconciliation = citedFilingAliases.reconcile(filingAliasReconciliation.rows,draft.sourceUnits,{
+      enabled:discussionCoveragePolicyForRun(draft).citedFilingAliases===true,priorRows:[...(draft.unassignedSupportingDetails||[]),...optionalReview.entries(draft).map(entry=>entry.record)],discussion:finalDiscussion
+    });
     const retainedUnassignedSupportingDetails = withoutRepresentedUnassignedDetails(
-      filingAliasReconciliation.rows, finalDiscussion
+      citedFilingAliasReconciliation.rows, finalDiscussion
     );
     // Reconcile review links on unfiled context too. Primary/recovery flag
     // definitions may be recoverable only through the existing flag registry.
@@ -17380,6 +17388,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           literalSupportingRepeatsFolded: literalSupportCleanup.foldedCount,
           claimConsolidation: claimConsolidation.audit,
           ...(discussionCoveragePolicyForRun(draft).filingAliases ? { filingAliasReconciliation: filingAliasReconciliation.audit } : {}),
+          ...(discussionCoveragePolicyForRun(draft).citedFilingAliases ? {citedFilingAliasReconciliation:citedFilingAliasReconciliation.audit} : {}),
           discussionSourceCoverage: discussionSourceCoverage.audit,
           unassignedSupportingDetailCount: retainedUnassignedSupportingDetails.length,
           fidelityWithheldRows,
@@ -17960,7 +17969,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           type: 'add', before: null, after: { ...item.action, reviewFlagIds: [] },
           beforeIndex: at, afterIndex: null, index: at,
           reviewContext: {
-            label: 'not outstanding after the meeting',
+            label: 'not outstanding after the meeting', disposition:'not_outstanding',
             reason: `This appears not to be outstanding work ("${item.evidenceQuote}"). Add it only if follow-up is still required.`,
             evidenceIds: item.action.evidenceIds || []
           }
@@ -18703,18 +18712,21 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       ? Math.max(0, Math.min(furthestStep,
         Number(req.body?.selectedStep ?? req.body?.currentStep ?? draft.selectedStep ?? draft.currentStep) || 0))
       : Math.max(0, Math.min(furthestStep, Number(draft.selectedStep ?? draft.currentStep) || 0));
-    const unassignedSupportingDetails = withoutRepresentedUnassignedDetails(
+    const excludedSupportingDetails = req.body?.excludedSupportingDetails === undefined ? optionalReview.entries(draft)
+      : optionalReview.selection(publishedBeforeSave, req.body.excludedSupportingDetails);
+    const optionalState = { ...draft, excludedSupportingDetails };
+    const unassignedSupportingDetails = optionalReview.active(withoutRepresentedUnassignedDetails(
       Array.isArray(req.body?.unassignedSupportingDetails)
         ? req.body.unassignedSupportingDetails : draft.unassignedSupportingDetails,
       normalised.discussion
-    );
+    ), optionalState);
     const mergedReviewFlags = reopenFlagsOfReAddedItems(
       mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails]
+      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails, ...excludedSupportingDetails.map(entry=>entry.record)]
     );
     const reconciledReviewFlags = reconcileMeetingAgentOrphanFlags(
       mergedReviewFlags,
-      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails],
+      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails, ...excludedSupportingDetails.map(entry=>entry.record)],
       pendingProposal,
       [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)]
     );
@@ -18727,6 +18739,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       qualityState,
       steer: req.body?.steer ?? draft.steer,
       discussion: normalised.discussion,
+      excludedSupportingDetails,
       ...(Array.isArray(req.body?.unassignedSupportingDetails) || Array.isArray(draft.unassignedSupportingDetails)
         ? { unassignedSupportingDetails } : {}),
       actions: normalised.actions,
@@ -19554,6 +19567,10 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
       // open even when there is deliberately no corresponding published item.
       id: meetingMinutesAgentText(`automatic-review-${change.id || ''}`, 80),
       kind: change.type === 'add' ? 'possible_missed_follow_up' : 'uncertain_fact',
+      ...(noOpModifications.has(change.id) ? {reviewDisposition:'not_applied_noop'}
+        : duplicateModifications.has(change.id) ? {reviewDisposition:'not_applied_duplicate'}
+          : change.reviewContext?.disposition === 'not_outstanding' ? {reviewDisposition:'not_outstanding'}
+            : change.type === 'add' ? {reviewDisposition:'not_applied_addition'} : {}),
       message: `Cannot verify that this AI suggestion should change the minutes; it was not applied. ${wording} ${reason}`,
       evidenceIds: record.evidenceIds || change.reviewContext?.evidenceIds || []
     }, index);
@@ -19748,7 +19765,7 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
         actionUnionRewrite: { ...union, applied:false, receipts:[], reason:'identity_binding_failed' } } }
     }, generationKey);
     changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-      actionUnionRewrite: { ...union, receipts:bound, identityBinding:{complete:true} } } };
+      actionUnionRewrite: { ...union, receipts:bound,...(union.version==='compilation-union-v1'?{finalHash:actionUnion.hash(allocated)}:{}), identityBinding:{complete:true} } } };
   }
   const semantic = changes.qualityState?.actions?.semanticReconciliation;
   if (Array.isArray(changes.actions) && semantic?.applied && semantic.receipts?.length) {
@@ -19893,7 +19910,7 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
   }
   if (stage === 'discussion' && Array.isArray(changes.unassignedSupportingDetails)) {
     changes.unassignedSupportingDetails = withoutRepresentedUnassignedDetails(
-      mergeUnassignedSupportingDetails(fresh.unassignedSupportingDetails, changes.unassignedSupportingDetails),
+      optionalReview.active(mergeUnassignedSupportingDetails(fresh.unassignedSupportingDetails, changes.unassignedSupportingDetails), fresh),
       changes.discussion || fresh.discussion || []
     );
   }
@@ -20485,14 +20502,39 @@ router.post('/meeting-minutes-agent/drafts/:draftId/redo', requireAuth, async (r
 router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-actions', requireAuth, async (req, res) => {
   try {
     const draft = await loadOwnedMeetingAgentDraft(req);
-    const actions = originalEnquiryActions(draft);
+    let actions = originalEnquiryActions(draft);
     if (Number(req.body?.revision) !== draft.revision || draft.generation?.status === 'running' || !actions) {
       const error = new Error('These actions changed or are still generating. Your edits have been preserved.');
       error.statusCode = 409; throw error;
     }
-    const audit = draft.qualityState.actions.semanticReconciliation;
-    const qualityState = { ...draft.qualityState, actions: { ...draft.qualityState.actions,
-      semanticReconciliation: { ...audit, applied: false, restored: true } } };
+    const actionState=draft.qualityState.actions, union=actionState.actionUnionRewrite;
+    const restoringCompilation=union?.version==='compilation-union-v1'&&union.applied;
+    const audit=actionState.semanticReconciliation;
+    if(restoringCompilation) {
+      // Restore the compiled originals, retaining the admitted identity of
+      // every unique unchanged row. Raw generated snapshots can predate ID
+      // allocation; restoring those IDs would strand an earlier merge proof.
+      actions=actions.map(action=>{
+        const matches=(draft.actions||[]).filter(current=>actionProvenanceSignature(current)===actionProvenanceSignature(action));
+        return matches.length===1?preserveActionIdentity(matches[0],action):action;
+      });
+    }
+    // Restoring the compilation snapshot can restore an earlier identity on
+    // an otherwise unchanged contact survivor. Rebind its existing proof;
+    // never strand the preceding independently recoverable reconciliation.
+    const restoredContactReceipts = restoringCompilation && audit?.applied
+      ? (audit.receipts||[]).map(receipt=>{
+        const matches=actions.map(action=>rebindReconciliationReceipt(receipt,receipt.survivor,action,normaliseSourceUnits(draft.sourceUnits))).filter(Boolean);
+        return matches.length===1?matches[0]:null;
+      }) : [];
+    if(restoredContactReceipts.some(receipt=>!receipt)) {
+      const error=new Error('The earlier action proof cannot be safely rebound. Your current actions were preserved.');error.statusCode=409;throw error;
+    }
+    const qualityState = { ...draft.qualityState, actions: { ...actionState,
+      ...(restoringCompilation ? {actionUnionRewrite:{...union,applied:false,restored:true},
+        ...(audit?.applied?{semanticReconciliation:{...audit,receipts:restoredContactReceipts,restoreSnapshot:structuredClone(actions)}}:{})}
+        : {semanticReconciliation:{...audit,applied:false,restored:true}})
+    } };
     const saved = await saveMeetingAgentDraft(draft, req, { actions, qualityState,
       changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, 'Restore separate actions')].slice(-30),
       redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),

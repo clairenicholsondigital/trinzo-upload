@@ -1,0 +1,32 @@
+'use strict';
+process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1='0';
+const test=require('node:test'),assert=require('node:assert/strict'),O=require('../utils/meetingMinutesOptionalReview'),V=require('../utils/meetingMinutesAgentV2');
+const db=require('../utils/db'),copy=x=>structuredClone(x);let saved,writes=0;
+const get=db.getMeetingMinutesAgentDraft,update=db.updateMeetingMinutesAgentDraft;
+db.getMeetingMinutesAgentDraft=async()=>copy(saved);
+db.updateMeetingMinutesAgentDraft=async(id,user,revision,change)=>{assert.equal(user,'optional-reviewer');assert.equal(revision,saved.revision);writes++;saved={...copy(change.payload),draftId:id,revision:revision+1,status:change.status||'draft'};return copy(saved);};
+const router=require('../routes/api'),A=router.stagedEvaluation;db.getMeetingMinutesAgentDraft=get;db.updateMeetingMinutesAgentDraft=update;
+function reset(){saved={payloadVersion:5,draftId:'optional',revision:1,status:'draft',details:{meetingTitle:'Calibration',meetingDate:'2026-10-21',internalAttendees:['Morgan Lee'],clientAttendees:[]},sourceUnits:V.normaliseSourceUnits([{id:'T0001',speaker:'Morgan Lee',text:'Calibration reference one.'},{id:'T0002',speaker:'Morgan Lee',text:'Calibration reference two.'}]),discussion:[{id:'topic',topic:'Calibration',points:[{id:'main',text:'The calibration report was discussed.',evidenceIds:['T0001'],reviewFlagIds:[],supportingDetails:[]}],decisions:[],openQuestions:[]}],actions:[],reviewFlags:[{id:'review',kind:'unclear_reference',status:'open',message:'Check the retained reference.',evidenceIds:['T0001']}],unassignedSupportingDetails:[{id:'shared',text:'Optional calibration background.',evidenceIds:['T0001'],reviewFlagIds:['review'],originalTopic:'Calibration',placementReason:'no_subject_match'},{id:'shared',text:'Optional calibration background.',evidenceIds:['T0002'],reviewFlagIds:[],originalTopic:'Calibration',placementReason:'no_subject_match'}],currentStep:5,selectedStep:2,changeHistory:[],redoHistory:[],staleStages:[],qualityState:{preparation:{dateContext:{source:'reviewer',meetingDate:'2026-10-21'}}}};writes=0;}
+async function request(method,suffix='',body={},status=200){const route=router.stack.find(x=>x.route?.path==='/meeting-minutes-agent/drafts/:draftId'+suffix&&x.route.methods[method]).route,res={statusCode:200,status(n){this.statusCode=n;return this;},json(data){this.body=data;return this;}};await route.stack.at(-1).handle({params:{draftId:'optional'},authUser:{userId:'optional-reviewer'},body:{revision:saved.revision,payloadVersion:5,...body}},res);assert.equal(res.statusCode,status,JSON.stringify(res.body));return res.body.draft;}
+test('exclude one occurrence through real PATCH/GET, unchanged save, undo/redo and restoration',async()=>{reset();const initial=copy(saved),visible=await request('get'),key=visible.filingReview.occurrences[0].key;
+ let out=await request('patch','',{unassignedSupportingDetails:visible.unassignedSupportingDetails.slice(1),excludedSupportingDetails:[{key}],reviewDecisionLabel:'Leave optional detail out'});
+ assert.equal(out.unassignedSupportingDetails.length,1);assert.equal(out.unassignedSupportingDetails[0].evidenceIds[0],'T0002');assert.equal(out.excludedSupportingDetails.length,1);assert.deepEqual(out.excludedSupportingDetails[0].sources,[initial.sourceUnits[0]]);assert.equal(out.reviewFlags.find(r=>r.id==='review').status,'open');
+ assert.deepEqual(out.excludedSupportingDetails[0].record,visible.unassignedSupportingDetails[0]);assert.deepEqual(out.discussion,visible.discussion);assert.deepEqual(out.actions,visible.actions);
+ out=await request('patch','',{discussion:out.discussion});assert.equal(out.excludedSupportingDetails.length,1,'older clients preserve decisions');
+ out=await request('post','/undo');assert.equal(out.unassignedSupportingDetails.length,2);assert.equal(out.excludedSupportingDetails.length,0);
+ out=await request('post','/redo');assert.equal(out.unassignedSupportingDetails.length,1);assert.equal(out.excludedSupportingDetails.length,1);
+ out=await request('get');const record=out.excludedSupportingDetails[0].record;
+ out=await request('patch','',{unassignedSupportingDetails:[...out.unassignedSupportingDetails,record],excludedSupportingDetails:[],reviewDecisionLabel:'Restore optional detail'});
+ assert.equal(out.unassignedSupportingDetails.length,2);assert.equal(out.excludedSupportingDetails.length,0);assert.deepEqual(saved.sourceUnits,initial.sourceUnits);
+});
+test('exclusion uses owned full records; stale keys fail rather than excluding a sibling',async()=>{reset();const visible=await request('get'),key=visible.filingReview.occurrences[0].key;
+ const out=await request('patch','',{unassignedSupportingDetails:visible.unassignedSupportingDetails.slice(1),excludedSupportingDetails:[{key,record:{id:'forged',text:'Injected replacement'}}]});assert.equal(out.excludedSupportingDetails[0].record.text,'Optional calibration background.');
+ const count=writes;await request('patch','',{excludedSupportingDetails:[{key:'f'.repeat(64)}]},409);assert.equal(writes,count);
+});
+test('exact regeneration stays excluded; changed text, evidence, provenance or source reopens independently',()=>{reset();const record=saved.unassignedSupportingDetails[0],key=O.fingerprint(record,saved.sourceUnits),state={...saved,excludedSupportingDetails:[{key,record:copy(record)}]};
+ assert.deepEqual(O.active([copy(record)],state),[]);assert.equal(A.meetingAgentDraftPayload({...state,unassignedSupportingDetails:[record]}).unassignedSupportingDetails.length,0);
+ for(const change of [{text:record.text+' New qualification.'},{evidenceIds:['T0002']},{id:'another'},{originalTopic:'Other topic'},{filingOrigins:[{id:record.id,originalTopic:'Other origin'}]}])assert.equal(O.active([{...record,...change}],state).length,1);
+ assert.equal(O.active([record],{...state,sourceUnits:[{...saved.sourceUnits[0],text:'Different source.'},saved.sourceUnits[1]]}).length,1);
+ assert.notEqual(O.fingerprint(saved.unassignedSupportingDetails[1],saved.sourceUnits),key);
+});
+test('archive limits and duplicate/ambiguous source keys cannot silently truncate a decision',()=>{reset();assert.throws(()=>O.selection(saved,Array(501).fill({key:'f'.repeat(64)})),/selection/);assert.equal(O.fingerprint(saved.unassignedSupportingDetails[0],[saved.sourceUnits[0],saved.sourceUnits[0]]),'');const key=O.fingerprint(saved.unassignedSupportingDetails[0],saved.sourceUnits);assert.throws(()=>O.selection(saved,[{key},{key}]),/changed/);});
