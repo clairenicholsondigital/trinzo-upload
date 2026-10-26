@@ -80,3 +80,13 @@ INTERNAL_AI_TASK_TEST_DATABASE_URL='postgresql://USER@localhost/trinzo_tasks_tes
 The suite exercises real PostgreSQL persistence/constraints, HTTP routes and desktop/mobile browsers, including creation, edits, completion/reopening, comments/authorship, refresh, filters, role/project restrictions, hidden-guidance non-disclosure and preservation, stale/concurrent revisions, exact-plan approval and repeat imports preserving manual work. The HTTP fixture supplies upstream identity; `server.js` mounts the real routes behind existing `requireAuth`, whose wiring is also checked. This is isolated end-to-end feature validation, **not a live deployed smoke test**.
 
 Implementation validation on 26 October 2026: **70 focused checks passed, no failures or skips** — 13 Tasks contract/PostgreSQL/browser checks plus 57 existing project workspace, minutes handoff, generation/persistence, agenda, minutes review and Library regressions. PostgreSQL/browser checks used a disposable local cluster only. No production migration, task import, merge or deployment was performed.
+
+## Task context and closure
+
+Task details provide separate Description, Current implications, Plan to fix and Fix details fields. These are public, human-written task information, separate from private AI implementation guidance. Existing descriptions are preserved; new fields initially remain empty rather than inventing plans or completed fixes. Source links are no longer shown or edited in the Tasks interface; saved references are retained unchanged by ordinary form saves.
+
+Save and mark Done saves the current fields and completes the task in one revision-checked update. Completion records a timestamp and retains comments, references and fix details. Show completed makes these tasks available again; Save and reopen returns a completed task to To do without erasing its details. The list checkbox and Status selector remain available. Close details only dismisses the editor.
+
+For this update, apply `sql/migrations/20261026_add_internal_ai_task_details.sql` after the initial Tasks migration and before deploying the updated application. It adds three non-null text columns with empty defaults and is safe to rerun. No existing task content or statuses are replaced.
+
+Task context update validation: 70 focused checks passed with no failures or skips, including an existing-row migration rerun, source-reference preservation on form saves, private-guidance protection, and desktop/mobile save-and-complete/reopen with fix details and comments retained after refresh. The database/browser checks used the isolated `trinzo_tasks_test` database.

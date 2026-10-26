@@ -11,6 +11,7 @@ test('scope uses the immutable ID and existing internal role, not names or suppl
 });
 test('task forms reject guidance, identity, authorship and invalid enums/dates/links',()=>{
  for(const bad of [{title:'X',ai_implementation_guidance:{problem:'private'}},{title:'X',aiImplementationGuidance:{}},{title:'X',taskId:'AI-001'},{title:'X',projectId:20},{title:'X',createdBy:'Forged'},{title:'X',status:'Awaiting input'},{title:'X',priority:'P9'},{title:'X',category:'Meeting action'},{title:'X',dueDate:'2026-02-30'},{title:'X',sourceReferences:[{url:'javascript:alert(1)'}]},{title:'X',sourceReferences:[{url:'https://name:secret@example.test'}]}])assert.throws(()=>T.fields(bad));
+ for(const key of ['description','currentImplications','planToFix','fixDetails']){assert.equal(T.fields({title:'X',[key]:' Human-written context '})[key],'Human-written context');for(const value of [null,{},'x'.repeat(20001)])assert.throws(()=>T.fields({title:'X',[key]:value}));}
  assert.throws(()=>T.fields({title:'X'},true));
  assert.deepEqual(T.fields({title:' Test ',owner:'',dueDate:'2026-02-28'}),{title:'Test',owner:'',dueDate:'2026-02-28'});
 });
