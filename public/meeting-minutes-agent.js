@@ -1221,7 +1221,28 @@
   function reviewFlagLabel(flag) {
     var labels = { uncertain_fact:'Uncertain detail', unclear_reference:'Reference to check', ownership:'Owner to check', attribution:'Attribution to check', timing:'Timing to check', unresolved_decision:'Open decision', missing_evidence:'Check this against the transcript', possible_missed_follow_up:'Possible missed follow-up' };
     var kind = String(flag && flag.kind || '');
+    if (kind === 'timing' && flag && flag.temporalField === 'executiveSummary') return 'Summary timing to check';
+    if (kind === 'timing' && flag && flag.temporalField === 'meetingObjectives') return 'Objective timing to check';
     return labels[kind] || (kind ? kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); }) : 'Source check needed');
+  }
+
+  // Historical summary/objective flags were written against an older internal
+  // authority label. Keep the saved message intact, but avoid showing reviewers
+  // wording that implies a human approval state which the current draft does not
+  // have. This is presentation-only and deliberately narrow.
+  function reviewFlagDisplayMessage(flag) {
+    var message = String(flag && flag.message || 'Review this item against the transcript.');
+    var summaryOrObjective = flag && (flag.temporalField === 'executiveSummary'
+      || flag.temporalField === 'meetingObjectives')
+      || /\b(?:executive summary|meeting objective)\b/i.test(message);
+    if (summaryOrObjective) {
+      // The old form quoted the whole summary/objective after the colon. Drop
+      // that repeated paragraph from the display while retaining the useful
+      // diagnostic that follows it.
+      message = message.replace(/:\s*[“"][\s\S]*?(?:[”"]\s*\.|\.\s*[”"])\s*/, ': ');
+      message = message.replace(/\b(?:the\s+)?approved minutes\b/gi, 'the current Discussion and Actions');
+    }
+    return message;
   }
 
   function retainedWarningState(id) {
@@ -1230,7 +1251,7 @@
       hidden: Boolean(flag && flag.status && flag.status !== 'open'),
       label: reviewFlagLabel(flag),
       message: flag && typeof flag.message === 'string' && flag.message.trim()
-        ? flag.message : 'The explanation for this retained warning is unavailable. Check this detail against its source before including it.'
+        ? reviewFlagDisplayMessage(flag) : 'The explanation for this retained warning is unavailable. Check this detail against its source before including it.'
     };
   }
 
@@ -2180,7 +2201,7 @@
       var uncertainCoverage = !target && reviewFlagCategory(flag, target) === 'coverage';
       var displayMessage = target && target.proposal
         ? 'The agent found a possible addition that is not in the minutes yet.'
-        : flag.message;
+        : reviewFlagDisplayMessage(flag);
       var candidateText = reviewCandidateForFlag(flag, target);
       var candidateLabel = target
         ? (target.proposal ? 'Proposed minutes text' : (target.retained ? 'Not in the main minutes · ' : 'In the minutes · ') + target.label)
@@ -2230,10 +2251,15 @@
     var sourceCounts = new Map(), flagCounts = new Map();
     sourceUnits().forEach(function (unit) { sourceCounts.set(unit.id, (sourceCounts.get(unit.id) || 0) + 1); });
     flags.forEach(function (flag) { flagCounts.set(flag.id, (flagCounts.get(flag.id) || 0) + 1); });
-    function optionalSourceKey(flag, target, category) {
-      if (target || category !== 'optional' || flag.kind !== 'possible_missed_follow_up'
-        || flag.reviewDisposition !== 'not_applied_addition' || flag.reviewerAuthored || flag.correctionNote
-        || flag.temporalField || !flag.id || flagCounts.get(flag.id) !== 1) return '';
+    function uniformSourceKey(flag, target, category) {
+      var unambiguousTarget = target && !target.ambiguous && target.elementId
+        && targetCounts.get(target.elementId) === 1;
+      var optionalUntargetedCheck = !target && category === 'optional'
+        && flag.kind === 'possible_missed_follow_up'
+        && flag.reviewDisposition === 'not_applied_addition'
+        && !flag.temporalField;
+      if ((!unambiguousTarget && !optionalUntargetedCheck)
+        || flag.reviewerAuthored || flag.correctionNote || !flag.id || flagCounts.get(flag.id) !== 1) return '';
       var ids = flag.evidenceIds;
       if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length
         || ids.some(function (id) { return typeof id !== 'string' || sourceCounts.get(id) !== 1; })) return '';
@@ -2242,15 +2268,17 @@
     flags.forEach(function (flag, index) {
       if (flag.status !== 'open' || proposalChangeForFlag(flag)) return;
       var target = flagTarget(flag), category = reviewFlagCategory(flag, target);
-      var sharedSourceKey = optionalSourceKey(flag, target, category);
+      var sharedSourceKey = uniformSourceKey(flag, target, category);
       // A unique DOM occurrence is a presentation key, never a merge proof.
-      // Shared optional source text is presentation only. Every check keeps its
-      // own explanation, note and decision; ambiguous targets stay separate.
-      var key = target && !target.ambiguous && target.elementId && targetCounts.get(target.elementId) === 1
+      // Shared source text is presentation only. Every check keeps its own
+      // explanation, note and decision; ambiguous targets stay separate.
+      var key = sharedSourceKey
+        ? (target ? category + '|' + target.stage + '|' + target.elementId + '|' + target.field + '|uniform-source|' + sharedSourceKey : 'optional-source|' + sharedSourceKey)
+        : target && !target.ambiguous && target.elementId && targetCounts.get(target.elementId) === 1
         ? category + '|' + target.stage + '|' + target.elementId + '|' + target.field
-        : sharedSourceKey ? 'optional-source|' + sharedSourceKey : 'flag|' + index;
+        : 'flag|' + index;
       var group = groups.get(key);
-      if (!group) { group = { category: category, entries: [], sharedSource: Boolean(sharedSourceKey) }; groups.set(key, group); categories[category].push(group); }
+      if (!group) { group = { category: category, entries: [], sharedSource: Boolean(sharedSourceKey), sharedOptionalSource: Boolean(sharedSourceKey && !target) }; groups.set(key, group); categories[category].push(group); }
       group.entries.push({ flag: flag, index: index });
     });
     function renderGroup(group) {
@@ -2264,7 +2292,7 @@
         bundle.push(entry);
       });
       var first = true;
-      return '<section class="review-occurrence" data-review-occurrence' + (sharedSource ? ' data-shared-optional-source' : '') + '><div class="review-occurrence-checks">'
+      return '<section class="review-occurrence" data-review-occurrence' + (sharedSource ? ' data-shared-source' : '') + (sharedSource && group.sharedOptionalSource ? ' data-shared-optional-source' : '') + '><div class="review-occurrence-checks">'
         + (group.entries.length > 1 ? '<p class="muted">' + group.entries.length + (sharedSource ? ' independent checks share this source passage. Decide each separately.</p>' : ' checks for this item — each keeps its own decision.</p>') : '')
         + bundles.map(function (bundle) {
           var entry = bundle[0], html = renderCheck(entry.flag, entry.index, first, sharedSource); first = false;

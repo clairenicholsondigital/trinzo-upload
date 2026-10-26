@@ -27,6 +27,15 @@ function sharedChecks(d){
   if (!detail.supportingDetails?.length) delete detail.supportingDetails;
  }))));
 }
+function sharedTargetChecks(d){
+ d.unassignedSupportingDetails=[];
+ d.actions[0].reviewFlagIds=['timing-a','timing-b'];
+ d.reviewFlags=[
+  {id:'timing-a',kind:'timing',status:'open',correctionNote:'',message:'The source does not establish whether this timing belongs to the action; the timing is retained for review.',evidenceIds:['T0001']},
+  {id:'timing-b',kind:'timing',status:'open',correctionNote:'',message:'The source does not establish whether the retained timing belongs to the action owner.',evidenceIds:['T0001']}
+ ];
+ d.discussion.forEach(t=>['points','decisions','openQuestions'].forEach(k=>(t[k]||[]).forEach(r=>r.reviewFlagIds=[])));
+}
 async function openChecks(page){await page.locator('#reviewQueueToggle').click();await page.locator('[data-review-category="optional"]>summary').click();}
 for(const mobile of [false,true])test('shared source is read once while both decisions and honest counts survive save/reload/undo/redo (mobile='+mobile+')',async t=>{
  const page=await fixture(t,sharedChecks,mobile),before=clone(saved);await openChecks(page);
@@ -66,4 +75,28 @@ test('each shared-source check keeps its own editable review note',async t=>{
  await group.locator('[data-flag-correction="1"]').fill('The circulation condition must remain.');
  const response=page.waitForResponse(r=>r.request().method()==='PATCH');await group.locator('[data-flag-index="1"][data-flag-status="corrected"]').click();await response;await settle(page);
  assert.equal(saved.reviewFlags[0].status,'open');assert.equal(saved.reviewFlags[0].correctionNote,'');assert.equal(saved.reviewFlags[1].status,'corrected');assert.equal(saved.reviewFlags[1].correctionNote,'The circulation condition must remain.');assert.deepEqual(errors,[]);
+});
+for(const mobile of [false,true])test('uniform-source action checks share evidence without sharing decisions (mobile='+mobile+')',async t=>{
+ const page=await fixture(t,sharedTargetChecks,mobile);await page.locator('#reviewQueueToggle').click();
+ const group=page.locator('[data-shared-source]');
+ assert.equal(await group.count(),1);assert.equal(await group.locator('[data-shared-optional-source]').count(),0);
+ assert.equal(await group.locator('blockquote').count(),1);assert.equal(await group.locator('[data-shared-source-evidence]').count(),1);
+ assert.equal(await group.locator('.review-queue-item').count(),2);
+ assert.equal(await group.locator('[data-flag-status="confirmed"]').count(),2);
+ assert.match(await group.innerText(),/independent checks share this source/);assert.deepEqual(errors,[]);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+});
+test('legacy summary timing wording is corrected only in the display',async t=>{
+ const page=await fixture(t,d=>{
+  d.discussion.forEach(topic=>['points','decisions','openQuestions'].forEach(kind=>(topic[kind]||[]).forEach(row=>row.reviewFlagIds=[])));
+  d.actions.forEach(action=>action.reviewFlagIds=[]);d.unassignedSupportingDetails=[];
+  d.reviewFlags=[{id:'summary-timing',kind:'timing',temporalField:'executiveSummary',status:'open',correctionNote:'',message:'Cannot verify the timing in the executive summary: "The review is due next week." temporal source binding not proved. Confirm it against the approved minutes.',evidenceIds:['T0001']}];
+ });
+ await page.locator('#reviewQueueToggle').click();
+ assert.match(await page.locator('#flagList').innerText(),/Summary timing to check/);
+ assert.doesNotMatch(await page.locator('#flagList').innerText(),/approved minutes/);
+ await page.locator('.flag-review-reason>summary').click();
+ assert.match(await page.locator('#flagList').innerText(),/current Discussion and Actions/);
+ assert.match(saved.reviewFlags[0].message,/approved minutes/);
+ assert.deepEqual(errors,[]);
 });

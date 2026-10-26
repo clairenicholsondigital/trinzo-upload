@@ -38,3 +38,12 @@ test('valid quotes for a different approved task cannot replace the original sum
     }
   }
 });
+
+test('summary timing warnings refer to current Discussion and Actions rather than approval', () => {
+  const values = { executiveSummary: original, meetingObjectives: [] };
+  const items = summaryTemporalCheckItems(values, current);
+  const result = applySummaryTemporalCheckResults(values, items, [{ id: items[0].id,
+    verdict: 'uncertain', reason: 'temporal source binding not proved' }]);
+  assert.match(result.flags[0].message, /current Discussion and Actions/);
+  assert.doesNotMatch(result.flags[0].message, /approved minutes/);
+});
