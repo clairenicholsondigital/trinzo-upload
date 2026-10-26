@@ -190,6 +190,36 @@ test('GSOP review follow-up paraphrases consolidate with reviewer and procedure 
   assertSingleSourceBoundSurvivor(qualify(rows, sources), ['GSOP', 'Louise', 'review']);
 });
 
+test('source-aware paraphrases with identical explicit timing consolidate without losing timing or review history', () => {
+  const sources = [source('TRAIN-01', 'Morgan will teach Casey to build projects in Asana using the same approach Morgan currently uses.')];
+  const rows = [
+    row('teach-a', 'Teach Casey to build projects in Asana using the same approach currently being used.', ['Morgan Lee'], timing('one week after Casey returns'), ['TRAIN-01']),
+    row('teach-b', 'Teach Casey to build projects in Asana using the same approach currently used by Morgan Lee.', ['Morgan Lee'], timing('one week after Casey returns'), ['TRAIN-01'])
+  ];
+  rows[0].reviewFlagIds = ['timing-a'];
+  rows[1].reviewFlagIds = ['timing-b'];
+  rows[0]._timingConflicts = ['old-conflict'];
+  const result = qualify(rows, sources);
+  assert.equal(result.hybrid.length, 1);
+  assert.equal(result.final.length, 1);
+  assert.equal(result.published.length, 1);
+  assert.match(result.published[0].action, /Morgan Lee/);
+  assert.equal(result.published[0].timing.wording, 'one week after Casey returns');
+  assert.deepEqual(new Set(result.published[0].reviewFlagIds), new Set(['timing-a', 'timing-b']));
+  assert.deepEqual(result.published[0]._timingConflicts, ['old-conflict']);
+});
+
+test('source-aware timed paraphrases keep different timing kinds, dates and qualifications separate', () => {
+  const sources = [source('TRAIN-01', 'Morgan will teach Casey to build projects in Asana using the same approach Morgan currently uses.')];
+  const original = row('teach-a', 'Teach Casey to build projects in Asana using the same approach currently being used.', ['Morgan Lee'], timing('one week after Casey returns'), ['TRAIN-01']);
+  const variation = value => row('teach-b', 'Teach Casey to build projects in Asana using the same approach currently used by Morgan Lee.', ['Morgan Lee'], value, ['TRAIN-01']);
+  for (const value of [timing('two weeks after Casey returns'), timing('one week after Casey returns', 'deadline'),
+    timing('one week after Casey returns, if training is ready'), untimed(),
+    { ...timing('one week after Casey returns'), exactDate: '2026-11-04' }]) {
+    assert.equal(dedupeHybridActionRecords([original, variation(value)], { sourceUnits: sources }).length, 2);
+  }
+});
+
 test('document-review email paraphrases stay separate when full detail coverage is unproved', () => {
   const sources = [
     source('AI011-DOC-01', 'Claire will send an email requesting review of the revised documents after completing the rewrites and responses to feedback.', 'Claire Nicholson'),

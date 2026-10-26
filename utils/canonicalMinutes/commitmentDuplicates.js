@@ -82,7 +82,25 @@ function sourceParaphraseEvidence(left = {}, right = {}, sourceUnits = []) {
 function sourceAwareParaphraseDuplicate(left = {}, right = {}, options = {}) {
   if (!options.sourceUnits?.length || isReviewerAuthored(left) || isReviewerAuthored(right)) return false;
   if (exactOwners(left) !== exactOwners(right) || conflictingTimings(left, right)) return false;
-  if (left.timing?.kind !== 'not_stated' || right.timing?.kind !== 'not_stated') return false;
+  // Equal, explicit timing is no less safe than two untimed rows. Require the
+  // complete structured timing to match literally; compatible weekdays or
+  // inferred dates are insufficient for this paraphrase proof.
+  const timingIdentity = record => {
+    const timing = record.timing || {};
+    const kind = String(timing.kind || '');
+    if (!kind) return '';
+    return JSON.stringify([kind, String(timing.wording || '').normalize('NFKC').trim().toLowerCase(),
+      String(timing.exactDate || '').trim()]);
+  };
+  const leftTiming = timingIdentity(left); const rightTiming = timingIdentity(right);
+  if (!leftTiming || leftTiming !== rightTiming) return false;
+  if (left.timing?.kind !== 'not_stated') {
+    // Unlike an untimed paraphrase, a timed instruction may represent one
+    // step of a broader obligation on adjacent lines. Extend this proof only
+    // when both extractions cite exactly the same source-unit set.
+    const ids = record => [...new Set((record.evidenceIds || []).map(String))].sort();
+    if (JSON.stringify(ids(left)) !== JSON.stringify(ids(right))) return false;
+  }
   const sharedEvidence = sourceParaphraseEvidence(left, right, options.sourceUnits);
   if (!sharedEvidence.length || conflictingRecipients(left.action, right.action)
     || conflictingDestinations(left.action, right.action) || differentFigures(left.action, right.action)) return false;

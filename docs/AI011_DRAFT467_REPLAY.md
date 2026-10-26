@@ -21,6 +21,31 @@ full-sentence match after that single generic phrase substitution. Reviewer
 wording, different work, owners, dates, source IDs and additional conditions
 remain separate. The synthetic adverse tests cover these boundaries.
 
-AI-011 remains in progress. A fresh generation and real-user review are still
-needed to decide whether the remaining visible pairs are currently reproduced
-and whether any source-supported combined wording is worth implementing.
+AI-011 remains in progress. Fresh generation is reported below; independent
+real-user review is still needed to judge reviewer burden and whether any
+source-supported combined wording is worth implementing for the remaining pairs.
+
+## Fresh generation from the same transcript
+
+An isolated draft 488 was generated through the normal Discussion and Actions
+stages after the role-clarification release. It produced 20 action rows, one
+Zimmer responsibility row and a new pair of otherwise equivalent Asana-teaching
+instructions. The fresh total cannot be compared causally with the older saved
+23-row register because generation varies between runs.
+
+The teaching pair has the same owner, exact dependency timing and identical
+three source citations. With its timing held equal, the existing source-aware
+coverage proof already prefers the complete wording, including the named
+person whose approach is being taught. The former blanket exclusion of all
+timed pairs leaves both rows visible. A new identical-timing gate extends that
+proof only when the complete timing and source-unit sets match; differing
+dates, kinds, wording or source sets remain separate. An in-memory replay of
+the full saved draft reduces 20 actions to 19, retains the dependency timing
+and all five review flags, and final preservation does not restore the copy.
+This replay does not rewrite draft 488.
+
+The fresh milestone pair remains separate: its second row adds an Asana or
+tracking-system destination absent from the cited passage. The webinar-content
+pair remains separate because one row adds a marketing-plan dependency and
+the other contains content-decision detail. Neither is safe to solve through
+the same narrow deduper rule.

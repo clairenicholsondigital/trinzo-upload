@@ -13730,9 +13730,19 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     }
     if (sourceAwareDuplicate === duplicate) {
       const preferred = sourceAwarePreferred(duplicate, record);
+      const recovery = {};
+      for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+        if (Array.isArray(duplicate[key]) || Array.isArray(record[key])) {
+          recovery[key] = [...new Set([...(duplicate[key] || []), ...(record[key] || [])])];
+        }
+      }
+      for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+        if (duplicate[key] || record[key]) recovery[key] = preferred[key] || duplicate[key] || record[key];
+      }
       Object.assign(duplicate, preferred, {
         evidenceIds: stableEvidence([duplicate, record]),
-        reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24)
+        reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24),
+        ...recovery
       });
       continue;
     }
