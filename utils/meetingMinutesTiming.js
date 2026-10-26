@@ -651,8 +651,26 @@
     }
     if (date) {
       const meaning = classifyTimingWording(wording);
+      // A source-bound duplicate may carry an existing calendar date in its
+      // shorter timing phrase and a source-stated contextual qualification in
+      // the longer one. Do not discard that date merely because the full phrase
+      // contains an additional "before ..." context. The unchanged short
+      // phrase, date and complete wording must all still match one cited turn.
+      const datePrefixSupported = (() => {
+        const prefix = clean(decision?.dateSourceWording).replace(/[.!]+$/, '').toLowerCase();
+        const full = wording.replace(/[.!]+$/, '').toLowerCase();
+        if (!prefix || !full.startsWith(`${prefix}, `)
+          || resolveExactDate(prefix, opts.meetingDate) !== date
+          || decision?.status !== 'unresolved') return false;
+        const matched = new Set(decision.binding?.matchedSourceIds || []);
+        const cited = new Set(action.evidenceIds || []);
+        return (units || []).some(unit => matched.has(unit.id) && cited.has(unit.id)
+          && (unit.classification !== 'remove' || unit.restored)
+          && clean(unit.text).toLowerCase().includes(full));
+      })();
       if (!isValidCalendarDate(date)) issue('invalid_calendar_date', `The date ${date} is not a real calendar date.`);
-      else if (wording && meaning.kind !== 'specific' && !(meaning.kind === 'ambiguous_weekday' && resolveExactDate(wording, opts.meetingDate))) issue('unsupported_precision', `The exact date ${date} is not established by the qualified timing "${wording}".`);
+      else if (wording && meaning.kind !== 'specific' && !(meaning.kind === 'ambiguous_weekday' && resolveExactDate(wording, opts.meetingDate))
+        && !datePrefixSupported) issue('unsupported_precision', `The exact date ${date} is not established by the qualified timing "${wording}".`);
       else if (isValidCalendarDate(opts.meetingDate) && date < opts.meetingDate && dateSourceSupported(action, units, opts.meetingDate, date)) issue('past_action_date', `The source-stated action date ${date} precedes the meeting date ${opts.meetingDate}; confirm whether the work is overdue.`, true);
       else if (wording && resolveExactDate(wording, opts.meetingDate) && resolveExactDate(wording, opts.meetingDate) !== date) issue('date_wording_conflict', `The exact date ${date} conflicts with the timing wording "${wording}".`);
       else if (!dateSourceSupported(action, units, opts.meetingDate, date)) issue('unsupported_exact_date', `The exact date ${date} is not supported by source wording bound to this action.`);

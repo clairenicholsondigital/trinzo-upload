@@ -75,6 +75,71 @@ function sourceBoundReviewTimingContext(left = {}, right = {}, sourceUnits = [])
   return parse(left, right) || parse(right, left);
 }
 
+// Two extractions of the very same action can carry complementary timing
+// detail: one has the fuller spoken qualification, the other a calendar date.
+// Keep both facts and every warning, but only when one shared source turn says
+// the full phrase and the existing timing assessments agree in their *unresolved*
+// outcome. This is a presentation merge, never a new timing verification.
+function sourceBoundIdenticalActionTimingCompletion(left = {}, right = {}, sourceUnits = []) {
+  if (isReviewerAuthored(left) || isReviewerAuthored(right)
+    || !sameActionText(left, right) || !ownerKey(left) || ownerKey(left) !== ownerKey(right)) return null;
+  const a = left.timing || {}; const b = right.timing || {};
+  if (a.kind !== 'target' || b.kind !== 'target'
+    || a.exactDate && b.exactDate && a.exactDate !== b.exactDate) return null;
+  const dateRow = a.exactDate && b.exactDate
+    ? actionText(a.wording).length >= actionText(b.wording).length ? left : right
+    : a.exactDate ? left : b.exactDate ? right : null;
+  if (!dateRow || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateRow.timing.exactDate))) return null;
+  const decisions = [left.timingDecision, right.timingDecision];
+  if (decisions.some(decision => !decision || decision.status !== 'unresolved')
+    || !decisions[0].meetingDate || decisions[0].meetingDate !== decisions[1].meetingDate
+    || !['rejected', 'uncertain'].includes(decisions[0].checkerStatus)
+    || decisions[0].checkerStatus !== decisions[1].checkerStatus
+    || JSON.stringify(decisions[0].rejectedExactDates || []) !== JSON.stringify(decisions[1].rejectedExactDates || [])
+    || JSON.stringify(decisions[0].rejectedWordings || []) !== JSON.stringify(decisions[1].rejectedWordings || [])) return null;
+  const other = dateRow === left ? right : left;
+  if (dateRow.timingDecision.binding?.status !== 'supported'
+    || other.timingDecision.binding?.status !== (other.timing?.exactDate ? 'supported' : 'unresolved')) return null;
+  const { resolveExactDate } = require('../meetingMinutesTiming');
+  const dateSourceWording = dateRow.timingDecision.dateSourceWording || dateRow.timing.wording;
+  if (a.exactDate && b.exactDate && decisions[0].dateSourceWording && decisions[1].dateSourceWording
+    && actionText(decisions[0].dateSourceWording) !== actionText(decisions[1].dateSourceWording)) return null;
+  if (resolveExactDate(dateSourceWording, decisions[0].meetingDate) !== dateRow.timing.exactDate) return null;
+  const wording = record => actionText(record.timing?.wording);
+  const longer = wording(left).length > wording(right).length ? left : right;
+  const shorter = longer === left ? right : left;
+  const full = wording(longer), short = wording(shorter);
+  // Once a prior pass has already combined the two, preservation must recognise
+  // that complete row as representing the shorter approved original as well.
+  if (!short || !(full === short && full.includes(', ')
+    || full.startsWith(`${short}, `) && full.length - short.length >= 8)) return null;
+  const ids = record => [...new Set((record.evidenceIds || []).map(String))].sort();
+  if (!ids(left).length || JSON.stringify(ids(left)) !== JSON.stringify(ids(right))) return null;
+  const cited = new Set(ids(left));
+  if (!sourceUnits.some(unit => cited.has(String(unit.id))
+    && (dateRow.timingDecision.binding.matchedSourceIds || []).includes(String(unit.id))
+    && (unit.classification !== 'remove' || unit.restored)
+    && actionText(unit.text).includes(full))) return null;
+  const stableEvidence = ids(left);
+  const flags = [...new Set([...(left.reviewFlagIds || []), ...(right.reviewFlagIds || [])])];
+  if (flags.length > 24) return null;
+  const result = structuredClone(dateRow);
+  result.timingDecision = { ...result.timingDecision, dateSourceWording };
+  result.timing = { ...result.timing, wording: longer.timing.wording };
+  result.evidenceIds = stableEvidence;
+  result.reviewFlagIds = flags;
+  for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+    if (Array.isArray(left[key]) || Array.isArray(right[key])) {
+      result[key] = [...new Set([...(left[key] || []), ...(right[key] || [])])];
+    }
+  }
+  for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+    if (left[key] && right[key] && left[key] !== right[key]) return null;
+    if (left[key] || right[key]) result[key] = left[key] || right[key];
+  }
+  return result;
+}
+
 // The same sentence can legitimately describe two people's work or two dated
 // occurrences. Do not let an "identical text" shortcut discard that distinction.
 function exactActionIdentityConflict(left = {}, right = {}) {
@@ -173,5 +238,5 @@ function actionContainmentConflict(left = {}, right = {}) {
 module.exports = {
   actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText,
   conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict,
-  sourceBoundReviewTimingContext
+  sourceBoundReviewTimingContext, sourceBoundIdenticalActionTimingCompletion
 };
