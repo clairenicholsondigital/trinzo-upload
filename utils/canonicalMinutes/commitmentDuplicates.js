@@ -111,6 +111,27 @@ function sourceAwarePreferred(left = {}, right = {}) {
   };
   return score(right) > score(left) ? right : left;
 }
+
+// Two otherwise identical instructions can describe the same responsibility
+// with either ordinary role phrase. Keep this proof deliberately narrower than
+// a general synonym matcher: both rows must cite the same real source unit,
+// which must itself discuss responsibility, and owner/timing must be identical.
+// A different job, condition or reviewer-authored wording cannot pass the
+// full-sentence equality check after the one phrase substitution.
+function sourceBoundRoleClarificationDuplicate(left = {}, right = {}, sourceUnits = []) {
+  if (isReviewerAuthored(left) || isReviewerAuthored(right) || !sourceUnits.length) return false;
+  const normalise = value => String(value || '').normalize('NFKC').replace(/[’]/g, "'")
+    .toLowerCase().replace(/\bin charge of\b/g, 'responsible for')
+    .replace(/\s+/g, ' ').trim().replace(/[.!;]+$/, '').trim();
+  const a = normalise(left.action); const b = normalise(right.action);
+  if (!a || a !== b || String(left.action || '').toLowerCase() === String(right.action || '').toLowerCase()) return false;
+  if (!actionIsLosslesslyCovered({ ...left, action: a }, { ...right, action: b })
+    || !actionIsLosslesslyCovered({ ...right, action: b }, { ...left, action: a })) return false;
+  const rightIds = new Set((right.evidenceIds || []).map(String));
+  return sourceUnits.some(unit => rightIds.has(String(unit.id))
+    && (left.evidenceIds || []).some(id => String(id) === String(unit.id))
+    && /\b(?:in charge of|responsible for)\b/i.test(String(unit.text || '')));
+}
 // Wording length is not completeness: a verbose review can omit a short,
 // concrete requirement in another version. Compare detail words only after a
 // pair has passed the separate deliverable/ownership/timing checks.
@@ -735,4 +756,4 @@ function mergeCommitmentDuplicates(actions = [], options = {}) {
   return { actions: kept.map((k) => k.record), merged };
 }
 
-module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, commitmentVariantCovered, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };
+module.exports = { commitmentDuplicate, mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, commitmentVariantCovered, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred, sourceBoundRoleClarificationDuplicate, objectTokens, verbClass, dependsOn, conflictingRecipients, conflictingDestinations };

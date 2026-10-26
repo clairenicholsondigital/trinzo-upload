@@ -123,7 +123,7 @@ const {
   isSourceSupportedMaterialDetail
 } = require('../utils/canonicalMinutes/discussionPublication');
 const { discourseSegments, segmentAnchors, segmentLabels, regroupDiscussionBySegments } = require('../utils/canonicalMinutes/discourseSegments');
-const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred } = require('../utils/canonicalMinutes/commitmentDuplicates');
+const { mergeCommitmentDuplicates, commitmentDetailsCovered, commitmentCanBeRepresented, commitmentScopeConflict, commitmentClausesRetained, reconcileCommitmentVariants, sourceAwareParaphraseDuplicate, sourceAwarePreferred, sourceBoundRoleClarificationDuplicate } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const { actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict, sameActionText } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { questionCommunicationFrame, sameQuestionCommunicationDeliverable, sameOrNestedActionDeliverable, sameComplementaryDocumentDeliverable, complementaryDocumentRecipientHandoff, mergeComplementaryDocumentWording, sameContactPurposeDeliverable, sameReciprocalContactDeliverable, sameCanonicalDocumentWorkflow, mergeCanonicalDocumentWorkflowWording, circularMetaAction, conflictingActionRecipients } = require('../utils/canonicalMinutes/actionDeliverableIdentity');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
@@ -12569,12 +12569,14 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
     const represented = actions.some((existing) => existing === record || (!exactActionIdentityConflict(record, existing)
       && !conflictingTimings(record, existing)
       && !isReviewerAuthored(existing)
-      && (sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })
+      && (sourceBoundRoleClarificationDuplicate(record, existing, options.sourceUnits || [])
+        || sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })
         || (!actionContainmentConflict(record, existing)
           // A loose deliverable match is only a nomination. The published row
           // must retain this approved instruction's scope and relationships too.
           && commitmentCanBeRepresented(record, existing)))
-      && (sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })
+      && (sourceBoundRoleClarificationDuplicate(record, existing, options.sourceUnits || [])
+        || sourceAwareParaphraseDuplicate(record, existing, { sourceUnits: options.sourceUnits })
         || actionIsLosslesslyCovered(record, existing)
         || (!sameActionText(record, existing)
           && strictActionDeliverableMatch(record, existing, { includeDocumentation: true })
@@ -13602,6 +13604,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     let canonicalDocumentWorkflowDuplicate = null;
     let losslessPreferred = null;
     let sourceAwareDuplicate = null;
+    let roleClarificationDuplicate = null;
     let weekdayTimingReconciliation = null;
     const duplicate = merged.find((existing) => {
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
@@ -13611,6 +13614,10 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       // broad containment can otherwise discard a mandatory operation here.
       if (options.independentDiscovery && record.action !== existing.action
         && [record, existing].every(row => /^review and (?:document|record|update|revise|amend|edit)\b/i.test(row.action))) return false;
+      if (sourceBoundRoleClarificationDuplicate(record, existing, options.sourceUnits || [])) {
+        roleClarificationDuplicate = existing;
+        return true;
+      }
       if (timingsDifferOnlyByWeekdayPreposition(record, existing)) {
         // Optional weekday wording may unblock a preserved instruction, but
         // must not admit a looser owner, operation or deliverable match.
@@ -13726,6 +13733,33 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       Object.assign(duplicate, preferred, {
         evidenceIds: stableEvidence([duplicate, record]),
         reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24)
+      });
+      continue;
+    }
+    if (roleClarificationDuplicate === duplicate) {
+      // Either phrase carries the same instruction. Prefer the phrasing the
+      // shared source itself uses, while retaining both citations and flags.
+      const shared = new Set((record.evidenceIds || []).map(String));
+      const sourceText = (options.sourceUnits || []).filter(unit => shared.has(String(unit.id))
+        && (duplicate.evidenceIds || []).some(id => String(id) === String(unit.id)))
+        .map(unit => String(unit.text || '')).join(' ');
+      const sourceMatches = row => /\bin charge of\b/i.test(row.action || '')
+        ? Number(/\bin charge of\b/i.test(sourceText))
+        : Number(/\bresponsible for\b/i.test(sourceText));
+      const preferred = sourceMatches(record) > sourceMatches(duplicate) ? record : duplicate;
+      const recovery = {};
+      for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+        if (Array.isArray(duplicate[key]) || Array.isArray(record[key])) {
+          recovery[key] = [...new Set([...(duplicate[key] || []), ...(record[key] || [])])];
+        }
+      }
+      for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+        if (duplicate[key] || record[key]) recovery[key] = preferred[key] || duplicate[key] || record[key];
+      }
+      Object.assign(duplicate, preferred, {
+        evidenceIds: stableEvidence([duplicate, record]),
+        reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24),
+        ...recovery
       });
       continue;
     }
