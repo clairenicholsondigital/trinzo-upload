@@ -1,5 +1,7 @@
 'use strict';
 
+const { hasMilestoneCreationIntent } = require('./milestoneCreationIntent');
+
 // Report rows include carried context and accepted semantic matches. They are
 // deliberately not position-aligned with the raw extraction segments.
 const milestoneKey = row => String(row?.comparison_key || row?.milestone || row?.milestoneName || '')
@@ -62,12 +64,13 @@ function bindingsFor(result) {
   });
 }
 
-function resolveProjectMilestones(bindings, coreRows) {
+function resolveProjectMilestones(bindings, coreRows, options = {}) {
   const seen = new Set();
   return bindings.map(binding => {
+    const active = coreRows.filter(milestone => milestone.is_active !== false);
     const matches = binding.milestoneId
-      ? coreRows.filter(milestone => Number(milestone.id) === binding.milestoneId)
-      : coreRows.filter(milestone => milestone.milestone_name === (binding.row.milestone || binding.source.milestone));
+      ? active.filter(milestone => Number(milestone.id) === binding.milestoneId)
+      : active.filter(milestone => milestone.milestone_name === (binding.row.milestone || binding.source.milestone));
     if (binding.milestoneId && matches.length !== 1) {
       throw invalid('The milestone ID is not an active milestone in the selected project.');
     }
@@ -75,6 +78,14 @@ function resolveProjectMilestones(bindings, coreRows) {
       throw invalid('Ambiguous milestone name. Supply its project milestone ID.');
     }
     const core = matches[0];
+    const name = binding.row.milestone || binding.source.milestone || '';
+    if (!core && options.enforceCreationIntent) {
+      const inactive = coreRows.some(milestone => milestone.is_active === false
+        && milestoneKey({ milestone: milestone.milestone_name }) === milestoneKey({ milestone: name }));
+      const admitted = !inactive && binding.assess && hasMilestoneCreationIntent(name, options.transcriptText);
+      if (!admitted) return { ...binding, coreId: null, assess: false,
+        admissionReason: inactive ? 'inactive_milestone' : 'no_source_creation_intent' };
+    }
     const target = core ? 'id:' + core.id : 'name:' + (binding.row.milestone || binding.source.milestone || '');
     if (binding.assess && seen.has(target)) throw invalid('Ambiguous repeated milestone assessment.');
     if (binding.assess) seen.add(target);

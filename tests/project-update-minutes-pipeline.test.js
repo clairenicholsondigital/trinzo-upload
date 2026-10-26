@@ -46,7 +46,8 @@ async function query(sql, params = []) {
     store.versions.push({ id, reportId: params[0], payload: JSON.parse(params[1]) });
     return { rows: [{ id }] };
   }
-  if (/^SELECT id, milestone_name FROM project_core_milestones/.test(text)) return { rows: store.coreMilestones.filter(m=>m.project_id===params[0]) };
+  // Admission now loads inactive rows too, so deleted names cannot be recreated.
+  if (/^SELECT id, milestone_name(?:, is_active)? FROM project_core_milestones/.test(text)) return { rows: store.coreMilestones.filter(m=>m.project_id===params[0]) };
   if (/^WITH existing AS/.test(text)) {
     const found=store.coreMilestones.find(m=>params[6]?m.id===params[6]:m.milestone_name===params[1]);
     return {rows:[{id:found?.id||store.nextId++}]};

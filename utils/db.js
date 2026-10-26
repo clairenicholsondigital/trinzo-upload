@@ -2839,9 +2839,22 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
   // Validate target IDs/names before creating report/version records. Only a
   // supported row can create a fresh assessment; carried context is not evidence.
   const coreRows = candidateBindings.length
-    ? (await query('SELECT id, milestone_name FROM project_core_milestones WHERE project_id=$1 AND is_active=TRUE', [projectId])).rows
+    ? (await query('SELECT id, milestone_name, is_active FROM project_core_milestones WHERE project_id=$1', [projectId])).rows
     : [];
-  const milestoneBindings = resolveProjectMilestones(candidateBindings, coreRows);
+  const milestoneBindings = resolveProjectMilestones(candidateBindings, coreRows, {
+    enforceCreationIntent: true, transcriptText: transcript
+  });
+  // Keep narrative and raw extraction for traceability, but do not present an
+  // unadmitted label as a tracked milestone in the saved or returned report.
+  if (Array.isArray(result?.projectReport?.milestones)) {
+    result.projectReport = {
+      ...result.projectReport,
+      milestones: milestoneBindings.filter(binding => !binding.admissionReason).map(binding => binding.row),
+      milestoneAdmission: milestoneBindings.filter(binding => binding.admissionReason).map(binding => ({
+        milestone: binding.row.milestone, reason: binding.admissionReason
+      }))
+    };
+  }
 
   const existingPeriod = await query(
     `SELECT id FROM project_reporting_periods
@@ -2929,6 +2942,7 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     );
   }
 
+  let admissionChangedDuringSave = false;
   for (let index = 0; index < milestoneBindings.length; index += 1) {
     const binding = milestoneBindings[index];
     if (!binding.assess) continue;
@@ -2952,6 +2966,12 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
   INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, baseline_finish_date, forecast_finish_date, sort_order, is_active)
   SELECT $1, $3, 'Transcript', $2, $4::date, $5::date, $6, TRUE
   WHERE NOT EXISTS (SELECT 1 FROM existing) AND $7::bigint IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM project_core_milestones
+      WHERE project_id=$1 AND is_active=FALSE
+        AND TRIM(BOTH '_' FROM regexp_replace(lower(milestone_name), '[^a-z0-9]+', '_', 'g'))
+          = TRIM(BOTH '_' FROM regexp_replace(lower($2::text), '[^a-z0-9]+', '_', 'g'))
+    )
   RETURNING id
 )
 SELECT id::text FROM inserted
@@ -2960,6 +2980,13 @@ SELECT id::text FROM existing
 LIMIT 1`,
       [projectId, milestoneName, reportingPeriodId, toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), index, binding.coreId]
     );
+    if (!milestoneResult.rows.length) {
+      // The target may have been made inactive after preflight. Never revive
+      // it or attach a new assessment to an inactive record.
+      binding.admissionReason = 'milestone_became_inactive';
+      admissionChangedDuringSave = true;
+      continue;
+    }
     const milestoneId = parseId(milestoneResult.rows[0], 'milestone');
     await query(
       `INSERT INTO project_report_milestone_assessments
@@ -2977,6 +3004,17 @@ LIMIT 1`,
         [reportVersionId, milestoneId, evidenceItem.text || '', evidenceItem.speaker || '', turnIndex, clampConfidence(evidenceItem.score ?? evidenceItem.confidence ?? segment.confidence)]
       );
     }
+  }
+
+  if (admissionChangedDuringSave && Array.isArray(result?.projectReport?.milestones)) {
+    result.projectReport = {
+      ...result.projectReport,
+      milestones: milestoneBindings.filter(binding => !binding.admissionReason).map(binding => binding.row),
+      milestoneAdmission: milestoneBindings.filter(binding => binding.admissionReason).map(binding => ({
+        milestone: binding.row.milestone, reason: binding.admissionReason
+      }))
+    };
+    await query('UPDATE project_report_versions SET report_payload=$1 WHERE id=$2', [JSON.stringify(result), reportVersionId]);
   }
 
   for (const risk of risks.slice(0, 10)) {
