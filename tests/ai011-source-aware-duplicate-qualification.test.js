@@ -173,6 +173,73 @@ test('timing completion refuses a different owner, source, check, date or qualif
     'I will replace the broken valve this weekend, Saturday morning probably.')] }).length, 2);
 });
 
+test('identical work with one literal dependency wording keeps one unresolved action and all warnings', () => {
+  const sources = [source('LATCH-01', 'I will fit the door latch when you do the inspection Friday.')];
+  const action = 'Fit the door latch.';
+  const variants = [
+    row('latch-paraphrase', action, ['Morgan Lee'],
+      { kind: 'dependency', wording: 'when doing the inspection work Friday', exactDate: '' }, ['LATCH-01']),
+    row('latch-literal', action, ['Morgan Lee'],
+      { kind: 'dependency', wording: 'when you do the inspection Friday', exactDate: '' }, ['LATCH-01'])
+  ];
+  variants[0].reviewFlagIds = ['paraphrase-warning'];
+  variants[1].reviewFlagIds = ['literal-warning'];
+  for (const item of variants) {
+    item.timingDecision = { version: TimingIntegrity.TIMING_POLICY_VERSION,
+      ...TimingIntegrity.timingAssessmentKey(item, sources, '2026-08-05'),
+      status: 'unresolved', checkerStatus: 'uncertain', binding: { status: 'unresolved' },
+      rejectedWordings: [], rejectedExactDates: [] };
+  }
+  for (const rows of [variants, [...variants].reverse()]) {
+    const result = qualify(rows, sources);
+    assert.equal(result.hybrid.length, 1);
+    assert.equal(result.final.length, 1);
+    assert.equal(result.published.length, 1);
+    assert.equal(result.published[0].timing.wording, variants[1].timing.wording);
+    assert.equal(result.published[0].timingDecision.status, 'unresolved');
+    assert.equal(result.published[0].timingDecision.checkerStatus, 'uncertain');
+    assert.deepEqual(new Set(result.published[0].reviewFlagIds),
+      new Set(['paraphrase-warning', 'literal-warning']));
+    const checked = finaliseActionTimings(result.published, sources, { meetingDate: '2026-08-05' });
+    assert.equal(checked.actions[0].timing.wording, variants[1].timing.wording);
+    assert.equal(checked.actions[0].timingDecision.status, 'unresolved');
+  }
+  for (const [published, approved] of [[variants[0], variants[1]], [variants[1], variants[0]]]) {
+    const saved = reconcileFinalApprovedActions([published], [approved], { sourceUnits: sources });
+    assert.equal(saved.actions.length, 1);
+    assert.deepEqual(new Set(saved.actions[0].reviewFlagIds),
+      new Set(['paraphrase-warning', 'literal-warning']));
+  }
+});
+
+test('literal dependency merge refuses changed occurrence, source, owner or checker result', () => {
+  const sources = [source('LATCH-01', 'I will fit the door latch when you do the inspection Friday.')];
+  const make = (id, wording) => {
+    const item = row(id, 'Fit the door latch.', ['Morgan Lee'],
+      { kind: 'dependency', wording, exactDate: '' }, ['LATCH-01']);
+    item.timingDecision = { status: 'unresolved', checkerStatus: 'uncertain', meetingDate: '2026-08-05',
+      binding: { status: 'unresolved' }, rejectedWordings: [], rejectedExactDates: [] };
+    return item;
+  };
+  const a = make('a', 'when doing the inspection work Friday');
+  const b = make('b', 'when you do the inspection Friday');
+  const variants = [
+    { ...b, owners: ['Casey Green'] },
+    { ...b, evidenceIds: ['LATCH-02'] },
+    { ...b, timing: { ...b.timing, wording: 'when you do the inspection Monday' } },
+    { ...b, timing: { ...b.timing, exactDate: '2026-08-07' } },
+    { ...b, timingDecision: { ...b.timingDecision, checkerStatus: 'rejected' } },
+    { ...b, timingDecision: { ...b.timingDecision, binding: { status: 'supported' } } },
+    { ...b, timingDecision: { ...b.timingDecision, rejectedWordings: [b.timing.wording] } },
+    { ...b, reviewerAuthored: true }
+  ];
+  for (const variant of variants) {
+    assert.equal(dedupeHybridActionRecords([a, variant], { sourceUnits: sources }).length, 2);
+  }
+  assert.equal(dedupeHybridActionRecords([a, b], { sourceUnits: [source('LATCH-01',
+    'I will fit the door latch after the inspection Friday.')] }).length, 2);
+});
+
 test('review timing context cannot hide a distinct occurrence or unsupported meeting', () => {
   const sourceText = 'You review on Wednesday, and then we go into the meeting on Thursday.';
   const first = row('review-a', 'Review the draft before the meeting.', ['Morgan Lee'], timing('on Wednesday', 'target'), ['REVIEW-01']);

@@ -140,6 +140,54 @@ function sourceBoundIdenticalActionTimingCompletion(left = {}, right = {}, sourc
   return result;
 }
 
+// The same dependency can be extracted in spoken second person or as a
+// participial phrase. Admit only this small grammatical equivalence, with an
+// actual cited source wording as the survivor and the unresolved check intact.
+function sourceBoundLiteralDependencyTiming(left = {}, right = {}, sourceUnits = []) {
+  if (isReviewerAuthored(left) || isReviewerAuthored(right)
+    || !sameActionText(left, right) || !ownerKey(left) || ownerKey(left) !== ownerKey(right)) return null;
+  const a = left.timing || {}, b = right.timing || {};
+  if (a.kind !== 'dependency' || b.kind !== 'dependency' || a.exactDate || b.exactDate) return null;
+  const wording = value => actionText(value.timing?.wording);
+  const day = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
+  const shape = new RegExp(`^when (?:doing|you do) [a-z ]+ ${day}$`);
+  if (!shape.test(wording(left)) || !shape.test(wording(right)) || wording(left) === wording(right)) return null;
+  const canonicalDependency = value => wording(value).replace(/^when you do\b/, 'when doing')
+    .replace(new RegExp(`\\bwork (?=${day}$)`), '').replace(/\s+/g, ' ');
+  if (canonicalDependency(left) !== canonicalDependency(right)) return null;
+  const ids = record => [...new Set((record.evidenceIds || []).map(String))].sort();
+  if (!ids(left).length || JSON.stringify(ids(left)) !== JSON.stringify(ids(right))) return null;
+  const decisions = [left.timingDecision, right.timingDecision];
+  if (decisions.some(decision => !decision || decision.status !== 'unresolved'
+    || decision.binding?.status !== 'unresolved')
+    || !decisions[0].meetingDate || decisions[0].meetingDate !== decisions[1].meetingDate
+    || !['uncertain', 'rejected'].includes(decisions[0].checkerStatus)
+    || decisions[0].checkerStatus !== decisions[1].checkerStatus
+    || JSON.stringify(decisions[0].rejectedExactDates || []) !== JSON.stringify(decisions[1].rejectedExactDates || [])
+    || JSON.stringify(decisions[0].rejectedWordings || []) !== JSON.stringify(decisions[1].rejectedWordings || [])) return null;
+  const cited = new Set(ids(left));
+  const literal = record => sourceUnits.some(unit => cited.has(String(unit.id))
+    && (unit.classification !== 'remove' || unit.restored)
+    && actionText(unit.text).includes(wording(record)));
+  const matches = [left, right].filter(literal);
+  if (matches.length !== 1) return null;
+  const flags = [...new Set([...(left.reviewFlagIds || []), ...(right.reviewFlagIds || [])])];
+  if (flags.length > 24) return null;
+  const result = structuredClone(matches[0]);
+  result.evidenceIds = ids(left);
+  result.reviewFlagIds = flags;
+  for (const key of ['_unsupportedEvidenceIds', '_weakEvidenceIds', '_timingConflicts']) {
+    if (Array.isArray(left[key]) || Array.isArray(right[key])) {
+      result[key] = [...new Set([...(left[key] || []), ...(right[key] || [])])];
+    }
+  }
+  for (const key of ['_timingPublicationIssue', '_timingClauseNote']) {
+    if (left[key] && right[key] && left[key] !== right[key]) return null;
+    if (left[key] || right[key]) result[key] = left[key] || right[key];
+  }
+  return result;
+}
+
 // The same sentence can legitimately describe two people's work or two dated
 // occurrences. Do not let an "identical text" shortcut discard that distinction.
 function exactActionIdentityConflict(left = {}, right = {}) {
@@ -238,5 +286,6 @@ function actionContainmentConflict(left = {}, right = {}) {
 module.exports = {
   actionIsLosslesslyCovered, actionIsSafelyCovered, exactActionIdentityConflict, sameActionText,
   conflictingTimings, timingsDifferOnlyByWeekdayPreposition, actionContainmentConflict,
-  sourceBoundReviewTimingContext, sourceBoundIdenticalActionTimingCompletion
+  sourceBoundReviewTimingContext, sourceBoundIdenticalActionTimingCompletion,
+  sourceBoundLiteralDependencyTiming
 };
