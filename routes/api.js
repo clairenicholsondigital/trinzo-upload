@@ -10456,6 +10456,11 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   }
 
   const rawBody = await response.text();
+  // Optional private diagnostics must see the wire body before parsing can
+  // reject it. Never attach source content to errors or public/log metadata.
+  if (typeof options.onRawResponse === 'function') {
+    try { await options.onRawResponse(rawBody); } catch { /* Diagnostics cannot change the provider outcome. */ }
+  }
   if (!response.ok) {
     const error = new Error(`Power Automate agent call failed with status ${response.status}.`);
     error.statusCode = response.status === 429 || response.status >= 500 ? 503 : 502;
@@ -11072,7 +11077,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       requestId: meetingMinutesAgentText(options.requestId, 160)
     };
     if (options.onAttempt) await options.onAttempt(attemptInfo).catch(() => {});
-    let rawReply, normalizedReply;
+    let wireReply, rawReply, normalizedReply;
     try {
       const configuredAttemptTimeoutMs = Number(options.attemptTimeoutMs
         || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000);
@@ -11080,7 +11085,10 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
         ? Math.max(10000, Math.min(configuredAttemptTimeoutMs, remaining))
         : undefined;
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
-        paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass
+        paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass,
+        ...(typeof options.onFailure === 'function' ? {
+          onRawResponse: (body) => { wireReply = refereeFailureSnapshot(body); }
+        } : {})
       });
       if (typeof options.onFailure === 'function') rawReply = refereeFailureSnapshot(freshResult);
       if (typeof options.onResult === 'function') await options.onResult(freshResult, attemptInfo);
@@ -11105,6 +11113,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       // another provider request or replace the original validation outcome.
       if (typeof options.onFailure === 'function') {
         try { await options.onFailure({ prompt: refereeFailureSnapshot(attemptPrompt),
+          wireReply: wireReply || refereeFailureSnapshot(undefined),
           rawReply: rawReply || refereeFailureSnapshot(undefined),
           normalizedReply: normalizedReply || refereeFailureSnapshot(undefined), attemptInfo, error }); }
         catch { console.warn(JSON.stringify({ event: 'meeting_agent_referee_audit_unavailable',
@@ -16025,10 +16034,10 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         validateResult: callOptions.validateResult,
         repairPrompt: callOptions.repairPrompt,
         combineResults: callOptions.combineResults,
-        ...(stage === 'discussion' && isRefereeCall ? { onFailure: async ({ prompt: exactPrompt, rawReply, normalizedReply, attemptInfo, error }) => {
+        ...(isRefereeCall ? { onFailure: async ({ prompt: exactPrompt, wireReply, rawReply, normalizedReply, attemptInfo, error }) => {
           refereeFailureAudit = appendRefereeFailureAudit(refereeFailureAudit, {
             runId: refereeAuditRunId, stage, pass, requestId, attempt: attemptInfo.attempt,
-            prompt: exactPrompt, rawReply, normalizedReply,
+            prompt: exactPrompt, wireReply, rawReply, normalizedReply,
             contract: refereeFailureSnapshot(callOptions.refereeContract || {}),
             validation: { code: meetingMinutesAgentText(error.code, 120),
               invalidCandidateIds: (error.invalidCandidateIds || []).slice(0, 120),
@@ -18179,6 +18188,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       qualityState: { ...(draft.qualityState || {}),
         discussion: { ...(draft.qualityState?.discussion || {}), claimConsolidation: separatedDiscussion.audit },
         actions: {
+        ...(refereeFailureAudit ? { refereeFailureAudit } : {}),
         timingPolicyVersion: TIMING_POLICY_VERSION,
         ...(timingRecoveryAudit ? { timingRecovery: timingRecoveryAudit } : {}),
         timingReview: timingChecked.accounting || { expected: 0, received: 0, complete: false, disabled: true },

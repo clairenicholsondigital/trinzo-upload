@@ -277,6 +277,18 @@ for (const fault of ['none', 'missing_atomic', 'malformed_group']) test(`the act
   assert.equal(new Set(initial.flatMap(call => call.expectedCandidateIds)).size,
     initial.reduce((sum, call) => sum + call.expectedCandidateCount, 0), 'no successful sibling is resent');
   const quality = result.changes.qualityState.actions;
+  const failures = quality.refereeFailureAudit;
+  assert.ok(failures?.entries.length, 'action-referee failure evidence survives the complete stage');
+  for (const entry of failures.entries) {
+    assert.equal(entry.stage, 'actions');
+    assert.equal(entry.wireReply.complete, true);
+    const exact = JSON.parse(entry.wireReply.value);
+    assert.equal(exact.requestId, entry.requestId);
+    assert.equal(entry.rawReply.value.requestId, exact.requestId);
+  }
+  const auditReloaded = A.meetingAgentDraftPayload({ ...draft, ...result.changes });
+  assert.deepEqual(auditReloaded.qualityState.actions.refereeFailureAudit, failures, 'a save/reload retains exact private evidence');
+  assert.equal(A.publicMeetingAgentDraft(auditReloaded).qualityState, undefined, 'diagnostics never enter the reviewer payload');
   assert.equal(quality.refereeMaterialization.complete, false);
   assert.ok(quality.refereeMaterialization.unresolvedCount > 0);
   assert.ok(quality.candidateDispositions.some(row => row.disposition === 'unresolved'));
