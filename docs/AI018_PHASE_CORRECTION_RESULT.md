@@ -1,8 +1,8 @@
 # AI-018: bounded phase correction
 
-Date: 26 October 2026  
-Branch: `fix/ai018-phase-aware-actions`  
-Implementation base: `21dfefeec75d5f36785d82edca910e4db37b5ac4`  
+Date: 26 October 2026
+Branch: `fix/ai018-phase-aware-actions`
+Implementation base: `21dfefeec75d5f36785d82edca910e4db37b5ac4`
 Main baseline: `7107e5dc1ec828d855a8c5cbc05e8ea6a88d8936`
 
 ## Result and release status
