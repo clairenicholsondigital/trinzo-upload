@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const contained = require('./containedRequirement');
 const dependency = require('./qualifiedDependency');
 const contactPurpose = require('./contactParaphrase');
+const { ownerWitness } = require('../meetingMinutesSemanticSourceVerification');
 const { sourceOperationReviewValid } = require('../meetingMinutesSemanticSourceVerification');
 const { isReviewerAuthored } = require('./state');
 const { enquiryFrame, sameEnquiryPair, enquiryPurposeRetained } = require('./contactEnquiry');
@@ -207,6 +208,7 @@ function prepareActionReconciliation(input = {}) {
   const actions = Array.isArray(input.actions) ? input.actions : [];
   const sourceUnits = sourceRows(input.sourceUnits);
   const protectedIds = new Set(input.protectedOccurrenceIds || []);
+  const protectedActionIds = new Set(input.protectedActionIds || []);
   const serials = new Map();
   const rows = actions.map((action, index) => {
     const record = clone(action); const recordHash = hash(record);
@@ -216,7 +218,7 @@ function prepareActionReconciliation(input = {}) {
       facets: protectedFacets(record), clauses: instructionClauses(record.action),
       clauseDescriptors: instructionClauses(record.action).map(text => ({ text,
         operation: words(text)[0] || '', object: words(text).slice(1).join(' ') })),
-      protected: isReviewerAuthored(record)
+      protected: isReviewerAuthored(record) || protectedActionIds.has(record.id)
         || Boolean(record.occurrenceId && protectedIds.has(record.occurrenceId)),
       witnesses: sourceUnits.filter(unit => evidence.has(unit.id)).map(unit => ({ sourceId: unit.id,
         sourceHash: hash(unit), text: String(unit.text || ''), speaker: String(unit.speaker || '') })) };
@@ -356,8 +358,7 @@ function validateCoverage(packet, proof, original, survivor) {
   const sourceWords = contentWords(spans.map(span => span.quote).join(' '));
   for (const witness of [original, survivor]) {
     if (!proof.semanticProof && !subset(contentWords(witness.action.action), sourceWords)) return 'wording_not_directly_source_grounded';
-    if (!owners(witness.action).every(owner => spans.some(span => canonical(span.unit.speaker) === owner
-      || canonical(span.quote).includes(owner)))) return 'owner_not_source_grounded';
+    if (!owners(witness.action).every(owner => spans.some(span => ownerWitness({speaker:span.unit.speaker,text:span.quote},owner)))) return 'owner_not_source_grounded';
   }
   const sourceComparison = comparisonNumbers(spans.map(span => span.quote).join(' '));
   const sourceFacets = protectedFacets({ action: sourceComparison });

@@ -2124,6 +2124,26 @@
     return ['cannot verify', 'unable to verify', 'not verified', 'review this item against the transcript', 'check against the transcript'].indexOf(detail) === -1;
   }
 
+  function identicalReviewKey(flag) {
+    if (!flag || flag.status !== 'open' || flag.reviewerAuthored || flag.correctionNote) return '';
+    function stable(value) { return Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
+      ? Object.keys(value).sort().reduce(function (out, key) { out[key] = stable(value[key]); return out; }, {}) : value; }
+    var copy = Object.assign({}, flag); delete copy.id;
+    return JSON.stringify(stable(copy));
+  }
+
+  function reviewTargetKey(flag) {
+    var links = 0;
+    function visit(record) { if ((record.reviewFlagIds || []).indexOf(flag.id) >= 0) links++; (record.supportingDetails || []).forEach(visit); }
+    (state.draft.actions || []).forEach(visit); (state.draft.unassignedSupportingDetails || []).forEach(visit);
+    (state.draft.excludedSupportingDetails || []).forEach(function (entry) { visit(entry.record); });
+    (state.draft.discussion || []).forEach(function (topic) { ['points','decisions','openQuestions'].forEach(function (field) { (topic[field] || []).forEach(visit); }); });
+    if (links !== 1) return '';
+    var target = flagTarget(flag);
+    if (!target || target.ambiguous || !target.elementId || Array.from(document.querySelectorAll('[id]')).filter(function (node) { return node.id === target.elementId; }).length !== 1) return '';
+    return [target.stage, target.elementId, target.field].join('|');
+  }
+
   function renderFlags() {
     var flags = (state.draft && state.draft.reviewFlags) || [];
     var open = flags.filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
@@ -2191,10 +2211,25 @@
       group.entries.push({ flag: flag, index: index });
     });
     function renderGroup(group) {
+      var bundles = [], byKey = new Map();
+      group.entries.forEach(function (entry) {
+        var targetKey = reviewTargetKey(entry.flag), key = targetKey && identicalReviewKey(entry.flag);
+        key = key ? targetKey + '|' + key : 'individual|' + entry.index;
+        var bundle = byKey.get(key);
+        if (!bundle) { bundle = []; byKey.set(key, bundle); bundles.push(bundle); }
+        bundle.push(entry);
+      });
+      var first = true;
       return '<section class="review-occurrence" data-review-occurrence><div class="review-occurrence-checks">'
         + (group.entries.length > 1 ? '<p class="muted">' + group.entries.length + ' checks for this item — each keeps its own decision.</p>' : '')
-        + group.entries.map(function (entry, index) { return renderCheck(entry.flag, entry.index, index === 0); }).join('')
-        + '</div></section>';
+        + bundles.map(function (bundle) {
+          var entry = bundle[0], html = renderCheck(entry.flag, entry.index, first); first = false;
+          if (bundle.length === 1) return html;
+          return html + '<div class="flag-actions"><button class="secondary" type="button" data-confirm-identical-flags="' + escapeHtml(JSON.stringify(bundle.map(function (entry) { return entry.flag.id; })))
+            + '" data-identical-review-key="' + escapeHtml(identicalReviewKey(entry.flag)) + '" data-identical-review-target="' + escapeHtml(reviewTargetKey(entry.flag)) + '">Mark all ' + bundle.length + ' identical checks as checked</button></div>'
+            + '<details class="review-evidence" data-identical-review-copies data-keep-open="identical-checks:' + escapeHtml(entry.flag.id) + '"><summary>' + bundle.length + ' identical checks for this item — individual controls</summary>'
+            + bundle.slice(1).map(function (copy) { return renderCheck(copy.flag, copy.index, false); }).join('') + '</details>';
+        }).join('') + '</div></section>';
     }
     function section(kind, heading, description, optional) {
       var rows = categories[kind]; if (!rows.length) return '';
@@ -4132,6 +4167,19 @@
     if (targetButton) {
       openReviewTarget(targetButton);
       return;
+    }
+    var identical = event.target.closest('[data-confirm-identical-flags]');
+    if (identical) {
+      var ids; try { ids = JSON.parse(identical.dataset.confirmIdenticalFlags); } catch (error) { return; }
+      if (!Array.isArray(ids) || ids.length < 2 || new Set(ids).size !== ids.length) return;
+      var flags = state.draft.reviewFlags || [], selected = ids.map(function (id) { return flags.filter(function (flag) { return flag.id === id; }); });
+      if (selected.some(function (matches) { return matches.length !== 1; })) return;
+      selected = selected.map(function (matches) { return matches[0]; });
+      if (selected.some(function (flag) { return identicalReviewKey(flag) !== identical.dataset.identicalReviewKey || !reviewTargetKey(flag) || reviewTargetKey(flag) !== identical.dataset.identicalReviewTarget; })) return;
+      var pendingNote = flags.some(function (flag) { var index = flags.indexOf(flag), input = document.querySelector('[data-flag-correction="' + index + '"]'); return input && input.value.trim() !== (flag.correctionNote || '').trim(); });
+      if (pendingNote) { setStatus('Save your individual review notes before checking these together.', true, currentStageName()); return; }
+      selected.forEach(function (flag) { flag.status = 'confirmed'; });
+      renderFlags(); queueReviewDecision('Identical source checks reviewed together'); return;
     }
     var button=event.target.closest('[data-flag-index]'); if(!button)return; var index=Number(button.dataset.flagIndex); var note=document.querySelector('[data-flag-correction="'+index+'"]'); state.draft.reviewFlags[index].status=button.dataset.flagStatus; if(note)state.draft.reviewFlags[index].correctionNote=note.value.trim(); renderFlags(); var decisionLabel=button.dataset.flagStatus==='dismissed'?'Review item marked not needed':button.dataset.flagStatus==='corrected'?'Review note saved and item resolved':'Review item resolved'; queueReviewDecision(decisionLabel);
   });
