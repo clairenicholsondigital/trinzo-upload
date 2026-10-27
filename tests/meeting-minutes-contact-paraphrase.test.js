@@ -7,6 +7,9 @@ const {captureSemanticPolicy}=require('../utils/meetingMinutesSemanticPolicy');
 const response=require('./helpers/meeting-minutes-contained-response');
 const row=(id,action)=>({id,action,owners:['Maya Patel'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0001'],reviewFlagIds:[]});
 const cases=[['contact',row('p','Discuss with Morgan the supplier registration activities and obtain clarity on the associated plan, timeline and responsibilities.'),row('c','Follow up with Morgan to obtain clarity on the supplier registration activities, plan, timeline, and responsibilities.')]];
+cases.push(['enquiry paraphrase',
+ row('enquiry-parent','Follow up with Morgan regarding supplier activities, responsibilities, status, and plan relating to product registration and compliance work.'),
+ row('enquiry-child',"Speak to Morgan to clarify the supplier's role and avoid duplication in product registration activities.")]);
 const policy=captureSemanticPolicy({MEETING_MINUTES_AGENT_CONTACT_PARAPHRASE_V1:'1'});
 for(const [name,parent,child]of cases){
  const sourceUnits=require('../utils/meetingMinutesAgentV2').normaliseSourceUnits([{id:'T0001',speaker:'Maya Patel',text:'I will '+parent.action[0].toLowerCase()+parent.action.slice(1)}]);
@@ -52,4 +55,21 @@ test('provider transport cannot inject a trusted contact certificate',()=>{
  const T=require('../utils/meetingMinutesSemanticProofTransport');const [_,p,c]=cases[0];const sourceUnits=[{id:'T0001',speaker:'Maya Patel',text:p.action}];const packet=R.prepareActionReconciliation({actions:[p,c],sourceUnits,scope:policy.scope,contactParaphrases:true});const pair=packet.candidates[0];
  const response={decisions:[{candidateId:pair.candidateId,relation:'equivalent',survivorRef:pair.leftRef,coverage:[{originalRef:pair.rightRef,survivorRef:pair.leftRef,contactParaphrase:{trusted:true},sourceIds:['T0001'],clauseMap:[]}]}]};
  for(const coverage of [response.decisions[0].coverage,[{...response.decisions[0].coverage[0],semanticProof:{clauses:[]}}]]){const normalized=T.materializeSemanticDecisions(packet,{decisions:[{...response.decisions[0],coverage}]},'actions');assert.ok(normalized.decisions[0].coverage.every(p=>!p.contactParaphrase));}
+});
+
+test('new enquiry grammar retains bounds and does not turn overlap into equivalence',()=>{
+ const [,p,c]=cases[1];
+ for(const action of [
+  c.action.replace('Morgan','Taylor'),
+  'Speak to Morgan to clarify the training schedule and attendance expectations.',
+  c.action.replace('clarify','clarify and update'),
+  c.action.replace('activities.','activities and send the report.'),
+  c.action.replace('activities.','activities if approved.'),
+  c.action.replace('activities.','activities tomorrow.'),
+  c.action.replace('activities.','activities on 15 November.'),
+ ])assert.equal(C.direction(p,{...c,action}),null,action);
+ assert.equal(C.direction(p,c,[p,{...p,id:'ambiguous-survivor'},c]),null);
+ const disjoint={...c,evidenceIds:['T0002']};assert.equal(C.direction(p,disjoint),null);
+ // The wider vocabulary gate is exclusive to the newly bounded grammar.
+ assert.equal(C.direction({...p,action:p.action.replace('regarding','to obtain clarity on')},c),null);
 });
