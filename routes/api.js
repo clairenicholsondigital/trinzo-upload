@@ -14660,6 +14660,12 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     .filter((candidate) => candidate?.candidateId)
     .map((candidate) => [String(candidate.candidateId), candidate]));
   const ownerPool = [...(Array.isArray(candidates) ? candidates : []), ...(Array.isArray(options.ownerPool) ? options.ownerPool : [])];
+  // Referee contracts deliberately compact away records and review flags.
+  // Recover the restriction by exact candidate ID from the server's ledger,
+  // not from model wording or an inferred twin.
+  const documentReviewRecords = new Map(ownerPool
+    .filter(candidate => candidate?.candidateId && requiresDocumentReferenceReview(candidate.record))
+    .map(candidate => [String(candidate.candidateId), candidate.record]));
   const unresolvedMaterializations = refereeActionMaterializationIssues(dispositions, candidates);
   const unresolvedIds = new Set(unresolvedMaterializations.map((item) => item.candidateId));
   let borrowedOwners = 0;
@@ -14689,9 +14695,10 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     // A referee verdict cannot settle a document association or acceptance
     // that source-context recovery explicitly left for a human. Keep that
     // restriction through reconstruction, before any owner inference.
-    const documentReviewRequired = requiresDocumentReferenceReview(selected.record);
+    const documentReviewRecord = documentReviewRecords.get(String(selected.candidateId));
+    const documentReviewRequired = Boolean(documentReviewRecord);
     const materializedKind = documentReviewRequired ? 'proposal' : kind;
-    let owners = candidateOwnersOf(selected);
+    let owners = documentReviewRequired ? [...(documentReviewRecord.owners || [])] : candidateOwnersOf(selected);
     if (!documentReviewRequired && !owners.length && Array.isArray(disposition?.owners)) {
       owners = disposition.owners.map((owner) => meetingMinutesAgentText(owner, 120)).filter(Boolean);
     }
@@ -14715,7 +14722,7 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
           ...(Array.isArray(disposition?.evidenceIds) ? disposition.evidenceIds : []),
           ...borrowedEvidence
         ])],
-        reviewFlagIds: documentReviewRequired ? [...selected.record.reviewFlagIds] : []
+        reviewFlagIds: documentReviewRequired ? [...documentReviewRecord.reviewFlagIds] : []
       }
     });
     actionDiagnostics.transition(borrowedEvidence.length ? 'owner_borrowed' : 'referee_materialised', [diagnosticSource], [rows.at(-1).record],
@@ -18397,7 +18404,13 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   const assembledActionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags([
     ...materializationReview.flags, ...refereeFlags,
     ...primary.reviewFlags.filter(flag => flag.sourceReviewContext?.kind === 'assessment_ownership_notice'),
-    ...retainedDocumentReferenceReviewFlags([...agentDeclaredProposals, ...proposedRecords])
+    // Keep the source question even if revalidation or coverage filtering
+    // withholds its proposal. The original ledger carries the typed warning;
+    // a referee verdict must not erase the work from human review.
+    ...retainedDocumentReferenceReviewFlags([
+      ...agentDeclaredProposals, ...proposedRecords,
+      ...ensemble.filter(candidate => candidate.recordType === 'action').map(candidate => candidate.record)
+    ])
   ], [
     ...splitTimingFlags,
     ...finalTiming.flags,

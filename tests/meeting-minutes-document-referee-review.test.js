@@ -91,3 +91,17 @@ test('ordinary supported actions retain the existing owner borrowing behaviour',
   assert.deepEqual(result.actions[0].owners, ['Maya Patel']);
   assert.deepEqual(result.actionProposals, []);
 });
+
+test('referee contract compaction cannot erase the server-side document review requirement', () => {
+  const { units, record, candidate, twin } = fixture();
+  const contract = A.meetingMinutesAgentRefereeContract('actions', [candidate], 'review-boundary');
+  const compact = contract.candidates.find(c => c.candidateId === candidate.candidateId);
+  assert.ok(compact);
+  assert.equal(compact.record, undefined);
+  const result = A.reconstructRefereeActions([{ candidateId: compact.candidateId,
+    disposition: 'publish', owners: ['Omar Dean'] }], contract.candidates, units, { ownerPool: [candidate, twin] });
+  assert.deepEqual(result.actions, []);
+  assert.equal(result.actionProposals.length, 1);
+  assert.deepEqual(result.actionProposals[0].reviewFlagIds, record.reviewFlagIds);
+  assert.deepEqual(result.actionProposals[0].owners, []);
+});
