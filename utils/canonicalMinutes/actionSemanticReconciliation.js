@@ -250,6 +250,9 @@ function prepareActionReconciliation(input = {}) {
   if(input.qualifiedDependencies===true && input.scope!=='qualified_dependencies')classes.push('qualified_dependencies');
   if(input.contactParaphrases===true)classes.push('contact_paraphrases');
   if(input.contactReviews===true)classes.push('contact_reviews');
+  // Qualified repeats use spare capacity only, after every established class.
+  // A new nomination must not displace a previously supported comparison.
+  if(input.containedRequirements===true)classes.push('qualified_repeats');
   let containedCount=0,dependencyCount=0,contactPurposeCount=0;
   for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
@@ -261,9 +264,12 @@ function prepareActionReconciliation(input = {}) {
     if(['contact_paraphrases','contact_reviews'].includes(nominationClass)&&(!contactDirection||contactPurposeCount>=1)) { skipped(!contactDirection?'contact_shape_not_supported':'contact_class_budget_exhausted'); continue; }
     if(nominationClass==='contact_reviews'&&!contactPurpose.reviewShape(contactDirection.parent,contactDirection.child)) { skipped('review_arrangement_shape_not_supported'); continue; }
     const contact = sameEnquiryPair(left.action, right.action);
-    const containedDirection=nominationClass==='contained_requirements'&&input.containedRequirements===true
+    const containedClasses=['contained_requirements','qualified_repeats'];
+    const proposedContained=containedClasses.includes(nominationClass)&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
-    if(nominationClass==='contained_requirements'&&(!containedDirection||containedCount>=1)) { skipped(!containedDirection?'contained_shape_not_supported':'contained_class_budget_exhausted'); continue; }
+    const containedDirection=proposedContained
+      && ((proposedContained.kind==='qualified_repeat')===(nominationClass==='qualified_repeats')) ? proposedContained : null;
+    if(containedClasses.includes(nominationClass)&&(!containedDirection||containedCount>=1)) { skipped(!containedDirection?'contained_shape_not_supported':'contained_class_budget_exhausted'); continue; }
     const dependencyDirection=nominationClass==='qualified_dependencies'&&input.qualifiedDependencies===true
       ?dependency.direction(left.action,right.action,rows.map(row=>row.action)):null;
     if(nominationClass==='qualified_dependencies'&&(!dependencyDirection||dependencyCount>=1)) { skipped(!dependencyDirection?'dependency_shape_not_supported':'dependency_class_budget_exhausted'); continue; }

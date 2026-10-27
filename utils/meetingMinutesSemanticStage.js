@@ -363,7 +363,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         const assessment=referenceReview.assess(review,response.result);
         // Match contact certification here: a generic component verdict cannot
         // authorize an enquiry or justify another provider call.
-        const passed=assessment.modelPassed && (!['contact_paraphrase','contact_review','list_deliverable'].includes(review.instructionComparison)
+        const passed=assessment.modelPassed && (!['contact_paraphrase','contact_review','list_deliverable','qualified_repeat'].includes(review.instructionComparison)
           || assessment.relationship?.relation==='same_obligation'
             && assessment.sourceRoles.every(row=>row.basis==='commitment'));
         diagnostics.transition('independent_review', [parent.action, child.action], [], { candidateId: candidate.candidateId,

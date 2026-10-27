@@ -3,6 +3,7 @@ const {hash}=require('../meetingMinutesProofHash');
 const {actionProvenanceSignature}=require('../meetingMinutesActionIdentity');
 const {isReviewerAuthored}=require('./state');
 const VERSION='contained-content-v1';
+const qualifiedRepeat=require('./qualifiedRepeatShape');
 const FIELDS=new Set(['id','occurrenceId','action','owners','timing','timingDecision','evidenceIds','reviewFlagIds']);
 const ALLOWED=new Set(['different_operation','different_destination','different_inline_temporal_occurrence']);
 const calendar=/\b(?:today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|daily|weekly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midnight|next\s+(?:day|week|month|year))\b|\d{1,2}:\d{2}/i;
@@ -72,7 +73,7 @@ function listDeliverableShape(parent,child){
   ||purposeA.length<2||hash(purposeA)!==hash(purposeB))return null;
  return {kind:'list_deliverable'};
 }
-function shape(parent,child){return legacyShape(parent,child)||boundedShape(parent,child)||listDeliverableShape(parent,child);}
+function shape(parent,child){return legacyShape(parent,child)||boundedShape(parent,child)||listDeliverableShape(parent,child)||qualifiedRepeat.shape(parent,child);}
 function direction(left,right,all=[left,right]){
  for(const [parent,child] of [[left,right],[right,left]]){
   const match=shape(parent,child);if(!match)continue;
@@ -82,7 +83,7 @@ function direction(left,right,all=[left,right]){
  return null;
 }
 function reviewPacket(parent,child,sourceUnits,contextSourceIds,challenge,reviewOptions={}){
- const variant=boundedShape(parent,child)||listDeliverableShape(parent,child);
+ const variant=boundedShape(parent,child)||listDeliverableShape(parent,child)||qualifiedRepeat.shape(parent,child);
  const cited=new Set([...parent.evidenceIds,...child.evidenceIds]);
  if(variant&&sourceUnits.some(unit=>cited.has(unit.id)&&/\b(?:withdrawn|cancelled|canceled|no action|no longer (?:required|needed))\b/i.test(String(unit.text||''))))throw Error('contained_source_withdrawal');
  const context=sourceUnits.filter(unit=>contextSourceIds.includes(unit.id));
@@ -106,13 +107,23 @@ function certify(parent,child,sourceUnits,contextSourceIds,primary,challenge,opt
  const first=reviewPacket(parent,child,sourceUnits,contextSourceIds,false,reviewOptions),second=reviewPacket(parent,child,sourceUnits,contextSourceIds,true,reviewOptions);
  for(const [packet,response] of [[first,primary],[second,challenge]]){
   const assessment=N.assess(packet,response);
-  if(assessment.contractError||!assessment.modelPassed||!(['issue_paraphrase','list_deliverable'].includes(match.kind)?['same_obligation']:match.kind==='content_instruction'?['same_obligation','discarded_requirement_of_survivor']:['discarded_requirement_of_survivor']).includes(assessment.relationship?.relation)
-   ||['issue_paraphrase','list_deliverable'].includes(match.kind)&&response.decisions.find(section=>section.kind==='source').rows.some(row=>row.basis!=='commitment'))throw Error(assessment.contractError||'contained_independent_veto');
+  if(assessment.contractError||!assessment.modelPassed||!(['issue_paraphrase','list_deliverable','qualified_repeat'].includes(match.kind)?['same_obligation']:match.kind==='content_instruction'?['same_obligation','discarded_requirement_of_survivor']:['discarded_requirement_of_survivor']).includes(assessment.relationship?.relation)
+   ||['issue_paraphrase','list_deliverable','qualified_repeat'].includes(match.kind)&&response.decisions.find(section=>section.kind==='source').rows.some(row=>row.basis!=='commitment'))throw Error(assessment.contractError||'contained_independent_veto');
  }
  const evidenceIds=[...new Set([...parent.evidenceIds,...child.evidenceIds,...sourceIds(first,primary),...sourceIds(second,challenge)])].sort();
  if(evidenceIds.length>8)throw Error('contained_evidence_capacity');
  if(evidenceIds.some(id=>sourceUnits.filter(unit=>unit.id===id).length!==1||sourceUnits.some(unit=>unit.id===id&&unit.classification==='remove'&&!unit.restored)))throw Error('contained_ineligible_source');
- const expected={...structuredClone(parent),evidenceIds,reviewFlagIds:[]};
+ if(match.kind==='qualified_repeat')for(const [packet,response] of [[first,primary],[second,challenge]]){
+  const timing=packet.survivorCatalog.find(ref=>ref.field==='timing.wording');
+  if(!timing||packet.retentionRequests.filter(request=>request.field==='timing').some(request=>
+   !response.decisions.find(section=>section.kind==='retention').checks.find(check=>check.id===request.id)?.refs.includes(timing.id)))
+   throw Error('qualified_repeat_timing_wording_not_retained');
+ }
+ const expected={...structuredClone(parent),evidenceIds,reviewFlagIds:match.kind==='qualified_repeat'
+  ?[...new Set([...parent.reviewFlagIds,...child.reviewFlagIds])].sort():[]};
+ if(match.kind==='qualified_repeat')for(const field of ['rejectedExactDates','rejectedWordings'])
+  if([parent,child].some(row=>Array.isArray(row.timingDecision?.[field])))
+   expected.timingDecision[field]=[...new Set([parent,child].flatMap(row=>row.timingDecision[field]||[]))].sort();
  const body={version:VERSION,...(options.contextualUnits===true?{unitContextVersion:1}:{}),sourceHash:hash(sourceUnits),parent:structuredClone(parent),child:structuredClone(child),contextSourceIds:[...contextSourceIds],
   primary:structuredClone(primary),challenge:structuredClone(challenge),expectedSurvivor:expected};
  return {...body,reviewHash:hash(body)};
@@ -128,7 +139,7 @@ function conflicts(packet,proof,original,survivor,reasons){
  if(!proof?.containedRequirement)return reasons;
  if(!valid(packet,proof.containedRequirement,original,survivor))return [...reasons,'invalid_contained_requirement_review'];
  const match=shape(proof.containedRequirement.parent,proof.containedRequirement.child);
- const allowed=match?.kind==='list_deliverable'?new Set(['different_operation','operation_would_be_lost']):ALLOWED;
+ const allowed=match?.kind==='qualified_repeat'?new Set(['different_timing','different_condition_or_dependency']):match?.kind==='list_deliverable'?new Set(['different_operation','operation_would_be_lost']):ALLOWED;
  return reasons.filter(reason=>!allowed.has(reason));
 }
 function coverage(packet,parentRow,childRow,certificate){
