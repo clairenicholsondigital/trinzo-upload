@@ -70,7 +70,14 @@ for (const round of ['first', 'second']) {
     for (const [availability, left, right] of [['both', first, second], ['primary-only', first, null], ['secondary-only', null, second]]) {
       const result = pipeline(left, right, source.normalisationSourceUnits, source.details);
       const retained = [...result.actions, ...result.proposals].some(row => expected.includes(spelling(row.action)));
-      observations.push({ round, trial, availability, assessmentRetained: retained });
+      const suppliedNotices = [...(left?.reviewFlags || []), ...(right?.reviewFlags || [])];
+      const reviewQuestionRetained = result.flags.some(flag => flag.kind === 'possible_missed_follow_up'
+        && flag.sourceReviewContext?.kind === 'assessment_ownership_notice'
+        && suppliedNotices.some(notice => flag.sourceReviewContext.originalMessage === V.text(
+          notice.message || notice.text || notice.detail || notice.details, 500)
+          && JSON.stringify(flag.sourceReviewContext.originalEvidenceIds) === JSON.stringify(notice.evidenceIds)));
+      observations.push({ round, trial, availability, assessmentRetained: retained,
+        reviewQuestionRetained, workAvailableForReview: retained || reviewQuestionRetained });
     }
   }
   for (const name of Object.keys(protectedInputs)) for (const route of ['primary', 'primary-2']) {
@@ -115,12 +122,15 @@ for (const trial of [1, 2]) {
 }
 const pairedFailures = observations.filter(row => row.availability === 'both' && !row.assessmentRetained);
 const singleFailures = observations.filter(row => row.availability !== 'both' && !row.assessmentRetained);
+const pairedWorkUnavailable = observations.filter(row => row.availability === 'both' && !row.workAvailableForReview);
+const singleResponseWorkUnavailable = observations.filter(row => row.availability !== 'both' && !row.workAvailableForReview);
 const report = {
   codeBaseline: manifest.codeRevision, checksummedFixtures: manifest.entries.length,
   originalOvergeneralisationFrozen: true, capturedResponses: manifest.providerResponses,
   pairedAssessmentMissing: pairedFailures.length, singleResponseAssessmentMissing: singleFailures.length,
+  pairedWorkUnavailable: pairedWorkUnavailable.length, singleResponseWorkUnavailable: singleResponseWorkUnavailable.length,
   protectedChecks: protectionChecks.length, protectedPassed: protectionChecks.filter(row => row.passed).length,
-  offlineRetentionGatePassed: pairedFailures.length === 0 && singleFailures.length === 0 && protectionChecks.every(row => row.passed),
+  offlineRetentionGatePassed: pairedWorkUnavailable.length === 0 && singleResponseWorkUnavailable.length === 0 && protectionChecks.every(row => row.passed),
   readyForRelease: false, // This replay cannot replace generation and deployment qualification.
   databaseCalls, providerCalls, missingIdentityProbes, observations, protectionChecks
 };

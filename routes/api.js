@@ -256,6 +256,7 @@ const {
   normaliseAgentResult,
   resolveEvidence,
   documentReferenceContextEvidence,
+  requiresDocumentReferenceReview,
   normaliseFlag: normaliseMeetingAgentFlag,
   coverageFlags,
   surroundingEvidence,
@@ -9399,6 +9400,21 @@ function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
   return rows.filter((row) => row.text);
 }
 
+// Context warnings are durable review records even if a later lifecycle or
+// proposal filter withholds the candidate. Keeping the question is not adding
+// its instruction to the minutes.
+function retainedDocumentReferenceReviewFlags(records = [], flags = []) {
+  const rows = records.filter(requiresDocumentReferenceReview);
+  return reconcileRecordFlags({ actions: rows }, flags).flags.filter(flag =>
+    flag.documentReferenceContext && rows.some(row => (row.reviewFlagIds || []).includes(flag.id)))
+    .map(flag => {
+      const row = rows.find(record => (record.reviewFlagIds || []).includes(flag.id));
+      return normaliseMeetingAgentFlag({ ...flag, kind: 'possible_missed_follow_up', reviewDisposition: 'not_applied_addition',
+        message: flag.message.startsWith('Possible assessment to review:') ? flag.message
+          : `Possible assessment to review: ${flag.message} Proposed wording: ${meetingMinutesAgentText(row.action, 160)}` });
+    });
+}
+
 function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options = {}) {
   const direct = Array.isArray(result?.actionProposals) ? result.actionProposals : [];
   const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
@@ -9429,6 +9445,17 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
     let documentContext = null;
     if (evidenceIds.length && evidenceSupportScore(action.action, evidence) < 0.22) {
       documentContext = documentReferenceContextEvidence(action.action, evidenceIds, sourceUnits);
+      if (!documentContext) {
+        const prefix = action.action.match(/\b(ISO|IEC|ASTM|EN|BS)\s+(\d{3,5}(?:[-–]\d{1,4})*(?::\d{4})?)\b/i);
+        if (prefix) {
+          const withoutPrefix = action.action.replace(prefix[0], `standard ${prefix[2]}`);
+          const uncertain = documentReferenceContextEvidence(withoutPrefix, evidenceIds, sourceUnits);
+          if (uncertain && !uncertain.evidenceIds.some(id =>
+            String(unitById.get(id)?.text || '').toLowerCase().includes(prefix[0].toLowerCase()))) {
+            documentContext = { ...uncertain, unstatedPrefix: prefix[1].toUpperCase() };
+          }
+        }
+      }
       if (documentContext) {
         evidenceIds = documentContext.evidenceIds;
         evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
@@ -9446,7 +9473,9 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
           action.id, action.action, documentContext.originalEvidenceIds, documentContext.addedEvidenceIds
         ])).digest('hex').slice(0, 16),
         kind: 'unclear_reference',
-        message: 'Document reference to check: the action names a document identified in the preceding source passage. Confirm that this assessment concerns that document. The connection, ownership and acceptance have not been verified by adding this context.',
+        message: documentContext.unstatedPrefix
+          ? `Document reference to correct: the proposed ${documentContext.unstatedPrefix} identifier prefix is not stated in the linked source. Confirm or correct the document name before including this assessment. Added context does not verify ownership or acceptance.`
+          : 'Document reference to check: the action names a document identified in the preceding source passage. Confirm that this assessment concerns that document. The connection, ownership and acceptance have not been verified by adding this context.',
         evidenceIds, actionWordingAtCheck: action.action,
         documentReferenceContext: { kind: 'adjacent_identity_context', ...documentContext }
       });
@@ -18350,7 +18379,9 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
   }));
   const assembledActionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags([
-    ...materializationReview.flags, ...refereeFlags
+    ...materializationReview.flags, ...refereeFlags,
+    ...primary.reviewFlags.filter(flag => flag.sourceReviewContext?.kind === 'assessment_ownership_notice'),
+    ...retainedDocumentReferenceReviewFlags([...agentDeclaredProposals, ...proposedRecords])
   ], [
     ...splitTimingFlags,
     ...finalTiming.flags,
@@ -19818,7 +19849,10 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
       return index >= 0 && actionProvenanceSignature(currentRows[index])
         === actionProvenanceSignature(preserveActionIdentity(currentRows[index], change.after));
     }).map(change => change.id) : []);
+  const referenceReviewChanges = new Set(proposal.stage === 'actions'
+    ? (proposal.changes || []).filter(change => requiresDocumentReferenceReview(change.after)).map(change => change.id) : []);
   const proposed = (proposal.changes || []).filter(change => change.selected === true
+    && !referenceReviewChanges.has(change.id)
     && !duplicateModifications.has(change.id) && !noOpModifications.has(change.id)
     && !destructiveModifications.has(change.id));
   const unsafeRemovals = new Set();
@@ -19851,10 +19885,15 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
   const accepted = new Set(acceptedIds);
   const uncertain = (proposal.changes || []).filter(change => !accepted.has(change.id));
   const replacedIds = new Set(uncertain.map(meetingAgentProposalReviewFlagId));
-  const checks = uncertain.map((change, index) => {
+  const checks = uncertain.flatMap((change, index) => {
     const record = change.after || change.before || {};
     const wording = meetingMinutesAgentText(record.action || record.text || record.topic, 1600);
-    const reason = String(duplicateModifications.has(change.id)
+    if (referenceReviewChanges.has(change.id)) {
+      const linked = retainedDocumentReferenceReviewFlags([record], flags);
+      if (linked.length) return linked;
+    }
+    const reason = String(referenceReviewChanges.has(change.id)
+      ? 'The document reference requires explicit human review.' : duplicateModifications.has(change.id)
       ? 'This edit would copy the wording, owners and timing of another current action.'
       : noOpModifications.has(change.id) ? 'This edit would not change the current action.'
         : destructiveModifications.has(change.id) ? `This edit was left for review because ${destructiveModifications.get(change.id)}.`
@@ -19864,7 +19903,7 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
             : 'The proposed occurrence could not be changed uniquely in the current list; it may be stale, ambiguous or already handled by another suggestion.')
             : change.reviewContext?.reason || 'Check the source before changing the minutes.')
       .replace(/\b(?:Tick it[^.]*|It stays unless you tick this)\./gi, '').trim();
-    return normaliseMeetingAgentFlag({
+    return [normaliseMeetingAgentFlag({
       // This is now a source check, not a link to a consumed proposal. Keep it
       // open even when there is deliberately no corresponding published item.
       id: meetingMinutesAgentText(`automatic-review-${change.id || ''}`, 80),
@@ -19875,7 +19914,7 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
             : change.type === 'add' ? {reviewDisposition:'not_applied_addition'} : {}),
       message: `Cannot verify that this AI suggestion should change the minutes; it was not applied. ${wording} ${reason}`,
       evidenceIds: record.evidenceIds || change.reviewContext?.evidenceIds || []
-    }, index);
+    }, index)];
   });
   return { acceptedIds, reviewFlags: mergeMeetingAgentFlags(
     resolveMeetingAgentProposalFlags(flags, proposal, acceptedIds, []).filter(flag => !replacedIds.has(flag.id)), checks
@@ -21097,6 +21136,7 @@ router.stagedEvaluation = {
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
+  retainedDocumentReferenceReviewFlags,
   normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
   hybridCandidateCoveredByRecord,

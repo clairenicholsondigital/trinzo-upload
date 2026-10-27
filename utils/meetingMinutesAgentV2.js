@@ -738,7 +738,48 @@ function normaliseDocumentReferenceContext(value) {
   const originalEvidenceIds = ids('originalEvidenceIds'), addedEvidenceIds = ids('addedEvidenceIds'), workEvidenceIds = ids('workEvidenceIds');
   if (!originalEvidenceIds.length || addedEvidenceIds.length !== 1 || workEvidenceIds.length !== 1
     || addedEvidenceIds.some(id => originalEvidenceIds.includes(id)) || !originalEvidenceIds.includes(workEvidenceIds[0])) return null;
-  return { kind: 'adjacent_identity_context', originalEvidenceIds, addedEvidenceIds, workEvidenceIds };
+  return { kind: 'adjacent_identity_context', originalEvidenceIds, addedEvidenceIds, workEvidenceIds,
+    ...(/^(?:ISO|IEC|ASTM|EN|BS)$/.test(value.unstatedPrefix || '') ? { unstatedPrefix: value.unstatedPrefix } : {}) };
+}
+
+// A typed discovery warning is not an action. Preserve the source-backed
+// question when no explicitly identified action exists; never manufacture its
+// instruction or owner from the provider's explanation.
+function assessmentOwnershipReviewNotice(flag, candidate, units) {
+  if (!['unsupported_ownership', 'unsupported_owner'].includes(flag?.type || flag?.kind)) return flag;
+  const message = text(flag.message || flag.text || flag.detail || flag.details, 500);
+  if (!/\b(?:assessment|assess|review)\b/i.test(message)) return flag;
+  const records = [...(candidate.actions || []), ...(candidate.actionProposals || [])];
+  const linked = flag.actionId ? records.filter(record => record.id === flag.actionId) : [];
+  if (linked.length === 1 && /^(?:assess|review|check|evaluate|determine whether)\b/i.test(linked[0].action || '')) return flag;
+  const rows = normaliseSourceUnits(units);
+  const suppliedIds = [...new Set((Array.isArray(flag.evidenceIds) ? flag.evidenceIds : []).filter(id => typeof id === 'string'))];
+  if (!suppliedIds.length || suppliedIds.length > 8 || suppliedIds.some(id => rows.filter(row => row.id === id).length !== 1 || !includedUnit(rows.find(row => row.id === id)))) return flag;
+  const evidence = rows.filter(row => suppliedIds.includes(row.id)).map(row => row.text).join(' ');
+  if (!/\b(?:assessment|assess|review|having a look|looking at)\b/i.test(evidence)
+    || !/\b(?:we can|we need|could|would|need to|get an assessment|have a look|having a look)\b/i.test(evidence)
+    || /\b(?:already (?:completed|reviewed|assessed)|assessment (?:is|was) complete|no assessment|do not (?:assess|review)|not committing)\b/i.test(evidence)) return flag;
+  return { ...flag, id: stableId('flag-assessment-review', `${message}|${suppliedIds.join('|')}`, 0),
+    kind: 'possible_missed_follow_up',
+    message: `Assessment to review: check whether the requested work should become an action and who accepted it. The discovery response supplied a warning rather than an action: ${message}`,
+    evidenceIds: suppliedIds, reviewDisposition: 'not_applied_addition',
+    sourceReviewContext: { kind: 'assessment_ownership_notice', originalType: flag.type || flag.kind,
+      originalMessage: message, originalEvidenceIds: suppliedIds }
+  };
+}
+
+function normaliseSourceReviewContext(value) {
+  if (value?.kind !== 'assessment_ownership_notice'
+    || !['unsupported_ownership', 'unsupported_owner'].includes(value.originalType)) return null;
+  const originalMessage = text(value.originalMessage, 500);
+  const originalEvidenceIds = [...new Set((Array.isArray(value.originalEvidenceIds) ? value.originalEvidenceIds : [])
+    .filter(id => typeof id === 'string' && /^T\d{4,}$/.test(id)))].slice(0, 8);
+  return originalMessage && originalEvidenceIds.length
+    ? { kind: 'assessment_ownership_notice', originalType: value.originalType, originalMessage, originalEvidenceIds } : null;
+}
+
+function requiresDocumentReferenceReview(action = {}) {
+  return (Array.isArray(action?.reviewFlagIds) ? action.reviewFlagIds : []).some(id => String(id).startsWith('flag-document-reference-'));
 }
 
 // How the meeting was run, not what it decided. These lines are real speech and
@@ -820,6 +861,7 @@ function normaliseFlag(flag = {}, index = 0) {
   const message = text(flag.message || flag.text || 'Review this item against the transcript.', 500);
   const systemTimingIssue = normaliseSystemTimingIssue(flag.systemTimingIssue);
   const documentReferenceContext = normaliseDocumentReferenceContext(flag.documentReferenceContext);
+  const sourceReviewContext = normaliseSourceReviewContext(flag.sourceReviewContext);
   return rememberFlag({
     id: text(flag.id, 80) || (systemTimingIssue ? stableId('flag-timing', JSON.stringify(systemTimingIssue), 0) : stableId('flag', `${kind}|${message}`, index)),
     kind,
@@ -835,6 +877,7 @@ function normaliseFlag(flag = {}, index = 0) {
     ...(isReviewerAuthored(flag) ? { reviewerAuthored: true } : {}),
     ...(systemTimingIssue ? { systemTimingIssue } : {}),
     ...(documentReferenceContext ? { documentReferenceContext } : {}),
+    ...(sourceReviewContext ? { sourceReviewContext } : {}),
     ...(['not_applied_addition','not_applied_noop','not_applied_duplicate','not_outstanding','coverage_unresolved'].includes(flag.reviewDisposition) ? {reviewDisposition:flag.reviewDisposition} : {}),
     ...(['executiveSummary', 'meetingObjectives', 'timedStepCoverage'].includes(flag.temporalField)
       ? { temporalField: flag.temporalField } : {})
@@ -4005,6 +4048,7 @@ function applyCommitmentCheckResults(actions = [], items = [], results = [], opt
     const row = verdicts.get(item.id);
     if (!row || row.verdict !== 'commitment' || !decisionQuoteFound(row.commitmentQuote, item.passage)) continue;
     const action = actions[item.index];
+    if (requiresDocumentReferenceReview(action)) continue;
     if (options.requireOwnerTie && !commitmentQuoteTiesOwner(row.commitmentQuote, action.owners, item.passage)) continue;
     // The quoted commitment must be about this work: "I'll update that table
     // for the new set of minutes" does not commit anyone to a cybersecurity
@@ -7226,7 +7270,8 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   // synthesis rather than a citable claim, so they are deliberately left out of
   // the missing-evidence sweep below - every save would otherwise re-flag them.
   for (const objective of objectives) delete objective._unsupportedEvidenceIds;
-  const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map(normaliseFlag);
+  const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map((flag, index) => normaliseFlag(
+    stage === 'actions' ? assessmentOwnershipReviewNotice(flag, candidate, units) : flag, index));
   const suppliedFlagCount = flags.length;
   const diagnosticNormalisedRows = actionDiagnostics.active() ? actions.map(action => actionDiagnostics.refs([action])) : [];
   const flagRecords = flagRecordsIn([...discussion, ...actions]);
@@ -7423,7 +7468,7 @@ function recordLabel(record = {}) {
 function reviewFlagContentKey(flag) {
   return JSON.stringify([
     flag.kind.toLowerCase(), flag.message.toLowerCase(), flag.evidenceIds.map(id => id.toLowerCase()).sort(),
-    flag.reviewerAuthored === true, flag.systemTimingIssue || null, flag.temporalField || '', flag.documentReferenceContext || null
+    flag.reviewerAuthored === true, flag.systemTimingIssue || null, flag.temporalField || '', flag.documentReferenceContext || null, flag.sourceReviewContext || null
   ]);
 }
 
@@ -7826,6 +7871,7 @@ module.exports = {
   clearMeetingMinutesAgentV2MemoryCaches,
   resolveEvidence,
   documentReferenceContextEvidence,
+  requiresDocumentReferenceReview,
   normaliseActions,
   actionEvidenceDisposition,
   actionNegatedByEvidence,

@@ -312,3 +312,47 @@ test('actual save/reload and undo/redo preserve original check wording and a hum
   const redone = await request('post', '/redo');
   assert.deepEqual(redone.reviewFlags.find(flag => flag.id === original.id), original);
 });
+
+test('actual automatic proposal route preserves document uncertainty through save/reload and review undo/redo', async () => {
+  reset([]);
+  saved.sourceUnits=V.normaliseSourceUnits([
+    {id:'T0001',speaker:'Maya Patel',text:'The standard is 74216, covering portable pump requirements.'},
+    {id:'T0002',speaker:'Maya Patel',text:'We can maybe get an assessment of that standard to see if it is applicable to the portable pump.'}
+  ]);
+  saved.preparedTranscript=V.preparedTranscriptFromUnits(saved.sourceUnits);
+  saved.actions=[];
+  const rows=router.stagedEvaluation.normaliseAgentDeclaredProposals({actionProposals:[{
+    id:'assessment',action:'Assess whether ISO 74216 is applicable to the portable pump.',owners:['Maya Patel'],
+    evidenceIds:['T0002'],reviewFlagIds:[],timing:{kind:'not_stated',wording:'',exactDate:''}
+  }]},saved.sourceUnits);
+  saved.reviewFlags=V.reconcileRecordFlags({actions:rows},[]).flags.filter(flag=>flag.documentReferenceContext);
+  const original=copy(saved.reviewFlags[0]);
+  saved.pendingProposal=V.buildProposal('actions',[],rows);
+  saved.pendingProposal.changes.forEach(change=>change.selected=true);
+  const after=await request('post','/proposal',{decision:'accept',automatic:true,acceptAll:true});
+  assert.equal(after.actions.length,0);assert.equal(after.pendingProposal,null);
+  assert.equal(after.reviewFlags.length,1);
+  const loaded=await request('get');
+  assert.deepEqual(loaded.reviewFlags[0].documentReferenceContext,original.documentReferenceContext);
+  assert.equal(loaded.reviewFlags[0].id,original.id);
+  assert.equal(loaded.reviewFlags[0].status,'open');
+  const flags=copy(loaded.reviewFlags);flags[0].status='corrected';flags[0].correctionNote='Confirmed the identity; correction still requires a human edit.';
+  await request('patch','',{reviewFlags:flags,reviewDecisionLabel:'Review document identity'});
+  const undone=await request('post','/undo');assert.equal(undone.reviewFlags[0].status,'open');
+  assert.deepEqual(undone.reviewFlags[0].documentReferenceContext,original.documentReferenceContext);
+  const redone=await request('post','/redo');assert.equal(redone.reviewFlags[0].correctionNote,flags[0].correctionNote);
+  assert.equal(redone.actions.length,0);
+});
+
+test('a source-only assessment question survives real persistence without inventing an action', async () => {
+  reset([]);
+  saved.sourceUnits=V.normaliseSourceUnits([{id:'T0001',speaker:'Maya Patel',text:'We can maybe get an assessment of that standard for the portable pump.'}]);
+  saved.preparedTranscript=V.preparedTranscriptFromUnits(saved.sourceUnits);saved.actions=[];
+  const out=V.normaliseAgentResult({reviewFlags:[{type:'unsupported_ownership',detail:'An assessment is requested but no owner is confirmed.',evidenceIds:['T0001']}]},saved.sourceUnits,'actions');
+  saved.reviewFlags=out.reviewFlags;
+  const original=copy(saved.reviewFlags[0]);assert.ok(original.sourceReviewContext);
+  const loaded=await request('get');assert.deepEqual(loaded.reviewFlags[0],original);
+  await request('patch','',{reviewFlags:loaded.reviewFlags});
+  const reloaded=await request('get');assert.deepEqual(reloaded.reviewFlags[0],original);
+  assert.equal(reloaded.actions.length,0);
+});

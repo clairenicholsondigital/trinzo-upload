@@ -70,3 +70,14 @@ required before implementation can pass its later safety stage.
 Leave the captured failures and expected outcomes intact. The `--verify-capture`
 mode is a historical characterisation check, not the post-fix release criterion.
 No PR, merge or deployment is authorised by passing this replay alone.
+
+## Step 3 accounting clarification
+
+The frozen files and the original missing-assessment measurements remain intact.
+The replay now additionally records whether the original source-backed ownership
+question survives where the provider supplied no assessment instruction. That
+question is **not** counted as an assessment row. The default offline gate checks
+that supported work remains available for review in one of those two forms, as
+required by step 3. It still cannot authorise deployment. See
+`meeting-minutes-document-scope-step3-20261027.md` for the separate counts and
+remaining validation stages.
