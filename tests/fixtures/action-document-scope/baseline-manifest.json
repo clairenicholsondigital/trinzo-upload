@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "codeRevision": "339f56849c62d93f01be252fd9d66b9b7c5cd969",
+  "privateManifestSha256": "a40f1d5ce4bd43693f4420989c7226aa99d6d55e276a1cf1aadaeb93dcfb6426",
+  "providerResponses": 44,
+  "sourceUnitCounts": {
+    "generation": 17,
+    "normalisation": 392
+  },
+  "expectedCurrentFailures": {
+    "pairedAssessmentMissing": 2,
+    "singleResponseAssessmentMissing": 5
+  },
+  "cases": [
+    {
+      "id": "DOC-SCOPE-001",
+      "title": "One document purpose applied to several documents",
+      "role": "Frozen generation negative; not a historical rewrite test"
+    },
+    {
+      "id": "DOC-SCOPE-002",
+      "title": "Clear assessment rejected without document identity citation",
+      "role": "Preserve as an uncertain supported proposal"
+    },
+    {
+      "id": "DOC-SCOPE-003",
+      "title": "Both discovery replies fail to retain the assessment",
+      "role": "Two frozen paired failures"
+    },
+    {
+      "id": "DOC-SCOPE-004",
+      "title": "Other discovery reply masks proposal rejection",
+      "role": "Run with primary missing and secondary missing separately"
+    },
+    {
+      "id": "DOC-SCOPE-005",
+      "title": "Protected distinctions",
+      "role": "Joint assessment, different purposes, ambiguous reference, recipient versus assessor, conditional separate work"
+    }
+  ]
+}
