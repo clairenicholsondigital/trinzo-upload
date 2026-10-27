@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const diagnostics = require('./meetingMinutesActionDiagnostics');
 const contained = require('./canonicalMinutes/containedRequirement');
+const qualifiedRepeat = require('./canonicalMinutes/qualifiedRepeatShape');
 const dependency = require('./canonicalMinutes/qualifiedDependency');
 const contactPurpose = require('./canonicalMinutes/contactParaphrase');
 const referenceReview = require('./meetingMinutesActionReferenceReview');
@@ -363,15 +364,20 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         const assessment=referenceReview.assess(review,response.result);
         // Match contact certification here: a generic component verdict cannot
         // authorize an enquiry or justify another provider call.
-        const passed=assessment.modelPassed && (!['contact_paraphrase','contact_review','list_deliverable'].includes(review.instructionComparison)
+        const passed=review.instructionComparison==='qualified_repeat'
+          ? qualifiedRepeat.reviewRolePassed(assessment,parent.action,child.action)
+          : assessment.modelPassed && (!['contact_paraphrase','contact_review','list_deliverable'].includes(review.instructionComparison)
           || assessment.relationship?.relation==='same_obligation'
             && assessment.sourceRoles.every(row=>row.basis==='commitment'));
+        const roleConflict=review.instructionComparison==='qualified_repeat' && assessment.modelPassed
+          && !passed;
         diagnostics.transition('independent_review', [parent.action, child.action], [], { candidateId: candidate.candidateId,
           role: challenge ? 'challenge' : 'primary', contractError: assessment.contractError || '',
           modelPassed: assessment.modelPassed, relation: assessment.relationship?.relation || 'unresolved',
+          ...(review.instructionComparison==='qualified_repeat'?{sourceRoles:assessment.sourceRoles||[],roleConflict}:{}),
           outcome: assessment.contractError ? 'contract_rejected' : passed ? 'accepted' : 'semantic_veto' });
         if(challenge||!passed)providerAssessed.add(candidate.candidateId);
-        if(!passed)throw Object.assign(new Error('Source review veto'),{code:failurePrefix+'_independent_veto'});
+        if(!passed)throw Object.assign(new Error('Source review veto'),{code:roleConflict?'qualified_repeat_source_role_conflict':failurePrefix+'_independent_veto'});
         responses.push(response.result);
       }
       const certificate=proofClass.certify(parent.action,child.action,sourceUnits,context.sourceUnits.map(unit=>unit.id),...responses,reviewOptions);
