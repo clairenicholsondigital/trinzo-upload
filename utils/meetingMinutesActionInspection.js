@@ -23,13 +23,23 @@ async function inspect(draft, positions, options = {}) {
   }, { targeted: true, sourceHash: D.hash(draft.sourceUnits || []) });
   const trace = draft.qualityState?.actions?.actionDiagnostics;
   const traceRefs = new Set((trace?.nodes || []).filter(n => rows.some(r => D.hash(r) === D.hash(n.record))).map(n => n.ref));
+  const matchedFinalSnapshots = traceRefs.size;
   const lineageEvents = new Set();
   let expanded = true;
   while (expanded && trace) {
     expanded = false;
     for (const e of trace.events) {
-      if (!e.outputs.some(ref => traceRefs.has(ref))) continue;
+      const borrowingProposal = e.kind === 'owner_borrow_proposed' && traceRefs.has(e.inputs[0]);
+      if (!borrowingProposal && !e.outputs.some(ref => traceRefs.has(ref))) continue;
       lineageEvents.add(e.sequence);
+      // Referee candidate IDs are explicitly pass-qualified by the candidate
+      // ledger. This is a recorded namespace hand-off, not a local-ID guess.
+      if (e.candidateId) {
+        for (const origin of trace.events.filter(o => o.origin?.candidateId === e.candidateId)) {
+          lineageEvents.add(origin.sequence);
+          for (const ref of origin.outputs) if (!traceRefs.has(ref)) { traceRefs.add(ref); expanded = true; }
+        }
+      }
       if (e.resolutionEvent) {
         lineageEvents.add(e.resolutionEvent);
         const resolution = trace.events.find(r => r.sequence === e.resolutionEvent);
@@ -47,7 +57,7 @@ async function inspect(draft, positions, options = {}) {
     assessment: value, nominationTrace: audit, savedReconciliation: saved ? {
       inputHash: saved.inputHash, stats: saved.stats, assessment: saved.assessment,
       caveat: 'Saved aggregate counts describe the original full register, not this isolated pair.' } : null,
-    lineage: trace ? { availability: trace.sourceHash && trace.sourceHash !== D.hash(draft.sourceUnits || []) ? 'source_changed' : 'captured', truncated: trace.truncated, errors: trace.errors,
+    lineage: trace ? { availability: trace.sourceHash && trace.sourceHash !== D.hash(draft.sourceUnits || []) ? 'source_changed' : matchedFinalSnapshots ? 'captured' : 'snapshot_not_matched', matchedFinalSnapshots, truncated: trace.truncated, errors: trace.errors,
       nodes: trace.nodes.filter(n => traceRefs.has(n.ref)),
       events: trace.events.filter(e => lineageEvents.has(e.sequence)),
       caveat: 'Hashes bind exact snapshots. A missing match is not inferred to be the same action.' }

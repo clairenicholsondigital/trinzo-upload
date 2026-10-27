@@ -169,3 +169,16 @@ test('inspection distinguishes source edits from the source used for the capture
   const report = await inspect({ ...result.changes, sourceUnits: [...units, { id: 'T0002', text: 'Changed source.' }] }, [1, 2]);
   assert.equal(report.lineage.availability, 'source_changed');
 });
+
+test('inspection follows an explicit candidate namespace handoff and rejects unmatched snapshots', async () => {
+  const original = row('A7', 'Send the validation documents.'), published = { ...original, id: 'qualified-candidate' };
+  const result = await D.generate({ sourceUnits: units }, 'actions', {}, async () => {
+    D.origin('recovery', [original], { candidateId: 'qualified-candidate' });
+    D.transition('referee_materialised', [published], [published], { candidateId: 'qualified-candidate' });
+    return { changes: { actions: [published, row('other', 'Buy the replacement valve.')] } };
+  });
+  const report = await inspect({ ...result.changes, sourceUnits: units }, [1, 2]);
+  assert.ok(report.lineage.events.some(e => e.origin?.pass === 'recovery'));
+  const edited = { ...result.changes, sourceUnits: units, actions: result.changes.actions.map(r => ({ ...r, action: r.action + ' Edited.' })) };
+  assert.equal((await inspect(edited, [1, 2])).lineage.availability, 'snapshot_not_matched');
+});
