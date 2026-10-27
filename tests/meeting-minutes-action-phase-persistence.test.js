@@ -80,7 +80,7 @@ test('reviewer changes are saved without silently restoring generated wording',a
 });
 test('recovery prompt separates source facts from existing timing assessments',()=>{
  const f=fixture(),before=structuredClone(f.actions);
- const prompt=A.meetingMinutesAgentAnchoredActionPrompt({transcript:'Full transcript remains present.',details:{},mode:'recovery',currentActions:f.actions,candidates:[]});
+ const prompt=A.meetingMinutesAgentAnchoredActionPrompt({transcript:'Full transcript remains present.',details:{},mode:'recovery',currentActions:f.actions,candidates:[],phaseClarifications:true});
  const data=JSON.parse(prompt.split('\n').slice(1).join('\n'));
  assert.equal(data.preparedTranscript,'Full transcript remains present.');
  assert.match(data.writingRules.join(' '),/distinct work phases/);
@@ -88,6 +88,13 @@ test('recovery prompt separates source facts from existing timing assessments',(
  assert.equal(data.currentActions[0].timingProvenance.source,'application_assessment_not_source_evidence');
  assert.deepEqual(data.currentActions[0].timingProvenance.rejectedExactDates,['2026-06-16']);
  assert.deepEqual(f.actions,before);
+});
+test('disabled phase clarification retains the existing anchored recovery prompt',()=>{
+ const f=fixture();
+ const prompt=A.meetingMinutesAgentAnchoredActionPrompt({transcript:'Full transcript remains present.',details:{},mode:'recovery',currentActions:f.actions,candidates:[]});
+ const data=JSON.parse(prompt.split('\n').slice(1).join('\n'));
+ assert.equal(data.writingRules.length,1);
+ assert.ok(data.currentActions.every(row=>!Object.hasOwn(row,'timingProvenance')));
 });
 test('flag is frozen per run, absent legacy policy stays off and private proof bypasses glossary normalisation',()=>{
  const P=require('../utils/meetingMinutesSemanticPolicy'),env={MEETING_MINUTES_AGENT_CONTACT_REVIEW_V1:'1',MEETING_MINUTES_AGENT_PHASE_CLARIFICATION_V1:'1'};

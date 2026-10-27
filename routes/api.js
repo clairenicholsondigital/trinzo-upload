@@ -9265,28 +9265,28 @@ function normaliseAnchoredDiscussionDiscovery(result = {}, anchors = [], sourceU
 }
 
 function meetingMinutesAgentAnchoredActionPrompt({
-  transcript, details, candidates = [], currentActions = [], steer, mode = 'discovery'
+  transcript, details, candidates = [], currentActions = [], steer, mode = 'discovery', phaseClarifications = false
 }) {
   const payload = {
     requestId: crypto.randomUUID(),
     stage: 'ACTION_ANCHORED_DISCOVERY',
     mode: mode === 'recovery' ? 'recovery' : 'discovery',
     details: details || {},
-    writingRules: [MEETING_AGENT_TIMING_RULE,
+    writingRules: phaseClarifications ? [MEETING_AGENT_TIMING_RULE,
       'Keep distinct work phases and their source-stated order. Do not turn later additions into material already included at an earlier handoff. Keep separately timed phases distinct; do not repeat the same handoff across instructions.',
-      'In recovery, currentActions are candidate descriptions, not source evidence. Return genuinely uncovered work, not restatements of already represented instructions. Preserve additional supported scope; similarity alone is not grounds for omitting separate work. Existing timing rejections are application assessments, not transcript facts.'],
+      'In recovery, currentActions are candidate descriptions, not source evidence. Return genuinely uncovered work, not restatements of already represented instructions. Preserve additional supported scope; similarity alone is not grounds for omitting separate work. Existing timing rejections are application assessments, not transcript facts.'] : [MEETING_AGENT_TIMING_RULE],
     reviewerEmphasis: meetingAgentSteerText(steer),
     // The transcript remains the authority and is always sent in full. The
     // compact candidate windows are navigation aids rather than an allowlist.
     actionCandidateWindows: hybridCandidatePack(candidates, 36000, 180),
-    currentActions: mode === 'recovery' ? compactMeetingAgentActionRegister(currentActions, 9000, 32).map((row,index) => {
+    currentActions: mode === 'recovery' ? (phaseClarifications ? compactMeetingAgentActionRegister(currentActions, 9000, 32).map((row,index) => {
       const original = currentActions[index];
       return { ...row, ...(original?.timingDecision ? { timingProvenance: {
         source:'application_assessment_not_source_evidence', status:original.timingDecision.status || 'unverified',
         rejectedExactDates:(original.timingDecision.rejectedExactDates || []).slice(0,8).map(value=>meetingMinutesAgentText(value,20)),
         rejectedWordings:(original.timingDecision.rejectedWordings || []).slice(0,8).map(value=>meetingMinutesAgentText(value,220))
       } } : {}) };
-    }) : [],
+    }) : compactMeetingAgentActionRegister(currentActions, 9000, 32)) : [],
     preparedTranscript: String(transcript || '').trim()
   };
   return `[ACTION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
@@ -16553,10 +16553,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     ? timedStepCoverage(sourceActionCandidates, represented, draft.sourceUnits, { meetingDate: timingAnchor }) : null;
   if (initialTimedStepCoverage) recoveryDecision = mergeTimedStepRecovery(recoveryDecision, initialTimedStepCoverage);
   if (recoveryDecision.needed) {
+    const recoveryPolicy = semanticPolicyForRun(draft, options.semanticPolicy);
     const recoveryPrompt = anchoredActionRecovery
       ? meetingMinutesAgentAnchoredActionPrompt({
         transcript, details, candidates: recoveryDecision.uncovered,
-        currentActions: primary.actions, steer: draft.steer, mode: 'recovery'
+        currentActions: primary.actions, steer: draft.steer, mode: 'recovery',
+        phaseClarifications: recoveryPolicy.mode === 'on' && recoveryPolicy.phaseClarifications === true
       })
       : meetingMinutesAgentRecoveryPrompt({
         stage, transcript, details, salientDetails,
