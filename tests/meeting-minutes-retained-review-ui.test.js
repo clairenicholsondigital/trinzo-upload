@@ -102,6 +102,7 @@ test('Open in minutes reveals attached and nested unfiled targets without resolv
     if (!(await button.isVisible())) await page.locator('#reviewQueueToggle').click(); await page.locator('#flagList details[data-review-category]').evaluateAll(nodes=>nodes.forEach(node=>node.open=true));
     await button.click();
     await page.waitForFunction(id => document.getElementById(id)?.getBoundingClientRect().height > 0, id);
+    await page.waitForFunction(() => document.querySelector('[data-identical-filing-group] > details')?.open === true);
     assert.equal(await page.locator('[data-identical-filing-group] > details').evaluate(node => node.open), true);
     assert.deepEqual(content(f.saved()), content(initial)); assert.deepEqual(f.saved().reviewFlags, initial.reviewFlags);
     assert.equal(f.patches.length, 0); assert.deepEqual(f.errors, []);

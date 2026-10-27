@@ -68,6 +68,11 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  const phaseDraft = baseDraft('phase-correction', false);
+  phaseDraft.canRestoreCombinedActions = true;
+  phaseDraft.canRestorePhaseActions = true;
+  phaseDraft.actions[0].action = 'Tidy and share the quality review checklist for review.';
+  drafts.set('phase-correction', phaseDraft);
   const orderedFiling = baseDraft('ordered-filing', false);
   orderedFiling.currentStep = 5;
   orderedFiling.selectedStep = 2;
@@ -369,6 +374,12 @@ function startStubServer() {
     return ['reviewer-provenance', 'filing-review'].includes(id)
       ? require('../routes/api').stagedEvaluation.publicMeetingAgentDraft(draft) : draft;
   }
+  app.post('/api/meeting-minutes-agent/drafts/:id/restore-combined-actions', (req,res) => {
+    const prior=drafts.get(req.params.id);
+    if(req.body.revision!==prior.revision)return res.status(409).json({ok:false,error:'Stale revision'});
+    const next={...prior,revision:prior.revision+1,canRestoreCombinedActions:false,canRestorePhaseActions:false,
+      actions:baseDraft('original',false).actions};drafts.set(req.params.id,next);res.json({ok:true,draft:next});
+  });
   app.get('/api/meeting-minutes-agent/drafts/:id', (req, res) => res.json({ ok: true, draft: visibleDraft(req.params.id, drafts.get(req.params.id)) }));
   app.patch('/api/meeting-minutes-agent/drafts/:id', async (req, res) => {
     if (req.params.id === 'navigation') await new Promise((resolve) => setTimeout(resolve, 250));
@@ -3416,4 +3427,18 @@ test('choosing another transcript first saves the current draft and explains how
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test('phase correction offers accurate recovery wording and restores through the existing action control', {timeout:120000}, async()=>{
+ const {server,port}=await startStubServer();let browser;
+ try{
+  const launched=await launchPage(port,'phase-correction');browser=launched.browser;const {page,errors}=launched;
+  const restore=page.locator('[data-restore-combined-actions]');
+  assert.equal(await restore.innerText(),'Restore original action wording');
+  await restore.click();
+  await page.waitForFunction(()=>document.querySelector('#actionsBody')?.textContent.includes('Send the revised report.'));
+  assert.equal(await restore.count(),0);
+  assert.match(await page.textContent('body'),/Original action wording restored/);
+  assert.deepEqual(errors,[]);
+ }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
 });

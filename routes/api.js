@@ -1,4 +1,5 @@
 const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
+const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
 const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
 const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
@@ -9264,19 +9265,28 @@ function normaliseAnchoredDiscussionDiscovery(result = {}, anchors = [], sourceU
 }
 
 function meetingMinutesAgentAnchoredActionPrompt({
-  transcript, details, candidates = [], currentActions = [], steer, mode = 'discovery'
+  transcript, details, candidates = [], currentActions = [], steer, mode = 'discovery', phaseClarifications = false
 }) {
   const payload = {
     requestId: crypto.randomUUID(),
     stage: 'ACTION_ANCHORED_DISCOVERY',
     mode: mode === 'recovery' ? 'recovery' : 'discovery',
     details: details || {},
-    writingRules: [MEETING_AGENT_TIMING_RULE],
+    writingRules: phaseClarifications ? [MEETING_AGENT_TIMING_RULE,
+      'Keep distinct work phases and their source-stated order. Do not turn later additions into material already included at an earlier handoff. Keep separately timed phases distinct; do not repeat the same handoff across instructions.',
+      'In recovery, currentActions are candidate descriptions, not source evidence. Return genuinely uncovered work, not restatements of already represented instructions. Preserve additional supported scope; similarity alone is not grounds for omitting separate work. Existing timing rejections are application assessments, not transcript facts.'] : [MEETING_AGENT_TIMING_RULE],
     reviewerEmphasis: meetingAgentSteerText(steer),
     // The transcript remains the authority and is always sent in full. The
     // compact candidate windows are navigation aids rather than an allowlist.
     actionCandidateWindows: hybridCandidatePack(candidates, 36000, 180),
-    currentActions: mode === 'recovery' ? compactMeetingAgentActionRegister(currentActions, 9000, 32) : [],
+    currentActions: mode === 'recovery' ? (phaseClarifications ? compactMeetingAgentActionRegister(currentActions, 9000, 32).map((row,index) => {
+      const original = currentActions[index];
+      return { ...row, ...(original?.timingDecision ? { timingProvenance: {
+        source:'application_assessment_not_source_evidence', status:original.timingDecision.status || 'unverified',
+        rejectedExactDates:(original.timingDecision.rejectedExactDates || []).slice(0,8).map(value=>meetingMinutesAgentText(value,20)),
+        rejectedWordings:(original.timingDecision.rejectedWordings || []).slice(0,8).map(value=>meetingMinutesAgentText(value,220))
+      } } : {}) };
+    }) : compactMeetingAgentActionRegister(currentActions, 9000, 32)) : [],
     preparedTranscript: String(transcript || '').trim()
   };
   return `[ACTION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
@@ -11774,7 +11784,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'filingAliasReconciliation', 'citedFilingAliasReconciliation']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'actionPhaseCorrection', 'filingAliasReconciliation', 'citedFilingAliasReconciliation']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -12023,6 +12033,7 @@ function publicMeetingAgentDraft(draft = {}, options = {}) {
   safe.canRestorePairedDiscussionActions = safe.canRestoreCombinedDiscussion
     && Boolean(draft.qualityState?.discussion?.claimConsolidation?.separationActionRevisions?.length);
   safe.canRestoreCombinedActions = Boolean(originalEnquiryActions(draft));
+  safe.canRestorePhaseActions = safe.canRestoreCombinedActions && draft.qualityState?.actions?.actionPhaseCorrection?.applied === true;
   safe.changeHistoryCount = Array.isArray(changeHistory) ? changeHistory.length : 0;
   // The client only needs to know a redo exists and what it is called.
   const latestRedo = Array.isArray(redoHistory) ? redoHistory[redoHistory.length - 1] : null;
@@ -12586,6 +12597,7 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
     // timing or metadata invalidates the receipt and work is restored normally.
     const semanticallyRepresented = Array.isArray(options.receipts) && actions.some(existing =>
       options.receipts.some(receipt => validateReconciliationReceipt(receipt, record, existing, options.sourceUnits || [])));
+    if ((options.phaseReceipts || []).some(receipt => actionPhase.covers(receipt,record,actions,options.sourceUnits||[],options.meetingDate))) continue;
     if (semanticallyRepresented || (options.unionReceipts || []).some(receipt => actions.some(existing =>
       actionUnion.valid(receipt, record, existing, options.sourceUnits || [], options.meetingDate)))) continue;
     // Use the same directional, lossless variant proof as the final deduper.
@@ -15465,6 +15477,8 @@ function isPersonalErrandAction(value = '') {
 }
 
 function semanticReceiptCoversActionProposal(record = {}, published = [], options = {}) {
+  if (!isReviewerAuthored(record) && (options.phaseReceipts||[]).some(receipt =>
+    actionPhase.covers(receipt,record,published,options.sourceUnits||[],options.meetingDate))) return true;
   if ((options.unionReceipts || []).some(receipt => published.some(survivor =>
     actionUnion.valid(receipt, record, survivor, options.sourceUnits || [], options.meetingDate)))) return true;
   if (!Array.isArray(options.receipts) || isReviewerAuthored(record)) return false;
@@ -16047,8 +16061,20 @@ async function finishMeetingAgentSemanticStage(result, draft, stage, options = {
 
 async function finishMeetingAgentGeneratedStage(result, draft, stage, options = {}) {
   const finished = await finishMeetingAgentSemanticStage(result, draft, stage, options);
-  if (stage !== 'actions' || !Array.isArray(finished?.changes?.actions)
-    || !/^(?:1|true|yes|on)$/i.test(process.env.MEETING_MINUTES_AGENT_WORKFLOW_UNION_V1 || '0')) return finished;
+  if (stage !== 'actions' || !Array.isArray(finished?.changes?.actions)) return finished;
+  const finishPhases = async input => {
+    const policy=semanticPolicyForRun(draft,options.semanticPolicy);
+    if (policy.mode !== 'on' || policy.phaseClarifications !== true) return input;
+    const corrected = await actionPhase.correct(input.changes.actions, normaliseSourceUnits(draft.sourceUnits), {
+      meetingDate:meetingAgentTimingAnchor(draft),
+      protectedIds:[...(draft.keptActionOccurrenceIds||[]),...(draft.keptActionIds||[])],
+      ask:options.phaseAsk || options.semanticAsk || askPowerAutomateMeetingMinutesAgentWithRetry
+    });
+    const state=input.changes.qualityState || draft.qualityState || {};
+    return { ...input, changes:{ ...input.changes,actions:corrected.actions,qualityState:{...state,
+      actions:{...state.actions,actionPhaseCorrection:corrected.audit,automaticCount:corrected.actions.length}} } };
+  };
+  if (!/^(?:1|true|yes|on)$/i.test(process.env.MEETING_MINUTES_AGENT_WORKFLOW_UNION_V1 || '0')) return finishPhases(finished);
   const started = Date.now();
   const checked = await actionUnion.rewrite(finished.changes.actions, normaliseSourceUnits(draft.sourceUnits), {
     meetingDate: meetingAgentTimingAnchor(draft), protectedIds: [...(draft.keptActionOccurrenceIds || []),...(draft.keptActionIds || [])],
@@ -16066,7 +16092,7 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
     const remaining = changes.pendingProposal.changes.filter(change => !checked.audit.coveredProposalChanges.includes(change));
     changes.pendingProposal = remaining.length ? { ...changes.pendingProposal, changes: remaining } : null;
   }
-  return { ...finished, changes };
+  return finishPhases({ ...finished, changes });
 }
 
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
@@ -16531,10 +16557,12 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     ? timedStepCoverage(sourceActionCandidates, represented, draft.sourceUnits, { meetingDate: timingAnchor }) : null;
   if (initialTimedStepCoverage) recoveryDecision = mergeTimedStepRecovery(recoveryDecision, initialTimedStepCoverage);
   if (recoveryDecision.needed) {
+    const recoveryPolicy = semanticPolicyForRun(draft, options.semanticPolicy);
     const recoveryPrompt = anchoredActionRecovery
       ? meetingMinutesAgentAnchoredActionPrompt({
         transcript, details, candidates: recoveryDecision.uncovered,
-        currentActions: primary.actions, steer: draft.steer, mode: 'recovery'
+        currentActions: primary.actions, steer: draft.steer, mode: 'recovery',
+        phaseClarifications: recoveryPolicy.mode === 'on' && recoveryPolicy.phaseClarifications === true
       })
       : meetingMinutesAgentRecoveryPrompt({
         stage, transcript, details, salientDetails,
@@ -18877,6 +18905,9 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
     if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = actionUnion.preserveUnchanged(
       normalised.actions, draft.actions || [], req.body?.actions, draft.qualityState?.actions?.actionUnionRewrite,
       draft.sourceUnits, meetingAgentTimingAnchor(draft));
+    if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = actionPhase.preserveUnchanged(
+      normalised.actions,draft.actions||[],req.body?.actions,draft.qualityState?.actions?.actionPhaseCorrection,
+      draft.sourceUnits,meetingAgentTimingAnchor(draft));
     // Save normalisation must not undo a generated multi-clause source repair.
     normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
       { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
@@ -19954,6 +19985,14 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
     }
     changes.qualityState = { ...changes.qualityState, discussion: { ...changes.qualityState.discussion, claimConsolidation: bound } };
   }
+  const phase = changes.qualityState?.actions?.actionPhaseCorrection;
+  if (phase?.applied) {
+    const bound=actionPhase.rebind(phase,original,allocated,normaliseSourceUnits(fresh.sourceUnits),meetingAgentTimingAnchor(fresh));
+    if (!bound) return admitMeetingAgentGeneratedActionChanges(fresh,{...input,actions:structuredClone(phase.original),
+      qualityState:{...changes.qualityState,actions:{...changes.qualityState.actions,
+        actionPhaseCorrection:{...phase,applied:false,receipts:[],reason:'identity_binding_failed'}}}},generationKey);
+    changes.qualityState={...changes.qualityState,actions:{...changes.qualityState.actions,actionPhaseCorrection:bound}};
+  }
   const union = changes.qualityState?.actions?.actionUnionRewrite;
   if (Array.isArray(changes.actions) && union?.applied) {
     const bound = union.receipts.map(receipt => {
@@ -20558,7 +20597,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
     const reconciledActions = mergePublishedActionEvidence(publishedBase, combined);
     const proposal = annotateActionProposalChains(removePublishedActionProposalDuplicates(
       buildProposal('actions', reconciledActions, combined), reconciledActions,
-      { unionReceipts: draft.qualityState?.actions?.actionUnionRewrite?.applied ? draft.qualityState.actions.actionUnionRewrite.receipts : [],
+      { phaseReceipts:draft.qualityState?.actions?.actionPhaseCorrection?.applied ? draft.qualityState.actions.actionPhaseCorrection.receipts : [],
+        unionReceipts: draft.qualityState?.actions?.actionUnionRewrite?.applied ? draft.qualityState.actions.actionUnionRewrite.receipts : [],
         meetingDate: meetingAgentTimingAnchor(draft), receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
         ? draft.qualityState.actions.semanticReconciliation.receipts : [], sourceUnits: draft.sourceUnits }
     ), actionChains);
@@ -20582,7 +20622,8 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
       ])],
       pendingProposal: (() => {
         const finalProposal = removePublishedActionProposalDuplicates(proposal, reconciledActions,
-          { unionReceipts: draft.qualityState?.actions?.actionUnionRewrite?.applied ? draft.qualityState.actions.actionUnionRewrite.receipts : [],
+          { phaseReceipts:draft.qualityState?.actions?.actionPhaseCorrection?.applied ? draft.qualityState.actions.actionPhaseCorrection.receipts : [],
+            unionReceipts: draft.qualityState?.actions?.actionUnionRewrite?.applied ? draft.qualityState.actions.actionUnionRewrite.receipts : [],
         meetingDate: meetingAgentTimingAnchor(draft), receipts: draft.qualityState?.actions?.semanticReconciliation?.applied
             ? draft.qualityState.actions.semanticReconciliation.receipts : [], sourceUnits: draft.sourceUnits });
         return finalProposal.changes.length ? preselectActionProposal(finalProposal, reconciledActions, draft.sourceUnits) : null;
@@ -20714,9 +20755,11 @@ router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-actions', r
       error.statusCode = 409; throw error;
     }
     const actionState=draft.qualityState.actions, union=actionState.actionUnionRewrite;
-    const restoringCompilation=union?.version==='compilation-union-v1'&&union.applied;
+    const phase=actionState.actionPhaseCorrection;
+    const restoringPhase=phase?.applied && actionPhase.restore(draft.actions,phase,draft.sourceUnits,meetingAgentTimingAnchor(draft));
+    const restoringCompilation=!restoringPhase && union?.version==='compilation-union-v1'&&union.applied;
     const audit=actionState.semanticReconciliation;
-    if(restoringCompilation) {
+    if(restoringCompilation || restoringPhase) {
       // Restore the compiled originals, retaining the admitted identity of
       // every unique unchanged row. Raw generated snapshots can predate ID
       // allocation; restoring those IDs would strand an earlier merge proof.
@@ -20728,7 +20771,7 @@ router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-actions', r
     // Restoring the compilation snapshot can restore an earlier identity on
     // an otherwise unchanged contact survivor. Rebind its existing proof;
     // never strand the preceding independently recoverable reconciliation.
-    const restoredContactReceipts = restoringCompilation && audit?.applied
+    const restoredContactReceipts = (restoringCompilation || restoringPhase) && audit?.applied
       ? (audit.receipts||[]).map(receipt=>{
         const matches=actions.map(action=>rebindReconciliationReceipt(receipt,receipt.survivor,action,normaliseSourceUnits(draft.sourceUnits))).filter(Boolean);
         return matches.length===1?matches[0]:null;
@@ -20737,12 +20780,15 @@ router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-actions', r
       const error=new Error('The earlier action proof cannot be safely rebound. Your current actions were preserved.');error.statusCode=409;throw error;
     }
     const qualityState = { ...draft.qualityState, actions: { ...actionState,
-      ...(restoringCompilation ? {actionUnionRewrite:{...union,applied:false,restored:true},
+      ...(restoringPhase ? {actionPhaseCorrection:{...phase,applied:false,restored:true},
+        ...(union?.applied ? {actionUnionRewrite:{...union,finalHash:actionUnion.hash(actions)}} : {}),
+        ...(audit?.applied?{semanticReconciliation:{...audit,receipts:restoredContactReceipts,restoreSnapshot:structuredClone(actions)}}:{})}
+        : restoringCompilation ? {actionUnionRewrite:{...union,applied:false,restored:true},
         ...(audit?.applied?{semanticReconciliation:{...audit,receipts:restoredContactReceipts,restoreSnapshot:structuredClone(actions)}}:{})}
         : {semanticReconciliation:{...audit,applied:false,restored:true}})
     } };
     const saved = await saveMeetingAgentDraft(draft, req, { actions, qualityState,
-      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, 'Restore separate actions')].slice(-30),
+      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, restoringPhase ? 'Restore original action wording' : 'Restore separate actions')].slice(-30),
       redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),
         ...meetingAgentDerivedStaleStages(draft, { ...draft, actions })])] });
     return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
