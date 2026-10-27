@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const diagnostics = require('./meetingMinutesActionDiagnostics');
 const contained = require('./canonicalMinutes/containedRequirement');
 const qualifiedRepeat = require('./canonicalMinutes/qualifiedRepeatShape');
+const exactRepeat = require('./canonicalMinutes/exactInstructionRepeat');
 const dependency = require('./canonicalMinutes/qualifiedDependency');
 const contactPurpose = require('./canonicalMinutes/contactParaphrase');
 const referenceReview = require('./meetingMinutesActionReferenceReview');
@@ -213,7 +214,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
   const started=Date.now(),sourceUnits=draft.sourceUnits || [];
   const packet = stage==='actions' ? actionReconciliation.prepareActionReconciliation({actions:original,sourceUnits,
     meetingDate:options.meetingDate || '',maxCandidates:policy.maxCandidates,evidenceLimit:8,flagLimit:24,
-    protectedActionIds:draft.keptActionIds || [],protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true,contactReviews:policy.contactReviews===true})
+    protectedActionIds:draft.keptActionIds || [],protectedOccurrenceIds:draft.keptActionOccurrenceIds || [],scope:policy.scope,containedRequirements:policy.containedRequirements===true,exactInstructionRepeats:policy.exactInstructionRepeats===true,qualifiedDependencies:policy.qualifiedDependencies===true,contactParaphrases:policy.contactParaphrases===true,contactReviews:policy.contactReviews===true})
     : discussionReconciliation.prepareDiscussionReconciliation(original,{sourceUnits,policyVersion:policy.taskVersion,
       maxCandidates:policy.maxCandidates,evidenceLimit:8,reviewFlagLimit:24});
   const base = stage==='actions' ? actionReconciliation.buildDeterministicEnvelope(packet)
@@ -364,12 +365,14 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         const assessment=referenceReview.assess(review,response.result);
         // Match contact certification here: a generic component verdict cannot
         // authorize an enquiry or justify another provider call.
-        const passed=review.instructionComparison==='qualified_repeat'
+        const passed=review.instructionComparison==='exact_instruction_repeat'
+          ? exactRepeat.reviewRolePassed(assessment,parent.action,child.action)
+          : review.instructionComparison==='qualified_repeat'
           ? qualifiedRepeat.reviewRolePassed(assessment,parent.action,child.action)
           : assessment.modelPassed && (!['contact_paraphrase','contact_review','list_deliverable'].includes(review.instructionComparison)
           || assessment.relationship?.relation==='same_obligation'
             && assessment.sourceRoles.every(row=>row.basis==='commitment'));
-        const roleConflict=review.instructionComparison==='qualified_repeat' && assessment.modelPassed
+        const roleConflict=['qualified_repeat','exact_instruction_repeat'].includes(review.instructionComparison) && assessment.modelPassed
           && !passed;
         diagnostics.transition('independent_review', [parent.action, child.action], [], { candidateId: candidate.candidateId,
           role: challenge ? 'challenge' : 'primary', contractError: assessment.contractError || '',

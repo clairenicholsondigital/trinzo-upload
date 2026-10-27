@@ -210,3 +210,23 @@ test('a comma followed by then retains the next operation in a complete compound
   }
   separate(part, { ...whole, action: whole.action.replace('to Casey', 'to Morgan') });
 });
+
+test('approved originals already present do not enrich another variant or collapse occurrence identities',()=>{
+ const api=require('../routes/api').stagedEvaluation;
+ const records=[row('short','Complete the training attestation before the inspection starts.',{occurrenceId:'action-occurrence-111111111111111111111111'}),
+  row('full','Complete the training attestation required before the inspection starts.',{occurrenceId:'action-occurrence-222222222222222222222222'})];
+ assert.ok(reconcileCommitmentVariants(...records));
+ const multiset=rows=>rows.map(r=>JSON.stringify(r)).sort();
+ for(const approved of [records,[...records].reverse()]){
+  let out=api.reconcileFinalApprovedActions(structuredClone(records),structuredClone(approved));
+  assert.deepEqual(multiset(out.actions),multiset(records));assert.deepEqual(out.restored,[]);
+  out=api.reconcileFinalApprovedActions(out.actions,structuredClone(approved));assert.deepEqual(multiset(out.actions),multiset(records));
+ }
+ // The local early exit must not prevent genuine enrichment when detail is absent.
+ const richer=row('rich','Confirm the compressor pressure-limit specification used by the controller.');
+ const bare=row('bare','Confirm the specification of the compressor pressure limit.');
+ const enriched=api.reconcileFinalApprovedActions([bare],[richer]);assert.equal(enriched.actions.length,1);assert.equal(enriched.actions[0].action,richer.action);
+ // Reused model IDs do not make a different record represented.
+ const changed={...bare,action:'Review the supplier invoice.'};
+ assert.equal(api.reconcileFinalApprovedActions([bare],[changed]).actions.length,2);
+});
