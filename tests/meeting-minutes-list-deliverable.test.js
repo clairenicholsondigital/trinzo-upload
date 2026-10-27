@@ -80,6 +80,57 @@ test('a failed independent challenge retains both obligations without retrying a
  assert.equal(calls,2);assert.deepEqual(result.changes.actions,f.actions);assert.equal(result.changes.qualityState.actions.semanticReconciliation.stats.merged,0);
 });
 
+test('reversed input order elects the same unchanged row and a repeated run makes no new call',async()=>{
+ const f=fixture();f.actions.reverse();let calls=0;
+ const first=await run(f,{ask:async prompt=>{calls++;return ask(prompt);}});
+ assert.equal(calls,2);assert.equal(first.changes.actions.length,1);assert.equal(first.changes.actions[0].id,'provide');
+ const second=await run({...f,actions:first.changes.actions},{ask:async()=>{throw Error('no comparison should remain');}});
+ assert.deepEqual(second.changes.actions,first.changes.actions);
+});
+
+for(const stage of ['proposal','challenge'])for(const issue of ['unsupported instruction','unclear owner','lost scope','malformed response'])
+ test(issue+' at '+stage+' retains complete originals',async()=>{
+  const f=fixture(),before=structuredClone(f);let calls=0;
+  const output=await run(f,{ask:async prompt=>{
+   const phase=++calls===1?'proposal':'challenge';if(phase!==stage)return ask(prompt);
+   if(issue==='malformed response')return {result:{}};
+   const answer=await ask(prompt),data=JSON.parse(prompt.split('\nDATA\n')[1]);
+   if(issue==='lost scope'){answer.result.decisions[1].checks[0].status='not_retained';answer.result.decisions[1].checks[0].refs=[];}
+   else {const field=issue==='unclear owner'?'owners':'instruction',row=data.sourceRows[0];
+    const request=row.requests.find(check=>check.field===field);assert.ok(request);
+    const check=answer.result.decisions[0].rows[0].checks.find(check=>check.id===request.id);
+    check.status=issue==='unclear owner'?'unclear':'unsupported';check.refs=[];}
+   return answer;
+  }});
+  assert.equal(calls,stage==='proposal'?1:2);assert.deepEqual(output.changes.actions,f.actions);
+  assert.equal(output.changes.qualityState.actions.semanticReconciliation.receipts.length,0);assert.deepEqual(f,before);
+ });
+
+test('ambiguous existing list survivors are not selected by length or incoming order',()=>{
+ const f=fixture(),other={...f.actions[1],id:'other',action:f.actions[1].action.replace('receive shipments','receive equipment shipments')};
+ for(const actions of [[...f.actions,other],[other,...f.actions]])assert.equal(C.direction(f.actions[0],f.actions[1],actions),null);
+});
+
+test('kept occurrences and legacy keeps prevent the list stage from requesting deletion',async()=>{
+ for(const kind of ['keptActionIds','keptActionOccurrenceIds']){
+  const f=fixture();f.actions[0].occurrenceId='action-occurrence-0123456789abcdef01234567';
+  const draft={sourceUnits:f.units,[kind]:[kind==='keptActionIds'?'prepare':f.actions[0].occurrenceId]};
+  const output=await reconcileGeneratedSemanticStage({changes:{actions:f.actions}},draft,'actions',{policy,ask:async()=>{throw Error('protected pair must not reach provider');}});
+  assert.deepEqual(output.changes.actions,f.actions);assert.equal(output.changes.qualityState.actions.semanticReconciliation.stats.candidateCount,0);
+ }
+});
+
+test('an optional list veto preserves an independently proved existing merge',async()=>{
+ const f=fixture();f.units.push(...V.normaliseSourceUnits([{id:'T0002',speaker:'Maya Patel',text:'I will send the detailed inspection report.'}]));
+ const row=id=>({id,action:'Send the detailed inspection report.',owners:['Maya Patel'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0002'],reviewFlagIds:[]});
+ f.actions=[row('old1'),row('old2'),...f.actions];
+ const combined=captureSemanticPolicy({MEETING_MINUTES_AGENT_BOUNDED_SURVIVOR_DEDUPE_V1:'1',MEETING_MINUTES_AGENT_CONTAINED_REQUIREMENTS_V1:'1'});
+ const output=await run(f,{policy:combined,ask:async()=>{throw Error('optional list review unavailable');}});
+ assert.equal(output.changes.actions.length,3);assert.equal(output.changes.actions.filter(a=>a.action==='Send the detailed inspection report.').length,1);
+ for(const id of ['prepare','provide'])assert.ok(output.changes.actions.some(a=>a.id===id));
+ assert.equal(output.changes.qualityState.actions.semanticReconciliation.stats.merged,1);
+});
+
 test('list proof survives background saving, public projection and exports with exact recovery',async()=>{
  const f=fixture(),A=require('../routes/api').stagedEvaluation;
  const initial={draftId:'list-save',revision:1,payloadVersion:V.PAYLOAD_VERSION,sourceUnits:f.units,actions:[],discussion:[],reviewFlags:[],qualityState:{},

@@ -20,6 +20,26 @@ The implementation branch starts from deployed commit `32e540f995862018fda2083c0
 
 No production minutes, Microsoft configuration, service settings or task statuses were changed. Private source/response artefacts are outside the repository under `/root/trinzo-ai011-step4-evidence`.
 
+## Step 5: safety and regression validation
+
+Step 5 added tests for reversed ordering and repeat-run idempotence, unsupported instructions, unclear owners, lost scope and malformed replies at either independent-review stage. Each failure retains complete originals and produces no receipt. Kept occurrences, ambiguous existing survivors and optional-list failure alongside an independently valid existing merge are also covered.
+
+**422/422 tests passed, with no skips**, across 24 focused suites. These include preservation, identities, reviewer edits, timing, distinct deliverables, final presentation, existing source-aware/contact/compilation paths and the new list comparison. No further application-code change was needed during this step.
+
+Two additional real Microsoft adverse controls reached the comparison: one explicitly described different geographical list scopes, and one described a suggestion with no accepted commitment. Each retained **2 → 2 rows** after one vetoing request; neither veto was retried. Together with step 4's separately tracked preparation/delivery control, all three tested real-service adverse cases retained their original rows. These examples do not establish a general model error rate.
+
+The complete frozen five-register input was replayed locally. DITA used only the exact two captured real-service responses, matched byte-for-byte to the new requests. There were no new provider calls or database operations during this replay:
+
+| Register | Input → output actions | Safety result |
+| --- | ---: | --- |
+| Abbott | 18 → 18 | Every original unchanged |
+| DITA | 16 → 15 | Only the nominated list pair consolidated; the other 14 records unchanged |
+| Allotment | 10 → 10 | Every original unchanged, including timing warnings/rejected-date history |
+| Eakin | 19 → 19 | Every original unchanged, including owner warnings and separate results handoff |
+| Parking | 1 → 1 | Original unchanged; its validity issue remains AI-022 |
+
+All 16 baseline overlap groups were checked. The unaffected 62 original actions retain their complete records, not just their visible text. Source units were unchanged, receipts revalidated, and exact recovery was checked after normal publication identity admission. This is controlled regression evidence; it is not a new five-transcript generation or an independent colleague trial. The code remains on the implementation branch and has not been deployed.
+
 ## Remaining work
 
 This closes one demonstrated comparison gap, not AI-011 as a whole. Allotment's identical rows still need safe handling of different unresolved timing/warning histories and a rejected date. Eakin's confirmation/contact variants and other partial overlaps need their own bounded proofs. Discussion repetition remains AI-017, filing repetition AI-019, and refusal-to-action validity AI-022. A later fresh five-transcript run and the AI-005 colleague trial are required before claiming general output improvement or task completion.
