@@ -759,6 +759,7 @@ function normaliseFlag(flag = {}, index = 0) {
     id: text(flag.id, 80) || (systemTimingIssue ? stableId('flag-timing', JSON.stringify(systemTimingIssue), 0) : stableId('flag', `${kind}|${message}`, index)),
     kind,
     message,
+    ...(text(flag.actionWordingAtCheck, 1600) ? { actionWordingAtCheck: text(flag.actionWordingAtCheck, 1600) } : {}),
     // Group materialization notices already carry up to twenty source anchors.
     // Keep that bounded passage intact through save/reload; ordinary flags keep
     // their existing citation budget. This does not certify action coverage.
@@ -7314,6 +7315,15 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     record.reviewFlagIds.push(flag.id);
   }
   if (stage === 'discussion') flags.push(...unresolvedReferenceFlags(units));
+  // Capture only checks created here, against exactly one action. Incoming
+  // warnings may already concern discarded wording; never invent their origin
+  // from the current row or a quotation parsed out of their explanation.
+  for (const flag of flags.slice(suppliedFlagCount)) {
+    const targets = flagRecords.filter(record => record.reviewFlagIds.includes(flag.id));
+    if (targets.length === 1 && targets[0].action && !flag.actionWordingAtCheck) {
+      flag.actionWordingAtCheck = text(targets[0].action, 1600);
+    }
+  }
   // A review decision belongs to its original warning and row. Only untouched
   // automatic duplicates, or a validation warning regenerated for that same
   // target, may share a flag. Build the kept list and aliases together so they
@@ -7355,7 +7365,7 @@ function reviewFlagIdentityKey(flag) {
   // Handled or annotated warnings keep their own identities even if two
   // reviewers happened to choose the same status and note for separate rows.
   const untouched = flag.status === 'open' && !flag.correctionNote && !flag.reviewerAuthored;
-  return JSON.stringify([reviewFlagContentKey(flag), flag.status, flag.correctionNote, untouched ? '' : flag.id]);
+  return JSON.stringify([reviewFlagContentKey(flag), flag.status, flag.correctionNote, untouched ? '' : flag.id, flag.actionWordingAtCheck || '']);
 }
 
 function uniqueFlags(flags = [], suppliedCount = flags.length, records = [], originalReferences = new Map()) {
@@ -7366,6 +7376,7 @@ function uniqueFlags(flags = [], suppliedCount = flags.length, records = [], ori
     if (index < suppliedCount) return true;
     const targets = records.filter(record => record.reviewFlagIds.includes(flag.id));
     const matching = supplied.filter(prior => reviewFlagContentKey(prior) === reviewFlagContentKey(flag)
+      && (!prior.actionWordingAtCheck || !flag.actionWordingAtCheck || prior.actionWordingAtCheck === flag.actionWordingAtCheck)
       && (!suppliedIds.has(flag.id) || prior.id === flag.id)
       && targets.length && targets.every(record => originalReferences.get(record)?.has(prior.id)));
     // Content alone is insufficient: another incoming row may still need the

@@ -68,6 +68,22 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  const earlierWarning = baseDraft('earlier-warning', false);
+  earlierWarning.actions[0].action = 'Follow up with Jo regarding review of the documents.';
+  earlierWarning.reviewFlags[1] = {
+    id: 'flag-action', kind: 'missing_evidence', status: 'open', correctionNote: '',
+    message: 'The linked lines only partly support the earlier instruction. Check against the transcript.',
+    evidenceIds: ['T0001'], actionWordingAtCheck: 'Obtain <Jo> review of the documents.'
+  };
+  drafts.set('earlier-warning', earlierWarning);
+  const sameWarning = JSON.parse(JSON.stringify(earlierWarning));
+  sameWarning.draftId = 'same-warning';
+  sameWarning.reviewFlags[1].actionWordingAtCheck = sameWarning.actions[0].action;
+  drafts.set('same-warning', sameWarning);
+  const sharedWarning = JSON.parse(JSON.stringify(earlierWarning));
+  sharedWarning.draftId = 'shared-warning';
+  sharedWarning.actions.push({ ...sharedWarning.actions[0], id:'action-2', action:'Send the documents to Jo.' });
+  drafts.set('shared-warning', sharedWarning);
   const phaseDraft = baseDraft('phase-correction', false);
   phaseDraft.canRestoreCombinedActions = true;
   phaseDraft.canRestorePhaseActions = true;
@@ -3442,3 +3458,44 @@ test('phase correction offers accurate recovery wording and restores through the
   assert.deepEqual(errors,[]);
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
 });
+
+
+test('inherited warning distinguishes earlier wording, escapes it and keeps the current action and review controls', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    const launched = await launchPage(port, 'earlier-warning');
+    browser = launched.browser;
+    const { page, errors } = launched;
+    const warning = page.locator('[data-review-flag-id="flag-action"]');
+    const reason = warning.locator('.flag-message');
+    assert.match(await reason.textContent(), /raised against earlier action wording/);
+    assert.match(await reason.textContent(), /Obtain <Jo> review of the documents/);
+    assert.match(await reason.textContent(), /Original explanation: The linked lines/);
+    assert.equal(await reason.locator('jo').count(), 0, 'origin text must not become markup');
+    assert.match(await warning.locator('.flag-target').textContent(), /Follow up with Jo regarding review of the documents/);
+    assert.equal(await warning.locator('[data-flag-status="confirmed"]').count(), 1);
+    assert.equal(await warning.locator('[data-flag-status="dismissed"]').count(), 1);
+    assert.equal(await warning.locator('[data-flag-correction]').inputValue(), '');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+for (const fixture of ['editor', 'same-warning', 'shared-warning']) {
+  test('no earlier-wording claim for historical, unchanged or shared checks: ' + fixture, { timeout: 120000 }, async () => {
+    const { server, port } = await startStubServer();
+    let browser;
+    try {
+      const launched = await launchPage(port, fixture);
+      browser = launched.browser;
+      assert.doesNotMatch(await launched.page.locator('#flagList').textContent(), /raised against earlier action wording/);
+      assert.deepEqual(launched.errors, []);
+    } finally {
+      if (browser) await browser.close();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+}

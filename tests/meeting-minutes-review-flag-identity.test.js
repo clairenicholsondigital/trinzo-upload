@@ -297,3 +297,18 @@ test('an exactly repeated deterministic system flag keeps its reviewed state in 
     }
   }
 });
+
+
+test('actual save/reload and undo/redo preserve original check wording and a human decision', async () => {
+  reset([flag('flag-one', { actionWordingAtCheck: 'Inspect the original pressure report.', status:'corrected', correctionNote:'Confirmed the revised scope.' }), flag('flag-two')]);
+  const original = copy(saved.reviewFlags[0]);
+  const loaded = await request('get');
+  const actions = copy(loaded.actions);
+  actions[0].action = 'Review the revised inspection report.';
+  const after = await request('patch', '', { actions, reviewFlags: loaded.reviewFlags, reviewDecisionLabel: 'Clarify action wording' });
+  assert.deepEqual(after.reviewFlags.find(flag => flag.id === original.id), original);
+  const undone = await request('post', '/undo');
+  assert.deepEqual(undone.reviewFlags.find(flag => flag.id === original.id), original);
+  const redone = await request('post', '/redo');
+  assert.deepEqual(redone.reviewFlags.find(flag => flag.id === original.id), original);
+});
