@@ -40,6 +40,29 @@ The complete frozen five-register input was replayed locally. DITA used only the
 
 All 16 baseline overlap groups were checked. The unaffected 62 original actions retain their complete records, not just their visible text. Source units were unchanged, receipts revalidated, and exact recovery was checked after normal publication identity admission. This is controlled regression evidence; it is not a new five-transcript generation or an independent colleague trial. The code remains on the implementation branch and has not been deployed.
 
+## Step 6: fresh generation and persistence checks
+
+On 27 October, all five original transcripts were generated again on implementation commit `d03666ef790d89e6acf7e20f869d67aac4ccdbcc`, using empty isolated caches, the existing Microsoft and Trooper services and the production pipeline settings. The 145 Microsoft requests used fresh responses rather than captured replay. No production drafts were deleted, replaced or updated.
+
+| Transcript | Previous → fresh actions | Previous → fresh Needs filing | Previous → fresh primary review checks |
+| --- | ---: | ---: | ---: |
+| Abbott | 18 → 15 | 49 → 33 | 42 → 37 |
+| DITA | 16 → 13 | 38 → 36 | 17 → 17 |
+| Allotment | 10 → 8 | 22 → 16 | 32 → 38 |
+| Eakin | 19 → 16 | 14 → 49 | 34 → 29 |
+| Parking | 1 → 0 | 12 → 10 | 1 → 2 |
+| **Total** | **64 → 52** | **135 → 144** | **126 → 123** |
+
+Primary review groups changed from 88 to 85. These are interface counts, not measured human review time or a count of errors. Needs filing and review checks are different views of work and must not be added together as independent defects.
+
+The fresh action comparison stage nominated and merged **zero pairs** in all five runs. Therefore the lower action count cannot be attributed to the new list correction. DITA generated its country-list obligation as one combined row upstream; the fixed-input 16 → 15 replay remains the direct evidence for the new correction. No identical normalised action-text/same-owner pairs appeared, but visible semantic overlaps remain: Abbott's combined training/access/risk work, DITA's Cody follow-ups, and Eakin's standards assessment and document-sending actions. Related rows can also contain distinct commitments and are not automatically safe merges.
+
+All five workflows finished and passed publication admission and original Word/PDF export checks. This was not an entirely successful set of provider stages: the optional secondary action selector timed out for Abbott, DITA and Eakin. Referee follow-up groups could not be safely materialised in all five runs (8, 8, 7, 6 and 3 respectively), so the pipeline retained its evidence-grounded fallback. These limitations prevent claiming a fully successful provider comparison. Eakin's filing increase also prevents claiming an overall reduction in reviewer burden.
+
+The five fresh drafts and the earlier real-service DITA merge were then exercised through the actual application route handlers, a disposable PostgreSQL database and a browser. All six cases passed ownership isolation, stale-revision rejection, reviewer correction, save/reload, completion persistence and Word/PDF download checks. Corrections appeared in both exported formats; other action content and transcript source units were preserved. Action evidence was readable for all cases with actions. The DITA merge restored the exact original action content and metadata; recovery correctly refused to overwrite a later reviewer edit. Browser checks reported no page errors. Authentication used fixture users: this was technical end-to-end validation, not production sign-in or an independent colleague trial.
+
+Read-only before/after hashes confirmed all **64 production drafts** and the production environment file were unchanged. The production revision remained `32e540f995862018fda2083c0389b70b7c5d597f`. The disposable database was stopped after testing. Private test outputs and reports are under `/root/trinzo-ai011-step6-20261027`, outside the repository. No task status was changed and this branch was not deployed.
+
 ## Remaining work
 
-This closes one demonstrated comparison gap, not AI-011 as a whole. Allotment's identical rows still need safe handling of different unresolved timing/warning histories and a rejected date. Eakin's confirmation/contact variants and other partial overlaps need their own bounded proofs. Discussion repetition remains AI-017, filing repetition AI-019, and refusal-to-action validity AI-022. A later fresh five-transcript run and the AI-005 colleague trial are required before claiming general output improvement or task completion.
+This closes one demonstrated comparison gap, not AI-011 as a whole. Allotment's frozen identical rows still need safe handling of different unresolved timing/warning histories and a rejected date, even though that pair did not recur in the fresh sample. Eakin's frozen confirmation/contact variants and remaining fresh overlaps need their own bounded proofs. Discussion repetition remains AI-017, filing repetition AI-019, and refusal-to-action validity AI-022. The fresh run does not establish general output improvement; AI-005 colleague validation and investigation of the observed provider-stage failures remain necessary before claiming task completion. Further work should start from these recorded findings rather than assuming that fewer generated actions proves successful deduplication.
