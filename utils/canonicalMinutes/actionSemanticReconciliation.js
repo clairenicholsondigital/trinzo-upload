@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const diagnostics = require('../meetingMinutesActionDiagnostics');
 const contained = require('./containedRequirement');
+const exactRepeat = require('./exactInstructionRepeat');
 const dependency = require('./qualifiedDependency');
 const contactPurpose = require('./contactParaphrase');
 const { sourceOwnerWitnessScope } = require('../meetingMinutesSemanticSourceVerification');
@@ -253,9 +254,13 @@ function prepareActionReconciliation(input = {}) {
   // Qualified repeats use spare capacity only, after every established class.
   // A new nomination must not displace a previously supported comparison.
   if(input.containedRequirements===true)classes.push('qualified_repeats');
-  let containedCount=0,dependencyCount=0,contactPurposeCount=0;
-  for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
-    const left = ordered[i]; const right = ordered[j];
+  if(input.containedRequirements===true&&input.exactInstructionRepeats===true)classes.push('exact_instruction_repeats');
+  let containedCount=0,dependencyCount=0,contactPurposeCount=0,exactCount=0;
+  for (const nominationClass of classes) {
+   const selection=nominationClass==='exact_instruction_repeats'
+    ?[...rows].sort((a,b)=>exactRepeat.orderKey(a.action).localeCompare(exactRepeat.orderKey(b.action))):ordered;
+   for (let i = 0; i < selection.length; i += 1) for (let j = i + 1; j < selection.length; j += 1) {
+    const left = selection[i]; const right = selection[j];
     const skipped = (reason, details) => diagnostics.nomination(left.action, right.action, nominationClass, reason, details);
     if (left.protected || right.protected) { skipped('protected_reviewer_or_kept_occurrence'); continue; }
     const contactDirection=nominationClass==='contact_paraphrases'&&input.contactParaphrases===true
@@ -264,12 +269,12 @@ function prepareActionReconciliation(input = {}) {
     if(['contact_paraphrases','contact_reviews'].includes(nominationClass)&&(!contactDirection||contactPurposeCount>=1)) { skipped(!contactDirection?'contact_shape_not_supported':'contact_class_budget_exhausted'); continue; }
     if(nominationClass==='contact_reviews'&&!contactPurpose.reviewShape(contactDirection.parent,contactDirection.child)) { skipped('review_arrangement_shape_not_supported'); continue; }
     const contact = sameEnquiryPair(left.action, right.action);
-    const containedClasses=['contained_requirements','qualified_repeats'];
+    const containedClasses=['contained_requirements','qualified_repeats','exact_instruction_repeats'];
     const proposedContained=containedClasses.includes(nominationClass)&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
     const containedDirection=proposedContained
-      && ((proposedContained.kind==='qualified_repeat')===(nominationClass==='qualified_repeats')) ? proposedContained : null;
-    if(containedClasses.includes(nominationClass)&&(!containedDirection||containedCount>=1)) { skipped(!containedDirection?'contained_shape_not_supported':'contained_class_budget_exhausted'); continue; }
+      && (proposedContained.kind==='exact_instruction_repeat'?'exact_instruction_repeats':proposedContained.kind==='qualified_repeat'?'qualified_repeats':'contained_requirements')===nominationClass ? proposedContained : null;
+    if(containedClasses.includes(nominationClass)&&(!containedDirection||(nominationClass==='exact_instruction_repeats'?exactCount:containedCount)>=1)) { skipped(!containedDirection?'contained_shape_not_supported':'contained_class_budget_exhausted'); continue; }
     const dependencyDirection=nominationClass==='qualified_dependencies'&&input.qualifiedDependencies===true
       ?dependency.direction(left.action,right.action,rows.map(row=>row.action)):null;
     if(nominationClass==='qualified_dependencies'&&(!dependencyDirection||dependencyCount>=1)) { skipped(!dependencyDirection?'dependency_shape_not_supported':'dependency_class_budget_exhausted'); continue; }
@@ -291,12 +296,13 @@ function prepareActionReconciliation(input = {}) {
       leftIntoRight: mechanicalCoverage(left.action, right.action),
       rightIntoLeft: mechanicalCoverage(right.action, left.action) };
     if(candidates.some(candidate=>candidate.candidateId===pair.candidateId))continue;
-    if (candidates.length < maxCandidates) { skipped('nominated', { candidateId: pair.candidateId }); candidates.push(pair);if(containedDirection)containedCount++;if(dependencyDirection)dependencyCount++;if(contactDirection)contactPurposeCount++; }
+    if (candidates.length < maxCandidates) { skipped('nominated', { candidateId: pair.candidateId }); candidates.push(pair);if(containedDirection){if(nominationClass==='exact_instruction_repeats')exactCount++;else containedCount++;}if(dependencyDirection)dependencyCount++;if(contactDirection)contactPurposeCount++; }
     else { skipped('candidate_budget_exhausted', { candidateId: pair.candidateId }); unresolved.push({ candidateId: pair.candidateId, refs: [left.ref, right.ref], reason: 'candidate_budget_exhausted' }); }
+  }
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,
-    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}),...(input.contactReviews===true?{contactReviews:true}:{}) },
+    policy: { evidenceLimit: limit(input.evidenceLimit, 8), flagLimit: limit(input.flagLimit, 24),...(input.containedRequirements===true?{containedRequirements:true}:{}),...(input.containedRequirements===true&&input.exactInstructionRepeats===true?{exactInstructionRepeats:true}:{}),...(input.qualifiedDependencies===true?{qualifiedDependencies:true}:{}),...(input.contactParaphrases===true?{contactParaphrases:true}:{}),...(input.contactReviews===true?{contactReviews:true}:{}) },
     ...(isActionOnlySemanticScope(input.scope) ? { scope: input.scope } : {}) };
   return freeze({ ...packet, packetHash: hash(packet) });
 }

@@ -12620,6 +12620,10 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
       }
       continue;
     }
+    // An unchanged approved record already present must not enrich a different
+    // variant first: doing so can overwrite that variant's occurrence identity.
+    // Compare the full snapshot, never a possibly reused model ID.
+    if (actions.some(existing => sameEnquiryActionSnapshot(record, existing))) continue;
     const completedTimingIndex = actions.findIndex(existing =>
       sourceBoundIdenticalActionTimingCompletion(record, existing, options.sourceUnits || [])
       || sourceBoundLiteralDependencyTiming(record, existing, options.sourceUnits || []));
