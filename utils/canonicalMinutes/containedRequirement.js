@@ -107,6 +107,12 @@ function certify(parent,child,sourceUnits,contextSourceIds,primary,challenge,opt
  const first=reviewPacket(parent,child,sourceUnits,contextSourceIds,false,reviewOptions),second=reviewPacket(parent,child,sourceUnits,contextSourceIds,true,reviewOptions);
  for(const [packet,response] of [[first,primary],[second,challenge]]){
   const assessment=N.assess(packet,response);
+  if(match.kind==='qualified_repeat'&&assessment.modelPassed&&!qualifiedRepeat.reviewRolePassed(assessment,parent,child))
+   throw Error('qualified_repeat_source_role_conflict');
+  if(match.kind==='qualified_repeat') {
+   if(assessment.contractError||!qualifiedRepeat.reviewRolePassed(assessment,parent,child))throw Error(assessment.contractError||'contained_independent_veto');
+   continue;
+  }
   if(assessment.contractError||!assessment.modelPassed||!(['issue_paraphrase','list_deliverable','qualified_repeat'].includes(match.kind)?['same_obligation']:match.kind==='content_instruction'?['same_obligation','discarded_requirement_of_survivor']:['discarded_requirement_of_survivor']).includes(assessment.relationship?.relation)
    ||['issue_paraphrase','list_deliverable','qualified_repeat'].includes(match.kind)&&response.decisions.find(section=>section.kind==='source').rows.some(row=>row.basis!=='commitment'))throw Error(assessment.contractError||'contained_independent_veto');
  }

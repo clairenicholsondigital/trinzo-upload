@@ -32,4 +32,16 @@ function shape(parent,child){
   .some(wording=>clean(wording)===clean(parent.timing.wording)))return null;
  return {kind:'qualified_repeat'};
 }
-module.exports={shape};
+// The role labels describe the relationship, not an exemption from source or
+// retention proof. This narrow alternative covers detail of the SAME operation;
+// a required component of a different operation is never sufficient.
+function reviewRolePassed(assessment,parent,child){
+ if(!assessment.modelPassed||!shape(parent,child))return false;
+ const roles=assessment.sourceRoles||[],relation=assessment.relationship?.relation;
+ if(relation==='same_obligation')return roles.length===2&&roles.every(row=>row.basis==='commitment');
+ const simpleDetail=!/\b(?:and|then|before|after|if|unless|until|once|when)\b|[;?\n]/i.test(child.action);
+ return relation==='discarded_requirement_of_survivor'&&simpleDetail&&roles.length===2
+  &&roles.find(row=>row.rowId==='A')?.basis==='commitment'
+  &&roles.find(row=>row.rowId==='B')?.basis==='required_component';
+}
+module.exports={shape,reviewRolePassed};

@@ -12,7 +12,7 @@ const row=(id,wording)=>({id,action:'Share the inspection analysis with Jordan.'
  timingDecision:{status:'unresolved',reason:'timing_source_unresolved',rejectedExactDates:[],rejectedWordings:[],binding:{status:'unresolved',conflictingSourceIds:[]}},evidenceIds:['T0001'],reviewFlagIds:['warning-'+id]});
 const pair=()=>[row('full','Once more information and the confidentiality and conduct agreements are in place; before Jordan arrives.'),row('short','Once more information is available, before Jordan arrives.')];
 const ask=async(prompt)=>({result:response(JSON.parse(prompt.split('\nDATA\n')[1]))});
-const run=(actions=pair(),options={})=>reconcileGeneratedSemanticStage({changes:{actions}},{sourceUnits:sources},'actions',{policy,ask,...options});
+const run=(actions=pair(),options={})=>reconcileGeneratedSemanticStage({changes:{actions}},{sourceUnits:options.sourceUnits||sources},'actions',{policy,ask,...options});
 
 test('qualified repeats nominate an existing fuller record in either order; no deterministic merge',()=>{
  const [p,c]=pair();assert.equal(C.direction(p,c).kind,'qualified_repeat');assert.equal(C.direction(c,p).parent.id,p.id);
@@ -46,6 +46,7 @@ test('source or retention veto, component-only answer and provider failure retai
   if(mode==='component')answer.result.decisions[0].rows[1].basis='required_component';
   if(mode==='challenge'&&calls===2)answer.result.decisions[2].relation='distinct_work';return answer;}});
  assert.deepEqual(output.changes.actions,pair(),mode);assert.equal(calls,mode==='challenge'?2:1,mode);
+ if(mode==='component')assert.ok(output.changes.qualityState.actions.semanticReconciliation.unresolved.some(item=>item.reason==='qualified_repeat_source_role_conflict'));
  }
 });
 test('timing-kind reference alone cannot certify complete timing retention',()=>{
@@ -82,4 +83,31 @@ test('new qualified comparisons do not displace existing contained-content nomin
   {id:'notice-short',action:'Explain the annual fee increase in the membership notice.',owners:['Maya Patel'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0002'],reviewFlagIds:[]}];
  const packet=R.prepareActionReconciliation({actions:records,sourceUnits:sources,scope:policy.scope,containedRequirements:true,maxCandidates:1});
  assert.equal(packet.candidates.length,1);assert.ok(packet.rows.find(row=>row.ref===packet.candidates[0].containedRequirement.survivorRef).action.id.startsWith('notice-'));
+});
+
+test('qualified-repeat role clarification is scoped and never converts component evidence into a commitment',()=>{
+ const [p,c]=pair(),a=C.reviewPacket(p,c,sources,['T0001'],false),b=C.reviewPacket(p,c,sources,['T0001'],true);
+ assert.match(N.prompt(a),/Classify each source row relative to the TWO actions/);
+ assert.match(N.prompt(a),/Never relabel a source row merely to permit consolidation/);
+ const first=response(a),second=response(b);first.decisions[0].rows[1].basis='required_component';
+ assert.throws(()=>C.certify(p,c,sources,['T0001'],first,second),/qualified_repeat_source_role_conflict/);
+ const plain={...a,instructionComparison:'content_instruction'};
+ assert.doesNotMatch(N.prompt(plain),/QUALIFIED REPEAT ROLE RULE/);
+});
+
+test('same-operation detail needs correct directional roles, complete retention and two independent proofs',async()=>{
+ const records=pair();records[0].action='Take a photo of the boundary fence and include it with the council correspondence.';records[1].action='Take a photo of the railway-side boundary fence damage';
+ records[0].timing={kind:'target',wording:'tomorrow; as part of the council correspondence this week',exactDate:''};records[1].timing={kind:'target',wording:'tomorrow',exactDate:''};
+ const photoSources=require('../utils/meetingMinutesAgentV2').normaliseSourceUnits([{id:'T0001',speaker:'Maya Patel',text:'I will take a photo of the railway-side boundary fence damage tomorrow and include that photo with the council correspondence this week.'}]);
+ const detailAsk=async(...args)=>{const answer=await ask(...args);answer.result.decisions[0].rows[1].basis='required_component';answer.result.decisions[2].relation='discarded_requirement_of_survivor';return answer;};
+ let calls=0;const good=await run(records,{sourceUnits:photoSources,ask:async(...args)=>{calls++;return detailAsk(...args);}});
+ assert.equal(calls,2);assert.equal(good.changes.actions.length,1);
+ for(const mode of ['reversed','unsupported','lost_detail','distinct','challenge']){
+  let n=0;const result=await run(records,{sourceUnits:photoSources,ask:async(...args)=>{n++;const answer=await detailAsk(...args);
+   if(mode==='reversed')answer.result.decisions[0].rows.forEach((row,i)=>row.basis=i===0?'required_component':'commitment');
+   if(mode==='unsupported')answer.result.decisions[0].rows[1].checks[0].status='unclear';
+   if(mode==='lost_detail')answer.result.decisions[1].checks[0].status='not_retained';
+   if(mode==='distinct'||mode==='challenge'&&n===2)answer.result.decisions[2].relation='distinct_work';return answer;}});
+  assert.deepEqual(result.changes.actions,records,mode);assert.equal(n,mode==='challenge'?2:1);
+ }
 });
