@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const actionDiagnostics = require('./meetingMinutesActionDiagnostics');
 const { validOccurrenceId, actionProvenanceSignature, findActionOccurrenceIndex, preserveActionIdentity, assignGeneratedActionIdentities } = require('./meetingMinutesActionIdentity');
 const TimingIntegrity = require('./meetingMinutesTiming');
 const { normaliseSystemTimingIssue, actionTimingIssueFlag } = require('./meetingMinutesTimingFlags');
@@ -542,9 +543,13 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   };
   const suppliedIds = [...new Set((Array.isArray(supplied) ? supplied : []).map((id) => text(id, 30)).filter(Boolean))];
   const cacheKey = `${TimingIntegrity.TIMING_POLICY_VERSION}|${options.meetingDate || ''}|${options.action ? 'a' : 'p'}|${options.preserveDiscussionEvidence === true ? '12' : '8'}|${text(value, 5000)}|${suppliedIds.join(',')}`;
+  const traceResolution = (result, reason, metrics = {}) => {
+    if (options.action) actionDiagnostics.resolution(value, suppliedIds, result, reason, metrics);
+  };
   const cached = context.resolutionCache.get(cacheKey);
-  if (cached) return { ...cached, evidenceIds: [...cached.evidenceIds], invalidIds: [...cached.invalidIds], weakIds: [...cached.weakIds] };
-  const finish = (result) => {
+  if (cached) { traceResolution(cached, 'resolution_cache_hit'); return { ...cached, evidenceIds: [...cached.evidenceIds], invalidIds: [...cached.invalidIds], weakIds: [...cached.weakIds] }; }
+  const finish = (result, reason, metrics) => {
+    traceResolution(result, reason, metrics);
     if (context.resolutionCache.size >= 2000) context.resolutionCache.clear();
     context.resolutionCache.set(cacheKey, result);
     return { ...result, evidenceIds: [...result.evidenceIds], invalidIds: [...result.invalidIds], weakIds: [...result.weakIds] };
@@ -609,7 +614,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   // allowing the server to repair clear workstream drift.
   const strongerAlternative = bestScore >= 0.28 && bestScore > suppliedAnchorScore + 0.08;
   if (validIds.length && suppliedScore >= 0.2 && !strongerAlternative) {
-    return finish({ evidenceIds: selectedSuppliedIds(), invalidIds, weakIds: [], supportScore: suppliedScore });
+    return finish({ evidenceIds: selectedSuppliedIds(), invalidIds, weakIds: [], supportScore: suppliedScore }, 'supplied_evidence_retained', { suppliedScore, suppliedAnchorScore, bestScore, strongerAlternative });
   }
 
   // When remapping, do not return the three highest-scoring anchors from
@@ -659,7 +664,7 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     invalidIds,
     weakIds: suppliedScore >= 0.2 || (remappedIds.length && remapBestScore >= 0.28) ? [] : validIds,
     supportScore: bestScore
-  });
+  }, 'lexical_evidence_remapped', { suppliedScore, suppliedAnchorScore, bestScore, strongerAlternative });
 }
 
 // How the meeting was run, not what it decided. These lines are real speech and
@@ -7043,7 +7048,7 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       reviewerAuthored: options.preserveReviewerEdits === true
     });
     timing = timingAssessment.action.timing;
-    return {
+    const normalised = {
       id: text(item?.id, 80) || stableId('action', action, index),
       ...(validOccurrenceId(item?.occurrenceId) ? { occurrenceId: item.occurrenceId } : {}),
       ...reviewerProvenance(item, options),
@@ -7061,6 +7066,11 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       _evidenceDisposition: disposition,
       _timingConflicts: []
     };
+    actionDiagnostics.transition('normalised', [item], [normalised], { mechanism: 'normaliseActions', index,
+      suppliedEvidenceIds: suppliedIds, resolvedEvidenceIds: resolved.evidenceIds, fieldEvidenceIds,
+      resolutionEvent: actionDiagnostics.resolutionEvent(action, suppliedIds),
+      reason: preserveEvidence ? 'reviewer_evidence_preserved' : 'source_and_field_normalisation' });
+    return normalised;
   }).filter(Boolean);
   // A reviewer save is a persistence boundary, not another generation pass.
   // Preserve the exact visible register (including two similar rows) so an
@@ -7078,7 +7088,9 @@ function normaliseActions(candidate = {}, units = [], options = {}) {
       merged.push(row);
       continue;
     }
+    const before = actionDiagnostics.refs(pair);
     merged[index] = mergeCoveredActionRecords(...pair);
+    actionDiagnostics.event('combined', before, actionDiagnostics.refs([merged[index]]), { mechanism: 'normaliseActions_coverage' });
   }
   return merged;
 }
@@ -7139,6 +7151,7 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
   for (const objective of objectives) delete objective._unsupportedEvidenceIds;
   const flags = (Array.isArray(candidate.reviewFlags) ? candidate.reviewFlags : []).filter((flag) => !isAutomaticTerminologyFlag(flag)).map(normaliseFlag);
   const suppliedFlagCount = flags.length;
+  const diagnosticNormalisedRows = actionDiagnostics.active() ? actions.map(action => actionDiagnostics.refs([action])) : [];
   const flagRecords = flagRecordsIn([...discussion, ...actions]);
   const originalFlagReferences = new Map(flagRecords.map(record => [record, new Set(record.reviewFlagIds)]));
   const records = [
@@ -7159,7 +7172,12 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     const unsupportedOwners = action.owners.filter((owner) => !ownerSupportedByEvidence(owner, evidenceText, units)
       && !ownerAssignedInMeeting(owner, action.action, units));
     if (unsupportedOwners.length) {
+      const beforeOwnerCheck = actionDiagnostics.refs([action]);
       if (enforceEvidence) action.owners = action.owners.filter((owner) => !unsupportedOwners.includes(owner));
+      const ownerCheckRefs = actionDiagnostics.refs([action]);
+      actionDiagnostics.event(enforceEvidence ? 'owner_removed' : 'owner_flagged', beforeOwnerCheck, ownerCheckRefs,
+        { mechanism: 'normaliseAgentResult', reason: 'unsupported_by_selected_evidence', unsupportedOwners });
+      if (actionDiagnostics.active()) diagnosticNormalisedRows[actions.indexOf(action)].push(...ownerCheckRefs);
       const flag = normaliseFlag({
         kind: 'ownership',
         message: `Confirm or correct unsupported action ownership: ${unsupportedOwners.join(', ')}.`,
@@ -7303,6 +7321,8 @@ function normaliseAgentResult(candidate = {}, units = [], stage = '', options = 
     for (const topic of discussion) for (const record of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) repoint(record);
     for (const action of actions) repoint(action);
   }
+  if (actionDiagnostics.active()) actions.forEach((action, index) => actionDiagnostics.event('normalisation_finalised',
+    diagnosticNormalisedRows[index] || [], actionDiagnostics.refs([action]), { mechanism: 'normaliseAgentResult', index }));
   return { schemaVersion: SCHEMA_VERSION, discussion, actions, objectives, executiveSummary, reviewFlags };
 }
 
