@@ -68,6 +68,25 @@ test('one source-bound confirmation can reach existing proof without weakening d
   }
 });
 
+test('same-source preparation paraphrases reach proof but never merge by opening words alone', () => {
+  const units = [source('I will prepare the country list for the language requirements review.')];
+  const first = row('Prepare a list of all countries shipped to for language assessment.');
+  const second = row('Prepare a list of all countries to which products are shipped for language requirements review.', { id: 'B4' });
+  const options = { scope: 'bounded_existing_survivors', maxCandidates: 2 };
+  const packet = makePacket([first, second], units, options);
+  assert.equal(packet.candidates.length, 1);
+  assert.equal(R.buildDeterministicEnvelope(packet).decisions[0].relation, 'unresolved');
+  assert.deepEqual(R.applyActionReconciliation(packet, envelope(packet)).actions, [first, second]);
+  for (const changed of [
+    { ...second, owners: ['Casey Green'] },
+    { ...second, timing: { kind: 'deadline', wording: 'Friday', exactDate: '' } },
+    { ...second, reviewFlagIds: ['review-needed'] },
+    { ...second, evidenceIds: ['OTHER'] },
+    { ...second, action: 'Prepare a list of all suppliers for the language requirements review.' },
+    { ...second, action: 'Prepare a list of all countries, and prepare a separate list of products.' }
+  ]) assert.equal(makePacket([first, changed], units, options).candidates.length, 0);
+});
+
 test('preparation freezes independent original witnesses and uses unique references despite colliding model IDs', () => {
   const actions = semanticPair(); const units = semanticSource(); const originals = structuredClone({ actions, units });
   const packet = makePacket(actions, units);
