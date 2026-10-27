@@ -71,7 +71,7 @@ function instructionClauses(value) {
 function operationSequence(value) {
   const enquiry = enquiryFrame(value);
   if (enquiry) return [enquiry.operation];
-  return unique([...String(value || '').matchAll(/(?:^|[;,]\s*(?:(?:and|then)\s+)?|\b(?:and|then)\s+)(send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|buy|purchase|fit|install|sign|take|address)\b/gi)]
+  return unique([...String(value || '').matchAll(/(?:^|[;,]\s*(?:(?:and|then)\s+)?|\b(?:and|then)\s+)(send|share|provide|forward|circulate|review|check|confirm|assess|test|approve|write|update|revise|amend|edit|create|buy|purchase|fit|install|sign|take|address)\b/gi)]
     .map(match => operation(match[1]))).sort();
 }
 function sourceRows(input) {
