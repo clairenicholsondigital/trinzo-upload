@@ -677,6 +677,70 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
   }, 'lexical_evidence_remapped', { suppliedScore, suppliedAnchorScore, bestScore, strongerAlternative });
 }
 
+// A narrow proposal-only context repair. This nominates a source connection;
+// it never certifies the document reference, ownership or commitment. The
+// caller must retain an explicit human-review warning and the original anchors.
+function documentReferenceContextEvidence(action, suppliedIds = [], units = []) {
+  const wording = text(action, 1600);
+  if (!/^(?:assess|review|check|evaluate|determine whether)\b/i.test(wording)) return null;
+  const named = [...wording.matchAll(/\b(?:standard|document|protocol|procedure|specification|report|policy|guide|ISO|IEC|ASTM|EN|BS)\s+(?:(?:ISO|IEC|ASTM|EN|BS)\s+)?(\d{3,5}(?:[-–]\d{1,4})*(?::\d{4})?)\b/gi)];
+  const identifiers = [...new Set(named.map(match => match[1]))];
+  if (identifiers.length !== 1) return null;
+  const identifier = identifiers[0];
+  const rows = normaliseSourceUnits(units);
+  const counts = new Map();
+  for (const row of rows) counts.set(row.id, (counts.get(row.id) || 0) + 1);
+  const ids = [...new Set(suppliedIds)];
+  if (!ids.length || ids.length >= 8 || ids.some(id => counts.get(id) !== 1)) return null;
+  const supplied = rows.filter(row => ids.includes(row.id));
+  if (supplied.some(row => !includedUnit(row))) return null;
+  const suppliedText = supplied.map(row => `${row.speaker}: ${row.text}`).join(' ');
+  if (evidenceSupportScore(wording, suppliedText) >= 0.22
+    || explicitValuePresent(identifier, suppliedText.toLowerCase())) return null;
+  if (explicitValues(wording).some(value => value !== identifier && !explicitValuePresent(value, suppliedText.toLowerCase()))) return null;
+  const connections = [];
+  for (let index = 1; index < rows.length; index++) {
+    const work = rows[index], identity = rows[index - 1];
+    if (!ids.includes(work.id) || counts.get(identity.id) !== 1 || !includedUnit(identity)
+      || work.speaker === 'Speaker' || identity.speaker !== work.speaker
+      || Number(work.id.slice(1)) !== Number(identity.id.slice(1)) + 1) continue;
+    const reference = work.text.match(/\b(?:that|this|the same|the above|the aforementioned)\s+(standard|document|protocol|procedure|specification|report|policy|guide)\b/i);
+    if (!reference) continue;
+    if ([...work.text.matchAll(/\b(?:standard|document|protocol|procedure|specification|report|policy|guide)\b/gi)].length !== 1) continue;
+    const namedKind = /^(?:ISO|IEC|ASTM|EN|BS)\b/i.test(named[0][0]) ? 'standard' : named[0][0].split(/\s+/)[0].toLowerCase();
+    if (namedKind !== 'document' && reference[1].toLowerCase() !== 'document' && reference[1].toLowerCase() !== namedKind) continue;
+    if (explicitValues(work.text).some(value => /^\d{3,5}(?:[-–]\d{1,4})*(?::\d{4})?$/.test(value) && value !== identifier)) continue;
+    if (/\b(?:different|unrelated|either|which one|not sure which|not (?:that|this)|instead)\b/i.test(work.text)) continue;
+    // A neighbouring number, cost or list of documents is not an identity link.
+    const identityValues = explicitValues(identity.text).filter(value => /^\d{3,5}(?:[-–]\d{1,4})*(?::\d{4})?$/.test(value));
+    if (identityValues.length !== 1 || identityValues[0] !== identifier
+      || /\b(?:standards|documents|protocols|procedures|specifications|reports|policies|guides|cost|price|budget|invoice|pounds|euros|dollars)\b|[£€$]/i.test(identity.text)) continue;
+    if (!/\b(?:was|is|called|named|number|reference|identifier|standard|document|protocol|procedure|specification|report|policy|guide)\s+(?:(?:ISO|IEC|ASTM|EN|BS)\s+)?\d{3,5}\b/i.test(identity.text)) continue;
+    const prefixes = [...wording.matchAll(/\b(ISO|IEC|ASTM|EN|BS)\s+\d{3,5}\b/gi)].map(match => match[1]);
+    if (prefixes.some(prefix => !new RegExp(`\\b${prefix}\\s+${identifier.replace(/[-–]/g, '[-–]')}\\b`, 'i').test(identity.text))) continue;
+    // The work passage itself must support the instruction without borrowing
+    // its purpose or operation from the identity passage.
+    if (!/\b(?:assess(?:ment|ing)?|review(?:ing)?|check(?:ing)?|evaluat(?:e|ion|ing)|looking at|applicab(?:le|ility))\b/i.test(work.text)
+      || evidenceSupportScore(wording.replace(identifier, ''), work.text) < 0.22
+      || ['completed', 'rejected', 'meeting_admin', 'status_only'].includes(actionEvidenceDisposition(wording, work.text))) continue;
+    const evidenceIds = rows.filter(row => ids.includes(row.id) || row.id === identity.id).map(row => row.id);
+    const evidence = rows.filter(row => evidenceIds.includes(row.id)).map(row => `${row.speaker}: ${row.text}`).join(' ');
+    if (evidenceIds.length > 8 || evidenceSupportScore(wording, evidence) < 0.22) continue;
+    connections.push({ evidenceIds, originalEvidenceIds: ids, addedEvidenceIds: [identity.id], workEvidenceIds: [work.id] });
+  }
+  return connections.length === 1 ? connections[0] : null;
+}
+
+function normaliseDocumentReferenceContext(value) {
+  if (!value || value.kind !== 'adjacent_identity_context') return null;
+  const ids = key => [...new Set((Array.isArray(value[key]) ? value[key] : [])
+    .filter(id => typeof id === 'string' && /^T\d{4,}$/.test(id)))].slice(0, 8);
+  const originalEvidenceIds = ids('originalEvidenceIds'), addedEvidenceIds = ids('addedEvidenceIds'), workEvidenceIds = ids('workEvidenceIds');
+  if (!originalEvidenceIds.length || addedEvidenceIds.length !== 1 || workEvidenceIds.length !== 1
+    || addedEvidenceIds.some(id => originalEvidenceIds.includes(id)) || !originalEvidenceIds.includes(workEvidenceIds[0])) return null;
+  return { kind: 'adjacent_identity_context', originalEvidenceIds, addedEvidenceIds, workEvidenceIds };
+}
+
 // How the meeting was run, not what it decided. These lines are real speech and
 // often survive denoising, but they are not minutes content, so they must never
 // be inventoried as an important detail and surfaced as something to check.
@@ -755,6 +819,7 @@ function normaliseFlag(flag = {}, index = 0) {
   const kind = FLAG_KINDS.has(aliasedKind) ? aliasedKind : 'uncertain_fact';
   const message = text(flag.message || flag.text || 'Review this item against the transcript.', 500);
   const systemTimingIssue = normaliseSystemTimingIssue(flag.systemTimingIssue);
+  const documentReferenceContext = normaliseDocumentReferenceContext(flag.documentReferenceContext);
   return rememberFlag({
     id: text(flag.id, 80) || (systemTimingIssue ? stableId('flag-timing', JSON.stringify(systemTimingIssue), 0) : stableId('flag', `${kind}|${message}`, index)),
     kind,
@@ -769,6 +834,7 @@ function normaliseFlag(flag = {}, index = 0) {
     correctionNote: text(flag.correctionNote, 500),
     ...(isReviewerAuthored(flag) ? { reviewerAuthored: true } : {}),
     ...(systemTimingIssue ? { systemTimingIssue } : {}),
+    ...(documentReferenceContext ? { documentReferenceContext } : {}),
     ...(['not_applied_addition','not_applied_noop','not_applied_duplicate','not_outstanding','coverage_unresolved'].includes(flag.reviewDisposition) ? {reviewDisposition:flag.reviewDisposition} : {}),
     ...(['executiveSummary', 'meetingObjectives', 'timedStepCoverage'].includes(flag.temporalField)
       ? { temporalField: flag.temporalField } : {})
@@ -7357,7 +7423,7 @@ function recordLabel(record = {}) {
 function reviewFlagContentKey(flag) {
   return JSON.stringify([
     flag.kind.toLowerCase(), flag.message.toLowerCase(), flag.evidenceIds.map(id => id.toLowerCase()).sort(),
-    flag.reviewerAuthored === true, flag.systemTimingIssue || null, flag.temporalField || ''
+    flag.reviewerAuthored === true, flag.systemTimingIssue || null, flag.temporalField || '', flag.documentReferenceContext || null
   ]);
 }
 
@@ -7759,6 +7825,7 @@ module.exports = {
   evidenceContextFor,
   clearMeetingMinutesAgentV2MemoryCaches,
   resolveEvidence,
+  documentReferenceContextEvidence,
   normaliseActions,
   actionEvidenceDisposition,
   actionNegatedByEvidence,

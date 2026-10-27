@@ -255,6 +255,7 @@ const {
   salientDetailInventory,
   normaliseAgentResult,
   resolveEvidence,
+  documentReferenceContextEvidence,
   normaliseFlag: normaliseMeetingAgentFlag,
   coverageFlags,
   surroundingEvidence,
@@ -9423,14 +9424,34 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
   return dedupeHybridActionRecords(normalised.map((action) => {
     const supplied = raw.find((item) => item.id && item.id === action.id)
       || raw.find((item) => hybridTokenOverlap(item.action, action.action) >= 0.55);
-    const evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
-    const evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
+    let evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
+    let evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
+    let documentContext = null;
+    if (evidenceIds.length && evidenceSupportScore(action.action, evidence) < 0.22) {
+      documentContext = documentReferenceContextEvidence(action.action, evidenceIds, sourceUnits);
+      if (documentContext) {
+        evidenceIds = documentContext.evidenceIds;
+        evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
+      }
+    }
     if (!evidenceIds.length || evidenceSupportScore(action.action, evidence) < 0.22) return null;
     // Still screened for what is never an action at all: running the meeting
     // ("No bother Dermot, we'll come to you in a minute") and wording that is
     // a line of the conversation rather than a written instruction.
     if (isMeetingAdminAction(action.action) || actionEvidenceDisposition(action.action, evidence) === 'meeting_admin') return null;
     if (transcriptTextGateEnabled() && transcriptTextIssue(action.action, sourceUnits)) return null;
+    if (documentContext) {
+      const flag = normaliseMeetingAgentFlag({
+        id: 'flag-document-reference-' + crypto.createHash('sha256').update(JSON.stringify([
+          action.id, action.action, documentContext.originalEvidenceIds, documentContext.addedEvidenceIds
+        ])).digest('hex').slice(0, 16),
+        kind: 'unclear_reference',
+        message: 'Document reference to check: the action names a document identified in the preceding source passage. Confirm that this assessment concerns that document. The connection, ownership and acceptance have not been verified by adding this context.',
+        evidenceIds, actionWordingAtCheck: action.action,
+        documentReferenceContext: { kind: 'adjacent_identity_context', ...documentContext }
+      });
+      return { ...action, evidenceIds, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    }
     return { ...action, evidenceIds };
   }).filter(Boolean));
 }
