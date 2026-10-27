@@ -47,6 +47,27 @@ const semanticPair = () => [row('Send the assessment results to Jordan.'),
   row('Provide Jordan with the assessment findings.', { id: 'A4', reviewFlagIds: ['flag-second'] })];
 const semanticSource = () => [source('I will send Jordan the assessment results, including the findings.')];
 
+test('one source-bound confirmation can reach existing proof without weakening distinct-work gates', () => {
+  const units = [source('I will confirm the specification of the pump flow rate supplied by the vendor.')];
+  const first = row('Confirm the specification of the pump flow rate supplied by the vendor.');
+  const second = row('Confirm the vendor-supplied pump flow-rate specification.', { id: 'B4' });
+  const options = { scope: 'bounded_existing_survivors', maxCandidates: 2 };
+  const packet = makePacket([first, second], units, options);
+  assert.equal(packet.candidates.length, 1, 'the pair must reach source verification');
+  assert.equal(R.buildDeterministicEnvelope(packet).decisions[0].relation, 'unresolved',
+    'similar wording is not automatic permission to merge');
+  assert.equal(R.applyActionReconciliation(packet, envelope(packet)).actions.length, 2);
+  for (const changed of [
+    { ...second, owners: ['Casey Green'] },
+    { ...second, timing: { kind: 'deadline', wording: 'Friday', exactDate: '' } },
+    { ...second, reviewFlagIds: ['review-needed'] },
+    { ...second, evidenceIds: ['OTHER'] },
+    { ...second, action: 'Confirm the vendor-supplied pump flow-rate specification for a different device.' }
+  ]) {
+    assert.equal(makePacket([first, changed], units, options).candidates.length, 0);
+  }
+});
+
 test('preparation freezes independent original witnesses and uses unique references despite colliding model IDs', () => {
   const actions = semanticPair(); const units = semanticSource(); const originals = structuredClone({ actions, units });
   const packet = makePacket(actions, units);
