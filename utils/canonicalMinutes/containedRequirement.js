@@ -56,7 +56,23 @@ function boundedShape(parent,child){
   ||common.length/Math.max(container.length,other.length)<0.66)return null;
  return {kind:'content_instruction'};
 }
-function shape(parent,child){return legacyShape(parent,child)||boundedShape(parent,child);}
+// Nomination only: one list with a shared purpose and identical source refs.
+// A separate source review must establish that preparing and providing it are
+// one obligation, rather than independent preparation and delivery steps.
+function listDeliverableShape(parent,child){
+ if(!eligible(parent)||!eligible(child)||canonical(parent.owners[0])!==canonical(child.owners[0])
+  ||guarded.test(parent.action+' '+child.action)||calendar.test(parent.action+' '+child.action)
+  ||/\b(?:or|either|neither|review|approve|send|share|email|submit|publish)\b|\d/i.test(parent.action+' '+child.action)
+  ||hash([...parent.evidenceIds].sort())!==hash([...child.evidenceIds].sort()))return null;
+ const parse=(value,verb)=>String(value).trim().replace(/[.!]+$/,'')
+  .match(new RegExp('^'+verb+'\\s+(?:a|the|one)\\s+list\\s+of\\s+(.+?)\\s+for\\s+(.+)$','i'));
+ const a=parse(parent.action,'provide'),b=parse(child.action,'prepare');if(!a||!b)return null;
+ const objectA=tokens(a[1]),objectB=tokens(b[1]),purposeA=tokens(a[2]),purposeB=tokens(b[2]);
+ if(objectA.length<2||objectB.length<2||hash(objectA.slice(0,2))!==hash(objectB.slice(0,2))
+  ||purposeA.length<2||hash(purposeA)!==hash(purposeB))return null;
+ return {kind:'list_deliverable'};
+}
+function shape(parent,child){return legacyShape(parent,child)||boundedShape(parent,child)||listDeliverableShape(parent,child);}
 function direction(left,right,all=[left,right]){
  for(const [parent,child] of [[left,right],[right,left]]){
   const match=shape(parent,child);if(!match)continue;
@@ -66,7 +82,7 @@ function direction(left,right,all=[left,right]){
  return null;
 }
 function reviewPacket(parent,child,sourceUnits,contextSourceIds,challenge,reviewOptions={}){
- const variant=boundedShape(parent,child);
+ const variant=boundedShape(parent,child)||listDeliverableShape(parent,child);
  const cited=new Set([...parent.evidenceIds,...child.evidenceIds]);
  if(variant&&sourceUnits.some(unit=>cited.has(unit.id)&&/\b(?:withdrawn|cancelled|canceled|no action|no longer (?:required|needed))\b/i.test(String(unit.text||''))))throw Error('contained_source_withdrawal');
  const context=sourceUnits.filter(unit=>contextSourceIds.includes(unit.id));
@@ -90,8 +106,8 @@ function certify(parent,child,sourceUnits,contextSourceIds,primary,challenge,opt
  const first=reviewPacket(parent,child,sourceUnits,contextSourceIds,false,reviewOptions),second=reviewPacket(parent,child,sourceUnits,contextSourceIds,true,reviewOptions);
  for(const [packet,response] of [[first,primary],[second,challenge]]){
   const assessment=N.assess(packet,response);
-  if(assessment.contractError||!assessment.modelPassed||!(match.kind==='issue_paraphrase'?['same_obligation']:match.kind==='content_instruction'?['same_obligation','discarded_requirement_of_survivor']:['discarded_requirement_of_survivor']).includes(assessment.relationship?.relation)
-   ||match.kind==='issue_paraphrase'&&response.decisions.find(section=>section.kind==='source').rows.some(row=>row.basis!=='commitment'))throw Error(assessment.contractError||'contained_independent_veto');
+  if(assessment.contractError||!assessment.modelPassed||!(['issue_paraphrase','list_deliverable'].includes(match.kind)?['same_obligation']:match.kind==='content_instruction'?['same_obligation','discarded_requirement_of_survivor']:['discarded_requirement_of_survivor']).includes(assessment.relationship?.relation)
+   ||['issue_paraphrase','list_deliverable'].includes(match.kind)&&response.decisions.find(section=>section.kind==='source').rows.some(row=>row.basis!=='commitment'))throw Error(assessment.contractError||'contained_independent_veto');
  }
  const evidenceIds=[...new Set([...parent.evidenceIds,...child.evidenceIds,...sourceIds(first,primary),...sourceIds(second,challenge)])].sort();
  if(evidenceIds.length>8)throw Error('contained_evidence_capacity');
@@ -110,7 +126,10 @@ function valid(packet,certificate,original,survivor){
 }
 function conflicts(packet,proof,original,survivor,reasons){
  if(!proof?.containedRequirement)return reasons;
- return valid(packet,proof.containedRequirement,original,survivor)?reasons.filter(reason=>!ALLOWED.has(reason)):[...reasons,'invalid_contained_requirement_review'];
+ if(!valid(packet,proof.containedRequirement,original,survivor))return [...reasons,'invalid_contained_requirement_review'];
+ const match=shape(proof.containedRequirement.parent,proof.containedRequirement.child);
+ const allowed=match?.kind==='list_deliverable'?new Set(['different_operation','operation_would_be_lost']):ALLOWED;
+ return reasons.filter(reason=>!allowed.has(reason));
 }
 function coverage(packet,parentRow,childRow,certificate){
  if([parentRow,childRow].some(row=>row.clauses.length!==1))throw Error('contained_compound_instruction');

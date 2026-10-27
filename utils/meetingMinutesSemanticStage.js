@@ -360,7 +360,7 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
           throw error;
         }
         const assessment=referenceReview.assess(review,response.result);
-        const passed=assessment.modelPassed && (review.instructionComparison!=='contact_review'
+        const passed=assessment.modelPassed && (!['contact_review','list_deliverable'].includes(review.instructionComparison)
           || assessment.relationship?.relation==='same_obligation'
             && assessment.sourceRoles.every(row=>row.basis==='commitment'));
         if(challenge||!passed)providerAssessed.add(candidate.candidateId);
