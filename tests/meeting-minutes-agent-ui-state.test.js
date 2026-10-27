@@ -68,6 +68,23 @@ function startStubServer() {
     ['editor', baseDraft('editor', false)],
     ['running', baseDraft('running', true)]
   ]);
+  for (const kind of ['prefix', 'question']) {
+    const V = require('../utils/meetingMinutesAgentV2');
+    const A = require('../routes/api').stagedEvaluation;
+    const id = 'document-review-' + kind;
+    const draft = baseDraft(id, false);
+    draft.currentStep = 5; draft.selectedStep = 3;
+    draft.actions = []; draft.discussion = [];
+    draft.sourceUnits = V.normaliseSourceUnits([
+      {id:'T0001',speaker:'Maya Patel',text:'The standard is 74216, covering portable pump requirements.'},
+      {id:'T0002',speaker:'Maya Patel',text:'We can maybe get an assessment of that standard to see if it is applicable to the portable pump.'}
+    ]);
+    if (kind === 'prefix') {
+      const rows = A.normaliseAgentDeclaredProposals({actionProposals:[{id:'assessment',action:'Assess whether ISO 74216 is applicable to the portable pump.',owners:['Maya Patel'],evidenceIds:['T0002'],reviewFlagIds:[],timing:{kind:'not_stated',wording:'',exactDate:''}}]},draft.sourceUnits);
+      draft.reviewFlags = A.retainedDocumentReferenceReviewFlags(rows);
+    } else draft.reviewFlags = V.normaliseAgentResult({reviewFlags:[{type:'unsupported_ownership',detail:'Assessment work is requested but acceptance and owner are not confirmed.',evidenceIds:['T0002']}]},draft.sourceUnits,'actions').reviewFlags;
+    drafts.set(id,draft);
+  }
   const earlierWarning = baseDraft('earlier-warning', false);
   earlierWarning.actions[0].action = 'Follow up with Jo regarding review of the documents.';
   earlierWarning.reviewFlags[1] = {
@@ -387,7 +404,7 @@ function startStubServer() {
     if (id === 'filing-review') draft = { ...draft,
       changeHistory: (reviewHistory.get(id) || []).map((entry, index) => ({ id:'undo-'+(index+1), label:entry.label })),
       redoHistory: (redoHistory.get(id) || []).map((entry, index) => ({ id:'redo-'+(index+1), label:entry.label })) };
-    return ['reviewer-provenance', 'filing-review'].includes(id)
+    return ['reviewer-provenance', 'filing-review', 'document-review-prefix', 'document-review-question'].includes(id)
       ? require('../routes/api').stagedEvaluation.publicMeetingAgentDraft(draft) : draft;
   }
   app.post('/api/meeting-minutes-agent/drafts/:id/restore-combined-actions', (req,res) => {
@@ -435,7 +452,7 @@ function startStubServer() {
     };
     // Exercise the actual save normaliser and read-time publication helpers for
     // the provenance journey; a plain echo server would conceal lost markers.
-    if (['reviewer-provenance', 'filing-review'].includes(req.params.id)) {
+    if (['reviewer-provenance', 'filing-review', 'document-review-prefix', 'document-review-question'].includes(req.params.id)) {
       const normalised = require('../utils/meetingMinutesAgentV2').normaliseAgentResult({
         discussion: next.discussion, actions: next.actions, reviewFlags: next.reviewFlags
       }, next.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true });
@@ -3499,3 +3516,28 @@ for (const fixture of ['editor', 'same-warning', 'shared-warning']) {
     }
   });
 }
+
+
+for (const kind of ['prefix', 'question']) test('document review ' + kind + ' is visibly uncertain, source-linked and does not add an action when checked', {timeout:120000}, async()=>{
+  const {server,port}=await startStubServer();let browser;
+  try{
+    const launched=await launchPage(port,'document-review-'+kind);browser=launched.browser;const {page,errors}=launched;
+    assert.equal(await page.locator('#actionsBody [data-action-row]').count(),0);
+    await page.locator('#reviewQueueToggle').click();
+    await page.locator('[data-review-category="optional"] > summary').click();
+    const item=page.locator('#flagList [data-review-flag-id]');
+    assert.equal(await item.count(),1);
+    await item.locator('.flag-review-reason > summary').click();
+    const explanation=await item.locator('.flag-message').innerText();
+    if(kind==='prefix')assert.match(explanation,/ISO identifier prefix is not stated/);
+    else assert.match(explanation,/who accepted it/);
+    assert.doesNotMatch(explanation,/assessment (?:is|was) (?:approved|completed|verified)/i);
+    await item.locator('.review-evidence > summary').click();
+    assert.match(await item.locator('.review-evidence-body').innerText(),/assessment of that standard/);
+    await item.locator('[data-flag-status="confirmed"]').click();
+    await page.waitForFunction(()=>!document.querySelector('#flagList [data-review-flag-id]'));
+    await page.reload();await page.waitForFunction(()=>document.querySelector('#actionsBody tr'));
+    assert.equal(await page.locator('#actionsBody [data-action-row]').count(),0);
+    assert.deepEqual(errors,[]);
+  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
+});

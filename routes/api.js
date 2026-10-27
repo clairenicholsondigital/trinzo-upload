@@ -254,7 +254,10 @@ const {
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
+  cleanActionWording,
   resolveEvidence,
+  documentReferenceContextEvidence,
+  requiresDocumentReferenceReview,
   normaliseFlag: normaliseMeetingAgentFlag,
   coverageFlags,
   surroundingEvidence,
@@ -8699,6 +8702,8 @@ const MEETING_AGENT_SMALL_TALK_RULE = 'Leave out small talk, jokes, personal tas
 const MEETING_AGENT_TIMING_RULE = 'Timing precision. Preserve the source timing, its task, conditions and qualifications. A period, approximate aim, duration, range, recurring schedule or unresolved choice is not one exact calendar day. Do not select a range endpoint or invent a day for this/next week. Keep before/after distinct from on/by. Preserve stated clock times and time zones; never invent a zone or silently convert them. Preserve both a preferred timing and its fallback, and apply later qualifications only to the same work. A nearby date for another task or person is not this task\'s date. Keep exactDate empty unless a single calendar date is unambiguously supported. Assess the work separately from its timing: a rejected or uncertain date does not reject an otherwise supported action. Preserve that action with corrected timing or no timing. Calendar calculations are validated by the application; candidate hints and calculated dates are claims to check, not additional source evidence. Never silently move a stated past date into a later month or year.';
 const MEETING_AGENT_DISCUSSION_COVERAGE_RULE = 'Discussion coverage. Do not use an action-category heading such as action items, priorities, next steps or follow-ups as a discussion topic. Keep genuine factual discussion under the subject it belongs to, and put actual commitments in actions. Preserve concise statements of a device, system, software or process capability, limitation or behaviour even when they contain no decision, owner or deadline. When a meaningful technical statement is split across adjacent transcript turns or recognition boundaries, use the neighbouring evidence to recover the point before deciding it is incomplete; discard it only when the combined evidence remains non-substantive, conversational or unsupported.';
 
+const MEETING_AGENT_ACTION_DOCUMENT_SCOPE_RULE = 'Document-specific scope. When several documents are discussed, bind each assessment, purpose or applicability question only to the document or documents explicitly supported by the transcript. Sending documents together does not establish that they share the same purpose or require the same assessment. Preserve a genuinely joint assessment when it is stated; do not generalise a purpose from one document to all of them. Do not resolve an ambiguous it, that or them by proximity alone: retain supported work and flag a genuinely unresolved reference rather than inventing a document association or dropping the work. When an action names a document, cite the transcript lines establishing its identity as well as the lines establishing the work and their connection. If identity and work appear in separate turns, cite both; proximity alone is not proof of their connection. Preserve document names and identifiers as spoken without adding unstated titles or identifier prefixes. Receiving a document is not acceptance of responsibility for assessing it. Preserve separate sending, assessing and arranging-review obligations and all source-stated conditions.';
+
 function meetingMinutesAgentPrompt({ stage, transcript, details, current, instruction, steer, salientDetails = [], actionCandidates = [], discussionCandidates = [], discussionContext = [] }) {
   const isEdit = Boolean(meetingMinutesAgentText(instruction, 4000));
   const taskMarker = isEdit
@@ -8757,6 +8762,7 @@ function meetingMinutesAgentPrompt({ stage, transcript, details, current, instru
     shared.push('Populate actions as [{"id":"string","action":"string","owners":["string"],"timing":{"kind":"deadline|target|dependency|not_stated","wording":"string","exactDate":"YYYY-MM-DD or empty"},"evidenceIds":["T0001"]}]. Return discussion as an empty array.');
     shared.push('Put uncertain but evidence-grounded deliverables in actionProposals using the same action structure; never put them in actions. Populate candidateDispositions as [{"candidateId":"string","disposition":"publish|proposal|completed|suggestion|reject","reason":"string","action":"string or empty","owners":[],"timing":{"kind":"deadline|target|dependency|not_stated","wording":"","exactDate":""},"evidenceIds":["T0001"],"uncertainties":[]}].');
     shared.push('Include every genuine future commitment, accepted follow-up, ongoing review with a required next step, and work triggered when another task finishes. Support joint owners. Deduplicate only the same deliverable with compatible ownership; preserve distinct testing, reviewing, approving, updating, sending and follow-up work.');
+    if (!isEdit) shared.push(MEETING_AGENT_ACTION_DOCUMENT_SCOPE_RULE);
     shared.push('Resolve compound and multi-turn commitment chains: named-person-plus-“I/we are going to” language, passive obligations, scheduled future work, conditional commitments and accepted requests all require assessment. Split one sentence into separate actions when it commits to different deliverables, but keep a true continuation as one action.');
     shared.push('Exclude unaccepted suggestions, hypothetical possibilities, status-only statements, completed or historical work, and routine meeting administration. A question is an action only when the transcript also records acceptance or assignment.');
     shared.push('The action candidate windows below are a recall aid, not an allowlist. Evaluate every candidate window, then sweep the full transcript for commitments that use less explicit wording. The window may contain a request in one turn and acceptance in the next.');
@@ -9398,6 +9404,21 @@ function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
   return rows.filter((row) => row.text);
 }
 
+// Context warnings are durable review records even if a later lifecycle or
+// proposal filter withholds the candidate. Keeping the question is not adding
+// its instruction to the minutes.
+function retainedDocumentReferenceReviewFlags(records = [], flags = []) {
+  const rows = records.filter(requiresDocumentReferenceReview);
+  return reconcileRecordFlags({ actions: rows }, flags).flags.filter(flag =>
+    flag.documentReferenceContext && rows.some(row => (row.reviewFlagIds || []).includes(flag.id)))
+    .map(flag => {
+      const row = rows.find(record => (record.reviewFlagIds || []).includes(flag.id));
+      return normaliseMeetingAgentFlag({ ...flag, kind: 'possible_missed_follow_up', reviewDisposition: 'not_applied_addition',
+        message: flag.message.startsWith('Possible assessment to review:') ? flag.message
+          : `Possible assessment to review: ${flag.message} Proposed wording: ${meetingMinutesAgentText(row.action, 160)}` });
+    });
+}
+
 function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options = {}) {
   const direct = Array.isArray(result?.actionProposals) ? result.actionProposals : [];
   const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
@@ -9421,16 +9442,55 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
     enforceEvidence: false, meetingDate: options.meetingDate
   }).actions;
   return dedupeHybridActionRecords(normalised.map((action) => {
-    const supplied = raw.find((item) => item.id && item.id === action.id)
-      || raw.find((item) => hybridTokenOverlap(item.action, action.action) >= 0.55);
-    const evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
-    const evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
+    const sameLabel = raw.filter(item => item.id && item.id === action.id);
+    // Discovery labels are ordinal within a response. When two replies reuse
+    // one, require a unique wording match rather than borrowing the first
+    // proposal's citations for a different document or assessment.
+    const sameWording = sameLabel.filter(item => cleanActionWording(item.action) === action.action);
+    const supplied = sameLabel.length === 1 ? sameLabel[0]
+      : sameLabel.length > 1 ? (sameWording.length === 1 ? sameWording[0] : null)
+        : raw.find(item => hybridTokenOverlap(item.action, action.action) >= 0.55);
+    let evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
+    let evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
+    let documentContext = null;
+    if (evidenceIds.length && evidenceSupportScore(action.action, evidence) < 0.22) {
+      documentContext = documentReferenceContextEvidence(action.action, evidenceIds, sourceUnits);
+      if (!documentContext) {
+        const prefix = action.action.match(/\b(ISO|IEC|ASTM|EN|BS)\s+(\d{3,5}(?:[-–]\d{1,4})*(?::\d{4})?)\b/i);
+        if (prefix) {
+          const withoutPrefix = action.action.replace(prefix[0], `standard ${prefix[2]}`);
+          const uncertain = documentReferenceContextEvidence(withoutPrefix, evidenceIds, sourceUnits);
+          if (uncertain && !uncertain.evidenceIds.some(id =>
+            String(unitById.get(id)?.text || '').toLowerCase().includes(prefix[0].toLowerCase()))) {
+            documentContext = { ...uncertain, unstatedPrefix: prefix[1].toUpperCase() };
+          }
+        }
+      }
+      if (documentContext) {
+        evidenceIds = documentContext.evidenceIds;
+        evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
+      }
+    }
     if (!evidenceIds.length || evidenceSupportScore(action.action, evidence) < 0.22) return null;
     // Still screened for what is never an action at all: running the meeting
     // ("No bother Dermot, we'll come to you in a minute") and wording that is
     // a line of the conversation rather than a written instruction.
     if (isMeetingAdminAction(action.action) || actionEvidenceDisposition(action.action, evidence) === 'meeting_admin') return null;
     if (transcriptTextGateEnabled() && transcriptTextIssue(action.action, sourceUnits)) return null;
+    if (documentContext) {
+      const flag = normaliseMeetingAgentFlag({
+        id: 'flag-document-reference-' + crypto.createHash('sha256').update(JSON.stringify([
+          action.id, action.action, documentContext.originalEvidenceIds, documentContext.addedEvidenceIds
+        ])).digest('hex').slice(0, 16),
+        kind: 'unclear_reference',
+        message: documentContext.unstatedPrefix
+          ? `Document reference to correct: the proposed ${documentContext.unstatedPrefix} identifier prefix is not stated in the linked source. Confirm or correct the document name before including this assessment. Added context does not verify ownership or acceptance.`
+          : 'Document reference to check: the action names a document identified in the preceding source passage. Confirm that this assessment concerns that document. The connection, ownership and acceptance have not been verified by adding this context.',
+        evidenceIds, actionWordingAtCheck: action.action,
+        documentReferenceContext: { kind: 'adjacent_identity_context', ...documentContext }
+      });
+      return { ...action, evidenceIds, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
+    }
     return { ...action, evidenceIds };
   }).filter(Boolean));
 }
@@ -14600,6 +14660,12 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     .filter((candidate) => candidate?.candidateId)
     .map((candidate) => [String(candidate.candidateId), candidate]));
   const ownerPool = [...(Array.isArray(candidates) ? candidates : []), ...(Array.isArray(options.ownerPool) ? options.ownerPool : [])];
+  // Referee contracts deliberately compact away records and review flags.
+  // Recover the restriction by exact candidate ID from the server's ledger,
+  // not from model wording or an inferred twin.
+  const documentReviewRecords = new Map(ownerPool
+    .filter(candidate => candidate?.candidateId && requiresDocumentReferenceReview(candidate.record))
+    .map(candidate => [String(candidate.candidateId), candidate.record]));
   const unresolvedMaterializations = refereeActionMaterializationIssues(dispositions, candidates);
   const unresolvedIds = new Set(unresolvedMaterializations.map((item) => item.candidateId));
   let borrowedOwners = 0;
@@ -14626,18 +14692,24 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     if (!['publish', 'proposal'].includes(kind) || !selected || selected.recordType !== 'action') continue;
     const action = meetingMinutesAgentText(selected.record?.action || selected.text, 1200);
     if (!action) continue;
-    let owners = candidateOwnersOf(selected);
-    if (!owners.length && Array.isArray(disposition?.owners)) {
+    // A referee verdict cannot settle a document association or acceptance
+    // that source-context recovery explicitly left for a human. Keep that
+    // restriction through reconstruction, before any owner inference.
+    const documentReviewRecord = documentReviewRecords.get(String(selected.candidateId));
+    const documentReviewRequired = Boolean(documentReviewRecord);
+    const materializedKind = documentReviewRequired ? 'proposal' : kind;
+    let owners = documentReviewRequired ? [...(documentReviewRecord.owners || [])] : candidateOwnersOf(selected);
+    if (!documentReviewRequired && !owners.length && Array.isArray(disposition?.owners)) {
       owners = disposition.owners.map((owner) => meetingMinutesAgentText(owner, 120)).filter(Boolean);
     }
     let borrowedEvidence = [];
-    if (!owners.length && kind === 'publish') {
+    if (!documentReviewRequired && !owners.length && kind === 'publish') {
       const borrowed = borrowOwnersFromTwin(selected, ownerPool);
       if (borrowed) { owners = borrowed.owners; borrowedEvidence = borrowed.evidenceIds; borrowedOwners += 1; }
     }
     const diagnosticSource = selected.record || { action, owners: candidateOwnersOf(selected), evidenceIds: selected.evidenceIds || [] };
     rows.push({
-      kind,
+      kind: materializedKind,
       targetId: targetId || candidateId,
       record: {
         id: meetingMinutesAgentText(selected.record?.id || targetId || candidateId, 160),
@@ -14650,11 +14722,12 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
           ...(Array.isArray(disposition?.evidenceIds) ? disposition.evidenceIds : []),
           ...borrowedEvidence
         ])],
-        reviewFlagIds: []
+        reviewFlagIds: documentReviewRequired ? [...documentReviewRecord.reviewFlagIds] : []
       }
     });
     actionDiagnostics.transition(borrowedEvidence.length ? 'owner_borrowed' : 'referee_materialised', [diagnosticSource], [rows.at(-1).record],
-      { mechanism: 'reconstructRefereeActions', candidateId, disposition: kind });
+      { mechanism: 'reconstructRefereeActions', candidateId, disposition: kind,
+        ...(documentReviewRequired ? { materializedDisposition: materializedKind, documentReviewRequired: true } : {}) });
   }
   const writtenRows = rows.filter((item) => !(transcriptTextGateEnabled()
     && transcriptTextIssue(item.record.action, sourceUnits)));
@@ -18329,7 +18402,15 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     restored: finalSurvival.restored.map((record) => meetingMinutesAgentText(record.action, 180))
   }));
   const assembledActionFlagState = reconcileRecordFlags({ actions: finalActions }, mergeMeetingAgentFlags([
-    ...materializationReview.flags, ...refereeFlags
+    ...materializationReview.flags, ...refereeFlags,
+    ...primary.reviewFlags.filter(flag => flag.sourceReviewContext?.kind === 'assessment_ownership_notice'),
+    // Keep the source question even if revalidation or coverage filtering
+    // withholds its proposal. The original ledger carries the typed warning;
+    // a referee verdict must not erase the work from human review.
+    ...retainedDocumentReferenceReviewFlags([
+      ...agentDeclaredProposals, ...proposedRecords,
+      ...ensemble.filter(candidate => candidate.recordType === 'action').map(candidate => candidate.record)
+    ])
   ], [
     ...splitTimingFlags,
     ...finalTiming.flags,
@@ -19797,7 +19878,10 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
       return index >= 0 && actionProvenanceSignature(currentRows[index])
         === actionProvenanceSignature(preserveActionIdentity(currentRows[index], change.after));
     }).map(change => change.id) : []);
+  const referenceReviewChanges = new Set(proposal.stage === 'actions'
+    ? (proposal.changes || []).filter(change => requiresDocumentReferenceReview(change.after)).map(change => change.id) : []);
   const proposed = (proposal.changes || []).filter(change => change.selected === true
+    && !referenceReviewChanges.has(change.id)
     && !duplicateModifications.has(change.id) && !noOpModifications.has(change.id)
     && !destructiveModifications.has(change.id));
   const unsafeRemovals = new Set();
@@ -19830,10 +19914,15 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
   const accepted = new Set(acceptedIds);
   const uncertain = (proposal.changes || []).filter(change => !accepted.has(change.id));
   const replacedIds = new Set(uncertain.map(meetingAgentProposalReviewFlagId));
-  const checks = uncertain.map((change, index) => {
+  const checks = uncertain.flatMap((change, index) => {
     const record = change.after || change.before || {};
     const wording = meetingMinutesAgentText(record.action || record.text || record.topic, 1600);
-    const reason = String(duplicateModifications.has(change.id)
+    if (referenceReviewChanges.has(change.id)) {
+      const linked = retainedDocumentReferenceReviewFlags([record], flags);
+      if (linked.length) return linked;
+    }
+    const reason = String(referenceReviewChanges.has(change.id)
+      ? 'The document reference requires explicit human review.' : duplicateModifications.has(change.id)
       ? 'This edit would copy the wording, owners and timing of another current action.'
       : noOpModifications.has(change.id) ? 'This edit would not change the current action.'
         : destructiveModifications.has(change.id) ? `This edit was left for review because ${destructiveModifications.get(change.id)}.`
@@ -19843,7 +19932,7 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
             : 'The proposed occurrence could not be changed uniquely in the current list; it may be stale, ambiguous or already handled by another suggestion.')
             : change.reviewContext?.reason || 'Check the source before changing the minutes.')
       .replace(/\b(?:Tick it[^.]*|It stays unless you tick this)\./gi, '').trim();
-    return normaliseMeetingAgentFlag({
+    return [normaliseMeetingAgentFlag({
       // This is now a source check, not a link to a consumed proposal. Keep it
       // open even when there is deliberately no corresponding published item.
       id: meetingMinutesAgentText(`automatic-review-${change.id || ''}`, 80),
@@ -19854,7 +19943,7 @@ function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentR
             : change.type === 'add' ? {reviewDisposition:'not_applied_addition'} : {}),
       message: `Cannot verify that this AI suggestion should change the minutes; it was not applied. ${wording} ${reason}`,
       evidenceIds: record.evidenceIds || change.reviewContext?.evidenceIds || []
-    }, index);
+    }, index)];
   });
   return { acceptedIds, reviewFlags: mergeMeetingAgentFlags(
     resolveMeetingAgentProposalFlags(flags, proposal, acceptedIds, []).filter(flag => !replacedIds.has(flag.id)), checks
@@ -21076,6 +21165,7 @@ router.stagedEvaluation = {
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
+  retainedDocumentReferenceReviewFlags,
   normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
   hybridCandidateCoveredByRecord,

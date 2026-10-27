@@ -1,0 +1,69 @@
+{
+  "joint": {
+    "sourceUnits": [
+      {
+        "id": "T0001",
+        "speaker": "Priya Shah",
+        "text": "I will assess both the pressure protocol and the cybersecurity checklist for applicability to the portable monitor. This is one joint assessment covering both documents.",
+        "classification": "keep"
+      }
+    ],
+    "acceptance": "Preserve the explicitly joint applicability assessment of both documents."
+  },
+  "different_purposes": {
+    "sourceUnits": [
+      {
+        "id": "T0001",
+        "speaker": "Priya Shah",
+        "text": "I will assess the pressure protocol for applicability to the portable monitor. The cybersecurity checklist is background guidance only; we have not agreed any assessment of it. I will email both documents to Leo.",
+        "classification": "keep"
+      }
+    ],
+    "acceptance": "Retain pressure assessment and sending both; do not create a cybersecurity applicability assessment."
+  },
+  "ambiguous_reference": {
+    "sourceUnits": [
+      {
+        "id": "T0001",
+        "speaker": "Priya Shah",
+        "text": "We have the installation guide and the test protocol. I will review that. We have not agreed which document that means.",
+        "classification": "keep"
+      }
+    ],
+    "acceptance": "Retain the review as uncertain without assigning it to one or both documents as an established fact."
+  },
+  "recipient_not_acceptance": {
+    "sourceUnits": [
+      {
+        "id": "T0001",
+        "speaker": "Lena Morris",
+        "text": "I will send the installation protocol to Omar. Omar, could you assess its applicability?",
+        "classification": "keep"
+      },
+      {
+        "id": "T0002",
+        "speaker": "Omar Dean",
+        "text": "I am not committing to assess it. We need to agree who can do that.",
+        "classification": "keep"
+      }
+    ],
+    "acceptance": "Retain Lena sending; do not publish an accepted assessment by Omar."
+  },
+  "conditional_separate_work": {
+    "sourceUnits": [
+      {
+        "id": "T0001",
+        "speaker": "Lena Morris",
+        "text": "I will send the installation guide and the risk report if legal approves their release. I will assess the installation guide for assembly requirements only. Sam, please follow up with Jo about review of the risk report.",
+        "classification": "keep"
+      },
+      {
+        "id": "T0002",
+        "speaker": "Sam Reed",
+        "text": "I will follow up with Jo about reviewing the risk report. Jo has not agreed to do the review; I will ask whether they can.",
+        "classification": "keep"
+      }
+    ],
+    "acceptance": "Retain conditional delivery, guide-only assessment and Sam arranging review as separate obligations. Do not assign the assessment to the risk report or guarantee Jo performs it."
+  }
+}
