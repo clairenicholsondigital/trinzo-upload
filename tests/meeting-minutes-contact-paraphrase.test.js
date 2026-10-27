@@ -35,6 +35,37 @@ for(const [name,parent,child]of cases){
   for(const challenge of [false,true]){let calls=0;const out=await S.reconcileGeneratedSemanticStage({changes:{actions:[parent,child]}},{sourceUnits},'actions',{policy,ask:async prompt=>{calls++;const data=JSON.parse(prompt.split('\nDATA\n')[1]),r=answer(data);if(data.reviewPurpose===(challenge?'independent_challenge':'proposal'))r.decisions[2].relation='distinct_work';return {result:r};}});assert.equal(calls,challenge?2:1);assert.deepEqual(out.changes.actions,[parent,child]);}
   assert.throws(()=>C.reviewPacket(parent,child,[{...sourceUnits[0],text:sourceUnits[0].text+' That instruction is cancelled.'}],['T0001'],false),/withdrawal/);
  });
+ for(const [label,mutate]of [
+  ['deliverable-content category',r=>r.decisions[2].relation='discarded_requirement_of_survivor'],
+  ['component rather than commitment',r=>r.decisions[0].rows[1].basis='required_component']
+ ])for(const challenge of [false,true])test(`${name}: ${label} at ${challenge?'challenge':'proposal'} stops at that review and records a veto`,async()=>{
+  const D=require('../utils/meetingMinutesActionDiagnostics');
+  for(const actions of [[parent,child],[child,parent]]){
+   const before=structuredClone(actions);let calls=0;
+   const {value:out,audit}=await D.capture(()=>S.reconcileGeneratedSemanticStage({changes:{actions}},{sourceUnits},'actions',{policy,ask:async(prompt,options)=>{
+    calls++;assert.equal(options.maxAttempts,1);const data=JSON.parse(prompt.split('\nDATA\n')[1]),r=answer(data);
+    if(data.reviewPurpose===(challenge?'independent_challenge':'proposal'))mutate(r);return {result:r};
+   }}));
+   assert.deepEqual(actions,before);assert.deepEqual(out.changes.actions,before);assert.equal(calls,challenge?2:1);
+   const reviews=audit.events.filter(e=>e.kind==='independent_review');assert.equal(reviews.length,calls);
+   assert.equal(reviews.at(-1).role,challenge?'challenge':'primary');assert.equal(reviews.at(-1).outcome,'semantic_veto');
+   assert.ok(reviews.every(e=>e.role!==(challenge?'challenge':'primary')||e.outcome!=='accepted'));
+   const q=out.changes.qualityState.actions.semanticReconciliation;assert.equal(q.stats.merged,0);assert.equal(q.receipts.length,0);
+   assert.ok(q.unresolved.some(e=>e.reason==='contact_paraphrase_independent_veto'));
+  }
+ });
+ test(name+': a cached rejected proposal cannot trigger a challenge or bypass the early veto',async()=>{
+  const actions=[parent,child];let calls=0;
+  const first=await S.reconcileGeneratedSemanticStage({changes:{actions}},{sourceUnits},'actions',{policy,ask:async prompt=>{
+   calls++;const data=JSON.parse(prompt.split('\nDATA\n')[1]),r=answer(data);r.decisions[2].relation='discarded_requirement_of_survivor';return {result:r};
+  }});
+  assert.equal(calls,1);assert.equal(first.changes.qualityState.actions.semanticReconciliation.cache.length,1);
+  let unexpected=0;
+  const next=await S.reconcileGeneratedSemanticStage({changes:{actions}},{sourceUnits,qualityState:first.changes.qualityState},'actions',{policy,ask:async()=>{unexpected++;throw Error('Rejected cached proposal must not invoke a provider');}});
+  assert.equal(unexpected,0);assert.deepEqual(next.changes.actions,actions);
+  const q=next.changes.qualityState.actions.semanticReconciliation;assert.equal(q.stats.merged,0);assert.equal(q.calls.length,1);assert.equal(q.calls[0].cached,true);
+  assert.ok(q.unresolved.some(e=>e.reason==='contact_paraphrase_independent_veto'));
+ });
  test(name+': malformed/missing independent accounting cannot certify',()=>{
   const p=C.reviewPacket(parent,child,sourceUnits,['T0001'],false),q=C.reviewPacket(parent,child,sourceUnits,['T0001'],true),a=answer(p),b=answer(q);b.decisions[1].checks=[];
   assert.throws(()=>C.certify(parent,child,sourceUnits,['T0001'],a,b));
