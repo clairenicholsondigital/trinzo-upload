@@ -659,6 +659,16 @@ function resolveEvidence(value, units = [], supplied = [], options = {}) {
     .slice(0, 3)
     .sort((left, right) => left.index - right.index)
     .map((item) => item.id);
+  // Lexical context alone is not an action-support verdict. If no window
+  // passed the action check, do not replace valid supplied references with
+  // uncited background. Retain provenance as uncertain; downstream action,
+  // ownership and timing checks still decide whether the instruction stands.
+  if (options.action && !ranked.length && validIds.length
+    && remappedIds.some(id => !validIds.includes(id))) {
+    const evidenceIds = selectedSuppliedIds();
+    return finish({ evidenceIds, invalidIds, weakIds: [...evidenceIds], supportScore: 0 },
+      'supplied_evidence_unverified_no_action_match', { suppliedScore, suppliedAnchorScore, bestScore, strongerAlternative });
+  }
   return finish({
     evidenceIds: remappedIds,
     invalidIds,
