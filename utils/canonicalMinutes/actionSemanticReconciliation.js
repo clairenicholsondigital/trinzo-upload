@@ -65,13 +65,13 @@ function operation(value) {
   return OPERATION_GROUPS.find(([, pattern]) => pattern.test(verb))?.[0] || verb;
 }
 function instructionClauses(value) {
-  return String(value || '').split(/;\s*|,\s*(?:and\s+|then\s+)?(?=(?:send|share|provide|review|check|test|approve|write|update|create|buy|fit|install|sign|take)\b)/i)
+  return String(value || '').split(/;\s*|,\s*(?:and\s+|then\s+)?(?=(?:send|share|provide|review|check|test|approve|write|update|create|prepare|buy|fit|install|sign|take)\b)/i)
     .map(text => text.trim()).filter(Boolean);
 }
 function operationSequence(value) {
   const enquiry = enquiryFrame(value);
   if (enquiry) return [enquiry.operation];
-  return unique([...String(value || '').matchAll(/(?:^|[;,]\s*(?:(?:and|then)\s+)?|\b(?:and|then)\s+)(send|share|provide|forward|circulate|review|check|confirm|assess|test|approve|write|update|revise|amend|edit|create|buy|purchase|fit|install|sign|take|address)\b/gi)]
+  return unique([...String(value || '').matchAll(/(?:^|[;,]\s*(?:(?:and|then)\s+)?|\b(?:and|then)\s+)(send|share|provide|forward|circulate|review|check|confirm|assess|test|approve|write|update|revise|amend|edit|create|prepare|buy|purchase|fit|install|sign|take|address)\b/gi)]
     .map(match => operation(match[1]))).sort();
 }
 function sourceRows(input) {
@@ -193,7 +193,7 @@ function boundedSurvivorPair(left, right) {
       && row.timingDecision.binding?.status === 'not_stated')
     && !/[\d"“”:;()[\]{}?]|\b(?:if|unless|after|before|once|when|until|pending|following|without|not|never|only|either|or|maybe|perhaps|probably|possibly|presumably|ideally|tentatively|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|days?|weeks?|months?|years?|hours?|minutes?|seconds?|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midnight|asap|soon|immediately)\b/i.test(row.action)
     && !/[.!?]/.test(String(row.action).replace(/[.!?]+$/, ''))
-    && !/\b(?:and|then)\s+(?:send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|buy|purchase|fit|install|sign|take|address)\b/i.test(row.action)
+    && !/\b(?:and|then)\s+(?:send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|prepare|buy|purchase|fit|install|sign|take|address)\b/i.test(row.action)
     && instructionClauses(row.action).length === 1 && operationSequence(row.action).length === 1;
   if (!eligible(left) || !eligible(right) || words(left.action)[0] !== words(right.action)[0]
     || !equal(owners(left), owners(right))
@@ -203,7 +203,12 @@ function boundedSurvivorPair(left, right) {
   const a = contentWords(words(left.action).slice(1).join(' '));
   const b = contentWords(words(right.action).slice(1).join(' '));
   const common = a.filter(word => b.includes(word)).length;
-  return common >= 3 && common / Math.max(a.length, b.length) >= 0.8;
+  // A shared deliverable opening with the exact same source can be assessed
+  // by the independent proof; it is never deterministic permission to merge.
+  const sameBoundedOpening = a.length >= 4 && b.length >= 4
+    && equal(a.slice(0, 3), b.slice(0, 3))
+    && equal(unique(left.evidenceIds).sort(), unique(right.evidenceIds).sort());
+  return common >= 3 && (common / Math.max(a.length, b.length) >= 0.8 || sameBoundedOpening);
 }
 
 function prepareActionReconciliation(input = {}) {

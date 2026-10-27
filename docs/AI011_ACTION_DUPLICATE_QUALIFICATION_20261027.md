@@ -3,8 +3,8 @@
 This is a bounded qualification of the five action lists generated after PR #174.
 It does not rewrite saved drafts or establish an independent colleague review time.
 The fixed input contains 56 actions; PR #177 reduces the Allotment shed-fitting
-pair to one in replay, leaving 55 actions. A new generation has not yet been run
-on PR #177 or this change. The older 58-draft inventory spans several policies
+pair to one in replay, leaving 55 actions. At the time of that qualification,
+a new generation had not yet been run. The older 58-draft inventory spans several policies
 and is not a current duplicate rate.
 
 ## What is a safe merge?
@@ -51,3 +51,31 @@ with their exact source and warning histories, starting with the false DITA
 shipping-invoice citation and the Allotment source-verification veto. A fresh
 five-transcript run after deployment, then the AI-005 colleague trial, must
 measure the visible burden before AI-011 is marked Done.
+
+## Deployed run and further bounded proof
+
+PR #179 was deployed at `466af780` and a fresh, temporary five-transcript run
+completed. Its action counts were Eakin 15, Parking 0, DITA 12, Abbott 17 and
+Allotment 12. The preceding run had 16, 1, 13, 14 and 12 respectively. Both
+total 56, but the generation changed its action selection, so this is not a
+controlled count improvement. Eakin's flow-rate confirmation appeared once.
+Parking's previous action was absent and was flagged for review, a separate
+completeness issue. DITA and Abbott still contained obvious overlaps. In
+Allotment, a shed-fitting sentence appeared twice verbatim with different
+unresolved timing wordings and warning links; that is not a safe silent merge.
+All five temporary drafts were deleted after the run.
+
+The newly generated DITA country-list pair is a second proof-backed class:
+both rows have the same sole owner, exact cited source-unit set, no timing or
+warnings, and the same bounded opening of the requested deliverable. The
+existing candidate screen missed it because `prepare` was not recognised as
+an operation and its tail-word overlap fell below the old narrow threshold.
+This follow-up nominates same-source, same-opening single-operation rows for
+the existing independent proof; it does not merge on opening words alone.
+Across the new five lists it nominates exactly that one pair, and across the
+older 58-draft inventory it nominates none. In an isolated real Microsoft
+comparison with the app's final survival check, the complete DITA list went
+from 12 to 11, with one receipt, complete candidate accounting, no unresolved
+verdict and the source-supported country-list survivor retaining its evidence.
+This is fixed-input evidence; a new deployed generation and colleague review
+remain necessary before closing AI-011.
