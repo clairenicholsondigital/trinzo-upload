@@ -145,14 +145,15 @@ test('a private audit checkpoint persists before stage completion without enteri
 test('the production referee call actually wires rejection capture to the durable private checkpoint',async()=>{
  for(const stage of ['discussion','actions']){
   const atomic=stage==='discussion'?child:{...child,recordType:'action',text:'Send the tracker.',record:{action:'Send the tracker.',owners:['Nora Patel'],evidenceIds:['T0001']}};
-  const h=progressHarness(),c=A.meetingMinutesAgentRefereeContract(stage,[atomic],'request',{selected:true}),logs=[];let providerCalls=0,capturedError;
+  const h=progressHarness(),c=A.meetingMinutesAgentRefereeContract(stage,[atomic],'request',{selected:true}),logs=[],diagnosticPasses=[];let providerCalls=0,capturedError;
   const result={requestId:'request',stage:c.stage,expectedCandidateCount:1,returnedDispositionCount:1,
     candidateDispositions:[{candidateId:'child',disposition:stage==='discussion'?'merge':'publish',targetId:'PRIVATE_BAD_TARGET',reason:'Covered.',evidenceIds:['T0001']}]};
   const retry=retryHarness(async()=>{providerCalls++;return structuredClone(result);});
-  const start=source.indexOf('  const call = async (pass, prompt, callOptions = {}) => {',source.indexOf('async function generateHybridMeetingAgentStageRaw('));
+  const start=source.indexOf('  const call = (pass, prompt, callOptions = {}) => actionDiagnostics.scoped(',source.indexOf('async function generateHybridMeetingAgentStageRaw('));
   const end=source.indexOf("\n\n  if (stage === 'summary')",start);
   assert.ok(start>0&&end>start);
   const context={Date,Math,Number,JSON,process:{env:{}},
+    actionDiagnostics:{...require('../utils/meetingMinutesActionDiagnostics'),scoped:(pass,task)=>{diagnosticPasses.push(pass);return task();}},
     stage,draft:{draftId:'draft'},passCache:[],passProvenance:[],completedPasses:[],degradedSources:[],
     stageDeadlineAt:Date.now()+5000,refereeFailureAudit:undefined,refereeAuditRunId:'fixture-run',
     options:{onRefereeFailure:journal=>h.persist('draft','owner',stage,{refereeFailureAudit:journal})},
@@ -166,6 +167,7 @@ test('the production referee call actually wires rejection capture to the durabl
   const value=await context.call('referee-batch-1','PRIVATE exact request',{
     optional:true,maxAttempts:1,responseKind:'referee',refereeContract:c,requestId:c.requestId,
     validateResult:r=>A.meetingAgentDispositionError(r,[atomic],c),captureError:e=>{capturedError=e;}});
+  assert.deepEqual(diagnosticPasses,['referee-batch-1']);
   assert.equal(value,null);assert.equal(providerCalls,1);assert.equal(capturedError.code,stage==='discussion'?'invalid_referee_target':'unmaterialized_referee_action');
   const entry=h.stored.qualityState[stage].refereeFailureAudit.entries[0];
   assert.equal(entry.prompt.value,'PRIVATE exact request');

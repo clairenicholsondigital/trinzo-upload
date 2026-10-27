@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const diagnostics = require('../meetingMinutesActionDiagnostics');
 const contained = require('./containedRequirement');
 const dependency = require('./qualifiedDependency');
 const contactPurpose = require('./contactParaphrase');
@@ -184,31 +185,41 @@ function mechanicalCoverage(part, whole) {
 // Unknown metadata, reviewer work and qualified occurrences stay protected.
 const BOUNDED_FIELDS = new Set(['id', 'action', 'owners', 'timing', 'evidenceIds', 'occurrenceId', 'reviewFlagIds', 'timingDecision']);
 function boundedSurvivorPair(left, right) {
-  const eligible = row => row && Object.keys(row).every(key => BOUNDED_FIELDS.has(key))
-    && !isReviewerAuthored(row) && row.owners?.length === 1 && String(row.owners[0]).trim()
-    && row.timing?.kind === 'not_stated' && !row.timing.wording && !row.timing.exactDate
-    && !row.reviewFlagIds?.length && row.evidenceIds?.length > 0 && row.evidenceIds.length <= 8
-    && !row.timingDecision?.rejectedExactDates?.length && !row.timingDecision?.rejectedWordings?.length
-    && (!row.timingDecision || row.timingDecision.reason === 'no_timing_value'
-      && row.timingDecision.binding?.status === 'not_stated')
-    && !/[\d"“”:;()[\]{}?]|\b(?:if|unless|after|before|once|when|until|pending|following|without|not|never|only|either|or|maybe|perhaps|probably|possibly|presumably|ideally|tentatively|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|days?|weeks?|months?|years?|hours?|minutes?|seconds?|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midnight|asap|soon|immediately)\b/i.test(row.action)
-    && !/[.!?]/.test(String(row.action).replace(/[.!?]+$/, ''))
-    && !/\b(?:and|then)\s+(?:send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|prepare|buy|purchase|fit|install|sign|take|address)\b/i.test(row.action)
-    && instructionClauses(row.action).length === 1 && operationSequence(row.action).length === 1;
-  if (!eligible(left) || !eligible(right) || words(left.action)[0] !== words(right.action)[0]
-    || !equal(owners(left), owners(right))
-    || !(left.evidenceIds || []).some(id => right.evidenceIds.includes(id))
-    || new Set([...left.evidenceIds, ...right.evidenceIds]).size > 8
-    || hardConflicts(left, right).length || hardConflicts(right, left).length) return false;
+  const reject = (reason, details = {}) => { diagnostics.nomination(left, right, 'bounded_existing_survivors', reason, details); return false; };
+  const eligible = row => {
+    if (!row) return 'missing_record';
+    if (!Object.keys(row).every(key => BOUNDED_FIELDS.has(key))) return 'unsupported_record_fields';
+    if (isReviewerAuthored(row)) return 'reviewer_authored';
+    if (row.owners?.length !== 1 || !String(row.owners[0]).trim()) return 'missing_or_multiple_owners';
+    if (!(row.timing?.kind === 'not_stated' && !row.timing.wording && !row.timing.exactDate)) return 'structured_timing';
+    if (row.reviewFlagIds?.length) return 'protected_review_flags';
+    if (!(row.evidenceIds?.length > 0 && row.evidenceIds.length <= 8)) return 'missing_or_excessive_sources';
+    if (row.timingDecision?.rejectedExactDates?.length || row.timingDecision?.rejectedWordings?.length) return 'rejected_timing_history';
+    if (!((!row.timingDecision || row.timingDecision.reason === 'no_timing_value'
+      && row.timingDecision.binding?.status === 'not_stated'))) return 'timing_binding';
+    if (/[\d"“”:;()[\]{}?]|\b(?:if|unless|after|before|once|when|until|pending|following|without|not|never|only|either|or|maybe|perhaps|probably|possibly|presumably|ideally|tentatively|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|days?|weeks?|months?|years?|hours?|minutes?|seconds?|daily|weekly|fortnightly|monthly|quarterly|annually|yearly|morning|afternoon|evening|noon|midnight|asap|soon|immediately)\b/i.test(row.action)) return 'qualified_or_unsupported_wording';
+    if (/[.!?]/.test(String(row.action).replace(/[.!?]+$/, ''))) return 'multiple_sentences';
+    if (/\b(?:and|then)\s+(?:send|share|provide|forward|circulate|review|check|assess|test|approve|write|update|revise|amend|edit|create|prepare|buy|purchase|fit|install|sign|take|address)\b/i.test(row.action)) return 'compound_operations';
+    if (!(instructionClauses(row.action).length === 1 && operationSequence(row.action).length === 1)) return 'multiple_clauses_or_operations';
+    return '';
+  };
+  const leftReason = eligible(left); if (leftReason) return reject(leftReason, { side: 'left' });
+  const rightReason = eligible(right); if (rightReason) return reject(rightReason, { side: 'right' });
+  if (words(left.action)[0] !== words(right.action)[0]) return reject('different_opening_verbs');
+  if (!equal(owners(left), owners(right))) return reject('different_owners');
+  if (!(left.evidenceIds || []).some(id => right.evidenceIds.includes(id))) return reject('no_shared_source');
+  if (new Set([...left.evidenceIds, ...right.evidenceIds]).size > 8) return reject('source_capacity');
+  const forward = hardConflicts(left, right); if (forward.length) return reject('protected_meaning_conflict', { direction: 'left_into_right', blockers: forward });
+  const reverse = hardConflicts(right, left); if (reverse.length) return reject('protected_meaning_conflict', { direction: 'right_into_left', blockers: reverse });
   const a = contentWords(words(left.action).slice(1).join(' '));
   const b = contentWords(words(right.action).slice(1).join(' '));
   const common = a.filter(word => b.includes(word)).length;
-  // A shared deliverable opening with the exact same source can be assessed
-  // by the independent proof; it is never deterministic permission to merge.
   const sameBoundedOpening = a.length >= 4 && b.length >= 4
     && equal(a.slice(0, 3), b.slice(0, 3))
     && equal(unique(left.evidenceIds).sort(), unique(right.evidenceIds).sort());
-  return common >= 3 && (common / Math.max(a.length, b.length) >= 0.8 || sameBoundedOpening);
+  const accepted = common >= 3 && (common / Math.max(a.length, b.length) >= 0.8 || sameBoundedOpening);
+  if (!accepted) return reject('insufficient_wording_overlap');
+  return true;
 }
 
 function prepareActionReconciliation(input = {}) {
@@ -242,28 +253,29 @@ function prepareActionReconciliation(input = {}) {
   let containedCount=0,dependencyCount=0,contactPurposeCount=0;
   for (const nominationClass of classes) for (let i = 0; i < ordered.length; i += 1) for (let j = i + 1; j < ordered.length; j += 1) {
     const left = ordered[i]; const right = ordered[j];
-    if (left.protected || right.protected) continue;
+    const skipped = (reason, details) => diagnostics.nomination(left.action, right.action, nominationClass, reason, details);
+    if (left.protected || right.protected) { skipped('protected_reviewer_or_kept_occurrence'); continue; }
     const contactDirection=nominationClass==='contact_paraphrases'&&input.contactParaphrases===true
       ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action)):nominationClass==='contact_reviews'&&input.contactReviews===true
         ?contactPurpose.direction(left.action,right.action,rows.map(row=>row.action),true):null;
-    if(['contact_paraphrases','contact_reviews'].includes(nominationClass)&&(!contactDirection||contactPurposeCount>=1))continue;
-    if(nominationClass==='contact_reviews'&&!contactPurpose.reviewShape(contactDirection.parent,contactDirection.child))continue;
+    if(['contact_paraphrases','contact_reviews'].includes(nominationClass)&&(!contactDirection||contactPurposeCount>=1)) { skipped(!contactDirection?'contact_shape_not_supported':'contact_class_budget_exhausted'); continue; }
+    if(nominationClass==='contact_reviews'&&!contactPurpose.reviewShape(contactDirection.parent,contactDirection.child)) { skipped('review_arrangement_shape_not_supported'); continue; }
     const contact = sameEnquiryPair(left.action, right.action);
     const containedDirection=nominationClass==='contained_requirements'&&input.containedRequirements===true
       ?contained.direction(left.action,right.action,rows.map(row=>row.action)):null;
-    if(nominationClass==='contained_requirements'&&(!containedDirection||containedCount>=1))continue;
+    if(nominationClass==='contained_requirements'&&(!containedDirection||containedCount>=1)) { skipped(!containedDirection?'contained_shape_not_supported':'contained_class_budget_exhausted'); continue; }
     const dependencyDirection=nominationClass==='qualified_dependencies'&&input.qualifiedDependencies===true
       ?dependency.direction(left.action,right.action,rows.map(row=>row.action)):null;
-    if(nominationClass==='qualified_dependencies'&&(!dependencyDirection||dependencyCount>=1))continue;
-    if (nominationClass === 'contact_enquiries' && !contact) continue;
+    if(nominationClass==='qualified_dependencies'&&(!dependencyDirection||dependencyCount>=1)) { skipped(!dependencyDirection?'dependency_shape_not_supported':'dependency_class_budget_exhausted'); continue; }
+    if (nominationClass === 'contact_enquiries' && !contact) { skipped('enquiry_shape_not_supported'); continue; }
     if (nominationClass === 'bounded_existing_survivors'
       && (input.scope === 'contact_and_existing_survivors' && contact || !boundedSurvivorPair(left.action, right.action))) continue;
-    if (input.scope !== undefined && !isActionOnlySemanticScope(input.scope)) continue;
+    if (input.scope !== undefined && !isActionOnlySemanticScope(input.scope)) { skipped('unsupported_policy_scope'); continue; }
     const leftWords = contentWords(left.action.action); const rightWords = contentWords(right.action.action);
     const common = leftWords.filter(word => rightWords.includes(word)).length;
     const sharedEvidence = (left.action.evidenceIds || []).some(id => (right.action.evidenceIds || []).includes(id));
-    if (!sharedEvidence && common / Math.max(1, Math.min(leftWords.length, rightWords.length)) < 0.35) continue;
-    if (!common) continue;
+    if (!sharedEvidence && common / Math.max(1, Math.min(leftWords.length, rightWords.length)) < 0.35) { skipped('insufficient_source_and_wording_overlap'); continue; }
+    if (!common) { skipped('no_common_content'); continue; }
     const pair = { candidateId: `pair-${hash([left.ref, right.ref]).slice(0, 24)}`,
       leftRef: left.ref, rightRef: right.ref,
       nomination: { sharedEvidence, commonContentWords: common },
@@ -273,8 +285,8 @@ function prepareActionReconciliation(input = {}) {
       leftIntoRight: mechanicalCoverage(left.action, right.action),
       rightIntoLeft: mechanicalCoverage(right.action, left.action) };
     if(candidates.some(candidate=>candidate.candidateId===pair.candidateId))continue;
-    if (candidates.length < maxCandidates) { candidates.push(pair);if(containedDirection)containedCount++;if(dependencyDirection)dependencyCount++;if(contactDirection)contactPurposeCount++; }
-    else unresolved.push({ candidateId: pair.candidateId, refs: [left.ref, right.ref], reason: 'candidate_budget_exhausted' });
+    if (candidates.length < maxCandidates) { skipped('nominated', { candidateId: pair.candidateId }); candidates.push(pair);if(containedDirection)containedCount++;if(dependencyDirection)dependencyCount++;if(contactDirection)contactPurposeCount++; }
+    else { skipped('candidate_budget_exhausted', { candidateId: pair.candidateId }); unresolved.push({ candidateId: pair.candidateId, refs: [left.ref, right.ref], reason: 'candidate_budget_exhausted' }); }
   }
   const packet = { version: VERSION, sourceHash: hash(sourceUnits), inputHash: hash(actions),
     meetingDate: String(input.meetingDate || ''), sourceUnits, rows, candidates, unresolved,

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const diagnostics = require('./meetingMinutesActionDiagnostics');
 const contained = require('./canonicalMinutes/containedRequirement');
 const dependency = require('./canonicalMinutes/qualifiedDependency');
 const contactPurpose = require('./canonicalMinutes/contactParaphrase');
@@ -363,6 +364,10 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
         const passed=assessment.modelPassed && (!['contact_review','list_deliverable'].includes(review.instructionComparison)
           || assessment.relationship?.relation==='same_obligation'
             && assessment.sourceRoles.every(row=>row.basis==='commitment'));
+        diagnostics.transition('independent_review', [parent.action, child.action], [], { candidateId: candidate.candidateId,
+          role: challenge ? 'challenge' : 'primary', contractError: assessment.contractError || '',
+          modelPassed: assessment.modelPassed, relation: assessment.relationship?.relation || 'unresolved',
+          outcome: assessment.contractError ? 'contract_rejected' : passed ? 'accepted' : 'semantic_veto' });
         if(challenge||!passed)providerAssessed.add(candidate.candidateId);
         if(!passed)throw Object.assign(new Error('Source review veto'),{code:failurePrefix+'_independent_veto'});
         responses.push(response.result);
@@ -406,6 +411,18 @@ async function reconcileGeneratedSemanticStage(result, draft, stage, options = {
     mechanicallyBlocked:packet.candidates.filter(item => !deterministicAssessed.has(item.candidateId)
       && !candidates.some(candidate => candidate.candidateId === item.candidateId)).length,
     notAssessed:nominated-assessed };
+  if (stage === 'actions' && diagnostics.active()) {
+    for (const candidate of packet.candidates) {
+      const rows = packet.rows.filter(row => [candidate.leftRef, candidate.rightRef].includes(row.ref)).map(row => row.action);
+      const ledger = reconciled.ledger.find(item => item.candidateId === candidate.candidateId);
+      const errors = [...failures, ...independentFailures].filter(item => item.candidateIds?.includes(candidate.candidateId));
+      diagnostics.transition('semantic_outcome', rows, [], { candidateId: candidate.candidateId,
+        providerAttempted: providerAttempted.has(candidate.candidateId), providerAssessed: providerAssessed.has(candidate.candidateId),
+        deterministicAssessed: deterministicAssessed.has(candidate.candidateId), relation: decisions.get(candidate.candidateId)?.relation || 'unresolved',
+        status: ledger?.status || 'unresolved', blockers: ledger?.reasons || [], failures: errors });
+    }
+    diagnostics.transition('semantic_register', original, policy.mode === 'on' && !failures.length ? reconciled.actions : original, { mechanism: 'semantic_reconciliation', mode: policy.mode });
+  }
   const quality = {policy,packetHash:packet.packetHash,sourceHash:packet.sourceHash,inputHash:packet.inputHash,
     stats:{...reconciled.stats,...(stage === 'actions' ? {assessed} : {})},assessment,
     ledger:reconciled.ledger || [],receipts:reconciled.receipts || [],

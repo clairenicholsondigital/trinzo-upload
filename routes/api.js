@@ -132,6 +132,7 @@ const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { convertSpokenNumbers } = require('../utils/spokenNumbers');
 const { numericActionEditIssue } = require('../utils/meetingMinutesActionNumericPreservation');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
+const actionDiagnostics = require('../utils/meetingMinutesActionDiagnostics');
 const { isPublishableTopicLabel, isActionCategoryTopicCard, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
@@ -9385,6 +9386,7 @@ function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
       sourcePass, recordType: 'action', text: action.action || '', evidenceIds: [...(action.evidenceIds || [])], priority: 6,
       record: structuredClone(action)
     });
+    actionDiagnostics.origin(sourcePass, [action], { kind: 'candidate_ledger', candidateId: rows.at(-1).candidateId });
   }
   for (const objective of Array.isArray(result.objectives) ? result.objectives : []) {
     rows.push({
@@ -11784,7 +11786,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
   for (const stage of ['discussion', 'actions', 'summary']) {
     if (!source[stage]) continue;
     const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'actionPhaseCorrection', 'filingAliasReconciliation', 'citedFilingAliasReconciliation']) {
+    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'actionPhaseCorrection', 'filingAliasReconciliation', 'citedFilingAliasReconciliation', 'actionDiagnostics']) {
       if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
     }
     prose[stage] = rest;
@@ -12523,6 +12525,7 @@ function reconcileAcceptedRefereeActions(published = [], accepted = [], proposed
       || proposals.some((existing) => strictActionDeliverableMatch(record, existing))) continue;
     actions.push(record);
     restored.push(record);
+    actionDiagnostics.transition('restored', [record], [record], { mechanism: 'approved_action_preservation', reason: 'not_proved_represented' });
   }
   const firstEvidence = (record) => Math.min(...(record.evidenceIds || [])
     .map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
@@ -12553,6 +12556,7 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
         representedReviewerOccurrences.add(actions.length);
         actions.push(record);
         restored.push(record);
+        actionDiagnostics.transition('restored', [record], [record], { mechanism: 'approved_action_preservation', reason: 'not_proved_represented' });
       }
       continue;
     }
@@ -12630,6 +12634,7 @@ function reconcileFinalApprovedActions(published = [], approved = [], options = 
     if (represented) continue;
     actions.push(record);
     restored.push(record);
+    actionDiagnostics.transition('restored', [record], [record], { mechanism: 'approved_action_preservation', reason: 'not_proved_represented' });
   }
   const firstEvidence = (record) => Math.min(...(record.evidenceIds || [])
     .map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
@@ -13533,6 +13538,7 @@ function bundleSameRecipientDeliveries(records = []) {
       evidenceIds: stableActionEvidence(group.map(({ record }) => record)),
       reviewFlagIds: [...new Set(group.flatMap(({ record }) => record.reviewFlagIds || []))].slice(0, 24)
     };
+    actionDiagnostics.transition('bundled', group.map(({ record }) => record), [combined], { mechanism: 'same_recipient_deliveries' });
     replacements.set(first.index, combined);
     group.slice(1).forEach(({ index }) => removed.add(index));
   }
@@ -13662,7 +13668,9 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         return true;
       }
       if (isReviewerAuthored(record) || isReviewerAuthored(existing)
-        || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)) return false;
+        || exactActionIdentityConflict(record, existing) || conflictingTimings(record, existing)) {
+        actionDiagnostics.nomination(record, existing, 'local_dedupe', 'reviewer_identity_or_timing_conflict'); return false;
+      }
       // Independent extraction IDs are local to each response. Keep distinct
       // review/document instructions intact for the later source-bound union;
       // broad containment can otherwise discard a mandatory operation here.
@@ -13684,13 +13692,13 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         sourceAwareDuplicate = existing;
         return true;
       }
-      if (actionContainmentConflict(record, existing)) return false;
+      if (actionContainmentConflict(record, existing)) { actionDiagnostics.nomination(record, existing, 'local_dedupe', 'local_containment_conflict'); return false; }
       // Existing document workflows construct a combined instruction rather
       // than dropping a step. They may retain one step's additional gate;
       // conflicting quantities, polarity or two different gates still block.
       const combinedDocumentWorkflow = sameComplementaryDocumentDeliverable(record, existing)
         || sameDocumentDeliveryWorkflow(record, existing) || sameCanonicalDocumentWorkflow(record, existing);
-      if (commitmentScopeConflict(record, existing, { allowAdditionalScope: combinedDocumentWorkflow })) return false;
+      if (commitmentScopeConflict(record, existing, { allowAdditionalScope: combinedDocumentWorkflow })) { actionDiagnostics.nomination(record, existing, 'local_dedupe', 'local_scope_conflict'); return false; }
       const recordCovered = actionIsLosslesslyCovered(record, existing);
       const existingCovered = actionIsLosslesslyCovered(existing, record);
       if (recordCovered || existingCovered) {
@@ -13766,10 +13774,15 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       merged.push(record);
       continue;
     }
+    const diagnosticInputs = actionDiagnostics.refs([duplicate, record]);
+    const diagnosticIndex = merged.indexOf(duplicate);
+    const traceLocalResult = () => actionDiagnostics.event(merged.includes(record) ? 'retained' : 'combined', diagnosticInputs,
+      actionDiagnostics.refs([merged[diagnosticIndex], ...(merged.includes(record) ? [record] : [])]), { mechanism: 'local_dedupe' });
     if (completedTimingDuplicate === duplicate) {
       merged[merged.indexOf(duplicate)] = sourceBoundIdenticalActionTimingCompletion(
         record, duplicate, options.sourceUnits || [])
         || sourceBoundLiteralDependencyTiming(record, duplicate, options.sourceUnits || []);
+      traceLocalResult();
       continue;
     }
     if (contextualReviewDuplicate === duplicate) {
@@ -13788,12 +13801,14 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24),
         ...recovery
       });
+      traceLocalResult();
       continue;
     }
     if (weekdayTimingReconciliation) {
       // Retain the proved winner's own timing and verification metadata,
       // together with both extractions' evidence, flags and timing warnings.
       merged[merged.indexOf(duplicate)] = weekdayTimingReconciliation.record;
+      traceLocalResult();
       continue;
     }
     if (losslessPreferred) {
@@ -13804,6 +13819,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       const reviewFlagIds = [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])];
       Object.assign(duplicate, losslessPreferred, { evidenceIds: evidenceIds.sort((left, right) =>
         Number(String(left).match(/\d+/)?.[0] || Infinity) - Number(String(right).match(/\d+/)?.[0] || Infinity)), reviewFlagIds });
+      traceLocalResult();
       continue;
     }
     if (sourceAwareDuplicate === duplicate) {
@@ -13822,6 +13838,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24),
         ...recovery
       });
+      traceLocalResult();
       continue;
     }
     if (roleClarificationDuplicate === duplicate) {
@@ -13849,6 +13866,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
         reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24),
         ...recovery
       });
+      traceLocalResult();
       continue;
     }
     let preferred = preference(record) > preference(duplicate)
@@ -13878,10 +13896,11 @@ function dedupeHybridActionRecords(records = [], options = {}) {
     }
     if (!commitmentClausesRetained(record, preferred) || !commitmentClausesRetained(duplicate, preferred)) {
       merged.push(record);
+      traceLocalResult();
       continue;
     }
     if (options.independentDiscovery && (!commitmentCanBeRepresented(record, preferred)
-      || !commitmentCanBeRepresented(duplicate, preferred))) { merged.push(record); continue; }
+      || !commitmentCanBeRepresented(duplicate, preferred))) { merged.push(record); traceLocalResult(); continue; }
     const combinedEvidence = stableEvidence([duplicate, record]);
     const duplicateOwners = duplicate.owners || []; const recordOwners = record.owners || [];
     const ownersCompatible = !duplicateOwners.length || !recordOwners.length
@@ -13912,6 +13931,7 @@ function dedupeHybridActionRecords(records = [], options = {}) {
       timing,
       reviewFlagIds: [...new Set([...(duplicate.reviewFlagIds || []), ...(record.reviewFlagIds || [])])].slice(0, 24)
     });
+    traceLocalResult();
   }
   const sorted = merged.sort((left, right) => {
     const first = (record) => Math.min(...(record.evidenceIds || []).map((id) => Number(String(id).match(/\d+/)?.[0] || Infinity)));
@@ -14535,6 +14555,9 @@ function borrowOwnersFromTwin(selected = {}, pool = []) {
   }).filter(Boolean).sort((left, right) => right.score - left.score);
   if (!scored.length) return null;
   const twin = scored[0].candidate;
+  actionDiagnostics.transition('owner_borrow_proposed', [selected.record || { action, evidenceIds: selected.evidenceIds || [] },
+    twin.record || { action: twin.text, owners: candidateOwnersOf(twin), evidenceIds: twin.evidenceIds || [] }], [],
+    { mechanism: 'borrowOwnersFromTwin', selectedCandidate: selected.candidateId, donorCandidate: twin.candidateId, donorPass: twin.sourcePass });
   return {
     owners: candidateOwnersOf(twin),
     evidenceIds: [...new Set([...(twin.evidenceIds || []), ...(twin.record?.evidenceIds || [])])]
@@ -14554,6 +14577,7 @@ function traceProposals(step, records = [], draftId = '') {
 }
 
 function traceOwners(step, actions = [], journeyId = '') {
+  actionDiagnostics.checkpoint(step, actions);
   if (!/^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS || ''))) return;
   const list = Array.isArray(actions) ? actions : [];
   const probe = String(process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_PROBE || '').toLowerCase();
@@ -14611,6 +14635,7 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
       const borrowed = borrowOwnersFromTwin(selected, ownerPool);
       if (borrowed) { owners = borrowed.owners; borrowedEvidence = borrowed.evidenceIds; borrowedOwners += 1; }
     }
+    const diagnosticSource = selected.record || { action, owners: candidateOwnersOf(selected), evidenceIds: selected.evidenceIds || [] };
     rows.push({
       kind,
       targetId: targetId || candidateId,
@@ -14628,6 +14653,8 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
         reviewFlagIds: []
       }
     });
+    actionDiagnostics.transition(borrowedEvidence.length ? 'owner_borrowed' : 'referee_materialised', [diagnosticSource], [rows.at(-1).record],
+      { mechanism: 'reconstructRefereeActions', candidateId, disposition: kind });
   }
   const writtenRows = rows.filter((item) => !(transcriptTextGateEnabled()
     && transcriptTextIssue(item.record.action, sourceUnits)));
@@ -15963,7 +15990,9 @@ async function finishMeetingAgentSemanticStage(result, draft, stage, options = {
   // including legacy callers lacking default source fields. Raw transcript
   // storage remains separate and is never rewritten by this boundary.
   draft = { ...draft, sourceUnits: normaliseSourceUnits(draft.sourceUnits) };
+  if (stage === 'actions') actionDiagnostics.checkpoint('raw_generation_complete', result?.changes?.actions || []);
   let cleaned = cleanGeneratedMeetingAgentResult(result, stage);
+  if (stage === 'actions') actionDiagnostics.checkpoint('generated_hygiene', cleaned?.changes?.actions || []);
   const shadowOriginal = cleaned;
   const policy = semanticPolicyForRun(draft, options.semanticPolicy);
   const previousSemantic = cleaned?.changes?.qualityState?.[stage]?.semanticReconciliation
@@ -15993,6 +16022,7 @@ async function finishMeetingAgentSemanticStage(result, draft, stage, options = {
         .filter(key => Array.isArray(topic[key])).map(key => [key, topic[key].map(record => formatRecord(record, 'text'))])) }));
     cleaned = { ...cleaned, changes: { ...cleaned.changes, [stage]: formatted } };
   }
+  if (stage === 'actions') actionDiagnostics.checkpoint('presentation_normalisation', cleaned?.changes?.actions || []);
   const reconciled = await reconcileGeneratedSemanticStage(cleaned, draft, stage, {
     policy: semanticPolicyForRun(draft, options.semanticPolicy),
     meetingDate: meetingAgentTimingAnchor(draft),
@@ -16096,7 +16126,12 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
 }
 
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
-  return finishMeetingAgentGeneratedStage(await generateHybridMeetingAgentStageRaw(draft, stage, options), draft, stage, options);
+  return actionDiagnostics.generate(draft, stage, options, async () => {
+    const result = await finishMeetingAgentGeneratedStage(await generateHybridMeetingAgentStageRaw(draft, stage, options), draft, stage, options);
+    actionDiagnostics.checkpoint('final_generation_register', result?.changes?.actions || []);
+    actionDiagnostics.transition('final_register', [], result?.changes?.actions || []);
+    return result;
+  });
 }
 
 async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
@@ -16123,7 +16158,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       telemetry: meetingAgentExecutionTelemetry(progressProvenance), degradedSources
     });
   };
-  const call = async (pass, prompt, callOptions = {}) => {
+  const call = (pass, prompt, callOptions = {}) => actionDiagnostics.scoped(pass, () => callRaw(pass, prompt, callOptions));
+  const callRaw = async (pass, prompt, callOptions = {}) => {
     const isRefereeCall = callOptions.responseKind === 'referee' || pass === 'referee' || pass.startsWith('referee-');
     const baseMessage = pass === 'primary' || pass === 'primary-2' ? 'Finding the main points…' : pass === 'recovery' ? `Recovering missed ${stage}…` : pass === 'topic-arranger' ? 'Arranging related discussion topics…' : isRefereeCall ? `Checking ${stage} evidence…` : 'Verifying the draft…';
     const promptSha256 = meetingAgentPassCacheKey(prompt);
@@ -16157,6 +16193,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           } : {})
         });
         await progress(pass, `${baseMessage.replace(/…$/, '')} — using saved result…`);
+        actionDiagnostics.origin(pass, cached.result.actions || [], { cached: true, replayed: Boolean(replayed) });
         return cached.result;
       }
       passCache = passCache.filter((entry) => entry !== cached);
@@ -16189,6 +16226,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
           candidateCount, ...resultCounts, attempts: (prewarmed.timings || []).length,
           elapsedMs: Date.now() - joinedAt, prewarmed: true, ok: true
         }));
+        actionDiagnostics.origin(pass, prewarmed.result.actions || [], { cached: true, prewarmed: true });
         return prewarmed.result;
       }
     }
@@ -16249,6 +16287,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         { stage, pass, promptSha256, completedAt: new Date().toISOString(), result: response.result }
       ]);
       if (options.onCheckpoint) await options.onCheckpoint(passCache);
+      actionDiagnostics.origin(pass, response.result.actions || [], { requestId });
       return response.result;
     } catch (error) {
       const failedTimings = Array.isArray(error.callTimings) ? error.callTimings : [];
@@ -16274,6 +16313,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
         invalidReasons: Array.isArray(error.invalidReasons) ? error.invalidReasons.slice(0, 20) : undefined,
         callTimings: error.callTimings || []
       }));
+      actionDiagnostics.event('provider_failed', [], [], { stage, failedPass: pass, code: String(error.code || 'provider_failure') });
       if (typeof callOptions.captureError === 'function') callOptions.captureError(error);
       if (!callOptions.optional) throw error;
       if (callOptions.silentOptionalFailure !== true) {
@@ -17653,6 +17693,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     degradedSources.push('The final action referee returned an implausibly sparse result; the evidence-normalised primary draft was retained for safety.');
     refereeActions = primary.actions;
   }
+  actionDiagnostics.checkpoint('referee_publication', refereeActions);
   // The second discovery leg is a discovery source in its own right. Its
   // actions were folded into the first leg's list for the referee, so an
   // action both legs found still counted as one source and a referee
@@ -18277,6 +18318,7 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
     verifiedBindingFor: timingRecovery.bindingReader(timingRecoveryAudit?.proofs, draft.sourceUnits, timingAnchor)
   });
   const finalActions = finalTiming.actions;
+  actionDiagnostics.checkpoint('final_timing', finalActions);
   const finalTimedStepCoverage = timedStepCoverage(sourceActionCandidates, finalActions, draft.sourceUnits, { meetingDate: timingAnchor });
   const timedStepFlags = finalTimedStepCoverage.items.filter(item => item.status !== 'covered').map((item, index) => normaliseMeetingAgentFlag({
     kind: 'timing', temporalField: 'timedStepCoverage', message: `A source-stated timed step still needs review: "${item.focusText}" (${item.expression}). Confirm that this work and its own timing are represented.`,
@@ -18364,6 +18406,8 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
       hybridCandidateDispositions(ensemble, actionFlagState.content.actions,
         finalProposal.changes.filter((change) => change.type === 'add').map((change) => change.after)),
       draft.sourceUnits, settledRefereeActionDispositions);
+  actionDiagnostics.checkpoint('final_flag_state', actionFlagState.content.actions);
+  actionDiagnostics.checkpoint('discussion_action_separation', separationPublishedActions);
   return {
     changes: {
       actions: separationPublishedActions,
@@ -19971,6 +20015,11 @@ function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generat
       existingActions: fresh.actions || [], reservedActions: reserved, generationKey
     }).actions : original;
   if (Array.isArray(changes.actions)) changes.actions = allocated;
+  const diagnostics = changes.qualityState?.actions?.actionDiagnostics;
+  if (diagnostics && Array.isArray(changes.actions)) {
+    changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
+      actionDiagnostics: actionDiagnostics.bindPublished(diagnostics, original, allocated) } };
+  }
   const separation = changes.qualityState?.discussion?.claimConsolidation;
   if (Array.isArray(changes.actions) && Array.isArray(changes.discussion)
     && separation?.method === discussionActionSeparation.VERSION && separation.applied) {

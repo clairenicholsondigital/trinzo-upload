@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "runCode": "d03666ef790d89e6acf7e20f869d67aac4ccdbcc",
+  "equivalentDeployedCode": "82e7c31fb397ef30920a6b3e747a9937a11a8924",
+  "scope": "Historical six-group action-only baseline; positions are fixture selectors, never production matching rules. Raw drafts and source passages remain private.",
+  "groups": [
+    {
+      "id": "REP-01",
+      "transcript": "Abbott",
+      "title": "Training-pack delivery",
+      "positions": [
+        1,
+        2
+      ],
+      "actionsInRegister": 15,
+      "savedOutputSha256": "02548946bfb3011f1510d3ad5986649f207162d3d09c61d88e700fc7bf88580a",
+      "actionIds": [
+        "10343232125bd6416b7d",
+        "A7"
+      ],
+      "sourceReferences": [
+        [
+          "T0033",
+          "T0108",
+          "T0111",
+          "T0021",
+          "T0022",
+          "T0025",
+          "T0107",
+          "T0207"
+        ],
+        [
+          "T0021",
+          "T0098",
+          "T0101",
+          "T0102",
+          "T0104",
+          "T0107",
+          "T0108",
+          "T0111",
+          "T0207"
+        ]
+      ]
+    },
+    {
+      "id": "REP-02",
+      "transcript": "Abbott",
+      "title": "Risk-analysis sharing",
+      "positions": [
+        1,
+        3
+      ],
+      "actionsInRegister": 15,
+      "savedOutputSha256": "02548946bfb3011f1510d3ad5986649f207162d3d09c61d88e700fc7bf88580a",
+      "actionIds": [
+        "10343232125bd6416b7d",
+        "ed476981b79993e65ecb"
+      ],
+      "sourceReferences": [
+        [
+          "T0033",
+          "T0108",
+          "T0111",
+          "T0021",
+          "T0022",
+          "T0025",
+          "T0107",
+          "T0207"
+        ],
+        [
+          "T0033",
+          "T0227",
+          "T0136",
+          "T0138"
+        ]
+      ]
+    },
+    {
+      "id": "REP-03",
+      "transcript": "Abbott",
+      "title": "Document access",
+      "positions": [
+        6,
+        7
+      ],
+      "actionsInRegister": 15,
+      "savedOutputSha256": "02548946bfb3011f1510d3ad5986649f207162d3d09c61d88e700fc7bf88580a",
+      "actionIds": [
+        "e3cee25fda1087cf2af3",
+        "b4798a3d2d7b8bc41410"
+      ],
+      "sourceReferences": [
+        [
+          "T0087",
+          "T0088",
+          "T0181",
+          "T0136",
+          "T0138"
+        ],
+        [
+          "T0087",
+          "T0088",
+          "T0181",
+          "T0136",
+          "T0138"
+        ]
+      ]
+    },
+    {
+      "id": "REP-04",
+      "transcript": "DITA",
+      "title": "Registration-responsibilities enquiry",
+      "positions": [
+        7,
+        8
+      ],
+      "actionsInRegister": 13,
+      "savedOutputSha256": "af368f4c6453f1daca15d0c873ef21adb22cc2bebfee623ea7a72afa6d9b22fa",
+      "actionIds": [
+        "6ed5a132d40e90bd9857",
+        "6b83bd5d9175b461cabb"
+      ],
+      "sourceReferences": [
+        [
+          "T0268",
+          "T0203",
+          "T0210",
+          "T0211"
+        ],
+        [
+          "T0203",
+          "T0206",
+          "T0212",
+          "T0268",
+          "T0210",
+          "T0211"
+        ]
+      ]
+    },
+    {
+      "id": "REP-05",
+      "transcript": "Eakin",
+      "title": "Standards applicability assessment",
+      "positions": [
+        6,
+        7
+      ],
+      "actionsInRegister": 16,
+      "savedOutputSha256": "4aacbea7210881f1418393553369829db63a2b100045e24a752e70ccaf9fe8e3",
+      "actionIds": [
+        "01f97433837d2324d8a9",
+        "d63419ad45164750b255"
+      ],
+      "sourceReferences": [
+        [
+          "T0184",
+          "T0371"
+        ],
+        [
+          "T0184",
+          "T0371"
+        ]
+      ]
+    },
+    {
+      "id": "REP-06",
+      "transcript": "Eakin",
+      "title": "Sending standards",
+      "positions": [
+        14,
+        16
+      ],
+      "actionsInRegister": 16,
+      "savedOutputSha256": "4aacbea7210881f1418393553369829db63a2b100045e24a752e70ccaf9fe8e3",
+      "actionIds": [
+        "9d6557fb4a48ed128485",
+        "a3693ec1bd1a5deb8049"
+      ],
+      "sourceReferences": [
+        [
+          "T0369",
+          "T0364",
+          "T0367"
+        ],
+        [
+          "T0371",
+          "T0379"
+        ]
+      ]
+    }
+  ]
+}
