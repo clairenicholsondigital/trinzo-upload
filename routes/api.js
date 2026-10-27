@@ -254,6 +254,7 @@ const {
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
+  cleanActionWording,
   resolveEvidence,
   documentReferenceContextEvidence,
   requiresDocumentReferenceReview,
@@ -9438,8 +9439,14 @@ function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options 
     enforceEvidence: false, meetingDate: options.meetingDate
   }).actions;
   return dedupeHybridActionRecords(normalised.map((action) => {
-    const supplied = raw.find((item) => item.id && item.id === action.id)
-      || raw.find((item) => hybridTokenOverlap(item.action, action.action) >= 0.55);
+    const sameLabel = raw.filter(item => item.id && item.id === action.id);
+    // Discovery labels are ordinal within a response. When two replies reuse
+    // one, require a unique wording match rather than borrowing the first
+    // proposal's citations for a different document or assessment.
+    const sameWording = sameLabel.filter(item => cleanActionWording(item.action) === action.action);
+    const supplied = sameLabel.length === 1 ? sameLabel[0]
+      : sameLabel.length > 1 ? (sameWording.length === 1 ? sameWording[0] : null)
+        : raw.find(item => hybridTokenOverlap(item.action, action.action) >= 0.55);
     let evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
     let evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
     let documentContext = null;

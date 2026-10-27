@@ -106,3 +106,18 @@ test('an ordinal action ID on an unrelated delivery does not suppress the source
  const out=V.normaliseAgentResult({actions:[{...row('Send the portable pump documentation.'),id:'A1'}],reviewFlags:[f]},source(),'actions',{enforceEvidence:false});
  assert.ok(out.reviewFlags.some(flag=>flag.sourceReviewContext?.kind==='assessment_ownership_notice'));
 });
+
+test('independent replies reusing an ordinal ID keep each assessment linked to its own source',()=>{
+ const units=V.normaliseSourceUnits([
+  {id:'T0001',speaker:'Maya Patel',text:'The standard is 74216, covering portable pump requirements.'},
+  {id:'T0002',speaker:'Maya Patel',text:'We can maybe get an assessment of that standard to see if it is applicable to the portable pump.'},
+  {id:'T0003',speaker:'Maya Patel',text:'The standard is 89531, covering cardiac monitor requirements.'},
+  {id:'T0004',speaker:'Maya Patel',text:'We can maybe get an assessment of that standard to see if it is applicable to the cardiac monitor.'}
+ ]);
+ const one={...row('Assess whether standard 74216 is applicable to the portable pump.'),id:'A1'};
+ const two={...row('Assess whether standard 89531 is applicable to the cardiac monitor.'),id:'A1',evidenceIds:['T0004']};
+ const output=A.normaliseAgentDeclaredProposals({actionProposals:[one,two]},units);
+ assert.equal(output.length,2);
+ assert.deepEqual(output.find(r=>/89531/.test(r.action)).evidenceIds,['T0003','T0004']);
+ assert.deepEqual(output.find(r=>/74216/.test(r.action)).evidenceIds,['T0001','T0002']);
+});

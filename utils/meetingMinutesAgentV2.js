@@ -761,7 +761,7 @@ function assessmentOwnershipReviewNotice(flag, candidate, units) {
     || /\b(?:already (?:completed|reviewed|assessed)|assessment (?:is|was) complete|no assessment|do not (?:assess|review)|not committing)\b/i.test(evidence)) return flag;
   return { ...flag, id: stableId('flag-assessment-review', `${message}|${suppliedIds.join('|')}`, 0),
     kind: 'possible_missed_follow_up',
-    message: `Assessment to review: check whether the requested work should become an action and who accepted it. The discovery response supplied a warning rather than an action: ${message}`,
+    message: `Assessment to review: check whether the requested work should become an action and who accepted it. ${message}`,
     evidenceIds: suppliedIds, reviewDisposition: 'not_applied_addition',
     sourceReviewContext: { kind: 'assessment_ownership_notice', originalType: flag.type || flag.kind,
       originalMessage: message, originalEvidenceIds: suppliedIds }
