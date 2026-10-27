@@ -130,7 +130,8 @@ test('historical inspection labels missing lineage and makes no model request', 
   const before = structuredClone(input), report = await inspect(input, [1, 2], { localDedupe: A.dedupeHybridActionRecords });
   assert.deepEqual(input, before); assert.equal(report.lineage.availability, 'historical_not_captured');
   assert.equal(report.providerCalls, 0); assert.equal(report.productionWrites, 0);
-  assert.ok(report.nominationTrace.events.some(e => e.reason === 'contact_shape_not_supported'));
+  assert.ok(report.nominationTrace.events.some(e => e.reason === 'nominated' && e.nominationClass === 'contact_paraphrases'));
+  assert.equal(report.assessment.candidates.length, 1);
   await assert.rejects(() => inspect(input, [1, 1]), /different/);
 });
 

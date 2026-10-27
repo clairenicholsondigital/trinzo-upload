@@ -13,19 +13,23 @@ function frame(value){
  if(prohibited.test(text)||/[.!?]/.test(text))return null;
  const follow=text.match(/^(?:follow\s+up|speak|talk)\s+(?:with|to)\s+(.+?)\s+to\s+(?:obtain|get|seek)\s+clarity\s+(?:on|about|regarding)\s+(.+)$/i);
  const discuss=text.match(/^discuss\s+with\s+(.+?)\s+(.+?)\s+and\s+(?:obtain|get|seek)\s+clarity\s+(?:on|about|regarding)\s+(.+)$/i);
- const match=follow||discuss;if(!match||!/^\p{Lu}[\p{L}'’-]*(?:\s+\p{Lu}[\p{L}'’-]*){0,3}$/u.test(match[1]))return null;
- const purpose=words(follow?match[2]:match[2]+' '+match[3]);
+ const enquiry=text.match(/^(?:follow\s+up|speak|talk)\s+(?:with|to)\s+(.+?)\s+(?:(?:regarding|about|on)\s+|to\s+clarify\s+)(.+)$/i);
+ const match=follow||discuss||enquiry;if(!match||!/^\p{Lu}[\p{L}'’-]*(?:\s+\p{Lu}[\p{L}'’-]*){0,3}$/u.test(match[1]))return null;
+ const purpose=words(discuss?match[2]+' '+match[3]:match[2]);
  if(purpose.length<4||purpose.length>40)return null;
- return {recipient:canonical(match[1]),purpose};
+ return {recipient:canonical(match[1]),purpose,...(enquiry&&!follow&&!discuss?{enquiry:true}:{})};
 }
 function eligible(row){return C.eligible(row)&&!!frame(row.action);}
 function legacyShape(parent,child){
  if(!eligible(parent)||!eligible(child)||canonical(parent.owners[0])!==canonical(child.owners[0])
   ||canonical(parent.action).length<=canonical(child.action).length)return null;
  const a=frame(parent.action),b=frame(child.action);
- // Exact informative purpose vocabulary nominates only. Source/retention proof
- // still checks recipient, meaning, occurrence and every obligation twice.
- if(a.recipient!==b.recipient||hash(a.purpose)!==hash(b.purpose))return null;
+ // Purpose overlap nominates only; it never proves that the shorter enquiry
+ // is covered. Both independent source/retention reviews must still prove
+ // every obligation in the unchanged fuller row. Keep the exact legacy path.
+ const common=a.purpose.filter(word=>b.purpose.includes(word)).length;
+ if(a.recipient!==b.recipient||hash(a.purpose)!==hash(b.purpose)
+  && !(a.enquiry&&b.enquiry&&common>=4&&common/Math.min(a.purpose.length,b.purpose.length)>=0.4))return null;
  if(!parent.evidenceIds.some(id=>child.evidenceIds.includes(id))||new Set([...parent.evidenceIds,...child.evidenceIds]).size>8)return null;
  return {recipient:a.recipient};
 }
