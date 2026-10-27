@@ -1226,11 +1226,15 @@
     return labels[kind] || (kind ? kind.replace(/_/g, ' ').replace(/\b\w/g, function (letter) { return letter.toUpperCase(); }) : 'Source check needed');
   }
 
+  function earlierActionWordingForFlag(flag, target) {
+    var wording = String(flag && flag.actionWordingAtCheck || '').trim();
+    return wording && target && target.stage === 3 && !target.ambiguous
+      && wording !== String(target.text || '').trim() ? wording : '';
+  }
+
   // Historical summary/objective flags were written against an older internal
-  // authority label. Keep the saved message intact, but avoid showing reviewers
-  // wording that implies a human approval state which the current draft does not
-  // have. This is presentation-only and deliberately narrow.
-  function reviewFlagDisplayMessage(flag) {
+  // authority label. Keep saved explanations intact; adapt presentation only.
+  function reviewFlagDisplayMessage(flag, target) {
     var message = String(flag && flag.message || 'Review this item against the transcript.');
     var summaryOrObjective = flag && (flag.temporalField === 'executiveSummary'
       || flag.temporalField === 'meetingObjectives')
@@ -1241,6 +1245,13 @@
       // diagnostic that follows it.
       message = message.replace(/:\s*[“"][\s\S]*?(?:[”"]\s*\.|\.\s*[”"])\s*/, ': ');
       message = message.replace(/\b(?:the\s+)?approved minutes\b/gi, 'the current Discussion and Actions');
+    }
+    // Provenance is captured when the check is created, never inferred from
+    // similar wording. Shared/ambiguous targets retain their original display.
+    var checkedWording = earlierActionWordingForFlag(flag, target);
+    if (checkedWording) {
+      message = 'This check was raised against earlier action wording: “' + checkedWording
+        + '” Review it against the current action shown above. Original explanation: ' + message;
     }
     return message;
   }
@@ -2201,7 +2212,7 @@
       var uncertainCoverage = !target && reviewFlagCategory(flag, target) === 'coverage';
       var displayMessage = target && target.proposal
         ? 'The agent found a possible addition that is not in the minutes yet.'
-        : reviewFlagDisplayMessage(flag);
+        : reviewFlagDisplayMessage(flag, target);
       var candidateText = reviewCandidateForFlag(flag, target);
       var candidateLabel = target
         ? (target.proposal ? 'Proposed minutes text' : (target.retained ? 'Not in the main minutes · ' : 'In the minutes · ') + target.label)
@@ -2227,7 +2238,8 @@
           : '<div class="review-route-missing"><span>Nothing in the current minutes is linked to this check. Add or correct the relevant item if it belongs.</span></div>';
       }
       if (showTarget && uncertainCoverage) body += coverageComparisonHtml(flag);
-      var reviewMessage = conciseReviewMessage(displayMessage);
+      var reviewMessage = earlierActionWordingForFlag(flag, target)
+        ? displayMessage : conciseReviewMessage(displayMessage);
       body += reviewMessageAddsDetail(reviewMessage, label)
         ? '<details class="flag-review-reason"><summary><span>Why this was highlighted</span><span class="flag-kind">' + escapeHtml(label) + '</span></summary><div class="flag-message">' + escapeHtml(reviewMessage) + '</div></details>'
         : '<div class="flag-review-summary"><span class="flag-kind">' + escapeHtml(label) + '</span></div>';
