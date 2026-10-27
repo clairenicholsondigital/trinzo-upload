@@ -23,6 +23,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from milestone_creation_intent import has_milestone_creation_intent
+
 try:
     from meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend, embedding_similarity
     from python_llm import analyse as analyse_project_update, build_project_health_summary, describe_project_health
@@ -517,7 +519,7 @@ def quoted_phrases(value: Any) -> list[str]:
     return [clean_text(phrase) for phrase in re.findall(r"(?<![A-Za-z])['\"]([^'\"]{4,90})['\"](?![A-Za-z])", clean_text(value)) if clean_text(phrase)]
 
 
-def inferred_milestone_names(sentence: str) -> list[str]:
+def inferred_milestone_names(sentence: str, known_names: list[str] | None = None, context: str | None = None, for_matching: bool = False) -> list[str]:
     lowered = sentence.lower()
     names = quoted_phrases(sentence)
     if "where are we with the" in lowered:
@@ -535,9 +537,12 @@ def inferred_milestone_names(sentence: str) -> list[str]:
 
     useful: list[str] = []
     seen: set[str] = set()
+    known_keys = {normalise_key(name) for name in (known_names or [])}
     for name in names:
         cleaned = clean_text(name).strip(" .;:!?")
-        if not cleaned or len(cleaned.split()) < 2:
+        if not cleaned or (len(cleaned.split()) < 2 and normalise_key(cleaned) not in known_keys):
+            continue
+        if not for_matching and normalise_key(cleaned) not in known_keys and not has_milestone_creation_intent(cleaned, context or sentence):
             continue
         if cleaned.lower().startswith("project "):
             continue
@@ -548,15 +553,17 @@ def inferred_milestone_names(sentence: str) -> list[str]:
     return useful[:4]
 
 
-def infer_transcript_milestone_segments(sentences: list[str], existing_segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def infer_transcript_milestone_segments(sentences: list[str], existing_segments: list[dict[str, Any]], known_names: list[str] | None = None) -> list[dict[str, Any]]:
     existing_keys = {normalise_key(item.get("comparison_key") or item.get("milestone")) for item in existing_segments}
     inferred: list[dict[str, Any]] = []
     seen = set(existing_keys)
     for index, sentence in enumerate(sentences):
-        names = inferred_milestone_names(sentence)
+        context_text = " ".join(sentences[max(0, index - 1): index + 2])
+        # Keep aliases available to existing milestone matching. Admission of an
+        # unmatched label is checked separately when assembling report rows.
+        names = inferred_milestone_names(sentence, known_names, context_text, for_matching=bool(known_names))
         if not names:
             continue
-        context_text = " ".join(sentences[max(0, index - 1): index + 2])
         status = infer_status_from_text(context_text)
         trend = infer_trend_from_text(context_text, status)
         for name in names:
@@ -1506,7 +1513,13 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
             continue
         if active_milestones and any(milestone_match_score(item.get("comparisonKey") or item.get("milestoneName"), row.get("comparison_key") or row.get("milestone")) >= 0.6 for item in active_milestones):
             continue
-        output.append(row)
+        source_text = " ".join([str(row.get("excerpt") or ""), str(row.get("normalised_evidence_summary") or ""),
+                                *[str(item.get("text") or "") if isinstance(item, dict) else str(item)
+                                  for item in (row.get("semantic_evidence") or row.get("evidence") or [])]])
+        historical_keys = {normalise_key(item.get("comparisonKey") or item.get("milestoneName"))
+                           for item in context.get("milestoneHistory", []) if isinstance(item, dict)}
+        if key in historical_keys or has_milestone_creation_intent(row.get("milestone"), source_text):
+            output.append(row)
     return output
 
 
@@ -1619,7 +1632,10 @@ def build_report_payload(
         if isinstance(signal, dict) and clean_text(signal.get("text")) and float(signal.get("score") or 0) >= 0.28
     ]
     source_sentences = source_sentences_from_context(minilm_first_context, result, enriched_segments)
-    inferred_segments = infer_transcript_milestone_segments(source_sentences, enriched_segments)
+    known_names = [item.get("milestoneName") or item.get("comparisonKey") or ""
+                   for item in [*(project_context or {}).get("activeMilestones", []),
+                                *(project_context or {}).get("milestoneHistory", [])] if isinstance(item, dict)]
+    inferred_segments = infer_transcript_milestone_segments(source_sentences, enriched_segments, known_names)
     all_segments = [*enriched_segments, *inferred_segments]
 
     key_updates = [

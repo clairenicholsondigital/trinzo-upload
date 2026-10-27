@@ -1,0 +1,147 @@
+[
+  {
+    "name": "scattered across folders",
+    "source": "The files are \"scattered across folders\" and need tidying.",
+    "expected": false
+  },
+  {
+    "name": "scattered across folders",
+    "source": "The files are scattered across folders and need tidying.",
+    "expected": false
+  },
+  {
+    "name": "out of step",
+    "source": "The team described the dates as \"out of step\". Another milestone is late.",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "Add a new milestone called \"Validation complete\".",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "\"Validation complete\" is a new milestone; no date agreed.",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "The milestone for \"Validation complete\" is underway.",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "Track the Validation complete and Security sign-off as our active milestones.",
+    "expected": true
+  },
+  {
+    "name": "Security sign-off",
+    "source": "Track the Validation complete and Security sign-off as our active milestones.",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "New milestone. Validation complete, status unknown.",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "Do not create a milestone called \"Validation complete\".",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "Should we add a milestone called \"Validation complete\"?",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "Maybe create a milestone called \"Validation complete\".",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "We accidentally created a milestone called \"Validation complete\".",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "The milestone \"Validation complete\" was deleted.",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "Reactivate the milestone \"Validation complete\".",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "Milestone \"Validation complete\" is not started.",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "Milestone \"Validation complete\" is blocked.",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "\"Validation complete\" was said, but no milestone was agreed.",
+    "expected": false
+  },
+  {
+    "name": "Validation_complete",
+    "source": "Add a milestone called \"Validation complete\".",
+    "expected": true
+  },
+  {
+    "name": "Validation complete",
+    "source": "Milestone \"Security sign-off\" is underway.",
+    "expected": false
+  },
+  {
+    "name": "ai_pipeline_strategy",
+    "source": "The AI pipeline strategy is blocked.",
+    "expected": true
+  },
+  {
+    "name": "webinars",
+    "source": "The webinar delivered, conference presentation done.",
+    "expected": true
+  },
+  {
+    "name": "ai_pipeline_strategy",
+    "source": "The files need tidying.",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "We did not create a milestone called \"Validation complete\".",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "No milestone called \"Validation complete\" was agreed.",
+    "expected": false
+  },
+  {
+    "name": "Push notifications",
+    "source": "The \"Push notifications\" setup is fully completed.",
+    "expected": true
+  },
+  {
+    "name": "scattered across folders",
+    "source": "The files are \"scattered across folders\" and setup is completed.",
+    "expected": false
+  },
+  {
+    "name": "Validation complete",
+    "source": "Milestone \"Security sign-off\" is late. The team called the files \"Validation complete\".",
+    "expected": false
+  },
+  {
+    "name": "Validation phase 1",
+    "source": "Add a milestone called \"Validation phase 1 extension\".",
+    "expected": false
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "intentPatterns": [
+    "\\bmilestones?\\s+(?:(?:called|named|for|is|are)\\s+)?[\"']?__NAME__(?:[\"']|(?=\\s*(?:$|[:,\\-]|\\b(?:is|are|was|were|has|have|will|needs|status|and)\\b)))",
+    "\\b__NAME__[\"']?\\s+(?:(?:is|as|our|the|a|new|active|project)\\s+){0,4}milestones?\\b",
+    "\\b(?:track|add|create|record)\\b[^.!?;\\n]{0,100}\\b__NAME__\\b[^.!?;\\n]{0,100}\\bas\\s+(?:(?:our|a|an|new|active|project)\\s+)*milestones?\\b",
+    "\\b__NAME__[\"']?\\s+(?:setup|implementation|delivery|rollout|validation|testing|review|build|draft)\\s+(?:is|was|has\\s+been)\\s+(?:fully\\s+)?(?:complete[d]?|finished|underway|in\\s+progress|blocked|delayed|not\\s+started)\\b"
+  ],
+  "rejectionPattern": "\\b(?:no\\s+(?:new\\s+)?milestone|(?:did\\s+not|didn['’]t)\\s+(?:create|add|track|record)|(?:do\\s+not|don['’]t|never|must\\s+not|should\\s+not|shouldn['’]t|not\\s+to)\\s+(?:create|add|track|record)|(?:should|could|shall)\\s+we\\s+(?:create|add|track|record)|(?:maybe|perhaps)\\b|(?:accidentally|mistakenly|incorrectly)\\s+(?:created|added|tracked)|(?:delete|deleted|remove|removed|inactive|deactivated|reactivate|reactivated)\\b)",
+  "precedingIntentPattern": "^(?:[a-z ]+:\\s*)?(?:(?:okay|ok|yes)[, ]+)?(?:a\\s+)?new\\s+milestone$"
+}
