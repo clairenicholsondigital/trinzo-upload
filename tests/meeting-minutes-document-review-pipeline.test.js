@@ -66,7 +66,7 @@ for(const kind of ['prefix','warning'])for(const unavailable of ['primary','seco
     result={discussion:[],actions:[delivery],actionProposals:kind==='prefix'?[assessment]:[],reviewFlags:kind==='warning'?[{type:'unsupported_ownership',detail:'Assessment work is requested but acceptance and responsible owner are not explicitly confirmed.',evidenceIds:['T0002']}]:[]};
    }else if(prompt.startsWith('[ACTION_REFEREE]')){
     const p=JSON.parse(prompt.split('refereePayload:\n')[1]);
-    const dispositions=p.candidateEnsemble.map(c=>({candidateId:c.candidateId,disposition:c.recordType==='action'&&/send.*documents/i.test(c.text||c.record?.action||'')?'publish':'reject',reason:'Keep an uncertain assessment for human review; the document delivery is explicit.',evidenceIds:c.evidenceIds}));
+    const dispositions=p.candidateEnsemble.map(c=>({candidateId:c.candidateId,disposition:c.recordType==='action'&&(/send.*documents/i.test(c.text||c.record?.action||'')||(kind==='prefix'&&/assess.*74216/i.test(c.text||c.record?.action||'')))?'publish':'reject',reason:'Fixture deliberately publishes the assessment to exercise the app review boundary; delivery is explicit.',evidenceIds:c.evidenceIds}));
     result={requestId:p.requestId,stage:p.stage,expectedCandidateCount:p.expectedCandidateCount,returnedDispositionCount:dispositions.length,candidateDispositions:dispositions,discussion:[],actions:[],actionProposals:[]};
    }else result={discussion:[],actions:[],actionProposals:[],candidateDispositions:[],results:[]};
    return{ok:true,status:200,text:async()=>JSON.stringify(result)};

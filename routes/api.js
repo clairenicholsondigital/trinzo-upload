@@ -14686,18 +14686,23 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     if (!['publish', 'proposal'].includes(kind) || !selected || selected.recordType !== 'action') continue;
     const action = meetingMinutesAgentText(selected.record?.action || selected.text, 1200);
     if (!action) continue;
+    // A referee verdict cannot settle a document association or acceptance
+    // that source-context recovery explicitly left for a human. Keep that
+    // restriction through reconstruction, before any owner inference.
+    const documentReviewRequired = requiresDocumentReferenceReview(selected.record);
+    const materializedKind = documentReviewRequired ? 'proposal' : kind;
     let owners = candidateOwnersOf(selected);
-    if (!owners.length && Array.isArray(disposition?.owners)) {
+    if (!documentReviewRequired && !owners.length && Array.isArray(disposition?.owners)) {
       owners = disposition.owners.map((owner) => meetingMinutesAgentText(owner, 120)).filter(Boolean);
     }
     let borrowedEvidence = [];
-    if (!owners.length && kind === 'publish') {
+    if (!documentReviewRequired && !owners.length && kind === 'publish') {
       const borrowed = borrowOwnersFromTwin(selected, ownerPool);
       if (borrowed) { owners = borrowed.owners; borrowedEvidence = borrowed.evidenceIds; borrowedOwners += 1; }
     }
     const diagnosticSource = selected.record || { action, owners: candidateOwnersOf(selected), evidenceIds: selected.evidenceIds || [] };
     rows.push({
-      kind,
+      kind: materializedKind,
       targetId: targetId || candidateId,
       record: {
         id: meetingMinutesAgentText(selected.record?.id || targetId || candidateId, 160),
@@ -14710,11 +14715,12 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
           ...(Array.isArray(disposition?.evidenceIds) ? disposition.evidenceIds : []),
           ...borrowedEvidence
         ])],
-        reviewFlagIds: []
+        reviewFlagIds: documentReviewRequired ? [...selected.record.reviewFlagIds] : []
       }
     });
     actionDiagnostics.transition(borrowedEvidence.length ? 'owner_borrowed' : 'referee_materialised', [diagnosticSource], [rows.at(-1).record],
-      { mechanism: 'reconstructRefereeActions', candidateId, disposition: kind });
+      { mechanism: 'reconstructRefereeActions', candidateId, disposition: kind,
+        ...(documentReviewRequired ? { materializedDisposition: materializedKind, documentReviewRequired: true } : {}) });
   }
   const writtenRows = rows.filter((item) => !(transcriptTextGateEnabled()
     && transcriptTextIssue(item.record.action, sourceUnits)));
