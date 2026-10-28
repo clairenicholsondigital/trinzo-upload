@@ -20093,7 +20093,7 @@ function meetingAgentFlagUntouched(flag = {}) {
 // - Actions a reviewer has edited since they were generated are never
 //   replaced: the new run arrives as proposed changes to accept or reject.
 // - Open flags that belonged to replaced rows or a replaced proposal go with
-//   them, and identical open flags are shown once.
+//   them. Referenced warning identities and evidence remain distinct.
 function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generationKey = '') {
   const changes = { ...input };
   const checkedBefore = normaliseKeptActionOccurrenceIds(fresh.keptActionOccurrenceIds,
@@ -20316,11 +20316,22 @@ function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges =
       && !liveProposalFlagIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
   }
   const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags, { stage, changes, draft: fresh });
+  const effectiveProposal = Object.prototype.hasOwnProperty.call(changes, 'pendingProposal')
+    ? changes.pendingProposal : fresh.pendingProposal;
+  const referencedFlagIds = meetingAgentReferencedFlagIds([
+    changes.actions ?? fresh.actions, changes.discussion ?? fresh.discussion,
+    ...(effectiveProposal?.changes || []).flatMap(change => [change.before, change.after]),
+    changes.unassignedSupportingDetails ?? fresh.unassignedSupportingDetails,
+    changes.meetingObjectives ?? fresh.meetingObjectives
+  ]);
   const seen = new Set();
   const reviewFlags = merged.filter((flag) => {
-    if (!meetingAgentFlagUntouched(flag)) return true;
+    // Same display wording is not the same warning. Dropping a referenced ID
+    // strands its record and loses its source/check context. Exact unlinked
+    // automatic duplicates may still collapse; reviewed flags stay untouched.
+    if (!meetingAgentFlagUntouched(flag) || referencedFlagIds.has(String(flag.id))) return true;
     const key = flag.systemTimingIssue ? `system-timing|${flag.id}`
-      : `${flag.kind}|${meetingMinutesAgentText(flag.message, 500).toLowerCase()}`;
+      : require('../utils/meetingMinutesProofHash').hash({ ...flag, id: '' });
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

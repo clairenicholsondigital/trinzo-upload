@@ -61,17 +61,19 @@ function boundedShape(parent,child){
   ||common.length/Math.max(container.length,other.length)<0.66)return null;
  return {kind:'content_instruction'};
 }
-// Nomination only: one list with a shared purpose and identical source refs.
-// A separate source review must establish that preparing and providing it are
+// Nomination only: one list with a shared purpose and nested source refs.
+// A separate source review must establish that preparing/compiling and providing it are
 // one obligation, rather than independent preparation and delivery steps.
 function listDeliverableShape(parent,child){
  if(!eligible(parent)||!eligible(child)||canonical(parent.owners[0])!==canonical(child.owners[0])
   ||guarded.test(parent.action+' '+child.action)||calendar.test(parent.action+' '+child.action)
   ||/\b(?:or|either|neither|review|approve|send|share|email|submit|publish)\b|\d/i.test(parent.action+' '+child.action)
-  ||hash([...parent.evidenceIds].sort())!==hash([...child.evidenceIds].sort()))return null;
+  ||new Set([...parent.evidenceIds,...child.evidenceIds]).size>8
+  ||!(parent.evidenceIds.every(id=>child.evidenceIds.includes(id))
+    ||child.evidenceIds.every(id=>parent.evidenceIds.includes(id))))return null;
  const parse=(value,verb)=>String(value).trim().replace(/[.!]+$/,'')
   .match(new RegExp('^'+verb+'\\s+(?:a|the|one)\\s+list\\s+of\\s+(.+?)\\s+for\\s+(.+)$','i'));
- const a=parse(parent.action,'provide'),b=parse(child.action,'prepare');if(!a||!b)return null;
+ const a=parse(parent.action,'provide'),b=parse(child.action,'(?:prepare|compile)');if(!a||!b)return null;
  const objectA=tokens(a[1]),objectB=tokens(b[1]),purposeA=tokens(a[2]),purposeB=tokens(b[2]);
  if(objectA.length<2||objectB.length<2||hash(objectA.slice(0,2))!==hash(objectB.slice(0,2))
   ||purposeA.length<2||hash(purposeA)!==hash(purposeB))return null;
@@ -93,8 +95,21 @@ function reviewPacket(parent,child,sourceUnits,contextSourceIds,challenge,review
  const context=sourceUnits.filter(unit=>contextSourceIds.includes(unit.id));
  if(context.length!==contextSourceIds.length||new Set(contextSourceIds).size!==contextSourceIds.length)throw Error('contained_context_changed');
  if(context.length>32||context.reduce((n,unit)=>n+JSON.stringify(unit).length,0)>48000||[...parent.evidenceIds,...child.evidenceIds].some(id=>!contextSourceIds.includes(id)))throw Error('contained_incomplete_or_oversized_context');
+ // Only the newly nominated shapes may use nearby identity context when
+ // their original citations lack a name witness. Keep old packets/receipts
+ // unchanged. This supplies identity, never evidence of commitment by itself.
+ const nearbyIdentity=variant?.kind==='list_deliverable'
+  &&(/^compile\b/i.test(child.action)||hash([...parent.evidenceIds].sort())!==hash([...child.evidenceIds].sort()))
+  ||variant?.kind==='qualified_repeat'&&qualifiedRepeat.completionDetail(parent,child);
+ const ownerContext=nearbyIdentity?[parent,child].map(row=>{
+  const anchors=sourceUnits.flatMap((unit,index)=>row.evidenceIds.includes(unit.id)?[index]:[]);
+  return {recordHash:hash(row),sourceIds:sourceUnits
+   .filter((unit,index)=>contextSourceIds.includes(unit.id)&&unit.text?.trim()
+    &&(unit.classification!=='remove'||unit.restored)&&anchors.some(at=>Math.abs(at-index)<=2))
+   .map(unit=>unit.id)};
+ }):undefined;
  const register=require('../meetingMinutesActionReviewRegister').prepare({actions:[parent,child],sourceUnits:context});
- return require('../meetingMinutesActionReferenceReview').prepare(register,register.comparisons[0].comparisonId,register.rows[0].ref,{challenge,...(variant?{instructionComparison:variant.kind}:{}),...reviewOptions});
+ return require('../meetingMinutesActionReferenceReview').prepare(register,register.comparisons[0].comparisonId,register.rows[0].ref,{challenge,...(variant?{instructionComparison:variant.kind}:{}),...(ownerContext?{ownerContext}:{}),...reviewOptions});
 }
 function sourceIds(packet,response){
  const sections=response.decisions||[];

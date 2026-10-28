@@ -131,8 +131,10 @@ test('an optional list veto preserves an independently proved existing merge',as
  assert.equal(output.changes.qualityState.actions.semanticReconciliation.stats.merged,1);
 });
 
-test('list proof survives background saving, public projection and exports with exact recovery',async()=>{
- const f=fixture(),A=require('../routes/api').stagedEvaluation;
+for(const verb of ['prepare','compile'])test(verb+' list proof survives background saving, public projection and exports with exact recovery',async()=>{
+ const f=fixture();if(verb==='compile'){f.actions[0].action=f.actions[0].action.replace('Prepare','Compile');
+ f.units=V.normaliseSourceUnits([...f.units,{id:'T0002',speaker:'Maya Patel',text:'Yes, that same list.'}]);f.actions[1].evidenceIds.push('T0002');}
+ const A=require('../routes/api').stagedEvaluation;
  const initial={draftId:'list-save',revision:1,payloadVersion:V.PAYLOAD_VERSION,sourceUnits:f.units,actions:[],discussion:[],reviewFlags:[],qualityState:{},
   details:{meetingTitle:'Dispatch review',meetingDate:'2026-10-27',meetingType:'General',internalAttendees:['Maya Patel'],clientAttendees:[]},
   staleStages:[],currentStep:3,selectedStep:3,changeHistory:[],redoHistory:[],meetingObjectives:[],unassignedSupportingDetails:[]};
@@ -147,4 +149,32 @@ test('list proof survives background saving, public projection and exports with 
  const zip=await JSZip.loadAsync(await generateMeetingMinutesAgentDocx(A.meetingAgentDraftForDocx(payload),false));
  const xml=await zip.file('word/document.xml').async('string');assert.ok(xml.includes(f.actions[1].action));assert.ok(!xml.includes(f.actions[0].action));
  const pdf=await generateStagedMinutesPdf(A.meetingAgentDraftForPdf(payload,false));assert.equal(pdf.subarray(0,5).toString(),'%PDF-');
+});
+
+test('compile/provide with a nested context citation nominates and retains the unchanged list',async()=>{
+ const f=fixture();f.actions[0].action=f.actions[0].action.replace('Prepare','Compile');
+ f.units=V.normaliseSourceUnits([...f.units,{id:'T0002',speaker:'Maya Patel',text:'Yes, the same list is requested for that language assessment.'}]);
+ f.actions[1].evidenceIds.push('T0002');
+ assert.equal(C.direction(...f.actions).kind,'list_deliverable');
+ const output=await run(f),audit=output.changes.qualityState.actions.semanticReconciliation;
+ assert.equal(output.changes.actions.length,1,JSON.stringify(audit.unresolved));
+ const saved=output.changes.actions[0];assert.equal(saved.action,f.actions[1].action);
+ assert.deepEqual(saved.evidenceIds,['T0001','T0002']);assert.equal(audit.calls.length,2);
+ assert.ok(audit.receipts.every(r=>R.validateReconciliationReceipt(r,r.original,saved,f.units)));
+ assert.deepEqual(require('../utils/meetingMinutesEnquiryRecovery').originalEnquiryActions({...require('../routes/api').stagedEvaluation.admitMeetingAgentGeneratedActionChanges({sourceUnits:f.units},output.changes,'compile-proof'),sourceUnits:f.units}),f.actions);
+});
+
+test('compile/provide does not bypass distinct work or a failed independent challenge',async()=>{
+ for(const phase of [1,2]){
+  const f=fixture();f.actions[0].action=f.actions[0].action.replace('Prepare','Compile');let calls=0;
+  const output=await run(f,{ask:async prompt=>{const answer=await ask(prompt);if(++calls===phase)answer.result.decisions[2].relation='distinct_work';return answer;}});
+  assert.equal(calls,phase);assert.deepEqual(output.changes.actions,f.actions);
+ }
+});
+
+test('compile nomination rejects conflicting citation branches and preserves the evidence limit',()=>{
+ for(const refs of [[['T0001','T0002'],['T0001','T0003']],[['T0001'],Array.from({length:9},(_,i)=>'T000'+(i+1))]]){
+  const f=fixture();f.actions[0].action=f.actions[0].action.replace('Prepare','Compile');
+  f.actions.forEach((a,i)=>a.evidenceIds=refs[i]);assert.equal(C.direction(...f.actions),null);
+ }
 });
