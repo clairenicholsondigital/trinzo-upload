@@ -2,6 +2,9 @@
   'use strict';
 
   var state = { draft: null, currentStep: 0 };
+  var betaFlowEnabled = false;
+  var betaFlowAllowed = false;
+  var betaAccessReady;
   var agentRetryDelaysSeconds = [5, 15, 30];
   // 0 details, 1 (retired: focus), 2 discussion, 3 actions, 4 summary, 5 review
   // Index 1 is left reserved so drafts saved under the six-step numbering still
@@ -275,6 +278,8 @@
   function setBusy(busy, message, stage) {
     document.body.classList.toggle('busy', busy);
     status.setAttribute('aria-busy', busy ? 'true' : 'false');
+    var betaToggle = document.getElementById('betaFlow');
+    if (betaToggle) betaToggle.disabled = busy;
     if (message) setStatus(message, false, stage);
   }
 
@@ -1031,11 +1036,48 @@
     autoGrow(document.getElementById('summaryFields'));
   }
 
+  function renderBetaFlow() {
+    var control = document.getElementById('betaFlowControl');
+    var toggle = document.getElementById('betaFlow');
+    if (!control || !toggle) return;
+    control.hidden = !betaFlowAllowed || Boolean(state.draft);
+    toggle.checked = betaFlowEnabled;
+    document.getElementById('betaFlowStatus').textContent = betaFlowEnabled
+      ? 'On — uses the new streamlined flow for your next upload.'
+      : 'Off — uses the existing flow for your next upload.';
+  }
+
+  async function initialiseBetaFlow() {
+    try {
+      var auth = await jsonRequest('/api/auth/me');
+      betaFlowAllowed = auth.user?.role === 'admin';
+      betaFlowEnabled = betaFlowAllowed && new URLSearchParams(window.location.search).get('engine') === 'parallel';
+    } catch (error) {
+      betaFlowAllowed = false;
+      betaFlowEnabled = false;
+    }
+    renderBetaFlow();
+    renderPageHeading();
+  }
+
+  var betaToggle = document.getElementById('betaFlow');
+  if (betaToggle) betaToggle.addEventListener('change', function () {
+    if (!betaFlowAllowed || state.draft) return;
+    betaFlowEnabled = betaToggle.checked;
+    var url = new URL(window.location.href);
+    if (betaFlowEnabled) url.searchParams.set('engine', 'parallel');
+    else url.searchParams.delete('engine');
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+    renderBetaFlow();
+    renderPageHeading();
+  });
+
   function renderPageHeading() {
     var title = document.getElementById('pageTitle');
     if (!title) return;
     var method = document.getElementById('generationMethod');
-    if (method) method.hidden = !(isParallelDraft() || (!state.draft && new URLSearchParams(window.location.search).get('engine') === 'parallel'));
+    if (method) method.hidden = !isParallelDraft();
+    renderBetaFlow();
     var details = state.draft && state.draft.details;
     title.textContent = state.draft && details && String(details.meetingTitle || '').trim()
       ? details.meetingTitle.trim() : 'Meeting Minutes Agent';
@@ -1077,8 +1119,9 @@
   async function prepareFile(file) {
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) return setStatus('Choose a Word .docx transcript.', true);
+    await betaAccessReady;
     var form = new FormData(); form.append('file', file);
-    if (new URLSearchParams(window.location.search).get('engine') === 'parallel') form.append('generationProvider', 'parallel-specialists-v1');
+    if (betaFlowEnabled) form.append('generationProvider', 'parallel-specialists-v1');
     // Do not call this an upload until the server has accepted and persisted
     // it. The confirmation is the durable acknowledgement, not a response to
     // merely selecting a file in the browser.
@@ -4488,6 +4531,7 @@
     else pollActionPrewarm(true);
   });
 
+  betaAccessReady = initialiseBetaFlow();
   var requestedDraft = new URLSearchParams(window.location.search).get('draftId');
   if (requestedDraft) loadDraft(requestedDraft); else renderAll();
 })();

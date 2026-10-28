@@ -50,5 +50,44 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  const box=await page.locator('.parallel-proposal-row [data-label="Action"]').boundingBox();
  assert.ok(box.width>250,'suggestion text uses the full mobile card width');
  assert.equal(await page.locator('.parallel-proposal-row [data-label="Owners"]').isVisible(),true);
+ assert.equal(await page.locator('#betaFlowControl').isVisible(),false,'saved drafts keep their provider');
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+});
+
+test('Beta switch selects the upload provider, supports keyboard/mobile and preserves access rules',async t=>{
+ const app=express();app.use(express.json());let role='admin';const uploads=[];
+ app.get('/api/auth/me',(_,res)=>res.json({success:true,user:{role}}));
+ app.get('/meeting-minutes-agent',(_,res)=>res.type('html').send(fs.readFileSync(path.join(root,'views/meeting-minutes-agent.html'),'utf8')));
+ app.get('/static/trinzo.js',(_,res)=>res.type('application/javascript').send(''));
+ app.get('/static/meeting-minutes-timing.js',(_,res)=>res.type('application/javascript').send(fs.readFileSync(path.join(root,'utils/meetingMinutesTiming.js'),'utf8')));
+ app.use('/static',express.static(path.join(root,'public'),{dotfiles:'allow'}));
+ app.post('/api/meeting-minutes-agent/check-duplicate',(_,res)=>res.json({duplicates:[]}));
+ app.post('/api/meeting-minutes-agent/prepare',express.raw({type:'multipart/form-data'}),(req,res)=>{
+  uploads.push(req.body.toString());res.status(422).json({error:'Upload captured for test'});
+ });
+ const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+ const browser=await chromium.launch({headless:true});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
+ const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const base='http://127.0.0.1:'+server.address().port;
+ await page.goto(base+'/meeting-minutes-agent?projectId=19');
+ const toggle=page.getByRole('switch',{name:'Beta: streamlined flow'});
+ await toggle.waitFor({state:'visible'});assert.equal(await toggle.isChecked(),false);
+ async function upload(){
+  const count=uploads.length;
+  await page.locator('#transcriptFile').setInputFiles({name:'test.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('capture only')});
+  await page.waitForFunction(()=>document.querySelector('#workflowStatus').textContent==='Upload captured for test'&&!document.body.classList.contains('busy'));
+  assert.equal(uploads.length,count+1);return uploads.at(-1);
+ }
+ assert.ok(!(await upload()).includes('name="generationProvider"'));
+ await toggle.focus();await page.keyboard.press('Space');assert.equal(await toggle.isChecked(),true);
+ assert.equal(new URL(page.url()).searchParams.get('projectId'),'19');
+ assert.match(await upload(),/parallel-specialists-v1/);
+ await page.reload();await toggle.waitFor({state:'visible'});assert.equal(await toggle.isChecked(),true);
+ await page.setViewportSize({width:390,height:844});
+ assert.ok(await toggle.isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+ await toggle.uncheck();assert.equal(new URL(page.url()).searchParams.has('engine'),false);
+ assert.ok(!(await upload()).includes('name="generationProvider"'));
+ role='member';await page.reload();await page.waitForLoadState('networkidle');
+ assert.equal(await page.locator('#betaFlowControl').isVisible(),false);
+ assert.deepEqual(errors,[]);
 });
