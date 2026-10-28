@@ -60,6 +60,7 @@ function patchHarness(initial) {
   let handler;
   let saveCount = 0;
   const context = {
+    parallelMinutes: require('../utils/meetingMinutesParallel'),
     router: { patch(routePath, auth, callback) { handler = callback; } },
     requireAuth() {},
     loadOwnedMeetingAgentDraft: async () => structuredClone(stored),

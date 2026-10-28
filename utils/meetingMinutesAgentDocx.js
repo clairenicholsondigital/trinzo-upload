@@ -73,6 +73,11 @@ function evidenceAppendix(draft = {}) {
   const units = Array.isArray(draft.sourceUnits) ? draft.sourceUnits : [];
   const flags = Array.isArray(draft.reviewFlags) ? draft.reviewFlags : [];
   const used = new Set();
+  if (draft.generationProvider === 'parallel-specialists-v1') {
+    for (const id of draft.executiveSummaryEvidenceIds || []) used.add(id);
+    for (const item of [...(draft.meetingObjectives || []),...(draft.parallelActionProposals || []),...flags])
+      for (const id of item.evidenceIds || []) used.add(id);
+  }
   for (const topic of draft.discussion || []) {
     for (const item of [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]) {
       for (const id of item.evidenceIds || []) used.add(id);
@@ -97,13 +102,18 @@ function evidenceAppendix(draft = {}) {
       body += bullet(`${detail.text}${sources}`);
     }
   }
+  if (draft.generationProvider === 'parallel-specialists-v1' && draft.parallelActionProposals?.length) {
+    body += paragraph('Suggested follow-ups and review status', 'Heading2');
+    for (const item of draft.parallelActionProposals) body += bullet(
+      `[${item.status}] ${item.action} — Owners: ${(item.owners || []).join(', ') || 'Not stated'}; ${timingLabel(item.timing)}. ${item.reason}`);
+  }
   for (const unit of units.filter((item) => used.has(item.id))) {
     body += paragraph(`${unit.id} · ${unit.speaker}${unit.timestamp ? ` · ${unit.timestamp}` : ''}`, 'Heading3');
     body += paragraph(unit.text, 'BodyText');
   }
   if (flags.length) {
     body += paragraph('Review notes', 'Heading2');
-    for (const flag of flags) body += bullet(`${flag.status === 'open' ? 'Open' : flag.status}: ${flag.message}`);
+    for (const flag of flags) body += bullet(`${flag.status === 'open' ? 'Open' : flag.status}: ${flag.message}${draft.generationProvider === 'parallel-specialists-v1' && flag.correctionNote ? ' Reviewer note: '+flag.correctionNote : ''}`);
   }
   return body;
 }
@@ -156,7 +166,7 @@ function documentBody(draft = {}, includeEvidence = false, links = []) {
 async function generateMeetingMinutesAgentDocx(draft = {}, includeEvidence = false) {
   // Normalise only authored minutes fields. Source units in the optional
   // evidence appendix remain faithful to the transcript.
-  draft = {
+  draft = draft.generationProvider === 'parallel-specialists-v1' ? draft : {
     ...draft,
     executiveSummary: normaliseDatePhrasesDeep(draft.executiveSummary),
     meetingObjectives: normaliseDatePhrasesDeep(draft.meetingObjectives),
