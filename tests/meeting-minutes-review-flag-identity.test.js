@@ -356,3 +356,24 @@ test('a source-only assessment question survives real persistence without invent
   const reloaded=await request('get');assert.deepEqual(reloaded.reviewFlags[0],original);
   assert.equal(reloaded.actions.length,0);
 });
+
+test('background same-message warnings retain separate evidence through review, reload and undo/redo',async()=>{
+ reset([flag('flag-one',{kind:'ownership',message:'Confirm the owner of this action.',evidenceIds:['T0001']}),
+  flag('flag-two',{kind:'ownership',message:'Confirm the owner of this action.',evidenceIds:['T0002']})]);
+ saved.sourceUnits=V.normaliseSourceUnits([{id:'T0001',speaker:'Morgan Taylor',text:'I will review the inspection report.'},
+  {id:'T0002',speaker:'Morgan Taylor',text:'I will send the laboratory summary.'}]);
+ saved.preparedTranscript=V.preparedTranscriptFromUnits(saved.sourceUnits);saved.actions[1].evidenceIds=['T0002'];
+ await router.stagedEvaluation.persistMeetingAgentBackgroundStage({draftId:saved.draftId,userId:'flag-identity-reviewer',stage:'actions',sourceDraft:copy(saved),
+  result:{changes:{actions:copy(saved.actions)},reviewFlags:copy(saved.reviewFlags)},wait:async()=>{},getDraft:async()=>copy(saved),
+  saveDraft:async(fresh,changes)=>{saved=copy({...fresh,...changes,revision:fresh.revision+1});return copy(saved);}});
+ let loaded=await request('get');assert.equal(loaded.reviewFlags.length,2);assertResolvedFlagReferences(loaded);
+ assert.deepEqual(loaded.reviewFlags.find(f=>f.id==='flag-two').evidenceIds,['T0002']);
+ const flags=copy(loaded.reviewFlags);flags.find(f=>f.id==='flag-one').status='confirmed';
+ await request('patch','',{reviewFlags:flags,reviewDecisionLabel:'Check inspection ownership'});
+ loaded=await request('get');assert.equal(loaded.reviewFlags.find(f=>f.id==='flag-one').status,'confirmed');
+ assert.equal(loaded.reviewFlags.find(f=>f.id==='flag-two').status,'open');
+ const undo=await request('post','/undo');assert.equal(undo.reviewFlags.find(f=>f.id==='flag-one').status,'open');
+ assert.deepEqual(undo.reviewFlags.find(f=>f.id==='flag-two').evidenceIds,['T0002']);
+ const redo=await request('post','/redo');assert.equal(redo.reviewFlags.find(f=>f.id==='flag-one').status,'confirmed');
+ assert.equal(redo.reviewFlags.find(f=>f.id==='flag-two').status,'open');assert.equal(providerCalls,0);
+});

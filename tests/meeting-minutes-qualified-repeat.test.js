@@ -191,3 +191,25 @@ test('a present identity witness never replaces the instruction-to-owner source 
  instruction.refs=['T0001'];
  assert.equal(N.validate(p,answer),'missing_source_owner_witness');
 });
+
+test('nearby-identity requests state the ownership reference requirement per check without supplying answers',()=>{
+ const f=completionFixture();
+ for(const challenge of [false,true]){
+  const p=C.reviewPacket(...f.actions,f.units,f.units.map(u=>u.id),challenge),before=structuredClone(p);
+  const prompt=N.prompt(p,{completeContract:true}),data=JSON.parse(prompt.split('\nDATA\n')[1]);
+  assert.match(prompt,/OWNERSHIP REFERENCE ACCOUNTING/);
+  for(const row of data.sourceRows)for(const request of row.requests){
+   if(request.ownershipWitnessRequired)assert.deepEqual(request.requiredOwnerWitnessGroups,row.ownerWitnesses);
+   else assert.equal(request.requiredOwnerWitnessGroups,undefined);
+   const answer=data.outputShape.decisions[0].rows.find(r=>r.rowId===row.rowId).checks.find(c=>c.id===request.id);
+   assert.equal(answer.status,'unclear');assert.deepEqual(answer.refs,[]);
+  }
+  assert.deepEqual(p,before);
+  const responseWithoutWitness=response(p);
+  for(const row of responseWithoutWitness.decisions[0].rows){
+   const sourceRow=p.sourceRows.find(r=>r.rowId===row.rowId);
+   for(const check of row.checks)if(sourceRow.requests.find(r=>r.id===check.id).ownershipWitnessRequired)check.refs=['T0001'];
+  }
+  assert.equal(N.validate(p,responseWithoutWitness),'missing_source_owner_witness');
+ }
+});
