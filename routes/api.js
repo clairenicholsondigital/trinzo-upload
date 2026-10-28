@@ -18676,6 +18676,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
     }));
     transcript.text = corrected.text;
     const preparationStartedAt = Date.now();
+    const preserveMeaningfulShortAnswers = parallelMinutes.preserveMeaningfulShortAnswers(generationProvider);
     const prepared = await prepareMiniLmTranscript(transcript.text, {
       // Preserve source-only dates/durations and their qualifications before
       // denoising; later checks still decide which work they belong to.
@@ -18683,6 +18684,8 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       // Keep short qualifying context inside an already-retained speaker turn;
       // this does not enable standalone replies or change classifier decisions.
       preserveShortContextFragments: true,
+      // Bounded quantities and qualified proceed replies; Beta only, default off.
+      preserveMeaningfulShortAnswers,
       // Measured twice on the six real meetings (3 runs each): keeping short
       // replies lifts T733 reference commitments (18/42 -> 29/42) but costs
       // more on the golden set than it gains (actions 0.443 -> 0.348, overall
@@ -18705,6 +18708,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       preparedChars: preparedTranscript.length,
       sourceUnitCount: sourceUnits.length,
       shortContextFragmentsVersion: 1,
+      meaningfulShortAnswersVersion: preserveMeaningfulShortAnswers ? 1 : 0,
       dateContext,
       completedAt: new Date().toISOString()
     };

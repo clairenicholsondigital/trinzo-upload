@@ -1,4 +1,4 @@
-Meaningful short-answer preservation — isolated, opt-in candidate
+Meaningful short-answer preservation — controlled Beta integration
 
 Purpose
 Keep bounded source replies that can establish a quantity or explicit agreement,
@@ -6,11 +6,25 @@ without adding a preparation stage, replacing MiniLM, interpreting an action, or
 changing any Microsoft specialist instructions.
 
 Activation
-prepareMiniLmTranscript(text, {preserveMeaningfulShortAnswers: true}) forwards
---preserve-meaningful-short-answers. The default is false. This change does not
-enable the option in the production meeting-minutes-agent preparation route.
-The isolated comparison invokes it directly. Production rollout therefore needs
-an explicit integration decision and the existing route to pass the option.
+The /meeting-minutes-agent/prepare route enables the option only when the resolved
+generation provider is parallel-specialists-v1 AND the server environment switch
+MEETING_MINUTES_BETA_SHORT_ANSWERS_V1 is 1, true, yes or on (case insensitive).
+The switch defaults to off. Original/legacy preparation always leaves it off.
+The lower-level prepareMiniLmTranscript option also defaults to false.
+
+Activation: set MEETING_MINUTES_BETA_SHORT_ANSWERS_V1=1 on the trinzo PM2 process
+and restart it with --update-env. Persist the process environment with pm2 save.
+Rollback: set the same switch to 0 and restart with --update-env, then pm2 save.
+If an explicit PM2 variable exists, changing .env alone does not override it.
+No agent, webhook, schema or extra processing stage changes are required.
+
+This affects new uploads only. Existing drafts and regenerations continue to use
+their saved source units; changing the switch does not rewrite those drafts.
+Each new draft records qualityState.preparation.meaningfulShortAnswersVersion
+(1 when enabled, otherwise 0); the prepare response performance and server log
+also carry this marker. Source evidence is part of the existing packet/cache
+identity, so inputs from the two preparations cannot share a generation result.
+The global keepShortReplies switch is separate and remains unchanged.
 
 Bounds
 A quantity reply must immediately follow a quantity question from another speaker,
