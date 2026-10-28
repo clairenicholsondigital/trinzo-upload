@@ -155,6 +155,7 @@ async function main(){
   console.log(JSON.stringify({reviewReady:true,origin,cases:artifacts.map(({name,reviewUrl})=>({name,reviewUrl})),expiresInHours:12,productionChanged:false}));
   await browser.close();browser=null;
   await new Promise(resolve=>{const timer=setTimeout(resolve,12*3600000);const stop=()=>{clearTimeout(timer);resolve();};process.once('SIGINT',stop);process.once('SIGTERM',stop);});
+  save('review-saved-drafts.json',{capturedAt:new Date().toISOString(),rows:(await appPool.query('SELECT * FROM meeting_minutes_agent_drafts ORDER BY id')).rows});
  }
 }
 (async()=>{
