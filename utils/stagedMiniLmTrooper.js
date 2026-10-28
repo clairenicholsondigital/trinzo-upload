@@ -143,7 +143,8 @@ async function denoiseMiniLmFile(rawPath, options = {}) {
     '--remove-threshold', String(process.env.STAGED_SIMPLIFIED_REMOVE_THRESHOLD || '0.85'),
     ...(options.keepShortReplies ? ['--keep-short-replies'] : []),
     ...(options.preserveShortTemporalFragments ? ['--preserve-short-temporal-fragments'] : []),
-    ...(options.preserveShortContextFragments ? ['--preserve-short-context-fragments'] : [])],
+    ...(options.preserveShortContextFragments ? ['--preserve-short-context-fragments'] : []),
+    ...(options.preserveMeaningfulShortAnswers ? ['--preserve-meaningful-short-answers'] : [])],
   Number(process.env.STAGED_SIMPLIFIED_MINILM_TIMEOUT_MS || 180000), {
     // The worker keeps the same MiniLM model resident. Reusing it avoids a
     // fresh Torch/model load for every upload, which can take several minutes

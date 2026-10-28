@@ -1,0 +1,67 @@
+Meaningful short-answer preservation — controlled Beta integration
+
+Purpose
+Keep bounded source replies that can establish a quantity or explicit agreement,
+without adding a preparation stage, replacing MiniLM, interpreting an action, or
+changing any Microsoft specialist instructions.
+
+Activation
+The /meeting-minutes-agent/prepare route enables the option only when the resolved
+generation provider is parallel-specialists-v1 AND the server environment switch
+MEETING_MINUTES_BETA_SHORT_ANSWERS_V1 is 1, true, yes or on (case insensitive).
+The switch defaults to off. Original/legacy preparation always leaves it off.
+The lower-level prepareMiniLmTranscript option also defaults to false.
+
+Activation: set MEETING_MINUTES_BETA_SHORT_ANSWERS_V1=1 on the trinzo PM2 process
+and restart it with --update-env. Persist the process environment with pm2 save.
+Rollback: set the same switch to 0 and restart with --update-env, then pm2 save.
+If an explicit PM2 variable exists, changing .env alone does not override it.
+No agent, webhook, schema or extra processing stage changes are required.
+
+This affects new uploads only. Existing drafts and regenerations continue to use
+their saved source units; changing the switch does not rewrite those drafts.
+Each new draft records qualityState.preparation.meaningfulShortAnswersVersion
+(1 when enabled, otherwise 0); the prepare response performance and server log
+also carry this marker. Source evidence is part of the existing packet/cache
+identity, so inputs from the two preparations cannot share a generation result.
+The global keepShortReplies switch is separate and remains unchanged.
+
+Bounds
+A quantity reply must immediately follow a quantity question from another speaker,
+be at most 12 tokens, and contain only bounded numeric/quantity wording.
+An explicit proceed reply must start with a proceed expression, be at most 35
+tokens, and follow a proposal in the last two turns from another speaker.
+An immediately following refusal/correction/condition of at most eight tokens is
+also retained verbatim under its own speaker; protection does not propagate
+through later turns. Quoted text, unrelated short acknowledgements, same-speaker numerical statements
+and audio/noise are not protected by these rules. The complete eligible turn is
+retained verbatim, including timing, negation, corrections and refusals. The rules
+do not resolve a quantity, owner, agreement or date. A model remove classification
+is conservatively changed to uncertain for a protected turn; classifier confidence
+is kept for diagnostics. Row IDs are regenerated consistently from source order.
+
+Validation
+40 targeted tests passed: 35 Python and 5 Node tests. The nine-transcript audit
+matched the current baseline packets exactly; six protected packets stayed
+identical. The three source changes restored two numeric replies and one complete
+qualified proceed reply. All previously retained source text remained present
+under the same speaker and timestamp. The comparison used all three unchanged
+live Beta specialists, fresh request IDs, no retries and no production draft writes.
+
+Limits
+This is a narrow source-preservation improvement, not a general short-reply parser,
+a solution for every duplicate, or proof of complete minutes. Eligibility is
+conservative: longer or differently phrased replies may still be missed. The
+experiment reuses existing corpus cases and is not independent human validation.
+An unrelated incomplete Copilot JSON output is separately traced in the evidence;
+this code does not claim to fix that provider failure.
+
+Evidence
+/root/trinzo-reliability-and-short-answers-20261028
+
+Post-run control hardening
+The immediate-following qualification guard was added after the generation run.
+The tested original code is archived in generation-tested-code and commit 3341893.
+All nine baseline/protected packets are compared again after the guard change.
+Unchanged packet equality lets the saved generation outputs assess the same
+inputs; it is not represented as another fresh set of Microsoft calls.

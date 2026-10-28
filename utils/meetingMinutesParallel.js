@@ -76,6 +76,11 @@ function chooseProvider(req) {
   if (useParallel) configuration(); // fail before creating a draft, never silently fall back
   return useParallel ? PROVIDER : 'legacy';
 }
+// Deployment-controlled source retention, applied only when preparing a new Beta draft.
+function preserveMeaningfulShortAnswers(provider, env = process.env) {
+  return provider === PROVIDER
+    && /^(?:1|true|yes|on)$/i.test(String(env.MEETING_MINUTES_BETA_SHORT_ANSWERS_V1 || '0'));
+}
 function packet(draft) {
   return {schemaVersion:1,meetingDetails:clone(draft.details),evidence:(draft.sourceUnits || [])
     .filter(unit=>unit.classification!=='remove' || unit.restored)
@@ -200,5 +205,5 @@ function reviewChanges(draft,body,{sanitiseDetails,historyEntry}={}) {
   }
   return changes;
 }
-module.exports = {PROVIDER,isParallel,payload,publicDraft,publication,configuration,chooseProvider,
+module.exports = {PROVIDER,isParallel,payload,publicDraft,publication,configuration,chooseProvider,preserveMeaningfulShortAnswers,
   packet,inputHash,initialPayload,resultChanges,createRunner,reviewChanges};
