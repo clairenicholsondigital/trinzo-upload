@@ -1171,6 +1171,39 @@ test('a discussion record moves to another topic from its menu, and every topic 
   }
 });
 
+test('on a phone, topic and item menus open as a sheet above the save bar', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=topic-cleanup`);
+    await page.waitForSelector('#mobileStepSelect');
+    await page.selectOption('#mobileStepSelect', '2');
+    for (const summary of ['.discussion-card:last-child .topic-menu>summary', '.discussion-card:last-child .record-menu>summary']) {
+      await page.click(summary);
+      const sheet = await page.evaluate(() => {
+        const popover = document.querySelector('details[open]>:is(.topic-menu-popover,.record-menu-popover)');
+        const box = popover.getBoundingClientRect();
+        return {
+          inside: box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth,
+          saveBarHidden: getComputedStyle(document.getElementById('saveStrip')).visibility === 'hidden'
+        };
+      });
+      assert.deepEqual(sheet, { inside: true, saveBarHidden: true });
+      // Tapping the dimmed page closes the sheet.
+      await page.mouse.click(195, 40);
+      assert.equal(await page.locator('details[open]:is(.topic-menu,.record-menu)').count(), 0);
+    }
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('the workflow has five steps and Details leads straight to generating', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
@@ -2620,7 +2653,7 @@ test('dense layouts give writing space to content rather than repeated controls'
   }
 });
 
-test('phone save bar gives history and document actions their own responsive row', { timeout: 120000 }, async () => {
+test('phone save bar keeps status, checks, history and document actions on one row', { timeout: 120000 }, async () => {
   const { server, port } = await startStubServer();
   let browser;
   try {
@@ -2631,7 +2664,7 @@ test('phone save bar gives history and document actions their own responsive row
     await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=mobile-save-bar`);
     await page.waitForSelector('#undoLastDecision:not([hidden])');
 
-    assert.equal(await page.locator('#undoLastDecision .narrow-label').textContent(), 'Undo last change');
+    assert.equal(await page.locator('#undoLastDecision .narrow-label').textContent(), 'Undo');
     assert.equal(await page.locator('#undoLastDecision').getAttribute('aria-label'), 'Undo: Edit a long discussion item');
     const layout = await page.evaluate(() => {
       const box = (selector) => {
@@ -2652,8 +2685,13 @@ test('phone save bar gives history and document actions their own responsive row
         pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
       };
     });
-    assert.ok(layout.status.bottom <= layout.review.top, JSON.stringify(layout));
-    assert.ok(layout.review.bottom <= layout.actions.top, JSON.stringify(layout));
+    // One row: the bar is no taller than its buttons need, and everything in
+    // it shares that row, so it covers as little of the page as possible.
+    const middle = (box) => (box.top + box.bottom) / 2;
+    assert.ok(layout.bar.bottom - layout.bar.top < 64, JSON.stringify(layout));
+    assert.ok(Math.abs(middle(layout.status) - middle(layout.actions)) < 4, JSON.stringify(layout));
+    assert.ok(Math.abs(middle(layout.review) - middle(layout.actions)) < 4, JSON.stringify(layout));
+    assert.ok(layout.status.right <= layout.review.left + 1 && layout.review.right <= layout.actions.left + 1, JSON.stringify(layout));
     assert.ok(layout.buttons.every((button) => button.left >= layout.bar.left && button.right <= layout.bar.right), JSON.stringify(layout));
     assert.ok(layout.buttons.every((button) => Math.abs(button.top - layout.buttons[0].top) < 2), JSON.stringify(layout));
     assert.ok(layout.pageOverflow <= 1, JSON.stringify(layout));
@@ -2734,7 +2772,8 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
         suggestions: rect('#reviewQueueToggle'), actions: rect('.save-strip-actions')
       };
     });
-    assert.ok(saveBarLayout.status.bottom < saveBarLayout.suggestions.top, JSON.stringify(saveBarLayout));
+    assert.ok(saveBarLayout.status.right <= saveBarLayout.suggestions.left + 1, JSON.stringify(saveBarLayout));
+    assert.ok(saveBarLayout.bar.height < 64, JSON.stringify(saveBarLayout));
     assert.ok(Math.abs(
       (saveBarLayout.suggestions.top + saveBarLayout.suggestions.bottom) / 2
       - (saveBarLayout.actions.top + saveBarLayout.actions.bottom) / 2
@@ -2913,7 +2952,7 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
         actionsHidden: getComputedStyle(bar.querySelector('.save-strip-actions')).display === 'none'
       };
     });
-    assert.ok(compactFinalBar.width < 320, JSON.stringify(compactFinalBar));
+    assert.ok(compactFinalBar.width < 350, JSON.stringify(compactFinalBar));
     assert.ok(compactFinalBar.centreOffset < 2, JSON.stringify(compactFinalBar));
     assert.equal(compactFinalBar.actionsHidden, true, JSON.stringify(compactFinalBar));
     assert.equal(await page.locator('#newMinutes').isHidden(), true, 'a new meeting is offered only after these minutes are final');

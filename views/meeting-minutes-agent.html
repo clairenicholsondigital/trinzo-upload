@@ -180,7 +180,8 @@
 .meeting-agent-page .save-status[data-state="local-only"]{color:var(--warn-text)}
 .meeting-agent-page .save-strip-actions{display:flex;align-items:center;gap:.4rem}
 .meeting-agent-page .save-strip-actions button{padding:.35rem .65rem;font-size:var(--fs-cap)}
-.meeting-agent-page .narrow-label{display:none}
+.meeting-agent-page .narrow-label,
+.meeting-agent-page .narrow-icon{display:none}
 .meeting-agent-page .workflow-utilities{display:none}
 .meeting-agent-page .workflow-utilities.is-open{display:block;margin-bottom:.75rem}
 .meeting-agent-page .workflow-utilities .review-flags{margin:0}
@@ -434,6 +435,7 @@
 .meeting-agent-page .discussion-card.is-heading-hidden .card-head{background:var(--surface);border-bottom-color:var(--border)}
 .meeting-agent-page .discussion-card.is-heading-hidden .topic-field textarea{color:var(--muted);font-weight:var(--fw)}
 /* The title is a text field; a faint underline says it can be renamed. */
+.meeting-agent-page :is(.topic-field,.proposition-row) textarea{overflow:hidden;resize:none}
 .meeting-agent-page .topic-field textarea{text-decoration:underline dotted var(--border-strong);text-underline-offset:.3em}
 .meeting-agent-page .topic-field textarea:focus{text-decoration:none}
 .meeting-agent-page .discussion-card:not(.is-collapsed):not(.is-heading-hidden) .topic-count{visibility:hidden}
@@ -906,56 +908,34 @@
   .meeting-agent-page .review-evidence{max-width:100%;padding:.45rem;overflow:hidden}
   .meeting-agent-page .review-evidence .evidence-row{overflow-wrap:anywhere}
   .meeting-agent-page .review-evidence .source-meta{column-gap:.5rem}
-  .meeting-agent-page.has-draft{padding-bottom:7rem}
+  .meeting-agent-page.has-draft{padding-bottom:5rem}
   .meeting-agent-page.has-draft.final-complete{padding-bottom:.6rem}
-  /* Give the mobile bar two deliberate rows. Previously the action buttons
-     were vertically centred against the combined Saved + checks stack,
-     which left them floating awkwardly between the two lines. */
+  /* One row on a phone: Saved and the checks chip on the left, compact
+     buttons on the right. Preview and Download are icon buttons (their
+     names stay in aria-label and title), Undo and Redo keep one short word.
+     The status text gives way first when space runs out. */
   .meeting-agent-page .save-strip{
-    display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
-    gap:.4rem .45rem;width:calc(100% - 1rem);bottom:.45rem;padding:.55rem .6rem}
-  .meeting-agent-page .save-strip-primary{display:contents}
-  .meeting-agent-page .save-status{grid-column:1/-1;line-height:1.25}
-  .meeting-agent-page .review-queue-toggle{grid-column:1;grid-row:2;justify-self:start;max-width:100%}
-  .meeting-agent-page .save-strip-actions{
-    grid-column:2;grid-row:2;justify-content:flex-end;flex-wrap:wrap;gap:.3rem}
-  .meeting-agent-page .save-strip-actions button{min-height:42px;padding:.4rem .5rem}
-  /* With nothing to review, Saved and the buttons share one row, so the bar
-     covers less of the page. */
-  .meeting-agent-page .save-strip:not(:has(#reviewQueueToggle:not([hidden]))):not(:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-status{grid-column:1;grid-row:1}
-  .meeting-agent-page .save-strip:not(:has(#reviewQueueToggle:not([hidden]))):not(:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions{grid-row:1}
-  /* Undo/redo adds a third action to the fixed bar. Give all actions a full
-     row instead of squeezing a long history label beside the warning chip. */
-  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])){
-    grid-template-columns:minmax(0,1fr)}
-  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .review-queue-toggle{
-    grid-column:1;grid-row:2}
-  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .save-strip-actions{
-    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-column:1;grid-row:3;width:100%;gap:.35rem}
-  .meeting-agent-page .save-strip:has(#undoLastDecision:not([hidden]),#redoLastDecision:not([hidden]),#reloadDraft:not([hidden])) .save-strip-actions button{
-    width:100%;min-width:0;white-space:normal}
-  /* Review already hides Preview and Download. When Undo is the only action,
-     keep it beside the checks instead of reserving an empty three-button row. */
-  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))){
-    grid-template-columns:minmax(0,1fr) auto}
-  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .review-queue-toggle{
-    grid-column:1;grid-row:2}
-  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions{
-    display:flex;grid-column:2;grid-row:2;width:auto;justify-content:flex-end}
-  .meeting-agent-page .save-strip.is-final-review:has(#undoLastDecision:not([hidden])):not(:has(#redoLastDecision:not([hidden]),#reloadDraft:not([hidden]))) .save-strip-actions button{
-    width:auto;min-width:4.5rem;white-space:nowrap}
-  /* Final review already contains its own Back and Export controls. When the
-     fixed bar has no history action left, fit it to Saved + checks
-     instead of preserving an empty document-actions column. */
-  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))){
-    grid-template-columns:max-content;width:max-content;max-width:calc(100% - 1rem);justify-content:start}
-  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .save-status,
-  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .review-queue-toggle{
-    grid-column:1}
-  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .save-strip-actions{display:none}
+    display:flex;align-items:center;gap:.35rem;width:calc(100% - 1rem);min-height:0;
+    bottom:.45rem;padding:.35rem .4rem .35rem .65rem}
+  .meeting-agent-page .save-strip-primary{flex:1 1 auto;gap:.35rem;min-width:0}
+  .meeting-agent-page .save-status{
+    min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-cap)}
+  .meeting-agent-page .review-queue-toggle{flex:none;white-space:nowrap;padding:.3rem .5rem}
+  .meeting-agent-page .save-strip-actions{flex:none;flex-wrap:nowrap;gap:.25rem}
+  .meeting-agent-page .save-strip-actions button{
+    min-width:42px;min-height:42px;padding:.35rem .5rem;justify-content:center;white-space:nowrap}
   .meeting-agent-page .save-strip-actions .wide-label{display:none}
   .meeting-agent-page .save-strip-actions .narrow-label{display:inline}
-  .meeting-agent-page .undo-toast{bottom:6.2rem;width:calc(100% - 1rem)}
+  .meeting-agent-page .save-strip-actions .narrow-icon{display:inline-block}
+  .meeting-agent-page .save-strip-actions :is(#previewDocument,#downloadDraft) .narrow-label{display:none}
+  .meeting-agent-page .save-strip-actions :is(#previewDocument,#downloadDraft){padding:.35rem}
+  .meeting-agent-page .save-strip-actions #reloadDraft{white-space:normal;max-width:7rem;line-height:1.15}
+  /* Final review has its own Back and Export controls. With no history
+     action left, the bar shrinks to Saved and the checks chip. */
+  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))){
+    width:max-content;max-width:calc(100% - 1rem)}
+  .meeting-agent-page .save-strip.is-final-review:not(:has(.save-strip-actions>button:not([hidden]))) .save-strip-actions{display:none}
+  .meeting-agent-page .undo-toast{bottom:4.2rem;width:calc(100% - 1rem)}
   .meeting-agent-page .attendee-chip{grid-template-columns:minmax(0,1fr) auto auto}
   .meeting-agent-page .attendee-chip input{grid-column:auto}
   .meeting-agent-page .attendee-chip .move-long{display:none}
@@ -983,9 +963,19 @@
      that could drift outside the viewport. Give it a predictable viewport-
      bounded width and let every control shrink inside it. */
   .meeting-agent-page .topic-menu>summary{width:44px;min-width:44px;min-height:44px}
-  .meeting-agent-page .topic-menu-popover{
-    right:-1rem;width:min(18rem,calc(100vw - 2rem));min-width:0;max-width:calc(100vw - 2rem);
-    box-sizing:border-box;padding:.55rem}
+  /* On a phone, topic and item menus open as a sheet along the bottom of the
+     screen, above the save bar, with the page dimmed behind. Dropped down
+     from the ••• they ran off the screen or under the save bar. Tapping the
+     dimmed page lands on the menu's own summary, which closes it. */
+  .meeting-agent-page :is(.topic-menu,.record-menu)[open]>summary::before{
+    content:"";position:fixed;inset:0;z-index:40;background:rgba(1,23,59,.35);cursor:default}
+  .meeting-agent-page :is(.topic-menu-popover,.record-menu-popover){
+    position:fixed;z-index:41;top:auto;left:.5rem;right:.5rem;bottom:.5rem;
+    width:auto;min-width:0;max-width:none;max-height:min(75vh,32rem);overflow-y:auto;
+    box-sizing:border-box;padding:.75rem;border-radius:var(--radius);
+    padding-bottom:calc(.75rem + env(safe-area-inset-bottom))}
+  .meeting-agent-page :is(.topic-menu-popover,.record-menu-popover)>:is(.secondary,.delete){min-height:44px}
+  .meeting-agent-page:has(:is(.topic-menu,.record-menu)[open]) .save-strip{visibility:hidden}
   .meeting-agent-page .merge-topic{min-width:0}
   .meeting-agent-page .merge-topic select{
     width:100%;min-width:0;max-width:100%;box-sizing:border-box;text-overflow:ellipsis}
@@ -1084,6 +1074,8 @@
 <svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
   <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
   <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
   <symbol id="i-restart" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></symbol>
