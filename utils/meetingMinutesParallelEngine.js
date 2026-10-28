@@ -18,6 +18,8 @@ function decodeReply(raw) {
 }
 function validateResult(stage, result, evidence) {
   if (!object(result) || result.schemaVersion !== 1 || result.specialist !== stage) throw fail('INVALID_CONTRACT', 'The specialist response has the wrong schema or identity.');
+  // Validate a copy so the provider response remains available verbatim for diagnostics.
+  if (stage === 'actions') result = structuredClone(result);
   const allowedIds = new Set(evidence.map(e => e.id));
   const ids = new Set();
   function cited(record, textKey = 'text', allowEmpty = false, requireId = true) {
@@ -53,10 +55,16 @@ function validateResult(stage, result, evidence) {
     for (const key of ['actions','actionProposals']) records(result[key]).forEach(action => {
       cited(action, 'action');
       if (!Array.isArray(action.owners) || action.owners.some(x => !string(x) || !x.trim())) throw fail('INVALID_OWNERS', 'An action has invalid owner fields.');
-      if (!object(action.timing) || !['deadline','target','dependency','not_stated'].includes(action.timing.kind) || !string(action.timing.wording) || !string(action.timing.exactDate)) throw fail('INVALID_TIMING', 'An action has invalid timing fields.');
+      if (!object(action.timing) || !['deadline','target','dependency','not_stated','stated'].includes(action.timing.kind) || !string(action.timing.wording) || !string(action.timing.exactDate)) throw fail('INVALID_TIMING', 'An action has invalid timing fields.');
       const exact = action.timing.exactDate;
       if (exact && (!/^\d{4}-\d{2}-\d{2}$/.test(exact) || Number.isNaN(Date.parse(exact)) || new Date(exact).toISOString().slice(0,10) !== exact)) throw fail('INVALID_DATE', 'An action contains an invalid calendar date.');
+      // Published specialists sometimes use not_stated to mean no deadline/date,
+      // while still supplying event-relative timing. Preserve that wording in a
+      // neutral application kind: do not guess deadline strength or a calendar date.
+      if (action.timing.kind === 'not_stated' && (action.timing.wording.trim() || exact))
+        action.timing.kind = 'stated';
       if (action.timing.kind === 'not_stated' && (action.timing.wording || exact)) throw fail('INVALID_TIMING', 'An action without stated timing contains a timing value.');
+      if (action.timing.kind === 'stated' && !action.timing.wording.trim() && !exact) throw fail('INVALID_TIMING', 'Stated timing requires wording or a valid supplied date.');
       if (key === 'actionProposals' && (!string(action.reason) || !action.reason.trim())) throw fail('INVALID_PROPOSAL', 'An action proposal has no reason.');
     });
   }
@@ -80,8 +88,15 @@ async function runSpecialists(packet, configuration, options = {}) {
       const raw = await response.text();
       if (!response.ok) throw fail(`PROVIDER_HTTP_${response.status}`, `Microsoft returned HTTP ${response.status}.`);
       if (Buffer.byteLength(raw) > 4 * 1024 * 1024) throw fail('RESPONSE_TOO_LARGE', 'The provider response exceeds the prototype limit.');
-      const result = validateResult(stage, decodeReply(raw), packet.evidence);
-      return {...detail, status:'completed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, result};
+      const decoded = decodeReply(raw);
+      const result = validateResult(stage, decoded, packet.evidence);
+      const timingCompatibility = stage === 'actions'
+        ? ['actions','actionProposals'].flatMap(key => result[key].flatMap((item,index) =>
+          decoded[key][index].timing.kind === 'not_stated' && item.timing.kind === 'stated'
+            ? [{collection:key,id:item.id,from:'not_stated',to:'stated'}] : []))
+        : [];
+      return {...detail, status:'completed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, result,
+        ...(timingCompatibility.length ? {timingCompatibility:{version:1,records:timingCompatibility}} : {})};
     } catch (error) {
       return {...detail, status:'failed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, error:{code:error.code || (error.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : 'PROVIDER_UNAVAILABLE'), message: error.code ? error.message : 'The specialist could not complete its request.'}};
     }

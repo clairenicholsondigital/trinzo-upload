@@ -1,0 +1,29 @@
+Beta specialist timing compatibility
+===================================
+
+The published action specialist may return not_stated together with meaningful
+source timing wording such as on the day; throughout, with or without a supplied
+calendar date.
+This used to reject the whole otherwise-complete three-specialist generation.
+
+At the existing response-validation boundary only, that precise shape becomes
+application kind stated. This means timing words are supplied without asserting
+deadline, target or dependency strength. Wording, supplied date, action, owners,
+evidence and warnings stay unchanged. The provider object is not mutated.
+Compatibility conversions are recorded on the action branch by collection and
+record ID. It applies equally to actions and action proposals.
+
+The application displays this as Timing: <original wording>; Beta editors offer
+As stated. Save/reopen, Word and PDF retain the neutral type and wording.
+There is no new AI call, retry, source rewrite, date inference or processing
+stage. Published specialist instructions and transcript preparation are unchanged.
+
+Invalid dates, unknown timing kinds, missing/wrong field types, evidence errors
+still fail validation. The same date checks run before compatibility handling;
+no date is invented, changed or erased. A stated value with neither wording nor
+a valid supplied date is rejected. Existing empty not_stated values remain valid.
+
+This fixes the specific recurring label/wording contract failure. It does not
+claim to fix incorrect source dates, semantic omissions, every provider failure
+or network availability. The preserved complete-turn preparation experiment is
+separate from this release.

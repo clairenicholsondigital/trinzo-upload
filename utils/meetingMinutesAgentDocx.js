@@ -60,7 +60,9 @@ function cell(value, width, options = {}) {
 }
 
 function timingLabel(timing = {}) {
-  return formatTimingLabel(timingForPublication(timing));
+  // Beta's neutral stated kind preserves supplied event wording without legacy
+  // due-date inference, shortening or reclassification.
+  return formatTimingLabel(timing.kind === 'stated' ? timing : timingForPublication(timing));
 }
 
 function actionTable(actions = [], links) {

@@ -66,6 +66,18 @@ test('dismissed suggestions remain recoverable; no source or reviewer warning is
  assert.equal(saved.actions.length,1);assert.equal(saved.reviewFlags.length,1);
  assert.equal((await request('post','/undo')).statusCode,200);assert.equal(saved.parallelActionProposals[0].status,'open');
 });
+test('neutral event timing saves, reopens and exports without hiding wording or deriving a date',async()=>{
+ reset();const actions=structuredClone(saved.actions);
+ actions[0].timing={kind:'stated',wording:'on the day; throughout',exactDate:''};
+ let r=await request('patch','',{actions});assert.equal(r.statusCode,200,JSON.stringify(r.body));
+ const reopened=(await request('get')).body.draft;
+ assert.deepEqual(reopened.actions[0].timing,actions[0].timing);
+ const word=A.meetingAgentDraftForDocx(reopened),pdf=A.meetingAgentDraftForPdf(reopened,true);
+ assert.deepEqual(word.actions[0].timing,actions[0].timing);
+ assert.equal(pdf.actions[0].deadline,'Timing: on the day; throughout');
+ const xml=await (await JSZip.loadAsync(await require('../utils/meetingMinutesAgentDocx').generateMeetingMinutesAgentDocx(word,false))).file('word/document.xml').async('string');
+ assert.ok(xml.includes('Timing: on the day; throughout'));
+});
 test('another owner and stale saves cannot change parallel drafts',async()=>{
  reset();assert.equal((await request('patch','',{},'other')).statusCode,404);assert.equal(writes,0);
  assert.equal((await request('patch','',{revision:0})).statusCode,409);assert.equal(writes,0);

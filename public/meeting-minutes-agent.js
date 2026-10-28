@@ -1719,6 +1719,7 @@
       return '<button type="button" class="field-display timing-summary" data-edit-timing data-action-index="' + index + '" data-action-id="' + escapeHtml(actionId) + '" aria-label="Edit timing"' + timingSourceTitle(timing) + '>' + escapeHtml(timingText(timing)) + '</button>';
     }
     var kinds = [['not_stated', 'Not stated'], ['target', 'Target'], ['deadline', 'Deadline'], ['dependency', 'Dependency']];
+    if (isParallelDraft()) kinds.push(['stated', 'As stated']);
     var options = kinds.map(function (pair) {
       return '<option value="' + pair[0] + '"' + (timing.kind === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
     }).join('');
@@ -2432,8 +2433,9 @@
     var body;
     if (field === 'timing') {
       var timing = action.timing || {};
+      var statedOption = isParallelDraft() ? '<option value="stated"' + (timing.kind === 'stated' ? ' selected' : '') + '>As stated</option>' : '';
       body = '<span class="final-inline-editor timing"' + editorAttributes + '>'
-        + '<label><span class="lbl">Type</span><select data-final-timing-kind aria-label="Timing type"><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option></select></label>'
+        + '<label><span class="lbl">Type</span><select data-final-timing-kind aria-label="Timing type"><option value="not_stated"' + (timing.kind === 'not_stated' ? ' selected' : '') + '>Not stated</option><option value="target"' + (timing.kind === 'target' ? ' selected' : '') + '>Target</option><option value="deadline"' + (timing.kind === 'deadline' ? ' selected' : '') + '>Deadline</option><option value="dependency"' + (timing.kind === 'dependency' ? ' selected' : '') + '>Dependency</option>' + statedOption + '</select></label>'
         + '<label><span class="lbl">As said in the meeting</span><input data-final-timing-wording value="' + escapeHtml(timing.wording || '') + '" placeholder="e.g. by Friday, once the report is back" aria-label="Timing as said"></label>'
         + '<label><span class="lbl">Exact date (optional)</span><input data-final-timing-date type="date" data-initial-date="' + escapeHtml(timing.exactDate || '') + '" value="' + escapeHtml(timing.exactDate || '') + '" aria-label="Exact date"></label>'
         + finalEditButtons() + '</span>';

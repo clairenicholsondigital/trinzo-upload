@@ -11,7 +11,7 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  generation:{stage:'discussion',status:'running',startedAt:new Date().toISOString(),message:'Preparing your meeting minutes…'}};
  const ready={...common,revision:3,currentStep:5,generation:null,
  discussion:[{id:'TOP1',topic:'File review',points:[{id:'P1',text:'Approval is a prerequisite.',evidenceIds:['T1']}],decisions:[],openQuestions:[]}],
- actions:[{id:'A1',action:'Review the file.',owners:['Alex'],timing:{kind:'dependency',wording:'only after approval',exactDate:''},evidenceIds:['T1']}],
+ actions:[{id:'A1',action:'Review the file.',owners:['Alex'],timing:{kind:'stated',wording:'only after approval',exactDate:''},evidenceIds:['T1']}],
  executiveSummary:'The file review depends on approval.',executiveSummaryEvidenceIds:['T1'],
  meetingObjectives:[{id:'O1',text:'Review the file.',evidenceIds:['T1']}],
  parallelActionProposals:[{id:'AP1',status:'open',action:'Prepare another review.',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},reason:'Not accepted.',evidenceIds:['T1']}],
@@ -44,6 +44,19 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  await page.locator('[data-record-field]').first().fill('Reviewer clarification.');
  await page.waitForFunction(()=>document.querySelector('#saveStatus')?.dataset.state==='saved');
  assert.equal(await page.locator('#staleNotice').isVisible(),false);
+ await page.locator('[data-step="3"]').click();
+ assert.match(await page.locator('[data-edit-timing]').innerText(),/Timing: only after approval/);
+ await page.locator('[data-edit-timing]').click();
+ assert.equal(await page.locator('[data-timing-kind]').inputValue(),'stated');
+ assert.equal(await page.locator('[data-timing-kind] option:checked').innerText(),'As stated');
+ await page.locator('[data-timing-wording]').fill('on the day; throughout');
+ await page.locator('[data-finish-timing-edit]').click();
+ await page.waitForFunction(()=>document.querySelector('#saveStatus')?.dataset.state==='saved');
+ assert.match(await page.locator('[data-edit-timing]').innerText(),/Timing: on the day; throughout/);
+ await page.locator('[data-step="5"]').click();
+ await page.locator('[data-final-edit][data-field="timing"]').click();
+ assert.equal(await page.locator('[data-final-timing-kind]').inputValue(),'stated');
+ await page.locator('[data-final-cancel]').click();
  await page.locator('[data-step="3"]').click();
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.locator('#generationMethod').isVisible(),true);
