@@ -2493,13 +2493,13 @@
     if (!isParallelDraft()) return;
     var proposals = (state.draft.parallelActionProposals || []).filter(function(a) { return a.status === 'open'; });
     if (!proposals.length) return;
-    var html = '<tr><th colspan="3">Possible follow-ups — not yet included as actions</th></tr>';
+    var html = '<tr class="empty-actions-row"><td colspan="3"><strong>Possible follow-ups — not yet included as actions</strong></td></tr>';
     html += proposals.map(function(a) {
-      return '<tr><td>' + escapeHtml(a.action) + '<p class="muted">' + escapeHtml(a.reason) + '</p>'
+      return '<tr class="parallel-proposal-row"><td data-label="Action">' + escapeHtml(a.action) + '<p class="muted">' + escapeHtml(a.reason) + '</p>'
         + evidenceBlock(a.evidenceIds)
         + '<button type="button" class="secondary" data-parallel-proposal="' + escapeHtml(a.id) + '" data-decision="accept">Add action</button> '
         + '<button type="button" class="quiet" data-parallel-proposal="' + escapeHtml(a.id) + '" data-decision="dismiss">Dismiss</button></td>'
-        + '<td>' + escapeHtml((a.owners || []).join(', ') || 'Not stated') + '</td><td>' + escapeHtml(timingDisplayText(a.timing)) + '</td></tr>';
+        + '<td data-label="Owners">' + escapeHtml((a.owners || []).join(', ') || 'Not stated') + '</td><td data-label="Timing">' + escapeHtml(timingDisplayText(a.timing)) + '</td></tr>';
     }).join('');
     document.getElementById('actionsBody').insertAdjacentHTML('beforeend', html);
   }

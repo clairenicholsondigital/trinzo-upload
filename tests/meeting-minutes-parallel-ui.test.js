@@ -44,5 +44,11 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  await page.locator('[data-record-field]').first().fill('Reviewer clarification.');
  await page.waitForFunction(()=>document.querySelector('#saveStatus')?.dataset.state==='saved');
  assert.equal(await page.locator('#staleNotice').isVisible(),false);
+ await page.locator('[data-step="3"]').click();
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.locator('#generationMethod').isVisible(),true);
+ const box=await page.locator('.parallel-proposal-row [data-label="Action"]').boundingBox();
+ assert.ok(box.width>250,'suggestion text uses the full mobile card width');
+ assert.equal(await page.locator('.parallel-proposal-row [data-label="Owners"]').isVisible(),true);
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
 });
