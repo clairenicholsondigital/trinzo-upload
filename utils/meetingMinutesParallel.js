@@ -172,7 +172,7 @@ function reviewChanges(draft,body,{sanitiseDetails,historyEntry}={}) {
   for (const a of next.actions || []) {
     record(a,'action');
     if (!Array.isArray(a.owners) || a.owners.some(o=>!boundedText(o,240))) throw problem('An action owner is invalid.');
-    if (!a.timing || !['deadline','target','dependency','not_stated'].includes(a.timing.kind)
+    if (!a.timing || !['deadline','target','dependency','not_stated','stated'].includes(a.timing.kind)
       || !boundedText(a.timing.wording,1000) || !boundedText(a.timing.exactDate,20)) throw problem('An action timing field is invalid.');
   }
   (next.meetingObjectives || []).forEach(r=>record(r));

@@ -159,7 +159,7 @@
     const value = timing && typeof timing === 'object' ? timing : {};
     const opts = options || {};
     const wording = clean(value.wording);
-    let kind = ['deadline', 'target', 'dependency', 'not_stated'].includes(value.kind) ? value.kind : 'not_stated';
+    let kind = ['deadline', 'target', 'dependency', 'not_stated', 'stated'].includes(value.kind) ? value.kind : 'not_stated';
     let exactDate = clean(value.exactDate);
     // Validation reports invalid supplied dates before removing them; quietly
     // sanitising here would erase the evidence needed for a review flag.
@@ -184,7 +184,7 @@
     const exactWording = explicitCalendarDate(wording, '') === value.exactDate && classifyTimingWording(wording).kind === 'specific'
       && !/\b(?:by|before|after|within|until|on|at|morning|afternoon|evening|noon)\b/i.test(wording);
     const label = date && wording && !exactWording ? `${wording} (${date})` : wording || date;
-    const prefix = value.kind === 'dependency' ? 'Dependent on' : value.kind === 'deadline' ? 'Deadline' : 'Target';
+    const prefix = value.kind === 'stated' ? 'Timing' : value.kind === 'dependency' ? 'Dependent on' : value.kind === 'deadline' ? 'Deadline' : 'Target';
     return opts.includeKind === false ? label : `${prefix}: ${label}`;
   }
   function fingerprint(value) {
