@@ -111,3 +111,83 @@ test('same-operation detail needs correct directional roles, complete retention 
   assert.deepEqual(result.changes.actions,records,mode);assert.equal(n,mode==='challenge'?2:1);
  }
 });
+
+function completionFixture(){
+ const units=require('../utils/meetingMinutesAgentV2').normaliseSourceUnits([
+  {id:'T0001',speaker:'Jordan Blake',text:'Maya, please complete the supplier declaration requirements before I share tender information.'},
+  {id:'T0002',speaker:'Maya Patel',text:'I will complete and sign that declaration before you share it.'},
+  {id:'T0003',speaker:'Jordan Blake',text:'Yes, the supplier declaration must be in place first.'}
+ ]);
+ const full=row('full','Before tender information is shared with Maya Patel.');
+ full.action='Complete and sign the supplier declaration required for tender participation.';full.evidenceIds=['T0001','T0003'];
+ const short=row('short','Before tender information is shared');
+ short.action='Complete the supplier declaration requirements.';short.evidenceIds=['T0003'];
+ return {units,actions:[full,short]};
+}
+
+test('fuller completion/signing nominates generically and supplies the uncited acceptance context',async()=>{
+ const f=completionFixture(),before=structuredClone(f);let calls=0;
+ assert.equal(C.direction(...f.actions).kind,'qualified_repeat');
+ assert.equal(C.direction(...[...f.actions].reverse()).parent.id,'full');
+ assert.ok(R.mechanicalCoverage(f.actions[0],f.actions[1]).reasons.includes('operation_would_be_lost'),'the signing operation cannot be discarded');
+ const output=await run(f.actions,{sourceUnits:f.units,ask:async prompt=>{
+  calls++;const data=JSON.parse(prompt.split('\nDATA\n')[1]);
+  assert.ok(data.sourceCatalog.some(ref=>ref.unitId==='T0002'&&ref.field==='text'),'adjacent acceptance must be available');
+  return ask(prompt);
+ }});
+ const saved=JSON.parse(JSON.stringify(output.changes.actions[0])),audit=output.changes.qualityState.actions.semanticReconciliation;
+ assert.equal(calls,2);assert.equal(output.changes.actions.length,1,JSON.stringify(audit.unresolved));
+ assert.equal(saved.action,f.actions[0].action);assert.deepEqual(saved.timing,f.actions[0].timing);
+ assert.equal(saved.timingDecision.status,'unresolved');assert.deepEqual(saved.reviewFlagIds,['warning-full','warning-short']);
+ assert.ok(saved.evidenceIds.includes('T0002'));assert.ok(audit.receipts.every(r=>R.validateReconciliationReceipt(r,r.original,saved,f.units)));
+ const api=require('../routes/api').stagedEvaluation;
+ assert.equal(api.reconcileFinalApprovedActions([saved],f.actions,{sourceUnits:f.units,receipts:audit.receipts}).restored.length,0);
+ assert.deepEqual(require('../utils/meetingMinutesEnquiryRecovery').originalEnquiryActions({...api.admitMeetingAgentGeneratedActionChanges({sourceUnits:f.units},output.changes,'completion-proof'),sourceUnits:f.units}),f.actions);
+ assert.deepEqual(f,before);
+});
+
+test('completion/signing preserves vetoes and all rejection history',async()=>{
+ for(const mode of ['unsupported signing','lost condition','different obligation','challenge veto','provider failure']){
+  const f=completionFixture();let calls=0;
+  const output=await run(f.actions,{sourceUnits:f.units,ask:async prompt=>{
+   calls++;if(mode==='provider failure')throw Error('offline');const answer=await ask(prompt);
+   if(mode==='unsupported signing')answer.result.decisions[0].rows[0].checks[0].status='unsupported';
+   if(mode==='lost condition')answer.result.decisions[1].checks[0].status='not_retained';
+   if(mode==='different obligation'||mode==='challenge veto'&&calls===2)answer.result.decisions[2].relation='distinct_work';
+   return answer;
+  }});
+  assert.deepEqual(output.changes.actions,f.actions,mode);assert.equal(calls,mode==='challenge veto'?2:1);
+ }
+ const f=completionFixture();f.actions[1].timingDecision.status='rejected';f.actions[1].timingDecision.rejectedExactDates=['2026-11-02'];
+ const out=await run(f.actions,{sourceUnits:f.units});assert.equal(out.changes.actions.length,1);
+ assert.deepEqual(out.changes.actions[0].timingDecision.rejectedExactDates,['2026-11-02']);assert.equal(out.changes.actions[0].timing.exactDate,'');
+});
+
+test('completion/signing nomination excludes different documents, owners, reviewer edits and added steps',()=>{
+ for(const change of [r=>r.action='Complete the supplier questionnaire requirements.',r=>r.action+=' and send it to procurement',r=>r.action+=' after legal approval',r=>r.owners=['Jo Lee'],r=>r.evidenceIds=['T0009'],r=>r.reviewed=true,r=>r.timing.exactDate='2026-11-02']){
+  const f=completionFixture();change(f.actions[1]);assert.equal(C.direction(...f.actions),null);
+ }
+ const f=completionFixture();assert.equal(C.direction(...f.actions,[...f.actions,{...f.actions[0],id:'ambiguous'}]),null);
+});
+
+test('a name outside the two-turn identity window cannot authorize completion/signing',async()=>{
+ const f=completionFixture();
+ f.units=require('../utils/meetingMinutesAgentV2').normaliseSourceUnits([
+  {id:'T0001',speaker:'Jordan Blake',text:'Complete and sign the supplier declaration before sharing tender information.'},
+  {id:'T0003',speaker:'Jordan Blake',text:'The supplier declaration requirements come first.'},
+  ...Array.from({length:4},(_,i)=>({id:'T'+String(i+4).padStart(4,'0'),speaker:'Jordan Blake',text:'We discussed another matter.'})),
+  {id:'T0002',speaker:'Maya Patel',text:'I will review an unrelated invoice.'}
+ ]);
+ const packet=C.reviewPacket(...f.actions,f.units,f.units.map(u=>u.id),false);
+ assert.ok(packet.sourceRows.every(row=>row.ownerWitnesses.every(witness=>witness.refs.length===0)));
+ const output=await run(f.actions,{sourceUnits:f.units});assert.deepEqual(output.changes.actions,f.actions);
+ assert.equal(output.changes.qualityState.actions.semanticReconciliation.receipts.length,0);
+ assert.ok(output.changes.qualityState.actions.semanticReconciliation.unresolved.length>0);
+});
+
+test('a present identity witness never replaces the instruction-to-owner source check',async()=>{
+ const f=completionFixture(),p=C.reviewPacket(...f.actions,f.units,f.units.map(u=>u.id),false);
+ const answer=response(p),r=answer.decisions[0].rows[0],instruction=r.checks.find(c=>p.sourceRows[0].requests.find(q=>q.id===c.id).field==='instruction');
+ instruction.refs=['T0001'];
+ assert.equal(N.validate(p,answer),'missing_source_owner_witness');
+});
