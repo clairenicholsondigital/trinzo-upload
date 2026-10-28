@@ -140,11 +140,75 @@ def read_transcript_file(path: Path) -> str:
     return "\n".join(paragraphs)
 
 
+_QUANTITY_QUESTION = re.compile(
+    r"\b(?:how many|how much|what (?:is|was|are|were|about)\b[^?]{0,100}"
+    r"\b(?:number|count|quantity|amount|volume|percentage|rate|size|duration))\b", re.I,
+)
+_EXPLICIT_PROCEED = re.compile(
+    r"^(?:(?:okay|ok|yes|right|agreed)[,.!]?\s+)?"
+    r"(?:do (?:that|it)|go ahead|please proceed|let['’]s do (?:that|it))\b", re.I,
+)
+_PROPOSAL = re.compile(r"\b(?:I|we) (?:can|could|will)|\b(?:propos\w*|suggest\w*)\b|\blet['’]s\b", re.I)
+_NUMBER_WORDS = set("""
+    zero one two three four five six seven eight nine ten eleven twelve thirteen
+    fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty
+    sixty seventy eighty ninety hundred thousand million billion point
+""".split())
+_QUANTITY_CONTEXT = set("""
+    and about around approximately roughly nearly exactly only not no actually sorry
+    maybe perhaps between to or at least most per a an the
+    percent percentage units items people documents records cases languages versions
+    litres liters litre liter kilograms kilogram grams gram kg g ml hours hour
+    minutes minute seconds second
+""".split())
+
+
+def meaningful_short_answer(turn: dict, previous: list[dict]) -> str:
+    """Identify bounded source replies to retain verbatim, without interpreting them.
+
+    The whole qualified turn is retained: a correction or refusal must never be
+    separated from a number or an apparent acceptance. This does not resolve an
+    owner, quantity or agreement, and does not revive arbitrary acknowledgements.
+    """
+    body = compact(turn.get("body", ""))
+    tokens = re.findall(r"[A-Za-z']+|\d+(?:[.,]\d+)*", body.lower())
+    if not tokens or short_context_noise(body):
+        return ""
+    if len(tokens) <= 12 and previous:
+        before = previous[-1]
+        if before["speaker"] != turn["speaker"] and _QUANTITY_QUESTION.search(before["body"][-300:]):
+            numeric = any(token in _NUMBER_WORDS or token[0].isdigit() for token in tokens)
+            allowed = all(token in _NUMBER_WORDS | _QUANTITY_CONTEXT or token[0].isdigit() for token in tokens)
+            if numeric and allowed:
+                return "quantity_reply"
+    if len(tokens) <= 35 and _EXPLICIT_PROCEED.match(body):
+        if any(before["speaker"] != turn["speaker"] and _PROPOSAL.search(before["body"][-400:])
+               for before in previous[-2:]):
+            return "explicit_proceed_reply"
+    return ""
+
+
 def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fragments: bool = False,
-                     preserve_short_context_fragments: bool = False) -> list[dict]:
+                     preserve_short_context_fragments: bool = False,
+                     preserve_meaningful_short_answers: bool = False) -> list[dict]:
     """Parse timestamped Teams turns or ``Speaker Name: speech`` turns."""
     units: list[dict] = []
     current: dict | None = None
+    previous: list[dict] = []
+
+    def close(turn):
+        if not turn:
+            return
+        reason = meaningful_short_answer(turn, previous) if preserve_meaningful_short_answers else ""
+        if reason:
+            units.append({"source": turn["source"], "line": turn["line"], "unit": 0,
+                          "speaker": turn["speaker"], "timestamp": turn["timestamp"],
+                          "text": compact(turn["body"]), "meaningfulShortAnswer": reason})
+        else:
+            units.extend(split_unit(turn, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
+                                    preserve_short_context_fragments=preserve_short_context_fragments))
+        previous.append(turn)
+        del previous[:-2]
     for line_no, raw in enumerate(text.splitlines(), 1):
         line = compact(raw)
         if not line:
@@ -160,9 +224,7 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
         if non_speaker_colon_label:
             colon_match = None
         if match:
-            if current:
-                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
-                                        preserve_short_context_fragments=preserve_short_context_fragments))
+            close(current)
             current = {
                 "source": source,
                 "line": line_no,
@@ -171,9 +233,7 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
                 "body": compact(match.group("text")),
             }
         elif colon_match:
-            if current:
-                units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
-                                        preserve_short_context_fragments=preserve_short_context_fragments))
+            close(current)
             current = {
                 "source": source,
                 "line": line_no,
@@ -185,9 +245,7 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
             continue
         elif current and not re.match(r"^(?:\d+ June \d{4}|\d+m \d+s|.+ started transcription)$", line, re.I):
             current["body"] = compact(f"{current['body']} {line}")
-    if current:
-        units.extend(split_unit(current, preserve_short_temporal_fragments=preserve_short_temporal_fragments,
-                                preserve_short_context_fragments=preserve_short_context_fragments))
+    close(current)
     return units
 
 

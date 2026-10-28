@@ -1,0 +1,44 @@
+Meaningful short-answer preservation — isolated, opt-in candidate
+
+Purpose
+Keep bounded source replies that can establish a quantity or explicit agreement,
+without adding a preparation stage, replacing MiniLM, interpreting an action, or
+changing any Microsoft specialist instructions.
+
+Activation
+prepareMiniLmTranscript(text, {preserveMeaningfulShortAnswers: true}) forwards
+--preserve-meaningful-short-answers. The default is false. This change does not
+enable the option in the production meeting-minutes-agent preparation route.
+The isolated comparison invokes it directly. Production rollout therefore needs
+an explicit integration decision and the existing route to pass the option.
+
+Bounds
+A quantity reply must immediately follow a quantity question from another speaker,
+be at most 12 tokens, and contain only bounded numeric/quantity wording.
+An explicit proceed reply must start with a proceed expression, be at most 35
+tokens, and follow a proposal in the last two turns from another speaker.
+Quoted text, unrelated short acknowledgements, same-speaker numerical statements
+and audio/noise are not protected by these rules. The complete eligible turn is
+retained verbatim, including timing, negation, corrections and refusals. The rules
+do not resolve a quantity, owner, agreement or date. A model remove classification
+is conservatively changed to uncertain for a protected turn; classifier confidence
+is kept for diagnostics. Row IDs are regenerated consistently from source order.
+
+Validation
+39 targeted tests passed: 34 Python and 5 Node tests. The nine-transcript audit
+matched the current baseline packets exactly; six protected packets stayed
+identical. The three source changes restored two numeric replies and one complete
+qualified proceed reply. All previously retained source text remained present
+under the same speaker and timestamp. The comparison used all three unchanged
+live Beta specialists, fresh request IDs, no retries and no production draft writes.
+
+Limits
+This is a narrow source-preservation improvement, not a general short-reply parser,
+a solution for every duplicate, or proof of complete minutes. Eligibility is
+conservative: longer or differently phrased replies may still be missed. The
+experiment reuses existing corpus cases and is not independent human validation.
+An unrelated incomplete Copilot JSON output is separately traced in the evidence;
+this code does not claim to fix that provider failure.
+
+Evidence
+/root/trinzo-reliability-and-short-answers-20261028

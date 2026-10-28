@@ -71,7 +71,7 @@ def render_full_name_clean_transcript(rows: list[dict]) -> str:
 def prepared_unit_text(row: dict) -> str:
     # These short source fragments must retain all qualifiers. In particular,
     # repeated negation and discourse prefixes must not be speech-cleaned away.
-    if row.get("shortTemporalFragment"):
+    if row.get("shortTemporalFragment") or row.get("meaningfulShortAnswer"):
         return usefulness.compact(row.get("text", ""))
     value = clean_speech_text(row.get("text", ""))
     # The classifier sees the original sentence alone. Only its completed
@@ -160,6 +160,8 @@ def classify_source_rows(rows: list[dict], probabilities, classes, remove_thresh
             effective = "uncertain"
         if row.get("shortTemporalFragment") and effective == "remove":
             effective = "uncertain"
+        if row.get("meaningfulShortAnswer") and effective == "remove":
+            effective = "uncertain"
         if row.get("shortReply"):
             effective = "keep"
         classified_row = {
@@ -183,6 +185,7 @@ def main() -> int:
     parser.add_argument("--keep-short-replies", action="store_true")
     parser.add_argument("--preserve-short-temporal-fragments", action="store_true")
     parser.add_argument("--preserve-short-context-fragments", action="store_true")
+    parser.add_argument("--preserve-meaningful-short-answers", action="store_true")
     args = parser.parse_args()
 
     import joblib
@@ -193,7 +196,8 @@ def main() -> int:
     raw_text = usefulness.read_transcript_file(path)
     rows = usefulness.parse_transcript(raw_text, path.name,
                                       preserve_short_temporal_fragments=args.preserve_short_temporal_fragments,
-                                      preserve_short_context_fragments=args.preserve_short_context_fragments)
+                                      preserve_short_context_fragments=args.preserve_short_context_fragments,
+                                      preserve_meaningful_short_answers=args.preserve_meaningful_short_answers)
     if rows and args.keep_short_replies:
         rows = sorted(rows + short_reply_rows(raw_text, path.name), key=lambda row: (row["line"], row.get("unit", 0)))
     if not rows:
