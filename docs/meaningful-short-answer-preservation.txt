@@ -17,7 +17,9 @@ A quantity reply must immediately follow a quantity question from another speake
 be at most 12 tokens, and contain only bounded numeric/quantity wording.
 An explicit proceed reply must start with a proceed expression, be at most 35
 tokens, and follow a proposal in the last two turns from another speaker.
-Quoted text, unrelated short acknowledgements, same-speaker numerical statements
+An immediately following refusal/correction/condition of at most eight tokens is
+also retained verbatim under its own speaker; protection does not propagate
+through later turns. Quoted text, unrelated short acknowledgements, same-speaker numerical statements
 and audio/noise are not protected by these rules. The complete eligible turn is
 retained verbatim, including timing, negation, corrections and refusals. The rules
 do not resolve a quantity, owner, agreement or date. A model remove classification
@@ -25,7 +27,7 @@ is conservatively changed to uncertain for a protected turn; classifier confiden
 is kept for diagnostics. Row IDs are regenerated consistently from source order.
 
 Validation
-39 targeted tests passed: 34 Python and 5 Node tests. The nine-transcript audit
+40 targeted tests passed: 35 Python and 5 Node tests. The nine-transcript audit
 matched the current baseline packets exactly; six protected packets stayed
 identical. The three source changes restored two numeric replies and one complete
 qualified proceed reply. All previously retained source text remained present
@@ -42,3 +44,10 @@ this code does not claim to fix that provider failure.
 
 Evidence
 /root/trinzo-reliability-and-short-answers-20261028
+
+Post-run control hardening
+The immediate-following qualification guard was added after the generation run.
+The tested original code is archived in generation-tested-code and commit 3341893.
+All nine baseline/protected packets are compared again after the guard change.
+Unchanged packet equality lets the saved generation outputs assess the same
+inputs; it is not represented as another fresh set of Microsoft calls.

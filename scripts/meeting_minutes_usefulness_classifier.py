@@ -149,6 +149,10 @@ _EXPLICIT_PROCEED = re.compile(
     r"(?:do (?:that|it)|go ahead|please proceed|let['’]s do (?:that|it))\b", re.I,
 )
 _PROPOSAL = re.compile(r"\b(?:I|we) (?:can|could|will)|\b(?:propos\w*|suggest\w*)\b|\blet['’]s\b", re.I)
+_ANSWER_QUALIFICATION = re.compile(
+    r"^(?:(?:actually|sorry)[,.]?\s+)?"
+    r"(?:no\b|not\b|do not\b|don't\b|don’t\b|only\b|if\b|unless\b|provided\b|cancel\b)", re.I,
+)
 _NUMBER_WORDS = set("""
     zero one two three four five six seven eight nine ten eleven twelve thirteen
     fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty
@@ -174,6 +178,10 @@ def meaningful_short_answer(turn: dict, previous: list[dict]) -> str:
     tokens = re.findall(r"[A-Za-z']+|\d+(?:[.,]\d+)*", body.lower())
     if not tokens or short_context_noise(body):
         return ""
+    if (len(tokens) <= 8 and previous
+            and previous[-1].get("protectedAnswer") in {"quantity_reply", "explicit_proceed_reply"}
+            and _ANSWER_QUALIFICATION.match(body)):
+        return "answer_qualification"
     if len(tokens) <= 12 and previous:
         before = previous[-1]
         if before["speaker"] != turn["speaker"] and _QUANTITY_QUESTION.search(before["body"][-300:]):
@@ -201,6 +209,7 @@ def parse_transcript(text: str, source: str = "", *, preserve_short_temporal_fra
             return
         reason = meaningful_short_answer(turn, previous) if preserve_meaningful_short_answers else ""
         if reason:
+            turn["protectedAnswer"] = reason
             units.append({"source": turn["source"], "line": turn["line"], "unit": 0,
                           "speaker": turn["speaker"], "timestamp": turn["timestamp"],
                           "text": compact(turn["body"]), "meaningfulShortAnswer": reason})

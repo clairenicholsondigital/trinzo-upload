@@ -81,6 +81,24 @@ class MeaningfulShortAnswerTests(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.assertFalse(any(r.get('meaningfulShortAnswer') for r in actual))
 
+    def test_immediate_following_refusal_is_not_lost_or_reattributed(self):
+        for reply, before in [
+            ('No. Do not proceed.', 'Alex Bell: I could automate the searches.\nSam Lee: Okay, do that.'),
+            ('Actually, no. Thirty.', 'Alex Bell: How many units?\nSam Lee: Twenty four.'),
+            ('Only if approved.', 'Alex Bell: I could automate the searches.\nSam Lee: Go ahead.'),
+        ]:
+            with self.subTest(reply=reply):
+                _, kept = self.prepare(before + '\nJordan Reed: ' + reply)
+                qualified = [r for r in kept if r.get('meaningfulShortAnswer') == 'answer_qualification']
+                self.assertEqual(len(qualified), 1)
+                self.assertEqual(qualified[0]['speaker'], 'Jordan Reed')
+                self.assertEqual(qualified[0]['text'], reply)
+                self.assertEqual(staged.prepared_unit_text(qualified[0]), reply)
+        # Protection does not propagate through arbitrary later turns.
+        rows, _ = self.prepare('Alex Bell: How many units?\nSam Lee: Twenty four.\n'
+                               'Jordan Reed: No.\nTaylor Green: No.')
+        self.assertEqual(sum(r.get('meaningfulShortAnswer') == 'answer_qualification' for r in rows), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
