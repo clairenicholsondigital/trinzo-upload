@@ -367,6 +367,7 @@ const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProj
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
+const parallelMinutes = require('../utils/meetingMinutesParallel');
 const router = express.Router();
 
 // Screen order: 0 details, 1 focus, 2 discussion, 3 actions, 4 summary, 5 review.
@@ -11727,6 +11728,7 @@ async function persistUntouchedSpeculation(draftId, userId, stage, result, finge
 }
 
 function startStageSpeculation(draft = {}, userId = '', options = {}) {
+  if (parallelMinutes.isParallel(draft)) return null;
   if (!meetingMinutesAgentSpeculativePipelineEnabled() || !meetingMinutesAgentHybridEnabled()) return null;
   const draftId = String(draft.draftId || '');
   if (!draftId || !String(draft.preparedTranscript || '').trim()) return null;
@@ -11814,7 +11816,7 @@ function scheduleStageSpeculation(draftId, userId, options = {}) {
     try {
       const fresh = await getMeetingMinutesAgentDraft(key, userId, { includeTranscript: true });
       if (!fresh) return;
-      startStageSpeculation(fresh, userId);
+      if (!parallelMinutes.isParallel(fresh)) startStageSpeculation(fresh, userId);
     } catch (error) {
       console.warn(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: key, ok: false, message: meetingMinutesAgentText(error.message, 300) }));
     }
@@ -11860,6 +11862,7 @@ function normaliseMeetingAgentQualityState(qualityState = {}) {
 }
 
 function meetingAgentDraftPayload(draft = {}) {
+  if (parallelMinutes.isParallel(draft)) return parallelMinutes.payload(draft);
   draft = meetingAgentWithLegacyDateReview(normaliseMeetingAgentMinuteNumbers(draft));
   const payloadFlags = reconcileMeetingAgentOrphanFlags(
     filingReviewFlags(draft).filter(isUsefulMeetingAgentReviewFlag),
@@ -11951,6 +11954,7 @@ function removeGeneratedActionCategoryDiscussion(discussion = []) {
 // All output formats start from the same publication content. This is the
 // existing display policy; new generated-text cleanup happens before storage.
 function meetingAgentPublicationContent(draft = {}) {
+  if (parallelMinutes.isParallel(draft)) return parallelMinutes.publication(draft);
   draft = normaliseMeetingAgentMinuteNumbers(draft);
   draft = { ...draft, discussion: removeWithheldGeneratedDiscussion(
     draft.discussion, draft.qualityState?.discussion?.fidelityWithheldRows
@@ -12014,9 +12018,11 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     action: action?.action || '',
     deadline: meetingAgentTimingLabel(action?.timing)
   }));
-  const publication = normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
+  const publication = parallelMinutes.isParallel(draft)
+    ? { executiveSummary, meetingObjectives, discussion, actions }
+    : normaliseDatePhrasesDeep({ executiveSummary, meetingObjectives, discussion, actions });
   const minutes = { details, ...publication, preserveSummaryParagraphs: true };
-  if (!includeEvidence) return normaliseMeetingAgentKnownTermsDeep(minutes);
+  if (!includeEvidence) return parallelMinutes.isParallel(draft) ? minutes : normaliseMeetingAgentKnownTermsDeep(minutes);
   const unassignedDetails = orderedFilingSupportingDetails(optionalReview.active(draft.unassignedSupportingDetails || [], draft), draft.sourceUnits || []);
   minutes.supportingDetails = [
     ...publicationDiscussion.flatMap((topic) =>
@@ -12025,6 +12031,15 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
     ...unassignedDetails.map(detail => ({ topic: 'Needs filing', text: detail.text }))
   ].filter((detail) => detail.text);
   const evidenceIds = new Set();
+  if (parallelMinutes.isParallel(draft)) {
+    for (const id of draft.executiveSummaryEvidenceIds || []) evidenceIds.add(id);
+    for (const item of [...(draft.meetingObjectives || []),...(draft.parallelActionProposals || []),...(content.reviewFlags || [])])
+      for (const id of item.evidenceIds || []) evidenceIds.add(id);
+    minutes.supportingDetails.push(...(draft.parallelActionProposals || []).map(item=>({
+      topic:'Suggested follow-up ('+item.status+')',
+      text:item.action+' — Owners: '+((item.owners || []).join(', ') || 'Not stated')+'; '+meetingAgentTimingLabel(item.timing)+'. '+item.reason
+    })));
+  }
   for (const topic of publicationDiscussion) {
     for (const record of [...(topic?.points || []), ...(topic?.decisions || []), ...(topic?.openQuestions || [])]) {
       for (const id of record?.evidenceIds || []) evidenceIds.add(id);
@@ -12036,11 +12051,12 @@ function meetingAgentDraftForPdf(draft = {}, includeEvidence = false) {
   }
   for (const detail of unassignedDetails) for (const id of detail.evidenceIds) evidenceIds.add(id);
   minutes.evidenceAppendix = normaliseSourceUnits(draft.sourceUnits).filter((unit) => evidenceIds.has(unit.id));
-  minutes.reviewFlags = content.reviewFlags;
-  return normaliseMeetingAgentKnownTermsDeep(minutes);
+  minutes.reviewFlags = parallelMinutes.isParallel(draft) ? content.reviewFlags.map(flag=>({...flag,message:flag.message+(flag.correctionNote?' Reviewer note: '+flag.correctionNote:'')})) : content.reviewFlags;
+  return parallelMinutes.isParallel(draft) ? minutes : normaliseMeetingAgentKnownTermsDeep(minutes);
 }
 
 function publicMeetingAgentDraft(draft = {}, options = {}) {
+  if (parallelMinutes.isParallel(draft)) return parallelMinutes.publicDraft(draft, options);
   draft = meetingAgentWithLegacyDateReview(draft);
   const publication = meetingAgentPublicationContent(draft);
   const { rawTranscript: _rawTranscript, preparedTranscript: _preparedTranscript, salientDetails: _salientDetails, candidateLedger: _candidateLedger, passProvenance: _passProvenance, passCache: _passCache, qualityState: _qualityState, changeHistory, redoHistory, ...publicFields } = draft;
@@ -12365,7 +12381,7 @@ const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
   // Undoing a change has to restore what it did to the reviewer's own state
   // too: which sections they included, what they checked off, what they
   // rejected. Without these, undo puts the text back and loses the rest.
-  'includeSections', 'keptActionIds', 'keptActionOccurrenceIds', 'removedActions'
+  'includeSections', 'keptActionIds', 'keptActionOccurrenceIds', 'removedActions', 'parallelActionProposals'
 ];
 
 function meetingAgentReviewSnapshot(draft = {}) {
@@ -12448,7 +12464,7 @@ async function loadOwnedMeetingAgentDraft(req, options = {}) {
 }
 
 async function saveMeetingAgentDraft(draft, req, changes = {}) {
-  const persistedChanges = normaliseMeetingAgentDraftChanges(changes);
+  const persistedChanges = parallelMinutes.isParallel(draft) ? changes : normaliseMeetingAgentDraftChanges(changes);
   const merged = { ...draft, ...persistedChanges };
   // A transaction that removes one ambiguous occurrence must not turn its old
   // shared checked token into approval of the surviving sibling.
@@ -16203,6 +16219,7 @@ async function finishMeetingAgentGeneratedStage(result, draft, stage, options = 
 }
 
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
+  if (parallelMinutes.isParallel(draft)) throw Object.assign(new Error('Use the parallel minutes generator for this draft.'), {statusCode:422});
   return actionDiagnostics.generate(draft, stage, options, async () => {
     const result = await finishMeetingAgentGeneratedStage(await generateHybridMeetingAgentStageRaw(draft, stage, options), draft, stage, options);
     actionDiagnostics.checkpoint('final_generation_register', result?.changes?.actions || []);
@@ -18585,7 +18602,15 @@ function sendMeetingAgentFailure(res, error) {
 // start the first minutes stage on the server. This deliberately does not
 // depend on a browser request remaining open; a closed tab can only stop
 // polling, not the queued work itself.
+const parallelMinutesCopies = new Map();
+const parallelMinutesRunner = parallelMinutes.createRunner({
+  getDraft: getMeetingMinutesAgentDraft,
+  saveDraft: (draft, userId, changes) => saveMeetingAgentDraft(draft, {authUser:{userId}}, changes),
+  bootId: MEETING_AGENT_BOOT_ID
+});
+
 async function startInitialMeetingAgentProcessing(draft, req) {
+  if (parallelMinutes.isParallel(draft)) return parallelMinutesRunner.start(draft, req.authUser?.userId);
   const stage = 'discussion';
   const generation = {
     stage,
@@ -18636,6 +18661,7 @@ router.post('/meeting-minutes-agent/check-duplicate', requireAuth, async (req, r
 router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async (req, res) => {
   const routeStartedAt = Date.now();
   try {
+    const generationProvider = parallelMinutes.chooseProvider(req);
     const readStartedAt = Date.now();
     const transcript = await readTestTranscript(req);
     const transcriptReadMs = Date.now() - readStartedAt;
@@ -18689,6 +18715,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       fileName: transcript.fileName || 'Meeting transcript.docx',
       rawTranscript: transcript.text,
       payload: meetingAgentDraftPayload({
+        ...(generationProvider === parallelMinutes.PROVIDER ? { generationProvider } : {}),
         transcriptSha256: crypto.createHash('sha256').update(transcript.text).digest('hex'),
         uploadSizeBytes: Number(req.file?.size || 0),
         sourceUnits,
@@ -18719,7 +18746,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
       event: 'meeting_agent_preparation', journeyId: created.draftId || '', ok: true,
       ...preparationPerformance, persistenceMs, processingStartMs, totalElapsedMs
     }));
-    if (meetingMinutesAgentHybridEnabled()) {
+    if (!parallelMinutes.isParallel(created) && meetingMinutesAgentHybridEnabled()) {
       // The cache owns no user-visible state and the draft remains authoritative.
       // Starting here hides most of the staged candidate latency behind the
       // reviewer's details/discussion work.
@@ -18734,7 +18761,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
         }));
       }
     }
-    if (meetingMinutesAgentHybridEnabled() && meetingMinutesAgentSpeculativePipelineEnabled()) {
+    if (!parallelMinutes.isParallel(created) && meetingMinutesAgentHybridEnabled() && meetingMinutesAgentSpeculativePipelineEnabled()) {
       scheduleStageSpeculation(created.draftId, req.authUser?.userId, { delayMs: 0 });
     }
     return res.json({
@@ -18800,6 +18827,45 @@ router.get('/meeting-minutes-agent/insights', requireAuth, async (req, res) => {
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
   }
+});
+
+router.post('/meeting-minutes-agent/drafts/:draftId/parallel-proposals/:proposalId', requireAuth, async (req,res) => {
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    if (!parallelMinutes.isParallel(draft)) return res.status(404).json({ok:false,error:'Suggestion not found.'});
+    if (Number(req.body?.revision)!==draft.revision) return res.status(409).json({ok:false,error:'Reload the saved draft before deciding.'});
+    const proposal = (draft.parallelActionProposals || []).find(a=>a.id===req.params.proposalId);
+    if (!proposal || proposal.status!=='open') return res.status(409).json({ok:false,error:'This suggestion has already been reviewed.'});
+    if (!['accept','dismiss'].includes(req.body?.decision)) return res.status(400).json({ok:false,error:'Choose Add action or Dismiss.'});
+    const accepted = req.body.decision==='accept';
+    const id = 'reviewed-'+proposal.id;
+    const action = {...proposal,id,reviewerAuthored:true};
+    delete action.reason; delete action.status;
+    const changes = {
+      parallelActionProposals:draft.parallelActionProposals.map(a=>a.id===proposal.id?{...a,status:accepted?'accepted':'dismissed'}:a),
+      actions:accepted?[...(draft.actions || []),action]:draft.actions,
+      changeHistory:[...(draft.changeHistory || []),meetingAgentReviewHistoryEntry(draft,accepted?'Add suggested action':'Dismiss suggested action')].slice(-30),
+      redoHistory:[]
+    };
+    // Acceptance records a reviewer choice; it does not claim source certainty.
+    if (accepted) changes.reviewFlags = [...(draft.reviewFlags || []),{
+      id:'review-'+id,kind:'possible_missed_follow_up',status:'open',stage:'actions',
+      message:'This suggested action was added by a reviewer. '+proposal.reason,evidenceIds:proposal.evidenceIds,note:''
+    }];
+    const saved = await saveMeetingAgentDraft(draft,req,changes);
+    return res.json({ok:true,draft:publicMeetingAgentDraft(saved)});
+  } catch (error) { return sendMeetingAgentFailure(res,error); }
+});
+
+router.use('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req,res,next) => {
+  if (!((req.method === 'POST' && ['/audit-actions','/proposal'].includes(req.path))
+    || (req.method === 'PATCH' && req.path.startsWith('/source/')))) return next();
+  try {
+    const draft = await loadOwnedMeetingAgentDraft(req);
+    if (parallelMinutes.isParallel(draft)) return res.status(422).json({ok:false,
+      error:req.path.startsWith('/source/') ? 'Upload the revised transcript to generate updated minutes.' : 'Edit these minutes directly, or generate another complete draft.'});
+    return next();
+  } catch(error) { return sendMeetingAgentFailure(res,error); }
 });
 
 router.get('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
@@ -18947,6 +19013,7 @@ function meetingAgentTimingAnchor(draft = {}) {
 // blanks an impossible date. Surface it without rewriting the stored draft
 // on a read; its original value is retained in private preparation context.
 function meetingAgentWithLegacyDateReview(draft = {}) {
+  if (parallelMinutes.isParallel(draft)) return draft;
   const value = String(draft.details?.meetingDate || '').trim();
   if (!value || isValidCalendarDate(value) || draft.qualityState?.preparation?.dateContext?.invalid?.length) return draft;
   const dateContext = { meetingDate: '', source: 'legacy_metadata', candidates: [{ source: 'legacy_metadata', date: value }],
@@ -18981,6 +19048,13 @@ router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, 
       throw error;
     }
     assertMeetingAgentDateInput(req.body?.details || {}, req.body?.actions || [], draft);
+    if (parallelMinutes.isParallel(draft)) {
+      const changes = parallelMinutes.reviewChanges(draft, req.body || {}, {
+        sanitiseDetails: sanitiseMeetingAgentDetails, historyEntry: meetingAgentReviewHistoryEntry
+      });
+      const saved = await saveMeetingAgentDraft(draft, req, changes);
+      return res.json({ok:true,draft:publicMeetingAgentDraft(saved)});
+    }
     const details = sanitiseMeetingAgentDetails(req.body?.details || draft.details);
     const dateChanged = details.meetingDate !== sanitiseMeetingAgentDetails(draft.details).meetingDate;
     const dateConfirmedByReviewer = (req.body?.reviewFlags || []).some(flag =>
@@ -19191,6 +19265,7 @@ router.patch('/meeting-minutes-agent/drafts/:draftId/source/:unitId', requireAut
 // background worker runs the identical path. The steer is always read from the
 // draft, never the request body, for the same reason.
 async function generateMeetingAgentStage(draft, stage, instruction) {
+  if (parallelMinutes.isParallel(draft)) throw Object.assign(new Error('Use Generate another draft for these minutes; direct AI edits are unavailable.'), {statusCode:422});
   const result = await generateMeetingAgentStageRaw(draft, stage, instruction);
   // Explicit edit requests remain literal proposals. Automatic consolidation
   // belongs to fresh generation, not acceptance or editing of reviewer work.
@@ -20525,6 +20600,35 @@ router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requir
       error.statusCode = 409;
       error.currentDraft = draft;
       throw error;
+    }
+    if (parallelMinutes.isParallel(draft)) {
+      if (parallelMinutesRunner.active.has(String(draft.draftId))) {
+        return res.status(202).json({ok:true,generation:publicMeetingAgentDraft(draft).generation,draft:publicMeetingAgentDraft(draft)});
+      }
+      const saved = await meetingAgentSerialDraftWrite('parallel-start:'+draft.draftId, async () => {
+        const copyId = parallelMinutesCopies.get(String(draft.draftId));
+        if (copyId && parallelMinutesRunner.active.has(String(copyId))) {
+          return getMeetingMinutesAgentDraft(copyId,req.authUser.userId,{includeTranscript:true});
+        }
+        parallelMinutes.configuration();
+        let target = draft;
+        if (draft.qualityState?.parallel?.completedAt) {
+          const original = await loadOwnedMeetingAgentDraft(req, {includeTranscript:true});
+          if (original.revision !== draft.revision) throw Object.assign(new Error('Reload the saved draft before generating another version.'),{statusCode:409});
+          target = await createMeetingMinutesAgentDraft({
+            userId:req.authUser.userId,title:draft.details?.meetingTitle || draft.title,fileName:draft.fileName,
+            rawTranscript:original.rawTranscript,payload:parallelMinutes.initialPayload(draft)
+          });
+          if (draft.linkedProjectId) await linkMeetingMinutesAgentDraftToProject(target.draftId,req.authUser.userId,draft.linkedProjectId);
+        }
+        const started = await parallelMinutesRunner.start(target, req.authUser.userId);
+        if (target.draftId !== draft.draftId) {
+          parallelMinutesCopies.set(String(draft.draftId),target.draftId);
+          parallelMinutesRunner.active.get(String(target.draftId))?.finally(()=>parallelMinutesCopies.delete(String(draft.draftId)));
+        }
+        return started;
+      });
+      return res.status(202).json({ok:true,generation:publicMeetingAgentDraft(saved).generation,draft:publicMeetingAgentDraft(saved)});
     }
     const existing = meetingAgentGenerationState(draft.generation);
     if (existing && existing.status === 'running') {

@@ -688,6 +688,7 @@
   }
 
   function generationPhaseStatus(generation, phase) {
+    if (isParallelDraft() && phase.key === 'parallel') return 'active';
     var pass = String(generation.pass || '');
     var completed = generation.completedPasses || [];
     var hasCompleted = function (prefix) { return completed.some(function (item) { return String(item).indexOf(prefix) === 0; }); };
@@ -708,6 +709,7 @@
   }
 
   function generationPhases(generation) {
+    if (isParallelDraft()) return [{key:'parallel',label:'Preparing summary, discussion and actions together'}];
     if (generation.stage === 'actions') return [
       {key:'primary',label:'Find possible actions'},
       {key:'recovery',label:'Checking for missing details'},
@@ -759,7 +761,7 @@
     var stage = generation ? generation.stage : notice.stage;
     var preview = generation && Array.isArray(generation.previewActions) ? generation.previewActions : [];
     document.getElementById('generationProgressTitle').textContent = generation
-      ? (stage === 'actions' ? 'Preparing actions' : stage === 'discussion' ? 'Preparing discussion' : 'Preparing summary…')
+      ? (isParallelDraft() ? 'Preparing meeting minutes' : stage === 'actions' ? 'Preparing actions' : stage === 'discussion' ? 'Preparing discussion' : 'Preparing summary…')
       : (stage === 'actions' ? 'Actions are ready' : 'Generation complete');
     document.getElementById('generationProgressMessage').textContent = generation
       ? stage === 'summary' ? '' : friendlyGenerationMessage(generation.message, stage)
@@ -768,7 +770,7 @@
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
-      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + ' · ' + typicalDurationText(stage, elapsed)
+      ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + (isParallelDraft() ? '' : ' · ' + typicalDurationText(stage, elapsed))
       : 'Complete';
     document.getElementById('generationPhases').innerHTML = generationPhases(generation || {stage:stage}).map(function (phase) {
       var phaseState = generation ? generationPhaseStatus(generation, phase) : 'done';
@@ -816,7 +818,7 @@
   }
 
   function markDownstreamStale() {
-    if (!state.draft) return;
+    if (!state.draft || isParallelDraft()) return;
     var stale = new Set(state.draft.staleStages || []);
     if ((state.draft.actions || []).length) stale.add('actions');
     if (state.draft.executiveSummary) stale.add('summary');
@@ -941,7 +943,7 @@
     if (!state.draft || state.currentStep !== STAGE_STEP.summary || rendering) return;
     var draftId = String(state.draft.draftId || '');
     if (generationRunning() || autoSummaryStartedForDraft === draftId) return;
-    if (String(state.draft.executiveSummary || '').trim()) return;
+    if (String(state.draft.executiveSummary || '').trim() || (isParallelDraft() && stageGeneratedAt(state.draft, 'summary'))) return;
     autoSummaryStartedForDraft = draftId;
     startBackgroundStage('summary');
   }
@@ -1032,6 +1034,8 @@
   function renderPageHeading() {
     var title = document.getElementById('pageTitle');
     if (!title) return;
+    var method = document.getElementById('generationMethod');
+    if (method) method.hidden = !(isParallelDraft() || (!state.draft && new URLSearchParams(window.location.search).get('engine') === 'parallel'));
     var details = state.draft && state.draft.details;
     title.textContent = state.draft && details && String(details.meetingTitle || '').trim()
       ? details.meetingTitle.trim() : 'Meeting Minutes Agent';
@@ -1074,6 +1078,7 @@
     if (!file) return;
     if (!/\.docx$/i.test(file.name)) return setStatus('Choose a Word .docx transcript.', true);
     var form = new FormData(); form.append('file', file);
+    if (new URLSearchParams(window.location.search).get('engine') === 'parallel') form.append('generationProvider', 'parallel-specialists-v1');
     // Do not call this an upload until the server has accepted and persisted
     // it. The confirmation is the durable acknowledgement, not a response to
     // merely selecting a file in the browser.
@@ -1740,6 +1745,7 @@
     if (state.draft && state.draft.canRestoreCombinedActions) {
       document.getElementById('actionsBody').insertAdjacentHTML('beforeend', '<tr><td colspan="3"><button class="secondary quiet compact" data-restore-combined-actions type="button">' + (state.draft.canRestorePhaseActions ? 'Restore original action wording' : 'Restore separate actions') + '</button></td></tr>');
     }
+    renderParallelProposals();
     autoGrow(document.getElementById('actionsBody'));
     restoreDisclosures(document.getElementById('actionsBody'));
     renderActionReview();
@@ -2456,6 +2462,61 @@
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
   }
 
+  function renderParallelControls() {
+    var parallel = isParallelDraft(), running = parallel && generationRunning();
+    var summaryEvidence = document.getElementById('parallelSummaryEvidence');
+    if (parallel && !summaryEvidence) {
+      summaryEvidence = document.createElement('div'); summaryEvidence.id = 'parallelSummaryEvidence';
+      document.getElementById('executiveSummary').insertAdjacentElement('afterend',summaryEvidence);
+    }
+    if (summaryEvidence) {
+      summaryEvidence.hidden = !parallel;
+      summaryEvidence.innerHTML = parallel ? evidenceBlock(Array.from(new Set((state.draft.executiveSummaryEvidenceIds || []).concat(
+        (state.draft.meetingObjectives || []).flatMap(function(o){return o.evidenceIds || [];})
+      )))) : '';
+    }
+    ['discussionInstruction','actionsInstruction'].forEach(function(id) {
+      var element = document.getElementById(id);
+      if (element && element.closest('details')) element.closest('details').hidden = parallel;
+    });
+    ['regenerateDiscussion','regenerateActions','generateSummary'].forEach(function(id) {
+      var button = document.getElementById(id);
+      if (parallel && button) { button.textContent = 'Generate another draft'; button.title = 'Create a new saved draft; keep this version and its edits.'; }
+    });
+    document.querySelectorAll('#detailsEditor input,#detailsEditor textarea,#detailsEditor select').forEach(function(element) {
+      if (running && !element.disabled) { element.dataset.parallelLocked = 'true'; element.disabled = true; }
+      else if (!running && element.dataset.parallelLocked) { delete element.dataset.parallelLocked; element.disabled = false; }
+    });
+  }
+
+  function renderParallelProposals() {
+    if (!isParallelDraft()) return;
+    var proposals = (state.draft.parallelActionProposals || []).filter(function(a) { return a.status === 'open'; });
+    if (!proposals.length) return;
+    var html = '<tr class="empty-actions-row"><td colspan="3"><strong>Possible follow-ups — not yet included as actions</strong></td></tr>';
+    html += proposals.map(function(a) {
+      return '<tr class="parallel-proposal-row"><td data-label="Action">' + escapeHtml(a.action) + '<p class="muted">' + escapeHtml(a.reason) + '</p>'
+        + evidenceBlock(a.evidenceIds)
+        + '<button type="button" class="secondary" data-parallel-proposal="' + escapeHtml(a.id) + '" data-decision="accept">Add action</button> '
+        + '<button type="button" class="quiet" data-parallel-proposal="' + escapeHtml(a.id) + '" data-decision="dismiss">Dismiss</button></td>'
+        + '<td data-label="Owners">' + escapeHtml((a.owners || []).join(', ') || 'Not stated') + '</td><td data-label="Timing">' + escapeHtml(timingDisplayText(a.timing)) + '</td></tr>';
+    }).join('');
+    document.getElementById('actionsBody').insertAdjacentHTML('beforeend', html);
+  }
+
+  document.addEventListener('click', async function(event) {
+    var button = event.target.closest('[data-parallel-proposal]');
+    if (!button || !isParallelDraft()) return;
+    try {
+      await saveDraftNow();
+      var payload = await jsonRequest(draftUrl('/parallel-proposals/' + encodeURIComponent(button.dataset.parallelProposal)), {
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.draft.revision,decision:button.dataset.decision})
+      });
+      adoptDraft(payload.draft);
+      setStatus(button.dataset.decision === 'accept' ? 'Suggested action added for review.' : 'Suggestion dismissed.',false,'actions');
+    } catch(error) { setStatus(error.message,true,'actions'); }
+  });
+
   function renderFinalSaveState() {
     var complete = Boolean(state.draft && state.draft.status === 'complete');
     var button = document.getElementById('saveMinutes');
@@ -2478,6 +2539,7 @@
     document.getElementById('saveStrip').hidden = !state.draft;
     if (state.draft) {
       renderDetails(); renderSteer(); renderDiscussion(); renderActions(); renderSummary(); renderFlags();
+      renderParallelControls();
       renderActionsPrewarm();
       var activeGenerationStage = state.draft.generation && state.draft.generation.status === 'running'
         ? state.draft.generation.stage : '';
@@ -2489,7 +2551,7 @@
         addDiscussion: activeGenerationStage === 'discussion',
         applyDiscussionEdit: Boolean(activeGenerationStage),
         generateSummary: Boolean(activeGenerationStage),
-        addAction: activeGenerationStage === 'actions',
+        addAction: activeGenerationStage === 'actions' || (isParallelDraft() && Boolean(activeGenerationStage)),
         regenerateDiscussion: Boolean(activeGenerationStage),
         regenerateActions: Boolean(activeGenerationStage),
         applyActionsEdit: Boolean(activeGenerationStage),
@@ -2903,8 +2965,11 @@
     return '';
   }
 
+  function isParallelDraft(draft) { return Boolean((draft || state.draft) && (draft || state.draft).generationProvider === 'parallel-specialists-v1'); }
+
   function stageHasContent(stage) {
     if (!state.draft) return false;
+    if (isParallelDraft() && stageGeneratedAt(state.draft, stage)) return true;
     if (stage === 'discussion') return (state.draft.discussion || []).length > 0;
     // A completed Actions review with zero confirmed rows is still content:
     // it unlocks the screen, avoids re-running extraction, and lets the empty
@@ -2944,6 +3009,7 @@
         confirm: 'Regenerate summary'
       }
     }[stage];
+    if (isParallelDraft()) regenerationCopy = {title:'Generate another draft?', message:'This creates a complete new draft from the transcript and current meeting details. This saved draft and all your edits remain in the Library.', confirm:'Generate another draft'};
     document.getElementById('regenerationTitle').textContent = regenerationCopy.title;
     document.getElementById('regenerationMessage').textContent = regenerationCopy.message;
     document.getElementById('confirmRegeneration').textContent = regenerationCopy.confirm;
@@ -3029,13 +3095,14 @@
           // replace edits they made on another screen.
           var localDraft = state.draft;
           var completedDraft = payload.draft;
+          var parallelResult = isParallelDraft(completedDraft);
           completedDraft.details = localDraft.details;
           completedDraft.steer = localDraft.steer;
-          if (activeStage !== 'discussion' || (pendingGenerationEdits && (localDraft.discussion || []).length)) {
+          if (!parallelResult && (activeStage !== 'discussion' || (pendingGenerationEdits && (localDraft.discussion || []).length))) {
             completedDraft.discussion = localDraft.discussion;
           }
-          if (activeStage !== 'actions') completedDraft.actions = localDraft.actions;
-          if (activeStage !== 'summary') {
+          if (!parallelResult && activeStage !== 'actions') completedDraft.actions = localDraft.actions;
+          if (!parallelResult && activeStage !== 'summary') {
             completedDraft.executiveSummary = localDraft.executiveSummary;
             completedDraft.meetingObjectives = localDraft.meetingObjectives;
           }
