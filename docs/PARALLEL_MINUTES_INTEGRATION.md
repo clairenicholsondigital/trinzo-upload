@@ -72,7 +72,7 @@ Cases: T733 technical-file meeting, DITA internal meeting, and the deadline-depe
 
 `PARALLEL_ACCEPTANCE_REPLAY_DIR` can reuse an already recorded successful generation for UI/persistence debugging; each report identifies this explicitly. Replayed results are not fresh Microsoft generations or fresh quality evidence.
 
-The 28 October technical acceptance records are private on the VPS. The first T733 generation succeeded before a test-harness asset-serving failure; its recorded output was reused for subsequent UI checks. DITA internal and the deadline control were freshly generated in the final acceptance run. No claim of an independent colleague trial is made: the user chose to review first.
+For a temporary, loopback-only review session, set \`PARALLEL_ACCEPTANCE_REVIEW=1\` and provide a replay directory containing the recorded originals. The runner restores those outputs without test edits, keeps its isolated database/server alive for up to twelve hours, and writes a private \`review-control.json\` containing session access. It uses no production records, creates no persistent service and changes no live default. Optional \`PARALLEL_ACCEPTANCE_REVIEW_NOTES\` supplies explicit human review annotations; these are not production extraction rules. Stop the process to close its connections and delete its own disposable database.\n\nThe 28 October technical acceptance records are private on the VPS. The first T733 generation succeeded before a test-harness asset-serving failure; its recorded output was reused for subsequent UI checks. DITA internal and the deadline control were freshly generated in the final acceptance run. No claim of an independent colleague trial is made: the user chose to review first.
 
 ## Release sequence
 

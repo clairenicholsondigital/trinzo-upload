@@ -26,7 +26,7 @@ async function main(){
  await admin.query('CREATE DATABASE "'+database+'"');created=true;
  const isolated=new URL(original);isolated.pathname='/'+database;isolated.searchParams.delete('options');
  process.env.DATABASE_URL=isolated.toString();process.env.PGIDLE_TIMEOUT_MS='100';
- process.env.MEETING_MINUTES_AGENT_GENERATOR='legacy';
+ process.env.MEETING_MINUTES_AGENT_GENERATOR=process.env.PARALLEL_ACCEPTANCE_REVIEW==='1'?'parallel':'legacy';
  process.env.MEETING_MINUTES_PARALLEL_CONFIG=process.env.MEETING_MINUTES_PARALLEL_CONFIG || '/root/.openclaw/secrets/trinzo-parallel-specialists.json';
  process.env.PYTHON_BIN=process.env.PYTHON_BIN || '/srv/m365-agent-test/.venv/bin/python';
  process.env.STAGED_SIMPLIFIED_MINILM_MODEL='/srv/m365-agent-test/artifacts/meeting-minutes-usefulness-v3/classifier.joblib';
@@ -35,12 +35,17 @@ async function main(){
   await appPool.query(fs.readFileSync(path.join(root,'sql/migrations',file),'utf8'));
  await appPool.query("INSERT INTO auth_users(id,email,full_name,password_hash,password_salt,role) VALUES (1,'preview@fixture.invalid','Preview reviewer','unused','unused','admin'),(2,'other@fixture.invalid','Other reviewer','unused','unused','admin')");
  const db=require('../utils/db'),token=crypto.randomUUID();
- await db.createAuthSession({tokenHash:crypto.createHash('sha256').update(token).digest('hex'),userId:1,expiresAt:new Date(Date.now()+3600000)});
+ await db.createAuthSession({tokenHash:crypto.createHash('sha256').update(token).digest('hex'),userId:1,expiresAt:new Date(Date.now()+(process.env.PARALLEL_ACCEPTANCE_REVIEW==='1'?12:1)*3600000)});
  const express=require('express'),app=express();app.use(express.json({limit:'10mb'}));
  app.get('/static/meeting-minutes-timing.js',(_,res)=>res.type('application/javascript').sendFile(path.join(root,'utils/meetingMinutesTiming.js'),{dotfiles:'allow'}));
  app.use('/static',express.static(path.join(root,'public'),{dotfiles:'allow'}));
  app.use(express.static(path.join(root,'public'),{dotfiles:'allow'}));
  app.get('/meeting-minutes-agent',require('../routes/auth').requireAuth,(_,res)=>res.sendFile(path.join(root,'views/meeting-minutes-agent.html'),{dotfiles:'allow'}));
+ app.get('/jobs',require('../routes/auth').requireAuth,(_,res)=>res.sendFile(path.join(root,'views/meeting-minutes-jobs.html'),{dotfiles:'allow'}));
+ app.get('/settings',require('../routes/auth').requireAuth,(_,res)=>res.sendFile(path.join(root,'views/settings.html'),{dotfiles:'allow'}));
+ app.use('/api/auth',require('../routes/auth'));
+ app.use('/api/settings',require('../routes/settings'));
+ app.use('/api',require('../utils/settingsStore').refreshMiddleware);
  app.use('/api',require('../routes/api'));
  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));origin='http://127.0.0.1:'+server.address().port;
  const request=async(route,{method='GET',body,headers={}}={})=>{
@@ -127,8 +132,30 @@ async function main(){
  }
  assert.deepEqual(errors,[]);
  save('REPORT.json',{completedAt:new Date().toISOString(),databaseIsolated:true,productionDraftsWritten:0,
-  cases:artifacts,browserErrors:errors,architecture:'Exactly three concurrent Microsoft calls per draft; no repair or legacy generation',defaultProvider:'legacy'});
+  cases:artifacts,browserErrors:errors,architecture:'Exactly three concurrent Microsoft calls per draft; no repair or legacy generation',defaultProvider:process.env.MEETING_MINUTES_AGENT_GENERATOR});
  await context.close();
+ if(process.env.PARALLEL_ACCEPTANCE_REVIEW==='1'){
+  const notesFile=process.env.PARALLEL_ACCEPTANCE_REVIEW_NOTES;
+  const notes=notesFile?JSON.parse(fs.readFileSync(notesFile,'utf8')):{};
+  for(const entry of artifacts){
+   const original=JSON.parse(fs.readFileSync(path.join(output,entry.name+'-original.json'),'utf8'));
+   const current=await db.getMeetingMinutesAgentDraft(entry.draftId,1,{includeTranscript:true});
+   const payload=require('../utils/meetingMinutesParallel').payload({...original,currentStep:5,selectedStep:5,changeHistory:[],redoHistory:[]});
+   // These are explicit operator-supplied review annotations, not generation logic.
+   for(const note of notes[entry.name] || []){
+    const allowed=new Set((payload.sourceUnits || []).map(u=>u.id));
+    if((note.evidenceIds || []).some(id=>!allowed.has(id)))throw Error('Review note cites unknown evidence');
+    payload.reviewFlags.push({...note,status:'open',reviewerAuthored:true});
+    for(const a of payload.actions)if((note.actionIds || []).includes(a.id))a.reviewFlagIds=[...(a.reviewFlagIds || []),note.id];
+   }
+   const ready=await db.updateMeetingMinutesAgentDraft(entry.draftId,1,current.revision,{payload,status:'draft'});
+   entry.reviewUrl=origin+'/meeting-minutes-agent?draftId='+ready.draftId;
+  }
+  save('review-control.json',{origin,database,sessionToken:token,cases:artifacts,pid:process.pid});
+  console.log(JSON.stringify({reviewReady:true,origin,cases:artifacts.map(({name,reviewUrl})=>({name,reviewUrl})),expiresInHours:12,productionChanged:false}));
+  await browser.close();browser=null;
+  await new Promise(resolve=>{const timer=setTimeout(resolve,12*3600000);const stop=()=>{clearTimeout(timer);resolve();};process.once('SIGINT',stop);process.once('SIGTERM',stop);});
+ }
 }
 (async()=>{
  let failure;
