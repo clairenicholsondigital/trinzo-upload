@@ -60,7 +60,8 @@ function configuration() {
   try { config = JSON.parse(fs.readFileSync(filename,'utf8')); }
   catch { throw problem('The parallel minutes service configuration could not be loaded.',503); }
   for (const stage of STAGES) {
-    const expected = hash(fs.readFileSync(path.join(__dirname,'../config/meeting-minutes-parallel',stage+'.txt'),'utf8'));
+    const instructionFile = stage === 'discussion' && config[stage]?.format === 'flat-v1' ? 'discussion-flat.txt' : stage+'.txt';
+    const expected = hash(fs.readFileSync(path.join(__dirname,'../config/meeting-minutes-parallel',instructionFile),'utf8'));
     if (config[stage]?.instructionsSha256 !== expected || !config[stage]?.published)
       throw problem('The parallel minutes instruction version has not been verified.',503);
     let url; try { url = new URL(config[stage].webhookUrl); } catch {}

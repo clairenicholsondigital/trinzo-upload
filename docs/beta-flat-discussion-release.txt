@@ -1,0 +1,41 @@
+Beta discussion: flat items with operative qualifications
+
+New Beta generations can use a Microsoft discussion specialist that produces one
+list of discussion items. Each item keeps its outcome, reasoning, uncertainty
+and operative conditions together, rather than restating the same proposition
+under discussion, decisions and open questions. Decisions remain in prose.
+
+Architecture: unchanged preparation and three concurrent specialist requests.
+The application validates the flat contract and places its exact items in one
+heading-hidden storage container for existing editing, publication and Word
+export. This adapter neither rewrites nor merges generated content. Provider
+responses remain verbatim in branch diagnostics. Grouped replies and saved
+older drafts remain supported. No action or summary instructions change.
+
+Activation: discussion.format = flat-v1 in the private specialist configuration
+selects config/meeting-minutes-parallel/discussion-flat.txt for instruction-hash
+verification. Deploy compatible code first, then atomically change only the
+private discussion configuration to the verified published flat agent/flow.
+Retain the previous private configuration for rollback; it selects the original
+discussion.txt. Never commit signed webhook URLs. Configuration is read per run.
+
+Qualification (2026-10-28): 20 fresh direct discussion calls, ten matched pairs
+across six existing corpus transcripts. Four cases had two repeats per version;
+two additional cases had one repeat per version. AI source-led editor judgement
+preferred flat in eight pairs, judged two similar; repetition was cleaner in
+seven and similar in three. No confirmed new material factual contradiction was
+identified, with precision cautions and supporting omissions still recorded.
+The previous explicit-deferral regression was retained in both revised repeats
+and an additional complete three-agent run. Mean discussion call time was 12.7s
+flat versus 15.2s current; mean discussion text 545 versus 519 words. These are
+discussion-only metrics, not full-workflow time or measured human editing time.
+Two complete three-agent runs, exact publication/export preservation, and actual
+case-output desktop/mobile rendering were also checked outside production.
+
+This is a bounded improvement on familiar examples, not proof of universal
+quality. Corpus provenance was not independently verified. Role labels,
+historical assumptions and conditional audit-finding phrasing remain editorial
+precision cautions. Shared preparation losses and separate action/summary
+weaknesses are not addressed by this change. Archived evaluation remains on the
+VPS at /root/trinzo-flat-discussion-v2-20261028, including source-linked pair
+judgements, raw wire responses, exact requests and timings.

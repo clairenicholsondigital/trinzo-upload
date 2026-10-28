@@ -44,7 +44,15 @@ function validateResult(stage, result, evidence) {
     if (objectives.length > 4) throw fail('OBJECTIVES_TOO_MANY', 'The specialist returned more than four objectives.');
     objectives.forEach(x => cited(x));
   } else if (stage === 'discussion') {
-    records(result.discussion).forEach(topic => {
+    if (Object.hasOwn(result, 'items')) {
+      if (Object.keys(result).some(key => !['schemaVersion','specialist','items','reviewFlags'].includes(key)))
+        throw fail('INVALID_CONTRACT', 'The flat discussion response contains unexpected sections.');
+      records(result.items).forEach(item => {
+        cited(item);
+        if (Object.keys(item).some(key => !['id','text','evidenceIds'].includes(key)))
+          throw fail('INVALID_RECORD', 'A flat discussion item contains unexpected fields.');
+      });
+    } else records(result.discussion).forEach(topic => {
       if (!object(topic) || !string(topic.id) || !string(topic.topic) || !topic.topic.trim()) throw fail('INVALID_TOPIC', 'A discussion topic has no identity or heading.');
       if (ids.has(topic.id)) throw fail('DUPLICATE_ID', 'A discussion topic identifier is repeated.');
       ids.add(topic.id);
@@ -69,6 +77,15 @@ function validateResult(stage, result, evidence) {
     });
   }
   return result;
+}
+
+// Storage/display compatibility only: preserve the exact flat wording, order,
+// identifiers and citations. No inferred categories, grouping or additional calls.
+function discussionForMinutes(result) {
+  if (!result) return null;
+  if (!Object.hasOwn(result, 'items')) return result.discussion;
+  return result.items.length ? [{id:'flat-discussion',topic:'Discussion',hideHeading:true,
+    points:result.items,decisions:[],openQuestions:[]}] : [];
 }
 
 async function runSpecialists(packet, configuration, options = {}) {
@@ -109,11 +126,11 @@ async function runSpecialists(packet, configuration, options = {}) {
     minutes:{details:packet.meetingDetails, executiveSummary:branches.summary.result?.executiveSummary?.text ?? null,
       executiveSummaryEvidenceIds:branches.summary.result?.executiveSummary?.evidenceIds ?? null,
       meetingObjectives:branches.summary.result?.meetingObjectives ?? null,
-      discussion:branches.discussion.result?.discussion ?? null,
+      discussion:discussionForMinutes(branches.discussion.result),
       actions:branches.actions.result?.actions ?? null,
       actionProposals:branches.actions.result?.actionProposals ?? null,
       reviewFlags:STAGES.flatMap(s=>(branches[s].result?.reviewFlags||[]).map(f=>({...f,specialist:s})))},
     limitations:['Independent transcript-based summary; cross-specialist consistency has not been adjudicated.','Evidence references and response structure were validated; semantic completeness and truth require review.']};
 }
 
-module.exports = {STAGES, hash, decodeReply, validateResult, runSpecialists};
+module.exports = {STAGES, hash, decodeReply, validateResult, discussionForMinutes, runSpecialists};
