@@ -1,0 +1,36 @@
+Beta discussion instructions: attached user prompt (2026-10-29)
+
+Use the exact attached discussion prompt, published on the existing live flat
+Microsoft discussion specialist. The user authorised the live Beta switch after
+reviewing the controlled-test results. Only line endings were normalised.
+
+Instruction SHA256:
+4b1b4a871c9e8139adf45dc3e722a84d0c2c2ef4ff0a5316858054124b1d01b4
+Previous SHA256:
+159d34d11746c8e945b1b1900d3c7a2eab4cd6a8744b6a605438dfd8322c24e8
+
+Architecture, shared preparation, summary/actions instructions, flat schema,
+webhooks and aggregation are unchanged. Configuration is read per generation;
+update only discussion.instructionsSha256 alongside this instruction file.
+No service restart or additional processing stage is required. Existing saved
+minutes retain their original content. New Beta generations use this prompt.
+
+Controlled screening: 26 discussion calls, 13 matched pairs, nine known corpus
+transcripts. AI source-led judgement preferred candidate in six pairs, found
+six broadly similar and preferred previous live Beta in one. All calls passed
+contract/source-ID checks. Two isolated full three-specialist generations also
+passed exact discussion publication and Word-export preservation checks.
+
+The prompt improves useful context/qualifications in several cases but has not
+established a consistent duplication reduction. One Abbott candidate run lost
+the operative five-day site duration; Webinar closing-recap repetition remained
+in one of two candidate discussion runs. Mean discussion words 698.6 vs 616.6;
+mean direct discussion-call time 21.27s vs 19.30s. These are finite AI-reviewed,
+known-corpus discussion results, not an unseen evaluation or human editing-time
+measurement. Upstream preparation losses and action/summary issues remain.
+
+Original test evidence remains sealed at:
+/root/trinzo-discussion-user-prompt-test-20261029
+Live-switch records and rollback copies:
+/root/trinzo-beta-attached-discussion-release-20261029
+No signed webhook URLs or private environment configuration are tracked.
