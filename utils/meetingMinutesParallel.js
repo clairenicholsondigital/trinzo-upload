@@ -41,6 +41,7 @@ function publicDraft(draft, options = {}) {
   result.canRestoreCombinedActions = false; result.canRestoreCombinedDiscussion = false;
   result.filingReview = {occurrences:[]};
   if (options.summary) return {draftId:result.draftId,revision:result.revision,status:result.status,
+    generationProvider:result.generationProvider,
     title:result.details?.meetingTitle || result.title,fileName:result.fileName,currentStep:result.currentStep,
     stageLabel:result.stageLabel,generation:result.generation,
     openFlagCount:(result.reviewFlags || []).filter(f=>f.status==='open').length,
