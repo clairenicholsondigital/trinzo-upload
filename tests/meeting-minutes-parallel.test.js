@@ -48,6 +48,7 @@ test('storage and publication preserve wording, qualifications, sources and prop
  assert.equal(publicView.qualityState,undefined);assert.equal(publicView.preparedTranscript,undefined);
  assert.equal(publicView.parallelActionProposals[0].status,'open');
  assert.equal(publicView.generatedStages.actions.length>0,true);assert.equal(publicView.actions.length,1);
+ assert.equal(P.publicDraft(draft,{summary:true}).generationProvider,P.PROVIDER);
 });
 test('review edits retain qualified timing and cannot forge warning provenance or source references',()=>{
  const draft=base();draft.discussion=replies().discussion.discussion;draft.actions=replies().actions.actions;

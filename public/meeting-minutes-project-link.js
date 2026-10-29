@@ -34,15 +34,24 @@
   var link = readLink();
   if (!link) return;
 
+  function projectWorkspaceUrl(stage) {
+    var params = new URLSearchParams({ stage: stage, projectId: link.projectId });
+    params.set('engine', new URLSearchParams(window.location.search).get('engine') === 'parallel' ? 'parallel' : 'original');
+    return '/project-update-test?' + params.toString();
+  }
+
   var banner = el('section', { 'class': 'panel project-link-banner', id: 'projectLinkBanner', 'aria-label': 'Linked project' });
   var heading = el('p', {}, '');
   var strong = el('strong', {}, 'Linked to project' + (link.projectName ? ': ' + link.projectName : ''));
   heading.appendChild(strong);
   heading.appendChild(document.createTextNode('. When these minutes are finished, send them to the project as an update.'));
   var actions = el('p', {});
+  var backLink = el('a', { href: projectWorkspaceUrl('process'), 'class': 'button secondary', id: 'backToProject' }, 'Back to project');
   var createButton = el('button', { type: 'button', id: 'createProjectUpdateFromMinutes' }, 'Create project update');
   var unlinkButton = el('button', { type: 'button', 'class': 'secondary quiet', id: 'unlinkProject' }, 'Unlink project');
   var status = el('p', { 'class': 'muted', role: 'status', 'aria-live': 'polite' });
+  actions.appendChild(backLink);
+  actions.appendChild(document.createTextNode(' '));
   actions.appendChild(createButton);
   actions.appendChild(document.createTextNode(' '));
   actions.appendChild(unlinkButton);
@@ -76,6 +85,7 @@
   var submitting = false;
   function refreshButton() {
     tagDraftWithProject();
+    backLink.setAttribute('href', projectWorkspaceUrl('process'));
     createButton.disabled = submitting || !currentDraftId();
     unlinkButton.disabled = submitting;
     if (!currentDraftId() && !status.textContent) status.textContent = 'Upload a transcript first.';
@@ -83,6 +93,9 @@
   }
   refreshButton();
   var refreshTimer = setInterval(refreshButton, 2000);
+  document.addEventListener('change', function (event) {
+    if (event.target && event.target.id === 'betaFlow') refreshButton();
+  });
 
   unlinkButton.addEventListener('click', function () {
     if (submitting) return;
@@ -132,7 +145,7 @@
       status.appendChild(document.createTextNode('Project update queued. '));
       status.appendChild(el('a', { href: payload.jobUrl || ('/jobs/' + encodeURIComponent(payload.jobId)) }, 'Follow it in the Library'));
       status.appendChild(document.createTextNode(' or '));
-      status.appendChild(el('a', { href: '/project-update-test?stage=reports&projectId=' + encodeURIComponent(link.projectId) }, 'go to the project reports'));
+      status.appendChild(el('a', { href: projectWorkspaceUrl('reports') }, 'go to the project reports'));
       status.appendChild(document.createTextNode('.'));
     } catch (error) {
       status.textContent = error.message || 'Could not create the project update.';

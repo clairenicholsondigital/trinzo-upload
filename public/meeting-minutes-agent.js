@@ -4,6 +4,7 @@
   var state = { draft: null, currentStep: 0 };
   var betaFlowEnabled = false;
   var betaFlowAllowed = false;
+  var betaFlowUserId = '';
   var betaAccessReady;
   var agentRetryDelaysSeconds = [5, 15, 30];
   // 0 details, 1 (retired: focus), 2 discussion, 3 actions, 4 summary, 5 review
@@ -1047,11 +1048,20 @@
       : 'Off — uses the existing flow for your next upload.';
   }
 
+  function rememberProjectBetaChoice() {
+    if (!betaFlowAllowed || !betaFlowUserId
+      || !/^[1-9]\d*$/.test(new URLSearchParams(window.location.search).get('projectId') || '')) return;
+    try { sessionStorage.setItem('trinzo.projectMinutesBeta.' + betaFlowUserId, betaFlowEnabled ? 'parallel' : 'original'); }
+    catch (_error) { /* The explicit URL choice still works without browser storage. */ }
+  }
+
   async function initialiseBetaFlow() {
     try {
       var auth = await jsonRequest('/api/auth/me');
       betaFlowAllowed = auth.user?.role === 'admin';
+      betaFlowUserId = String(auth.user?.userId || auth.user?.id || '');
       betaFlowEnabled = betaFlowAllowed && new URLSearchParams(window.location.search).get('engine') === 'parallel';
+      rememberProjectBetaChoice();
     } catch (error) {
       betaFlowAllowed = false;
       betaFlowEnabled = false;
@@ -1068,6 +1078,7 @@
     if (betaFlowEnabled) url.searchParams.set('engine', 'parallel');
     else url.searchParams.delete('engine');
     history.replaceState(null, '', url.pathname + url.search + url.hash);
+    rememberProjectBetaChoice();
     renderBetaFlow();
     renderPageHeading();
   });
@@ -1166,7 +1177,11 @@
       if (/^[1-9]\d*$/.test(projectParams.get('projectId') || '')) {
         resumeUrl.searchParams.set('projectId', projectParams.get('projectId'));
         if (projectParams.get('projectName')) resumeUrl.searchParams.set('projectName', projectParams.get('projectName'));
+        resumeUrl.searchParams.set('engine', betaFlowEnabled ? 'parallel' : 'original');
       }
+      // This is the preference for the next upload. A saved draft always uses
+      // its own persisted provider, including when reopened with this URL.
+      if (betaFlowEnabled) resumeUrl.searchParams.set('engine', 'parallel');
       history.replaceState(null, '', resumeUrl.pathname + resumeUrl.search);
       showUploadConfirmation(file.name, (state.draft.sourceUnits || []).length, false, true);
       setStatus('Transcript uploaded and processing has started in the background.', false, 'details');

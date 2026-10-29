@@ -44,6 +44,40 @@ test('project context belongs to the explicit URL and unlink survives refresh', 
   assert.equal(await page.locator('#projectLinkBanner').count(), 0);
 });
 
+test('project return links retain the current next-upload choice and the queued report keeps the saved revision', async t => {
+  const page = await isolatedPage(t, '/meeting-minutes-agent?draftId=202&projectId=17&engine=parallel');
+  await page.evaluate(() => {
+    window.MeetingMinutesAgent = { saveForProjectUpdate: async () => ({ id: '202', revision: 9 }) };
+    window.calls = [];
+    window.fetch = async (url, options) => {
+      if (String(url).includes('/project-link')) return { ok: true, json: async () => ({ ok: true }) };
+      window.calls.push(JSON.parse(options.body));
+      return { ok: true, json: async () => ({ ok: true, jobId: 'offline-job' }) };
+    };
+  });
+  await page.addScriptTag({ content: LINK_SOURCE });
+  let back = new URL(await page.locator('#backToProject').getAttribute('href'), ORIGIN);
+  assert.equal(back.searchParams.get('projectId'), '17');
+  assert.equal(back.searchParams.get('stage'), 'process');
+  assert.equal(back.searchParams.get('engine'), 'parallel');
+  await page.click('#createProjectUpdateFromMinutes');
+  const reports = page.locator('#projectLinkBanner [role="status"] a').filter({ hasText: 'go to the project reports' });
+  await reports.waitFor();
+  const reportUrl = new URL(await reports.getAttribute('href'), ORIGIN);
+  assert.equal(reportUrl.searchParams.get('projectId'), '17');
+  assert.equal(reportUrl.searchParams.get('stage'), 'reports');
+  assert.equal(reportUrl.searchParams.get('engine'), 'parallel');
+  assert.deepEqual(await page.evaluate(() => window.calls), [{ draftId: '202', revision: 9, projectId: '17', projectName: '' }]);
+  await page.evaluate(() => {
+    history.replaceState(null, '', '/meeting-minutes-agent?draftId=202&projectId=17');
+    const toggle = document.createElement('input'); toggle.id = 'betaFlow';
+    document.body.appendChild(toggle); toggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  back = new URL(await page.locator('#backToProject').getAttribute('href'), ORIGIN);
+  assert.equal(back.searchParams.get('engine'), 'original');
+  assert.equal(back.searchParams.get('projectId'), '17');
+});
+
 test('a pending save and queue stay locked across the refresh timer and only queue the saved revision', async t => {
   const page = await isolatedPage(t);
   await page.evaluate(() => {
@@ -70,7 +104,7 @@ test('a pending save and queue stay locked across the refresh timer and only que
   assert.equal(await page.evaluate(() => window.calls.length), 1);
   await page.evaluate(() => window.finishQueue());
   await page.waitForFunction(() => !document.getElementById('createProjectUpdateFromMinutes').disabled);
-  assert.equal(await page.locator('#projectLinkBanner a').first().getAttribute('href'), '/jobs/stub-job');
+  assert.equal(await page.locator('#projectLinkBanner [role="status"] a').first().getAttribute('href'), '/jobs/stub-job');
 });
 
 test('save errors, changed drafts and queue errors do not send stale minutes or inject error markup', async t => {

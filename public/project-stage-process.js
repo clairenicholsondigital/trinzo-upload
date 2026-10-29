@@ -5,15 +5,101 @@
   const PW = window.ProjectWorkspace;
   const { escapeHtml } = PW;
 
-  function minutesAgentUrl(ctx, draftId) {
+  const BETA_CHOICE_KEY = 'trinzo.projectMinutesBeta.';
+
+  function minutesAgentUrl(ctx, draftId, betaEnabled = false) {
     const params = new URLSearchParams();
     if (draftId) params.set('draftId', String(draftId));
     params.set('projectId', String(ctx.projectId));
     if (ctx.project?.projectName) params.set('projectName', ctx.project.projectName);
+    // This is the next-upload preference. A saved draft keeps its own provider.
+    params.set('engine', betaEnabled ? 'parallel' : 'original');
     return `/meeting-minutes-agent?${params.toString()}`;
   }
 
+  function storeBetaChoice(userId, enabled) {
+    if (!userId) return;
+    try { sessionStorage.setItem(BETA_CHOICE_KEY + userId, enabled ? 'parallel' : 'original'); } catch (_) {}
+  }
+
+  function requestedBetaChoice(userId) {
+    const params = new URLSearchParams(window.location.search);
+    // An explicit off link always wins over a previously enabled preference.
+    if (params.has('engine')) return params.get('engine') === 'parallel';
+    if (!userId) return false;
+    try { return sessionStorage.getItem(BETA_CHOICE_KEY + userId) === 'parallel'; } catch (_) { return false; }
+  }
+
+  function updateBetaUrl(enabled) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('engine', enabled ? 'parallel' : 'original');
+    history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+  }
+
+  function refreshBetaNavigation(enabled) {
+    // Keep normal clicks and opening a project navigation link in a new tab
+    // consistent, including the separate project chooser.
+    document.querySelectorAll('a[data-project-nav], #switchProjectLink').forEach((link) => {
+      const destination = new URL(link.href, window.location.href);
+      if (destination.origin !== window.location.origin || destination.pathname !== window.location.pathname) return;
+      destination.searchParams.set('engine', enabled ? 'parallel' : 'original');
+      link.href = destination.pathname + destination.search + destination.hash;
+    });
+  }
+
+  async function initialiseBetaChoice(container, ctx, selection) {
+    const control = container.querySelector('#projectBetaControl');
+    const toggle = container.querySelector('#projectBetaFlow');
+    const status = container.querySelector('#projectBetaStatus');
+    const applyChoice = () => {
+      toggle.checked = selection.enabled;
+      refreshBetaNavigation(selection.enabled);
+      status.textContent = selection.enabled
+        ? 'On — use the new streamlined meeting-minutes flow for your next upload, then review it and create the project update as usual.'
+        : 'Off — use the existing meeting-minutes flow for your next upload.';
+      const newMinutesLink = container.querySelector('#openMinutesAgent');
+      newMinutesLink.href = minutesAgentUrl(ctx, null, selection.enabled);
+      newMinutesLink.removeAttribute('aria-disabled');
+      container.querySelectorAll('[data-open-minutes-draft]').forEach((link) => {
+        link.href = minutesAgentUrl(ctx, link.dataset.openMinutesDraft, selection.enabled);
+        link.removeAttribute('aria-disabled');
+      });
+    };
+    try {
+      const auth = await PW.request('/api/auth/me');
+      if (!container.isConnected) return;
+      selection.allowed = auth.user?.role === 'admin';
+      selection.userId = String(auth.user?.userId || auth.user?.id || '');
+      selection.enabled = selection.allowed && requestedBetaChoice(selection.userId);
+      if (selection.allowed) {
+        storeBetaChoice(selection.userId, selection.enabled);
+        updateBetaUrl(selection.enabled);
+        control.hidden = false;
+      }
+    } catch (_) {
+      // A failed auth check never opts a user into Beta.
+      selection.allowed = false;
+      selection.enabled = false;
+    }
+    selection.ready = true;
+    applyChoice();
+    toggle.addEventListener('change', () => {
+      if (!selection.allowed) return;
+      selection.enabled = toggle.checked;
+      storeBetaChoice(selection.userId, selection.enabled);
+      updateBetaUrl(selection.enabled);
+      applyChoice();
+    });
+    window.addEventListener('popstate', () => {
+      if (!container.isConnected || !selection.allowed) return;
+      selection.enabled = requestedBetaChoice(selection.userId);
+      storeBetaChoice(selection.userId, selection.enabled);
+      applyChoice();
+    });
+  }
+
   function mount(container, ctx) {
+    const selection = { allowed: false, enabled: false, ready: false, userId: '' };
     container.innerHTML = `
       <section class="panel meeting-hero">
         <span class="eyebrow">Project update meeting</span>
@@ -28,7 +114,15 @@
         <section class="panel">
           <h2>1. Write the minutes</h2>
           <p class="intro">Upload the transcript to the Meeting Minutes Agent and work through Details, Discussion, Actions and Summary. It remembers this project, so you can create the update from its last step.</p>
-          <p><a class="button" id="openMinutesAgent" href="${escapeHtml(minutesAgentUrl(ctx))}">Open the Meeting Minutes Agent</a></p>
+          <div class="project-beta-control" id="projectBetaControl" hidden>
+            <label class="project-beta-switch" for="projectBetaFlow">
+              <input type="checkbox" role="switch" id="projectBetaFlow" aria-describedby="projectBetaStatus" />
+              <span class="project-beta-track" aria-hidden="true"></span>
+              <span>Beta meeting minutes</span>
+            </label>
+            <p class="muted" id="projectBetaStatus" role="status" aria-live="polite">Off — use the existing meeting-minutes flow for your next upload.</p>
+          </div>
+          <p><a class="button" id="openMinutesAgent" aria-disabled="true">Open the Meeting Minutes Agent</a></p>
         </section>
         <section class="panel">
           <h2>2. Create the project update from minutes</h2>
@@ -49,15 +143,16 @@
       </div>
     `;
     wireProcessSubtabs(container);
+    initialiseBetaChoice(container, ctx, selection);
     renderMeetingAgenda(container, ctx);
-    renderMinutesDrafts(container, ctx, false);
+    renderMinutesDrafts(container, ctx, false, selection);
     const toggle = container.querySelector('#toggleAllMinutes');
     if (toggle) {
       toggle.addEventListener('click', () => {
         const showAll = toggle.getAttribute('aria-pressed') !== 'true';
         toggle.setAttribute('aria-pressed', showAll ? 'true' : 'false');
         toggle.textContent = showAll ? "Show only this project's minutes" : 'Show all my minutes';
-        renderMinutesDrafts(container, ctx, showAll);
+        renderMinutesDrafts(container, ctx, showAll, selection);
       });
     }
   }
@@ -69,7 +164,7 @@
 
   // By default only minutes written for this project are listed. Minutes are
   // tagged when opened from this tab or sent to this project.
-  async function renderMinutesDrafts(container, ctx, showAll) {
+  async function renderMinutesDrafts(container, ctx, showAll, selection) {
     const target = container.querySelector('#minutesDraftList');
     if (!target) return;
     const requestId = String(Date.now() + Math.random());
@@ -90,11 +185,11 @@
       target.innerHTML = drafts.map((draft) => `
         <article class="agenda-step" data-minutes-draft="${escapeHtml(draft.draftId)}">
           <div>
-            <h3>${escapeHtml(draft.title || 'Meeting minutes')}</h3>
+            <h3>${escapeHtml(draft.title || 'Meeting minutes')}${draft.generationProvider === 'parallel-specialists-v1' ? ' <span class="badge project-beta-badge">Beta</span>' : ''}</h3>
             <p class="muted">${escapeHtml([draft.stageLabel ? `At ${draft.stageLabel}` : '', draftUpdatedLabel(draft) ? `updated ${draftUpdatedLabel(draft)}` : ''].filter(Boolean).join(', '))}</p>
             <p>
               <button type="button" class="button" data-create-from-minutes="${escapeHtml(draft.draftId)}" data-minutes-revision="${escapeHtml(draft.revision)}">Create project update</button>
-              <a class="button secondary" href="${escapeHtml(minutesAgentUrl(ctx, draft.draftId))}">Open minutes</a>
+              <a class="button secondary" data-open-minutes-draft="${escapeHtml(draft.draftId)}" ${selection.ready ? `href="${escapeHtml(minutesAgentUrl(ctx, draft.draftId, selection.enabled))}"` : 'aria-disabled="true"'}>Open minutes</a>
             </p>
           </div>
         </article>

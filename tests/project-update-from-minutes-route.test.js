@@ -76,6 +76,49 @@ test('queues the owned saved publication with reviewed timing and canonical sele
   assert.match(input.sourceFingerprint, /^[a-f0-9]{64}$/);
 });
 
+test('flat Beta minutes hand off the saved discussion and accepted register without promoting suggested work', async () => {
+  reset();
+  savedDraft.generationProvider = 'parallel-specialists-v1';
+  savedDraft.executiveSummary = 'Local transport remains provisional.';
+  const transport = 'Niamh anticipated hiring a car and also expected to rely on colleagues for local transport.';
+  const schedule = 'The reporting plan remains subject to site access.';
+  savedDraft.discussion = [{ id: 'flat', topic: 'Discussion', hideHeading: true,
+    points: [{ id: 'DI1', text: transport, evidenceIds: ['T0001'] },
+      { id: 'DI2', text: schedule, evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] }];
+  savedDraft.actions = [{ id: 'A1', action: 'Send the site-access confirmation.', owners: ['Sam', 'Jordan'],
+    evidenceIds: ['T0001'], timing: { kind: 'dependency', wording: 'once approval is received', exactDate: '' } }];
+  savedDraft.parallelActionProposals = [{ id: 'AP1', status: 'open', action: 'Book the hire car.',
+    owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' },
+    evidenceIds: ['T0001'], reason: 'No accepted booking commitment.' }];
+  savedDraft.qualityState.parallel = { completedAt: new Date().toISOString() };
+  const snapshot = structuredClone(savedDraft);
+  const response = await request();
+  assert.equal(response.statusCode, 202, JSON.stringify(response.body));
+  assert.equal(queued.length, 1);
+  const input = queued[0];
+  assert.ok(input.transcriptText.includes(`Minutes: ${transport}`));
+  assert.ok(input.transcriptText.includes(`Minutes: ${schedule}`));
+  assert.doesNotMatch(input.transcriptText, /Minutes: Discussion:|Book the hire car/);
+  assert.deepEqual(input.minutesActions, [{ action: 'Send the site-access confirmation.', related_milestone: 'unlinked',
+    meetingActionPointOwner: 'Sam, Jordan', actionConfidence: 1,
+    deadline: 'Dependent on: once approval is received', source: 'meeting_minutes_agent' }]);
+  assert.equal(input.minutesDraftId, '123');
+  assert.equal(input.minutesDraftRevision, 4);
+  assert.equal(input.projectId, 17);
+  assert.deepEqual(links, [{ draftId: '123', userId: 'reviewer', projectId: 17 }]);
+  assert.deepEqual(savedDraft, snapshot, 'report creation does not rewrite the reviewed Beta minutes');
+});
+
+test('Beta handoff waits for the current three-specialist generation before queueing', async () => {
+  reset();
+  savedDraft.generationProvider = 'parallel-specialists-v1';
+  savedDraft.generation = { status: 'running', stage: 'discussion', startedAt: new Date().toISOString() };
+  const response = await request();
+  assert.equal(response.statusCode, 409);
+  assert.equal(queued.length, 0);
+  assert.equal(links.length, 0);
+});
+
 test('rejects invalid identities, stale revisions, unavailable projects and other users before queueing', async () => {
   reset();
   for (const invalid of [{ draftId: 'x' }, { projectId: -1 }, { projectId: 1.5 }, { projectId: 'Infinity' },
