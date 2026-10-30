@@ -1,6 +1,6 @@
 const { bindingsFor, resolveProjectMilestones } = require('./projectMilestoneBinding');
 const { Pool } = require('pg');
-const { migrateDraftPayload: migrateMeetingAgentDraftPayload } = require('./meetingMinutesAgentV2');
+const { migrateDraftPayload: migrateMeetingAgentDraftPayload } = require('./meetingMinutesDraftStorage');
 
 let pgPool = null;
 

@@ -2,7 +2,8 @@
 
 Inspected 30 October 2026 at deployed revision
 `ea18d4ae5e0bb3dedb9ae9596f35fb89b60a1657` (PR #202).
-This is the Stage 1 map: no application code, data or UI is changed.
+This map records the inspected baseline and the subsequent boundary cleanup.
+The current frontend, route contracts and saved-data formats remain unchanged.
 
 ## What runs
 
@@ -54,11 +55,11 @@ redirects. “Mounted” proves availability in code; it does not prove recent u
 | --- | --- | --- |
 | Main minutes editor | `/` redirects to `/meeting-minutes-agent` | `views/meeting-minutes-agent.html`; `public/meeting-minutes-agent.js`, filing-order/project-link helpers; `/api/meeting-minutes-agent/*` in `routes/api.js`. |
 | Library and saved jobs | `/jobs`, `/jobs/:jobId`, `/jobs/:jobId/result`; `/meeting-minutes-final/jobs*` aliases | `views/meeting-minutes-jobs.html` (inline browser code); draft/job endpoints in `routes/api.js`. Includes current drafts and queued-job compatibility. |
-| Project workspace | `/project-update-test` with Setup, Process, Reports, Insights, Memory, Settings and Tasks stages | `views/project-update-workspace.html`; `public/project-workspace.js`, `project-stage-*.js`, `project-update-shared.js`; project endpoints in `routes/api.js`, tasks in `routes/internalAiTasks.js`. |
+| Project workspace | `/project-update-test` with Setup, Process, Reports, Insights, Memory, Settings and Tasks stages | `views/project-update-workspace.html`; `public/project-workspace.js`, `project-stage-*.js`, `project-update-shared.js`; generation/context endpoints in `routes/api.js`, record CRUD in `routes/projectRecords.js`, tasks in `routes/internalAiTasks.js`. |
 | Project deep links | `/project-update-test/reports/:reportId`, `/milestones/:milestoneId`, `/context/snapshots/:snapshotId` under the project prefix; `/project-update-test/roadmap`, `/roadmap` | Report, milestone, context and roadmap views. Old list routes redirect into workspace stages; retain their URLs. |
 | Settings and insights | `/settings`, `/insights` | Settings/insights views and public scripts; `routes/settings.js`, `utils/settingsDb.js`, `utils/settingsStore.js`; minutes insights endpoint in `routes/api.js`. |
 | Older mounted minutes surfaces | `/meeting-minutes-final`, `/staged-meeting-minutes`, its `/client-output`, `/pre-testing`, `/analytics`, plus `/staged-meeting-minutes-analytics` | Existing views, inline scripts and `public/test-transcript-page.js`; staged/final endpoints in `routes/api.js`. Their names do not establish that they are unused. |
-| Feedback | `/meeting-minutes-feedback*`, `/review-feedback` | Feedback views; final feedback endpoints in `routes/api.js`; `routes/reviewFeedback.js`. Review snippet is injected by the standard page renderer. |
+| Feedback | `/meeting-minutes-feedback*`, `/review-feedback` | Feedback views; final feedback submission in `routes/api.js`, review CRUD in `routes/minutesFeedback.js`; `routes/reviewFeedback.js`. Review snippet is injected by the standard page renderer. |
 | Microsoft integration | `/meeting-agent`, `/meeting-agent/auth-redirect` | `client/meeting-agent*.js` bundled into `public/meeting-agent*.js`; `routes/meetingAgent.js` handles Microsoft identity, Copilot, uploads, transcript subscriptions and notifications. Separate from the main minutes editor. |
 | Login and entry pages | `/dashboard`, `/auth`, `/auth/login`, `/login`, `/auth/forgot-password` | Dashboard/auth views and `routes/auth.js`. `/auth/register` and `/register-success` redirect to login; API self-registration is disabled. |
 
@@ -76,9 +77,11 @@ route reorganisation, even if they have little browser traffic.
    classifier and can use the shared embedding worker. The JS default classifier
    is `artifacts/meeting-minutes-usefulness-v3/classifier.joblib`; environment can
    select a different path. Both engines use this preparation boundary.
-2. **Original.** `startInitialMeetingAgentProcessing`,
-   `runMeetingAgentBackgroundStage` and `generateHybridMeetingAgentStage` in
-   [`routes/api.js`](../routes/api.js) coordinate generation, provider calls,
+2. **Original.** [`utils/meetingMinutesProcessing.js`](../utils/meetingMinutesProcessing.js)
+   owns initial engine dispatch with separate `startOriginal` and `startBeta`
+   entry points. `runMeetingAgentBackgroundStage` and
+   `generateHybridMeetingAgentStage` in [`routes/api.js`](../routes/api.js)
+   coordinate subsequent generation, provider calls,
    caches, review and publication. The first background stage is discussion;
    actions and summary have their own stage handling and speculation.
    `utils/meetingMinutesAgentV2.js`, `utils/canonicalMinutes/*` and staged helpers
@@ -92,10 +95,12 @@ route reorganisation, even if they have little browser traffic.
    published endpoints and instruction hashes; repo files alone do not recreate
    the provider deployment. Beta background work also runs in the web process.
 4. **Saved drafts and review.** `utils/db.js` reads/writes drafts; `routes/api.js`
-   handles ownership, optimistic revisions, edits, proposals, undo/redo,
-   generation status and project links. Crucially, `utils/db.js` imports
-   `migrateDraftPayload` from the entire V2 module just to read saved payloads.
-   Keep wire schema version 4 separate from stored payload version 5.
+   handles ownership, optimistic revisions, edits, undo/redo, generation status
+   and project links. `utils/meetingMinutesDraftStorage.js` owns stored-payload
+   versioning and migration; the database no longer imports V2 for that operation.
+   `utils/meetingMinutesProposals.js` owns proposal diffing and acceptance, using
+   the shared record-matching and action-identity helpers. V2 retains compatibility
+   re-exports. Wire schema version 4 remains separate from stored payload version 5.
 5. **Exports.** The two authenticated `.../drafts/:draftId/export.docx` and
    `export.pdf` routes build publication projections. Word uses
    `utils/meetingMinutesAgentDocx.js` and JSZip; PDF uses
@@ -133,16 +138,16 @@ route reorganisation, even if they have little browser traffic.
 | Build outputs | `public/meeting-agent.js`, `public/meeting-agent-auth-redirect.js` | Generated from `client/` by `scripts/build_meeting_agent.js`; do not edit generated bundles independently or mistake the source/output pair for duplicate features. |
 | Documentation used as input | `docs/CURRENT_PROJECT_STATUS.md` | Input to the explicit task-import workflow and its tests, with frozen proposal references. It is not merely an obsolete prose page, nor an automatically read runtime configuration file. |
 
-## First cleanup PRs
+## Boundary cleanup progress
 
-1. **Remove two unserved templates.** `views/auth-register.html` and
+1. **Completed: two unserved templates removed.** `views/auth-register.html` and
    `views/register-success.html` have no page handler and no filename references
    elsewhere in the tracked baseline. Their former URLs redirect to login, and
    API registration explicitly returns 404. Remove only the templates; preserve
    those redirects and the disabled-registration response. Check references and
    the affected login/redirect behaviour. This is a small, high-confidence batch,
    not the main source of code reduction.
-2. **Extract the stored-draft migration boundary first.** Move `PAYLOAD_VERSION`,
+2. **Completed: stored-draft migration extracted.** Move `PAYLOAD_VERSION`,
    `STEP_V2_TO_V3` and `migrateDraftPayload` into a small dependency-free draft
    storage module. Have `utils/db.js` import it directly and keep V2's existing
    exports as compatibility re-exports. Leave the provider response schema and
@@ -151,14 +156,18 @@ route reorganisation, even if they have little browser traffic.
    cases are in `tests/meeting-minutes-agent-v2.test.js`; persistence and affected
    database fixtures must also pass. This removes the storage → entire generator
    dependency without changing what is stored or rendered.
-3. **Then extract proposal handling.** V2's `buildProposal`, `applyProposal` and
+3. **Completed: proposal handling extracted.** V2's `buildProposal`, `applyProposal` and
    their local diff/matching helpers form a bounded group near lines 7477–7701.
    Dependencies include text cleanup, stable IDs/token matching and
    `meetingMinutesActionIdentity.js`. Preserve proposal IDs, duplicate occurrence
    handling, partial acceptance and stale-edit protection. Keep compatibility
    exports while moving actual consumers to the new module; otherwise file
    movement alone will not narrow test coupling.
-4. **Split API routes after establishing service boundaries.** Start with a
+4. **Started: API route separation.** Project-record CRUD and final-feedback
+   review now live in separate registration modules. Their paths, middleware
+   ordering and handler bodies are unchanged. Shared sanitised error responses
+   live in `utils/apiErrors.js`. Continue splitting API routes after establishing
+   service boundaries. Start with a
    bounded family such as project CRUD or final-feedback CRUD. Preserve mount
    paths, middleware order, authentication and response/error shapes. Move shared
    operations into services before moving dependent handlers; do not have a new
@@ -166,7 +175,15 @@ route reorganisation, even if they have little browser traffic.
    scripts and tests and needs a compatibility path during extraction.
 
 The research-only archive from PR #201 remains separately recoverable through
-`research-archive.json`. No additional archive or deletion is performed here.
+`research-archive.json`. This cleanup deletes only the two unserved templates;
+uncertain-use scripts and UI-consumed evaluation data remain available.
+
+The next extraction should target a single generation-stage responsibility in
+`routes/api.js`, with its actual test consumers moved to the new service. Original
+and Beta retain their existing defaults, source preparation and publication
+behaviour. The migration/proposal test cases have moved to focused modules; their
+names and assertions are preserved. The compact core now includes these focused
+checks and the new route/dispatch behaviour checks.
 
 ## Evidence and limits
 
@@ -186,6 +203,10 @@ The research-only archive from PR #201 remains separately recoverable through
 - Recent per-route usage, off-VPS automation, manual CLI use and external
   provider behaviour were not measured. Mounted legacy screens and standalone
   tools remain in the uncertain-use category until that evidence exists.
-- Stage 1 is documentation only. Validation consists of source/reference/link
-  checks and a clean runtime diff; no AI calls, benchmark replays, database
-  writes, service restarts or full regression run are needed for this map.
+- The initial Stage 1 PR was documentation only. The subsequent code extraction
+  verifies all 94 API registrations in order, 13 moved helper functions and all
+  91 original V2 test cases against the baseline. Focused checks cover migration,
+  proposal acceptance, authentication, project handoff, record CRUD and engine
+  dispatch. Release verification uses the affected/full selection and an explicit
+  disposable PostgreSQL database; no provider calls or production-data writes
+  are used as fixtures.
