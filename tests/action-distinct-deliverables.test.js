@@ -3,7 +3,7 @@
 // Generic cases only: none of these sentences come from the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { dedupeHybridActionRecords, distinctActionDeliverables } = require('../routes/api').stagedEvaluation;
+const { dedupeHybridActionRecords, distinctActionDeliverables } = require('../utils/meetingMinutesActionDuplicatePolicy');
 
 const action = (id, text, evidenceIds, extra = {}) => ({
   id, action: text, owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds, reviewFlagIds: [], ...extra
@@ -129,7 +129,7 @@ test('a meaningful gate is not discarded when one wording omits it', () => {
 });
 
 test('meeting variants retain both review purpose and logistics; a shared noun does not establish the same work', () => {
-  const { dedupeHybridActionRecords, sameActionApproach } = require('../routes/api').stagedEvaluation;
+  const { dedupeHybridActionRecords, sameActionApproach } = require('../utils/meetingMinutesActionDuplicatePolicy');
   const row = (id, text, owners, evidenceIds) => ({ id, action: text, owners, timing: { kind: 'not_stated' }, evidenceIds });
   const merged = dedupeHybridActionRecords([
     row('a', 'Hold a project planning session to review the open items before work begins.', ['Sam Carter', 'Lee Hart'], ['T0001']),
@@ -147,7 +147,7 @@ test('meeting variants retain both review purpose and logistics; a shared noun d
 });
 
 test('an action whose whole job sits inside another merges into it', () => {
-  const { dedupeHybridActionRecords, nestedActionWork } = require('../routes/api').stagedEvaluation;
+  const { dedupeHybridActionRecords, nestedActionWork } = require('../utils/meetingMinutesActionDuplicatePolicy');
   const row = (id, text, owners) => ({ id, action: text, owners, timing: { kind: 'not_stated' }, evidenceIds: [id] });
   const rows = dedupeHybridActionRecords([
     row('a', 'Build the closing slide with the QR code and booking link and re-share the updated deck.', ['Sam Carter']),

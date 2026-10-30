@@ -1,11 +1,13 @@
 'use strict';
 
+const { unionActionDiscoveryResults, mergeMeetingAgentRefereeResults, mergeBatchedMeetingAgentRefereeResults } = require('./meetingMinutesResultAggregation');
+const { dedupeHybridActionProposals, dedupeHybridActionRecords } = require('./meetingMinutesActionDuplicatePolicy');
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
 const { meetingAgentRefereeRoute, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates, normaliseMeetingAgentRefereeContractResult, meetingAgentRefereeRepairCandidates, normaliseAgentCandidateDispositions } = require('./meetingMinutesResponseContracts');
 const { meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('./meetingMinutesRefereeBatches');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 
-const { SCHEMA_VERSION: MEETING_AGENT_SCHEMA_VERSION } = require("./meetingMinutesAgentV2");
+const { SCHEMA_VERSION: MEETING_AGENT_SCHEMA_VERSION } = require('./meetingMinutesResponseContracts');
 const { actionCandidateInventory } = require("./meetingMinutesAgentV2");
 const { actionCommitmentChainInventory } = require("./meetingMinutesAgentV2");
 const { actionCommitmentThreadInventory } = require("./meetingMinutesAgentV2");
@@ -39,8 +41,6 @@ function createOriginalDiscovery(services) {
     cachedStagedCandidatesForStage,
     compactMeetingAgentRefereeCandidate,
     dedupeActionDiscoveryInventory,
-    dedupeHybridActionProposals,
-    dedupeHybridActionRecords,
     deterministicHybridLedger,
     enrichDiscussionEvidenceFromDispositions,
     hybridCandidateLedgerFromResult,
@@ -63,15 +63,12 @@ function createOriginalDiscovery(services) {
     meetingMinutesAgentRefereeRepairPrompt,
     meetingMinutesAgentTopicNamingPrompt,
     meetingMinutesDiscussionActionCandidatesEnabled,
-    mergeBatchedMeetingAgentRefereeResults,
-    mergeMeetingAgentRefereeResults,
     normaliseAgentDeclaredProposals,
     normaliseAnchoredActionDiscovery,
     normaliseAnchoredDiscussionDiscovery,
     normaliseRefereeDeclaredProposals,
     peekReadyPrivateStagedCandidateLedger,
     reconstructRefereeActions,
-    unionActionDiscoveryResults,
   } = services;
 
   return async function runOriginalDiscovery(context) {
