@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { buildStagedReviewDiffs } = require('../routes/api').stagedEvaluation;
+const { buildStagedReviewDiffs } = require('../utils/stagedReviewAnalytics');
 
 // Whether the reviewer kept the purpose we gave them, and which kind of purpose it was.
 //
