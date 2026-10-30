@@ -426,6 +426,13 @@ and owner-evidence tests no longer load V2, even transitively; mixed generation,
 timing, save/reload and undo integrations remain. No global cases are added or
 removed.
 
+The existing task browser integration now waits for its own successful save
+response and completed refresh before proceeding. The previous `Saved.`-only
+wait could accept an earlier operation while the save handler was still busy.
+All persistence assertions and existing cases remain; application code and UI
+are unchanged. The first release attempt's failed mobile check is retained in
+the private verification record, followed by the corrected required release run.
+
 V2 falls from 6,534 to 6,220 lines, People from 683 to 611, and API from 17,407 to
 17,402. All 94 effective routes, 223 API exports and 158 V2 exports remain; the
 Original API service map stays at 125. Raw API/V2 consumers each decrease by two,
