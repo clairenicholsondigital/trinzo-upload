@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { longText, detail, pool, supportingDetailDraft, assertPool } = require('./fixtures/meeting-minutes-supporting-detail-persistence');
 const JSZip = require('jszip');
 const V = require('../utils/meetingMinutesAgentV2');
 const { generateMeetingMinutesAgentDocx } = require('../utils/meetingMinutesAgentDocx');
@@ -38,37 +39,8 @@ db.getMeetingMinutesAgentDraft = originalGet;
 db.updateMeetingMinutesAgentDraft = originalUpdate;
 require.cache[fetchPath].exports = originalFetch;
 
-const longText = 'Calibration background for independent reviewer inspection. '
-  + 'The source context remains available with its evidence and qualifications. '.repeat(27)
-  + 'The final calibration qualification is retained: ZETA-TAIL.';
-const detail = (id, text, evidenceIds, extra = {}) => ({ id, text, evidenceIds, reviewFlagIds: [], ...extra });
-const pool = () => [
-  detail('unfiled-long', longText, ['T0002'], { reviewFlagIds: ['detail-review'],
-    originalTopic: 'Earlier calibration context', placementReason: 'No unique supporting parent was established.' }),
-  detail('unfiled-short', 'The calibration archive contains the retained comparison record.', ['T0003'], {
-    originalTopic: 'Archive', placementReason: 'The suggested target was ambiguous.' })
-];
 function reset() {
-  const sourceUnits = [
-    { id: 'T0001', speaker: 'Morgan Taylor', text: 'The calibration review is complete. I will send the calibration record.' },
-    { id: 'T0002', speaker: 'Morgan Taylor', text: longText },
-    { id: 'T0003', speaker: 'Morgan Taylor', text: 'The calibration archive contains the retained comparison record.' }
-  ];
-  saved = { draftId: 'support-filing', revision: 1, status: 'draft', payloadVersion: V.PAYLOAD_VERSION,
-    details: { meetingTitle: 'Calibration review', meetingType: 'General', meetingDate: '2026-10-21',
-      internalAttendees: ['Morgan Taylor'], clientAttendees: [] },
-    sourceUnits, preparedTranscript: V.preparedTranscriptFromUnits(sourceUnits),
-    discussion: [{ id: 'calibration', topic: 'Calibration review',
-      points: [{ id: 'main', text: 'The calibration review is complete.', evidenceIds: ['T0001'], reviewFlagIds: [], supportingDetails: [] }],
-      decisions: [], openQuestions: [] }],
-    unassignedSupportingDetails: pool(),
-    actions: [{ id: 'send', action: 'Send the calibration record.', owners: ['Morgan Taylor'],
-      timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] }],
-    executiveSummary: 'The calibration record was reviewed.', meetingObjectives: [],
-    reviewFlags: [{ id: 'detail-review', kind: 'unclear_reference', status: 'open',
-      message: 'The calibration context has an unclear reference; confirm which calibration batch it describes.', evidenceIds: ['T0002'], correctionNote: '' }],
-    changeHistory: [], redoHistory: [], staleStages: [], currentStep: 5, selectedStep: 5,
-    qualityState: { preparation: { dateContext: { source: 'reviewer', meetingDate: '2026-10-21' } } } };
+  saved = supportingDetailDraft();
   writes = 0;
 }
 async function request(method, suffix = '', body = {}) {
@@ -87,11 +59,6 @@ function mainContent(draft) {
     ...Object.fromEntries(['points', 'decisions', 'openQuestions'].map(field => [field,
       (topic[field] || []).map(row => ({ id: row.id, text: row.text }))])) })),
     actions: draft.actions.map(row => ({ id: row.id, action: row.action, owners: row.owners, timing: row.timing })) };
-}
-function assertPool(actual, expected) {
-  assert.ok(Array.isArray(actual), 'the pool must survive as an array');
-  const view = rows => rows.map(row => ({ ...row, reviewFlagIds: row.reviewFlagIds || [] }));
-  assert.deepEqual(view(actual), view(expected));
 }
 function supportInventory(draft) {
   const attached = (draft.discussion || []).flatMap(topic => ['points', 'decisions', 'openQuestions']
@@ -546,22 +513,6 @@ test('a represented shadow with complete citation/flag/lock coverage can leave t
   assertPool(payload.unassignedSupportingDetails, []);
   assert.deepEqual(payload.discussion[0].points[0].supportingDetails[0].reviewFlagIds, ['detail-review']);
   assert.equal(payload.discussion[0].points[0].supportingDetails[0].reviewerAuthored, true);
-});
-
-test('discussion persistence treats absent and empty pools alike but detects genuine reviewer changes', () => {
-  reset();
-  const source = copy(saved);
-  delete source.unassignedSupportingDetails;
-  const fresh = { ...copy(source), unassignedSupportingDetails: [] };
-  const generated = { discussion: copy(source.discussion), unassignedSupportingDetails: [pool()[1]] };
-  const compatible = api.meetingAgentStagePersistenceChanges(source, fresh, 'discussion', generated);
-  assert.deepEqual(compatible.conflictFields, []);
-  assertPool(compatible.changes.unassignedSupportingDetails, [pool()[1]]);
-  const edited = { ...copy(fresh), unassignedSupportingDetails: [pool()[0]] };
-  const conflict = api.meetingAgentStagePersistenceChanges(source, edited, 'discussion', generated);
-  assert.deepEqual(conflict.conflictFields, ['unassignedSupportingDetails']);
-  assert.deepEqual(conflict.changes, {});
-  assertPool(edited.unassignedSupportingDetails, [pool()[0]]);
 });
 
 test('unfiled merge history survives public reads, autosave, filing, undo/redo and reload', async () => {

@@ -178,7 +178,7 @@ The research-only archive from PR #201 remains separately recoverable through
 `research-archive.json`. This cleanup deletes only the two unserved templates;
 uncertain-use scripts and UI-consumed evaluation data remain available.
 
-The next boundary chunk separates generation state/timing/telemetry into
+The completed generation/ownership boundary chunk separates state/timing/telemetry into
 `utils/meetingMinutesAgentGeneration.js` and review diff/interaction analytics
 into `utils/stagedReviewAnalytics.js`. Two small API wrappers retain the current
 process boot ID, current hybrid flag and stage map. Plain text coercion is shared
@@ -199,6 +199,32 @@ recognises the new generation and people-evidence boundaries.
 
 The compact core also includes the existing timing-closure cases: ownership
 evidence and final timing must continue sharing the same work-word rules.
+
+The completed stage-result boundary separates merge and conflict policy into
+`utils/meetingMinutesStagePersistence.js`. The actual background save path calls
+that service; queueing, optimistic retries and authenticated writes remain in the
+API. Shared pass-cache normalisation, Discussion fingerprints and source-unit
+normalisation have direct helper owners, with the old compatibility exports
+retained.
+
+Saved consolidation proof and paired-action recovery live in
+`utils/canonicalMinutes/discussionClaimConsolidationState.js` and
+`discussionActionRecovery.js`. Assessment modules re-export the existing public
+functions. The persistence service can therefore check stored evidence and
+recover original content without importing model assessment, the API or V2.
+
+Six existing merge/conflict cases move to direct service tests, covering all
+three stage completion orders, unrelated reviewer edits, concurrent Discussion
+edits and absent/empty supporting-detail pools. Route writes, background retries,
+paired-proof publication and changed-source/date guards retain their existing
+integration consumers. This is a dependency boundary; it does not remove the
+remaining API test coupling or reduce the total regression case inventory.
+For this batch, a proposed policy edit selected 300 JavaScript files while its
+implementation lived in the API; the extracted service selects 174, including
+the compact core. The API itself now selects 301 because the core includes one
+additional file containing moved cases. The six direct policy cases run without
+loading the API or V2. The API shrinks from 20,720 to 20,588 lines; V2 from 6,976
+to 6,964. These are structural and dependency measures, not deleted-code totals.
 
 The main remaining extraction is the stage orchestration in `routes/api.js`.
 Choose one stage at a time, separate its actual processing service and move its

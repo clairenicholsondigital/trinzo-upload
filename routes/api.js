@@ -5,6 +5,14 @@ const {
   summariseStagedWorkflowInteractions, stagedReviewProjectKey
 } = require('../utils/stagedReviewAnalytics');
 const { firstString, meetingMinutesAgentText } = require('../utils/meetingMinutesPlainText');
+const { normaliseMeetingAgentPassCache } = require('../utils/meetingMinutesPassCache');
+const { meetingAgentDiscussionFingerprint } = require('../utils/meetingMinutesDiscussionFingerprint');
+const { normaliseSourceUnits } = require('../utils/meetingMinutesSource');
+const {
+  meetingAgentStageContentFields,
+  meetingAgentStageContentConflicts,
+  meetingAgentStagePersistenceChanges
+} = require('../utils/meetingMinutesStagePersistence');
 const {
   meetingAgentGenerationState: generationState,
   normaliseMeetingAgentGeneration: normaliseGeneration,
@@ -238,7 +246,6 @@ const {
   TIMING_INFERENCE_POLICY_VERSION,
   normaliseExecutiveSummary,
   sanitiseDetails: sanitiseMeetingAgentDetails,
-  normaliseSourceUnits,
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
@@ -376,22 +383,6 @@ const PRIVATE_STAGED_CACHE_MAX_ENTRIES = 60;
 const privateActionPrimaryCache = new Map();
 const PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const PRIVATE_ACTION_PRIMARY_CACHE_MAX_ENTRIES = 60;
-const MEETING_AGENT_PASS_CACHE_MAX_ENTRIES = 16;
-
-function normaliseMeetingAgentPassCache(value) {
-  return (Array.isArray(value) ? value : []).filter((entry) =>
-    entry && typeof entry === 'object'
-      && /^[a-f0-9]{64}$/.test(String(entry.promptSha256 || ''))
-      && entry.result && typeof entry.result === 'object')
-    .slice(-MEETING_AGENT_PASS_CACHE_MAX_ENTRIES)
-    .map((entry) => ({
-      stage: ['discussion', 'actions', 'summary'].includes(entry.stage) ? entry.stage : '',
-      pass: meetingMinutesAgentText(entry.pass, 40),
-      promptSha256: entry.promptSha256,
-      completedAt: entry.completedAt || '',
-      result: normaliseMeetingAgentKnownTermsDeep(entry.result)
-    }));
-}
 
 function meetingAgentPassCacheKey(prompt) {
   // Microsoft prompt policies can change without changing a caller's text.
@@ -18659,119 +18650,6 @@ function publicMeetingAgentGeneration(generation) {
   return rest;
 }
 
-function meetingAgentStageContentFields(stage) {
-  if (stage === 'discussion') return ['discussion', 'meetingObjectives', 'unassignedSupportingDetails'];
-  // The Actions pass may remove a generated Discussion point only when the
-  // finished accepted action register strictly duplicates it. Persistence
-  // applies that optional cleanup only if Discussion was not edited while the
-  // pass was running.
-  if (stage === 'actions') return ['actions', 'pendingProposal', 'discussion'];
-  if (stage === 'summary') return ['executiveSummary', 'meetingObjectives'];
-  return [];
-}
-
-function meetingAgentStageFieldWasGeneratedElsewhere(sourceDraft = {}, freshDraft = {}, stage = '', field = '') {
-  if (stage !== 'summary' || field !== 'meetingObjectives') return false;
-  return JSON.stringify(sourceDraft?.qualityState?.discussion ?? null)
-    !== JSON.stringify(freshDraft?.qualityState?.discussion ?? null);
-}
-
-function meetingAgentStageFieldValue(draft, field) {
-  return field === 'unassignedSupportingDetails'
-    ? normalizeUnassignedSupportingDetails(draft?.[field]) : draft?.[field] ?? null;
-}
-
-function meetingAgentStageContentConflicts(sourceDraft = {}, freshDraft = {}, stage = '') {
-  const protectedFields = stage === 'discussion' ? ['discussion', 'unassignedSupportingDetails']
-    : stage === 'actions' ? ['actions', 'pendingProposal']
-      : stage === 'summary' ? ['executiveSummary', 'meetingObjectives'] : [];
-  return protectedFields.filter((field) =>
-    JSON.stringify(meetingAgentStageFieldValue(sourceDraft, field)) !== JSON.stringify(meetingAgentStageFieldValue(freshDraft, field))
-      && !meetingAgentStageFieldWasGeneratedElsewhere(sourceDraft, freshDraft, stage, field));
-}
-
-function meetingAgentStageOwnsCandidate(stage, candidate = {}) {
-  const recordType = meetingMinutesAgentText(candidate?.recordType, 80);
-  return stage === 'actions'
-    ? recordType === 'action'
-    : stage === 'discussion' && ['discussion_point', 'decision', 'open_question', 'objective'].includes(recordType);
-}
-
-function meetingAgentStageScopedArray(fresh = [], incoming = [], stage, owns) {
-  return [
-    ...(Array.isArray(fresh) ? fresh : []).filter((item) => !owns(stage, item)),
-    ...(Array.isArray(incoming) ? incoming : []).filter((item) => owns(stage, item))
-  ];
-}
-
-function meetingAgentStagePersistenceChanges(sourceDraft = {}, freshDraft = {}, stage = '', resultChanges = {}) {
-  const conflictFields = meetingAgentStageContentConflicts(sourceDraft, freshDraft, stage);
-  if (conflictFields.length) return { conflictFields, changes: {} };
-  const changes = {};
-  for (const field of meetingAgentStageContentFields(stage)) {
-    const changedSinceStart = JSON.stringify(meetingAgentStageFieldValue(sourceDraft, field))
-      !== JSON.stringify(meetingAgentStageFieldValue(freshDraft, field));
-    const generatedElsewhere = meetingAgentStageFieldWasGeneratedElsewhere(
-      sourceDraft, freshDraft, stage, field
-    );
-    if ((!changedSinceStart || generatedElsewhere) && Object.prototype.hasOwnProperty.call(resultChanges, field)) {
-      changes[field] = resultChanges[field];
-    }
-  }
-  if (Object.prototype.hasOwnProperty.call(resultChanges, 'candidateLedger')) {
-    changes.candidateLedger = meetingAgentStageScopedArray(
-      freshDraft.candidateLedger, resultChanges.candidateLedger, stage, meetingAgentStageOwnsCandidate
-    );
-  }
-  if (Object.prototype.hasOwnProperty.call(resultChanges, 'passProvenance')) {
-    changes.passProvenance = meetingAgentStageScopedArray(
-      freshDraft.passProvenance, resultChanges.passProvenance, stage,
-      (ownedStage, item) => item?.stage === ownedStage
-    ).slice(-40);
-  }
-  if (Object.prototype.hasOwnProperty.call(resultChanges, 'passCache')) {
-    changes.passCache = normaliseMeetingAgentPassCache(meetingAgentStageScopedArray(
-      freshDraft.passCache, resultChanges.passCache, stage,
-      (ownedStage, item) => item?.stage === ownedStage
-    ));
-  }
-  if (resultChanges.qualityState && Object.prototype.hasOwnProperty.call(resultChanges.qualityState, stage)) {
-    changes.qualityState = {
-      ...(freshDraft.qualityState && typeof freshDraft.qualityState === 'object' ? freshDraft.qualityState : {}),
-      [stage]: resultChanges.qualityState[stage]
-    };
-  }
-  if (stage === 'actions') {
-    const proposed = resultChanges.qualityState?.discussion?.claimConsolidation;
-    const current = resultChanges.qualityState?.actions;
-    if (proposed?.method === discussionActionSeparation.VERSION && proposed.applied
-      && current?.discussionActionSeparationCount > 0) {
-      const publishable = Array.isArray(changes.discussion)
-        && sourceDraft.details?.meetingDate === freshDraft.details?.meetingDate
-        && discussionClaims.canRestore(changes.discussion, normaliseSourceUnits(freshDraft.sourceUnits), proposed);
-      if (publishable) {
-        changes.qualityState = { ...(changes.qualityState || {}), discussion: { ...(freshDraft.qualityState?.discussion || {}),
-          claimConsolidation: proposed, generatedFingerprint: meetingAgentDiscussionFingerprint(changes.discussion) } };
-      } else {
-        if (Array.isArray(changes.actions)) changes.actions = discussionActionSeparation.restorePairedActions(changes.actions, proposed);
-        delete changes.discussion;
-        changes.qualityState = { ...(changes.qualityState || {}), actions: { ...(changes.qualityState?.actions || {}),
-          discussionActionSeparationCount: 0, sourceClarificationCorrectionCount: 0,
-          deferredDiscussionActionSeparation: { ...proposed, applied: false, reason: 'discussion_or_source_changed_before_publication' } } };
-      }
-    } else if (current?.discussionActionSeparationCoverageRestored && Array.isArray(changes.discussion)) {
-      const restored = discussionActionSeparation.restoreChangedActionCoverage(sourceDraft.discussion || [],
-        resultChanges.actions || [], sourceDraft.sourceUnits || [], sourceDraft.qualityState?.discussion?.claimConsolidation);
-      if (restored.restored && discussionClaims.hash(restored.discussion) === discussionClaims.hash(changes.discussion)
-        && discussionClaims.hash(restored.audit) === discussionClaims.hash(proposed)) {
-        changes.qualityState = { ...(changes.qualityState || {}), discussion: { ...(freshDraft.qualityState?.discussion || {}),
-          claimConsolidation: proposed, generatedFingerprint: meetingAgentDiscussionFingerprint(changes.discussion) } };
-      }
-    }
-  }
-  return { conflictFields: [], changes };
-}
-
 // A suggested edit must change what the action says: its wording, owners or
 // timing. One that only re-cites lines (or nothing at all) is noise.
 // Paired replay on 12 journeys: offering Discussion rows as Actions candidates
@@ -19334,16 +19212,6 @@ function meetingAgentEditableActionSignature(action = {}) {
 // What the reviewer sees of an Actions list: wording, owners and timing, in order.
 function meetingAgentActionsFingerprint(actions = []) {
   const rows = (Array.isArray(actions) ? actions : []).map(meetingAgentEditableActionSignature);
-  return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
-}
-
-function meetingAgentDiscussionFingerprint(discussion = []) {
-  const rows = (Array.isArray(discussion) ? discussion : []).map((topic) => ({
-    topic: meetingMinutesAgentText(topic?.topic, 220),
-    points: (topic?.points || []).map((item) => meetingMinutesAgentText(item?.text, 1600)),
-    decisions: (topic?.decisions || []).map((item) => meetingMinutesAgentText(item?.text, 1600)),
-    openQuestions: (topic?.openQuestions || []).map((item) => meetingMinutesAgentText(item?.text, 1600))
-  }));
   return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
 }
 
