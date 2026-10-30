@@ -13,3 +13,9 @@ benchmark-results/performance-baseline-*/
 .minilm-cache/
 
 .claude/
+
+# Local Python environment and deployment/runtime state
+.venv/
+.openclaw-deployed-revision
+.git.stale-*
+data/review-feedback/

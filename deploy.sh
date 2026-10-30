@@ -1,24 +1,11 @@
 #!/usr/bin/env bash
 # Deploy gate for the live tree.
 #
-# The process this replaces was `git pull && pm2 restart`, from memory, with the tests run
-# afterwards against production if they were run at all. It worked because the person
-# doing it remembered the steps; a script does not forget, and it refuses instead of
-# hoping.
-#
-# Run it FROM the live tree:   cd /srv/m365-agent-test && bash deploy.sh
-#
-# Order matters and is the point:
-#   1. pull        - the running process serves from memory, so the tree can change under
-#                    it safely; nothing is live until the restart
-#   2. npm test    - against the new revision, BEFORE it serves traffic; a failure rolls
-#                    the tree straight back and never restarts
-#   3. restart     - only past a green suite
-#   4. smoke check - every listed route must answer; a dead app rolls back and
-#                    restarts the old one
-#   5. marker      - written last, by the same script, so it cannot say something is live
-#                    that is not. The old marker went stale precisely because deploys and
-#                    the marker were separate manual steps.
+# Run from the live tree: cd /srv/m365-agent-test && bash deploy.sh
+# Dependencies are installed from package-lock.json, never supplied by Git.
+# This is an in-place deployment: allow a maintenance window, since installation
+# and building change files used by the running web process and workers.
+# Install, build and test before restart. Restore dependencies/build on rollback.
 
 set -euo pipefail
 
@@ -73,14 +60,26 @@ else
   say "tree is already at origin/main but the marker is not - restarting onto $(git rev-parse --short "$after") without a pull"
 fi
 
-say "running the test suite against the new revision (the app keeps serving the old one)"
+prepare_checkout() {
+  npm ci --no-audit --no-fund && npm run build:meeting-agent
+}
+
+restore_checkout() {
+  if [ "$pulled" = "1" ]; then git reset --hard "$before" || return 1; fi
+  prepare_checkout
+}
+
+say "installing locked dependencies and building the frontend"
+if ! prepare_checkout; then
+  say "installation/build failed - restoring the previous checkout"
+  restore_checkout || fail "recovery installation/build failed; manual recovery required before restart"
+  fail "installation/build failed; previous checkout restored, nothing restarted"
+fi
+
+say "running the test suite against the prepared revision"
 if ! npm test; then
-  if [ "$pulled" = "1" ]; then
-    say "tests failed - rolling the tree back to $(git rev-parse --short "$before"), nothing was restarted"
-    git reset --hard "$before"
-  else
-    say "tests failed - nothing was pulled, and nothing was restarted"
-  fi
+  say "tests failed - restoring the previous checkout, nothing restarted"
+  restore_checkout || fail "recovery installation/build failed; manual recovery required before restart"
   fail "the new revision does not pass its own tests"
 fi
 
@@ -96,11 +95,14 @@ fi
 # completions logged by trinzo, none by the worker). The /meeting-minutes-final queue is
 # not, and neither are the two helpers.
 say "tests green - restarting $APP_NAME and its workers"
-pm2 restart "$APP_NAME" --update-env >/dev/null
-for worker in $(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{JSON.parse(d).forEach(p=>{if(p.name&&p.name.startsWith("trinzo-"))console.log(p.name)})}catch{}})'); do
-  say "restarting worker $worker"
-  pm2 restart "$worker" --update-env >/dev/null || say "warning: could not restart $worker"
-done
+restart_services() {
+  pm2 restart "$APP_NAME" --update-env >/dev/null
+  for worker in $(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{JSON.parse(d).forEach(p=>{if(p.name&&p.name.startsWith("trinzo-"))console.log(p.name)})}catch{}})'); do
+    say "restarting worker $worker"
+    pm2 restart "$worker" --update-env >/dev/null || say "warning: could not restart $worker"
+  done
+}
+restart_services
 sleep 5
 
 # Check them all before deciding, so a failure names every route that is down
@@ -119,8 +121,8 @@ done
 
 if [ -n "$smoke_failures" ]; then
   say "rolling back and restarting the previous revision -${smoke_failures}"
-  if [ "$pulled" = "1" ]; then git reset --hard "$before"; fi
-  pm2 restart "$APP_NAME" --update-env >/dev/null
+  restore_checkout || fail "recovery installation/build failed; manual recovery required before restart"
+  restart_services
   fail "the new revision did not answer on:${smoke_failures}; the previous one is serving again"
 fi
 

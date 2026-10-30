@@ -16,13 +16,53 @@ Create a `.env` file using existing pattern:
 - `GOOGLE_AI_STUDIO_API_KEY` (optional for `/meeting-minutes-final`; enables the Google AI Studio/Gemini writing pass)
 - `GOOGLE_AI_STUDIO_MODEL` (optional, default `gemini-2.5-flash`)
 
-## Run locally
+## Install and run
+
+Use Node.js 22 LTS and Python 3.10 or later. Installed Node dependencies are
+ignored by Git; `package-lock.json` is the installation source of truth.
+From a fresh checkout:
+
 ```bash
-npm install
+npm ci
+npm run build:meeting-agent
 npm start
 ```
 
-Open `http://localhost:3978`.
+Open `http://localhost:3978`. `npm start` also builds the Microsoft meeting-agent
+browser bundle through its existing `prestart` hook. Do not omit development
+dependencies during installation: the build currently requires esbuild.
+
+Python transcript/project processing uses `PYTHON_BIN` (default `python3`).
+For the base text-processing helpers:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+export PYTHON_BIN="$PWD/.venv/bin/python"
+```
+
+Local MiniLM and project-knowledge workers additionally use
+`requirements-experimental-minilm.txt` (sentence-transformers and psycopg2).
+Those requirements are not a fully pinned Python environment; local model
+weights, PostgreSQL/pgvector and provider configuration remain separate setup
+requirements. Historical training scripts also need packages such as pandas.
+Removing tracked Node dependencies does not claim those services are recreated.
+
+Browser tests require the Playwright Chromium revision matching the lockfile;
+install it with `npx playwright install chromium` if it is not already available.
+
+## Deployment
+
+`deploy.sh` installs locked Node dependencies with `npm ci`, builds, runs the
+existing release suite, then restarts and checks routes. Failed preparation or
+tests restore the prior checkout's dependencies/build before exiting. This is
+still an in-place deployment: use a maintenance window because files used by the
+running processes change during installation/build. Do not deploy with a bare
+Git pull or assume a restored Git revision restores installed dependencies.
+
+The first release removing tracked `node_modules` must use the updated install
+and build procedure before restarting. Dependency removal only changes the
+current Git tree; older revisions and their files remain in Git history.
 
 ## Baseline cache reset
 
