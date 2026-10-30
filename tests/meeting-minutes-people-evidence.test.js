@@ -165,4 +165,3 @@ test('reviewer-authored role wording is not challenged by the generated-role gua
   assert.equal(out.conflicts.length, 0);
   assert.equal(out.flags.length, 0);
 });
-

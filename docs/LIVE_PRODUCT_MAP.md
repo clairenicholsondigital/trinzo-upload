@@ -178,12 +178,30 @@ The research-only archive from PR #201 remains separately recoverable through
 `research-archive.json`. This cleanup deletes only the two unserved templates;
 uncertain-use scripts and UI-consumed evaluation data remain available.
 
-The next extraction should target a single generation-stage responsibility in
-`routes/api.js`, with its actual test consumers moved to the new service. Original
-and Beta retain their existing defaults, source preparation and publication
-behaviour. The migration/proposal test cases have moved to focused modules; their
-names and assertions are preserved. The compact core now includes these focused
-checks and the new route/dispatch behaviour checks.
+The next boundary chunk separates generation state/timing/telemetry into
+`utils/meetingMinutesAgentGeneration.js` and review diff/interaction analytics
+into `utils/stagedReviewAnalytics.js`. Two small API wrappers retain the current
+process boot ID, current hybrid flag and stage map. Plain text coercion is shared
+in `utils/meetingMinutesPlainText.js`; it intentionally does not apply the domain
+terminology corrections in `meetingMinutesText.js`.
+
+People, assignment, ownership, attribution and conflicting-role evidence now
+live in `utils/meetingMinutesPeopleEvidence.js`. V2 composes that module once
+with its existing transcript context, flag registry and action-disposition
+policy. Those shared services retain their cache/identity behaviour; the new
+module does not import the V2 generator. Compatibility exports remain in place.
+
+This chunk reduces `routes/api.js` from 21,113 to 20,720 lines and V2 from 7,591
+to 6,975 lines. Sixteen existing generation/timing/people cases move with their
+owners; existing review-analytics tests use the new module directly. Focused
+checks are included in the compact core, and database-sensitive release selection
+recognises the new generation and people-evidence boundaries.
+
+The main remaining extraction is the stage orchestration in `routes/api.js`.
+Choose one stage at a time, separate its actual processing service and move its
+test consumers, while retaining the existing `stagedEvaluation` compatibility
+surface. Original and Beta keep their current defaults, shared preparation and
+publication behaviour.
 
 ## Evidence and limits
 

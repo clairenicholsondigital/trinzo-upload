@@ -18,7 +18,9 @@
     "tests/meeting-minutes-draft-storage.test.js",
     "tests/meeting-minutes-proposals.test.js",
     "tests/meeting-minutes-processing.test.js",
-    "tests/record-routes.test.js"
+    "tests/record-routes.test.js",
+    "tests/meeting-minutes-agent-generation.test.js",
+    "tests/meeting-minutes-people-evidence.test.js"
   ],
   "corePython": [
     "test_project_context_contract.py",
