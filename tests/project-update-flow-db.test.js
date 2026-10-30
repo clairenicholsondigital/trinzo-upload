@@ -28,6 +28,29 @@ else {
     assert(!(await queue('b')).duplicate,'changed reviewed content can queue');
     assert(!(await queue('a',20)).duplicate,'the other project is independent');
   });
+  test('report writes roll back at every save boundary and retries save a complete unique report', async () => {
+    const tables = ['project_report_versions', 'project_report_sources', 'project_report_health', 'project_report_milestone_assessments', 'project_report_evidence', 'project_ai_risk_suggestions'];
+    await pool.query("INSERT INTO project_core_milestones(id,project_id,category,milestone_name) VALUES(900,19,'Fixture','Atomic checkpoint')");
+    await pool.query("CREATE FUNCTION fail_audit_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Injected audit save failure'; END $$");
+    for (const [index, table] of tables.entries()) {
+      const before = (await pool.query('SELECT count(*) FROM project_reports')).rows[0].count;
+      const fingerprint = String(index + 1).repeat(64);
+      const save = () => db.saveProjectUpdateDraft({ projectId: 19, projectName: 'Fixture project', sourceFingerprint: fingerprint,
+        transcriptText: 'Atomic checkpoint is in progress.', result: { projectReport: { actions: [],
+          milestones: [{ milestoneId: 900, milestone: 'Atomic checkpoint', transcript_update_status: 'updated_from_transcript', delivery_status: 'in_progress', evidence: ['Atomic checkpoint is in progress.'] }],
+          risks: [{ riskTitle: 'Fixture risk' }] } } });
+      await pool.query(`CREATE TRIGGER audit_failure BEFORE INSERT ON ${table} FOR EACH STATEMENT EXECUTE FUNCTION fail_audit_insert()`);
+      try {
+        await assert.rejects(save(), /Injected audit save failure/);
+        assert.equal((await pool.query('SELECT count(*) FROM project_reports')).rows[0].count, before, table);
+        assert.equal((await pool.query('SELECT count(*) FROM project_report_sources WHERE transcript_sha256=$1', [fingerprint])).rows[0].count, '0');
+      } finally { await pool.query(`DROP TRIGGER audit_failure ON ${table}`); }
+      const retried = await save(); assert.equal(retried.saved, true);
+      assert.equal((await pool.query('SELECT count(*) FROM project_report_health WHERE report_version_id=$1', [retried.reportVersionId])).rows[0].count, '5');
+      assert.equal((await save()).duplicate, true);
+    }
+    await pool.query('DROP FUNCTION fail_audit_insert()');
+  });
   test('failed/cancelled jobs permit retry; live jobs and non-archived reports refuse duplicates across periods',async()=>{
     const old = await queue('c'); await pool.query("UPDATE meeting_jobs SET status='failed' WHERE id=$1",[old.jobId]);
     const retry = await queue('c'); assert(!retry.duplicate);
@@ -48,6 +71,11 @@ else {
     assert.equal((await db.listMeetingMinutesAgentDraftPage(2,{projectId:19})).total,0);
     assert.equal((await db.listMeetingMinutesAgentDraftPage(1,{projectId:20})).total,0);
     assert.equal((await db.listMeetingMinutesAgentDraftPage(1)).total,1,'unfiltered Library still shows owned legacy minutes');
+    assert.equal(await db.unlinkMeetingMinutesAgentDraftFromProject(1, 2, 19), null, 'other users cannot unlink');
+    assert.equal(await db.unlinkMeetingMinutesAgentDraftFromProject(1, 1, 20), null, 'stale project cannot clear a different link');
+    assert.deepEqual(await db.unlinkMeetingMinutesAgentDraftFromProject(1, 1, 19), { draftId: '1', projectId: null });
+    const unlinked = (await pool.query('SELECT * FROM meeting_minutes_agent_drafts WHERE id=1')).rows[0];
+    assert.deepEqual(unlinked, { ...before, project_id: null });
   });
   test('forced primary failure uses actual offline backup, saves a complete report and warns in the real job record',async()=>{
     const queued=await queue('e');
@@ -108,5 +136,41 @@ else {
     assert.equal(result.ok,false);assert.match(result.error.message,/could not be saved/);
     const job=(await pool.query('SELECT status,status_message,result_payload FROM meeting_jobs WHERE id=$1',[queued.jobId])).rows[0];
     assert.equal(job.status,'queued');assert.match(job.status_message,/failed; queued for retry/);assert.deepEqual(job.result_payload,{});
+  });
+  test('reviewed Beta minutes retain qualified actions through the real analyser, save and explicit approval', async () => {
+    const text = "The milestone for 'Data migration' is in progress. Sam and Jordan will send the access report once approval arrives.";
+    await pool.query("INSERT INTO project_core_milestones(id,project_id,category,milestone_name) VALUES(901,19,'Fixture','Data migration')");
+    const payload = { payloadVersion: 5, generationProvider: 'parallel-specialists-v1',
+      details: { meetingTitle: 'Beta integration fixture', meetingDate: '2026-10-30' },
+      executiveSummary: 'Migration is in progress. Access approval remains a prerequisite.',
+      discussion: [{ id: 'flat', topic: 'Discussion', hideHeading: true, points: [{ id: 'DI1', text: "The milestone for 'Data migration' is in progress.", evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] }],
+      actions: [{ id: 'A1', action: 'Send the access report.', owners: ['Sam', 'Jordan'], timing: { kind: 'dependency', wording: 'once approval arrives', exactDate: '' }, evidenceIds: ['T0001'] }],
+      sourceUnits: [{ id: 'T0001', speaker: 'Sam', text }], preparedTranscript: text,
+      parallelActionProposals: [{ id: 'AP1', action: 'Book an optional workshop.', status: 'open', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'] }],
+      staleStages: [], reviewFlags: [], qualityState: { parallel: { completedAt: new Date().toISOString() } } };
+    await pool.query('INSERT INTO meeting_minutes_agent_drafts(id,user_id,revision,payload,raw_transcript) VALUES(900,1,4,$1,$2)', [JSON.stringify(payload), text]);
+    const router = require('../routes/api');
+    const handler = router.stack.find(l => l.route?.path === '/project-update-test/from-minutes').route.stack.at(-1).handle;
+    const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+    await handler({ body: { draftId: '900', revision: 4, projectId: 19 }, authUser: { userId: 1, email: 'fixture@example.invalid' } }, response);
+    assert.equal(response.statusCode, 202, JSON.stringify(response.body));
+    const job = await db.getGenerationJob(response.body.jobId, { includeTranscript: true });
+    const generatorPath = require.resolve('../utils/projectUpdateGenerator'); delete require.cache[generatorPath];
+    const generator = require('../utils/projectUpdateGenerator');
+    const generated = await generator.processProjectUpdateJob({ ...job, inputPayload: { ...job.inputPayload, skipMiniLM: true, skipRewrite: true, skipKnowledge: true, skipStatusDiagnostics: true } });
+    assert.equal(generated.ok, true, generated.error?.message);
+    const reportId = generated.response.result.projectReportPersistence.reportId;
+    const saved = await db.getProjectReportDetail(reportId), report = saved.versions[0].payload.projectReport;
+    assert.equal(report.milestones.find(x => x.milestoneId === 901).delivery_status, 'in_progress');
+    assert.deepEqual(report.actions.map(x => [x.action, x.meetingActionPointOwner, x.deadline]), [['Send the access report.', 'Sam, Jordan', 'Dependent on: once approval arrives']]);
+    assert(!JSON.stringify(report.actions).includes('optional workshop'));
+    const beforeApproval = await db.getProjectContext({ projectId: 19 });
+    assert(!beforeApproval.recentReports.some(x => Number(x.reportId) === reportId));
+    const approved = await db.saveProjectReportDetail(reportId, { approve: true, baseVersionId: saved.versions[0].versionId, projectReport: report, savedBy: 'Fixture reviewer' });
+    assert.equal(approved.reportStatus, 'approved');
+    const afterApproval = await db.getProjectContext({ projectId: 19 });
+    assert(afterApproval.recentReports.some(x => Number(x.reportId) === reportId));
+    const draft = (await pool.query('SELECT revision,payload FROM meeting_minutes_agent_drafts WHERE id=900')).rows[0];
+    assert.equal(draft.revision, 4); assert.deepEqual(draft.payload, payload);
   });
 }

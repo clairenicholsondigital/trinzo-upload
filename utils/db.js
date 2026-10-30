@@ -2767,7 +2767,11 @@ async function ingestApprovedProjectReportVersion({ projectId, reportId, reportV
   }
 }
 
-async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, sourceFingerprint, result }) {
+async function saveProjectUpdateDraft(input) {
+  return withTransaction(client => saveProjectUpdateDraftInTransaction(input, client.query.bind(client)));
+}
+
+async function saveProjectUpdateDraftInTransaction({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, sourceFingerprint, result }, query) {
   const report = result?.projectReport || {};
   const risks = Array.isArray(report?.risks) ? report.risks : [];
   const healthAreas = report?.healthAreas && typeof report.healthAreas === 'object' ? report.healthAreas : {};
@@ -2835,6 +2839,9 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
       'project'
     );
   }
+
+  await query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`project-update:${projectId}:${transcriptSha}`]);
 
   // Validate target IDs/names before creating report/version records. Only a
   // supported row can create a fresh assessment; carried context is not evidence.
@@ -3521,6 +3528,17 @@ async function linkMeetingMinutesAgentDraftToProject(draftId, userId, projectId)
   return result.rows[0] ? { draftId: String(result.rows[0].id), projectId: Number(result.rows[0].project_id) } : null;
 }
 
+async function unlinkMeetingMinutesAgentDraftFromProject(draftId, userId, projectId) {
+  await ensureMeetingMinutesAgentDraftSchema();
+  const result = await query(
+    `UPDATE meeting_minutes_agent_drafts SET project_id = NULL
+     WHERE id = $1 AND user_id = $2 AND (project_id = $3 OR project_id IS NULL)
+     RETURNING id`,
+    [Number(draftId), Number(userId), Number(projectId)]
+  );
+  return result.rows[0] ? { draftId: String(result.rows[0].id), projectId: null } : null;
+}
+
 // Finds a report or an in-flight job already built from exactly this source,
 // so the same minutes are not turned into a second project update.
 async function findExistingProjectUpdateForSource(projectId, sourceFingerprint, queryFn = query) {
@@ -3882,6 +3900,7 @@ module.exports = {
   listMeetingMinutesAgentDrafts,
   listMeetingMinutesAgentDraftPage,
   linkMeetingMinutesAgentDraftToProject,
+  unlinkMeetingMinutesAgentDraftFromProject,
   findExistingProjectUpdateForSource,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
