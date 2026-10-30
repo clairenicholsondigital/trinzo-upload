@@ -2,6 +2,9 @@
 
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
+const { normaliseSourceUnits } = require('./meetingMinutesSource');
+const { normaliseFlag: normaliseMeetingAgentFlag } = require('./meetingMinutesReviewFlags');
+const crypto = require('crypto');
 
 function meetingAgentResultError(result) {
   const reported = result?.error;
@@ -217,6 +220,199 @@ function meetingAgentRefereeAccountedForAllCandidates(refereeParsed = {}, refere
   return returned.size === expected.length && expected.every((candidateId) => returned.has(candidateId));
 }
 
+// Labels the models return that mean one of ours beyond doubt. Kept small on
+// purpose: a guess here would misreport a pass's judgement rather than record
+// it, which is the thing this is meant to stop.
+const MEETING_AGENT_DISPOSITION_ALIASES = {
+  core: 'publish', keep: 'publish', complete: 'completed', rejected: 'reject'
+};
+const MEETING_AGENT_DISPOSITIONS = new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
+
+// An unrecognised disposition used to be filtered out here without a trace.
+// Across the stored corpus that discarded 1038 records under 116 invented
+// labels - 714 of them from the critic, which answered on 724 candidates and
+// was heard on 10. The pass looked mute when it was talking the whole time.
+//
+// Anything we cannot map is now kept as 'unclassified', carrying the label the
+// model actually used, so it lands in qualityState and can be read back. It
+// counts towards no published or proposed total, so what the reviewer sees is
+// unchanged - this records the judgement, it does not act on it.
+function normaliseAgentCandidateDispositions(result = {}, sourceUnits = []) {
+  const validIds = new Set(normaliseSourceUnits(sourceUnits).map((unit) => unit.id));
+  const unclassified = new Map();
+  const normalised = (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [])
+    .filter((item) => item?.candidateId)
+    .map((item) => {
+      const raw = meetingMinutesAgentText(item?.disposition, 80);
+      const mapped = MEETING_AGENT_DISPOSITION_ALIASES[raw] || raw;
+      const known = MEETING_AGENT_DISPOSITIONS.has(mapped);
+      if (!known && raw) unclassified.set(raw, (unclassified.get(raw) || 0) + 1);
+      return {
+        candidateId: meetingMinutesAgentText(item.candidateId, 120),
+        disposition: known ? mapped : 'unclassified',
+        rawDisposition: known && mapped === raw ? '' : raw,
+        reason: meetingMinutesAgentText(item.reason, 500),
+        evidenceIds: [...new Set((Array.isArray(item.evidenceIds) ? item.evidenceIds : []).filter((id) => validIds.has(id)))].slice(0, 12),
+        uncertainties: (Array.isArray(item.uncertainties) ? item.uncertainties : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(0, 8)
+      };
+    }).slice(0, 320);
+  if (unclassified.size) {
+    console.info(JSON.stringify({
+      event: 'meeting_agent_disposition_unclassified',
+      labels: [...unclassified.entries()].map(([label, count]) => ({ label, count }))
+    }));
+  }
+  return normalised;
+}
+
+function meetingAgentRefereeRepairCandidates(candidates = [], validDispositions = []) {
+  const retainedValidIds = new Set((Array.isArray(validDispositions) ? validDispositions : [])
+    .map((item) => meetingMinutesAgentText(item?.candidateId, 160))
+    .filter(Boolean));
+  const supplied = Array.isArray(candidates) ? candidates : [];
+  return retainedValidIds.size
+    ? supplied.filter((candidate) => !retainedValidIds.has(
+      meetingMinutesAgentText(candidate?.candidateId, 160)
+    ))
+    : supplied;
+}
+
+function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = [], contract = {}) {
+  if (!result || typeof result !== 'object' || !Array.isArray(result.candidateDispositions)) return result;
+  const candidateById = new Map((Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => [meetingMinutesAgentText(candidate?.candidateId, 160), candidate])
+    .filter(([candidateId]) => candidateId));
+  const expected = new Set(candidateById.keys());
+  const aliases = contract.stage === 'DISCUSSION_REFEREE' ? {
+    publish: 'core', keep: 'core', visible: 'core', primary: 'core', material: 'core',
+    proposal: 'supporting', context: 'supporting', secondary: 'supporting', non_core: 'supporting',
+    uncertain: 'supporting', unclear: 'supporting', duplicate: 'merge', merged: 'merge',
+    discard: 'reject', discarded: 'reject'
+  } : {
+    core: 'publish', keep: 'publish', committed: 'publish', accepted_request: 'publish',
+    conditional_commitment: 'proposal', supporting: 'proposal', unaccepted_request: 'reject',
+    rejected: 'reject', status_only: 'completed', historical: 'completed', idea: 'suggestion', discard: 'reject'
+  };
+  const candidateDispositions = result.candidateDispositions
+    .map((item) => {
+      const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
+      const rawDisposition = meetingMinutesAgentText(item?.disposition || item?.classification, 80)
+        .toLowerCase().replace(/[\s-]+/g, '_');
+      const candidate = candidateById.get(candidateId);
+      const allowedDiscussion = new Set(['core', 'supporting', 'merge', 'reject']);
+      let disposition = aliases[rawDisposition] || rawDisposition;
+      let websiteNormalisedDisposition = false;
+      if (contract.stage === 'DISCUSSION_REFEREE' && !allowedDiscussion.has(disposition)
+        && candidate && Array.isArray(candidate.evidenceIds) && candidate.evidenceIds.length) {
+        // AI Builder occasionally emits an empty/free-form enum while still
+        // returning the correct candidate ID, reason and evidence. Retrying the
+        // whole reasoning step is unnecessary. Preserve a prior anchored hint
+        // when available; otherwise keep the row as collapsed context. This
+        // fallback can never promote an unclassified row into visible minutes.
+        disposition = ['core', 'supporting'].includes(candidate.dispositionHint)
+          ? candidate.dispositionHint : 'supporting';
+        websiteNormalisedDisposition = true;
+      }
+      return {
+        ...item,
+        candidateId,
+        disposition,
+        ...(websiteNormalisedDisposition ? { websiteNormalisedDisposition: true } : {})
+      };
+    })
+    // An unexpected ID cannot affect a supplied candidate and is safe to
+    // discard. Missing or duplicate expected IDs are still repaired below.
+    .filter((item) => expected.has(item.candidateId));
+  return {
+    ...result,
+    candidateDispositions,
+    returnedDispositionCount: candidateDispositions.length,
+    dispositionCount: candidateDispositions.length
+  };
+}
+
+function reconcileRefereeActionMaterialization(issues = [], candidates = [], dispositions = [], sourceUnits = [], settled = []) {
+  const validEvidence = new Set((sourceUnits || []).map((unit) => unit.id));
+  const settledById = new Map((settled || []).filter((item) =>
+    ['reject', 'completed', 'suggestion'].includes(item?.disposition)
+    && meetingMinutesAgentText(item?.reason, 500)).map((item) => [item.candidateId, item]));
+  const unresolved = [...new Map((issues || []).map((issue) => [issue.candidateId, issue])).values()]
+    .filter((issue) => !settledById.has(issue.candidateId))
+    .map((issue) => ({ ...issue, evidenceIds: (issue.evidenceIds || []).filter((id) => validEvidence.has(id)) }));
+  const unresolvedById = new Map(unresolved.map((issue) => [issue.candidateId, issue]));
+  const memberIds = new Set(unresolved.flatMap((issue) => issue.memberCandidateIds || []));
+  const groupIds = new Set(candidates.filter((candidate) => ['action_thread', 'action_chain'].includes(candidate.recordType))
+    .map((candidate) => candidate.candidateId));
+  const rows = dispositions.map((item) => {
+    const groupVerdict = groupIds.has(item.candidateId) && settledById.get(item.candidateId);
+    if (groupVerdict) return { ...item, disposition: groupVerdict.disposition,
+      matchedRecordId: '', reason: groupVerdict.reason };
+    const issue = unresolvedById.get(item.candidateId);
+    // A separately represented or explicitly rejected child keeps its own
+    // outcome. A missing sibling has no rejection verdict merely because the
+    // broad group could not be materialized.
+    if (!issue && (!memberIds.has(item.candidateId) || item.disposition !== 'reject'
+      || settledById.has(item.candidateId))) return item;
+    return { ...item, disposition: 'unresolved', matchedRecordId: '',
+      reason: issue ? `Referee ${issue.disposition} could not be materialized: ${issue.reason}.`
+        : 'Not independently represented or adjudicated after an unresolved grouped-action disposition.' };
+  });
+  const flags = unresolved.map((issue, index) => {
+    const candidate = candidates.find((entry) => entry.candidateId === issue.candidateId);
+    return normaliseMeetingAgentFlag({
+      id: `action-materialization-${crypto.createHash('sha256').update(issue.candidateId).digest('hex').slice(0, 20)}`,
+      kind: 'possible_missed_follow_up', reviewDisposition:'coverage_unresolved',
+      message: `The agent could not establish complete action coverage for this passage. Some work may already be present. Check the source if you want to verify coverage: ${meetingMinutesAgentText(candidate?.text || candidate?.record?.action, 240) || 'Review the cited source.'}`,
+      evidenceIds: issue.evidenceIds
+    }, index);
+  });
+  return { candidateDispositions: rows, flags,
+    accounting: { complete: unresolved.length === 0, unresolvedCount: unresolved.length,
+      unresolvedCandidateIds: unresolved.map((item) => item.candidateId), unresolved } };
+}
+
+function refereeDiscussionContractDiagnostics(discussion = [], dispositions = [], candidates = []) {
+  const returnedIds = new Set(flattenHybridDiscussion(discussion)
+    .map((item) => String(item.record?.id || '')).filter(Boolean));
+  const suppliedIds = new Set((Array.isArray(candidates) ? candidates : [])
+    .filter((candidate) => ['discussion_point', 'decision', 'open_question'].includes(candidate?.recordType))
+    .map((candidate) => String(candidate.candidateId || '')).filter(Boolean));
+  const rows = Array.isArray(dispositions) ? dispositions : [];
+  const seen = new Set();
+  let unknownCandidateCount = 0; let duplicateCandidateCount = 0; let incompleteDispositionCount = 0;
+  const danglingTargetIds = new Set();
+  for (const row of rows) {
+    const candidateId = String(row?.candidateId || '');
+    const kind = row?.disposition || row?.classification;
+    const targetId = refereeDiscussionTargetId(row);
+    if (!candidateId || !kind || !meetingMinutesAgentText(row?.reason, 500)
+      || !Array.isArray(row?.evidenceIds)) incompleteDispositionCount += 1;
+    if (candidateId && seen.has(candidateId)) duplicateCandidateCount += 1;
+    if (candidateId) seen.add(candidateId);
+    if (candidateId && !suppliedIds.has(candidateId)) unknownCandidateCount += 1;
+    if (kind !== 'reject' && (!targetId || !returnedIds.has(targetId))) danglingTargetIds.add(targetId || '(missing)');
+  }
+  return {
+    suppliedCandidateCount: suppliedIds.size,
+    returnedDispositionCount: rows.length,
+    uniqueDispositionCandidateCount: seen.size,
+    undisposedCandidateCount: [...suppliedIds].filter((id) => !seen.has(id)).length,
+    unknownCandidateCount, duplicateCandidateCount, incompleteDispositionCount,
+    danglingTargetIds: [...danglingTargetIds]
+  };
+}
+
+function discussionRefereeHasCompleteCandidateAccounting(diagnostics = {}) {
+  const supplied = Number(diagnostics?.suppliedCandidateCount || 0);
+  return supplied > 0
+    && Number(diagnostics?.returnedDispositionCount || 0) === supplied
+    && Number(diagnostics?.uniqueDispositionCandidateCount || 0) === supplied
+    && Number(diagnostics?.undisposedCandidateCount || 0) === 0
+    && Number(diagnostics?.unknownCandidateCount || 0) === 0
+    && Number(diagnostics?.duplicateCandidateCount || 0) === 0
+    && Number(diagnostics?.incompleteDispositionCount || 0) === 0;
+}
+
 module.exports = {
   meetingAgentResultError,
   meetingAgentRefereeRoute,
@@ -225,4 +421,10 @@ module.exports = {
   refereeDiscussionTargetId,
   meetingAgentDispositionError,
   meetingAgentRefereeAccountedForAllCandidates,
+  normaliseMeetingAgentRefereeContractResult,
+  meetingAgentRefereeRepairCandidates,
+  normaliseAgentCandidateDispositions,
+  refereeDiscussionContractDiagnostics,
+  discussionRefereeHasCompleteCandidateAccounting,
+  reconcileRefereeActionMaterialization,
 };

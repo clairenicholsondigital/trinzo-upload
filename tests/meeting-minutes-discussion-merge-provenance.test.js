@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normaliseAgentResult, boundedReviewEvidence } = require('../utils/meetingMinutesAgentV2');
+const { normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
+const { boundedReviewEvidence } = require('../utils/meetingMinutesReviewEvidence');
 
 const wording = 'The inspection review remains scheduled for Friday.';
 const units = Array.from({ length: 13 }, (_, index) => ({

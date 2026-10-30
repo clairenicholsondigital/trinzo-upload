@@ -3,6 +3,13 @@
 const crypto = require('node:crypto');
 const { text } = require('./meetingMinutesText');
 
+const COMMON_SPEECH_WORDS = new Set([
+  'get', 'got', 'let', 'say', 'one', 'make', 'made', 'take', 'put', 'going', 'think', 'know', 'want', 'like',
+  'yeah', 'yes', 'sure', 'okay', 'well', 'right', 'thing', 'things', 'bit', 'kind', 'sort', 'really',
+  'actually', 'maybe', 'now', 'see', 'look', 'come', 'back', 'way', 'lot', 'time', 'good', 'fine', 'sorry',
+  'hang', 'yep', 'probably', 'still', 'even', 'much', 'many', 'thank', 'thanks'
+]);
+
 function stableId(prefix, value, index = 0) {
   return `${prefix}-${crypto.createHash('sha1').update(`${index}|${text(value, 4000)}`).digest('hex').slice(0, 10)}`;
 }
@@ -19,4 +26,4 @@ function tokenOverlap(left, right) {
   return a.filter((token) => b.has(token)).length / Math.min(a.length, b.size);
 }
 
-module.exports = { stableId, contentTokens, tokenOverlap };
+module.exports = { stableId, contentTokens, tokenOverlap, COMMON_SPEECH_WORDS };

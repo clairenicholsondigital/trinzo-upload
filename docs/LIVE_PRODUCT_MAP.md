@@ -443,6 +443,40 @@ Bounded-review evidence packets and remaining substantive API policies still
 need explicit ownership before the later publication and lifecycle stages; this
 batch does not mark stage 3 or the whole simplification plan complete.
 
+### Bounded review evidence and response accounting
+
+Review-packet selection now belongs to `meetingMinutesReviewEvidence`, with the
+existing speaker identity matcher in People and the unchanged common speech-word
+Set in RecordMatching. The two function bodies and Set declaration move intact.
+V2 retains its public packet export as the same function. Selection caps, anchor
+priority, original ordering, character overflow and coverage metadata remain;
+selection does not certify facts, ownership or timing. The existing context and
+cache/reset identities remain shared. Different purpose-specific stoplists stay
+separate.
+
+The existing ResponseContracts owner also takes six deterministic disposition,
+repair, accounting and materialization helpers, with their two enum constants.
+They import the actual text, source, discussion-row and review-flag owners and
+crypto. Original Discovery, Discussion and Actions import those functions
+straight from ResponseContracts, removing six supplied service entries (125 to
+119) without changing their processing bodies. The API compatibility exports,
+all route registrations, provider prompts and public assets remain unchanged.
+No new callback factory, policy port, state registry or cache is introduced.
+
+Six existing cases move into compact owner checks: one packet-selection case
+and five response/accounting cases. Candidate-disposition checks also import
+their actual owner. Every original case and assertion remains, including the
+mixed generation, materialization and provenance integrations. There is no
+reduction in the overall regression bank; the infrastructure mapping updates
+require its full release profile, including disposable-database coverage.
+
+This advances stage 3 but does not complete it. Empty-discovery validation still
+depends on actual proposal normalization and action duplicate policy; response
+aggregation has those duplicate-policy dependencies too. These are named
+remaining work, not substitute lexical checks or callbacks to the API/V2.
+Publication/Library/exports, reviewer save/history and preparation/generation
+lifecycle remain later stages of the simplification plan.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456
