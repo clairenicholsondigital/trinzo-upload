@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
+const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 const { reconcileDiscussionClauseSources: repair } = require('../utils/meetingMinutesDiscussionSources');
 function fixture() {
   const text = 'The prototype uses a rechargeable battery. The supplier has not approved the enclosure. Ellis requested the prototype test schedule and checklist.';
@@ -17,13 +18,13 @@ test('the existing whole-row resolver reproduces citation drift; bounded repair 
   const normal = V.normaliseAgentResult({ discussion: [{ topic: 'Equipment', points: [record] }] }, sourceUnits, 'discussion');
   assert.deepEqual(normal.discussion[0].points[0].evidenceIds, ['T0021']);
   const before = structuredClone(normal.discussion);
-  const result = repair(normal.discussion, sourceUnits, { resolve: V.resolveEvidence });
+  const result = repair(normal.discussion, sourceUnits, { resolve: resolveEvidence });
   const row = result.discussion[0].points[0];
   assert.deepEqual(row.primaryEvidenceIds, record.primaryEvidenceIds);
   for (const id of [...record.evidenceIds, 'T0021']) assert.ok(row.evidenceIds.includes(id));
   assert.equal(row.text, record.text); assert.equal(result.audit[0].applied, true);
   assert.deepEqual(normal.discussion, before);
-  assert.deepEqual(repair(result.discussion, sourceUnits, { resolve: V.resolveEvidence }).discussion, result.discussion);
+  assert.deepEqual(repair(result.discussion, sourceUnits, { resolve: resolveEvidence }).discussion, result.discussion);
 });
 for (const [name, mutate] of [
   ['reviewer card', d => { d[0].confirmedTopic = true; }],
@@ -66,7 +67,7 @@ test('save/reopen retains repaired sources and private source history through th
   let router, api;
   const inconsistent = V.normaliseAgentResult({ discussion: [{ id: 'topic', topic: 'Equipment', points: [record] }] },
     sourceUnits, 'discussion').discussion;
-  const repaired = repair(inconsistent, sourceUnits, { resolve: V.resolveEvidence });
+  const repaired = repair(inconsistent, sourceUnits, { resolve: resolveEvidence });
   let saved = { draftId: 'source-draft', revision: 1, status: 'draft', payloadVersion: V.PAYLOAD_VERSION,
     sourceUnits, preparedTranscript: V.preparedTranscriptFromUnits(sourceUnits), rawTranscript: 'Source fixture',
     details: { meetingTitle: 'Equipment', meetingType: 'General', meetingDate: '2026-10-21', internalAttendees: ['Ellis', 'Noor'], clientAttendees: [] },

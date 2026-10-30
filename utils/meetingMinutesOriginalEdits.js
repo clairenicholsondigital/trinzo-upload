@@ -2,6 +2,7 @@
 
 const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
+const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
 
 const {
   actionCandidateInventory,
@@ -10,7 +11,6 @@ const {
   groundedObjectiveRecords,
   coverageFlags,
   normaliseAgentResult,
-  resolveEvidence,
 } = require('./meetingMinutesAgentV2');
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');
 const { safeLogError } = require('./apiErrors');

@@ -2,18 +2,20 @@
 
 const { meetingAgentInfrastructureFailure } = require('./meetingMinutesResponseContracts');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
+const { actionNegatedByEvidence, isMeetingAdminAction } = require('./meetingMinutesActionEvidence');
+const { applyRequesterOwnerRule } = require('./meetingMinutesPeopleEvidence');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const {
-  actionCompletenessCheckItems, actionCompletenessCheckPrompt, actionNegatedByEvidence, answeredCheckItems,
+  actionCompletenessCheckItems, actionCompletenessCheckPrompt, answeredCheckItems,
   answeredCheckPrompt, applyActionCompletenessResults, applyAnsweredCheckResults, applyChainedTimingRule,
   applyCommitmentCheckResults, applyCompletedInMeetingCheckResults, applyFinalActionLifecycleResults,
-  applyRequesterOwnerRule, applyTimingCheckResults, applyTimingClauseChecks,
+  applyTimingCheckResults, applyTimingClauseChecks,
   attachNearbyDependencyConditions, backfillActionCommitmentEvidence, commitmentCheckItems,
   commitmentCheckPrompt, completedInMeetingCheckItems, completedInMeetingCheckPrompt,
   correctnessChecksEnabled, describesUsualPractice, finalActionLifecycleCheckItems,
   finalActionLifecycleCheckPrompt, finaliseActionTimings, isAobPersonalAside, isFarewellAction,
-  isMeetingAdminAction, isMinuteInstruction, isNotAnAction, isSocialAside,
+  isMinuteInstruction, isNotAnAction, isSocialAside,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   timingCheckEnabled: meetingMinutesTimingCheckEnabled,

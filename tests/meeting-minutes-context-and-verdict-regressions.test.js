@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
+const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 
 function units(rows) {
   return V.normaliseSourceUnits(rows.map(([speaker, text]) => ({ speaker, text })));
@@ -70,7 +71,7 @@ test('lexical remapping cannot override the absence of a claimed number', () => 
     ['Sam', 'There is a query about the correct vendor details.'],
     ['Chair', 'The receiving warehouse gets documentation from the vendors.']
   ]);
-  const result = V.resolveEvidence('The vendor fee is 73 pounds for 8 registrations.', source, []);
+  const result = resolveEvidence('The vendor fee is 73 pounds for 8 registrations.', source, []);
   assert.deepEqual(result.evidenceIds, []);
 });
 
@@ -79,7 +80,7 @@ test('the same numeric gate still finds a genuine amount and count', () => {
     ['Chair', 'The vendor fee is 73 pounds for 8 registrations.'],
     ['Sam', 'That is the charge we need to check.']
   ]);
-  const result = V.resolveEvidence('The vendor fee is 73 pounds for 8 registrations.', source, []);
+  const result = resolveEvidence('The vendor fee is 73 pounds for 8 registrations.', source, []);
   assert.ok(result.evidenceIds.includes('T0001'));
 });
 

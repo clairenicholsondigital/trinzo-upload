@@ -4,6 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
 const evidenceContext = require('../utils/meetingMinutesEvidenceContext');
+const actionEvidence = require('../utils/meetingMinutesActionEvidence');
+const evidenceResolution = require('../utils/meetingMinutesEvidenceResolution');
+const peopleEvidence = require('../utils/meetingMinutesPeopleEvidence');
+const actionDiagnostics = require('../utils/meetingMinutesActionDiagnostics');
 const reviewFlags = require('../utils/meetingMinutesReviewFlags');
 const { actionTimingIssueFlag } = require('../utils/meetingMinutesTimingFlags');
 
@@ -266,6 +270,14 @@ test('repeated unresolved validation still collapses to one automatic warning', 
 });
 
 test('an exactly repeated deterministic system flag keeps its reviewed state in the result and registry', async () => {
+  assert.equal(V.resolveEvidence, evidenceResolution.resolveEvidence, 'V2 uses the actual evidence resolver');
+  for (const name of ['actionEvidenceDisposition', 'actionNegatedByEvidence', 'isLiveCallConduct', 'isMeetingAdminAction', 'isMeetingAdminShare']) {
+    assert.equal(V[name], actionEvidence[name], `${name} has one action-evidence owner`);
+  }
+  for (const name of ['assignsWorkTo', 'ownerAssignedInMeeting', 'addressedRequestAccepted', 'applyRequesterOwnerRule',
+    'groundRowAttributions', 'flagConflictingDiscussionRoles']) {
+    assert.equal(V[name], peopleEvidence[name], `${name} has one people-evidence owner`);
+  }
   for (const name of ['normaliseFlag', 'reconcileRecordFlags', 'reconcileUsefulRecordFlags', 'isSalientCoverageFlag', 'isUsefulReviewFlag']) {
     assert.equal(V[name], reviewFlags[name], `${name} must have one shared owner`);
   }
@@ -297,10 +309,27 @@ test('an exactly repeated deterministic system flag keeps its reviewed state in 
     assert.equal(V.evidenceContextFor(units), context, 'evidence context is memoized before the reset');
     assert.notEqual(evidenceContext.evidenceContextFor(copy(units)), context, 'separate arrays have separate contexts');
     const previousRows = context.rows;
+    const resolveBoth = () => {
+      const direct = evidenceResolution.resolveEvidence('Review the inspection report.', units, ['T0001'], { action: true });
+      assert.deepEqual(V.resolveEvidence('Review the inspection report.', units, ['T0001'], { action: true }), direct);
+      return direct;
+    };
+    const beforeReset = await actionDiagnostics.capture(resolveBoth);
+    assert.ok(context.resolutionCache.size > 0, 'the resolver stores results in the shared evidence context');
+    const beforeEvents = beforeReset.audit.events.filter(event => event.kind === 'evidence_selected');
+    assert.equal(beforeEvents.length, 2, 'direct and V2 calls use the same private diagnostics context');
+    assert.equal(beforeEvents[1].reason, 'resolution_cache_hit', 'V2 reuses the result cached by the direct owner');
     assert.deepEqual(V.clearMeetingMinutesAgentV2MemoryCaches(), { evidenceContexts: 'reset' });
     const resetContext = evidenceContext.evidenceContextFor(units);
     assert.notEqual(resetContext, context, 'the reset discards the evidence context through both entrypoints');
     assert.equal(V.evidenceContextFor(units), resetContext, 'V2 and the owner share the replacement cache');
+    assert.equal(resetContext.resolutionCache.size, 0, 'resetting the context also discards resolver results');
+    const afterReset = await actionDiagnostics.capture(resolveBoth);
+    const afterEvents = afterReset.audit.events.filter(event => event.kind === 'evidence_selected');
+    assert.equal(afterEvents.length, 2);
+    assert.notEqual(afterEvents[0].reason, 'resolution_cache_hit', 'the direct owner recomputes after the compatibility reset');
+    assert.equal(afterEvents[1].reason, 'resolution_cache_hit');
+    assert.deepEqual(afterReset.value, beforeReset.value, 'recomputing keeps the same evidence decision');
     assert.equal(context.rows, previousRows, 'in-flight callers retain the original context');
     assert.deepEqual(evidenceContext.clearMeetingMinutesAgentV2MemoryCaches(), { evidenceContexts: 'reset' });
     assert.notEqual(V.evidenceContextFor(units), resetContext, 'a direct owner reset also clears V2 contexts');

@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const V = require('../utils/meetingMinutesAgentV2');
+const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
@@ -74,7 +75,7 @@ function patchHarness(initial) {
     normalizeUnassignedSupportingDetails,
     withoutRepresentedUnassignedDetails,
     normaliseAgentResult: V.normaliseAgentResult,
-    resolveEvidence: V.resolveEvidence,
+    resolveEvidence: resolveEvidence,
     reconcileDiscussionClauseSources,
     originalEnquiryActions,
     sameEnquiryActionSnapshot,
