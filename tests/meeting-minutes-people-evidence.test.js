@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createMeetingMinutesPeopleEvidence } = require('../utils/meetingMinutesPeopleEvidence');
 
-// Pure assignment/acceptance checks do not need transcript or flag services.
+// Pure assignment/acceptance checks do not need action-disposition services.
 const { assignsWorkTo, addressedRequestAccepted } = createMeetingMinutesPeopleEvidence({});
 
 // Source-backed checks use the real shared context, flag registry and action
@@ -12,7 +12,6 @@ const { assignsWorkTo, addressedRequestAccepted } = createMeetingMinutesPeopleEv
 function peopleEvidence() {
   const V = require('../utils/meetingMinutesAgentV2');
   return createMeetingMinutesPeopleEvidence({
-    evidenceContextFor: V.evidenceContextFor,
     actionEvidenceDisposition: V.actionEvidenceDisposition
   });
 }

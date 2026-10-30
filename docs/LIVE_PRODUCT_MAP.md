@@ -364,6 +364,43 @@ are ownership improvements; no total test-selection reduction is claimed.
 Evidence/grounding and its shared caches are the next stage-3 boundary, followed
 by publication/Library/exports, reviewer history and generation lifecycle work.
 
+The shared evidence-context batch moves 16 existing context/scoring and
+transcript/window functions into `utils/meetingMinutesEvidenceContext.js`.
+Their function bodies, source filtering, numeric/spoken-value matching and score
+weights remain unchanged. The module owns one WeakMap keyed by source-array
+identity, including each context's existing resolution-cache object. Reset still
+replaces only that WeakMap, preserves contexts held by in-flight callers and
+leaves the shared review-flag registry intact. V2 keeps its compatibility
+references and unchanged resolver implementation, including its cache key,
+copy-on-return and clearing rules.
+
+The API imports transcript projection, scoring and cache reset directly from
+their shared owner. People evidence imports context directly too; its factory
+now receives only the remaining action-disposition policy. The flag-only
+`mergeMeetingAgentFlags` implementation moves to the existing review-flag owner,
+with equivalent local binding names. Original Actions and Edits import it
+directly, reducing their API callback map from 126 to 125. Its ordering, useful
+flag filter, review-status/note precedence, registry effects and first-250 limit
+remain unchanged. No new API compatibility export is introduced.
+
+The two existing spoken-number cases now test the real context owner without
+loading API/V2, including transitive imports, and join the compact core. Existing
+cache/reset tests also verify shared function references, distinct array keys,
+reset from either entrypoint, old-context survival and warning preservation.
+Reviewer PATCH tests use the actual flag merge helper. Generation, resolver,
+save/reload and undo integrations remain. No global cases are added, removed or
+moved between files; the existing Python source check follows the retained
+public-draft boundary.
+
+API falls from 17,421 to 17,407 lines and V2 from 6,699 to 6,534. All 94 effective
+route registrations and previous API/V2 exports remain. API/V2 raw consumers
+each decrease by one; total selections stay at 312 and 268 files as the compact
+core gains the existing numeric-evidence cases. The shared context owner also
+selects 268 files and persistence coverage. The actual text/settings dependency
+retains its lazy database path. This is another shared-policy boundary; resolver,
+action-disposition and bounded-review evidence policy remain to be separated
+before the publication and remaining lifecycle stages.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

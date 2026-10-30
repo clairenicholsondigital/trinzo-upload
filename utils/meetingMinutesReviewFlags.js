@@ -226,7 +226,20 @@ function uniqueFlags(flags = [], suppliedCount = flags.length, records = [], ori
   return { reviewFlags, alias };
 }
 
+function mergeMeetingAgentFlags(existing = [], added = []) {
+  const byId = new Map();
+  for (const raw of [...existing, ...added].filter(isUsefulReviewFlag)) {
+    const flag = normaliseFlag(raw, byId.size);
+    const prior = byId.get(flag.id);
+    byId.set(flag.id, prior && prior.status !== 'open' ? {
+      ...flag, status: prior.status, correctionNote: prior.correctionNote || flag.correctionNote
+    } : flag);
+  }
+  return [...byId.values()].slice(0, 250);
+}
+
 module.exports = {
+  mergeMeetingAgentFlags,
   normaliseFlag,
   reconcileRecordFlags,
   reconcileUsefulRecordFlags,

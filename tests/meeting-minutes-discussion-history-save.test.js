@@ -10,6 +10,7 @@ const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDis
 const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
 const { normalizeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
+const { mergeMeetingAgentFlags } = require('../utils/meetingMinutesReviewFlags');
 
 const reviewerOptions = {
   enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true
@@ -88,9 +89,7 @@ function patchHarness(initial) {
     rebaseMeetingAgentProposal: value => value,
     MEETING_AGENT_PAYLOAD_VERSION: V.PAYLOAD_VERSION,
     MEETING_AGENT_MAX_STEP: 5,
-    mergeMeetingAgentFlags: (first, second) => [...new Map(
-      [...(first || []), ...(second || [])].map(flag => [flag.id, flag])
-    ).values()],
+    mergeMeetingAgentFlags,
     reopenFlagsOfReAddedItems: flags => flags,
     reconcileMeetingAgentOrphanFlags: flags => flags,
     meetingMinutesAgentText: V.text,

@@ -6,7 +6,6 @@ const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
 const { createMeetingMinutesPeopleEvidence } = require('../utils/meetingMinutesPeopleEvidence');
 const { applyRequesterOwnerRule, ownerAssignedInMeeting } = createMeetingMinutesPeopleEvidence({
-  evidenceContextFor: V.evidenceContextFor,
   actionEvidenceDisposition: V.actionEvidenceDisposition
 });
 const { reconcileRecordFlags } = require('../utils/meetingMinutesReviewFlags');

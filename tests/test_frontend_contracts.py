@@ -172,7 +172,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('grid-template-columns:auto minmax(0,1fr)', page)
         self.assertIn("normaliseKnownTerms: normaliseMeetingAgentKnownTerms", api)
         self.assertIn("isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag", api)
-        public_draft = api.split("function publicMeetingAgentDraft", 1)[1].split("function mergeMeetingAgentFlags", 1)[0]
+        public_draft = api.split("function publicMeetingAgentDraft", 1)[1].split("function meetingInsightEvidence", 1)[0]
         self.assertNotIn("One independent quality check could not complete", public_draft)
         self.assertLess(public_draft.index("const visibleReviewFlags"), public_draft.index("normaliseMeetingAgentKnownTermsDeep"))
         self.assertEqual(page.count('class="agent-edit agent-edit-inline"'), 2)

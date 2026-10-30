@@ -1,7 +1,7 @@
 'use strict';
 
 const { meetingAgentInfrastructureFailure } = require('./meetingMinutesResponseContracts');
-const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags } = require('./meetingMinutesReviewFlags');
+const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const {
@@ -71,7 +71,6 @@ function createOriginalActionsStage(services) {
     meetingMinutesAgentSalvagePrompt,
     meetingMinutesMinuteInstructionRuleEnabled,
     meetingMinutesProposalRecheckEnabled,
-    mergeMeetingAgentFlags,
     mergePublishedActionEvidence,
     normaliseAgentCandidateDispositions,
     normaliseAgentDeclaredProposals,
