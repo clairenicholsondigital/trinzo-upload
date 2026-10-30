@@ -3,11 +3,13 @@ from scripts.project_update_minilm import build_project_update_output, infer_sta
 
 
 class ProjectStatusBindingRegressionTest(unittest.TestCase):
-    def report(self, texts):
+    def report(self, texts, previous_status=None):
         context = {"found": True, "activeMilestones": [
             {"milestoneId": 1, "milestoneName": "Data migration"},
             {"milestoneId": 2, "milestoneName": "Security sign-off"},
         ]}
+        if previous_status:
+            context['activeMilestones'][0]['latestAssessment'] = {'status': previous_status}
         output = build_project_update_output("\n".join("Minutes: " + text for text in texts),
             use_minilm=False, use_rewrite=False, project_context=context)
         return {row["milestone"]: row["delivery_status"] for row in output["projectReport"]["milestones"]}
@@ -47,6 +49,16 @@ class ProjectStatusBindingRegressionTest(unittest.TestCase):
 
     def test_word_fragments_do_not_create_status(self):
         self.assertEqual(infer_status_from_text('The document describes stonework and built-in controls.'), 'unknown')
+
+    def test_current_uncertainty_does_not_reconfirm_a_historical_status(self):
+        for previous, wording in [('completed', 'is not finished'), ('completed', 'might be completed'),
+                ('blocked', 'is not blocked')]:
+            with self.subTest(previous=previous, wording=wording):
+                current = self.report([f"The milestone for 'Data migration' {wording}."], previous)['Data migration']
+                self.assertNotEqual(current, previous)
+
+    def test_unmentioned_milestone_still_keeps_its_historical_baseline(self):
+        self.assertEqual(self.report(["The milestone for 'Security sign-off' is completed."], 'on_track')['Data migration'], 'on_track')
 
 
 if __name__ == '__main__':
