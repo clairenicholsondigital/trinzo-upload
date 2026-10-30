@@ -50,6 +50,20 @@ async function minutesLink(page, selector = '#openMinutesAgent') {
   return new URL(await page.locator(selector).getAttribute('href'), ORIGIN);
 }
 
+test('returning to Process refreshes edited and newly created saved minutes', async t => {
+  const drafts = [{ draftId: '301', revision: 4, title: 'Beta meeting', generationProvider: 'parallel-specialists-v1' }];
+  const { page, requests } = await workspace(t, { suffix: '&engine=parallel', drafts });
+  await page.waitForSelector('[data-create-from-minutes="301"][data-minutes-revision="4"]');
+  await page.click('#openProjectReportsBtn');
+  drafts[0].revision = 5;
+  drafts.push({ draftId: '302', revision: 1, title: 'New Beta meeting', generationProvider: 'parallel-specialists-v1' });
+  await page.click('#openProjectProcessBtn');
+  await page.waitForSelector('[data-create-from-minutes="301"][data-minutes-revision="5"]', { timeout: 2000 });
+  assert.equal(await page.locator('[data-create-from-minutes="302"]').count(), 1);
+  assert.equal(requests.filter(r => r.pathname === '/api/meeting-minutes-agent/drafts').length, 2);
+  assert.equal(await page.getByRole('switch', { name: 'Beta meeting minutes' }).isChecked(), true);
+});
+
 test('admin can enable Beta with the keyboard, retaining the project and leaving saved data untouched', async t => {
   const { page, errors, requests } = await workspace(t);
   const toggle = page.getByRole('switch', { name: 'Beta meeting minutes' });

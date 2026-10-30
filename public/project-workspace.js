@@ -366,6 +366,7 @@
     let container = mounted[stageKey];
     if (container && PERSISTENT_STAGES.has(stageKey)) {
       container.hidden = false;
+      if (typeof stage.refresh === 'function') stage.refresh(container);
       return;
     }
     // Rebuild data stages each activation for fresh data.

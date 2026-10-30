@@ -25,6 +25,27 @@ async function isolatedPage(t, url = '/meeting-minutes-agent?draftId=202&project
   return page;
 }
 
+test('unlink clears the stored project and cannot tag later drafts through a surviving Beta listener', async t => {
+  const page = await isolatedPage(t);
+  await page.evaluate(() => {
+    window.linkCalls = [];
+    window.fetch = async (url, options = {}) => {
+      window.linkCalls.push({ url: String(url), method: options.method, body: options.body ? JSON.parse(options.body) : null });
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+  });
+  await page.addScriptTag({ content: LINK_SOURCE });
+  await page.click('#unlinkProject');
+  await page.waitForFunction(() => !document.querySelector('#projectLinkBanner'));
+  assert.equal((await page.evaluate(() => window.linkCalls)).filter(c => c.method === 'DELETE').length, 1);
+  await page.evaluate(() => {
+    history.replaceState(null, '', '/meeting-minutes-agent?draftId=303&engine=parallel');
+    const toggle = document.createElement('input'); toggle.id = 'betaFlow'; document.body.appendChild(toggle);
+    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  assert.equal((await page.evaluate(() => window.linkCalls)).filter(c => c.url.includes('/303/')).length, 0);
+});
+
 test('project context belongs to the explicit URL and unlink survives refresh', async t => {
   const page = await isolatedPage(t, '/meeting-minutes-agent?draftId=202');
   await page.evaluate(() => sessionStorage.setItem('trinzo.minutesProjectLink', JSON.stringify({ projectId: '99', projectName: 'Unrelated project' })));
@@ -34,6 +55,7 @@ test('project context belongs to the explicit URL and unlink survives refresh', 
   await page.addScriptTag({ content: LINK_SOURCE });
   assert.match(await page.locator('#projectLinkBanner').innerText(), /Current project/);
   await page.click('#unlinkProject');
+  await page.waitForFunction(() => !document.querySelector('#projectLinkBanner'));
   const unlinked = new URL(page.url());
   assert.equal(unlinked.searchParams.get('projectId'), null);
   assert.equal(unlinked.searchParams.get('projectName'), null);
@@ -42,6 +64,27 @@ test('project context belongs to the explicit URL and unlink survives refresh', 
   await page.reload();
   await page.addScriptTag({ content: LINK_SOURCE });
   assert.equal(await page.locator('#projectLinkBanner').count(), 0);
+});
+
+test('unlink waits for an in-flight tag and retains its context if deletion fails', async t => {
+  const page = await isolatedPage(t);
+  await page.evaluate(() => {
+    window.linkCalls = [];
+    window.fetch = (url, options = {}) => {
+      window.linkCalls.push(options.method);
+      if (options.method === 'POST') return new Promise(resolve => { window.finishTag = () => resolve({ ok: true }); });
+      return Promise.resolve({ ok: false, json: async () => ({ error: 'Temporary unlink failure.' }) });
+    };
+  });
+  await page.addScriptTag({ content: LINK_SOURCE });
+  await page.click('#unlinkProject');
+  assert.deepEqual(await page.evaluate(() => window.linkCalls), ['POST']);
+  assert.equal(await page.locator('#unlinkProject').isDisabled(), true);
+  await page.evaluate(() => window.finishTag());
+  await page.waitForFunction(() => document.querySelector('#projectLinkBanner [role="status"]').textContent.includes('Temporary unlink failure'));
+  assert.deepEqual(await page.evaluate(() => window.linkCalls), ['POST', 'DELETE']);
+  assert.equal(new URL(page.url()).searchParams.get('projectId'), '17');
+  assert.equal(await page.locator('#unlinkProject').isDisabled(), false);
 });
 
 test('project return links retain the current next-upload choice and the queued report keeps the saved revision', async t => {

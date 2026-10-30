@@ -274,6 +274,9 @@ async function processProjectUpdateJob(job, options = {}) {
     if (result.projectReportPersistence?.error) {
       throw new Error(`The project report could not be saved: ${result.projectReportPersistence.error}`);
     }
+    if (!result.projectReportPersistence?.saved && !result.projectReportPersistence?.duplicate) {
+      throw new Error(`The project report could not be saved: ${result.projectReportPersistence?.reason || 'No successful save was recorded.'}`);
+    }
 
     await updateGenerationJobProgress(job.jobId, 'saving', 88, 'Saving draft project update report.');
     const response = buildQueuedProjectUpdateResponse(job, result);
