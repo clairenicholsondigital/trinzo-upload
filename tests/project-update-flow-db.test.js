@@ -173,4 +173,31 @@ else {
     const draft = (await pool.query('SELECT revision,payload FROM meeting_minutes_agent_drafts WHERE id=900')).rows[0];
     assert.equal(draft.revision, 4); assert.deepEqual(draft.payload, payload);
   });
+  test('stored minutes migrate on read without rewriting rows and keep ownership, unknown fields and revision checks', async () => {
+    const point = { id: 'p1', text: 'Keep the original wording.', evidenceIds: ['T0001'] };
+    const legacy = { payloadVersion: 2, currentStep: 1, unknown: { keep: ['source'] },
+      discussion: [{ topic: 'Review', points: [point] }] };
+    const expectedLegacy = { ...legacy, payloadVersion: 5, currentStep: 2,
+      discussion: [{ topic: 'Review', points: [{ ...point, supportingDetails: [] }], decisions: [], openQuestions: [] }] };
+    const beta = { payloadVersion: 5, generationProvider: 'parallel-specialists-v1', currentStep: 5,
+      unknown: { keep: ['beta'] }, actions: [{ id: 'A1', action: 'Keep the target.', timing: { kind: 'target', wording: 'ideally Friday' } }] };
+    const future = { payloadVersion: 6, currentStep: 7, unknown: { keep: ['future'] } };
+    for (const [index, [payload, expected]] of [[legacy, expectedLegacy], [beta, beta], [future, future]].entries()) {
+      const id = 950 + index;
+      await pool.query('INSERT INTO meeting_minutes_agent_drafts(id,user_id,title,raw_transcript,payload) VALUES($1,1,$2,$3,$4)',
+        [id, 'Storage fixture', 'Private fixture transcript', JSON.stringify(payload)]);
+      const read = await db.getMeetingMinutesAgentDraft(id, 1);
+      assert.deepEqual(Object.fromEntries(Object.keys(expected).map(key => [key, read[key]])), expected);
+      assert.equal(read.rawTranscript, undefined);
+      assert.equal(await db.getMeetingMinutesAgentDraft(id, 2), null);
+      assert.deepEqual((await pool.query('SELECT payload FROM meeting_minutes_agent_drafts WHERE id=$1', [id])).rows[0].payload, payload,
+        'ordinary reads must not rewrite historical storage');
+      const saved = await db.updateMeetingMinutesAgentDraft(id, 1, read.revision, { payload: expected });
+      assert.equal(saved.revision, 2); assert.equal(saved.rawTranscript, 'Private fixture transcript');
+      assert.deepEqual(saved.unknown, expected.unknown);
+      await assert.rejects(db.updateMeetingMinutesAgentDraft(id, 1, 1, { payload: {} }), error => error.statusCode === 409);
+      assert.deepEqual((await pool.query('SELECT payload FROM meeting_minutes_agent_drafts WHERE id=$1', [id])).rows[0].payload, expected);
+    }
+  });
+
 }

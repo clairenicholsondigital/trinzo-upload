@@ -95,7 +95,10 @@ test('missing suite files, unavailable Git baselines and outside paths cannot si
 });
 test('database-sensitive changes require persistence checks before release', t => {
   const { root } = fixture(t);
-  assert.equal(plan({ root, mode: 'release', files: ['utils/db.js'] }).integrationRequired, true);
+  for (const file of ['utils/db.js', 'routes/projectRecords.js', 'routes/minutesFeedback.js',
+    'utils/meetingMinutesDraftStorage.js', 'utils/meetingMinutesProcessing.js']) {
+    assert.equal(plan({ root, mode: 'release', files: [file] }).integrationRequired, true, file);
+  }
   assert.equal(plan({ root, mode: 'release', files: ['README.md'] }).integrationRequired, false);
 });
 test('production database configuration is never used as the integration fallback', () => {
