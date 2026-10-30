@@ -7,6 +7,7 @@ const repoDir = path.resolve(__dirname, '..');
 const fixture = JSON.parse(fs.readFileSync(path.join(repoDir, 'tests/fixtures/project_context_contract.json'), 'utf8'));
 const dbSource = fs.readFileSync(path.join(repoDir, 'utils/db.js'), 'utf8');
 const apiSource = fs.readFileSync(path.join(repoDir, 'routes/api.js'), 'utf8');
+const knowledgeRoutesSource = fs.readFileSync(path.join(repoDir, 'routes/projectKnowledge.js'), 'utf8');
 const migrationSource = fs.readFileSync(path.join(repoDir, 'sql/migrations/20260703_add_project_knowledge_schema.sql'), 'utf8');
 const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
 const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js'), 'utf8');
@@ -70,7 +71,8 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(apiSource.includes('skipKnowledge'));
   assert.ok(apiSource.includes('projectContext.retrievedKnowledge'));
   assert.ok(backfillSource.includes('ingestApprovedProjectReportVersion'));
-  assert.ok(apiSource.includes('const projectContext = await getProjectContext({ projectId }, 8);'));
+  assert.ok(knowledgeRoutesSource.includes('const projectContext = await getProjectContext({ projectId }, 8);'));
+  assert.ok(apiSource.includes("require('./projectKnowledge')(router)"));
   assert.ok(apiSource.includes('projectContext'));
   assert.ok(knowledgeSource.includes('answerProjectKnowledge'));
   assert.ok(knowledgeSource.includes('Cite chunk ids explicitly'));
