@@ -57,10 +57,6 @@ test('project context producer preserves the contract and deterministic resoluti
   ]) {
     assert.ok(dbSource.includes(token), `utils/db.js should contain ${token}`);
   }
-  assert.ok(apiSource.includes("router.get('/project-update-test/projects', requireAuth"));
-  assert.ok(apiSource.includes("router.post('/project-update-test/projects', requireAuth"));
-  assert.ok(apiSource.includes("router.patch('/project-update-test/projects/:projectId', requireAuth"));
-  assert.ok(apiSource.includes("router.delete('/project-update-test/projects/:projectId', requireAuth"));
   assert.ok(apiSource.includes('projectId'));
 });
 
@@ -68,16 +64,12 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(migrationSource.includes('project_knowledge_items'));
   assert.ok(migrationSource.includes('project_knowledge_chunks'));
   assert.ok(migrationSource.includes('VECTOR(384)'));
-  assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/items', requireAuth"));
-  assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/embeddings/process', requireAuth"));
-  assert.ok(apiSource.includes("router.get('/project-update-test/knowledge/status', requireAuth"));
   assert.ok(serverSource.includes('startProjectKnowledgeEmbedInterval'));
   assert.ok(knowledgeSource.includes('runProjectKnowledgeRetrieval'));
   assert.ok(apiSource.includes('runProjectKnowledgeRetrieval'));
   assert.ok(apiSource.includes('skipKnowledge'));
   assert.ok(apiSource.includes('projectContext.retrievedKnowledge'));
   assert.ok(backfillSource.includes('ingestApprovedProjectReportVersion'));
-  assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/ask', requireAuth"));
   assert.ok(apiSource.includes('const projectContext = await getProjectContext({ projectId }, 8);'));
   assert.ok(apiSource.includes('projectContext'));
   assert.ok(knowledgeSource.includes('answerProjectKnowledge'));

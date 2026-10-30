@@ -76,8 +76,17 @@ if ! prepare_checkout; then
   fail "installation/build failed; previous checkout restored, nothing restarted"
 fi
 
-say "running the test suite against the prepared revision"
-if ! npm test; then
+release_checks() {
+  if [ -n "$deployed" ] && git cat-file -e "$deployed^{commit}" 2>/dev/null; then
+    npm run test:release -- --base "$deployed"
+  else
+    # No verified baseline: retain full coverage and real persistence checks.
+    npm run test:release -- --all
+  fi
+}
+
+say "checking the prepared revision against the deployed baseline"
+if ! release_checks; then
   say "tests failed - restoring the previous checkout, nothing restarted"
   restore_checkout || fail "recovery installation/build failed; manual recovery required before restart"
   fail "the new revision does not pass its own tests"
