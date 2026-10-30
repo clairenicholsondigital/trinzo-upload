@@ -10,7 +10,8 @@ else{
  async function req(route='',{role='admin',method='GET',body}={}){const r=await fetch(origin+'/api/settings'+route,{method,headers:headers(role),body:body?JSON.stringify(body):undefined});return{status:r.status,data:await r.json()};}
  test.before(async()=>{
   await pool.query('DROP SCHEMA IF EXISTS ai013_settings_test CASCADE; CREATE SCHEMA ai013_settings_test');
-  for(const f of ['20260506_add_meeting_minutes_schema.sql','20260512_add_auth_schema.sql','20260729_add_persistent_auth_sessions.sql','20260817_add_auth_user_roles.sql'])await pool.query(fs.readFileSync(root+'/sql/migrations/'+f,'utf8'));
+  for(const f of ['20260506_add_meeting_minutes_schema.sql','20260603_add_project_reporting_schema.sql','20260512_add_auth_schema.sql','20260729_add_persistent_auth_sessions.sql','20260817_add_auth_user_roles.sql'])await pool.query(fs.readFileSync(root+'/sql/migrations/'+f,'utf8'));
+  await pool.query("INSERT INTO projects(id,project_name) VALUES(19,'Isolated worker fixture')");
   await pool.query("INSERT INTO auth_users(id,email,full_name,password_hash,password_salt,role) VALUES(1,'admin@fixture.invalid','Synthetic Admin','unused','unused','admin'),(2,'client@fixture.invalid','Synthetic Client','unused','unused','client')");
   for(const [role,id]of[['admin',1],['client',2]])await db.createAuthSession({tokenHash:crypto.createHash('sha256').update('fixture-'+role).digest('hex'),userId:id,expiresAt:new Date(Date.now()+3600000)});
   const draft=await db.createMeetingMinutesAgentDraft({userId:1,title:'Preserve fixture',payload:{payloadVersion:5,currentStep:0,details:{meetingTitle:'Preserve fixture',meetingDate:'2026-10-26',internalAttendees:['Saki Arimoto','Jacqui Fox'],clientAttendees:[],allAttendees:['Saki Arimoto','Jacqui Fox']},discussion:[],actions:[],reviewFlags:[],sourceUnits:[]}});draftId=draft.draftId;
@@ -81,13 +82,15 @@ else{
    for(let i=0;i<100&&!output.includes('meeting_minutes_worker_started');i++)await new Promise(r=>setTimeout(r,50));
    assert(output.includes('meeting_minutes_worker_started'),output);
    const changed=await req('/terms',{method:'POST',body:{term:'WorkerReviewPack',meaning:'A settings change made after worker startup.',heardAs:[]}});assert.equal(changed.status,200);
-   const queued=await db.queueProjectUpdateGeneration({transcriptText:'Sam: No milestone update was provided today.',projectId:19,projectName:'Isolated worker fixture',skipMiniLM:true,skipRewrite:true,skipSave:true,skipContext:true,skipKnowledge:true,skipStatusDiagnostics:true});
+   const queued=await db.queueProjectUpdateGeneration({transcriptText:'Sam: No milestone update was provided today.',projectId:19,projectName:'Isolated worker fixture',skipMiniLM:true,skipRewrite:true,skipContext:true,skipKnowledge:true,skipStatusDiagnostics:true});
    let job;
    for(let i=0;i<200;i++){job=(await pool.query('SELECT status,result_payload,error_message FROM meeting_jobs WHERE id=$1',[queued.jobId])).rows[0];if(job.status==='completed'||job.status==='failed')break;await new Promise(r=>setTimeout(r,50));}
    assert.equal(job.status,'completed',JSON.stringify({job,output}));
    const snapshot=JSON.parse(fs.readFileSync(require('os').tmpdir()+'/trinzo-settings-'+child.pid+'.json','utf8'));
    assert(snapshot.terms.some(t=>t.term==='WorkerReviewPack'&&t.meaning==='A settings change made after worker startup.'));
    assert.equal(job.result_payload.result.queuedDiagnostics.fallbackUsed,false);
+   assert.equal(job.result_payload.result.projectReportPersistence.saved,true);
+   assert.equal((await pool.query('SELECT count(*)::int AS count FROM project_reports WHERE project_id=19')).rows[0].count,1);
   }finally{child.kill();if(child.exitCode===null)await new Promise(r=>child.once('exit',r));}
  });
  test('deleting an initially seeded person survives refresh and a new process',async()=>{
