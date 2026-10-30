@@ -6,6 +6,8 @@
     "tests/meeting-minutes-original-execution.test.js",
     "tests/meeting-minutes-draft-context.test.js",
     "tests/meeting-minutes-response-contracts.test.js",
+    "tests/meeting-minutes-review-flags.test.js",
+    "tests/meeting-minutes-coverage-evidence.test.js",
     "tests/meeting-minutes-people-extraction.test.js",
     "tests/meeting-minutes-original-summary.test.js",
     "tests/meeting-minutes-original-discussion.test.js",

@@ -331,6 +331,39 @@ or total-selection reduction is claimed. Next within shared policy ownership are
 evidence/grounding and reviewer-flag foundations, including their shared caches
 and registry, before publication and the remaining route/lifecycle stages.
 
+The next shared-policy batch gives review warnings one real owner in
+`utils/meetingMinutesReviewFlags.js`. Thirteen existing functions and their
+constants move unchanged, covering typed warning context, normalisation,
+usefulness, reconciliation and identity/deduplication. The private registry keeps
+the same 20,000-entry limit, refresh ordering and oldest-entry eviction. V2's five
+public flag APIs remain the same function references as the shared owner.
+Resetting the evidence-context cache still leaves reviewed warnings intact.
+
+The API, Original Actions/Discussion/Discovery/Edits and temporal review import
+their flag operations directly. People evidence also uses that owner directly;
+its factory now receives only transcript context and action disposition, removing
+the obsolete flag callback. All nested people and Original stage bodies remain
+unchanged. The temporal-review call uses the identical shared function. The API
+stage callback map remains 126; no replacement callback bag is introduced.
+
+Two existing pure cases move to `tests/meeting-minutes-review-flags.test.js`.
+That file and the existing coverage-evidence tests have no API/V2 dependency,
+including transitive imports. The canonical coverage case remains with its real
+integration tests. The existing deterministic-warning test additionally verifies
+cross-consumer recovery, shared function references and the context-only cache
+reset. PATCH/save/reload/undo and citation-order integrations remain in place.
+No global regression cases are added or removed. The compact core includes the
+direct owner and coverage-evidence files.
+
+V2 falls from 6,909 to 6,699 lines. API wiring grows from 17,419 to 17,421 lines;
+its 94 effective registrations and all compatibility exports remain unchanged.
+Raw API/V2 consumers each decrease by one, but compact coverage adds files:
+API selection rises from 311 to 312 and V2 from 267 to 268. A shared review-flag
+edit legitimately selects 268 JavaScript files and persistence coverage. These
+are ownership improvements; no total test-selection reduction is claimed.
+Evidence/grounding and its shared caches are the next stage-3 boundary, followed
+by publication/Library/exports, reviewer history and generation lifecycle work.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

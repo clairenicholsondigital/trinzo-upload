@@ -1,6 +1,7 @@
 'use strict';
 
 const { meetingAgentInfrastructureFailure } = require('./meetingMinutesResponseContracts');
+const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags } = require('./meetingMinutesReviewFlags');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const {
@@ -13,12 +14,11 @@ const {
   correctnessChecksEnabled, describesUsualPractice, finalActionLifecycleCheckItems,
   finalActionLifecycleCheckPrompt, finaliseActionTimings, isAobPersonalAside, isFarewellAction,
   isMeetingAdminAction, isMinuteInstruction, isNotAnAction, isSocialAside,
-  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   timingCheckEnabled: meetingMinutesTimingCheckEnabled,
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled, mergeDuplicateCommitments,
-  normaliseAgentResult, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags,
+  normaliseAgentResult,
   reconcileSiblingTimingDecisions, softenBestEffortCompletion, splitExplicitMultiOwnerActions,
   surroundingEvidence, timingCheckItems, timingCheckPrompt, uncoveredCandidateInventory
 } = require('./meetingMinutesAgentV2');

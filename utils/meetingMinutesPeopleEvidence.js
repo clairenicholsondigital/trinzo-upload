@@ -3,11 +3,12 @@
 const { text } = require('./meetingMinutesText');
 const { contentTokens } = require('./meetingMinutesRecordMatching');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
+const { normaliseFlag } = require('./meetingMinutesReviewFlags');
 
-// Keep the caller's shared transcript context and flag registry. Action
-// disposition remains part of the caller's evidence policy; this module owns
-// the people, assignment, attribution and conflicting-role checks.
-function createMeetingMinutesPeopleEvidence({ evidenceContextFor, normaliseFlag, actionEvidenceDisposition }) {
+// Keep the caller's shared transcript context and action disposition policy.
+// Flag identity and recovery use the common review-flag owner directly; this
+// module owns the people, assignment, attribution and conflicting-role checks.
+function createMeetingMinutesPeopleEvidence({ evidenceContextFor, actionEvidenceDisposition }) {
   function canonicalSpeakerDisplayName(value) {
     const raw = text(value, 180);
     const comma = raw.indexOf(',');

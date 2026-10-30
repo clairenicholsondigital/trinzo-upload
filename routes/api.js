@@ -1,4 +1,11 @@
 const { sanitiseDetails: sanitiseMeetingAgentDetails, meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('../utils/meetingMinutesDraftContext');
+const {
+  normaliseFlag: normaliseMeetingAgentFlag,
+  isSalientCoverageFlag: isMeetingAgentCoverageFlag,
+  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
+  reconcileRecordFlags,
+  reconcileUsefulRecordFlags,
+} = require('../utils/meetingMinutesReviewFlags');
 const { meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled } = require('../utils/meetingMinutesPassCache');
 const { meetingAgentResultError, meetingAgentRefereeRoute, meetingAgentInfrastructureFailure, refereeActionMaterializationIssues, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates } = require('../utils/meetingMinutesResponseContracts');
 const { meetingAgentRefereeBatches, meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('../utils/meetingMinutesRefereeBatches');
@@ -239,7 +246,6 @@ const {
   resolveEvidence,
   documentReferenceContextEvidence,
   requiresDocumentReferenceReview,
-  normaliseFlag: normaliseMeetingAgentFlag,
   coverageFlags,
   surroundingEvidence,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
@@ -247,8 +253,6 @@ const {
   timingForPublication: meetingAgentTimingForPublication,
   isIdeaOnlyContemplation,
   isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag,
-  isSalientCoverageFlag: isMeetingAgentCoverageFlag,
-  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
   actionCandidateInventory,
   actionCommitmentThreadInventory,
   actionCommitmentChainInventory,
@@ -288,8 +292,6 @@ const {
   actionCompletenessCheckItems,
   actionCompletenessCheckPrompt,
   applyActionCompletenessResults,
-  reconcileRecordFlags,
-  reconcileUsefulRecordFlags,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   commitmentCheckItems,
   commitmentCheckPrompt,
