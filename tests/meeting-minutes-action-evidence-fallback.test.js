@@ -1,7 +1,9 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const V=require('../utils/meetingMinutesAgentV2');
-const source=()=>V.normaliseSourceUnits([
+const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
+const { normaliseSourceUnits } = require('../utils/meetingMinutesSource');
+const source=()=>normaliseSourceUnits([
  {id:'T0001',speaker:'Morgan Reed',text:'For the archived equipment changes, extra documentation is required for any deviation.'},
  {id:'T0002',speaker:'Morgan Reed',text:'Moving on to the delivery schedule.'},
  {id:'T0003',speaker:'Morgan Reed',text:'The team meeting has ended.'},
@@ -12,12 +14,12 @@ const source=()=>V.normaliseSourceUnits([
 ]);
 const wording=verb=>`${verb} the applicability of the referenced guideline and determine whether any action is required from it.`;
 for(const verb of ['Assess','Evaluate'])test(`${verb}: lexical-only fallback cannot replace supplied references or mark them verified`,()=>{
- const units=source(),ids=['T0005','T0006'],before=structuredClone(units),resolved=V.resolveEvidence(wording(verb),units,ids,{action:true});
+ const units=source(),ids=['T0005','T0006'],before=structuredClone(units),resolved=resolveEvidence(wording(verb),units,ids,{action:true});
  assert.deepEqual(resolved.evidenceIds,ids);assert.deepEqual(resolved.weakIds,ids);assert.equal(resolved.supportScore,0);
  assert.deepEqual(units,before);assert.deepEqual(ids,['T0005','T0006']);
  // A later normalization must get the same uncertainty, not a promoted cache hit.
  resolved.evidenceIds.push('T0001');resolved.weakIds.length=0;
- const again=V.resolveEvidence(wording(verb),units,ids,{action:true});assert.deepEqual(again.evidenceIds,ids);assert.deepEqual(again.weakIds,ids);
+ const again=resolveEvidence(wording(verb),units,ids,{action:true});assert.deepEqual(again.evidenceIds,ids);assert.deepEqual(again.weakIds,ids);
 });
 test('normalization surfaces uncertainty against the retained source without rewriting the instruction',()=>{
  const units=source(),action={id:'assessment',action:wording('Assess'),owners:['Taylor Finch'],evidenceIds:['T0005','T0006'],timing:{kind:'not_stated',wording:'',exactDate:''},reviewFlagIds:[]};
@@ -27,19 +29,19 @@ test('normalization surfaces uncertainty against the retained source without rew
  assert.ok(out.reviewFlags.some(flag=>flag.kind==='missing_evidence'&&flag.status==='open'&&flag.evidenceIds.includes('T0005')));
 });
 test('invalid supplied IDs remain invalid and never become retained evidence',()=>{
- const out=V.resolveEvidence(wording('Assess'),source(),['T0005','T9999','T0006','T0005'],{action:true});
+ const out=resolveEvidence(wording('Assess'),source(),['T0005','T9999','T0006','T0005'],{action:true});
  assert.deepEqual(out.evidenceIds,['T0005','T0006']);assert.deepEqual(out.weakIds,['T0005','T0006']);assert.deepEqual(out.invalidIds,['T9999']);
 });
 test('a genuinely supported alternative still repairs the wrong workstream',()=>{
- const units=V.normaliseSourceUnits([
+ const units=normaliseSourceUnits([
   {id:'T0001',speaker:'Taylor Finch',text:"I'll prepare the annual finance report."},
   {id:'T0002',speaker:'Morgan Reed',text:'The supplier insurance register is still awaiting review.'},
   {id:'T0003',speaker:'Taylor Finch',text:"I'll review the supplier insurance register and confirm the missing certificates."}
  ]);
- const out=V.resolveEvidence('Review the supplier insurance register and confirm the missing certificates.',units,['T0001'],{action:true});
+ const out=resolveEvidence('Review the supplier insurance register and confirm the missing certificates.',units,['T0001'],{action:true});
  assert.ok(out.evidenceIds.includes('T0003'));assert.ok(!out.evidenceIds.includes('T0001'));
 });
 test('unsupported explicit values cannot acquire fallback evidence',()=>{
- const out=V.resolveEvidence('Assess guideline 72912 and determine whether action is required.',source(),['T0005'],{action:true});
+ const out=resolveEvidence('Assess guideline 72912 and determine whether action is required.',source(),['T0005'],{action:true});
  assert.deepEqual(out.evidenceIds,[]);assert.ok(out.weakIds.includes('T0005'));
 });

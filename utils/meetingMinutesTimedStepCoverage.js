@@ -1,7 +1,7 @@
 'use strict';
 
 const Timing = require('./meetingMinutesTiming');
-const { actionEvidenceDisposition } = require('./meetingMinutesAgentV2');
+const { actionEvidenceDisposition } = require('./meetingMinutesActionEvidence');
 
 // This is an accounting signal for the existing recovery pass, not an action
 // extractor. Only already inventoried, accepted work can enter this check.

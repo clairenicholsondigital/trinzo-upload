@@ -8,6 +8,7 @@
     "tests/meeting-minutes-response-contracts.test.js",
     "tests/meeting-minutes-review-flags.test.js",
     "tests/spoken-number-evidence.test.js",
+    "tests/meeting-minutes-action-evidence.test.js",
     "tests/meeting-minutes-coverage-evidence.test.js",
     "tests/meeting-minutes-people-extraction.test.js",
     "tests/meeting-minutes-original-summary.test.js",

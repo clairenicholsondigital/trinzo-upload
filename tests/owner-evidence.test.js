@@ -3,13 +3,9 @@
 // Generic cases only: none of these sentences come from the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const V = require('../utils/meetingMinutesAgentV2');
-const { createMeetingMinutesPeopleEvidence } = require('../utils/meetingMinutesPeopleEvidence');
-const { applyRequesterOwnerRule, ownerAssignedInMeeting } = createMeetingMinutesPeopleEvidence({
-  actionEvidenceDisposition: V.actionEvidenceDisposition
-});
+const { applyRequesterOwnerRule, ownerAssignedInMeeting } = require('../utils/meetingMinutesPeopleEvidence');
 const { reconcileRecordFlags } = require('../utils/meetingMinutesReviewFlags');
-const { normaliseSourceUnits } = V;
+const { normaliseSourceUnits } = require('../utils/meetingMinutesSource');
 
 const unit = (id, speaker, text) => ({ id, speaker, text, classification: 'keep' });
 

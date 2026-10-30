@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const T = require('../utils/meetingMinutesTiming');
 const V = require('../utils/meetingMinutesAgentV2');
+const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 const anchor = '2026-08-05';
 const record = (timing, extra = {}) => ({ id: 'work', action: 'Send the supplier questionnaire.', owners: ['Morgan Taylor'], evidenceIds: ['T0001'], reviewFlagIds: [], timing, ...extra });
 
@@ -239,22 +240,22 @@ test('generated JSON cannot grant itself reviewer authority over an invalid date
 
 test('an explicit this-year date supports its year without licensing unrelated numeric claims', () => {
   const source = V.normaliseSourceUnits([{ id: 'T0001', speaker: 'Morgan Taylor', text: 'The supplier registration deadline is 28 November this year.' }]);
-  const result = V.resolveEvidence('The supplier registration deadline is 28 November 2026.', source, ['T0001'], { meetingDate: anchor });
+  const result = resolveEvidence('The supplier registration deadline is 28 November 2026.', source, ['T0001'], { meetingDate: anchor });
   assert.ok(result.evidenceIds.includes('T0001'));
-  assert.deepEqual(V.resolveEvidence('There are 2026 supplier registrations.', source, [], { meetingDate: anchor }).evidenceIds, []);
-  assert.deepEqual(V.resolveEvidence('The supplier registration deadline is 28 November 2027.', source, [], { meetingDate: anchor }).evidenceIds, []);
+  assert.deepEqual(resolveEvidence('There are 2026 supplier registrations.', source, [], { meetingDate: anchor }).evidenceIds, []);
+  assert.deepEqual(resolveEvidence('The supplier registration deadline is 28 November 2027.', source, [], { meetingDate: anchor }).evidenceIds, []);
 });
 
 test('a later this-year date is supported without borrowing another date’s year or unrelated quantities', () => {
   const source = V.normaliseSourceUnits([{ id: 'T0001', speaker: 'Morgan Taylor', text: 'We passed 28 May, but the supplier registration deadline is 28 November this year.' }]);
   const claim = 'The supplier registration deadline is 28 November 2026.';
-  assert.ok(V.resolveEvidence(claim, source, ['T0001'], { meetingDate: anchor }).evidenceIds.includes('T0001'));
+  assert.ok(resolveEvidence(claim, source, ['T0001'], { meetingDate: anchor }).evidenceIds.includes('T0001'));
   assert.ok(V.normaliseAgentResult({ discussion: [{ topic: 'Supplier registration', points: [{ text: claim, evidenceIds: ['T0001'] }] }] }, source, 'discussion', { meetingDate: anchor }).discussion[0].points[0].evidenceIds.includes('T0001'));
-  assert.deepEqual(V.resolveEvidence('There are 2026 supplier registrations.', source, [], { meetingDate: anchor }).evidenceIds, []);
-  assert.deepEqual(V.resolveEvidence('The supplier registration deadline is 28 November 2027.', source, [], { meetingDate: anchor }).evidenceIds, []);
+  assert.deepEqual(resolveEvidence('There are 2026 supplier registrations.', source, [], { meetingDate: anchor }).evidenceIds, []);
+  assert.deepEqual(resolveEvidence('The supplier registration deadline is 28 November 2027.', source, [], { meetingDate: anchor }).evidenceIds, []);
   const mixed = V.normaliseSourceUnits([{ id: 'T0001', speaker: 'Morgan Taylor', text: 'The inspection is 28 May next year, but the supplier registration deadline is 28 November this year.' }]);
   assert.deepEqual(T.explicitCalendarDates(mixed[0].text, anchor), ['2027-05-28', '2026-11-28']);
-  assert.deepEqual(V.resolveEvidence('The supplier registration deadline is 28 November 2027.', mixed, [], { meetingDate: anchor }).evidenceIds, []);
+  assert.deepEqual(resolveEvidence('The supplier registration deadline is 28 November 2027.', mixed, [], { meetingDate: anchor }).evidenceIds, []);
 });
 
 test('citation limits retain the supplied defining date and its nearby qualification', () => {
@@ -263,7 +264,7 @@ test('citation limits retain the supplied defining date and its nearby qualifica
     { id: 'T0010', speaker: 'Chair', text: 'The supplier registration deadline is 28 November 2026.' },
     { id: 'T0011', speaker: 'Chair', text: 'Preferably complete the preparation a week earlier.' }
   ]);
-  const result = V.resolveEvidence('The supplier registration deadline is 28 November 2026.', source, source.map(row => row.id), { meetingDate: anchor });
+  const result = resolveEvidence('The supplier registration deadline is 28 November 2026.', source, source.map(row => row.id), { meetingDate: anchor });
   assert.ok(result.evidenceIds.includes('T0010'));
   assert.ok(result.evidenceIds.includes('T0011'));
   assert.ok(result.evidenceIds.length <= 8);

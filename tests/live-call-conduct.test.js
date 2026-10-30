@@ -6,25 +6,26 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
+const actionEvidence = require('../utils/meetingMinutesActionEvidence');
 
 const opening = 'I\'ll give it thirty seconds for Dermot and then we\'ll just crack on, because I know Ffion has to drop at half past.';
 
 test('the chair running the call is meeting admin, whole or in pieces', () => {
-  assert.equal(V.isLiveCallConduct(opening), true);
-  assert.equal(V.isLiveCallConduct('give it thirty seconds for Dermot and then'), true);
-  assert.equal(V.isLiveCallConduct('just crack on, because I know Ffion has to drop at half past.'), true);
-  assert.equal(V.isLiveCallConduct('Hang on, sorry, someone\'s at my door.'), true);
-  assert.equal(V.isLiveCallConduct('You\'re on mute, Sandra.'), true);
-  assert.equal(V.isLiveCallConduct('Let me just share my screen.'), true);
-  assert.equal(V.isLiveCallConduct('We\'ll wait for Priya to join and then make a start.'), true);
-  assert.equal(V.isMeetingAdminAction('give it thirty seconds for Dermot and then'), true);
-  assert.equal(V.isMeetingAdminAction('Put away the PDF copy of the tracker from Friday.'), true);
-  assert.equal(V.isMeetingAdminAction('Close the browser tab for now.'), true);
+  assert.equal(actionEvidence.isLiveCallConduct(opening), true);
+  assert.equal(actionEvidence.isLiveCallConduct('give it thirty seconds for Dermot and then'), true);
+  assert.equal(actionEvidence.isLiveCallConduct('just crack on, because I know Ffion has to drop at half past.'), true);
+  assert.equal(actionEvidence.isLiveCallConduct('Hang on, sorry, someone\'s at my door.'), true);
+  assert.equal(actionEvidence.isLiveCallConduct('You\'re on mute, Sandra.'), true);
+  assert.equal(actionEvidence.isLiveCallConduct('Let me just share my screen.'), true);
+  assert.equal(actionEvidence.isLiveCallConduct('We\'ll wait for Priya to join and then make a start.'), true);
+  assert.equal(actionEvidence.isMeetingAdminAction('give it thirty seconds for Dermot and then'), true);
+  assert.equal(actionEvidence.isMeetingAdminAction('Put away the PDF copy of the tracker from Friday.'), true);
+  assert.equal(actionEvidence.isMeetingAdminAction('Close the browser tab for now.'), true);
 });
 
 test('a turn that runs the call and still promises something keeps the promise', () => {
-  assert.equal(V.isLiveCallConduct('Sorry, you\'re on mute. Right, so I\'ll send the deck tomorrow.'), false);
-  assert.equal(V.isLiveCallConduct('I\'ll wait for Marcus to send the figures and then update the plan.'), false);
+  assert.equal(actionEvidence.isLiveCallConduct('Sorry, you\'re on mute. Right, so I\'ll send the deck tomorrow.'), false);
+  assert.equal(actionEvidence.isLiveCallConduct('I\'ll wait for Marcus to send the figures and then update the plan.'), false);
 });
 
 test('planned work that mentions recordings, mutes, cameras and minutes is not conduct', () => {
@@ -37,8 +38,8 @@ test('planned work that mentions recordings, mutes, cameras and minutes is not c
     'Give the supplier two weeks to respond before escalating.',
     'Close the quality file after approval.'
   ]) {
-    assert.equal(V.isLiveCallConduct(action), false, action);
-    assert.equal(V.isMeetingAdminAction(action), false, action);
+    assert.equal(actionEvidence.isLiveCallConduct(action), false, action);
+    assert.equal(actionEvidence.isMeetingAdminAction(action), false, action);
   }
 });
 

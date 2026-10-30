@@ -4,6 +4,8 @@ const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinut
 const { refereeDiscussionTargetId } = require('./meetingMinutesResponseContracts');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags } = require('./meetingMinutesReviewFlags');
+const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
+const { flagConflictingDiscussionRoles, groundRowAttributions } = require('./meetingMinutesPeopleEvidence');
 
 const {
   annotateMeetingAgentPassImpact,
@@ -22,8 +24,6 @@ const {
     discussionFidelityCheckItems,
     discussionFidelityCheckPrompt,
     filterUnsupportedQuantifiedDiscussion,
-    flagConflictingDiscussionRoles,
-    groundRowAttributions,
     groundUnstatedDiscussionMonths,
     labelSupersededContext,
     answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
@@ -33,7 +33,6 @@ const {
     openQuestionCheckPrompt,
     promoteMaterialObjectionDetails,
     promoteNamedFactDetails,
-    resolveEvidence,
     supersededCheckItems,
     supersededVerdicts,
   } = require('./meetingMinutesAgentV2');

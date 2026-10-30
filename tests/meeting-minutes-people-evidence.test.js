@@ -2,19 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createMeetingMinutesPeopleEvidence } = require('../utils/meetingMinutesPeopleEvidence');
-
-// Pure assignment/acceptance checks do not need action-disposition services.
-const { assignsWorkTo, addressedRequestAccepted } = createMeetingMinutesPeopleEvidence({});
-
-// Source-backed checks use the real shared context, flag registry and action
-// disposition policy, just as the compatibility entrypoint composes them.
-function peopleEvidence() {
-  const V = require('../utils/meetingMinutesAgentV2');
-  return createMeetingMinutesPeopleEvidence({
-    actionEvidenceDisposition: V.actionEvidenceDisposition
-  });
-}
+const V = require('../utils/meetingMinutesPeopleEvidence');
+const { assignsWorkTo, addressedRequestAccepted } = V;
 
 test('read-back, possessive and ongoing forms count as assigning work', () => {
   assert.ok(assignsWorkTo('Robin', 'Priya drafts the agenda, Robin sends it, and we meet again next week.'));
@@ -44,7 +33,6 @@ test("'Name, your main focus is ...' assigns the work", () => {
 });
 
 test('a row naming someone absent from its citation is repaired when a nearby line supplies them', () => {
-  const V = peopleEvidence();
   const units = [
     { id: 'T0031', speaker: 'Rebecca Gill', text: "I can't remember the first one, but it was a quick amend." },
     { id: 'T0032', speaker: 'Rebecca Gill', text: 'And then the second one, I just kind of put a bit more detail into the use of kind of FMEAs to, as a way of measuring risk across software, hardware and various different things.' },
@@ -63,7 +51,6 @@ test('a row naming someone absent from its citation is repaired when a nearby li
 
 
 test('a row naming someone no cited or nearby line mentions keeps its wording and is flagged', () => {
-  const V = peopleEvidence();
   const units = [
     { id: 'T0063', speaker: 'Smith, Stuart M', text: "So it's a deep dive into their software management system." },
     { id: 'T0064', speaker: 'Smith, Stuart M', text: 'I think your expertise looking at the specifics associated with software and the dedicated time is what we need.' },
@@ -81,7 +68,6 @@ test('a row naming someone no cited or nearby line mentions keeps its wording an
 
 
 test('a row whose cited lines already name the person is left untouched', () => {
-  const V = peopleEvidence();
   const units = [
     { id: 'T0027', speaker: 'Jacqui Fox', text: 'And David, you obviously had reviewed their risk management plan.' },
     { id: 'T0028', speaker: 'Jacqui Fox', text: "Rebecca, you've reviewed David feedback on that." }
@@ -95,7 +81,6 @@ test('a row whose cited lines already name the person is left untouched', () => 
 
 
 test('a speaker named only by their surname in the row still counts as supported', () => {
-  const V = peopleEvidence();
   const units = [
     { id: 'T0110', speaker: 'Ciaran Ryan', text: 'My submission is scheduled for Friday.' }
   ];
@@ -107,7 +92,6 @@ test('a speaker named only by their surname in the row still counts as supported
 
 
 test('conflicting exclusive role assignments are jointly flagged without guessing a winner', () => {
-  const V = peopleEvidence();
   const source = [
     { id: 'T0001', speaker: 'Morgan Reed', text: 'I will prepare the scope and the audit plan.' },
     { id: 'T0002', speaker: 'Riley Shaw', text: 'I will cover the specialist review in the second week.' }
@@ -130,7 +114,6 @@ test('conflicting exclusive role assignments are jointly flagged without guessin
 
 
 test('different qualified lead roles do not conflict', () => {
-  const V = peopleEvidence();
   const source = [
     { id: 'T0001', speaker: 'Morgan Reed', text: 'I am covering the project.' },
     { id: 'T0002', speaker: 'Riley Shaw', text: 'I am covering the technical review.' }
@@ -148,7 +131,6 @@ test('different qualified lead roles do not conflict', () => {
 
 
 test('reviewer-authored role wording is not challenged by the generated-role guard', () => {
-  const V = peopleEvidence();
   const source = [
     { id: 'T0001', speaker: 'Morgan Reed', text: 'I am covering the audit.' },
     { id: 'T0002', speaker: 'Riley Shaw', text: 'I am covering the specialist review.' }

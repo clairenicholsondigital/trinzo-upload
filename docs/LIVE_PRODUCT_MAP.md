@@ -401,6 +401,48 @@ retains its lazy database path. This is another shared-policy boundary; resolver
 action-disposition and bounded-review evidence policy remain to be separated
 before the publication and remaining lifecycle stages.
 
+The next grounding batch gives action evidence and source resolution real
+owners. `utils/meetingMinutesActionEvidence.js` owns ten existing predicates and
+19 constants, including the predicate/lexicon formerly inside the people factory.
+`utils/meetingMinutesEvidenceResolution.js` owns the unchanged resolver. These
+modules use the existing text, context, timing and diagnostics owners, with no
+API/V2/People imports or supplied policy callbacks. They do not copy the source
+WeakMap, resolution cache, flag registry or diagnostics context.
+
+People evidence now exports its helpers directly. The final action-disposition
+callback and factory are removed; all three known callers use actual owners.
+Its 22 retained function bodies change only through uniform dedenting. The
+reviewed production composition previously constructed one instance, and known
+callers do not mutate exported policy constants. V2 keeps its existing public
+function references and compatibility exports while composing the direct owners.
+
+The API and Original stages import their owned action, people and resolution
+operations directly. Timed-step coverage removes its sole V2 import and uses
+the action-evidence owner. All retained route and processing bodies remain
+unchanged. Existing cache/registry tests additionally check actual resolver
+diagnostics, cross-entrypoint cache hits and resets. Four existing pure action
+cases move unchanged to the direct-owner file and join the compact core. People
+and owner-evidence tests no longer load V2, even transitively; mixed generation,
+timing, save/reload and undo integrations remain. No global cases are added or
+removed.
+
+The existing task browser integration now waits for its own successful save
+response and completed refresh before proceeding. The previous `Saved.`-only
+wait could accept an earlier operation while the save handler was still busy.
+All persistence assertions and existing cases remain; application code and UI
+are unchanged. The first release attempt's failed mobile check is retained in
+the private verification record, followed by the corrected required release run.
+
+V2 falls from 6,534 to 6,220 lines, People from 683 to 611, and API from 17,407 to
+17,402. All 94 effective routes, 223 API exports and 158 V2 exports remain; the
+Original API service map stays at 125. Raw API/V2 consumers each decrease by two,
+but total selections remain 312 and 268 as compact coverage expands. Action
+evidence selects 269 JavaScript files and resolution 268, with persistence
+coverage. The full static text/settings graph retains its lazy database path.
+Bounded-review evidence packets and remaining substantive API policies still
+need explicit ownership before the later publication and lifecycle stages; this
+batch does not mark stage 3 or the whole simplification plan complete.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

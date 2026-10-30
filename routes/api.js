@@ -8,6 +8,9 @@ const {
   mergeMeetingAgentFlags,
 } = require('../utils/meetingMinutesReviewFlags');
 const { preparedTranscriptFromUnits, evidenceSupportScore, clearMeetingMinutesAgentV2MemoryCaches } = require('../utils/meetingMinutesEvidenceContext');
+const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
+const { actionEvidenceDisposition, actionNegatedByEvidence, isMeetingAdminAction } = require('../utils/meetingMinutesActionEvidence');
+const { applyRequesterOwnerRule, groundRowAttributions, flagConflictingDiscussionRoles, mentionedPeople: meetingAgentMentionedPeople } = require('../utils/meetingMinutesPeopleEvidence');
 const { meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled } = require('../utils/meetingMinutesPassCache');
 const { meetingAgentResultError, meetingAgentRefereeRoute, meetingAgentInfrastructureFailure, refereeActionMaterializationIssues, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates } = require('../utils/meetingMinutesResponseContracts');
 const { meetingAgentRefereeBatches, meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('../utils/meetingMinutesRefereeBatches');
@@ -244,7 +247,6 @@ const {
   salientDetailInventory,
   normaliseAgentResult,
   cleanActionWording,
-  resolveEvidence,
   documentReferenceContextEvidence,
   requiresDocumentReferenceReview,
   coverageFlags,
@@ -267,8 +269,6 @@ const {
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
   evidenceClauses,
-  actionEvidenceDisposition,
-  actionNegatedByEvidence,
   groundedExecutiveSummary,
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
   applyTimingClauseChecks,
@@ -299,7 +299,6 @@ const {
   finalActionLifecycleCheckItems,
   finalActionLifecycleCheckPrompt,
   applyFinalActionLifecycleResults,
-  isMeetingAdminAction,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   answeredCheckItems,
   answeredCheckPrompt,
@@ -313,9 +312,6 @@ const {
   applyChainedTimingRule,
   mergeDuplicateCommitments,
   splitExplicitMultiOwnerActions,
-  applyRequesterOwnerRule,
-  groundRowAttributions,
-  flagConflictingDiscussionRoles,
   demoteSupersededRows,
   labelSupersededContext,
   promoteNamedFactDetails,
@@ -332,7 +328,6 @@ const {
   supersededCheckItems,
   supersededVerdicts,
   correctnessChecksEnabled,
-  mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
 const {
   shapeDiscussion,
