@@ -1,5 +1,7 @@
 'use strict';
 
+const { meetingAgentInfrastructureFailure } = require('./meetingMinutesResponseContracts');
+
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const {
   actionCompletenessCheckItems, actionCompletenessCheckPrompt, actionNegatedByEvidence, answeredCheckItems,
@@ -61,7 +63,6 @@ function createOriginalActionsStage(services) {
     isVagueReconstructedAction,
     meetingAgentActionAuditCandidates,
     meetingAgentCommitmentRecheckNeeded,
-    meetingAgentInfrastructureFailure,
     meetingAgentPeopleNames,
     meetingAgentProposalChangeIsVisible,
     meetingAgentProposalReviewFlagId,

@@ -2,14 +2,27 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createOriginalExecution } = require('../utils/meetingMinutesOriginalExecution');
-const services = require('../routes/api').stagedEvaluation.originalMinutesStageServices;
+const Module = require('node:module');
+const originalLoad = Module._load;
+let createOriginalExecution;
+Module._load = function (request, parent) {
+  const resolved = Module._resolveFilename(request, parent);
+  assert.ok(!/\/(?:routes\/api|utils\/meetingMinutesAgentV2)\.js$/.test(resolved),
+    'Execution policy must load without the API or V2: ' + resolved);
+  return originalLoad.apply(this, arguments);
+};
+try { ({ createOriginalExecution } = require('../utils/meetingMinutesOriginalExecution')); }
+finally { Module._load = originalLoad; }
 
 function context(t, provider, options = {}) {
   t.mock.method(console, 'info', () => {});
   t.mock.method(console, 'warn', () => {});
-  const create = createOriginalExecution({ ...services,
-    askPowerAutomateMeetingMinutesAgentWithRetry: provider });
+  const create = createOriginalExecution({
+    askPowerAutomateMeetingMinutesAgentWithRetry: provider,
+    usePrivateActionPrimaryPrewarm: async () => {
+      throw new Error('Discussion execution must not perform action prewarm I/O.');
+    }
+  });
   return create({ draftId: 'execution-fixture', details: { meetingDate: '2026-10-30' },
     sourceUnits: [], discussion: [], actions: [], passCache: [] }, 'discussion', options);
 }

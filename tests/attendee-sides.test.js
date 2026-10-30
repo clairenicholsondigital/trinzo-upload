@@ -3,7 +3,7 @@
 // Generic names only; none of these people are in the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { sanitiseDetails } = require('../utils/meetingMinutesAgentV2');
+const { sanitiseDetails } = require('../utils/meetingMinutesDraftContext');
 
 test('with nobody recognised as internal, nobody is labelled a client', () => {
   const details = sanitiseDetails({ allAttendees: ['Harriet Vale', 'Owen Blake', 'Mira Chen'] });

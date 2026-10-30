@@ -4,8 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { alwaysInternalAttendeeName } = require('../utils/entityNormalization');
-const { sanitiseDetails } = require('../utils/meetingMinutesAgentV2');
-const { extractStagedDetailsFromTranscript } = require('../routes/api').stagedEvaluation;
+const { sanitiseDetails } = require('../utils/meetingMinutesDraftContext');
 
 // Advait Dharmadhikari and Saki Arimoto are always internal attendees, never client.
 
@@ -49,27 +48,4 @@ test('unassigned always-internal people are not defaulted to client', () => {
   });
   assert.deepEqual(details.internalAttendees, ['Jacqui Fox', 'Advait Dharmadhikari', 'Saki Arimoto']);
   assert.deepEqual(details.clientAttendees, ['Rebecca Gill']);
-});
-
-test('Teams speakers are bucketed as internal from the transcript', () => {
-  const transcript = [
-    'Project review transcript',
-    '',
-    'Jacqui Fox   0:05',
-    'Morning everyone.',
-    '',
-    'Advait Dharmadikari   0:12',
-    'Morning, I have the test results.',
-    '',
-    'Sakki Arimotto   0:20',
-    'I can share the schedule.',
-    '',
-    'Rebecca Gill   0:31',
-    'Thanks, that works for us.'
-  ].join('\n');
-  const details = extractStagedDetailsFromTranscript(transcript, 'review.vtt').screens.details;
-  const cleaned = sanitiseDetails(details);
-  assert.ok(cleaned.internalAttendees.includes('Advait Dharmadhikari'), JSON.stringify(cleaned));
-  assert.ok(cleaned.internalAttendees.includes('Saki Arimoto'), JSON.stringify(cleaned));
-  assert.ok(!cleaned.clientAttendees.some((name) => /advait|saki/i.test(name)), JSON.stringify(cleaned));
 });

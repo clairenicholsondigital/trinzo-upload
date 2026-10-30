@@ -1,5 +1,8 @@
 'use strict';
 
+const crypto = require('crypto');
+const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
+
 const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
 const { normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep } = require('./meetingMinutesText');
 
@@ -20,4 +23,17 @@ function normaliseMeetingAgentPassCache(value) {
     }));
 }
 
-module.exports = { normaliseMeetingAgentPassCache };
+function meetingAgentPassCacheKey(prompt) {
+  // Microsoft prompt policies can change without changing a caller's text.
+  // Version these results too, so pre-fix discovery/check responses cannot
+  // bypass the new policy just because the same draft is regenerated warm.
+  return crypto.createHash('sha256').update(JSON.stringify({
+    timingPolicyVersion: TIMING_POLICY_VERSION, prompt: String(prompt || '')
+  })).digest('hex');
+}
+
+function meetingMinutesAgentReplayPassCacheEnabled() {
+  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_REPLAY_PASS_CACHE || '0'));
+}
+
+module.exports = { normaliseMeetingAgentPassCache, meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled };

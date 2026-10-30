@@ -1,5 +1,7 @@
 'use strict';
 
+const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
+
 const {
   actionCandidateInventory,
   discussionCandidateInventory,
@@ -20,10 +22,8 @@ function createOriginalEditStage(services) {
     MEETING_AGENT_STAGE_STEP,
     askPowerAutomateMeetingMinutesAgent,
     askPowerAutomateMeetingMinutesAgentWithRetry,
-    meetingAgentPromptDetails,
     meetingAgentReviewerSummaryHash,
     meetingAgentSummaryAuthority,
-    meetingAgentTimingAnchor,
     meetingMinutesAgentPrompt,
     mergeMeetingAgentFlags,
     verifyMeetingAgentSummaryTiming,

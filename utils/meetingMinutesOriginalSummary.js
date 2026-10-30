@@ -1,5 +1,8 @@
 'use strict';
 
+const { meetingAgentTimingAnchor } = require('./meetingMinutesDraftContext');
+const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
+
 const { annotateMeetingAgentPassImpact, meetingAgentCallPerformance,
   meetingAgentExecutionTelemetry, meetingAgentMaterialPassImpact } = require('./meetingMinutesAgentGeneration');
 const { applyIncludedSections, summaryStageIsEmpty } = require('./includedSections');
@@ -11,7 +14,6 @@ const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccount
 
 function createOriginalSummaryStage(services) {
   const {
-    flattenHybridDiscussion,
     meetingAgentReviewerSummaryHash,
     meetingAgentSummaryAuthority,
     meetingMinutesAgentPrompt,
@@ -94,8 +96,10 @@ function createOriginalSummaryStage(services) {
 }
 
 function createSummaryTimingVerifier(services) {
-  const { meetingAgentSummaryAuthority, meetingAgentTimingAnchor,
-    meetingAgentReviewerSummaryHash } = services;
+  const {
+    meetingAgentSummaryAuthority,
+    meetingAgentReviewerSummaryHash,
+  } = services;
 
   return async function verifyMeetingAgentSummaryTiming(draft, values, call) {
     const authority = meetingAgentSummaryAuthority(draft);

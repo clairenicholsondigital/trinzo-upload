@@ -177,7 +177,8 @@ test('the production referee call actually wires rejection capture to the durabl
 function transportHarness(body, status = 200) {
   const helper=source.indexOf('function meetingAgentHasTypedError(');
   const start=helper>=0?helper:source.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
-  const end=source.indexOf('\nfunction meetingAgentResultError',start);let calls=0;
+  const end=source.indexOf('\nfunction agentUnaccountedCandidates',start);
+  assert.ok(start>=0&&end>start,'transport source boundaries must exist');let calls=0;
   const state={timeoutCleared:false,slotReleased:false};let beforeBodyRead;
   const context={URL,AbortController,Number,Math,JSON,Set,process:{env:{}},
     setTimeout:()=>0,clearTimeout:()=>{state.timeoutCleared=true;},meetingAgentFlowUrlFor:()=> 'https://example.invalid/referee',

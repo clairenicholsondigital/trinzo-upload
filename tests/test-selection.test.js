@@ -108,7 +108,9 @@ test('database-sensitive changes require persistence checks before release', t =
     'utils/meetingMinutesOriginalFinalization.js', 'utils/meetingMinutesOriginalEdits.js',
     'utils/meetingMinutesReviewAccounting.js', 'routes/projectContext.js',
     'routes/projectKnowledge.js', 'utils/requestFlags.js', 'routes/generationJobs.js',
-    'routes/meetingMinutesJobs.js', 'utils/meetingMinutesJobEdits.js']) {
+    'routes/meetingMinutesJobs.js', 'utils/meetingMinutesJobEdits.js',
+    'utils/meetingMinutesDraftContext.js', 'utils/meetingMinutesResponseContracts.js',
+    'utils/meetingMinutesRefereeBatches.js', 'utils/meetingMinutesDiscussionRows.js']) {
     write('tests/consumer.test.js', "readFile('" + path.basename(file) + "')");
     const result = plan({ root, mode: 'release', files: [file] });
     assert.equal(result.integrationRequired, true, file);

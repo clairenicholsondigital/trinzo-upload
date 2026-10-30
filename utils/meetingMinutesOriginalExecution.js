@@ -1,5 +1,9 @@
 'use strict';
 
+const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
+const { meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled } = require('./meetingMinutesPassCache');
+const { meetingAgentResultError, meetingAgentRefereeRoute } = require('./meetingMinutesResponseContracts');
+
 const actionDiagnostics = require("./meetingMinutesActionDiagnostics");
 const { appendRefereeFailureAudit } = require("./meetingMinutesRefereeFailureAudit");
 const crypto = require("crypto");
@@ -14,12 +18,6 @@ const { refereeFailureSnapshot } = require("./meetingMinutesRefereeFailureAudit"
 function createOriginalExecution(services) {
   const {
     askPowerAutomateMeetingMinutesAgentWithRetry,
-    meetingAgentPassCacheKey,
-    meetingAgentPromptDetails,
-    meetingAgentRefereeRoute,
-    meetingAgentResultError,
-    meetingAgentTimingAnchor,
-    meetingMinutesAgentReplayPassCacheEnabled,
     usePrivateActionPrimaryPrewarm,
   } = services;
 
