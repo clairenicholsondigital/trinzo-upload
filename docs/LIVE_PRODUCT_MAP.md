@@ -470,12 +470,54 @@ mixed generation, materialization and provenance integrations. There is no
 reduction in the overall regression bank; the infrastructure mapping updates
 require its full release profile, including disposable-database coverage.
 
-This advances stage 3 but does not complete it. Empty-discovery validation still
-depends on actual proposal normalization and action duplicate policy; response
-aggregation has those duplicate-policy dependencies too. These are named
-remaining work, not substitute lexical checks or callbacks to the API/V2.
-Publication/Library/exports, reviewer save/history and preparation/generation
-lifecycle remain later stages of the simplification plan.
+That batch established packet and deterministic contract ownership. The next
+batch below owns the actual duplicate and aggregation policies that were still
+needed by source-backed discovery validation.
+
+### Action duplicates and result aggregation
+
+The actual cross-pass action/proposal duplicate policy now has a dedicated
+`meetingMinutesActionDuplicatePolicy` owner. Thirty-three existing functions
+and thirteen constants move without changing their declarations: three generic
+text/overlap helpers belong to the existing RecordMatching owner, while the
+thirty action-specific functions and constants remain together. Existing
+canonical duplicate, deliverable, timing and reviewer policies remain actual
+imports. This policy stays distinct from V2 normalization's own coverage merge;
+shared vocabulary does not make their decisions interchangeable.
+
+Source-aware timing and ownership, distinct work steps and recipients,
+conditional delivery, document workflows, reviewer-authored rows, provenance,
+flags, diagnostics and stable ordering keep their existing behaviour. Exported
+Sets/regexes have no tracked mutation writers; derived stoplists remain fresh
+Sets. There is one actual diagnostics module and one shared evidence context
+and reset path, with no new factory or callback bag.
+
+Three result-aggregation functions now import this duplicate policy, PlainText,
+ReviewFlags and the shared schema owner. ResponseContracts owns the unchanged
+`SCHEMA_VERSION = 4`; V2 retains the same public compatibility export, and API,
+Original Discovery and aggregation import the same constant. Provider prompt
+functions and resulting schema version remain unchanged. The union retains
+missing-leg identity and first-leg field authority. Repair and batch mergers
+retain their existing overwrite, count and ordering rules and shared warning
+identity.
+
+Original Discovery and Actions import the six moved policy functions directly,
+reducing supplied service entries from 119 to 113. Their processing bodies stay
+unchanged. API falls from 17,208 to 16,221 lines and V2 from 6,157 to 6,153; all
+94 effective routes, 223 API exports and 158 V2 exports remain. Fifteen existing
+cases move into compact owner checks, with no added or removed regression cases
+or assertions. Mixed generation, repair-prompt, feature-switch, publication and
+persistence integrations remain. New owners retain persistence-sensitive test
+selection; updating compact coverage selects the full required release profile.
+
+Stage 3 remains in progress. Its next substantive dependency is actual V2 result
+normalization and its document-reference context helper; source-backed proposal
+and empty-discovery validation still need those policies. The remaining
+response/discovery contracts must be accounted for explicitly before calling
+this stage complete. Publication/Library/exports, reviewer save/history and
+preparation/generation lifecycle remain later stages. This batch reduces the
+large entrypoints and supplied policy dependencies; it does not claim that the
+whole repository or regression bank has fewer lines/cases.
 
 ## Evidence and limits
 

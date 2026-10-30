@@ -48,8 +48,7 @@ const {
   hybridCandidateLedgerFromResult,
   highConfidenceRefereedAction,
   safeAgentProposalPromotion,
-  explicitFutureDocumentationCommitment,
-  dedupeHybridActionProposals
+  explicitFutureDocumentationCommitment
 } = require('../routes/api').stagedEvaluation;
 
 const sourceUnits = normaliseSourceUnits([
@@ -748,31 +747,7 @@ test('objective records accumulate distinct evidenced aims from later passes', (
   assert.ok(records.some((record) => record.evidenceIds.includes('T2050')));
 });
 
-test('proposal deduplication preserves a conditional alternative beside a firm implementation', () => {
-  const records = dedupeHybridActionProposals([
-    {
-      id: 'A1', action: 'Determine and implement a secure method for document access and external SharePoint access.',
-      owners: ['Alex'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2100']
-    },
-    {
-      id: 'A2', action: 'Work out a secure method to provide access to the documents using external SharePoint if needed.',
-      owners: ['Alex'], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T2101']
-    }
-  ]);
-  assert.equal(records.length, 2);
-  assert.match(records.find(record => record.id === 'A1').action, /Determine and implement/);
-  assert.match(records.find(record => record.id === 'A2').action, /if needed/);
-  assert.deepEqual(records.map(record => record.evidenceIds), [['T2100'], ['T2101']],
-    'a firm implementation must not inherit evidence for a conditional alternative');
-});
 
-test('proposal deduplication preserves distinct predicates from one evidence window', () => {
-  const records = dedupeHybridActionProposals([
-    { id: 'A1', action: 'Send the validation report.', owners: ['Alex'], evidenceIds: ['T2200'] },
-    { id: 'A2', action: 'Review the validation report.', owners: ['Alex'], evidenceIds: ['T2200'] }
-  ]);
-  assert.equal(records.length, 2);
-});
 
 test('safe Agent proposals require grounded commitments plus independent support', () => {
   const units = normaliseSourceUnits([

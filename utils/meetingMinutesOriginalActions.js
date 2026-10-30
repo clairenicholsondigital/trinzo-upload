@@ -1,5 +1,6 @@
 'use strict';
 
+const { dedupeHybridActionProposals, dedupeHybridActionRecords, isClientReadyActionWording } = require('./meetingMinutesActionDuplicatePolicy');
 const { meetingAgentInfrastructureFailure, normaliseAgentCandidateDispositions, reconcileRefereeActionMaterialization } = require('./meetingMinutesResponseContracts');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
 const { actionNegatedByEvidence, isMeetingAdminAction } = require('./meetingMinutesActionEvidence');
@@ -49,8 +50,6 @@ function createOriginalActionsStage(services) {
     corroboratedOmittedActionProposals,
     criticConfirmedActionPromotions,
     dedupeCommitmentsSemantically,
-    dedupeHybridActionProposals,
-    dedupeHybridActionRecords,
     finaliseMeetingAgentTimingProposal,
     foldUnownedNearCopies,
     gateTranscriptShapedActionChanges,
@@ -60,7 +59,6 @@ function createOriginalActionsStage(services) {
     hybridCandidateCoveredByRecord,
     hybridCandidateDispositions,
     hybridCandidateLedgerFromResult,
-    isClientReadyActionWording,
     isReviewableActionProposal,
     isVagueReconstructedAction,
     meetingAgentActionAuditCandidates,

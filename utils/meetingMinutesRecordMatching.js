@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { text } = require('./meetingMinutesText');
+const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
 
 const COMMON_SPEECH_WORDS = new Set([
   'get', 'got', 'let', 'say', 'one', 'make', 'made', 'take', 'put', 'going', 'think', 'know', 'want', 'like',
@@ -26,4 +27,36 @@ function tokenOverlap(left, right) {
   return a.filter((token) => b.has(token)).length / Math.min(a.length, b.size);
 }
 
-module.exports = { stableId, contentTokens, tokenOverlap, COMMON_SPEECH_WORDS };
+
+function hybridRecordText(record = {}) {
+  return meetingMinutesAgentText(record.action || record.text || '', 1600);
+}
+
+function hybridTokenOverlap(left, right) {
+  const tokens = (value) => new Set(String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || []);
+  const a = tokens(left); const b = tokens(right);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
+function hybridContentTokenOverlap(left, right) {
+  const stop = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'those', 'these', 'then', 'than', 'their', 'there', 'will', 'would', 'could', 'should']);
+  const stem = (token) => {
+    if (token.length > 6 && /ing$/.test(token)) return token.slice(0, -3);
+    if (token.length > 5 && /ed$/.test(token)) return token.slice(0, -2);
+    if (token.length > 5 && /es$/.test(token)) return token.slice(0, -2);
+    if (token.length > 4 && /s$/.test(token)) return token.slice(0, -1);
+    return token;
+  };
+  const tokens = (value) => new Set((String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9'’-]{2,}/g) || [])
+    .filter((token) => !stop.has(token)).map(stem));
+  const a = tokens(left); const b = tokens(right);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
+module.exports = { stableId, contentTokens, tokenOverlap, COMMON_SPEECH_WORDS, hybridRecordText, hybridTokenOverlap, hybridContentTokenOverlap };

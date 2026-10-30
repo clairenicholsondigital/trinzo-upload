@@ -109,6 +109,7 @@ test('database-sensitive changes require persistence checks before release', t =
     'utils/meetingMinutesReviewAccounting.js', 'utils/meetingMinutesReviewFlags.js',
     'utils/meetingMinutesEvidenceContext.js', 'utils/meetingMinutesActionEvidence.js',
     'utils/meetingMinutesEvidenceResolution.js', 'utils/meetingMinutesReviewEvidence.js',
+    'utils/meetingMinutesActionDuplicatePolicy.js', 'utils/meetingMinutesResultAggregation.js',
     'routes/projectContext.js',
     'routes/projectKnowledge.js', 'utils/requestFlags.js', 'routes/generationJobs.js',
     'routes/meetingMinutesJobs.js', 'utils/meetingMinutesJobEdits.js',

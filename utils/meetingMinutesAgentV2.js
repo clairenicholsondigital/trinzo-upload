@@ -92,11 +92,7 @@ const {
 } = require('./meetingMinutesActionEvidence');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
 const { boundedReviewEvidence } = require('./meetingMinutesReviewEvidence');
-
-// The response contract asked of the agent. It is interpolated into the prompt
-// ("Return schemaVersion N ..."), so changing it changes what Power Automate is
-// told to return - do NOT bump it to describe a change in what we store on disk.
-const SCHEMA_VERSION = 4;
+const { SCHEMA_VERSION } = require('./meetingMinutesResponseContracts');
 
 const { PAYLOAD_VERSION, migrateDraftPayload } = require('./meetingMinutesDraftStorage');
 // Application-derived timing in cached action candidates is versioned separately

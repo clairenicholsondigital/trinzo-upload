@@ -6,6 +6,11 @@ const { normaliseSourceUnits } = require('./meetingMinutesSource');
 const { normaliseFlag: normaliseMeetingAgentFlag } = require('./meetingMinutesReviewFlags');
 const crypto = require('crypto');
 
+// The response contract asked of the agent. It is interpolated into the prompt
+// ("Return schemaVersion N ..."), so changing it changes what Power Automate is
+// told to return - do NOT bump it to describe a change in what we store on disk.
+const SCHEMA_VERSION = 4;
+
 function meetingAgentResultError(result) {
   const reported = result?.error;
   if (!reported) return null;
@@ -414,6 +419,7 @@ function discussionRefereeHasCompleteCandidateAccounting(diagnostics = {}) {
 }
 
 module.exports = {
+  SCHEMA_VERSION,
   meetingAgentResultError,
   meetingAgentRefereeRoute,
   meetingAgentInfrastructureFailure,

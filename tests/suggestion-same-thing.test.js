@@ -43,7 +43,7 @@ test('an unowned copy with a different verb folds into the owned action', () => 
 });
 
 test('a check-in variant retains its additional timing and responsibility', () => {
-  const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
+  const { dedupeHybridActionRecords } = require('../utils/meetingMinutesActionDuplicatePolicy');
   const rows = dedupeHybridActionRecords([
     { id: 'a', action: 'Catch up with Morgan Lee about the audit findings.', owners: ['Alex Kent'], evidenceIds: ['T0020'], timing: { kind: 'not_stated' } },
     { id: 'b', action: 'Check in with Alex Kent next week on the findings.', owners: ['Morgan Lee'], evidenceIds: ['T0029'], timing: { kind: 'not_stated' } }
@@ -100,7 +100,7 @@ test('an unowned way-to paraphrase folds into the owned action it restates', () 
 });
 
 test('an owned way-to alternative cannot replace a concrete commitment to both tasks', () => {
-  const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
+  const { dedupeHybridActionRecords } = require('../utils/meetingMinutesActionDuplicatePolicy');
   const { commitmentScopeConflict, commitmentCanBeRepresented } = require('../utils/canonicalMinutes/commitmentDuplicates');
   // The concrete row requires both operations; the way-to row permits either.
   // Shared subject matter does not prove those scopes interchangeable.
@@ -119,7 +119,7 @@ test('an owned way-to alternative cannot replace a concrete commitment to both t
 });
 
 test('owned paraphrases still merge when the complete instruction is retained', () => {
-  const { dedupeHybridActionRecords } = require('../routes/api').stagedEvaluation;
+  const { dedupeHybridActionRecords } = require('../utils/meetingMinutesActionDuplicatePolicy');
   const { commitmentCanBeRepresented } = require('../utils/canonicalMinutes/commitmentDuplicates');
   const input = [
     { id: 'a', action: 'Provide the auditor with secure external file-share access.', owners: ['Sam Carter'], timing: { kind: 'not_stated' }, evidenceIds: ['T0001'], reviewFlagIds: ['f1'] },
