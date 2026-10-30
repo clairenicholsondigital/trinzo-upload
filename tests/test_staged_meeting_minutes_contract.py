@@ -438,6 +438,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
     def test_staged_review_analytics_are_persisted_server_side(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        analytics = (REPO_DIR / "utils" / "stagedReviewAnalytics.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
         migration = (REPO_DIR / "sql" / "migrations" / "20260814_add_staged_review_analytics.sql").read_text(encoding="utf-8")
 
@@ -457,9 +458,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("stagedWorkflowInteractionEvents", api)
         self.assertIn("summariseStagedWorkflowInteractions", api)
         self.assertIn("interactionSummary", api)
-        self.assertIn("wording_or_formatting_edit", api)
-        self.assertIn("substantive_rewrite", api)
-        self.assertIn("structural_or_semantic_change", api)
+        self.assertIn("wording_or_formatting_edit", analytics)
+        self.assertIn("substantive_rewrite", analytics)
+        self.assertIn("structural_or_semantic_change", analytics)
         self.assertIn("saveStagedMeetingMinutesReviewEvent", db)
         self.assertIn("staged_meeting_minutes_review_events", migration)
         self.assertIn("field_diffs JSONB", migration)
