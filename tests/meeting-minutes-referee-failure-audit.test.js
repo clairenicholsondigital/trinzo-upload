@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const audit=require('../utils/meetingMinutesRefereeFailureAudit');
+const {createOriginalExecution}=require('../utils/meetingMinutesOriginalExecution');
 const A=require('../routes/api').stagedEvaluation;
 const source=fs.readFileSync(require.resolve('../routes/api'),'utf8');
 const payload=prompt=>JSON.parse(prompt.split('refereePayload:\n')[1]);
@@ -126,7 +127,7 @@ test('audit source evidence bypasses glossary rewriting and is excluded from pub
 function progressHarness() {
   let stored={draftId:'draft',sourceUnits:[],discussion:[],actions:[],qualityState:{actions:{keep:'other-stage'}},generation:{status:'running',stage:'discussion'}};
   const start=source.indexOf('async function updateMeetingAgentHybridProgress(');
-  const end=source.indexOf('\nfunction meetingAgentReviewPacketError',start);
+  const end=source.indexOf('\nfunction meetingAgentSummaryAuthority',start);
   const context={MEETING_AGENT_BOOT_ID:'fixture',Date,
     meetingAgentSerialDraftWrite:async(id,fn)=>fn(),getMeetingMinutesAgentDraft:async()=>structuredClone(stored),
     normaliseMeetingAgentGeneration:v=>v,normaliseMeetingAgentPassCache:v=>v,
@@ -142,28 +143,21 @@ test('a private audit checkpoint persists before stage completion without enteri
   assert.equal(h.stored.generation.refereeFailureAudit,undefined);
   assert.ok(!JSON.stringify(A.publicMeetingAgentDraft(h.stored)).includes('PRIVATE checkpoint'));
 });
-test('the production referee call actually wires rejection capture to the durable private checkpoint',async()=>{
+test('the production referee call actually wires rejection capture to the durable private checkpoint',async(t)=>{
  for(const stage of ['discussion','actions']){
   const atomic=stage==='discussion'?child:{...child,recordType:'action',text:'Send the tracker.',record:{action:'Send the tracker.',owners:['Nora Patel'],evidenceIds:['T0001']}};
   const h=progressHarness(),c=A.meetingMinutesAgentRefereeContract(stage,[atomic],'request',{selected:true}),logs=[],diagnosticPasses=[];let providerCalls=0,capturedError;
   const result={requestId:'request',stage:c.stage,expectedCandidateCount:1,returnedDispositionCount:1,
     candidateDispositions:[{candidateId:'child',disposition:stage==='discussion'?'merge':'publish',targetId:'PRIVATE_BAD_TARGET',reason:'Covered.',evidenceIds:['T0001']}]};
   const retry=retryHarness(async()=>{providerCalls++;return structuredClone(result);});
-  const start=source.indexOf('  const call = (pass, prompt, callOptions = {}) => actionDiagnostics.scoped(',source.indexOf('async function generateHybridMeetingAgentStageRaw('));
-  const end=source.indexOf("\n\n  if (stage === 'summary')",start);
-  assert.ok(start>0&&end>start);
-  const context={Date,Math,Number,JSON,process:{env:{}},
-    actionDiagnostics:{...require('../utils/meetingMinutesActionDiagnostics'),scoped:(pass,task)=>{diagnosticPasses.push(pass);return task();}},
-    stage,draft:{draftId:'draft'},passCache:[],passProvenance:[],completedPasses:[],degradedSources:[],
-    stageDeadlineAt:Date.now()+5000,refereeFailureAudit:undefined,refereeAuditRunId:'fixture-run',
-    options:{onRefereeFailure:journal=>h.persist('draft','owner',stage,{refereeFailureAudit:journal})},
-    meetingMinutesAgentText:(v,n)=>String(v||'').slice(0,n),meetingAgentPassCacheKey:()=> 'fixture-hash',
-    meetingMinutesAgentReplayPassCacheEnabled:()=>false,progress:async()=>{},
-    meetingAgentPassTimingPolicy:()=>({deadlineAt:Date.now()+5000,attemptTimeoutMs:1000}),
-    askPowerAutomateMeetingMinutesAgentWithRetry:retry.run,appendRefereeFailureAudit:audit.appendRefereeFailureAudit,
-    refereeFailureSnapshot:audit.refereeFailureSnapshot,meetingAgentFailureClass:A.meetingAgentFailureClass,
-    console:{warn:s=>logs.push(s),info:s=>logs.push(s)}};
-  vm.runInNewContext(source.slice(start,end)+'\nthis.call=call;',context);
+  const diagnostics=require('../utils/meetingMinutesActionDiagnostics');
+  const scoped=t.mock.method(diagnostics,'scoped',(pass,task)=>{diagnosticPasses.push(pass);return task();});
+  const warn=t.mock.method(console,'warn',s=>logs.push(s));
+  const info=t.mock.method(console,'info',s=>logs.push(s));
+  const createExecution=createOriginalExecution({...A.originalMinutesStageServices,
+    askPowerAutomateMeetingMinutesAgentWithRetry:retry.run});
+  const context=createExecution({draftId:'draft',details:{},sourceUnits:[],discussion:[],actions:[]},stage,
+    {onRefereeFailure:journal=>h.persist('draft','owner',stage,{refereeFailureAudit:journal})});
   const value=await context.call('referee-batch-1','PRIVATE exact request',{
     optional:true,maxAttempts:1,responseKind:'referee',refereeContract:c,requestId:c.requestId,
     validateResult:r=>A.meetingAgentDispositionError(r,[atomic],c),captureError:e=>{capturedError=e;}});
@@ -176,6 +170,7 @@ test('the production referee call actually wires rejection capture to the durabl
   assert.equal(entry.validation.code,capturedError.code);
   assert.ok(!logs.join('').includes('PRIVATE_BAD_TARGET'));
   assert.ok(!JSON.stringify(A.publicMeetingAgentDraft(h.stored)).includes('PRIVATE_BAD_TARGET'));
+  scoped.mock.restore();warn.mock.restore();info.mock.restore();
  }
 });
 

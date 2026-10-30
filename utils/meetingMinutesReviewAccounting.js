@@ -42,4 +42,16 @@ function finishReviewAccounting(indexed) {
   };
 }
 
-module.exports = { indexReviewResults, finishReviewAccounting };
+function meetingAgentReviewPacketError(items = [], result, verdicts = []) {
+  const indexed = indexReviewResults(items, result?.results, verdicts);
+  const invalid = [...indexed.states.values()].filter(item => item.status !== 'pending');
+  if (!indexed.malformedPacket && !indexed.unknown.length && !invalid.length) return null;
+  const error = new Error('The timing review did not return one valid result for each supplied item.');
+  error.code = 'invalid_meeting_timing_review_accounting';
+  error.statusCode = 502;
+  error.retryable = true;
+  error.invalidCandidateIds = invalid.map(item => item.id);
+  return error;
+}
+
+module.exports = { indexReviewResults, finishReviewAccounting, meetingAgentReviewPacketError };
