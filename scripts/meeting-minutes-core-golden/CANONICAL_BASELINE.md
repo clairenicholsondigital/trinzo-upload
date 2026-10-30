@@ -1,5 +1,11 @@
 # Canonical staged backend experiment — baseline v1
 
+Historical note: the classifier-training commands below belong to the separate
+research archive. See `research-archive.json` at the repository root for their
+original paths, hashes and recovery revision. Runtime models and this golden
+suite remain in the application.
+
+
 Run date: 12 August 2026
 
 This experiment compares the existing staged no-edit pipeline with the isolated

@@ -64,6 +64,20 @@ The first release removing tracked `node_modules` must use the updated install
 and build procedure before restarting. Dependency removal only changes the
 current Git tree; older revisions and their files remain in Git history.
 
+## Research archive
+
+Historical classifier-training scripts, datasets and their research-only tests
+have been archived separately. `research-archive.json` lists each original path,
+SHA-256 and the source Git revision. The verified VPS copy is
+`/root/trinzo-research-archive-20261030`, with a matching `.tar.gz` and checksum.
+Archived files can also be recovered from that revision using `git archive`
+with the paths in the manifest. The archive preserves the original directory
+layout and includes its own test/run instructions.
+
+Runtime classifier binaries (including configurable older models), their
+metrics, benchmark transcripts and UI-consumed evaluation results stay here.
+Archived training tests run in the archive, outside the product release suite.
+
 ## Baseline cache reset
 
 An external baseline harness can start from a cold application cache with:

@@ -1,0 +1,128 @@
+{
+  "sourceRevision": "8a2bc04498fbffb541206a367fec44dd3e12c1d9",
+  "archiveDirectory": "trinzo-research-archive-20261030",
+  "purpose": "Historical classifier training tools, datasets and their five unit checks. Runtime classifier binaries, metrics, benchmark inputs and UI-consumed results remain in the application.",
+  "files": [
+    {
+      "path": "artifacts/canonical-contextual-v4-benchmark.json",
+      "bytes": 22505,
+      "sha256": "dcf19171a91c73f995b55de04a19b6aa3e1a7daac8e2fe51b0e1b4fab842e8db"
+    },
+    {
+      "path": "artifacts/canonical-final-reviewed-v3-eval.json",
+      "bytes": 50578,
+      "sha256": "d45c030c49fa5efb8ddbb25a817bb0ca04c6c48458f68ba41cb1f1eb071d13dd"
+    },
+    {
+      "path": "artifacts/canonical-speech-act-model-v3/training_data_used.csv",
+      "bytes": 472039,
+      "sha256": "5ead0f7db781ba54a0a192a28caefefdd56ab5edf86457dd8923ccfcd254f7c3"
+    },
+    {
+      "path": "artifacts/canonical-speech-act-model-v4/training_data_used.csv",
+      "bytes": 944355,
+      "sha256": "d9f825bd8419d8f18fa07a2105044271d899c55832495d586b887bd6a4fa7431"
+    },
+    {
+      "path": "artifacts/canonical-speech-act-model-v9/training_data_used.csv",
+      "bytes": 944355,
+      "sha256": "d9f825bd8419d8f18fa07a2105044271d899c55832495d586b887bd6a4fa7431"
+    },
+    {
+      "path": "artifacts/canonical_contextual_augmented_v1.csv",
+      "bytes": 674159,
+      "sha256": "4ebffa4a91b5c4a09e1b0104d6a31245fde1e9b9b15407149830b9f7a862ef82"
+    },
+    {
+      "path": "artifacts/canonical_contextual_augmented_v1.manifest.json",
+      "bytes": 413,
+      "sha256": "55372381b2731c162f602d5ec37b70ef712467a9a5d9a1e94042143cd4b4901a"
+    },
+    {
+      "path": "artifacts/canonical_contextual_candidates_v1.csv",
+      "bytes": 188208,
+      "sha256": "9de3dbfc195a81ed4eb5e0fc0d1d4faaf1ad5d4da570c4714b40a3bd13dd2aeb"
+    },
+    {
+      "path": "artifacts/canonical_contextual_candidates_v1.manifest.json",
+      "bytes": 836,
+      "sha256": "f0878828a72370eaa08eb7a92c042a076b8469b6fd8c06abb7993fe9ed2730a5"
+    },
+    {
+      "path": "artifacts/canonical_discourse_candidates_v1.csv",
+      "bytes": 495219,
+      "sha256": "0dd8f31b8da4faae56e2f0ba526eb8ea702495464a8a648550899cd27388500a"
+    },
+    {
+      "path": "artifacts/canonical_discourse_candidates_v1.manifest.json",
+      "bytes": 566,
+      "sha256": "aaa76a596ee2d3c8117a96215290f75b046dae1650d47089ff624058e29c4ed5"
+    },
+    {
+      "path": "artifacts/canonical_speech_act_augmented_master_v2.csv",
+      "bytes": 472039,
+      "sha256": "5ead0f7db781ba54a0a192a28caefefdd56ab5edf86457dd8923ccfcd254f7c3"
+    },
+    {
+      "path": "artifacts/canonical_speech_act_augmented_master_v2.manifest.json",
+      "bytes": 634,
+      "sha256": "d05969db459c720dfb152262738acf4f14b017ba175924a689c4869297b92e1d"
+    },
+    {
+      "path": "artifacts/canonical_speech_act_candidates_v2.csv",
+      "bytes": 198476,
+      "sha256": "a405b9f3a4eb91d005adbd78ec1aac158cfc1da2dee7fa8f00d8cd00cba17505"
+    },
+    {
+      "path": "artifacts/canonical_speech_act_candidates_v2.manifest.json",
+      "bytes": 1404,
+      "sha256": "70e3000f6960832fa4c96b46285f2d396d75e2bf886d688303bf96b87ba827a8"
+    },
+    {
+      "path": "artifacts/meeting-minutes-usefulness-v3/review_labels.csv",
+      "bytes": 439049,
+      "sha256": "98352a00eb7d78c167737749850e01af26487182565bc252fbe36d1767b1b58f"
+    },
+    {
+      "path": "scripts/assemble_contextual_model_training.py",
+      "bytes": 2169,
+      "sha256": "4bed007766e0f5aee77a3f3fdb2aa1e096a9674145ec8411376266ce782ece13"
+    },
+    {
+      "path": "scripts/build_canonical_discourse_training.py",
+      "bytes": 11269,
+      "sha256": "00f69731f5e87b9c6e1760a9344d24456a2a0d3d96243d9c69a2c91328f35458"
+    },
+    {
+      "path": "scripts/build_canonical_speech_act_training.py",
+      "bytes": 13919,
+      "sha256": "4fb6d4fa891bf458be4ca5e389063c2e3db5c8bd1f55a53ebf58775d46be2710"
+    },
+    {
+      "path": "scripts/build_contextual_evidence_training.py",
+      "bytes": 7658,
+      "sha256": "3b69ebf9951101f0d4d0c2ecc9d37e31e81430d99c0e3abb0990d0bee69a15c4"
+    },
+    {
+      "path": "scripts/merge_canonical_speech_act_training.py",
+      "bytes": 2638,
+      "sha256": "c85840665b4064c89ebf2ecbead94a4b638c21b5adae298922e7a984d78f5b2d"
+    },
+    {
+      "path": "scripts/train_canonical_speech_act_classifier.py",
+      "bytes": 8586,
+      "sha256": "166c2b99c9661ccd17bc064e42603420e5fa3eb5a5e11f1956c0b44a3c76b9da"
+    },
+    {
+      "path": "tests/test_canonical_speech_act_training.py",
+      "bytes": 1517,
+      "sha256": "af4934db28c41e4ac8bc7b607af4d938ebe542921319747dc016a99a219a0278"
+    },
+    {
+      "path": "tests/test_contextual_evidence_training.py",
+      "bytes": 1300,
+      "sha256": "32fe97068757365863776ca32a4dc6f59793e785759f75caaea3c3f20fb34638"
+    }
+  ],
+  "archivedFromRevision": "936bf09358a6ae7b7a64200c58d499d107de01ed"
+}
