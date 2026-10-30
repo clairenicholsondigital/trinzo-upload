@@ -1,4 +1,4 @@
-const { safeErrorInfo, safeLogError, sendTestError } = require('../utils/apiErrors');
+const { safeLogError, sendTestError } = require('../utils/apiErrors');
 const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
 const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
