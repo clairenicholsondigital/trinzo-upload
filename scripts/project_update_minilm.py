@@ -1472,8 +1472,11 @@ def merge_segment_into_milestone_row(row: dict[str, Any], segment: dict[str, Any
     merged["comparison_key"] = row.get("comparison_key") or normalise_key(segment.get("comparison_key") or segment.get("milestone"))
     merged["baseline_finish_date"] = row.get("baseline_finish_date") or segment.get("baseline_finish_date") or segment.get("baselineDeadline") or segment.get("deadline") or ""
     merged["forecast_finish_date"] = segment.get("forecast_finish_date") or segment.get("forecastDeadline") or segment.get("deadline") or row.get("forecast_finish_date") or ""
-    merged["delivery_status"] = blank_unknown_status(segment.get("delivery_status") or segment.get("status") or row.get("delivery_status"))
-    merged["health_assessment"] = blank_unknown_status(segment.get("health_assessment") or row.get("health_assessment"))
+    # A matched current update can leave its state unestablished (for example
+    # "not finished"). Keep the old assessment as previous_status, never as a
+    # newly confirmed current state. Unmentioned rows still carry their baseline.
+    merged["delivery_status"] = blank_unknown_status(segment.get("delivery_status") or segment.get("status"))
+    merged["health_assessment"] = blank_unknown_status(segment.get("health_assessment"))
     merged["next_steps"] = [step for step in combine_blockers_and_next_steps(segment) if is_valid_risk_mitigation_candidate(step)]
     merged["blocking_factors"] = []
     merged["context_source"] = row.get("context_source") or "transcript"
