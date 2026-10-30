@@ -28,4 +28,8 @@ function sendTestError(res, error) {
   });
 }
 
-module.exports = { safeErrorInfo, safeLogError, sendTestError };
+function sendJson(res, status, payload) {
+  return res.status(status).json(payload);
+}
+
+module.exports = { safeErrorInfo, safeLogError, sendTestError, sendJson };

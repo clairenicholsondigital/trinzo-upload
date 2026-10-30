@@ -1,3 +1,4 @@
+const { truthyFlag } = require('../utils/requestFlags');
 const { safeLogError, sendTestError } = require('../utils/apiErrors');
 const {
   stagedAnalyticsObject, stagedAnalyticsArray, stagedAnalyticsText, buildStagedReviewDiffs,
@@ -52,7 +53,7 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 const { refereeFailureSnapshot, appendRefereeFailureAudit } = require('../utils/meetingMinutesRefereeFailureAudit');
 const { AsyncLocalStorage } = require('node:async_hooks');
-const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval, answerProjectKnowledge } = require('../utils/knowledge');
+const { runProjectKnowledgeRetrieval } = require('../utils/knowledge');
 
 const {
   generateToken,
@@ -191,31 +192,12 @@ const {
   saveProjectUpdateDraft,
   getProjectManagementDetail,
   getProjectContext,
-  createProjectContextSnapshot,
-  getProjectContextSnapshot,
-  markProjectContextOfficial,
-  cleanupProjectUpdateTestContext,
-  createProjectKnowledgeItem,
-  listProjectKnowledgeItems,
-  updateProjectKnowledgeItem,
-  archiveProjectKnowledgeItem,
-  getProjectKnowledgeStatus,
   saveMeetingMinutesFeedback,
   queueMeetingMinutesGeneration,
   queueStagedMeetingMinutesStage,
   queueProjectUpdateGeneration,
-  listGenerationJobs,
-  listMeetingMinutesJobs,
   getGenerationJob,
   getMeetingMinutesJob,
-  retryGenerationJob,
-  retryMeetingMinutesJob,
-  cancelGenerationJob,
-  cancelMeetingMinutesJob,
-  deleteGenerationJob,
-  archiveGenerationJobs,
-  deleteMeetingMinutesJob,
-  updateMeetingMinutesJobResult,
   saveStagedMeetingMinutesReviewEvent,
   listStagedMeetingMinutesReviewEvents,
   createMeetingMinutesAgentDraft,
@@ -576,11 +558,6 @@ async function readTestTranscript(req) {
 }
 
 
-function truthyFlag(value) {
-  if (Array.isArray(value)) return value.some((item) => truthyFlag(item));
-  if (value == null) return false;
-  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
-}
 
 function buildProjectKnowledgeQuery(transcriptText, projectContext = {}) {
   const milestoneNames = Array.isArray(projectContext.activeMilestones)
@@ -6926,14 +6903,7 @@ router.post('/meeting-minutes-final/jobs', requireAuth, withTestUpload(async (re
   }
 }));
 
-router.get('/meeting-minutes-final/jobs', requireAuth, async (req, res) => {
-  try {
-    const jobs = await listMeetingMinutesJobs(req.query?.limit || 75);
-    return res.json({ ok: true, success: true, jobs });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to list jobs.' });
-  }
-});
+require('./meetingMinutesJobs').registerMeetingMinutesJobList(router);
 
 router.post('/project-update-test/jobs', requireAuth, withTestUpload(async (req, res) => {
   try {
@@ -6973,257 +6943,9 @@ router.post('/project-update-test/jobs', requireAuth, withTestUpload(async (req,
   }
 }));
 
-router.get('/jobs', requireAuth, async (req, res) => {
-  try {
-    const jobs = await listGenerationJobs(req.query?.limit || 75, { type: req.query?.type || '' });
-    return res.json({ ok: true, success: true, jobs });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to list jobs.' });
-  }
-});
+require('./generationJobs')(router, { launchQueuedStagedMeetingMinutesStage });
 
-router.get('/jobs/:jobId', requireAuth, async (req, res) => {
-  try {
-    const job = await getGenerationJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Job not found.' });
-    return res.json({
-      ok: true,
-      success: true,
-      job,
-      result: job.status === 'completed' ? job.resultPayload : null
-    });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to load job.' });
-  }
-});
-
-router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
-  try {
-    const job = await retryGenerationJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Retryable job not found.' });
-    if (job.jobType === 'staged_meeting_minutes_stage') {
-      launchQueuedStagedMeetingMinutesStage(job.jobId);
-    }
-    return res.json({ ok: true, success: true, job });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to retry job.' });
-  }
-});
-
-router.post('/jobs/:jobId/cancel', requireAuth, async (req, res) => {
-  try {
-    const job = await cancelGenerationJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Cancellable job not found.' });
-    return res.json({ ok: true, success: true, job });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to cancel job.' });
-  }
-});
-
-router.delete('/jobs/:jobId', requireAuth, async (req, res) => {
-  try {
-    const deleted = await deleteGenerationJob(req.params.jobId);
-    if (!deleted) return res.status(404).json({ ok: false, success: false, error: 'Deletable completed/failed/cancelled job not found.' });
-    return res.json({ ok: true, success: true });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to delete job.' });
-  }
-});
-
-router.post('/jobs/archive', requireAuth, async (req, res) => {
-  try {
-    const requestedIds = Array.isArray(req.body?.jobIds) ? req.body.jobIds : [];
-    const archiveAll = req.body?.archiveAll === true;
-    if (!archiveAll && !requestedIds.length) {
-      return res.status(400).json({ ok: false, success: false, error: 'Select at least one item to archive.' });
-    }
-    const archivedIds = await archiveGenerationJobs(requestedIds, { archiveAll });
-    return res.json({ ok: true, success: true, archivedIds, archivedCount: archivedIds.length });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to archive items.' });
-  }
-});
-
-router.get('/meeting-minutes-final/jobs/:jobId', requireAuth, async (req, res) => {
-  try {
-    const job = await getMeetingMinutesJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Job not found.' });
-    return res.json({
-      ok: true,
-      success: true,
-      job,
-      result: job.status === 'completed' ? job.resultPayload : null
-    });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to load job.' });
-  }
-});
-
-router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (req, res) => {
-  try {
-    const job = await getMeetingMinutesJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Job not found.' });
-    if (job.status !== 'completed') {
-      return res.status(409).json({ ok: false, success: false, error: 'Only completed meeting-minutes jobs can be edited.' });
-    }
-
-    const editedRows = Array.isArray(req.body?.editedRows) ? req.body.editedRows : null;
-    if (!editedRows) {
-      return res.status(400).json({ ok: false, success: false, error: 'Provide editedRows as an array.' });
-    }
-
-    const safeRows = editedRows.slice(0, 500).map((row) => ({
-      type: String(row?.type || 'Note').slice(0, 80),
-      topic: String(row?.topic || '').slice(0, 300),
-      itemType: String(row?.itemType || '').slice(0, 80),
-      owner: String(row?.owner || '').slice(0, 300),
-      deadline: String(row?.deadline || '').slice(0, 300),
-      text: String(row?.text || '').slice(0, 10000),
-      detail: String(row?.detail || '').slice(0, 10000),
-      evidence: String(row?.evidence || '').slice(0, 10000)
-    })).filter((row) => row.text.trim());
-
-    const currentPayload = job.resultPayload && typeof job.resultPayload === 'object' ? job.resultPayload : {};
-    const currentResult = currentPayload.result && typeof currentPayload.result === 'object' ? currentPayload.result : {};
-    const currentOutput = currentResult.output && typeof currentResult.output === 'object' ? currentResult.output : {};
-    const editedMeta = req.body?.editedMeta && typeof req.body.editedMeta === 'object' ? req.body.editedMeta : {};
-    const currentParticipants = currentOutput.participants && typeof currentOutput.participants === 'object' ? currentOutput.participants : {};
-    const safeMeta = {
-      meetingTitle: String(editedMeta.meetingTitle ?? currentOutput.meetingTitle ?? currentOutput.title ?? '').slice(0, 300),
-      meetingDate: String(editedMeta.meetingDate ?? currentOutput.meetingDate ?? currentOutput.date ?? '').slice(0, 120),
-      meetingLocation: String(editedMeta.meetingLocation ?? currentOutput.meetingLocation ?? currentOutput.location ?? '').slice(0, 300),
-      meetingType: String(editedMeta.meetingType ?? currentOutput.meetingType ?? '').slice(0, 120),
-      meetingObjectives: Array.isArray(editedMeta.meetingObjectives)
-        ? editedMeta.meetingObjectives.map((value) => String(value || '').slice(0, 1000).trim()).filter(Boolean).slice(0, 100)
-        : Array.isArray(currentOutput.meetingObjectives)
-          ? currentOutput.meetingObjectives.map((value) => String(value || '').slice(0, 1000).trim()).filter(Boolean).slice(0, 100)
-          : [],
-      participants: {
-        client: Array.isArray(editedMeta.participants?.client)
-          ? editedMeta.participants.client.map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
-          : Array.isArray(currentParticipants.client || currentOutput['participants.client'])
-            ? (currentParticipants.client || currentOutput['participants.client']).map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
-            : [],
-        trinzo: Array.isArray(editedMeta.participants?.trinzo)
-          ? editedMeta.participants.trinzo.map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
-          : Array.isArray(currentParticipants.trinzo || currentOutput['participants.trinzo'])
-            ? (currentParticipants.trinzo || currentOutput['participants.trinzo']).map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
-            : []
-      }
-    };
-    const discussionRows = safeRows.filter((row) => row.type.toLowerCase() === 'discussion');
-    const actionRows = safeRows.filter((row) => row.type.toLowerCase() === 'action');
-    const discussionTopicMap = new Map();
-    for (const row of discussionRows) {
-      const topic = row.topic || 'Discussion';
-      if (!discussionTopicMap.has(topic)) {
-        discussionTopicMap.set(topic, {
-          topicId: topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'discussion',
-          topic,
-          summary: '',
-          outcome: '',
-          items: []
-        });
-      }
-      const itemType = (row.itemType || 'discussion').toLowerCase().replace(/[\s-]+/g, '_');
-      discussionTopicMap.get(topic).items.push({
-        type: itemType,
-        text: row.text,
-        ...(row.owner ? { owner: row.owner } : {}),
-        ...(row.deadline ? { deadline: row.deadline } : {}),
-        ...(row.detail ? { detail: row.detail } : {}),
-        ...(row.evidence ? { evidence: row.evidence } : {})
-      });
-    }
-    const editedDiscussionTopics = Array.from(discussionTopicMap.values());
-    const editedMeetingMinutes = editedDiscussionTopics.map((topic) => ({
-      topic: topic.topic,
-      discussionPoints: topic.items.map((item) => item.text).filter(Boolean)
-    })).filter((topic) => topic.discussionPoints.length);
-    const editedActions = actionRows.map((row) => ({
-      meetingActionPoint: row.text,
-      meetingActionPointOwner: row.owner || 'Not stated',
-      meetingActionPointDeadline: row.deadline || row.detail || 'Not stated',
-      ...(row.topic ? { topic: row.topic } : {}),
-      ...(row.detail ? { detail: row.detail } : {}),
-      ...(row.evidence ? { evidence: row.evidence } : {})
-    }));
-    const editedOutput = {
-      ...currentOutput,
-      meetingTitle: safeMeta.meetingTitle,
-      meetingDate: safeMeta.meetingDate,
-      meetingLocation: safeMeta.meetingLocation,
-      meetingType: safeMeta.meetingType,
-      meetingObjectives: safeMeta.meetingObjectives,
-      participants: safeMeta.participants,
-      discussionTopics: editedDiscussionTopics,
-      meetingMinutes: editedMeetingMinutes,
-      discussionPoints: discussionRows.map((row) => row.text),
-      actions: editedActions,
-      meetingActionPoint: editedActions.map((row) => row.meetingActionPoint),
-      meetingActionPointOwner: editedActions.map((row) => row.meetingActionPointOwner),
-      meetingActionPointDeadline: editedActions.map((row) => row.meetingActionPointDeadline),
-      nextSteps: editedActions.map((row) => ({
-        action: row.meetingActionPoint,
-        owner: row.meetingActionPointOwner,
-        deadline: row.meetingActionPointDeadline
-      })),
-      editedMeta: safeMeta,
-      editedRows: safeRows,
-      humanEdited: true,
-      humanEditedAt: new Date().toISOString(),
-      humanEditedBy: req.authUser?.email || 'OpenClaw'
-    };
-
-    const nextPayload = {
-      ...currentPayload,
-      humanEdited: true,
-      humanEditedAt: editedOutput.humanEditedAt,
-      humanEditedBy: editedOutput.humanEditedBy,
-      result: {
-        ...currentResult,
-        originalOutput: currentResult.originalOutput || currentOutput,
-        output: editedOutput
-      }
-    };
-
-    const updated = await updateMeetingMinutesJobResult(req.params.jobId, nextPayload);
-    if (!updated) return res.status(404).json({ ok: false, success: false, error: 'Editable completed job not found.' });
-    return res.json({ ok: true, success: true, job: updated, result: updated.resultPayload });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to save edited result.' });
-  }
-});
-
-router.post('/meeting-minutes-final/jobs/:jobId/retry', requireAuth, async (req, res) => {
-  try {
-    const job = await retryMeetingMinutesJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Retryable job not found.' });
-    return res.json({ ok: true, success: true, job });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to retry job.' });
-  }
-});
-
-router.post('/meeting-minutes-final/jobs/:jobId/cancel', requireAuth, async (req, res) => {
-  try {
-    const job = await cancelMeetingMinutesJob(req.params.jobId);
-    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Cancellable job not found.' });
-    return res.json({ ok: true, success: true, job });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to cancel job.' });
-  }
-});
-
-router.delete('/meeting-minutes-final/jobs/:jobId', requireAuth, async (req, res) => {
-  try {
-    const deleted = await deleteMeetingMinutesJob(req.params.jobId);
-    if (!deleted) return res.status(404).json({ ok: false, success: false, error: 'Deletable completed/failed/cancelled job not found.' });
-    return res.json({ ok: true, success: true });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to delete job.' });
-  }
-});
+require('./meetingMinutesJobs').registerMeetingMinutesJobCommands(router);
 
 router.post('/meeting-minutes-final/improve', async (req, res) => {
   try {
@@ -7620,161 +7342,11 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
 }));
 
 
-router.post('/project-update-test/knowledge/items', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
-    const body = req.body || {};
-    const projectId = Number(body.projectId || 0);
-    const item = await createProjectKnowledgeItem({
-      projectId,
-      title: body.title,
-      content: body.content,
-      itemType: body.itemType || 'background_doc',
-      isOfficial: body.isOfficial !== false,
-      metadata: body.metadata || { source: 'manual' }
-    });
-    const embeddingWorker = spawnProjectKnowledgeEmbedWorker(['--project-id', String(projectId)]);
-    res.json({ ok: true, item, embeddingWorker });
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
-
-router.get('/project-update-test/knowledge/items', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
-    const items = await listProjectKnowledgeItems({
-      projectId: req.query.projectId,
-      itemType: req.query.itemType,
-      status: req.query.status || 'active',
-      limit: req.query.limit
-    });
-    res.json({ ok: true, items });
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
-
-router.patch('/project-update-test/knowledge/items/:itemId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
-    const item = await updateProjectKnowledgeItem(req.params.itemId, req.body || {});
-    if (!item) return sendJson(res, 404, { ok: false, error: 'Knowledge item not found.' });
-    const embeddingWorker = Object.prototype.hasOwnProperty.call(req.body || {}, 'content')
-      ? spawnProjectKnowledgeEmbedWorker(['--item-id', String(req.params.itemId)])
-      : { spawned: false, reason: 'content unchanged' };
-    res.json({ ok: true, item, embeddingWorker });
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
-
-router.delete('/project-update-test/knowledge/items/:itemId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
-    const item = await archiveProjectKnowledgeItem(req.params.itemId, { hard: truthyFlag(req.query.hard) });
-    if (!item) return sendJson(res, 404, { ok: false, error: 'Knowledge item not found.' });
-    res.json({ ok: true, item });
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
-
-router.post('/project-update-test/knowledge/ask', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
-    const projectId = Number(req.body?.projectId || req.query?.projectId || 0);
-    const question = String(req.body?.question || req.query?.question || '').trim();
-    if (!Number.isFinite(projectId) || projectId <= 0) return sendJson(res, 400, { ok: false, error: 'Valid projectId is required.' });
-    if (!question) return sendJson(res, 400, { ok: false, error: 'Question is required.' });
-    const projectContext = await getProjectContext({ projectId }, 8);
-    const result = await answerProjectKnowledge({
-      projectId,
-      question,
-      topK: Math.min(Math.max(Number(req.body?.topK || req.query?.topK || 8), 1), 25),
-      timeoutMs: Math.min(Math.max(Number(req.body?.timeoutMs || 30000), 5000), 45000),
-      projectContext
-    });
-    res.json(result);
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
-
-router.get('/project-update-test/knowledge/status', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
-    const status = await getProjectKnowledgeStatus({ projectId: req.query.projectId });
-    res.json({ ok: true, status });
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
-
-router.post('/project-update-test/knowledge/embeddings/process', requireAuth, async (req, res) => {
-  try {
-    const projectId = req.body?.projectId || req.query?.projectId;
-    const args = projectId ? ['--project-id', String(projectId)] : [];
-    const embeddingWorker = spawnProjectKnowledgeEmbedWorker(args);
-    res.json({ ok: true, embeddingWorker });
-  } catch (error) {
-    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
-  }
-});
+require('./projectKnowledge')(router);
 
 require('./projectRecords')(router);
 
-router.get('/project-update-test/context', requireAuth, async (req, res) => {
-  try {
-    const context = await getProjectContext({ projectId: req.query?.projectId, projectName: req.query?.projectName }, req.query?.limit);
-    return res.json({ ok: true, context });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/context/snapshots', requireAuth, async (req, res) => {
-  try {
-    const snapshot = await createProjectContextSnapshot({ projectId: req.body?.projectId || req.query?.projectId, projectName: req.body?.projectName || req.query?.projectName }, req.body || {});
-    return res.status(201).json({ ok: true, snapshot });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/context/snapshots/:snapshotId', requireAuth, async (req, res) => {
-  try {
-    const snapshot = await getProjectContextSnapshot(req.params.snapshotId);
-    if (!snapshot) return res.status(404).json({ ok: false, error: 'Project context snapshot not found.' });
-    return res.json({ ok: true, snapshot });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/context/mark-official', requireAuth, async (req, res) => {
-  try {
-    const result = await markProjectContextOfficial(
-      { projectId: req.body?.projectId || req.query?.projectId, projectName: req.body?.projectName || req.query?.projectName },
-      req.body?.officialLabel || req.query?.officialLabel || 'Official baseline'
-    );
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/context/cleanup-tests', requireAuth, async (req, res) => {
-  try {
-    const result = await cleanupProjectUpdateTestContext({ projectId: req.body?.projectId || req.query?.projectId, projectName: req.body?.projectName || req.query?.projectName }, {
-      archiveReports: !truthyFlag(req.body?.keepReports) && !truthyFlag(req.query?.keepReports),
-      deleteNonOfficialSnapshots: !truthyFlag(req.body?.keepSnapshots) && !truthyFlag(req.query?.keepSnapshots)
-    });
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
+require('./projectContext')(router);
 
 router.post('/extract-docx', upload.single('file'), async (req, res) => {
   try {
