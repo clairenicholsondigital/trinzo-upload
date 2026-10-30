@@ -1,3 +1,4 @@
+const { safeErrorInfo, safeLogError, sendTestError } = require('../utils/apiErrors');
 const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
 const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
@@ -162,29 +163,8 @@ const {
 } = require('../utils/stagedSemanticAuthority');
 
 const {
-  saveMeetingMinutes,
   saveProjectUpdateDraft,
-  listProjectReports,
-  getProjectReportDetail,
-  saveProjectReportDetail,
-  deleteProjectReport,
-  deleteProjectReports,
-  listProjectMilestones,
-  getProjectMilestoneDetail,
-  createProjectMilestone,
-  updateProjectMilestone,
-  deleteProjectMilestone,
-  deactivateProjectMilestones,
-  listProjectRisks,
-  getProjectRiskDetail,
-  createProjectRisk,
-  updateProjectRisk,
-  deleteProjectRisk,
-  listProjectOptions,
   getProjectManagementDetail,
-  createProject,
-  updateProject,
-  deleteProject,
   getProjectContext,
   createProjectContextSnapshot,
   getProjectContextSnapshot,
@@ -195,15 +175,7 @@ const {
   updateProjectKnowledgeItem,
   archiveProjectKnowledgeItem,
   getProjectKnowledgeStatus,
-  listMeetings,
-  getMeetingById,
-  deleteMeetingById,
-  updateMeetingById,
   saveMeetingMinutesFeedback,
-  listMeetingMinutesFeedback,
-  getMeetingMinutesFeedback,
-  updateMeetingMinutesFeedback,
-  deleteMeetingMinutesFeedback,
   queueMeetingMinutesGeneration,
   queueStagedMeetingMinutesStage,
   queueProjectUpdateGeneration,
@@ -234,11 +206,9 @@ const {
   updateGenerationJobProgress,
   markGenerationJobCompleted,
   markGenerationJobFailure,
-  getMeetingStatus,
   claimNextJob,
   markJobCompleted,
   markJobFailure,
-  queueWebhookJob,
   markWebhookSuccess,
   markWebhookFailure,
   hasDatabaseConfig,
@@ -752,25 +722,7 @@ const STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS = Number(process.env.STAGED_EVIDENCE
 const TROOPER_STAGE_URL_DEFAULT = 'https://eu.router.trooper.ai/v1/chat/completions';
 const TROOPER_STAGE_MODEL_DEFAULT = 'eu_liv_000099';
 
-function safeErrorInfo(error, extra = {}) {
-  const details = error && error.details && typeof error.details === 'object' ? error.details : null;
-  return {
-    message: error && error.message ? error.message : String(error || 'Unknown error'),
-    statusCode: error && error.statusCode ? error.statusCode : undefined,
-    code: error && error.code ? error.code : undefined,
-    scriptName: details && details.scriptName ? details.scriptName : undefined,
-    exitCode: details && details.exitCode != null ? details.exitCode : undefined,
-    stdoutBytes: details && details.stdoutBytes != null ? details.stdoutBytes : undefined,
-    stderrBytes: details && details.stderrBytes != null ? details.stderrBytes : undefined,
-    rawOutputBytes: details && details.rawOutputBytes != null ? details.rawOutputBytes : undefined,
-    parseError: details && details.parseError ? details.parseError : undefined,
-    ...extra
-  };
-}
 
-function safeLogError(label, error, extra = {}) {
-  console.error(label, safeErrorInfo(error, extra));
-}
 
 const REVIEW_TEMPLATE = {
   meetingTitle: '',
@@ -6519,13 +6471,6 @@ async function runPythonJsonScript(scriptName, payload, scriptArgs = []) {
   }
 }
 
-function sendTestError(res, error) {
-  safeLogError('[Transcript test endpoint failed]', error);
-  return res.status(error.statusCode || 500).json({
-    ok: false,
-    error: error.message || 'Transcript analysis failed.'
-  });
-}
 
 function withTestUpload(handler) {
   return async (req, res) => {
@@ -7780,68 +7725,7 @@ router.post('/meeting-minutes-final/feedback', async (req, res) => {
   }
 });
 
-router.get('/meeting-minutes-final/feedback-submissions', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const feedback = await listMeetingMinutesFeedback(req.query?.limit || 100);
-    return res.json({ ok: true, feedback });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const feedback = await getMeetingMinutesFeedback(req.params.feedbackId);
-    if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
-    return res.json({ ok: true, feedback });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.patch('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const feedback = await updateMeetingMinutesFeedback(req.params.feedbackId, {
-      status: req.body?.status,
-      claireComments: req.body?.claireComments,
-      fixDetails: req.body?.fixDetails
-    });
-    if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
-    return res.json({ ok: true, feedback });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.delete('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const deleted = await deleteMeetingMinutesFeedback(req.params.feedbackId);
-    if (!deleted) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
-    return res.json({ ok: true });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
+require('./minutesFeedback')(router);
 
 // "Process once": the meeting is processed by the Meeting Minutes Agent, and
 // the project report is built from those reviewed minutes rather than from a
@@ -8232,209 +8116,7 @@ router.post('/project-update-test/knowledge/embeddings/process', requireAuth, as
   }
 });
 
-router.get('/project-update-test/reports', requireAuth, async (req, res) => {
-  try {
-    const reports = await listProjectReports(req.query?.limit, { projectId: req.query?.projectId });
-    return res.json({ ok: true, reports });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/projects', requireAuth, async (req, res) => {
-  try {
-    const projects = await listProjectOptions(req.query?.limit);
-    return res.json({ ok: true, projects });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/projects', requireAuth, async (req, res) => {
-  try {
-    const project = await createProject(req.body || {});
-    return res.status(201).json({ ok: true, project });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.patch('/project-update-test/projects/:projectId', requireAuth, async (req, res) => {
-  try {
-    const project = await updateProject(req.params.projectId, req.body || {});
-    return res.json({ ok: true, project });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.delete('/project-update-test/projects/:projectId', requireAuth, async (req, res) => {
-  try {
-    const project = await deleteProject(req.params.projectId);
-    if (!project) return res.status(404).json({ ok: false, error: 'Project not found.' });
-    return res.json({ ok: true, project });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
-  try {
-    const report = await getProjectReportDetail(req.params.reportId);
-    if (!report) {
-      return res.status(404).json({ ok: false, error: 'Project report not found.' });
-    }
-    return res.json({ ok: true, report });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/reports/bulk-delete', requireAuth, async (req, res) => {
-  try {
-    const result = await deleteProjectReports(req.body?.reportIds || []);
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.patch('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
-  try {
-    // Record who saved or approved from the signed-in session, not the request body.
-    const savedBy = req.authUser?.fullName || req.authUser?.email || 'Unknown user';
-    const report = await saveProjectReportDetail(req.params.reportId, { ...(req.body || {}), savedBy });
-    if (!report) {
-      return res.status(404).json({ ok: false, error: 'Project report not found.' });
-    }
-    return res.json({ ok: true, report });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.delete('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
-  try {
-    const report = await deleteProjectReport(req.params.reportId);
-    if (!report) {
-      return res.status(404).json({ ok: false, error: 'Project report not found.' });
-    }
-    return res.json({ ok: true, report });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/milestones', requireAuth, async (req, res) => {
-  try {
-    const milestones = await listProjectMilestones(req.query?.limit, { projectId: req.query?.projectId });
-    return res.json({ ok: true, milestones });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/milestones', requireAuth, async (req, res) => {
-  try {
-    const milestone = await createProjectMilestone(req.body || {});
-    return res.status(milestone?.created ? 201 : 200).json({ ok: true, milestone });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/milestones/:milestoneId', requireAuth, async (req, res) => {
-  try {
-    const milestone = await getProjectMilestoneDetail(req.params.milestoneId);
-    if (!milestone) {
-      return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
-    }
-    return res.json({ ok: true, milestone });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/milestones/bulk-inactivate', requireAuth, async (req, res) => {
-  try {
-    const result = await deactivateProjectMilestones(req.body?.milestoneIds || []);
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.patch('/project-update-test/milestones/:milestoneId', requireAuth, async (req, res) => {
-  try {
-    const milestone = await updateProjectMilestone(req.params.milestoneId, req.body || {});
-    if (!milestone) {
-      return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
-    }
-    return res.json({ ok: true, milestone });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.delete('/project-update-test/milestones/:milestoneId', requireAuth, async (req, res) => {
-  try {
-    const milestone = await deleteProjectMilestone(req.params.milestoneId);
-    if (!milestone) {
-      return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
-    }
-    return res.json({ ok: true, milestone });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/risks', requireAuth, async (req, res) => {
-  try {
-    const risks = await listProjectRisks(req.query?.limit, { projectId: req.query?.projectId });
-    return res.json({ ok: true, risks });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/risks', requireAuth, async (req, res) => {
-  try {
-    const risk = await createProjectRisk(req.body || {});
-    return res.status(risk?.created ? 201 : 200).json({ ok: true, risk });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/risks/:riskId', requireAuth, async (req, res) => {
-  try {
-    const risk = await getProjectRiskDetail(req.params.riskId);
-    if (!risk) return res.status(404).json({ ok: false, error: 'Project risk not found.' });
-    return res.json({ ok: true, risk });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.patch('/project-update-test/risks/:riskId', requireAuth, async (req, res) => {
-  try {
-    const risk = await updateProjectRisk(req.params.riskId, req.body || {});
-    if (!risk) return res.status(404).json({ ok: false, error: 'Project risk not found.' });
-    return res.json({ ok: true, risk });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.delete('/project-update-test/risks/:riskId', requireAuth, async (req, res) => {
-  try {
-    const risk = await deleteProjectRisk(req.params.riskId);
-    if (!risk) return res.status(404).json({ ok: false, error: 'Project risk not found.' });
-    return res.json({ ok: true, risk });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
+require('./projectRecords')(router);
 
 router.get('/project-update-test/context', requireAuth, async (req, res) => {
   try {
