@@ -1,7 +1,7 @@
 'use strict';
 
 const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
-const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag } = require('./meetingMinutesReviewFlags');
+const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
 
 const {
   actionCandidateInventory,
@@ -25,7 +25,6 @@ function createOriginalEditStage(services) {
     meetingAgentReviewerSummaryHash,
     meetingAgentSummaryAuthority,
     meetingMinutesAgentPrompt,
-    mergeMeetingAgentFlags,
     verifyMeetingAgentSummaryTiming,
   } = services;
 

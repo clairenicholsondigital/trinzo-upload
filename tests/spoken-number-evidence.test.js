@@ -3,7 +3,7 @@
 // Generic cases only: none of these sentences come from the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { explicitValuePresent, evidenceSupportScore } = require('../utils/meetingMinutesAgentV2');
+const { explicitValuePresent, evidenceSupportScore } = require('../utils/meetingMinutesEvidenceContext');
 
 test('a written figure is supported by its spoken form', () => {
   assert.ok(explicitValuePresent('2', 'thursday at two, then.'));

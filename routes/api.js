@@ -5,7 +5,9 @@ const {
   isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
   reconcileRecordFlags,
   reconcileUsefulRecordFlags,
+  mergeMeetingAgentFlags,
 } = require('../utils/meetingMinutesReviewFlags');
+const { preparedTranscriptFromUnits, evidenceSupportScore, clearMeetingMinutesAgentV2MemoryCaches } = require('../utils/meetingMinutesEvidenceContext');
 const { meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled } = require('../utils/meetingMinutesPassCache');
 const { meetingAgentResultError, meetingAgentRefereeRoute, meetingAgentInfrastructureFailure, refereeActionMaterializationIssues, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates } = require('../utils/meetingMinutesResponseContracts');
 const { meetingAgentRefereeBatches, meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('../utils/meetingMinutesRefereeBatches');
@@ -239,7 +241,6 @@ const {
   PAYLOAD_VERSION: MEETING_AGENT_PAYLOAD_VERSION,
   TIMING_INFERENCE_POLICY_VERSION,
   normaliseExecutiveSummary,
-  preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
   cleanActionWording,
@@ -265,7 +266,6 @@ const {
   groundedObjectives,
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
-  evidenceSupportScore,
   evidenceClauses,
   actionEvidenceDisposition,
   actionNegatedByEvidence,
@@ -332,7 +332,6 @@ const {
   supersededCheckItems,
   supersededVerdicts,
   correctnessChecksEnabled,
-  clearMeetingMinutesAgentV2MemoryCaches,
   mentionedPeople: meetingAgentMentionedPeople
 } = require('../utils/meetingMinutesAgentV2');
 const {
@@ -10871,18 +10870,6 @@ function buildMeetingInsights(drafts = [], filters = {}) {
   };
 }
 
-function mergeMeetingAgentFlags(existing = [], added = []) {
-  const byId = new Map();
-  for (const raw of [...existing, ...added].filter(isUsefulMeetingAgentReviewFlag)) {
-    const flag = normaliseMeetingAgentFlag(raw, byId.size);
-    const prior = byId.get(flag.id);
-    byId.set(flag.id, prior && prior.status !== 'open' ? {
-      ...flag, status: prior.status, correctionNote: prior.correctionNote || flag.correctionNote
-    } : flag);
-  }
-  return [...byId.values()].slice(0, 250);
-}
-
 function meetingAgentProposalReviewFlagId(change = {}) {
   return meetingMinutesAgentText(`proposal-review-${change.id || ''}`, 80);
 }
@@ -14750,7 +14737,6 @@ const originalMinutesStageServices = Object.freeze({
   meetingMinutesProposalRecheckEnabled,
   mergeBatchedMeetingAgentRefereeResults,
   mergeHybridDiscussionTopics,
-  mergeMeetingAgentFlags,
   mergeMeetingAgentRefereeResults,
   mergePublishedActionEvidence,
   normaliseAgentCandidateDispositions,
