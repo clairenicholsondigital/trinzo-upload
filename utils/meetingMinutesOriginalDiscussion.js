@@ -1,7 +1,7 @@
 'use strict';
 
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
-const { refereeDiscussionTargetId } = require('./meetingMinutesResponseContracts');
+const { refereeDiscussionTargetId, refereeDiscussionContractDiagnostics, discussionRefereeHasCompleteCandidateAccounting } = require('./meetingMinutesResponseContracts');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags } = require('./meetingMinutesReviewFlags');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
@@ -90,7 +90,6 @@ function createOriginalDiscussionStage(services) {
     dedupeSupportingDetailsSemantically,
     discussionOverlapConsolidationPrompt,
     discussionRefereeFallbackPlan,
-    discussionRefereeHasCompleteCandidateAccounting,
     discussionRefereeSufficiency,
     discussionStructureDiagnostics,
     effectiveDiscussionRefereeDispositions,
@@ -113,7 +112,6 @@ function createOriginalDiscussionStage(services) {
     promotePrioritySupportingDetails,
     reconstructMissingRefereeDiscussion,
     refereeClusterSupportingCandidates,
-    refereeDiscussionContractDiagnostics,
     removeHeadingFragmentsFromDiscussion,
     removeMinorCommunicationCourtesyDiscussion,
     removeWithheldGeneratedDiscussion,

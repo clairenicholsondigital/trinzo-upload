@@ -1,6 +1,6 @@
 'use strict';
 
-const { stableId, contentTokens, tokenOverlap } = require('./meetingMinutesRecordMatching');
+const { stableId, contentTokens, tokenOverlap, COMMON_SPEECH_WORDS } = require('./meetingMinutesRecordMatching');
 const { buildProposal, applyProposal } = require('./meetingMinutesProposals');
 const { normaliseColloquialTimes, normaliseKnownTerms, normaliseKnownTermsDeep, isAutomaticTerminologyFlag, text } = require('./meetingMinutesText');
 const { normaliseSourceUnits } = require('./meetingMinutesSource');
@@ -51,6 +51,7 @@ const {
   OWNER_FIRST_PERSON,
   MEETING_WORK_WORDS,
   canonicalSpeakerDisplayName,
+  speakerIsOwner,
   mentionedPeople,
   nameParts,
   actionSubjectWords,
@@ -90,6 +91,7 @@ const {
   isMeetingAdminShare
 } = require('./meetingMinutesActionEvidence');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
+const { boundedReviewEvidence } = require('./meetingMinutesReviewEvidence');
 
 // The response contract asked of the agent. It is interpolated into the prompt
 // ("Return schemaVersion N ..."), so changing it changes what Power Automate is
@@ -100,50 +102,6 @@ const { PAYLOAD_VERSION, migrateDraftPayload } = require('./meetingMinutesDraftS
 // Application-derived timing in cached action candidates is versioned separately
 // from the shared source assessment policy and the Microsoft response schema.
 const TIMING_INFERENCE_POLICY_VERSION = 1;
-
-// Keep the actual cited work, its assignment, and nearby temporal/defining
-// statements before filling the bounded packet with background. Chronological
-// first-N truncation can otherwise exclude the very anchor being checked.
-function boundedReviewEvidence(record = {}, units = [], options = {}) {
-  const context = evidenceContextFor(units);
-  const maxUnits = Math.max(1, Math.min(80, Number(options.maxUnits || 40)));
-  const maxChars = Math.max(1000, Number(options.maxChars || 18000));
-  const binding = record.timing && typeof TimingIntegrity.assessTimingSourceBinding === 'function'
-    ? TimingIntegrity.assessTimingSourceBinding(record, units, options) : null;
-  const requested = [...new Set([...(record.primaryEvidenceIds || []), ...(record.evidenceIds || []),
-    ...(binding?.sourceEvidenceIds || []), ...(binding?.matchedSourceIds || [])])]
-    .filter(id => context.known.has(id));
-  const anchors = requested.map(id => context.indexById.get(id));
-  const target = new Set(materialTokens(record.action || record.text || '').filter(word => !COMMON_SPEECH_WORDS.has(word)));
-  const distinctive = new Set([...target].filter(word => (context.documentFrequency.get(word) || 0) <= Math.max(3, context.rows.length * 0.08)));
-  const required = new Set(requested);
-  const distance = index => anchors.length ? Math.min(...anchors.map(anchor => Math.abs(anchor - index))) : 99;
-  const candidates = context.rows.map((unit, index) => {
-    const sourceWords = new Set(contentTokens(unit.text));
-    const shared = [...target].filter(word => sourceWords.has(word)).length;
-    const defining = [...distinctive].filter(word => sourceWords.has(word)).length;
-    const near = anchors.some(anchor => index >= anchor - 8 && index <= anchor + 16);
-    const timed = hasTimingSignal(unit.text) || /\b(?:ideally|preferred?|fallback|contingency|hard stop|instead|rather than|not until|before|after|once|when)\b/i.test(unit.text);
-    const assigned = record.owners?.length && speakerIsOwner(unit.speaker, record.owners) && OWNER_FIRST_PERSON.test(unit.text);
-    const priority = required.has(unit.id) ? 0 : near && (timed && (shared || defining) || assigned && shared) ? 1
-      : near && defining ? 2 : distance(index) <= 2 ? 3 : near ? 4 : 5;
-    return { unit, index, priority, shared, defining };
-  }).filter(item => required.has(item.unit.id) || item.priority < 5 || !anchors.length && item.shared >= 2)
-    .sort((a, b) => a.priority - b.priority || b.defining - a.defining || b.shared - a.shared || distance(a.index) - distance(b.index) || a.index - b.index);
-  const retained = [];
-  let chars = 0;
-  for (const item of candidates) {
-    const size = String(item.unit.text || '').length + String(item.unit.speaker || '').length + 24;
-    if (retained.length >= maxUnits || chars + size > maxChars && retained.length) continue;
-    retained.push(item); chars += size;
-  }
-  const retainedIds = new Set(retained.map(item => item.unit.id));
-  return {
-    units: retained.sort((a, b) => a.index - b.index).map(item => item.unit),
-    coverage: { requestedAnchorIds: requested, omittedAnchorIds: requested.filter(id => !retainedIds.has(id)),
-      retainedUnitCount: retained.length, candidateUnitCount: candidates.length, maxUnits, maxChars }
-  };
-}
 
 // A narrow proposal-only context repair. This nominates a source connection;
 // it never certifies the document reference, ownership or commitment. The
@@ -1808,20 +1766,6 @@ function predicateSupportsAction(action, source) {
   return ACTION_PREDICATE_ALIASES.some(([actionPattern, sourcePattern]) =>
     actionPattern.test(String(action || '')) && sourcePattern.test(String(source || '')));
 }
-function speakerIsOwner(speaker, owners = []) {
-  const words = (value) => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s'’-]/gu, ' ').split(/\s+/).filter(Boolean);
-  const speakerWords = words(speaker);
-  if (!speakerWords.length) return false;
-  return owners.some((owner) => {
-    const ownerWords = words(owner);
-    if (!ownerWords.length) return false;
-    if (ownerWords.join(' ') === speakerWords.join(' ')) return true;
-    // "Dan" for "Dan Threlfall", either way round, but never a surname alone.
-    return (ownerWords.length === 1 && ownerWords[0] === speakerWords[0])
-      || (speakerWords.length === 1 && speakerWords[0] === ownerWords[0]);
-  });
-}
-
 // An identity match is not an acceptance of this work. In particular, a
 // completed part of a workstream must not become the commitment anchor for
 // its outstanding part merely because both mention the same subject.
@@ -2314,13 +2258,6 @@ function claimNovelty(value, units = []) {
 function uncitedClaimSupported(value, resolved = {}, units = []) {
   return claimNovelty(value, units) < 0.6 && Number(resolved.supportScore || 0) >= 0.3;
 }
-
-const COMMON_SPEECH_WORDS = new Set([
-  'get', 'got', 'let', 'say', 'one', 'make', 'made', 'take', 'put', 'going', 'think', 'know', 'want', 'like',
-  'yeah', 'yes', 'sure', 'okay', 'well', 'right', 'thing', 'things', 'bit', 'kind', 'sort', 'really',
-  'actually', 'maybe', 'now', 'see', 'look', 'come', 'back', 'way', 'lot', 'time', 'good', 'fine', 'sorry',
-  'hang', 'yep', 'probably', 'still', 'even', 'much', 'many', 'thank', 'thanks'
-]);
 
 const STRONG_REVISION_CUE = /(?:^|[.!?]\s*)(?:sorry\b|actually\b|correction\b|scratch that\b)|\b(?:(?:has|have|had)\s+(?:since\s+)?(?:slightly\s+)?changed|slightly\s+changed|since\s+changed|no\s+longer|i\s+was\s+wrong|i\s+got\s+that\s+wrong|not\s+any\s*more)\b/i;
 const WEAK_REVISION_CUE = /^\s*but\b/i;

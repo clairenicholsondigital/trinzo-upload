@@ -1,7 +1,7 @@
 'use strict';
 
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
-const { meetingAgentRefereeRoute, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates } = require('./meetingMinutesResponseContracts');
+const { meetingAgentRefereeRoute, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates, normaliseMeetingAgentRefereeContractResult, meetingAgentRefereeRepairCandidates, normaliseAgentCandidateDispositions } = require('./meetingMinutesResponseContracts');
 const { meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('./meetingMinutesRefereeBatches');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 
@@ -47,7 +47,6 @@ function createOriginalDiscovery(services) {
     meetingAgentActionPrimaryPromptForDraft,
     meetingAgentEmptyDiscoveryError,
     meetingAgentEmptyDiscoveryRepairPrompt,
-    meetingAgentRefereeRepairCandidates,
     meetingAgentTopicSegmentsEnabled,
     meetingMinutesAgentAnchoredActionEnabled,
     meetingMinutesAgentAnchoredActionPrompt,
@@ -66,11 +65,9 @@ function createOriginalDiscovery(services) {
     meetingMinutesDiscussionActionCandidatesEnabled,
     mergeBatchedMeetingAgentRefereeResults,
     mergeMeetingAgentRefereeResults,
-    normaliseAgentCandidateDispositions,
     normaliseAgentDeclaredProposals,
     normaliseAnchoredActionDiscovery,
     normaliseAnchoredDiscussionDiscovery,
-    normaliseMeetingAgentRefereeContractResult,
     normaliseRefereeDeclaredProposals,
     peekReadyPrivateStagedCandidateLedger,
     reconstructRefereeActions,

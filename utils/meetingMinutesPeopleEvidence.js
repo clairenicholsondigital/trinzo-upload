@@ -589,10 +589,25 @@ function flagConflictingDiscussionRoles(discussion = [], units = []) {
   return { discussion: cloned, flags, conflicts };
 }
 
+function speakerIsOwner(speaker, owners = []) {
+  const words = (value) => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s'’-]/gu, ' ').split(/\s+/).filter(Boolean);
+  const speakerWords = words(speaker);
+  if (!speakerWords.length) return false;
+  return owners.some((owner) => {
+    const ownerWords = words(owner);
+    if (!ownerWords.length) return false;
+    if (ownerWords.join(' ') === speakerWords.join(' ')) return true;
+    // "Dan" for "Dan Threlfall", either way round, but never a surname alone.
+    return (ownerWords.length === 1 && ownerWords[0] === speakerWords[0])
+      || (speakerWords.length === 1 && speakerWords[0] === ownerWords[0]);
+  });
+}
+
 module.exports = {
   OWNER_FIRST_PERSON,
   MEETING_WORK_WORDS,
   canonicalSpeakerDisplayName,
+  speakerIsOwner,
   mentionedPeople,
   nameParts,
   actionSubjectWords,

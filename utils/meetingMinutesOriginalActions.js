@@ -1,6 +1,6 @@
 'use strict';
 
-const { meetingAgentInfrastructureFailure } = require('./meetingMinutesResponseContracts');
+const { meetingAgentInfrastructureFailure, normaliseAgentCandidateDispositions, reconcileRefereeActionMaterialization } = require('./meetingMinutesResponseContracts');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
 const { actionNegatedByEvidence, isMeetingAdminAction } = require('./meetingMinutesActionEvidence');
 const { applyRequesterOwnerRule } = require('./meetingMinutesPeopleEvidence');
@@ -74,13 +74,11 @@ function createOriginalActionsStage(services) {
     meetingMinutesMinuteInstructionRuleEnabled,
     meetingMinutesProposalRecheckEnabled,
     mergePublishedActionEvidence,
-    normaliseAgentCandidateDispositions,
     normaliseAgentDeclaredProposals,
     preselectActionProposal,
     publishedActionCoversProposal,
     reconcileAcceptedRefereeActions,
     reconcileFinalApprovedActions,
-    reconcileRefereeActionMaterialization,
     removePublishedActionProposalDuplicates,
     retainedDocumentReferenceReviewFlags,
     safeAgentProposalPromotion,

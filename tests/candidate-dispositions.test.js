@@ -2,9 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { stagedEvaluation } = require('../routes/api');
-
-const { normaliseAgentCandidateDispositions } = stagedEvaluation;
+const { normaliseAgentCandidateDispositions } = require('../utils/meetingMinutesResponseContracts');
 const UNITS = [{ id: 'T0001', speaker: 'Alex Reed', timestamp: '00:10', text: 'I will send the report.' }];
 
 function dispositions(items) {

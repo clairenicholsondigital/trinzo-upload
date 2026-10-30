@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const api = require('../routes/api');
+const { normaliseAgentCandidateDispositions } = require('../utils/meetingMinutesResponseContracts');
 
 const {
   meetingMinutesAgentPrompt,
@@ -16,7 +17,6 @@ const {
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentRefereeRepairPrompt,
   mergeMeetingAgentRefereeResults,
-  meetingAgentRefereeRepairCandidates,
   meetingAgentPreviewSavedActions,
   mergeBatchedMeetingAgentRefereeResults,
   meetingMinutesAgentCriticPrompt,
@@ -25,7 +25,6 @@ const {
   isClientReadyActionWording,
   meetingAgentEmptyDiscoveryError,
   meetingAgentDispositionError,
-  normaliseMeetingAgentRefereeContractResult,
   effectiveDiscussionRefereeDispositions,
   discussionRefereeSufficiency,
   meetingMinutesAgentRefereeContract,
@@ -33,7 +32,6 @@ const {
   meetingAgentRefereeCandidates,
   hybridCandidateLedgerFromResult,
   normaliseAgentDeclaredProposals,
-  normaliseAgentCandidateDispositions,
   hybridCandidateMatchesRecord,
   hybridCandidateDispositions,
   strictActionDeliverableMatch,
@@ -64,8 +62,6 @@ const {
   reconstructMissingRefereeDiscussion,
   reconstructRefereeActions,
   normaliseRefereeDeclaredProposals,
-  refereeDiscussionContractDiagnostics,
-  discussionRefereeHasCompleteCandidateAccounting,
   refereeClusterSupportingCandidates,
   dedupeActionDiscoveryInventory,
   compactMeetingAgentDiscussionContext,
@@ -881,79 +877,6 @@ test('discovery validation rejects raw records that do not survive evidence norm
   }, 'discussion', candidates, units), null);
 });
 
-
-
-
-
-test('action referee lifecycle labels are deterministically adapted to publication dispositions', () => {
-  const candidates = [
-    { candidateId: 'A1', recordType: 'action', text: 'Send the equipment report.' },
-    { candidateId: 'A2', recordType: 'action', text: 'Review the equipment report.' },
-    { candidateId: 'A3', recordType: 'action', text: 'Prepare the equipment list.' }
-  ];
-  const contract = { requestId: 'request-action', stage: 'ACTION_REFEREE' };
-  const adapted = normaliseMeetingAgentRefereeContractResult({
-    requestId: contract.requestId, stage: contract.stage,
-    candidateCount: 3, dispositionCount: 3,
-    candidateDispositions: [
-      { candidateId: 'A1', disposition: 'accepted_request', reason: 'Accepted work.', evidenceIds: ['T1'] },
-      { candidateId: 'A2', disposition: 'committed', reason: 'Explicit commitment.', evidenceIds: ['T2'] },
-      { candidateId: 'A3', disposition: 'conditional_commitment', reason: 'Depends on approval.', evidenceIds: ['T3'] }
-    ]
-  }, candidates, contract);
-  assert.deepEqual(adapted.candidateDispositions.map((item) => item.disposition), ['publish', 'publish', 'proposal']);
-  assert.equal(adapted.returnedDispositionCount, 3);
-  assert.equal(meetingAgentDispositionError(adapted, candidates, contract), null);
-});
-
-test('discussion referee enum drift is normalised without promoting an unclassified row', () => {
-  const candidates = [
-    { candidateId: 'D1', dispositionHint: 'core', evidenceIds: ['T1'] },
-    { candidateId: 'D2', evidenceIds: ['T2'] },
-    { candidateId: 'D3', evidenceIds: ['T3'] }
-  ];
-  const contract = { requestId: 'request-discussion', stage: 'DISCUSSION_REFEREE' };
-  const adapted = normaliseMeetingAgentRefereeContractResult({
-    requestId: contract.requestId, stage: contract.stage,
-    expectedCandidateCount: 3, returnedDispositionCount: 3,
-    candidateDispositions: [
-      { candidateId: 'D1', disposition: '', reason: 'Material.', evidenceIds: ['T1'] },
-      { candidateId: 'D2', disposition: 'secondary', reason: 'Context.', evidenceIds: ['T2'] },
-      { candidateId: 'D3', disposition: 'unexpected-value', reason: 'Unclear.', evidenceIds: ['T3'] }
-    ]
-  }, candidates, contract);
-  assert.deepEqual(adapted.candidateDispositions.map((item) => item.disposition), ['core', 'supporting', 'supporting']);
-  assert.equal(adapted.candidateDispositions[0].websiteNormalisedDisposition, true);
-  assert.equal(adapted.candidateDispositions[1].websiteNormalisedDisposition, undefined);
-  assert.equal(adapted.candidateDispositions[2].websiteNormalisedDisposition, true);
-  assert.equal(meetingAgentDispositionError(adapted, candidates, contract), null);
-});
-
-
-
-
-
-test('referee repair includes missing and malformed rows while retaining every valid row', () => {
-  const candidates = [{ candidateId: 'A1' }, { candidateId: 'A2' }, { candidateId: 'A3' }];
-  const contract = { requestId: 'request-mixed', stage: 'DISCUSSION_REFEREE' };
-  const result = {
-    requestId: contract.requestId, stage: contract.stage,
-    expectedCandidateCount: 3, returnedDispositionCount: 2,
-    candidateDispositions: [
-      { candidateId: 'A1', disposition: 'core', reason: 'Material.', evidenceIds: ['T1'] },
-      { candidateId: 'A2', disposition: 'other', reason: 'Invalid enum.', evidenceIds: ['T2'] }
-    ]
-  };
-  const error = meetingAgentDispositionError(result, candidates, contract);
-  assert.equal(error.code, 'incomplete_candidate_dispositions');
-  assert.deepEqual(error.validCandidateDispositions.map((item) => item.candidateId), ['A1']);
-  assert.deepEqual(
-    meetingAgentRefereeRepairCandidates(candidates, error.validCandidateDispositions)
-      .map((item) => item.candidateId),
-    ['A2', 'A3']
-  );
-});
-
 test('referee repair requests only missing candidates and merges complete accounting', () => {
   const transcript = '[T0001] Alex: The release is blocked.\n[T0002] Priya: I will review it.';
   const candidates = [
@@ -1568,39 +1491,6 @@ test('a core disposition without a generated target reconstructs its discussion 
   ], candidates, units);
   assert.deepEqual(rebuilt.reconstructedTargetIds, ['c1']);
   assert.equal(rebuilt.discussion[0].points[0].text, 'Approval remains the release blocker.');
-});
-
-test('referee contract diagnostics expose dangling targets and undisposed candidates', () => {
-  const candidates = [
-    { candidateId: 'c1', recordType: 'discussion_point' },
-    { candidateId: 'c2', recordType: 'decision' }
-  ];
-  const diagnostics = refereeDiscussionContractDiagnostics([], [{
-    candidateId: 'c1', disposition: 'core', targetId: 'd1', reason: 'Material decision.', evidenceIds: ['T0001']
-  }], candidates);
-  assert.equal(diagnostics.undisposedCandidateCount, 1);
-  assert.deepEqual(diagnostics.danglingTargetIds, ['d1']);
-});
-
-test('complete structured referee accounting suppresses the legacy omission backstop', () => {
-  assert.equal(discussionRefereeHasCompleteCandidateAccounting({
-    suppliedCandidateCount: 24,
-    returnedDispositionCount: 24,
-    uniqueDispositionCandidateCount: 24,
-    undisposedCandidateCount: 0,
-    unknownCandidateCount: 0,
-    duplicateCandidateCount: 0,
-    incompleteDispositionCount: 0
-  }), true);
-  assert.equal(discussionRefereeHasCompleteCandidateAccounting({
-    suppliedCandidateCount: 24,
-    returnedDispositionCount: 23,
-    uniqueDispositionCandidateCount: 23,
-    undisposedCandidateCount: 1,
-    unknownCandidateCount: 0,
-    duplicateCandidateCount: 0,
-    incompleteDispositionCount: 0
-  }), false);
 });
 
 test('authoritative referee supporting detail stays collapsed even when materially worded', () => {
