@@ -192,10 +192,13 @@ policy. Those shared services retain their cache/identity behaviour; the new
 module does not import the V2 generator. Compatibility exports remain in place.
 
 This chunk reduces `routes/api.js` from 21,113 to 20,720 lines and V2 from 7,591
-to 6,975 lines. Sixteen existing generation/timing/people cases move with their
+to 6,976 lines. Sixteen existing generation/timing/people cases move with their
 owners; existing review-analytics tests use the new module directly. Focused
 checks are included in the compact core, and database-sensitive release selection
 recognises the new generation and people-evidence boundaries.
+
+The compact core also includes the existing timing-closure cases: ownership
+evidence and final timing must continue sharing the same work-word rules.
 
 The main remaining extraction is the stage orchestration in `routes/api.js`.
 Choose one stage at a time, separate its actual processing service and move its

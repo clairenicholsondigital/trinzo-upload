@@ -20,7 +20,8 @@
     "tests/meeting-minutes-processing.test.js",
     "tests/record-routes.test.js",
     "tests/meeting-minutes-agent-generation.test.js",
-    "tests/meeting-minutes-people-evidence.test.js"
+    "tests/meeting-minutes-people-evidence.test.js",
+    "tests/meeting-minutes-timing-closure-anaphora.test.js"
   ],
   "corePython": [
     "test_project_context_contract.py",

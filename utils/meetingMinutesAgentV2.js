@@ -26,6 +26,7 @@ const {
   ACTION_VERB_GROUPS,
   ACTION_DECISION_RESOLUTION_PATTERN,
   OWNER_FIRST_PERSON,
+  MEETING_WORK_WORDS,
   canonicalSpeakerDisplayName,
   actionPredicateSupported,
   mentionedPeople,
