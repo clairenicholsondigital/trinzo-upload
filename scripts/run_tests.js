@@ -7,7 +7,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const DB_KEYS = ['INTERNAL_AI_TASK_TEST_DATABASE_URL', 'PROJECT_REPORT_TEST_DATABASE_URL', 'SETTINGS_TEST_DATABASE_URL'];
 const infrastructure = new Set(['scripts/run_tests.js', 'tests/suites.json', 'deploy.sh', 'package-lock.json', 'package.json']);
-const databaseCode = /^(?:sql\/|routes\/(?:api|auth|settings|internalAiTasks|projectRecords|minutesFeedback)\.js$|utils\/(?:db|settingsDb|settingsStore|knowledge|internalAiTasks|project[A-Z]|minutesForProjectUpdate|meetingMinutesDraftStorage|meetingMinutesProcessing|meetingMinutesAgentGeneration|meetingMinutesPeopleEvidence|meetingMinutesStagePersistence|meetingMinutesPassCache|meetingMinutesDiscussionFingerprint|meetingMinutesSource|canonicalMinutes\/(?:discussionClaimConsolidationState|discussionActionRecovery))|scripts\/(?:project_|python_llm\.py))/;
+const databaseCode = /^(?:sql\/|routes\/(?:api|auth|settings|internalAiTasks|projectRecords|minutesFeedback)\.js$|utils\/(?:db|settingsDb|settingsStore|knowledge|internalAiTasks|project[A-Z]|minutesForProjectUpdate|meetingMinutesDraftStorage|meetingMinutesProcessing|meetingMinutesAgentGeneration|meetingMinutesPeopleEvidence|meetingMinutesStagePersistence|meetingMinutesPassCache|meetingMinutesDiscussionFingerprint|meetingMinutesSource|meetingMinutesOriginal|meetingMinutesReviewAccounting|canonicalMinutes\/(?:discussionClaimConsolidationState|discussionActionRecovery))|scripts\/(?:project_|python_llm\.py))/;
 
 function git(root, args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

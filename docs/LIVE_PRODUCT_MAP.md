@@ -81,8 +81,11 @@ route reorganisation, even if they have little browser traffic.
    owns initial engine dispatch with separate `startOriginal` and `startBeta`
    entry points. `runMeetingAgentBackgroundStage` and
    `generateHybridMeetingAgentStage` in [`routes/api.js`](../routes/api.js)
-   coordinate subsequent generation, provider calls,
-   caches, review and publication. The first background stage is discussion;
+   coordinate background jobs and publication.
+   `utils/meetingMinutesOriginalStages.js` composes the Original Summary,
+   Discussion and Actions services. Separate execution, discovery, finalization
+   and fallback/edit modules own provider calls, caches, timing and review.
+   The first background stage is discussion;
    actions and summary have their own stage handling and speculation.
    `utils/meetingMinutesAgentV2.js`, `utils/canonicalMinutes/*` and staged helpers
    remain live dependencies. The main editor's background work runs in the web
@@ -226,11 +229,38 @@ additional file containing moved cases. The six direct policy cases run without
 loading the API or V2. The API shrinks from 20,720 to 20,588 lines; V2 from 6,976
 to 6,964. These are structural and dependency measures, not deleted-code totals.
 
-The main remaining extraction is the stage orchestration in `routes/api.js`.
-Choose one stage at a time, separate its actual processing service and move its
-test consumers, while retaining the existing `stagedEvaluation` compatibility
-surface. Original and Beta keep their current defaults, shared preparation and
-publication behaviour.
+The completed Original orchestration extraction separates Summary, Discussion
+and Actions into `utils/meetingMinutesOriginal{Summary,Discussion,Actions}.js`.
+`meetingMinutesOriginalStages.js` composes them with shared execution and discovery;
+`meetingMinutesOriginalFinalization.js` owns semantic/publication finishing and
+`meetingMinutesOriginalEdits.js` owns the existing fallback and explicit AI edits.
+Summary timing verification shares its owner with Summary; review packet errors
+share the existing review-accounting owner. The API retains its diagnostic and
+Beta guards, background jobs and authenticated operations. All previous
+`stagedEvaluation` exports remain; an additive service-composition hook lets
+Discussion/Actions/edit tests use the actual API policies while stubbing I/O.
+
+One mutable execution context preserves the live pass cache, referee failure
+audit and stage deadline across concurrent provider completions. Stage arrays
+retain their original identities. Module-owned helpers are imported from their
+actual owners; API-owned callbacks remain explicit. This reduces `routes/api.js`
+from 20,588 to 18,135 lines, without changing prompts, frontend assets, route
+handlers, schemas, configuration or engine defaults. The new direct checks cover
+cache concurrency, temporal verification, referee/fidelity fallback, independent
+provider legs and reviewer text protection. Three existing Summary cases move
+with their owner; all prior regression behaviour remains covered.
+
+This is a structural simplification, not equivalent deletion of product code.
+Genuine V2 policy dependencies and many API-owned callbacks remain. Summary's
+direct tests avoid the API; Discussion, Actions, execution and edit tests still
+load the API composition to obtain real policy callbacks. Further useful batches
+are bounded route families and those shared policy owners, followed by narrowing
+their test dependencies. A smaller test selection is only justified after those
+dependencies actually disappear. A hypothetical edit to one extracted stage
+currently selects 179 JavaScript files including the compact core, compared
+with 301 for the API before extraction. Editing the remaining API selects 306;
+the five added focused files account for that increase. These are file-selection
+counts, not assertions about runtime test cases or eliminated coverage.
 
 ## Evidence and limits
 

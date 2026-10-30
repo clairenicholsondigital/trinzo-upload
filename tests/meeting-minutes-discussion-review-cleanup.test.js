@@ -69,7 +69,15 @@ test('existing predecessor history cannot be truncated to remove a repetition', 
 });
 test('literal cleanup is wired only into the generated meeting-agent discussion boundary', () => {
   const source=fs.readFileSync(path.join(__dirname,'../routes/api.js'),'utf8');
-  assert.match(source,/foldLiteralParentSupportingRepeats\(discussionFlagState.content.discussion\)/);
+  const discussion=fs.readFileSync(path.join(__dirname,'../utils/meetingMinutesOriginalDiscussion.js'),'utf8');
+  const stages=fs.readFileSync(path.join(__dirname,'../utils/meetingMinutesOriginalStages.js'),'utf8');
+  const edits=fs.readFileSync(path.join(__dirname,'../utils/meetingMinutesOriginalEdits.js'),'utf8');
+  assert.match(discussion,/foldLiteralParentSupportingRepeats\(discussionFlagState.content.discussion\)/);
+  assert.match(source,/const generateOriginalMinutesStage = createOriginalMinutesStages\(originalMinutesStageServices\)/);
+  assert.match(stages,/const discussion = createOriginalDiscussionStage\(services\)/);
+  assert.match(stages,/if \(stage === 'discussion'\) return discussion\(discovered\)/);
+  assert.match(source,/return instruction \? cleanGeneratedMeetingAgentResult\(result, stage\)\s*: finishMeetingAgentGeneratedStage\(result, draft, stage\)/);
+  assert.doesNotMatch(edits,/foldLiteralParentSupportingRepeats\(/);
 });
 
 test('generated unfiled rows use source order and retain backing indices without mutating the pool', () => {

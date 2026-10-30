@@ -2,6 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const api=require('../routes/api').stagedEvaluation;
 const source=fs.readFileSync(require.resolve('../routes/api'),'utf8');
+const discoverySource=fs.readFileSync(require.resolve('../utils/meetingMinutesOriginalDiscovery'),'utf8');
 const draft=()=>({draftId:'ready-join',preparedTranscript:'[T0001] Morgan: I will prepare the report.',transcriptSha256:'source-hash',details:{meetingDate:'2026-06-17'},sourceUnits:[{id:'T0001',speaker:'Morgan',text:'I will prepare the report.'}]});
 function harness(){
   let resolve,reject,calls=0;
@@ -19,9 +20,10 @@ function harness(){
   const rows=api.stagedCandidateLedgerFromResult({discussion:[],objectives:[],actions:[{id:'report',action:'Prepare the report.',owners:['Morgan'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0001'],reviewFlagIds:[]}]},d);
   const freeze=(current=[])=>{
     Object.assign(context,{draft:d,stage:'actions',stagedJoinPending:true,stagedAll:structuredClone(current),stagedJoinStatus:'pending',stagedCandidatesFromPrewarm:false});
-    const start=source.indexOf('  const stagedCandidateJoin = { initial: stagedJoinStatus');
-    const end=source.indexOf('  const primaryParsed = primaryResult ||',start);
-    vm.runInContext('{'+source.slice(start,end)+'\nthis.frozen={rows:stagedAll,audit:stagedCandidateJoin};}',context);
+    const start=discoverySource.indexOf('  const stagedCandidateJoin = { initial: stagedJoinStatus');
+    const end=discoverySource.indexOf('  const primaryParsed = primaryResult ||',start);
+    assert.ok(start>=0&&end>start);
+    vm.runInContext('{'+discoverySource.slice(start,end)+'\nthis.frozen={rows:stagedAll,audit:stagedCandidateJoin};}',context);
     return structuredClone(context.frozen);
   };
   return {d,rows,cache,context,resolve,reject,freeze,calls:()=>calls,
