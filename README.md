@@ -1,5 +1,8 @@
 # Trinzo Upload - Option B Workflow
 
+For the current entry points, Original/Beta flows, workers and first cleanup
+boundaries, see the [live product map](docs/LIVE_PRODUCT_MAP.md).
+
 ## Environment
 Create a `.env` file using existing pattern:
 
