@@ -6,10 +6,14 @@
   "scripts": {
     "build:meeting-agent": "node scripts/build_meeting_agent.js",
     "prestart": "npm run build:meeting-agent",
-    "test": "python3 scripts/run_python_regression_tests.py && CANONICAL_MINILM_DISK_CACHE=${CANONICAL_MINILM_DISK_CACHE:-.minilm-cache} node --test --test-concurrency=1 tests/*.test.js",
+    "test": "node scripts/run_tests.js core",
     "test:meeting-minutes-drift": "python3 -m unittest tests.test_minilm_comparison -v",
     "test:project-update-golden": "python3 scripts/run_project_update_golden_eval.py --mode all --skip-minilm",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:changed": "node scripts/run_tests.js changed",
+    "test:release": "node scripts/run_tests.js release",
+    "test:full": "node scripts/run_tests.js full",
+    "test:integration": "node scripts/run_tests.js integration"
   },
   "keywords": [],
   "author": "",

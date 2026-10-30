@@ -1,0 +1,33 @@
+{
+  "core": [
+    "tests/auth-session.test.js",
+    "tests/meeting-minutes-agent-background-persistence.test.js",
+    "tests/meeting-minutes-agent-staleness.test.js",
+    "tests/meeting-minutes-parallel.test.js",
+    "tests/meeting-minutes-parallel-routes.test.js",
+    "tests/meeting-minutes-parallel-regeneration.test.js",
+    "tests/meeting-minutes-parallel-timing.test.js",
+    "tests/meeting-minutes-parallel-ui.test.js",
+    "tests/meeting-minutes-shared-publication.test.js",
+    "tests/project-approved-history.test.js",
+    "tests/project-report-editing.test.js",
+    "tests/project-update-beta-ui.test.js",
+    "tests/settings-people.test.js",
+    "tests/settings-glossary.test.js",
+    "tests/test-selection.test.js"
+  ],
+  "corePython": [
+    "test_project_context_contract.py",
+    "test_project_health_readiness.py"
+  ],
+  "integration": [
+    "tests/internal-ai-tasks-integration.test.js",
+    "tests/milestone-creation-intent-db.test.js",
+    "tests/project-approved-history-db.test.js",
+    "tests/project-health-summary-db.test.js",
+    "tests/project-milestone-binding-db.test.js",
+    "tests/project-report-editing-db.test.js",
+    "tests/project-update-flow-db.test.js",
+    "tests/settings-integration.test.js"
+  ]
+}

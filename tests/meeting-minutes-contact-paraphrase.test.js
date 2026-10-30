@@ -2,9 +2,10 @@
 process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1='0';
 const test=require('node:test'),assert=require('node:assert/strict');
 const C=require('../utils/canonicalMinutes/contactParaphrase'),R=require('../utils/canonicalMinutes/actionSemanticReconciliation');
-const S=require('../utils/meetingMinutesSemanticStage'),N=require('../utils/meetingMinutesActionReferenceReview');
+const S=require('../utils/meetingMinutesSemanticStage');
 const {captureSemanticPolicy}=require('../utils/meetingMinutesSemanticPolicy');
 const response=require('./helpers/meeting-minutes-contained-response');
+const {registerBounds,registerVeto,registerAccounting}=require('./helpers/reconciliation-guards');
 const row=(id,action)=>({id,action,owners:['Maya Patel'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0001'],reviewFlagIds:[]});
 const cases=[['contact',row('p','Discuss with Morgan the supplier registration activities and obtain clarity on the associated plan, timeline and responsibilities.'),row('c','Follow up with Morgan to obtain clarity on the supplier registration activities, plan, timeline, and responsibilities.')]];
 cases.push(['enquiry paraphrase',
@@ -14,6 +15,7 @@ const policy=captureSemanticPolicy({MEETING_MINUTES_AGENT_CONTACT_PARAPHRASE_V1:
 for(const [name,parent,child]of cases){
  const sourceUnits=require('../utils/meetingMinutesAgentV2').normaliseSourceUnits([{id:'T0001',speaker:'Maya Patel',text:'I will '+parent.action[0].toLowerCase()+parent.action.slice(1)}]);
  const answer=packet=>{const r=response({...packet,selectedSurvivor:'A'});r.decisions[2].relation='same_obligation';r.decisions[0].rows.forEach(row=>row.basis='commitment');return r;};
+ const guards={name,parent,child,C,S,policy,sourceUnits,answer};
  test(name+': nominates either order, keeps exact fuller existing row and valid reversible receipts',async()=>{
   const A=require('../routes/api').stagedEvaluation;
   for(const actions of [[parent,child],[child,parent]]){
@@ -26,15 +28,8 @@ for(const [name,parent,child]of cases){
    for(const receipt of saved.qualityState.actions.semanticReconciliation.receipts)assert.ok(R.validateReconciliationReceipt(receipt,receipt.original,saved.actions[0],sourceUnits));
   }
  });
- for(const [label,change]of [
-  ['warning',r=>r.reviewFlagIds=['warning']],['owner',r=>r.owners=['Other Person']],['reviewer',r=>r.reviewerAuthored=true],['extra metadata',r=>r.notes='keep'],
-  ['dated',r=>r.timing={kind:'target',wording:'tomorrow',exactDate:''}],['condition',r=>r.action+=' if approved'],['history',r=>r.timingDecision={status:'rejected',rejectedWordings:['tomorrow']}],
-  ['recipient',r=>r.action=r.action.replace(/Morgan/,'Taylor')],['separate work',r=>r.action='Send the completed notice to the regional team.']
- ])test(name+': excludes '+label,()=>{const other=structuredClone(child);change(other);assert.equal(C.direction(parent,other),null);});
- test(name+': independent veto or withdrawal never authorizes a merge',async()=>{
-  for(const challenge of [false,true]){let calls=0;const out=await S.reconcileGeneratedSemanticStage({changes:{actions:[parent,child]}},{sourceUnits},'actions',{policy,ask:async prompt=>{calls++;const data=JSON.parse(prompt.split('\nDATA\n')[1]),r=answer(data);if(data.reviewPurpose===(challenge?'independent_challenge':'proposal'))r.decisions[2].relation='distinct_work';return {result:r};}});assert.equal(calls,challenge?2:1);assert.deepEqual(out.changes.actions,[parent,child]);}
-  assert.throws(()=>C.reviewPacket(parent,child,[{...sourceUnits[0],text:sourceUnits[0].text+' That instruction is cancelled.'}],['T0001'],false),/withdrawal/);
- });
+ registerBounds(guards,r=>r.action=r.action.replace(/Morgan/,'Taylor'));
+ registerVeto(guards);
  for(const [label,mutate]of [
   ['deliverable-content category',r=>r.decisions[2].relation='discarded_requirement_of_survivor'],
   ['component rather than commitment',r=>r.decisions[0].rows[1].basis='required_component']
@@ -66,10 +61,7 @@ for(const [name,parent,child]of cases){
   const q=next.changes.qualityState.actions.semanticReconciliation;assert.equal(q.stats.merged,0);assert.equal(q.calls.length,1);assert.equal(q.calls[0].cached,true);
   assert.ok(q.unresolved.some(e=>e.reason==='contact_paraphrase_independent_veto'));
  });
- test(name+': malformed/missing independent accounting cannot certify',()=>{
-  const p=C.reviewPacket(parent,child,sourceUnits,['T0001'],false),q=C.reviewPacket(parent,child,sourceUnits,['T0001'],true),a=answer(p),b=answer(q);b.decisions[1].checks=[];
-  assert.throws(()=>C.certify(parent,child,sourceUnits,['T0001'],a,b));
- });
+ registerAccounting(guards);
 }
 test('different purpose, ambiguous survivors and execution work remain distinct',()=>{
  const [_,p,c]=cases[0];

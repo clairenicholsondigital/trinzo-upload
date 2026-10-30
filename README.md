@@ -54,7 +54,7 @@ install it with `npx playwright install chromium` if it is not already available
 ## Deployment
 
 `deploy.sh` installs locked Node dependencies with `npm ci --include=dev`, builds, runs the
-existing release suite, then restarts and checks routes. Failed preparation or
+core and affected checks against the deployed revision, then restarts and checks routes. Failed preparation or
 tests restore the prior checkout's dependencies/build before exiting. This is
 still an in-place deployment: use a maintenance window because files used by the
 running processes change during installation/build. Do not deploy with a bare
@@ -63,6 +63,57 @@ Git pull or assume a restored Git revision restores installed dependencies.
 The first release removing tracked `node_modules` must use the updated install
 and build procedure before restarting. Dependency removal only changes the
 current Git tree; older revisions and their files remain in Git history.
+
+## Testing without running everything for every edit
+
+`npm test` is the everyday product check: authentication boundaries, minutes
+save/reopen and stale-edit protection, Original/Beta selection, exports, project
+handoff/report editing, Settings, and the Python project-context/health contracts.
+It uses fixture services rather than production accounts or AI providers.
+
+| Command | Purpose |
+| --- | --- |
+| `npm test` | Small explicit core in `tests/suites.json`; no database required. |
+| `npm run test:changed -- --base origin/main` | Core plus tests affected by committed, staged, unstaged and new files. |
+| `npm run test:changed -- --file public/project-stage-process.js --list` | Explain a proposed selection without running tests. |
+| `npm run test:full` | All non-database JavaScript regressions and the existing Python regression suite. |
+| `npm run test:integration` | All eight real PostgreSQL/browser fixture files; explicit disposable database required. |
+| `npm run test:release -- --base <deployed-revision>` | Affected checks, with required database coverage enforced before any tests start. |
+
+For database checks, set `TEST_DATABASE_URL` to an explicitly provisioned
+PostgreSQL database named `trinzo_tasks_test`. The existing three fixture-specific
+`*_TEST_DATABASE_URL` variables remain supported. The runner never falls back to
+production `DATABASE_URL`; it replaces inherited database credentials with the
+explicit test target. Missing configuration fails integration/release checks
+rather than reporting skipped persistence tests as a successful release.
+`test:full` also runs integration if the explicit test configuration is present.
+
+Selection follows literal local imports, named source/fixture reads, Python source consumers
+and browser files for frontend edits. Unknown runtime mappings and changes to
+installation/test infrastructure select the full regressions. Missing Git bases
+fail with a request to fetch main or supply the correct revision. A fresh release
+without a usable deployment marker uses `test:release -- --all`, including real
+database checks. `deploy.sh` uses the marker rather than the current checkout as
+its baseline, so already-pulled but undeployed changes are included.
+
+Beta specialist prompt wording selects the parallel-contract checks rather than
+thousands of unrelated implementation cases. The plan explicitly marks factual
+quality as unevaluated: compare representative transcripts before publishing a
+changed provider instruction. Ordinary JavaScript checks cannot prove a prompt
+preserves meeting meaning.
+
+The large API/legacy modules still couple many tests. A change to one of their
+shared dependencies can correctly select hundreds of files; `--list` exposes
+that breadth. Further narrowing requires separating those production modules,
+not guessing that their callers are unaffected. Every regression case remains
+available; new core cases should protect a distinct user-visible failure.
+
+Core checks do not load/download MiniLM weights. Full semantic regressions need
+the existing Python packages and cached models; the runner defaults Hugging Face
+and Transformers to offline mode. Output-quality evaluation remains separate:
+`test:project-update-golden` runs the existing project evaluation, and
+`test:meeting-minutes-drift` remains the historical diagnostic command. Passing
+product checks is not a claim of factual accuracy for newly generated minutes.
 
 ## Research archive
 
