@@ -20,6 +20,10 @@ const stubs = {
     links.push({ draftId, userId, projectId });
     return { draftId: String(draftId), projectId };
   },
+  unlinkMeetingMinutesAgentDraftFromProject: async (draftId, userId, projectId) => {
+    links.push({ draftId, userId, projectId, unlink: true });
+    return projectId === 17 ? { draftId, projectId: null } : null;
+  },
   saveProjectReportDetail: async (reportId, payload) => ({ reportId, savedBy: payload.savedBy }),
   queueProjectUpdateGeneration: async (payload) => {
     if (existingUpdate) return { duplicate: true, ...existingUpdate };
@@ -232,6 +236,22 @@ test('the project-link route validates input and only links the signed-in user\'
   assert.deepEqual(links.at(-1), { draftId: '123', userId: 'reviewer', projectId: 17 });
   selectedProject = null;
   assert.equal((await link({ draftId: '123' }, { projectId: 17 })).statusCode, 404);
+});
+
+test('unlink requires ownership and the expected project without editing minutes', async () => {
+  reset();
+  const unlink = router.stack.find(layer => layer.route?.path === '/meeting-minutes-agent/drafts/:draftId/project-link' && layer.route.methods.delete).route.stack.at(-1).handle;
+  async function requestUnlink(projectId, userId = 'reviewer') {
+    const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+    await unlink({ params: { draftId: '123' }, body: { projectId }, authUser: { userId } }, response);
+    return response;
+  }
+  assert.equal((await requestUnlink(0)).statusCode, 400);
+  assert.equal((await requestUnlink(17, 'other-user')).statusCode, 404);
+  assert.equal(links.length, 0);
+  assert.equal((await requestUnlink(18)).statusCode, 409);
+  assert.equal((await requestUnlink(17)).body.projectId, null);
+  assert.equal(savedDraft.revision, 4);
 });
 
 const reportPatchRoute = router.stack.find(layer => layer.route?.path === '/project-update-test/reports/:reportId' && layer.route.methods.patch).route;

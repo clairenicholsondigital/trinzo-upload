@@ -226,6 +226,7 @@ const {
   listMeetingMinutesAgentDrafts,
   listMeetingMinutesAgentDraftPage,
   linkMeetingMinutesAgentDraftToProject,
+  unlinkMeetingMinutesAgentDraftFromProject,
   updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,
@@ -18819,6 +18820,24 @@ router.post('/meeting-minutes-agent/drafts/:draftId/project-link', requireAuth, 
     const linked = await linkMeetingMinutesAgentDraftToProject(draftId, req.authUser?.userId, projectId);
     if (!linked) return res.status(404).json({ ok: false, error: 'Meeting minutes not found.' });
     return res.json({ ok: true, ...linked });
+  } catch (error) {
+    return sendMeetingAgentFailure(res, error);
+  }
+});
+
+router.delete('/meeting-minutes-agent/drafts/:draftId/project-link', requireAuth, async (req, res) => {
+  try {
+    const draftId = String(req.params.draftId || '');
+    const projectId = Number(req.body?.projectId);
+    if (!/^\d+$/.test(draftId) || !Number.isSafeInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ ok: false, error: 'Choose saved minutes and their linked project.' });
+    }
+    if (!await getMeetingMinutesAgentDraft(draftId, req.authUser?.userId)) {
+      return res.status(404).json({ ok: false, error: 'Meeting minutes not found.' });
+    }
+    const unlinked = await unlinkMeetingMinutesAgentDraftFromProject(draftId, req.authUser?.userId, projectId);
+    if (!unlinked) return res.status(409).json({ ok: false, error: 'The linked project changed. Reload these minutes before unlinking.' });
+    return res.json({ ok: true, ...unlinked });
   } catch (error) {
     return sendMeetingAgentFailure(res, error);
   }

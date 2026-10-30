@@ -6,6 +6,7 @@
   const { escapeHtml } = PW;
 
   const BETA_CHOICE_KEY = 'trinzo.projectMinutesBeta.';
+  const refreshers = new WeakMap();
 
   function minutesAgentUrl(ctx, draftId, betaEnabled = false) {
     const params = new URLSearchParams();
@@ -147,6 +148,7 @@
     renderMeetingAgenda(container, ctx);
     renderMinutesDrafts(container, ctx, false, selection);
     const toggle = container.querySelector('#toggleAllMinutes');
+    refreshers.set(container, () => renderMinutesDrafts(container, ctx, toggle?.getAttribute('aria-pressed') === 'true', selection));
     if (toggle) {
       toggle.addEventListener('click', () => {
         const showAll = toggle.getAttribute('aria-pressed') !== 'true';
@@ -235,6 +237,7 @@
         ? ` <a href="${escapeHtml(existingUrl)}">${error.payload.kind === 'report' ? 'Open the existing report' : 'Follow it in the Library'}</a>.`
         : '';
       setStatus(`${escapeHtml(error.message || 'Could not create the project update.')}${link}`, 'error');
+      if (error.status === 409 && !error.payload?.duplicate) refreshers.get(container)?.();
     } finally {
       delete button.dataset.submitting;
       button.disabled = false;
@@ -303,5 +306,5 @@
   }
 
   window.ProjectStages = window.ProjectStages || {};
-  window.ProjectStages.process = { mount };
+  window.ProjectStages.process = { mount, refresh: (container) => refreshers.get(container)?.() };
 }());

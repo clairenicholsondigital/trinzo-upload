@@ -66,11 +66,14 @@
   // Tag each minutes draft opened here with this project, once per draft, so
   // the project's Process tab can list it.
   var taggedDraftId = '';
+  var linkActive = true;
+  var pendingTags = new Set();
   function tagDraftWithProject() {
+    if (!linkActive) return;
     var draftId = currentDraftId();
     if (!draftId || draftId === taggedDraftId) return;
     taggedDraftId = draftId;
-    fetch('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId) + '/project-link', {
+    var request = fetch('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId) + '/project-link', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -79,11 +82,13 @@
       if (!response.ok && taggedDraftId === draftId) taggedDraftId = '';
     }).catch(function () {
       if (taggedDraftId === draftId) taggedDraftId = '';
-    });
+    }).finally(function () { pendingTags.delete(request); });
+    pendingTags.add(request);
   }
 
   var submitting = false;
   function refreshButton() {
+    if (!linkActive) return;
     tagDraftWithProject();
     backLink.setAttribute('href', projectWorkspaceUrl('process'));
     createButton.disabled = submitting || !currentDraftId();
@@ -93,19 +98,47 @@
   }
   refreshButton();
   var refreshTimer = setInterval(refreshButton, 2000);
-  document.addEventListener('change', function (event) {
+  function refreshChoice(event) {
     if (event.target && event.target.id === 'betaFlow') refreshButton();
-  });
+  }
+  document.addEventListener('change', refreshChoice);
 
-  unlinkButton.addEventListener('click', function () {
+  unlinkButton.addEventListener('click', async function () {
     if (submitting) return;
-    try { sessionStorage.removeItem(LINK_KEY); } catch (_error) { /* nothing stored */ }
-    var url = new URL(window.location.href);
-    url.searchParams.delete('projectId');
-    url.searchParams.delete('projectName');
-    history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    submitting = true;
+    refreshButton();
+    linkActive = false;
     clearInterval(refreshTimer);
-    banner.remove();
+    document.removeEventListener('change', refreshChoice);
+    status.textContent = 'Unlinking this project…';
+    try {
+      // A delayed tag must finish before deletion, or it could recreate the
+      // association after the reviewer has successfully unlinked it.
+      await Promise.all(Array.from(pendingTags));
+      var draftId = currentDraftId();
+      if (draftId) {
+        var response = await fetch('/api/meeting-minutes-agent/drafts/' + encodeURIComponent(draftId) + '/project-link', {
+          method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: link.projectId })
+        });
+        var payload = await response.json().catch(function () { return null; });
+        if (!response.ok) throw new Error(payload?.error || 'Could not unlink this project. Try again.');
+      }
+      try { sessionStorage.removeItem(LINK_KEY); } catch (_error) { /* nothing stored */ }
+      var url = new URL(window.location.href);
+      url.searchParams.delete('projectId');
+      url.searchParams.delete('projectName');
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      banner.remove();
+    } catch (error) {
+      status.textContent = error.message || 'Could not unlink this project. Try again.';
+      linkActive = true;
+      document.addEventListener('change', refreshChoice);
+      refreshTimer = setInterval(refreshButton, 2000);
+    } finally {
+      submitting = false;
+      if (linkActive) refreshButton();
+    }
   });
 
   createButton.addEventListener('click', async function () {
