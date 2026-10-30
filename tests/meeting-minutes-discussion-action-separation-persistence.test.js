@@ -2,6 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),JSZip=require('jszip');
 const V=require('../utils/meetingMinutesAgentV2'),C=require('../utils/canonicalMinutes/discussionClaimConsolidation'),S=require('../utils/canonicalMinutes/discussionActionSeparation');
 const {fixture}=require('./fixtures/discussion-action-separation');
+const {meetingAgentStagePersistenceChanges}=require('../utils/meetingMinutesStagePersistence');
 const {generateMeetingMinutesAgentDocx}=require('../utils/meetingMinutesAgentDocx'),{generateStagedMinutesPdf}=require('../utils/stagedMinutesPdf');
 process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1='0';
 const db=require('../utils/db'),oldGet=db.getMeetingMinutesAgentDraft,oldUpdate=db.updateMeetingMinutesAgentDraft;
@@ -74,7 +75,7 @@ test('actual background persistence saves paired proof, warnings and admitted ac
 test('concurrent Discussion or meeting-date edits defer the complete pair without changing reviewer content',async()=>{
  for(const field of ['discussion','date']){const {source,changes,f}=await backgroundFixture(),fresh=structuredClone(source);
  if(field==='discussion')fresh.discussion[0].points[0].text+=' Reviewer qualification.';else fresh.details.meetingDate='2026-10-25';
- const scoped=A.meetingAgentStagePersistenceChanges(source,fresh,'actions',changes);assert.deepEqual(scoped.conflictFields,[]);
+ const scoped=meetingAgentStagePersistenceChanges(source,fresh,'actions',changes);assert.deepEqual(scoped.conflictFields,[]);
  assert.equal(scoped.changes.discussion,undefined);assert.equal(scoped.changes.actions[0].action,f.actions[0].action);
  assert.equal(scoped.changes.qualityState.actions.discussionActionSeparationCount,0);assert.equal(scoped.changes.qualityState.discussion?.claimConsolidation,undefined);}
 });
@@ -87,7 +88,7 @@ test('identity admission requires exact content and unique identities; restorati
 });
 test('changed source rejects both generated edits at publication',async()=>{
  const {source,changes,f}=await backgroundFixture(),fresh=structuredClone(source);fresh.sourceUnits[0].text+=' Updated source.';
- const scoped=A.meetingAgentStagePersistenceChanges(source,fresh,'actions',changes).changes;
+ const scoped=meetingAgentStagePersistenceChanges(source,fresh,'actions',changes).changes;
  assert.equal(scoped.discussion,undefined);assert.equal(scoped.actions[0].action,f.actions[0].action);assert.equal(scoped.qualityState.actions.discussionActionSeparationCount,0);
 });
 test('reviewer-owned Actions defer the separation proof and leave Discussion unchanged',async()=>{

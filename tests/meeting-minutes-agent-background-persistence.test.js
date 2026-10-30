@@ -2,30 +2,16 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { baseDraft, results } = require('./fixtures/meeting-minutes-stage-persistence');
 
 const {
   meetingAgentSerialDraftWrite,
-  meetingAgentStagePersistenceChanges,
   persistMeetingAgentBackgroundStage,
   meetingAgentActionPrimaryPromptForDraft,
   publicMeetingAgentDraft,
   normaliseMeetingAgentGeneration,
   normaliseMeetingAgentDraftChanges
 } = require('../routes/api').stagedEvaluation;
-
-function baseDraft() {
-  return {
-    draftId: 'persistence-test', revision: 1,
-    details: { meetingTitle: 'Original title' },
-    discussion: [{ topic: 'Existing', points: [] }],
-    actions: [{ id: 'A0', action: 'Existing action' }], pendingProposal: null,
-    executiveSummary: 'Existing summary',
-    meetingObjectives: [{ id: 'O0', text: 'Existing objective' }],
-    candidateLedger: [], passProvenance: [], passCache: [], qualityState: {},
-    reviewFlags: [], staleStages: [], currentStep: 1,
-    generation: { stage: 'discussion', status: 'running', startedAt: '2026-09-16T10:00:00.000Z' }
-  };
-}
 
 test('action Primary prewarm is independent of editable Discussion content', () => {
   const draft = {
@@ -206,37 +192,6 @@ test('saved Library draft changes normalise currency before persistence', () => 
   assert.equal(changes.sourceUnits[0].text, 'The tap will cost eight pounds.');
 });
 
-const results = {
-  discussion: { changes: {
-    discussion: [{ topic: 'Generated discussion', points: [] }],
-    meetingObjectives: [{ id: 'OD', text: 'Discussion objective' }],
-    candidateLedger: [{ candidateId: 'D1', recordType: 'discussion_point' }],
-    passProvenance: [{ stage: 'discussion', pass: 'primary' }],
-    passCache: [{ stage: 'discussion', pass: 'primary', promptSha256: 'd'.repeat(64), result: {} }],
-    qualityState: { discussion: { completedPasses: ['primary'] } }
-  }, reviewFlags: [], replaceCoverageFlags: false },
-  actions: { changes: {
-    actions: [{ id: 'A1', action: 'Generated action' }], pendingProposal: null,
-    candidateLedger: [{ candidateId: 'A1', recordType: 'action' }],
-    passProvenance: [{ stage: 'actions', pass: 'primary' }],
-    passCache: [{ stage: 'actions', pass: 'primary', promptSha256: 'a'.repeat(64), result: {} }],
-    qualityState: { actions: { completedPasses: ['primary'] } }
-  }, reviewFlags: [], replaceCoverageFlags: false },
-  summary: { changes: {
-    executiveSummary: 'Generated summary',
-    meetingObjectives: [{ id: 'OS', text: 'Summary objective' }],
-    passProvenance: [{ stage: 'summary', pass: 'summary' }],
-    passCache: [{ stage: 'summary', pass: 'summary', promptSha256: 's'.repeat(64), result: {} }],
-    qualityState: { summary: { completedPasses: ['summary'] } }
-  }, reviewFlags: [], replaceCoverageFlags: false }
-};
-
-function applyStage(state, source, stage) {
-  const scoped = meetingAgentStagePersistenceChanges(source, state, stage, results[stage].changes);
-  assert.deepEqual(scoped.conflictFields, []);
-  return { ...state, ...scoped.changes, revision: state.revision + 1 };
-}
-
 test('old unqueued optimistic writes deterministically reproduce revision conflicts', async () => {
   let revision = 1;
   let readers = 0;
@@ -281,47 +236,6 @@ test('per-draft writes serialize without serializing model-call work', async () 
   assert.equal(maximumModels, 4);
   assert.equal(maximumWrites, 1);
   assert.equal(revision, 5);
-});
-
-for (const order of [
-  ['summary', 'discussion', 'actions'],
-  ['discussion', 'summary', 'actions'],
-  ['actions', 'discussion', 'summary']
-]) {
-  test(`stage-owned results survive ${order.join(' -> ')} completion`, () => {
-    const source = baseDraft();
-    let state = structuredClone(source);
-    for (const stage of order) state = applyStage(state, source, stage);
-    assert.equal(state.discussion[0].topic, 'Generated discussion');
-    assert.equal(state.actions[0].action, 'Generated action');
-    assert.equal(state.executiveSummary, 'Generated summary');
-    assert.equal(state.meetingObjectives[0].text, 'Summary objective');
-    assert.deepEqual(new Set(Object.keys(state.qualityState)), new Set(['discussion', 'actions', 'summary']));
-  });
-}
-
-test('unrelated newer reviewer edits survive a generated stage save', () => {
-  const source = baseDraft();
-  const fresh = { ...structuredClone(source), revision: 2, details: { meetingTitle: 'Reviewer title' } };
-  const scoped = meetingAgentStagePersistenceChanges(source, fresh, 'actions', results.actions.changes);
-  const saved = { ...fresh, ...scoped.changes };
-  assert.deepEqual(scoped.conflictFields, []);
-  assert.equal(saved.details.meetingTitle, 'Reviewer title');
-  assert.equal(saved.actions[0].action, 'Generated action');
-});
-
-test('actions may remove a strict discussion duplicate only while discussion is unchanged', () => {
-  const source = baseDraft();
-  const generatedDiscussion = [{ topic: 'Generated discussion', points: [{ id: 'P1', text: 'Context remains.' }] }];
-  const resultChanges = { ...results.actions.changes, discussion: generatedDiscussion };
-  const unchanged = meetingAgentStagePersistenceChanges(source, structuredClone(source), 'actions', resultChanges);
-  assert.deepEqual(unchanged.changes.discussion, generatedDiscussion);
-
-  const reviewerDiscussion = [{ topic: 'Reviewer discussion', points: [{ id: 'P2', text: 'Keep this edit.' }] }];
-  const fresh = { ...structuredClone(source), discussion: reviewerDiscussion };
-  const edited = meetingAgentStagePersistenceChanges(source, fresh, 'actions', resultChanges);
-  assert.deepEqual(edited.conflictFields, []);
-  assert.equal(Object.prototype.hasOwnProperty.call(edited.changes, 'discussion'), false);
 });
 
 test('same-stage newer reviewer edits are protected and reported', async () => {
