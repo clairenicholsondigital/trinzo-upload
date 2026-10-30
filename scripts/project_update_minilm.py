@@ -462,19 +462,48 @@ def collect_action_source_texts(result: dict[str, Any], enriched_segments: list[
     return unique
 
 
+def status_clauses(value: Any) -> list[str]:
+    """Keep quoted milestone names intact while separating distinct assertions."""
+    text = clean_text(value)
+    quotes = [(m.start(), m.end()) for m in re.finditer(r"(?<!\w)(['\"])[^'\"]+\1(?!\w)", text)]
+    cuts = [m for m in re.finditer(r"[;,]|\b(?:and|but|while|whereas|although|however)\b", text, re.I)
+            if not any(start <= m.start() < end for start, end in quotes)]
+    parts, start = [], 0
+    for cut in cuts:
+        parts.append(text[start:cut.start()].strip())
+        start = cut.end()
+    return [part for part in [*parts, text[start:].strip()] if part]
+
+
 def infer_status_from_text(value: Any) -> str:
-    text = clean_text(value).lower()
-    if not text:
-        return "unknown"
-    if any(cue in text for cue in ["blocked", "roadblock", "can't ", "cannot", "unable", "revoked", "major regression"]):
-        return "blocked"
-    if any(cue in text for cue in ["fully complete", "completed", "finished", "done", "signed off", "secured"]):
-        return "complete"
-    if any(cue in text for cue in ["slipping", "behind schedule", "declining", "delayed", "at risk", "hurdle", "obstacle"]):
-        return "awaiting_input"
-    if any(cue in text for cue in ["underway", "in progress", "initiated", "started", "built", "tracking fine", "moving along"]):
-        return "in_progress"
-    return "unknown"
+    states = []
+    cues = [
+        ("blocked", r"blocked|roadblock|can't|cannot|unable|revoked|major regression"),
+        ("complete", r"fully complete|completed|finished|done|signed off|secured"),
+        ("awaiting_input", r"slipping|behind schedule|declining|delayed|at risk|hurdle|obstacle"),
+        ("in_progress", r"underway|in progress|initiated|started|built(?!-)|tracking fine|moving along"),
+    ]
+    for clause in status_clauses(value):
+        text = clause.lower().replace('’', "'")
+        if '?' in text or re.search(r"\b(?:if|unless|provided|assuming)\b", text):
+            continue
+        for state, pattern in cues:
+            for match in re.finditer(r"\b(?:" + pattern + r")\b", text):
+                prefix = text[:match.start()]
+                # A future expectation is not a present delivery state. Negation
+                # applies to its predicate, not every other assertion in the item.
+                if re.search(r"\b(?:will|would|may|might|could|should|planned|aiming|hope|expected|proposed)\b", prefix):
+                    continue
+                negated = re.search(r"(?:\bnot|\bnever|\bwithout|\bno longer|\b\w+n't)\s+(?:(?:yet|already|fully|been|be|being|even|still|actually|really|quite|completely|successfully|currently)\s+)*$", prefix)
+                if negated:
+                    if match.group() == 'started':
+                        states.append('not_started')
+                    continue
+                states.append(state)
+    for state in ['blocked', 'complete', 'awaiting_input', 'in_progress', 'not_started']:
+        if state in states:
+            return state
+    return 'unknown'
 
 
 def infer_trend_from_text(value: Any, status: str = "") -> str:
@@ -564,12 +593,18 @@ def infer_transcript_milestone_segments(sentences: list[str], existing_segments:
         names = inferred_milestone_names(sentence, known_names, context_text, for_matching=bool(known_names))
         if not names:
             continue
-        status = infer_status_from_text(context_text)
-        trend = infer_trend_from_text(context_text, status)
         for name in names:
             key = normalise_key(name)
             if not key or key in seen:
                 continue
+            # Neighbouring sentences can help identify an issue, but cannot
+            # establish this milestone's delivery state. The same holds for
+            # another milestone's clause within one flat discussion item.
+            own_clauses = [part for part in status_clauses(sentence)
+                           if f"_{key}_" in f"_{normalise_key(part)}_"]
+            status_text = ' '.join(own_clauses)
+            status = infer_status_from_text(status_text)
+            trend = infer_trend_from_text(status_text, status) if status != 'unknown' else 'unknown'
             seen.add(key)
             inferred.append({
                 "milestone": friendly_milestone_label(name),
