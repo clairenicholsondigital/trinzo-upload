@@ -65,18 +65,7 @@ for (const scenario of [
   });
 }
 
-test('bounded scheduling preserves input slots under uneven latency', async () => {
-  const concurrent = await api.meetingAgentRunOrderedConcurrent(
-    ['first', 'second', 'third', 'fourth'],
-    async (value, index) => {
-      await wait(index % 2 ? 2 : 12);
-      return `${value}:${index}`;
-    },
-    2
-  );
-  assert.equal(concurrent.maximumConcurrent, 2);
-  assert.deepEqual(concurrent.values, ['first:0', 'second:1', 'third:2', 'fourth:3']);
-});
+
 
 test('one repaired batch does not rerun or discard successful siblings', async () => {
   const ids = ['candidate-1', 'candidate-2', 'candidate-3'];
@@ -96,16 +85,7 @@ test('one repaired batch does not rerun or discard successful siblings', async (
   assert.deepEqual(merged.candidateDispositions.map((row) => row.candidateId), ids);
 });
 
-test('concurrent failures are reported deterministically by input order', async () => {
-  await assert.rejects(
-    api.meetingAgentRunOrderedConcurrent([0, 1, 2], async (value) => {
-      await wait(value === 0 ? 12 : 1);
-      if (value < 2) throw new Error(`failure-${value}`);
-      return value;
-    }, 3),
-    (error) => error.message === 'failure-0' && error.orderedConcurrentTaskIndex === 0
-  );
-});
+
 
 for (const capture of [
   {

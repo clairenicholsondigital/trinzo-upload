@@ -1,3 +1,8 @@
+const { sanitiseDetails: sanitiseMeetingAgentDetails, meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('../utils/meetingMinutesDraftContext');
+const { meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled } = require('../utils/meetingMinutesPassCache');
+const { meetingAgentResultError, meetingAgentRefereeRoute, meetingAgentInfrastructureFailure, refereeActionMaterializationIssues, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates } = require('../utils/meetingMinutesResponseContracts');
+const { meetingAgentRefereeBatches, meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('../utils/meetingMinutesRefereeBatches');
+const { flattenHybridDiscussion } = require('../utils/meetingMinutesDiscussionRows');
 const { truthyFlag } = require('../utils/requestFlags');
 const { safeLogError, sendTestError } = require('../utils/apiErrors');
 const {
@@ -227,7 +232,6 @@ const {
   PAYLOAD_VERSION: MEETING_AGENT_PAYLOAD_VERSION,
   TIMING_INFERENCE_POLICY_VERSION,
   normaliseExecutiveSummary,
-  sanitiseDetails: sanitiseMeetingAgentDetails,
   preparedTranscriptFromUnits,
   salientDetailInventory,
   normaliseAgentResult,
@@ -370,14 +374,7 @@ const privateActionPrimaryCache = new Map();
 const PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const PRIVATE_ACTION_PRIMARY_CACHE_MAX_ENTRIES = 60;
 
-function meetingAgentPassCacheKey(prompt) {
-  // Microsoft prompt policies can change without changing a caller's text.
-  // Version these results too, so pre-fix discovery/check responses cannot
-  // bypass the new policy just because the same draft is regenerated warm.
-  return crypto.createHash('sha256').update(JSON.stringify({
-    timingPolicyVersion: TIMING_POLICY_VERSION, prompt: String(prompt || '')
-  })).digest('hex');
-}
+
 
 // The reviewer's steer is prose they may have laid out in lines or bullets.
 // Deliberately NOT meetingMinutesAgentText() or the v2 text() helper - both
@@ -7804,9 +7801,7 @@ function meetingMinutesDiscussionRestatementsEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_RESTATEMENTS_V1 || '1'));
 }
 
-function meetingMinutesAgentReplayPassCacheEnabled() {
-  return /^(?:1|true|yes|on)$/i.test(String(process.env.MEETING_MINUTES_AGENT_REPLAY_PASS_CACHE || '0'));
-}
+
 
 function meetingMinutesMinuteInstructionRuleEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1 || '1'));
@@ -7866,15 +7861,7 @@ function meetingAgentCandidateContextChars() {
 // candidate it was given has already judged the whole inventory. The critic
 // and salvage passes exist to catch what an incomplete referee missed; on a
 // complete one they have returned nothing material in every measured run.
-function meetingAgentRefereeAccountedForAllCandidates(refereeParsed = {}, refereeContract = {}, refereeRoute = '') {
-  const expected = Array.isArray(refereeContract?.expectedCandidateIds) ? refereeContract.expectedCandidateIds : [];
-  if (refereeRoute !== 'structured_prompt' || !expected.length) return false;
-  if (Array.isArray(refereeContract.candidates)
-    && meetingAgentDispositionError(refereeParsed, refereeContract.candidates, refereeContract)) return false;
-  const returned = new Set((Array.isArray(refereeParsed?.candidateDispositions) ? refereeParsed.candidateDispositions : [])
-    .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean));
-  return returned.size === expected.length && expected.every((candidateId) => returned.has(candidateId));
-}
+
 
 // The discovery inventory lists one commitment up to three times: as a chain,
 // as the thread inside it, and as each raw candidate the chain was built
@@ -8211,13 +8198,7 @@ function normaliseAnchoredActionDiscovery(result = {}, sourceUnits = [], options
   };
 }
 
-function flattenHybridDiscussion(discussion = []) {
-  return (Array.isArray(discussion) ? discussion : []).flatMap((topic) => [
-    ...(topic?.points || []).map((record) => ({ recordType: 'discussion_point', topic: topic.topic, record })),
-    ...(topic?.decisions || []).map((record) => ({ recordType: 'decision', topic: topic.topic, record })),
-    ...(topic?.openQuestions || []).map((record) => ({ recordType: 'open_question', topic: topic.topic, record }))
-  ]);
-}
+
 
 function meetingAgentCandidateTimingSignature(candidate = {}, includeKind = true) {
   const timing = (candidate.record || candidate).timing || {};
@@ -8973,62 +8954,13 @@ function meetingAgentRefereeRepairCandidates(candidates = [], validDispositions 
     : supplied;
 }
 
-function meetingAgentRefereeBatches(candidates = [], batchSize = 5) {
-  return batchRefereeCandidates(candidates, Math.max(1, Math.min(8, Number(batchSize) || 5)));
-}
 
-function meetingAgentRefereeBatchPlan(stage, candidates = [], batchSize = 6, globalDiscussion = false) {
-  const rows = Array.isArray(candidates) ? candidates : [];
-  if (stage === 'discussion' && globalDiscussion && rows.length) {
-    return { mode: 'global', batches: [rows] };
-  }
-  return { mode: 'batched', batches: meetingAgentRefereeBatches(rows, batchSize) };
-}
 
-async function meetingAgentRunOrderedConcurrent(items = [], worker, concurrencyLimit = items.length || 1) {
-  const rows = Array.isArray(items) ? [...items] : [];
-  const limit = Math.max(1, Math.min(rows.length || 1, Number(concurrencyLimit) || 1));
-  const values = new Array(rows.length);
-  const errors = new Array(rows.length);
-  let nextIndex = 0;
-  let active = 0;
-  let maximumConcurrent = 0;
-  const runNext = async () => {
-    while (true) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= rows.length) return;
-      active += 1;
-      maximumConcurrent = Math.max(maximumConcurrent, active);
-      try {
-        values[index] = await worker(rows[index], index);
-      } catch (error) {
-        errors[index] = error;
-      } finally {
-        active -= 1;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, rows.length) }, () => runNext()));
-  const firstErrorIndex = errors.findIndex(Boolean);
-  if (firstErrorIndex >= 0) {
-    const error = errors[firstErrorIndex];
-    error.orderedConcurrentTaskIndex = firstErrorIndex;
-    error.maximumConcurrent = maximumConcurrent;
-    throw error;
-  }
-  return { values, maximumConcurrent, concurrencyLimit: limit };
-}
 
-function shouldStopMeetingAgentRefereeBatches(primaryError, repairError) {
-  if (!primaryError?.code || primaryError.code !== repairError?.code) return false;
-  return new Set([
-    'invalid_referee_output',
-    'power_automate_empty_response',
-    'power_automate_timeout',
-    'power_automate_unreachable'
-  ]).has(primaryError.code);
-}
+
+
+
+
 
 function mergeBatchedMeetingAgentRefereeResults(results = [], contract = {}) {
   const expectedIds = Array.isArray(contract.expectedCandidateIds) ? contract.expectedCandidateIds : [];
@@ -9252,15 +9184,7 @@ function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candid
   ].join('\n\n');
 }
 
-function meetingAgentInfrastructureFailure(error) {
-  if (!error) return false;
-  if (error.code === 'unmaterialized_referee_action') return false;
-  if (new Set([
-    'power_automate_empty_response', 'power_automate_timeout', 'power_automate_unreachable',
-    'power_automate_http_500', 'power_automate_http_502', 'power_automate_http_503', 'power_automate_http_504'
-  ]).has(error.code)) return true;
-  return Number(error.upstreamStatus || error.statusCode || 0) >= 500;
-}
+
 
 const meetingAgentCallQueue = [];
 let meetingAgentActiveCalls = 0;
@@ -9514,32 +9438,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   return parsedResult;
 }
 
-function meetingAgentResultError(result) {
-  const reported = result?.error;
-  if (!reported) return null;
-  const code = meetingMinutesAgentText(
-    typeof reported === 'object' ? reported.code : '', 120
-  ) || 'agent_error';
-  const message = meetingMinutesAgentText(
-    typeof reported === 'object' ? reported.message : reported, 500
-  ) || 'The connected meeting-minutes agent returned an error.';
-  const error = new Error(message);
-  error.code = code;
-  error.statusCode = 502;
-  error.retryable = /(?:system|timeout|noresponse|no_response|invalid_.+_structure|missing_candidate_dispositions|child|handoff)/i.test(code)
-    // The route explicitly reports a transient hand-off failure. Keep this
-    // bounded exception separate from semantic/validation retry hints.
-    || (code === 'microsoft_route_failure' && reported?.retryable === true);
-  if (typeof reported === 'object') {
-    error.invalidCandidateIds = [...new Set((Array.isArray(reported.invalidCandidateIds)
-      ? reported.invalidCandidateIds : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean))];
-    error.invalidReasons = (Array.isArray(reported.reasons) ? reported.reasons : [])
-      .map((value) => meetingMinutesAgentText(value, 500)).filter(Boolean).slice(0, 40);
-    error.validCandidateDispositions = Array.isArray(reported.validCandidateDispositions)
-      ? reported.validCandidateDispositions : [];
-  }
-  return error;
-}
+
 
 function agentUnaccountedCandidates(result = {}, candidates = [], sourceUnits = []) {
   const supplied = (Array.isArray(candidates) ? candidates : [])
@@ -9605,15 +9504,7 @@ function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceU
   return error;
 }
 
-function meetingAgentRefereeRoute(result = {}, contract = {}) {
-  const declaredExpected = result?.expectedCandidateCount ?? result?.candidateCount;
-  const declaredReturned = result?.returnedDispositionCount ?? result?.dispositionCount;
-  const structured = Boolean(result?.requestId && result?.stage
-    && declaredExpected != null && declaredReturned != null);
-  if (structured && result.requestId === contract.requestId && result.stage === contract.stage) return 'structured_prompt';
-  if (Array.isArray(result?.discussion) && Array.isArray(result?.actions)) return 'connected_fallback';
-  return 'unknown';
-}
+
 
 function effectiveDiscussionRefereeDispositions(dispositions = [], candidates = []) {
   const rows = (Array.isArray(dispositions) ? dispositions : []).map((item) => ({ ...item }));
@@ -9817,49 +9708,7 @@ function normaliseMeetingAgentRefereeContractResult(result = {}, candidates = []
   };
 }
 
-function refereeActionMaterializationIssues(dispositions = [], candidates = [], targetCandidates = candidates) {
-  const uniqueById = (rows) => {
-    const result = new Map();
-    for (const candidate of Array.isArray(rows) ? rows : []) {
-      const id = String(candidate?.candidateId || '');
-      if (id) result.set(id, result.has(id) ? null : candidate);
-    }
-    return result;
-  };
-  // An ID must identify one writable action. Mere membership, or the last
-  // record winning a duplicate ID, cannot establish an atomic mapping.
-  const byId = uniqueById(candidates);
-  const targetsById = uniqueById(targetCandidates);
-  return (Array.isArray(dispositions) ? dispositions : []).flatMap((item) => {
-    const disposition = item?.disposition || item?.classification;
-    if (!['publish', 'proposal', 'core', 'keep'].includes(disposition)) return [];
-    const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
-    const candidate = byId.get(candidateId);
-    const targetId = meetingMinutesAgentText(item?.targetId || item?.mergeTarget, 160);
-    let reason = '';
-    // Group IDs describe source context, not writable action records. The
-    // current Referee protocol has no validated group-to-atomic mapping; a
-    // target alias alone must not approve its children or donate their fields.
-    if (!byId.has(candidateId)) reason = 'action_candidate_not_found';
-    else if (!candidate) reason = 'ambiguous_action_candidate';
-    else if (['action_thread', 'action_chain'].includes(candidate.recordType)) reason = 'group_requires_atomic_action_mapping';
-    else if (candidate.recordType !== 'action') reason = 'candidate_is_not_an_action';
-    else if (candidate?.recordType === 'action'
-      && !meetingMinutesAgentText(candidate.record?.action || candidate.text, 1200)) reason = 'action_wording_missing';
-    else if (targetId && !targetsById.has(targetId)) reason = 'action_target_not_found';
-    else if (targetId && !targetsById.get(targetId)) reason = 'ambiguous_action_target';
-    else if (targetId && (targetsById.get(targetId).recordType !== 'action'
-      || !meetingMinutesAgentText(targetsById.get(targetId).record?.action || targetsById.get(targetId).text, 1200))) {
-      reason = 'action_target_not_writable';
-    }
-    if (!reason) return [];
-    return [{ candidateId, disposition, recordType: candidate?.recordType || '', targetId, reason,
-      refereeReason: meetingMinutesAgentText(item?.reason, 500),
-      memberCandidateIds: [...new Set(candidate?.candidateIds || [])].slice(0, 120),
-      evidenceIds: [...new Set([...(candidate?.evidenceIds || candidate?.record?.evidenceIds || []),
-        ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : [])])].slice(0, 20) }];
-  });
-}
+
 
 function reconcileRefereeActionMaterialization(issues = [], candidates = [], dispositions = [], sourceUnits = [], settled = []) {
   const validEvidence = new Set((sourceUnits || []).map((unit) => unit.id));
@@ -9901,112 +9750,7 @@ function reconcileRefereeActionMaterialization(issues = [], candidates = [], dis
       unresolvedCandidateIds: unresolved.map((item) => item.candidateId), unresolved } };
 }
 
-function meetingAgentDispositionError(result, candidates = [], contract = {}, targetCandidates = candidates) {
-  const expectedIds = [...new Set((Array.isArray(candidates) ? candidates : [])
-    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 160)).filter(Boolean))];
-  if (!expectedIds.length) return null;
-  const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
-  const materializationIssues = contract.stage === 'ACTION_REFEREE'
-    ? refereeActionMaterializationIssues(dispositions, candidates, targetCandidates) : [];
-  const unmaterialized = new Set(materializationIssues.map((item) => item.candidateId));
-  const allowed = contract.stage === 'DISCUSSION_REFEREE'
-    ? new Set(['core', 'supporting', 'merge', 'reject'])
-    : new Set(['publish', 'proposal', 'completed', 'suggestion', 'reject']);
-  const dispositionValid = (item) => allowed.has(item?.disposition || item?.classification)
-    && Boolean(meetingMinutesAgentText(item?.reason, 500))
-    && Array.isArray(item?.evidenceIds);
-  const coreTargets = new Set([
-    ...(contract.knownDiscussionTargetIds || []),
-    ...dispositions.filter((item) => (item.disposition || item.classification) === 'core')
-      .map((item) => refereeDiscussionTargetId(item) || String(item.candidateId || '')),
-    ...flattenHybridDiscussion(result?.discussion || []).map((item) => String(item.record?.id || ''))
-  ].filter(Boolean));
-  const targetValid = (item) => {
-    if (contract.stage !== 'DISCUSSION_REFEREE') return true;
-    const kind = item?.disposition || item?.classification;
-    if (!['merge', 'supporting'].includes(kind)) return true;
-    const target = refereeDiscussionTargetId(item);
-    // Untargeted context can remain supporting. A merge must identify a real
-    // primary target; a typo must trigger the existing subset-repair path.
-    return !target ? kind === 'supporting' : coreTargets.has(target);
-  };
-  const counts = new Map();
-  for (const disposition of dispositions) {
-    const candidateId = meetingMinutesAgentText(disposition?.candidateId, 160);
-    if (candidateId) counts.set(candidateId, Number(counts.get(candidateId) || 0) + 1);
-  }
-  const missing = expectedIds.filter((candidateId) => counts.get(candidateId) !== 1);
-  const unexpected = [...counts.keys()].filter((candidateId) => !expectedIds.includes(candidateId));
-  const declaredExpected = result?.expectedCandidateCount ?? result?.candidateCount;
-  const declaredReturned = result?.returnedDispositionCount ?? result?.dispositionCount;
-  const route = meetingAgentRefereeRoute(result, contract);
-  let message = '';
-  let code = '';
-  if (missing.length) {
-    message = `The evidence referee did not return exactly one disposition for ${missing.length} supplied candidate${missing.length === 1 ? '' : 's'}.`;
-    code = 'incomplete_candidate_dispositions';
-  } else if (unexpected.length) {
-    message = `The evidence referee returned ${unexpected.length} candidate ID${unexpected.length === 1 ? '' : 's'} that were not supplied.`;
-    code = 'unexpected_candidate_dispositions';
-  } else if (route === 'structured_prompt' && (Number(declaredExpected) !== expectedIds.length
-    || Number(declaredReturned) !== dispositions.length)) {
-    message = 'The structured evidence referee accounting fields do not match the supplied and returned candidates.';
-    code = 'invalid_referee_accounting';
-  } else if (route === 'structured_prompt' && dispositions.some((item) => !dispositionValid(item))) {
-    message = 'The structured evidence referee returned an incomplete or stage-incompatible candidate disposition.';
-    code = 'invalid_referee_disposition';
-  } else if (route === 'structured_prompt' && dispositions.some((item) => !targetValid(item))) {
-    message = 'The discussion referee referenced a missing primary target.';
-    code = 'invalid_referee_target';
-  } else if (materializationIssues.length) {
-    message = 'The action referee accepted a candidate without a writable atomic action or valid target; its materialization remains unresolved.';
-    code = 'unmaterialized_referee_action';
-  } else if (route === 'unknown') {
-    message = 'The evidence referee response matched neither the structured Prompt contract nor the connected-agent fallback contract.';
-    code = 'invalid_referee_contract';
-  }
-  if (!code) return null;
-  const error = new Error(message);
-  error.code = code;
-  error.statusCode = 502;
-  error.retryable = true;
-  error.missingCandidateIds = missing;
-  error.unexpectedCandidateIds = unexpected;
-  error.validCandidateDispositions = dispositions.filter((item) => {
-    const candidateId = meetingMinutesAgentText(item?.candidateId, 160);
-    return expectedIds.includes(candidateId) && counts.get(candidateId) === 1
-      && dispositionValid(item) && targetValid(item) && !unmaterialized.has(candidateId);
-  });
-  if (materializationIssues.length) error.unresolvedMaterializations = materializationIssues;
-  // A complete, valid structured response cannot materialize a positive group:
-  // this protocol has no group-to-atomic mapping. Another model call cannot
-  // supply one. Keep the failure and its evidence; only skip that futile repair.
-  error.structurallyUnwritableGroupsOnly = code === 'unmaterialized_referee_action'
-    && route === 'structured_prompt'
-    && materializationIssues.every((issue) => issue.reason === 'group_requires_atomic_action_mapping')
-    && dispositions.every(dispositionValid)
-    && error.validCandidateDispositions.length + materializationIssues.length === expectedIds.length;
 
-  if (code === 'unmaterialized_referee_action') {
-    error.invalidCandidateIds = [...unmaterialized];
-    error.invalidReasons = materializationIssues.map((item) => `${item.candidateId}: ${item.reason}`);
-  }
-  if (code === 'invalid_referee_target') {
-    error.invalidCandidateIds = dispositions.filter((item) => !targetValid(item)).map((item) => item.candidateId);
-  }
-  if (code === 'invalid_referee_disposition') {
-    const invalid = dispositions.filter((item) => !dispositionValid(item));
-    error.invalidCandidateIds = [...new Set(invalid
-      .map((item) => meetingMinutesAgentText(item?.candidateId, 160)).filter(Boolean))];
-    error.invalidReasons = invalid.map((item) => {
-      const candidateId = meetingMinutesAgentText(item?.candidateId, 160) || '(missing candidateId)';
-      if (!allowed.has(item?.disposition || item?.classification)) return `${candidateId}: invalid disposition`;
-      if (!meetingMinutesAgentText(item?.reason, 500)) return `${candidateId}: missing reason`;
-      return `${candidateId}: evidenceIds must be an array`;
-    });
-  }
-  return error;
-}
 
 async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}) {
   const timings = [];
@@ -13312,11 +13056,7 @@ function mayDiscardSupportingDetail(detail, existing) {
     && (!temporalClaim(detail?.text) || !supportingDetailAddsInformation(detail, [], existing));
 }
 
-function refereeDiscussionTargetId(disposition = {}) {
-  return meetingMinutesAgentText(disposition.targetId || disposition.mergeTarget
-    || disposition.discussionId || disposition.targetRecordId
-    || disposition.primaryId || disposition.coreId, 120);
-}
+
 
 function exactDiscussionTwinEvidence(candidate = {}, candidates = [], sourceUnits = [], options = {}, rejectedIds = new Set()) {
   const hasEvidence = (row) => (Array.isArray(row?.evidenceIds) && row.evidenceIds.length)
@@ -14905,7 +14645,7 @@ function meetingAgentSummaryTextHash(value) {
 }
 
 const verifyMeetingAgentSummaryTiming = createSummaryTimingVerifier({
-  meetingAgentSummaryAuthority, meetingAgentTimingAnchor, meetingAgentReviewerSummaryHash
+  meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash
 });
 
 
@@ -14951,7 +14691,6 @@ const originalMinutesStageServices = Object.freeze({
   enrichDiscussionEvidenceFromDispositions,
   finaliseMeetingAgentTimingProposal,
   finalisePromotedDiscussion,
-  flattenHybridDiscussion,
   foldUnownedNearCopies,
   gateTranscriptShapedActionChanges,
   gateTranscriptShapedActions,
@@ -14968,25 +14707,15 @@ const originalMinutesStageServices = Object.freeze({
   meetingAgentActionAuditCandidates,
   meetingAgentActionPrimaryPromptForDraft,
   meetingAgentCommitmentRecheckNeeded,
-  meetingAgentDispositionError,
   meetingAgentEmptyDiscoveryError,
   meetingAgentEmptyDiscoveryRepairPrompt,
   meetingAgentFlagUntouched,
-  meetingAgentInfrastructureFailure,
-  meetingAgentPassCacheKey,
   meetingAgentPeopleNames,
-  meetingAgentPromptDetails,
   meetingAgentProposalChangeIsVisible,
   meetingAgentProposalReviewFlagId,
-  meetingAgentRefereeAccountedForAllCandidates,
-  meetingAgentRefereeBatchPlan,
   meetingAgentRefereeRepairCandidates,
-  meetingAgentRefereeRoute,
-  meetingAgentResultError,
   meetingAgentReviewerSummaryHash,
-  meetingAgentRunOrderedConcurrent,
   meetingAgentSummaryAuthority,
-  meetingAgentTimingAnchor,
   meetingAgentTopicSegmentsEnabled,
   meetingMinutesAgentAnchoredActionEnabled,
   meetingMinutesAgentAnchoredActionPrompt,
@@ -15008,7 +14737,6 @@ const originalMinutesStageServices = Object.freeze({
   meetingMinutesAgentRefereeContract,
   meetingMinutesAgentRefereePrompt,
   meetingMinutesAgentRefereeRepairPrompt,
-  meetingMinutesAgentReplayPassCacheEnabled,
   meetingMinutesAgentSalvagePrompt,
   meetingMinutesAgentTopicArrangementPrompt,
   meetingMinutesAgentTopicArrangementRepairPrompt,
@@ -15042,7 +14770,6 @@ const originalMinutesStageServices = Object.freeze({
   reconstructRefereeActions,
   refereeClusterSupportingCandidates,
   refereeDiscussionContractDiagnostics,
-  refereeDiscussionTargetId,
   removeHeadingFragmentsFromDiscussion,
   removeMinorCommunicationCourtesyDiscussion,
   removePublishedActionProposalDuplicates,
@@ -15050,7 +14777,6 @@ const originalMinutesStageServices = Object.freeze({
   retainedDocumentReferenceReviewFlags,
   safeAgentProposalPromotion,
   semanticReceiptCoversActionProposal,
-  shouldStopMeetingAgentRefereeBatches,
   splitCompoundActionList,
   startPrivateActionPrimaryPrewarm,
   startPrivateStagedCandidateLedger,
@@ -15488,11 +15214,7 @@ function meetingAgentDateContext(transcript = '', fileName = '', extracted = {})
   };
 }
 
-function meetingAgentTimingAnchor(draft = {}) {
-  const context = draft.qualityState?.preparation?.dateContext;
-  if (context && context.source !== 'reviewer' && (context.conflict || context.invalid?.length)) return '';
-  return sanitiseMeetingAgentDetails(draft.details).meetingDate;
-}
+
 
 // Historic metadata must not disappear silently when calendar validation
 // blanks an impossible date. Surface it without rewriting the stored draft
@@ -15511,17 +15233,7 @@ function meetingAgentWithLegacyDateReview(draft = {}) {
   }]) };
 }
 
-function meetingAgentPromptDetails(draft = {}) {
-  const context = draft.qualityState?.preparation?.dateContext;
-  const details = sanitiseMeetingAgentDetails(draft.details);
-  const anchor = meetingAgentTimingAnchor(draft);
-  return { ...details, meetingDate: anchor, timingContext: {
-    meetingDate: anchor,
-    ...(details.meetingDate !== anchor ? { unconfirmedSelectedDate: details.meetingDate } : {}),
-    dateSource: context?.source || 'provided_meeting_details',
-    requiresConfirmation: Boolean(context && context.source !== 'reviewer' && (context.conflict || context.invalid?.length))
-  } };
-}
+
 
 router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
   try {

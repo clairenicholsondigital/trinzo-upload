@@ -14,8 +14,7 @@ const {
   normaliseFixedPersonAliases,
   normaliseDirectoryNameSpellings
 } = require('../utils/entityNormalization');
-const { sanitiseDetails } = require('../utils/meetingMinutesAgentV2');
-const { extractStagedDetailsFromTranscript } = require('../routes/api').stagedEvaluation;
+const { sanitiseDetails } = require('../utils/meetingMinutesDraftContext');
 const { validatePerson } = require('../utils/settingsDb');
 
 test.afterEach(() => settingsStore.resetToDefaults());
@@ -81,21 +80,6 @@ test('full-name other spellings are corrected in printed text; directory forms a
   assert.equal(normaliseDirectoryNameSpellings('Brennan, Niamh A   0:05'), 'Niamh Brennan   0:05');
   assert.equal(normaliseDirectoryNameSpellings('Neve Brennan   0:05'), 'Neve Brennan   0:05');
   assert.equal(normaliseDirectoryNameSpellings('Smith, Stuart M   0:05'), 'Stuart Smith   0:05');
-});
-
-test('Teams speakers are bucketed from the People list as it stands', () => {
-  const transcript = [
-    'Project review transcript', '',
-    'Jacqui Fox   0:05', 'Morning everyone.', '',
-    'Niamh Brennan   0:12', 'I have the test results.', '',
-    'Rebecca Gill   0:31', 'Thanks, that works for us.'
-  ].join('\n');
-  const before = sanitiseDetails(extractStagedDetailsFromTranscript(transcript, 'review.vtt').screens.details);
-  assert.ok(before.clientAttendees.includes('Niamh Brennan'), JSON.stringify(before));
-  withPeople([{ name: 'Niamh Brennan', side: 'internal', spellings: [] }]);
-  const after = sanitiseDetails(extractStagedDetailsFromTranscript(transcript, 'review.vtt').screens.details);
-  assert.ok(after.internalAttendees.includes('Niamh Brennan'), JSON.stringify(after));
-  assert.ok(!after.clientAttendees.includes('Niamh Brennan'), JSON.stringify(after));
 });
 
 test('the People form rejects missing, duplicate and clashing entries', () => {

@@ -295,6 +295,42 @@ policy coupling is unchanged by this route-only batch.
 The remaining plan is shared API/V2 policy ownership, publication/Library/exports,
 reviewer save/history, generation lifecycle and verified redundancy removal.
 
+The first shared-policy batch adds `utils/meetingMinutesDraftContext.js` as the
+owner of detail sanitisation, confirmed timing anchors and prompt date context.
+V2 retains the exact sanitizer reference as a compatibility export. Settings
+People classification and the existing calendar/context rules keep their real
+shared settings and timing dependencies; no directory or cache is copied.
+
+Response errors, referee route/accounting checks and action materialisation
+validation now live in `utils/meetingMinutesResponseContracts.js`. Structural
+Discussion rows have their own shared owner, and referee batching/concurrency
+lives in `utils/meetingMinutesRefereeBatches.js`. Prompt fingerprinting and the
+replay-cache flag join the existing pass-cache owner. All 17 moved functions
+retain their original bodies. Empty-discovery validation and result aggregation
+stay with their current API policies until those real dependencies move.
+
+The Original modules import these policies directly. Their shared API callback
+map shrinks from 140 to 126; Original execution needs only provider-retry and
+private-prewarm I/O ports, down from eight mixed policy/I/O callbacks. Its four
+existing tests now forbid loading the API or V2. Three attendee/settings files
+also test their actual shared owner without importing generation; Teams parsing
+integration cases keep the real API in a separate file.
+
+Seventeen existing cases move with their owners, with no cases added or removed.
+The compact core includes the moved cases while retaining its prior behaviours.
+API lines fall from 17,707 to 17,419; V2 from 6,964 to 6,909. All previous API/V2
+compatibility exports and 94 effective route registrations remain.
+
+These are genuine ownership boundaries, with limits: remaining stage/grounding
+policies still depend on API/V2, and settings refresh retains its lazy database
+path. API consumers decrease from 295 to 292 and V2 consumers from 250 to 247;
+total selected files rise from 310 to 311 and 266 to 267 as the compact core gains
+three owner files. A response/batching owner edit selects 185 JavaScript files;
+the genuinely shared DraftContext owner selects 269. No overall regression-count
+or total-selection reduction is claimed. Next within shared policy ownership are
+evidence/grounding and reviewer-flag foundations, including their shared caches
+and registry, before publication and the remaining route/lifecycle stages.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

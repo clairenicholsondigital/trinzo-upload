@@ -63,7 +63,7 @@ else{
   const reopened=await(await fetch(origin+'/api/meeting-minutes-agent/drafts/'+draftId,{headers:headers('admin')})).json();
   assert(reopened.draft.details.clientAttendees.includes('Saki Arimoto'));
   const extracted=require('../routes/api').stagedEvaluation.extractStagedDetailsFromTranscript('Review transcript\n\nJacqui Fox   0:05\nWe reviewed the schedule.\n\nSaki Arimoto   0:12\nI will check the report.','fixture.vtt');
-  const regenerated=require('../utils/meetingMinutesAgentV2').sanitiseDetails(extracted.screens.details);
+  const regenerated=require('../utils/meetingMinutesDraftContext').sanitiseDetails(extracted.screens.details);
   assert(regenerated.clientAttendees.includes('Saki Arimoto'));
   assert.deepEqual((await pool.query('SELECT * FROM meeting_minutes_agent_drafts WHERE id=$1',[draftId])).rows[0],before);
  });

@@ -1,5 +1,7 @@
 'use strict';
 
+const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
+
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const actionDiagnostics = require('./meetingMinutesActionDiagnostics');
 const actionPhase = require('./meetingMinutesActionPhaseCorrection');
@@ -18,12 +20,10 @@ function createOriginalFinalization(services) {
   const {
     askPowerAutomateMeetingMinutesAgentWithRetry,
     meetingAgentFlagUntouched,
-    meetingAgentPromptDetails,
     meetingAgentProposalReviewFlagId,
-    meetingAgentTimingAnchor,
     normaliseMeetingAgentMinuteNumbers,
     reconcileFinalApprovedActions,
-    semanticReceiptCoversActionProposal
+    semanticReceiptCoversActionProposal,
   } = services;
 
   async function finishMeetingAgentSemanticStage(result, draft, stage, options = {}) {

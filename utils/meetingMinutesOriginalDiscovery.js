@@ -1,5 +1,10 @@
 'use strict';
 
+const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
+const { meetingAgentRefereeRoute, refereeDiscussionTargetId, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates } = require('./meetingMinutesResponseContracts');
+const { meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('./meetingMinutesRefereeBatches');
+const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
+
 const { SCHEMA_VERSION: MEETING_AGENT_SCHEMA_VERSION } = require("./meetingMinutesAgentV2");
 const { actionCandidateInventory } = require("./meetingMinutesAgentV2");
 const { actionCommitmentChainInventory } = require("./meetingMinutesAgentV2");
@@ -21,7 +26,7 @@ const { normaliseRefereeOutput } = require("./refereeNormaliser");
 const { normaliseReferenceArrays } = require("./refereeNormaliser");
 const { regroupDiscussionBySegments } = require("./canonicalMinutes/discourseSegments");
 const { safeLogError } = require("./apiErrors");
-const { sanitiseDetails: sanitiseMeetingAgentDetails } = require("./meetingMinutesAgentV2");
+
 const { segmentAnchors } = require("./canonicalMinutes/discourseSegments");
 const { segmentLabels } = require("./canonicalMinutes/discourseSegments");
 const { semanticPolicyForRun } = require("./meetingMinutesSemanticPolicy");
@@ -38,17 +43,11 @@ function createOriginalDiscovery(services) {
     dedupeHybridActionRecords,
     deterministicHybridLedger,
     enrichDiscussionEvidenceFromDispositions,
-    flattenHybridDiscussion,
     hybridCandidateLedgerFromResult,
     meetingAgentActionPrimaryPromptForDraft,
-    meetingAgentDispositionError,
     meetingAgentEmptyDiscoveryError,
     meetingAgentEmptyDiscoveryRepairPrompt,
-    meetingAgentRefereeAccountedForAllCandidates,
-    meetingAgentRefereeBatchPlan,
     meetingAgentRefereeRepairCandidates,
-    meetingAgentRefereeRoute,
-    meetingAgentRunOrderedConcurrent,
     meetingAgentTopicSegmentsEnabled,
     meetingMinutesAgentAnchoredActionEnabled,
     meetingMinutesAgentAnchoredActionPrompt,
@@ -75,8 +74,6 @@ function createOriginalDiscovery(services) {
     normaliseRefereeDeclaredProposals,
     peekReadyPrivateStagedCandidateLedger,
     reconstructRefereeActions,
-    refereeDiscussionTargetId,
-    shouldStopMeetingAgentRefereeBatches,
     unionActionDiscoveryResults,
   } = services;
 

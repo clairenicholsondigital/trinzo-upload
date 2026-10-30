@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const JSZip = require('jszip');
+const { sanitiseDetails } = require('../utils/meetingMinutesDraftContext');
 const {
-  sanitiseDetails,
   normaliseSourceUnits,
   preparedTranscriptFromUnits,
   salientDetailInventory,
@@ -248,16 +248,6 @@ test('UK half-hour wording is parsed and does not create a false uncertainty fla
 
   assert.equal(result.discussion[0].points[0].text, 'The rehearsal is at 8:30 tomorrow.');
   assert.equal(result.reviewFlags.length, 0);
-});
-
-test('legacy attendee lists classify known Trinzo people as internal and retain an editable external label', () => {
-  assert.deepEqual(sanitiseDetails({
-    allAttendees: ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch'], clientAttendeeLabel: 'External'
-  }), {
-    meetingTitle: '', meetingDate: '', meetingLocation: 'Microsoft Teams', meetingType: '', clientAttendeeLabel: 'External',
-    internalAttendees: ['Jacqui Fox', 'Stuart Smith'], clientAttendees: ['Niamh Lynch'],
-    allAttendees: ['Jacqui Fox', 'Stuart Smith', 'Niamh Lynch']
-  });
 });
 
 test('restoring a removed source unit preserves order', () => {
@@ -998,8 +988,6 @@ test('summary and objectives are grounded in validated content rather than fille
   assert.doesNotMatch(summary, /Paris/);
 });
 
-
-
 test('Word export uses UK dates, timing labels and contains no organisation field', async () => {
   assert.equal(timingLabel({ kind: 'deadline', exactDate: '2026-06-23' }), 'Deadline: 23 Jun 2026');
   assert.equal(timingLabel({ kind: 'deadline', wording: "We do a four-week pilot where we'd test the process" }), 'Not stated');
@@ -1043,10 +1031,6 @@ test('Word export expands a month omitted from the start of a cross-month range'
   const documentXml = await (await JSZip.loadAsync(buffer)).file('word/document.xml').async('string');
   assert.match(documentXml, /27th July–7th August/);
 });
-
-
-
-
 
 
 
