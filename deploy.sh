@@ -61,7 +61,7 @@ else
 fi
 
 prepare_checkout() {
-  npm ci --no-audit --no-fund && npm run build:meeting-agent
+  npm ci --include=dev --no-audit --no-fund && npm run build:meeting-agent
 }
 
 restore_checkout() {

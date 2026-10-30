@@ -23,7 +23,7 @@ ignored by Git; `package-lock.json` is the installation source of truth.
 From a fresh checkout:
 
 ```bash
-npm ci
+npm ci --include=dev
 npm run build:meeting-agent
 npm start
 ```
@@ -53,7 +53,7 @@ install it with `npx playwright install chromium` if it is not already available
 
 ## Deployment
 
-`deploy.sh` installs locked Node dependencies with `npm ci`, builds, runs the
+`deploy.sh` installs locked Node dependencies with `npm ci --include=dev`, builds, runs the
 existing release suite, then restarts and checks routes. Failed preparation or
 tests restore the prior checkout's dependencies/build before exiting. This is
 still an in-place deployment: use a maintenance window because files used by the
