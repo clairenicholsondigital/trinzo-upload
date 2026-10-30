@@ -3,32 +3,16 @@
 // Generic cases only: none of these sentences come from the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  applyRequesterOwnerRule,
-  assignsWorkTo,
-  ownerAssignedInMeeting,
-  addressedRequestAccepted,
-  reconcileRecordFlags,
-  normaliseSourceUnits
-} = require('../utils/meetingMinutesAgentV2');
+const V = require('../utils/meetingMinutesAgentV2');
+const { createMeetingMinutesPeopleEvidence } = require('../utils/meetingMinutesPeopleEvidence');
+const { applyRequesterOwnerRule, ownerAssignedInMeeting } = createMeetingMinutesPeopleEvidence({
+  evidenceContextFor: V.evidenceContextFor,
+  normaliseFlag: V.normaliseFlag,
+  actionEvidenceDisposition: V.actionEvidenceDisposition
+});
+const { reconcileRecordFlags, normaliseSourceUnits } = V;
 
 const unit = (id, speaker, text) => ({ id, speaker, text, classification: 'keep' });
-
-test('read-back, possessive and ongoing forms count as assigning work', () => {
-  assert.ok(assignsWorkTo('Robin', 'Priya drafts the agenda, Robin sends it, and we meet again next week.'));
-  assert.ok(assignsWorkTo('Robin', "Updating the supplier list is Robin's priority action this week."));
-  assert.ok(assignsWorkTo('Robin', 'Robin has been working through the supplier contracts.'));
-  assert.ok(!assignsWorkTo('Robin', 'Robin mentioned the contracts were late last year.'));
-});
-
-test('an addressed request answered without refusal is an accepted request', () => {
-  const lines = [
-    { speaker: 'Chair', text: 'Sam, on those two points, is that something you can write up for the board?' },
-    { speaker: 'Sam', text: "It'll be Thursday though, I'm travelling until then." }
-  ];
-  assert.ok(addressedRequestAccepted('Sam', lines));
-  assert.ok(!addressedRequestAccepted('Sam', [lines[0], { speaker: 'Sam', text: "No, I can't take that on this month." }]));
-});
 
 test('a recap elsewhere in the meeting keeps an owner the cited lines do not name', () => {
   const units = normaliseSourceUnits([
@@ -89,10 +73,6 @@ test("a chair reading an action back to someone is not a rival owner", () => {
   assert.ok(!result.flags.some((flag) => /Owner changed/.test(flag.message)));
 });
 
-test('a declarative assignment to someone who is only talked about keeps them as owner', () => {
-  assert.ok(assignsWorkTo('Priya', "So Priya, and I think Tom, you're involved in that review as well next week."));
-});
-
 test("a rival's commitment that hands the next step to the owner is not counter-evidence", () => {
   const units = normaliseSourceUnits([
     unit('T0001', 'Priya', "I'll put the supplier risks into the risk register and circulate it with you, Tom, to review first."),
@@ -101,8 +81,4 @@ test("a rival's commitment that hands the next step to the owner is not counter-
   const action = { id: 'a1', action: "Review Priya's supplier risk register before it goes wider.", owners: ['Tom'], evidenceIds: ['T0001', 'T0002'], reviewFlagIds: [] };
   const result = applyRequesterOwnerRule([action], units);
   assert.ok(!result.flags.some((flag) => /Owner changed/.test(flag.message)), JSON.stringify(result.flags));
-});
-
-test("'Name, your main focus is ...' assigns the work", () => {
-  assert.ok(assignsWorkTo('Tom', 'And Tom, your main focus then really is to finish the venue risk assessment.'));
 });

@@ -94,10 +94,14 @@ test('missing suite files, unavailable Git baselines and outside paths cannot si
   assert.throws(() => plan({ root }), /missing file/);
 });
 test('database-sensitive changes require persistence checks before release', t => {
-  const { root } = fixture(t);
+  const { root, write } = fixture(t);
   for (const file of ['utils/db.js', 'routes/projectRecords.js', 'routes/minutesFeedback.js',
-    'utils/meetingMinutesDraftStorage.js', 'utils/meetingMinutesProcessing.js']) {
-    assert.equal(plan({ root, mode: 'release', files: [file] }).integrationRequired, true, file);
+    'utils/meetingMinutesDraftStorage.js', 'utils/meetingMinutesProcessing.js',
+    'utils/meetingMinutesAgentGeneration.js', 'utils/meetingMinutesPeopleEvidence.js']) {
+    write('tests/consumer.test.js', "readFile('" + path.basename(file) + "')");
+    const result = plan({ root, mode: 'release', files: [file] });
+    assert.equal(result.integrationRequired, true, file);
+    assert.ok(result.reasons.every(reason => !reason.includes('no reliable mapping')), file);
   }
   assert.equal(plan({ root, mode: 'release', files: ['README.md'] }).integrationRequired, false);
 });

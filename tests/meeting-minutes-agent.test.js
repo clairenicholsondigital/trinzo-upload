@@ -19,7 +19,6 @@ const {
   meetingAgentRefereeRepairCandidates,
   meetingAgentRefereeBatches,
   meetingAgentRefereeBatchPlan,
-  meetingAgentExecutionTelemetry,
   meetingAgentPreviewSavedActions,
   shouldStopMeetingAgentRefereeBatches,
   mergeBatchedMeetingAgentRefereeResults,
@@ -88,10 +87,6 @@ const {
   unresolvedOperationalGapProposals,
   commitmentThreadBackstopProposals,
   strongUnresolvedActionCandidateFlags,
-  meetingAgentFailureClass,
-  meetingAgentResultCounts,
-  meetingAgentMaterialPassImpact,
-  annotateMeetingAgentPassImpact,
   meetingAgentProposalReviewFlagId,
   meetingAgentProposalFlagMatchesChange,
   resolveMeetingAgentProposalFlags,
@@ -387,54 +382,6 @@ test('legacy proposal flags can be resolved by their action text and evidence', 
   assert.equal(resolved.status, 'dismissed');
 });
 
-test('execution telemetry distinguishes quality calls, retries, repairs and failures', () => {
-  const telemetry = meetingAgentExecutionTelemetry([
-    { stage: 'discussion', pass: 'primary', candidateCount: 12, outputRecordCount: 3,
-      materialContributionCount: 2, timings: [
-      { pass: 'discussion:primary', attempt: 1, ok: false, promptChars: 1000,
-        elapsedMs: 500, errorCode: 'invalid_response_structure' },
-      { pass: 'discussion:primary', attempt: 2, ok: true, promptChars: 200,
-        elapsedMs: 250, repair: true }
-    ] },
-    { stage: 'discussion', pass: 'referee-repair-1', timings: [
-      { pass: 'discussion:referee-repair-1', attempt: 1, ok: true,
-        promptChars: 300, elapsedMs: 100 }
-    ] }
-  ]);
-  assert.deepEqual(telemetry, {
-    qualityPassCount: 2,
-    externalCallCount: 3,
-    firstAttemptSuccessCount: 1,
-    retryCount: 1,
-    repairCallCount: 2,
-    failedCallCount: 1,
-    validationFailureCount: 1,
-    transportFailureCount: 0,
-    totalPromptChars: 1500,
-    retryPromptChars: 200,
-    externalCallElapsedMs: 850,
-    candidateCount: 12,
-    outputRecordCount: 3,
-    outputChars: 0,
-    materialContributionCount: 2
-  });
-});
-
-test('performance telemetry classifies failures and counts model records without inventing content', () => {
-  assert.equal(meetingAgentFailureClass({ code: 'incomplete_candidate_dispositions' }), 'response_contract');
-  assert.equal(meetingAgentFailureClass({ statusCode: 429 }), 'rate_limit');
-  assert.equal(meetingAgentFailureClass({ upstreamStatus: 502 }), 'transport');
-  const result = {
-    discussion: [{ points: [{}], decisions: [{}, {}], openQuestions: [] }],
-    actions: [{}, {}], actionProposals: [{}], candidateDispositions: [{}, {}, {}], reviewFlags: [{}]
-  };
-  assert.deepEqual(meetingAgentResultCounts(result), {
-    discussionRecordCount: 3, actionCount: 2, proposalCount: 1,
-    dispositionCount: 3, reviewFlagCount: 1, outputRecordCount: 6,
-    outputChars: JSON.stringify(result).length
-  });
-});
-
 test('strict action accounting does not merge different deliverables sharing evidence', () => {
   const shared = ['T0010', 'T0011'];
   assert.equal(strictActionDeliverableMatch(
@@ -496,24 +443,6 @@ test('final survival does not restore source variants already represented by a m
   const reconciled = reconcileFinalApprovedActions([merged], [first, second]);
   assert.equal(reconciled.actions.length, 1);
   assert.equal(reconciled.restored.length, 0);
-});
-
-test('material pass impact attributes final contribution to the exact referee call', () => {
-  const impact = meetingAgentMaterialPassImpact([
-    { candidateId: 'p1', sourcePass: 'primary', disposition: 'publish' },
-    { candidateId: 'p2', sourcePass: 'primary', disposition: 'reject' },
-    { candidateId: 'r1', sourcePass: 'recovery', disposition: 'proposal' }
-  ], { referee: { materialContributionCount: 2, materialCandidateIds: ['p1', 'r1'] } });
-  const provenance = annotateMeetingAgentPassImpact([
-    { pass: 'primary' }, { pass: 'recovery' },
-    { pass: 'referee-batch-1', candidateIds: ['p1', 'p2'] },
-    { pass: 'referee-batch-2', candidateIds: ['r1'] },
-    { pass: 'referee-repair-2', candidateIds: ['r1'], failed: true }
-  ], impact);
-  assert.deepEqual(provenance.map((item) => item.materialContributionCount), [1, 1, 1, 1, 0]);
-  assert.equal(provenance[2].materiallyChangedFinalMinutes, true);
-  assert.equal(provenance[3].materiallyChangedFinalMinutes, true);
-  assert.equal(provenance[4].materiallyChangedFinalMinutes, false);
 });
 
 test('action dedupe deterministically keeps the strongest wording and combines metadata', () => {

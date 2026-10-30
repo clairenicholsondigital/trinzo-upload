@@ -22,6 +22,7 @@ class FrontendContractTest(unittest.TestCase):
     def test_meeting_minutes_agent_uses_evidence_backed_resumable_workflow(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        generation = (REPO_DIR / "utils" / "meetingMinutesAgentGeneration.js").read_text(encoding="utf-8")
         copilot = (REPO_DIR / "utils" / "copilot.js").read_text(encoding="utf-8")
         page = (REPO_DIR / "views" / "meeting-minutes-agent.html").read_text(encoding="utf-8")
         client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
@@ -89,7 +90,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="executiveSummary" rows="3"', page)
         self.assertNotIn('.meeting-agent-page .summary-field textarea{min-height:170px}', page)
         # Background generation: start, poll, and the stale-run detector.
-        self.assertIn('generation.bootId !== MEETING_AGENT_BOOT_ID', api)
+        self.assertIn('generation.bootId !== bootId', generation)
+        self.assertIn('bootId: MEETING_AGENT_BOOT_ID', api)
         self.assertIn("setImmediate", api)
         self.assertIn("function pollGeneration", client)
         self.assertIn("function startBackgroundStage", client)

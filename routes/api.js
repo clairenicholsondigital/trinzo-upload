@@ -1,4 +1,21 @@
 const { safeLogError, sendTestError } = require('../utils/apiErrors');
+const {
+  stagedAnalyticsObject, stagedAnalyticsArray, stagedAnalyticsText, buildStagedReviewDiffs,
+  summariseStagedReviewDiffs, stagedWorkflowInteractionEvents,
+  summariseStagedWorkflowInteractions, stagedReviewProjectKey
+} = require('../utils/stagedReviewAnalytics');
+const { firstString, meetingMinutesAgentText } = require('../utils/meetingMinutesPlainText');
+const {
+  meetingAgentGenerationState: generationState,
+  normaliseMeetingAgentGeneration: normaliseGeneration,
+  meetingAgentPassTimingPolicy,
+  meetingAgentFailureClass,
+  meetingAgentResultCounts,
+  meetingAgentMaterialPassImpact,
+  annotateMeetingAgentPassImpact,
+  meetingAgentCallPerformance,
+  meetingAgentExecutionTelemetry
+} = require('../utils/meetingMinutesAgentGeneration');
 const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
 const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
@@ -468,240 +485,15 @@ function meetingAgentObjectiveRecords(value) {
   }).filter(Boolean).slice(0, 20);
 }
 
-// A generation is only ever run by the process that started it, so a record from
-// another boot is dead by definition. The time check catches the rarer case of an
-// unhandled rejection inside this same process. Both are evaluated at READ time -
-// there is no sweeper, and a stale record self-heals on the next save.
 function meetingAgentGenerationState(generation) {
-  if (!generation || generation.status !== 'running') return generation || null;
-  const timeoutMs = meetingMinutesAgentHybridEnabled()
-    // Discussion has a bounded core stage plus a separately bounded final
-    // topic-arrangement pass. Do not report a healthy slow arranger as an
-    // interrupted workflow while that dedicated allowance is still active.
-    ? Math.max(300000, Number(process.env.MEETING_MINUTES_AGENT_WORKFLOW_TIMEOUT_MS || 720000))
-    : Math.max(10000, Number(process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000)) + 60000;
-  const orphaned = generation.bootId !== MEETING_AGENT_BOOT_ID;
-  const expired = Date.now() - Number(new Date(generation.startedAt || 0)) > timeoutMs;
-  if (!orphaned && !expired) return generation;
-  return { ...generation, status: 'failed', error: 'Generation was interrupted. Generate it again.' };
-}
-
-function meetingAgentPassTimingPolicy(callOptions = {}, isRefereeCall = false, stageDeadlineAt = 0, now = Date.now()) {
-  const independentBudgetMs = Math.max(0, Number(callOptions.independentBudgetMs || 0));
-  const deadlineAt = independentBudgetMs
-    ? Number(now) + Math.max(10000, independentBudgetMs)
-    : Number(stageDeadlineAt || 0);
-  const attemptTimeoutMs = Number(callOptions.attemptTimeoutMs
-    || (isRefereeCall ? process.env.MEETING_MINUTES_AGENT_REFEREE_TIMEOUT_MS || 90000 : 0)) || undefined;
-  return { deadlineAt, attemptTimeoutMs };
-}
-
-function normaliseMeetingAgentGeneration(generation) {
-  if (!generation || typeof generation !== 'object') return null;
-  const status = ['running', 'failed'].includes(generation.status) ? generation.status : null;
-  if (!status) return null;
-  return {
-    stage: Object.hasOwn(MEETING_AGENT_STAGE_STEP, generation.stage) ? generation.stage : 'discussion',
-    status,
-    bootId: meetingMinutesAgentText(generation.bootId, 80),
-    semanticPolicy: normaliseSemanticPolicy(generation.semanticPolicy),
-    discussionCoveragePolicy: normaliseDiscussionCoveragePolicy(generation.discussionCoveragePolicy),
-    startedAt: meetingMinutesAgentText(generation.startedAt, 40),
-    error: meetingMinutesAgentText(generation.error, 400),
-    pass: meetingMinutesAgentText(generation.pass, 80),
-    message: meetingMinutesAgentText(generation.message, 240),
-    completedPasses: (Array.isArray(generation.completedPasses) ? generation.completedPasses : []).map((value) => meetingMinutesAgentText(value, 80)).filter(Boolean).slice(-12),
-    callTimings: (Array.isArray(generation.callTimings) ? generation.callTimings : []).slice(-60),
-    telemetry: normaliseMeetingAgentExecutionTelemetry(generation.telemetry),
-    degradedSources: (Array.isArray(generation.degradedSources) ? generation.degradedSources : []).map((value) => meetingMinutesAgentText(value, 160)).filter(Boolean).slice(-8),
-    previewActions: (Array.isArray(generation.previewActions) ? generation.previewActions : []).map((item, index) => ({
-      id: meetingMinutesAgentText(item?.id, 80) || `preview-action-${index + 1}`,
-      action: meetingMinutesAgentText(item?.action, 1600),
-      owners: (Array.isArray(item?.owners) ? item.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 12),
-      timing: {
-        kind: ['deadline', 'target', 'dependency', 'not_stated'].includes(item?.timing?.kind) ? item.timing.kind : 'not_stated',
-        wording: meetingMinutesAgentText(item?.timing?.wording, 220),
-        exactDate: meetingMinutesAgentText(item?.timing?.exactDate, 20)
-      },
-      evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
-      reviewFlagIds: []
-    })).filter((item) => item.action).slice(0, 60),
-    ...(Array.isArray(generation.previewSavedActions) ? { previewSavedActions: generation.previewSavedActions.map((item, index) => ({
-      id: meetingMinutesAgentText(item?.id, 80) || `saved-action-${index + 1}`,
-      action: meetingMinutesAgentText(item?.action, 1600),
-      owners: (Array.isArray(item?.owners) ? item.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)).filter(Boolean).slice(0, 12),
-      timing: {
-        kind: ['deadline', 'target', 'dependency', 'not_stated'].includes(item?.timing?.kind) ? item.timing.kind : 'not_stated',
-        wording: meetingMinutesAgentText(item?.timing?.wording, 220),
-        exactDate: meetingMinutesAgentText(item?.timing?.exactDate, 20)
-      },
-      evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
-      reviewFlagIds: []
-    })).filter((item) => item.action).slice(0, 60) } : {}),
-    previewUpdatedAt: meetingMinutesAgentText(generation.previewUpdatedAt, 40)
-  };
-}
-
-function normaliseMeetingAgentExecutionTelemetry(value = {}) {
-  const source = value && typeof value === 'object' ? value : {};
-  const number = (key) => Math.max(0, Number(source[key] || 0));
-  return {
-    qualityPassCount: number('qualityPassCount'),
-    externalCallCount: number('externalCallCount'),
-    firstAttemptSuccessCount: number('firstAttemptSuccessCount'),
-    retryCount: number('retryCount'),
-    repairCallCount: number('repairCallCount'),
-    failedCallCount: number('failedCallCount'),
-    validationFailureCount: number('validationFailureCount'),
-    transportFailureCount: number('transportFailureCount'),
-    totalPromptChars: number('totalPromptChars'),
-    retryPromptChars: number('retryPromptChars'),
-    externalCallElapsedMs: number('externalCallElapsedMs'),
-    candidateCount: number('candidateCount'),
-    outputRecordCount: number('outputRecordCount'),
-    outputChars: number('outputChars'),
-    materialContributionCount: number('materialContributionCount')
-  };
-}
-
-function meetingAgentFailureClass(value = {}) {
-  const code = meetingMinutesAgentText(value?.errorCode || value?.code, 120).toLowerCase();
-  const status = Number(value?.upstreamStatus || value?.statusCode || 0);
-  if (code === 'unmaterialized_referee_action' || code === 'invalid_referee_target'
-    || /(?:invalid|incomplete|unexpected|missing).*(?:structure|contract|disposition|candidate|response)|empty_(?:discussion|action)/.test(code)) {
-    return 'response_contract';
-  }
-  if (status === 429 || /(?:rate|usage|thrott)/.test(code)) return 'rate_limit';
-  if (status >= 500 || /(?:timeout|system|transport|network|no_?response|child|handoff)/.test(code)) return 'transport';
-  return code ? 'other' : '';
-}
-
-function meetingAgentResultCounts(result = {}) {
-  const discussion = Array.isArray(result?.discussion) ? result.discussion : [];
-  const discussionRecords = discussion.reduce((sum, topic) => sum
-    + (Array.isArray(topic?.points) ? topic.points.length : 0)
-    + (Array.isArray(topic?.decisions) ? topic.decisions.length : 0)
-    + (Array.isArray(topic?.openQuestions) ? topic.openQuestions.length : 0), 0);
-  const actions = Array.isArray(result?.actions) ? result.actions.length : 0;
-  const proposals = Array.isArray(result?.actionProposals) ? result.actionProposals.length : 0;
-  const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions.length : 0;
-  return {
-    discussionRecordCount: discussionRecords,
-    actionCount: actions,
-    proposalCount: proposals,
-    dispositionCount: dispositions,
-    reviewFlagCount: Array.isArray(result?.reviewFlags) ? result.reviewFlags.length : 0,
-    outputRecordCount: discussionRecords + actions + proposals,
-    outputChars: JSON.stringify(result && typeof result === 'object' ? result : {}).length
-  };
-}
-
-function meetingAgentMaterialPassImpact(candidateDispositions = [], overrides = {}) {
-  const impact = {};
-  for (const item of Array.isArray(candidateDispositions) ? candidateDispositions : []) {
-    const pass = meetingMinutesAgentText(item?.sourcePass, 80) || 'unknown';
-    if (!impact[pass]) impact[pass] = {
-      candidateCount: 0, publishedCount: 0, proposalCount: 0,
-      supportingCount: 0, materiallyChangedFinalMinutes: false
-    };
-    impact[pass].candidateCount += 1;
-    if (item?.disposition === 'publish') impact[pass].publishedCount += 1;
-    if (item?.disposition === 'proposal') impact[pass].proposalCount += 1;
-    if (item?.disposition === 'supporting') impact[pass].supportingCount += 1;
-    if (['publish', 'proposal', 'supporting'].includes(item?.disposition) && item?.candidateId) {
-      if (!Array.isArray(impact[pass].materialCandidateIds)) impact[pass].materialCandidateIds = [];
-      impact[pass].materialCandidateIds.push(meetingMinutesAgentText(item.candidateId, 160));
-    }
-  }
-  for (const [pass, supplied] of Object.entries(overrides || {})) {
-    impact[pass] = { ...(impact[pass] || {}), ...(supplied || {}) };
-  }
-  for (const value of Object.values(impact)) {
-    value.materialContributionCount = Math.max(0, Number(value.materialContributionCount
-      ?? ((value.publishedCount || 0) + (value.proposalCount || 0) + (value.supportingCount || 0))));
-    value.materiallyChangedFinalMinutes = value.materialContributionCount > 0;
-  }
-  return impact;
-}
-
-function annotateMeetingAgentPassImpact(provenance = [], impact = {}) {
-  const counted = new Set();
-  return (Array.isArray(provenance) ? provenance : []).map((item) => {
-    const logicalPass = /^referee-/.test(item?.pass || '') ? 'referee' : item?.pass;
-    const passImpact = impact[logicalPass] || {};
-    const materialCandidateIds = new Set(Array.isArray(passImpact.materialCandidateIds)
-      ? passImpact.materialCandidateIds : []);
-    const callCandidateIds = Array.isArray(item?.candidateIds) ? item.candidateIds : [];
-    const candidateContributionCount = callCandidateIds.filter((candidateId) =>
-      materialCandidateIds.has(candidateId)).length;
-    const firstLogicalCall = !counted.has(logicalPass);
-    counted.add(logicalPass);
-    const contributionCount = item?.failed === true ? 0
-      : logicalPass === 'referee' && callCandidateIds.length
-        ? candidateContributionCount
-        : firstLogicalCall
-          ? Math.max(0, Number(passImpact.materialContributionCount || 0)) : 0;
-    return {
-      ...item,
-      materialContributionCount: contributionCount,
-      materiallyChangedFinalMinutes: contributionCount > 0
-    };
+  return generationState(generation, {
+    bootId: MEETING_AGENT_BOOT_ID,
+    hybridEnabled: meetingMinutesAgentHybridEnabled()
   });
 }
 
-function meetingAgentCallPerformance(provenance = []) {
-  return (Array.isArray(provenance) ? provenance : []).map((item) => ({
-    stage: item?.stage || '',
-    pass: item?.pass || '',
-    requestId: meetingMinutesAgentText(item?.requestId, 160),
-    cached: item?.cached === true,
-    failed: item?.failed === true,
-    candidateCount: Math.max(0, Number(item?.candidateCount || 0)),
-    outputRecordCount: Math.max(0, Number(item?.outputRecordCount || 0)),
-    outputChars: Math.max(0, Number(item?.outputChars || 0)),
-    attemptCount: Array.isArray(item?.timings) ? item.timings.length : 0,
-    elapsedMs: Math.max(0, Number(item?.elapsedMs || 0)),
-    materialContributionCount: Math.max(0, Number(item?.materialContributionCount || 0)),
-    materiallyChangedFinalMinutes: item?.materiallyChangedFinalMinutes === true
-  }));
-}
-
-function meetingAgentExecutionTelemetry(provenance = []) {
-  const passes = Array.isArray(provenance) ? provenance : [];
-  const timings = passes.flatMap((item) => Array.isArray(item?.timings) ? item.timings : []);
-  const byPass = new Map();
-  for (const timing of timings) {
-    const pass = meetingMinutesAgentText(timing?.pass, 120) || 'unknown';
-    if (!byPass.has(pass)) byPass.set(pass, []);
-    byPass.get(pass).push(timing);
-  }
-  let retryCount = 0;
-  let firstAttemptSuccessCount = 0;
-  for (const rows of byPass.values()) {
-    const ordered = [...rows].sort((left, right) => Number(left?.attempt || 1) - Number(right?.attempt || 1));
-    retryCount += ordered.filter((item) => Number(item?.attempt || 1) > 1).length;
-    if (ordered[0]?.ok === true) firstAttemptSuccessCount += 1;
-  }
-  return {
-    qualityPassCount: new Set(passes.map((item) => `${item?.stage || ''}:${item?.pass || ''}`)
-      .filter((key) => key !== ':')).size,
-    externalCallCount: timings.length,
-    firstAttemptSuccessCount,
-    retryCount,
-    repairCallCount: timings.filter((item) => item?.repair === true
-      || /(?:^|:)referee-repair-/.test(String(item?.pass || ''))).length,
-    failedCallCount: timings.filter((item) => item?.ok === false).length,
-    validationFailureCount: timings.filter((item) => meetingAgentFailureClass(item) === 'response_contract').length,
-    transportFailureCount: timings.filter((item) => meetingAgentFailureClass(item) === 'transport').length,
-    totalPromptChars: timings.reduce((sum, item) => sum + Math.max(0, Number(item?.promptChars || 0)), 0),
-    retryPromptChars: timings.filter((item) => Number(item?.attempt || 1) > 1)
-      .reduce((sum, item) => sum + Math.max(0, Number(item?.promptChars || 0)), 0),
-    externalCallElapsedMs: timings.reduce((sum, item) => sum + Math.max(0, Number(item?.elapsedMs || 0)), 0),
-    candidateCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.candidateCount || 0)), 0),
-    outputRecordCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.outputRecordCount || 0)), 0),
-    outputChars: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.outputChars || 0)), 0),
-    materialContributionCount: passes.reduce((sum, item) => sum + Math.max(0, Number(item?.materialContributionCount || 0)), 0)
-  };
+function normaliseMeetingAgentGeneration(generation) {
+  return normaliseGeneration(generation, MEETING_AGENT_STAGE_STEP);
 }
 const upload = multer({ storage: multer.memoryStorage() });
 const testUpload = multer({
@@ -754,180 +546,6 @@ const REVIEW_TEMPLATE = {
     transcriptLength: 0
   }
 };
-
-function stagedAnalyticsObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function stagedAnalyticsArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function stagedAnalyticsText(value) {
-  if (value == null) return '';
-  if (Array.isArray(value)) return value.map(stagedAnalyticsText).filter(Boolean).join('\n');
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value).replace(/\s+/g, ' ').trim();
-}
-
-function stagedAnalyticsWords(value) {
-  return stagedAnalyticsText(value).toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2);
-}
-
-function stagedAnalyticsSimilarity(left, right) {
-  const leftWords = new Set(stagedAnalyticsWords(left));
-  const rightWords = new Set(stagedAnalyticsWords(right));
-  if (!leftWords.size && !rightWords.size) return 1;
-  if (!leftWords.size || !rightWords.size) return 0;
-  const overlap = [...leftWords].filter((word) => rightWords.has(word)).length;
-  return overlap / Math.max(leftWords.size, rightWords.size);
-}
-
-function stagedReviewField(stage, fieldPath, label, value) {
-  return {
-    stage,
-    fieldPath,
-    label,
-    value: stagedAnalyticsText(value)
-  };
-}
-
-function flattenStagedReviewVersion(versions = {}) {
-  const fields = [];
-  const details = stagedAnalyticsObject(versions.details);
-  fields.push(stagedReviewField('details', 'details.meetingTitle', 'Meeting title', details.meetingTitle));
-  fields.push(stagedReviewField('details', 'details.meetingDate', 'Meeting date', details.meetingDate));
-  fields.push(stagedReviewField('details', 'details.meetingLocation', 'Meeting location', details.meetingLocation));
-  fields.push(stagedReviewField('details', 'details.meetingType', 'Meeting type', details.meetingType));
-  fields.push(stagedReviewField('details', 'details.internalAttendees', 'Trinzo participants', details.internalAttendees || details.trinzoAttendees));
-  fields.push(stagedReviewField('details', 'details.clientAttendees', 'Client participants', details.clientAttendees || details.allAttendees));
-
-  const summary = stagedAnalyticsObject(versions.summary);
-  // The purpose and the key facts steer more of the later stages than anything else the
-  // reviewer touches, and until now neither was recorded — so the edit analytics were
-  // blind to the two fields most worth knowing about.
-  fields.push(stagedReviewField('summary', 'summary.meetingPurpose', 'Meeting purpose', summary.meetingPurpose));
-  fields.push(stagedReviewField('summary', 'summary.keyFacts', 'Key facts to preserve', summary.keyFacts));
-  fields.push(stagedReviewField('summary', 'summary.objectives', 'Meeting objectives', summary.objectives));
-  fields.push(stagedReviewField('summary', 'summary.executiveSummary', 'Executive summary', summary.executiveSummary));
-  fields.push(stagedReviewField('summary', 'summary.overallTopics', 'Overall topics', summary.overallTopics));
-
-  stagedAnalyticsArray(versions.discussion).forEach((item, index) => {
-    fields.push(stagedReviewField('discussion', `discussion.${index}.topic`, `Discussion ${index + 1} topic`, item?.topic));
-    fields.push(stagedReviewField('discussion', `discussion.${index}.points`, `Discussion ${index + 1} points`, item?.points || item?.bullets || item?.discussionPoints));
-  });
-
-  stagedAnalyticsArray(versions.actions).forEach((item, index) => {
-    fields.push(stagedReviewField('actions', `actions.${index}.owner`, `Action ${index + 1} owner`, item?.owner));
-    fields.push(stagedReviewField('actions', `actions.${index}.action`, `Action ${index + 1}`, item?.action || item?.meetingActionPoint));
-    fields.push(stagedReviewField('actions', `actions.${index}.deadline`, `Action ${index + 1} due`, item?.deadline || item?.meetingActionPointDeadline));
-  });
-
-  return fields.filter((field) => field.value);
-}
-
-function classifyStagedReviewEdit(before, after) {
-  if (!before && after) return 'added_by_reviewer';
-  if (before && !after) return 'removed_by_reviewer';
-  if (before === after) return 'accepted_unchanged';
-  const similarity = stagedAnalyticsSimilarity(before, after);
-  if (similarity >= 0.82) return 'wording_or_formatting_edit';
-  if (similarity >= 0.45) return 'substantive_rewrite';
-  return 'structural_or_semantic_change';
-}
-
-function buildStagedReviewDiffs(generatedVersions = {}, approvedVersions = {}) {
-  const generated = flattenStagedReviewVersion(generatedVersions);
-  const approved = flattenStagedReviewVersion(approvedVersions);
-  const generatedByPath = new Map(generated.map((field) => [field.fieldPath, field]));
-  const approvedByPath = new Map(approved.map((field) => [field.fieldPath, field]));
-  const paths = [...new Set([...generatedByPath.keys(), ...approvedByPath.keys()])].sort();
-  return paths.map((fieldPath) => {
-    const before = generatedByPath.get(fieldPath);
-    const after = approvedByPath.get(fieldPath);
-    const beforeText = before ? before.value : '';
-    const afterText = after ? after.value : '';
-    const editType = classifyStagedReviewEdit(beforeText, afterText);
-    return {
-      stage: (after || before)?.stage || '',
-      fieldPath,
-      label: (after || before)?.label || fieldPath,
-      editType,
-      before: beforeText,
-      after: afterText,
-      beforeLength: beforeText.length,
-      afterLength: afterText.length,
-      similarity: Number(stagedAnalyticsSimilarity(beforeText, afterText).toFixed(3))
-    };
-  });
-}
-
-function summariseStagedReviewDiffs(fieldDiffs = []) {
-  const byType = {};
-  const byStage = {};
-  fieldDiffs.forEach((diff) => {
-    byType[diff.editType] = (byType[diff.editType] || 0) + 1;
-    const stage = diff.stage || 'unknown';
-    byStage[stage] = byStage[stage] || {};
-    byStage[stage][diff.editType] = (byStage[stage][diff.editType] || 0) + 1;
-  });
-  return {
-    totalFields: fieldDiffs.length,
-    changedFields: fieldDiffs.filter((diff) => diff.editType !== 'accepted_unchanged').length,
-    byType,
-    byStage,
-    recurringProblemCandidates: fieldDiffs
-      .filter((diff) => ['substantive_rewrite', 'structural_or_semantic_change', 'removed_by_reviewer'].includes(diff.editType))
-      .map((diff) => ({ stage: diff.stage, fieldPath: diff.fieldPath, editType: diff.editType, label: diff.label }))
-  };
-}
-
-function stagedWorkflowInteractionEvents(events = []) {
-  return stagedAnalyticsArray(events).slice(-250).map((event) => ({
-    id: firstString(event?.id).slice(0, 120),
-    type: firstString(event?.type).slice(0, 120),
-    at: firstString(event?.at).slice(0, 80),
-    stage: firstString(event?.stage).slice(0, 100),
-    activeScreen: Number.isFinite(Number(event?.activeScreen)) ? Number(event.activeScreen) : null,
-    source: firstString(event?.source).slice(0, 120),
-    details: stagedAnalyticsObject(event?.details)
-  })).filter((event) => event.type);
-}
-
-function summariseStagedWorkflowInteractions(events = []) {
-  const byType = {};
-  const byStage = {};
-  events.forEach((event) => {
-    byType[event.type] = (byType[event.type] || 0) + 1;
-    const stage = event.stage || 'unknown';
-    byStage[stage] = byStage[stage] || {};
-    byStage[stage][event.type] = (byStage[stage][event.type] || 0) + 1;
-  });
-  return {
-    totalEvents: events.length,
-    byType,
-    byStage,
-    stageTransitionCount: events.filter((event) => ['stage_entered', 'stage_left', 'stage_revisited'].includes(event.type)).length,
-    candidateDecisionCount: events.filter((event) => ['action_candidate_accepted', 'action_candidate_dismissed'].includes(event.type)).length,
-    manualActionEventCount: events.filter((event) => /^manual_action_|^action_row_/.test(event.type)).length,
-    ownerCorrectionCount: events.filter((event) => event.type === 'action_owner_changed').length,
-    pdfEventCount: events.filter((event) => /^pdf_/.test(event.type)).length,
-    resumeCount: events.filter((event) => event.type === 'draft_resumed').length,
-    errorEventCount: events.filter((event) => /(?:failed|error|retry|timeout)/.test(event.type)).length,
-    abandonmentSignalCount: events.filter((event) => event.type === 'workflow_abandonment_signal').length
-  };
-}
-
-function stagedReviewProjectKey(details = {}, draftId = '') {
-  return firstString(
-    details.projectKey,
-    details.projectName,
-    details.meetingTitle,
-    draftId,
-    'unscoped'
-  ).slice(0, 500);
-}
-
 
 function runUploadMiddleware(req, res, middleware) {
   return new Promise((resolve, reject) => {
@@ -1004,13 +622,6 @@ function buildTestTranscriptResponse(req, transcript, result) {
   }
 
   return response;
-}
-
-function firstString(...values) {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return '';
 }
 
 function linesFrom(value) {
@@ -8369,10 +7980,6 @@ router.post('/jobs/run-once', async (req, res) => {
     return res.status(500).json({ success: false, error: error.message || 'Job runner failed.' });
   }
 });
-
-function meetingMinutesAgentText(value, maxLength = 600) {
-  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, maxLength);
-}
 
 const MEETING_AGENT_OBJECTIVE_STYLE = 'Write each objective as one plain aim with one leading verb and the concrete subject the meeting named - "Agree the site audit travel arrangements", "Confirm who completes the auditor training". Never pair near-synonymous verbs ("plan and prepare", "review and assess"), never repeat the verb as a noun ("prepare ... preparation activities"), and never pad with generic tails such as "including various activities", "and related matters" or "as needed". If two aims are genuinely separate, write two objectives.';
 
