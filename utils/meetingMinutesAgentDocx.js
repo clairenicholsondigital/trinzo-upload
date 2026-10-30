@@ -2,7 +2,7 @@
 
 const JSZip = require('jszip');
 const { orderedFilingSupportingDetails } = require('./meetingMinutesSupportingDetails');
-const { timingForPublication } = require('./meetingMinutesAgentV2');
+const { timingForPublication } = require('./meetingMinutesTimingPublication');
 const { formatCalendarDate, formatTimingLabel } = require('./meetingMinutesTiming');
 const { normaliseDatePhrasesDeep } = require('./spokenForms');
 function formatUkDate(value) {
