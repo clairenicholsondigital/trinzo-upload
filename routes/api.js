@@ -18291,37 +18291,13 @@ const parallelMinutesRunner = parallelMinutes.createRunner({
   bootId: MEETING_AGENT_BOOT_ID
 });
 
-async function startInitialMeetingAgentProcessing(draft, req) {
-  if (parallelMinutes.isParallel(draft)) return parallelMinutesRunner.start(draft, req.authUser?.userId);
-  const stage = 'discussion';
-  const generation = {
-    stage,
-    semanticPolicy: captureSemanticPolicy(),
-    discussionCoveragePolicy: captureDiscussionCoveragePolicy(),
-    status: 'running',
-    bootId: MEETING_AGENT_BOOT_ID,
-    startedAt: new Date().toISOString(),
-    pass: meetingMinutesAgentHybridEnabled() ? 'starting' : '',
-    message: meetingMinutesAgentHybridEnabled() ? 'Processing the transcript in the background…' : '',
-    completedPasses: [],
-    callTimings: [],
-    degradedSources: [],
-    error: ''
-  };
-  const saved = await saveMeetingAgentDraft(draft, req, {
-    generation,
-    // Keep the upload acknowledgement visible until the reviewer chooses to
-    // move into the staged workflow. The background stage still advances the
-    // draft when it completes.
-    currentStep: 0,
-    selectedStep: 0
-  });
-  setImmediate(() => {
-    runMeetingAgentBackgroundStage(saved.draftId, req.authUser?.userId, stage)
-      .catch((error) => safeLogError('[meeting-minutes-agent/initial-background] failed', error));
-  });
-  return saved;
-}
+const { start: startInitialMeetingAgentProcessing } = require('../utils/meetingMinutesProcessing').createInitialMinutesProcessor({
+  saveDraft: saveMeetingAgentDraft,
+  runOriginalStage: runMeetingAgentBackgroundStage,
+  parallelRunner: parallelMinutesRunner,
+  hybridEnabled: meetingMinutesAgentHybridEnabled,
+  bootId: MEETING_AGENT_BOOT_ID
+});
 
 router.post('/meeting-minutes-agent/check-duplicate', requireAuth, async (req, res) => {
   try {
