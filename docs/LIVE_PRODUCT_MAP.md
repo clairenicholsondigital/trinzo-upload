@@ -262,6 +262,39 @@ with 301 for the API before extraction. Editing the remaining API selects 306;
 the five added focused files account for that increase. These are file-selection
 counts, not assertions about runtime test cases or eliminated coverage.
 
+The next route boundaries separate project context (five handlers) and knowledge
+(seven handlers) into `routes/projectContext.js` and `projectKnowledge.js`, using
+real database and knowledge service owners. Recursive request-flag parsing now
+has one shared owner in `utils/requestFlags.js`. The knowledge handlers had eleven
+calls to an unbound `sendJson`; the existing response utility now supplies that
+binding, restoring the intended JSON validation/not-found/error responses. No
+successful response or provider limit changes.
+
+Generic job management lives in `routes/generationJobs.js`; historical meeting-job
+management lives in `routes/meetingMinutesJobs.js`. Its list and command registrars
+stay at their original router positions. Job submission, generation runners,
+background caches and source-job resume handling remain with their existing
+owners. Staged retries use the same explicit launch callback.
+
+`utils/meetingMinutesJobEdits.js` owns historical job-result editing. It preserves
+unknown payload fields, the first original-output snapshot, metadata fallbacks,
+row limits, grouped/flat result formats, reviewer identity and the single edit
+timestamp. The route retains authentication, completion checks, validation and
+persistence. Existing frontend-source contracts follow these real owners while
+still asserting API registration. Direct route tests import neither the API nor
+V2; the existing mounted authentication check covers every moved endpoint.
+
+These two completed plan stages move 24 handlers and reduce `routes/api.js` from
+18,135 to 17,707 lines. All 94 effective registrations keep their order and
+middleware. This is structural cleanup, with one narrow missing-response-helper
+fix; it does not delete features or reduce the historical regression inventory.
+A hypothetical edit to a new route owner selects 183–184 JavaScript files,
+compared with 306 for its former API owner. The remaining API selects 310;
+the four added compact-core files account for that increase. Shared API/V2
+policy coupling is unchanged by this route-only batch.
+The remaining plan is shared API/V2 policy ownership, publication/Library/exports,
+reviewer save/history, generation lifecycle and verified redundancy removal.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456
