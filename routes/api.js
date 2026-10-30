@@ -262,8 +262,6 @@ const {
   normaliseFlag: normaliseMeetingAgentFlag,
   coverageFlags,
   surroundingEvidence,
-  buildProposal,
-  applyProposal,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
   normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
   timingForPublication: meetingAgentTimingForPublication,
@@ -368,6 +366,7 @@ const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProj
 const { generateMeetingMinutesAgentDocx, docxFilename, timingLabel: meetingAgentTimingLabel } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
+const { buildProposal, applyProposal } = require('../utils/meetingMinutesProposals');
 const parallelMinutes = require('../utils/meetingMinutesParallel');
 const router = express.Router();
 

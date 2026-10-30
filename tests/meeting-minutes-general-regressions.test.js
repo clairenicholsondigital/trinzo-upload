@@ -1,7 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { applyProposal, buildProposal, applyRequesterOwnerRule, normaliseAgentResult, ownerAssignedInMeeting } = require('../utils/meetingMinutesAgentV2');
+const { applyRequesterOwnerRule, normaliseAgentResult, ownerAssignedInMeeting } = require('../utils/meetingMinutesAgentV2');
+const { applyProposal, buildProposal } = require('../utils/meetingMinutesProposals');
 const api = require('../routes/api').stagedEvaluation;
 const action = (id, wording, owners = ['Alex Green'], evidenceIds = ['T0001']) => ({
   id, action: wording, owners, evidenceIds, reviewFlagIds: [],
