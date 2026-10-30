@@ -1,6 +1,7 @@
 'use strict';
 
 const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
+const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag } = require('./meetingMinutesReviewFlags');
 
 const {
   actionCandidateInventory,
@@ -10,7 +11,6 @@ const {
   coverageFlags,
   normaliseAgentResult,
   resolveEvidence,
-  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
 } = require('./meetingMinutesAgentV2');
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');
 const { safeLogError } = require('./apiErrors');

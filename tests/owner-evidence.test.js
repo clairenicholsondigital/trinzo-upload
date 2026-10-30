@@ -7,10 +7,10 @@ const V = require('../utils/meetingMinutesAgentV2');
 const { createMeetingMinutesPeopleEvidence } = require('../utils/meetingMinutesPeopleEvidence');
 const { applyRequesterOwnerRule, ownerAssignedInMeeting } = createMeetingMinutesPeopleEvidence({
   evidenceContextFor: V.evidenceContextFor,
-  normaliseFlag: V.normaliseFlag,
   actionEvidenceDisposition: V.actionEvidenceDisposition
 });
-const { reconcileRecordFlags, normaliseSourceUnits } = V;
+const { reconcileRecordFlags } = require('../utils/meetingMinutesReviewFlags');
+const { normaliseSourceUnits } = V;
 
 const unit = (id, speaker, text) => ({ id, speaker, text, classification: 'keep' });
 

@@ -13,7 +13,6 @@ function peopleEvidence() {
   const V = require('../utils/meetingMinutesAgentV2');
   return createMeetingMinutesPeopleEvidence({
     evidenceContextFor: V.evidenceContextFor,
-    normaliseFlag: V.normaliseFlag,
     actionEvidenceDisposition: V.actionEvidenceDisposition
   });
 }

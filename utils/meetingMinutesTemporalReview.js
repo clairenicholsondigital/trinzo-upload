@@ -2,6 +2,7 @@
 
 const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutesReviewAccounting');
 const { formatTimingLabel, isValidCalendarDate } = require('./meetingMinutesTiming');
+const { normaliseFlag } = require('./meetingMinutesReviewFlags');
 const V = require('./meetingMinutesAgentV2');
 const Binding = require('./meetingMinutesTemporalBinding');
 const { convertSpokenNumbers } = require('./spokenNumbers');
@@ -513,7 +514,7 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
     indexed.states.set(item.id, state);
     if (!['supported', 'corrected'].includes(state.status)) {
       rejected.push({ id: item.id, reason: state.reason });
-      const flag = V.normaliseFlag({ kind: 'timing',
+      const flag = normaliseFlag({ kind: 'timing',
         message: `Cannot verify the timing in the ${item.field === 'executiveSummary' ? 'executive summary' : 'meeting objective'}: "${V.text(item.row, 260)}". ${state.reason.replace(/_/g, ' ')}. Confirm it against the current Discussion and Actions.`, evidenceIds: item.evidenceIds }, flags.length);
       flags.push({ ...flag, temporalField: item.field });
     }

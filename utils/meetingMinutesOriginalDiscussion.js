@@ -3,6 +3,7 @@
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
 const { refereeDiscussionTargetId } = require('./meetingMinutesResponseContracts');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
+const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags } = require('./meetingMinutesReviewFlags');
 
 const {
   annotateMeetingAgentPassImpact,
@@ -24,7 +25,6 @@ const {
     flagConflictingDiscussionRoles,
     groundRowAttributions,
     groundUnstatedDiscussionMonths,
-    isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag,
     labelSupersededContext,
     answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
     decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
@@ -33,7 +33,6 @@ const {
     openQuestionCheckPrompt,
     promoteMaterialObjectionDetails,
     promoteNamedFactDetails,
-    reconcileUsefulRecordFlags,
     resolveEvidence,
     supersededCheckItems,
     supersededVerdicts,

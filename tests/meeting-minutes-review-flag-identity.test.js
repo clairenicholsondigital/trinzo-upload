@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
+const reviewFlags = require('../utils/meetingMinutesReviewFlags');
 const { actionTimingIssueFlag } = require('../utils/meetingMinutesTimingFlags');
 
 // Exercise the actual save/load/undo handlers and JSON payload serializer with
@@ -264,6 +265,9 @@ test('repeated unresolved validation still collapses to one automatic warning', 
 });
 
 test('an exactly repeated deterministic system flag keeps its reviewed state in the result and registry', async () => {
+  for (const name of ['normaliseFlag', 'reconcileRecordFlags', 'reconcileUsefulRecordFlags', 'isSalientCoverageFlag', 'isUsefulReviewFlag']) {
+    assert.equal(V[name], reviewFlags[name], `${name} must have one shared owner`);
+  }
   const units = [{ id: 'T0001', speaker: 'Morgan Taylor', text: 'I will review the inspection report.', classification: 'keep' },
     { id: 'T0002', speaker: 'Morgan Taylor', text: 'I will call the courier tomorrow.', classification: 'keep' }];
   const options = { meetingDate: '2026-10-21', dedupeActions: false };
@@ -277,9 +281,18 @@ test('an exactly repeated deterministic system flag keeps its reviewed state in 
     assert.equal(out.reviewFlags.length, 1);
     assert.equal(out.reviewFlags[0].id, warning.id, 'the regenerated warning uses this exact deterministic ID');
     assert.equal(out.reviewFlags[0].status, status);
-    const recovered = V.reconcileRecordFlags({ actions: out.actions }, []);
+    const recovered = reviewFlags.reconcileRecordFlags({ actions: out.actions }, []);
     assert.equal(recovered.flags[0].status, status, 'the registry must recover the reviewed value after regeneration');
     assert.equal(recovered.flags[0].correctionNote, 'Reviewed the source binding.');
+    const directlyReviewed = reviewFlags.normaliseFlag({ ...warning, status, correctionNote: 'Reviewed the source binding.' });
+    assert.equal(V.reconcileRecordFlags({ actions: out.actions }, []).flags[0], directlyReviewed,
+      'compatibility callers recover the flag remembered by a direct owner caller');
+    const context = V.evidenceContextFor(units);
+    assert.equal(V.evidenceContextFor(units), context, 'evidence context is memoized before the reset');
+    assert.deepEqual(V.clearMeetingMinutesAgentV2MemoryCaches(), { evidenceContexts: 'reset' });
+    assert.notEqual(V.evidenceContextFor(units), context, 'the reset discards the evidence context');
+    assert.equal(reviewFlags.reconcileRecordFlags({ actions: out.actions }, []).flags[0], directlyReviewed,
+      'resetting evidence contexts preserves the shared review flag registry');
 
     reset([]);
     saved.sourceUnits = copy(units);

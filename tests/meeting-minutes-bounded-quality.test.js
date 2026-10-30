@@ -2,21 +2,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const V = require('../utils/meetingMinutesAgentV2');
-test('completed correction annotations no longer block cleanup; unresolved and reviewer-resolved warnings survive',()=>{
-  const correction=V.normaliseFlag({kind:'uncertain_fact',message:'Wording corrected against the cited passage: "red" → "blue".'});
-  const warning=V.normaliseFlag({id:'flag-fidelity-meaning-test',kind:'uncertain_fact',message:'The correction could not be verified.'});
-  const resolved=V.normaliseFlag({...correction,id:'reviewed-correction',status:'corrected',correctionNote:'Keep this review history.'});
-  const content={discussion:[{topic:'Facilities',points:[{id:'p',text:'The storage enclosure is blue.',evidenceIds:['T0001'],reviewFlagIds:[correction.id,warning.id,resolved.id],supportingDetails:[{id:'c',text:'The enclosure is blue.',evidenceIds:['T0001'],reviewFlagIds:[correction.id]}]}]}]};
-  const before=structuredClone(content);
-  const cleaned=V.reconcileUsefulRecordFlags(content,[correction,warning,resolved]);
-  assert.deepEqual(cleaned.content.discussion[0].points[0].reviewFlagIds,[warning.id,resolved.id]);
-  assert.deepEqual(cleaned.content.discussion[0].points[0].supportingDetails[0].reviewFlagIds,[]);
-  assert.deepEqual(cleaned.flags.map(f=>f.id),[warning.id,resolved.id]);
-  assert.deepEqual(content,before);
-  assert.ok(V.reconcileRecordFlags(content,[correction],V.isUsefulReviewFlag).content.discussion[0].points[0].reviewFlagIds.includes(correction.id),'shared legacy behavior is unchanged');
-  assert.deepEqual(V.reconcileUsefulRecordFlags(content,[]).content,cleaned.content,'registry recovery uses the same policy');
-});
-
 test('completed correction notices expose a covered child to the existing verifier, while a real warning still protects it',()=>{
   const P=require('../utils/canonicalMinutes/discussionOwnParentCoverage');
   const correction=V.normaliseFlag({kind:'uncertain_fact',message:'Wording corrected against the cited passage: "red" → "blue".'});

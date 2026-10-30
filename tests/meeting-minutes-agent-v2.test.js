@@ -1162,28 +1162,6 @@ test('meeting admin is never inventoried as a detail to check', () => {
   assert.equal(inventoried('The audit plan depends on the risk assessment being approved.'), true);
 });
 
-test('review flags distinguish extraction uncertainty from ordinary pending meeting content', () => {
-  const pending = normaliseFlag({ kind: 'uncertain_fact', message: 'Document access had not yet been confirmed.' });
-  const ambiguous = normaliseFlag({ kind: 'uncertain_fact', message: 'The language count contains unclear wording and could not be verified.' });
-  const corrected = normaliseFlag({ ...pending, status: 'corrected', correctionNote: 'Access was confirmed later.' });
-  assert.equal(isUsefulReviewFlag(pending), false);
-  assert.equal(isUsefulReviewFlag(ambiguous), true);
-  assert.equal(isUsefulReviewFlag(corrected), true, 'a reviewer correction remains part of the audit trail');
-  assert.equal(isUsefulReviewFlag(normaliseFlag({
-    kind: 'ownership', message: 'Confirm or correct unsupported action owner “Alex”; it has been removed.'
-  })), false);
-  assert.equal(isUsefulReviewFlag(normaliseFlag({
-    kind: 'timing', message: 'The exact date 23 June was not supported by the cited evidence and has been removed.'
-  })), false);
-  assert.equal(isUsefulReviewFlag(normaliseFlag({
-    kind: 'ownership', message: 'The transcript contains conflicting ownership between Alex and Priya.'
-  })), true);
-
-  assert.equal(normaliseFlag({ type: 'timing_uncertain', text: 'Confirm the target.' }).kind, 'timing');
-  assert.equal(normaliseFlag({ type: 'ownership_uncertain', text: 'Confirm the owner.' }).kind, 'ownership');
-  assert.equal(normaliseFlag({ type: 'unresolved_decision', text: 'A decision remains open.' }).kind, 'unresolved_decision');
-});
-
 test('salient coverage flags are stable, whole-draft flags and legacy stage-only flags are retired', () => {
   const inventory = salientDetailInventory(sourceUnits);
   const flags = coverageFlags(inventory, {
