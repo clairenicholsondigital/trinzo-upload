@@ -36,16 +36,18 @@ function draft() {
 }
 function generator(reply, retryReply) {
   const calls = [];
-  const run = createOriginalEditStage({ ...services,
-    askPowerAutomateMeetingMinutesAgent: async prompt => {
-      calls.push({ kind: 'primary', prompt });
-      return structuredClone(reply);
-    },
-    askPowerAutomateMeetingMinutesAgentWithRetry: async (prompt, options) => {
-      calls.push({ kind: 'review', prompt, options });
-      return { result: await retryReply(prompt, options) };
-    }
+  const transport = require('../utils/meetingMinutesAgentTransport');
+  const primary = test.mock.method(transport, 'askPowerAutomateMeetingMinutesAgent', async prompt => {
+    calls.push({ kind: 'primary', prompt });
+    return structuredClone(reply);
   });
+  const review = test.mock.method(transport, 'askPowerAutomateMeetingMinutesAgentWithRetry', async (prompt, options) => {
+    calls.push({ kind: 'review', prompt, options });
+    return { result: await retryReply(prompt, options) };
+  });
+  let run;
+  try { run = createOriginalEditStage(services); }
+  finally { primary.mock.restore(); review.mock.restore(); }
   return { run, calls };
 }
 

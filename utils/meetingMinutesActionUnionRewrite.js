@@ -2,7 +2,7 @@
 
 const { normaliseSourceUnits } = require('./meetingMinutesSource');
 const { commitmentQuoteTiesOwner } = require('./meetingMinutesActionSourceMatching');
-const { readInventory, clone, hash, stable } = require('./meetingMinutesActionInventory');
+const { readInventory, clone, hash } = require('./meetingMinutesActionInventory');
 
 const { normaliseActions } = require('./meetingMinutesActionNormalization');
 const B = require('./canonicalMinutes/discussionBoundedRewrite');

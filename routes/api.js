@@ -1,16 +1,17 @@
+const { askPowerAutomateMeetingMinutesAgent, askPowerAutomateMeetingMinutesAgentWithRetry, meetingAgentFlowUrlFor, meetingAgentCallContext, parseJsonLenient, MEETING_AGENT_RETRY_MS } = require('../utils/meetingMinutesAgentTransport');
 const { registerMeetingMinutesReviewerParallelProposals, registerMeetingMinutesReviewerSave, registerMeetingMinutesReviewerSource, registerMeetingMinutesReviewerDecisionsHistory } = require('./meetingMinutesReviewer');
-const { meetingAgentDraftPayload, meetingAgentWithoutDanglingFlagRefs, meetingAgentObjectiveRecords, normaliseMeetingAgentQualityState, normaliseMeetingAgentGeneration, meetingAgentReviewSnapshot, MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS, meetingAgentRestoreReviewSnapshot, meetingAgentReviewHistoryEntry, meetingAgentDerivedStaleStages, meetingAgentDiscussionUsesDateAnchor, meetingAgentStaleStagesAfterGeneration, assertMeetingAgentDateInput, reopenFlagsOfReAddedItems } = require('../utils/meetingMinutesReviewerState');
+const { meetingAgentDraftPayload, normaliseMeetingAgentQualityState, normaliseMeetingAgentGeneration, meetingAgentReviewSnapshot, meetingAgentReviewHistoryEntry, meetingAgentDerivedStaleStages, meetingAgentDiscussionUsesDateAnchor, meetingAgentStaleStagesAfterGeneration, assertMeetingAgentDateInput, reopenFlagsOfReAddedItems } = require('../utils/meetingMinutesReviewerState');
 const { saveMeetingAgentDraft, normaliseMeetingAgentDraftChanges } = require('../utils/meetingMinutesDraftPersistence');
-const { rebaseMeetingAgentProposal, automaticMeetingAgentProposalReview, destructiveActionEdit, proposalOwnersOf, proposalTimingStated, duplicateMeetingAgentActionModification, meetingAgentEditableActionSignature, retainedDocumentReferenceReviewFlags, resolveMeetingAgentProposalFlags } = require('../utils/meetingMinutesProposalReview');
-const { finaliseMeetingAgentTimingProposal, finaliseActionTimings, reconcileSiblingTimingDecisions } = require('../utils/meetingMinutesProposalTiming');
+const { rebaseMeetingAgentProposal, automaticMeetingAgentProposalReview, destructiveActionEdit, proposalOwnersOf, duplicateMeetingAgentActionModification, meetingAgentEditableActionSignature, retainedDocumentReferenceReviewFlags, resolveMeetingAgentProposalFlags } = require('../utils/meetingMinutesProposalReview');
+const { finaliseMeetingAgentTimingProposal } = require('../utils/meetingMinutesProposalTiming');
 const { salientDetailInventory } = require('../utils/meetingMinutesAssessmentEvidence');
 const {
   candidatePromptPack
 } = require('../utils/meetingMinutesCandidatePack');
 const { MEETING_AGENT_COMMITMENT_LANGUAGE, MEETING_AGENT_DISCUSSION_COVERAGE_RULE, MEETING_AGENT_SMALL_TALK_RULE, MEETING_AGENT_TIMING_RULE, MEETING_AGENT_UNSPOKEN_MONTH_RULE, meetingAgentSteerText, meetingMinutesAgentPrimaryPrompt, meetingMinutesAgentPrompt } = require('../utils/meetingMinutesAgentPrompts');
-const { MEETING_AGENT_MAX_STEP, MEETING_AGENT_STAGE_STEP, meetingAgentStageHasContent, meetingAgentStageInputFingerprint, meetingAgentUpstreamFingerprint, meetingMinutesAgentHybridEnabled, meetingMinutesAgentSpeculativePipelineEnabled } = require('../utils/meetingMinutesStageProtocol');
+const { MEETING_AGENT_STAGE_STEP, meetingAgentStageHasContent, meetingAgentStageInputFingerprint, meetingAgentUpstreamFingerprint, meetingMinutesAgentHybridEnabled, meetingMinutesAgentSpeculativePipelineEnabled } = require('../utils/meetingMinutesStageProtocol');
 const { MEETING_AGENT_BOOT_ID, meetingAgentActionsPrewarmState, meetingAgentGenerationState, meetingAgentNextSpeculativeStage, meetingAgentSpeculationFor, meetingAgentSpeculationState, privateActionPrimaryCache, privateStageSpeculations, privateStagedCandidateCache, privateStagedCandidateCacheKey, prunePrivateActionPrimaryCache, prunePrivateStagedCandidateCache, pruneStageSpeculations, publicMeetingAgentGeneration, speculationKey, meetingAgentActionPrimaryPromptForDraft } = require('../utils/meetingMinutesGenerationRuntime');
-const { MEETING_AGENT_ITEM_REMOVED_NOTE, buildMeetingInsights, completeActionSuggestionText, filterIncompleteProposalChanges, isVagueReconstructedAction, meetingAgentProposalFlagMatchesChange, meetingAgentReferencedFlagIds, meetingAgentWithLegacyDateReview, publicMeetingAgentDraft, reconcileMeetingAgentOrphanFlags } = require('../utils/meetingMinutesDraftView');
+const { buildMeetingInsights, completeActionSuggestionText, filterIncompleteProposalChanges, isVagueReconstructedAction, meetingAgentProposalFlagMatchesChange, meetingAgentReferencedFlagIds, publicMeetingAgentDraft, reconcileMeetingAgentOrphanFlags } = require('../utils/meetingMinutesDraftView');
 const {
   loadOwnedMeetingAgentDraft,
   sendMeetingAgentFailure
@@ -23,8 +24,7 @@ const {
   consolidateSupportingDetails
 } = require('../utils/meetingMinutesDiscussionSelection');
 const {
-  meetingAgentDraftForPdf, hasMeetingAgentReviewerContent, normaliseMeetingAgentMinuteNumbers,
-  meetingAgentPublicationContent, removeHeadingFragmentsFromDiscussion,
+  meetingAgentDraftForPdf, hasMeetingAgentReviewerContent, meetingAgentPublicationContent, removeHeadingFragmentsFromDiscussion,
   removeMinorCommunicationCourtesyDiscussion, removeWithheldGeneratedDiscussion,
   stripMinorCommunicationCourtesy, completeDiscussionSuggestionText, meetingAgentDraftForDocx,
   minorCommunicationCourtesy, looksLikeStandaloneHeadingFragment
@@ -33,15 +33,13 @@ const {
   discussionStructureDiagnostics, finalisePromotedDiscussion, promoteAllDiscussionDetails
 } = require('../utils/meetingMinutesDiscussionFinalization');
 const {
-  meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash, meetingAgentSummaryTextHash,
-  groundedObjectives, groundedObjectiveRecords, mergeGroundedObjectiveRecords, groundedExecutiveSummary
+  meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash, groundedObjectives, groundedObjectiveRecords, mergeGroundedObjectiveRecords, groundedExecutiveSummary
 } = require('../utils/meetingMinutesSummaryPublication');
 const {
   hybridCandidatePack, meetingAgentCandidateTimingSignature, meetingMinutesAgentRefereeContract,
   compactMeetingAgentRefereeCandidate, effectiveDiscussionRefereeDispositions,
   meetingAgentRefereeCandidates
 } = require('../utils/meetingMinutesRefereeCandidates');
-const { PAYLOAD_VERSION: MEETING_AGENT_PAYLOAD_VERSION } = require('../utils/meetingMinutesDraftStorage');
 const { requiresDocumentReferenceReview } = require('../utils/meetingMinutesAssessmentEvidence');
 
 const {
@@ -76,7 +74,7 @@ const { hybridRecordText, hybridTokenOverlap, hybridContentTokenOverlap } = requ
 const { sanitiseDetails: sanitiseMeetingAgentDetails, meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('../utils/meetingMinutesDraftContext');
 const {
   normaliseFlag: normaliseMeetingAgentFlag, isSalientCoverageFlag: isMeetingAgentCoverageFlag,
-  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileRecordFlags, reconcileUsefulRecordFlags,
+  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags,
   mergeMeetingAgentFlags, meetingAgentProposalReviewFlagId, meetingAgentFlagUntouched, coverageFlags
 } = require('../utils/meetingMinutesReviewFlags');
 const {
@@ -116,13 +114,11 @@ const {
   meetingAgentStageContentConflicts,
   meetingAgentStagePersistenceChanges
 } = require('../utils/meetingMinutesStagePersistence');
-const { normaliseMeetingAgentGeneration: normaliseGeneration, meetingAgentPassTimingPolicy, meetingAgentFailureClass, meetingAgentResultCounts, meetingAgentMaterialPassImpact, annotateMeetingAgentPassImpact, meetingAgentCallPerformance, meetingAgentExecutionTelemetry } = require('../utils/meetingMinutesAgentGeneration');
+const { meetingAgentPassTimingPolicy, meetingAgentFailureClass, meetingAgentResultCounts, meetingAgentMaterialPassImpact, annotateMeetingAgentPassImpact, meetingAgentCallPerformance, meetingAgentExecutionTelemetry } = require('../utils/meetingMinutesAgentGeneration');
 const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
 const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
-const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
-const { filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
 const optionalReview = require('../utils/meetingMinutesOptionalReview');
 const citedFilingAliases = require('../utils/meetingMinutesCitedFilingAliases');
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
@@ -132,7 +128,6 @@ const discussionMainPoint = require('../utils/canonicalMinutes/discussionMainPoi
 const discussionPointDecision = require('../utils/canonicalMinutes/discussionPointDecisionCoverage');
 const discussionActionSeparation = require('../utils/canonicalMinutes/discussionActionSeparation');
 const minimalFidelityRepair = require('../utils/meetingMinutesMinimalFidelityRepair');
-const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
 const mammoth = require('mammoth');
@@ -142,8 +137,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
-const { refereeFailureSnapshot, appendRefereeFailureAudit } = require('../utils/meetingMinutesRefereeFailureAudit');
-const { AsyncLocalStorage } = require('node:async_hooks');
+const { appendRefereeFailureAudit } = require('../utils/meetingMinutesRefereeFailureAudit');
 const { runProjectKnowledgeRetrieval } = require('../utils/knowledge');
 
 const {
@@ -158,10 +152,9 @@ const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate')
 const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
 const { isActionOnlySemanticScope, captureSemanticPolicy, normaliseSemanticPolicy, semanticPolicyForRun, semanticPolicyForFingerprint } = require('../utils/meetingMinutesSemanticPolicy');
 const { normaliseDiscussionCoveragePolicy, captureDiscussionCoveragePolicy, discussionCoveragePolicyForRun, discussionCoveragePolicyForFingerprint } = require('../utils/meetingMinutesDiscussionCoveragePolicy');
-const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
+const { sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
 const { validateReconciliationReceipt, rebindReconciliationReceipt } = require('../utils/canonicalMinutes/actionSemanticReconciliation');
-const { markMeetingAgentReviewerEdits } = require('../utils/meetingMinutesReviewerEdits');
 const { preserveCopiedReviewerContent } = require('../utils/meetingMinutesReviewedAiEdits');
 const {
   assertStagedSourceIdentity,
@@ -198,7 +191,6 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { normalisePresentationCurrency } = require('../utils/canonicalMinutes/textNormalisation');
 const { clearMiniLMProfileMemoryCache } = require('../utils/canonicalMinutes/minilm');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
@@ -239,7 +231,6 @@ const { sameOrNestedActionDeliverable, sameCanonicalDocumentWorkflow } = require
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 
-const { numericActionEditIssue } = require('../utils/meetingMinutesActionNumericPreservation');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const actionDiagnostics = require('../utils/meetingMinutesActionDiagnostics');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
@@ -288,7 +279,6 @@ const {
   listMeetingMinutesAgentDraftPage,
   linkMeetingMinutesAgentDraftToProject,
   unlinkMeetingMinutesAgentDraftFromProject,
-  updateMeetingMinutesAgentDraft,
   deleteMeetingMinutesAgentDraft,
   listTerminologyQaDecisions,
   saveTerminologyQaDecision,
@@ -369,9 +359,8 @@ const {
   supersededVerdicts
 } = require('../utils/meetingMinutesAgentV2');
 const {
-  normaliseExecutiveSummary, isIdeaOnlyContemplation,
+  isIdeaOnlyContemplation,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
-  normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
   isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag
 } = require('../utils/meetingMinutesText');
 const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
@@ -382,14 +371,14 @@ const {
 const { correctnessChecksEnabled } = require('../utils/meetingMinutesEvidenceChecks');
 const { removeDiscussionActionDuplicates } = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
-const { normaliseKeptActionIds, normaliseKeptActionOccurrenceIds, normaliseRemovedActions, actionReviewCounts } = require('../utils/actionReviewState');
-const { validOccurrenceId, actionProvenanceSignature, findActionOccurrenceIndex, preserveActionIdentity, assignGeneratedActionIdentities } = require('../utils/meetingMinutesActionIdentity');
-const { includedSections, summaryStageIsEmpty } = require('../utils/includedSections');
+const { normaliseKeptActionOccurrenceIds, actionReviewCounts } = require('../utils/actionReviewState');
+const { actionProvenanceSignature, findActionOccurrenceIndex, preserveActionIdentity, assignGeneratedActionIdentities } = require('../utils/meetingMinutesActionIdentity');
+const { summaryStageIsEmpty } = require('../utils/includedSections');
 const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProjectReport } = require('../utils/minutesForProjectUpdate');
 const { generateMeetingMinutesAgentDocx, docxFilename } = require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
-const { buildProposal, applyProposal } = require('../utils/meetingMinutesProposals');
+const { buildProposal } = require('../utils/meetingMinutesProposals');
 const parallelMinutes = require('../utils/meetingMinutesParallel');
 const { createOriginalMinutesStages } = require('../utils/meetingMinutesOriginalStages');
 const { createSummaryTimingVerifier } = require('../utils/meetingMinutesOriginalSummary');
@@ -1199,44 +1188,6 @@ function cleanTranscriptContentLine(line) {
     .trim();
 }
 
-function extractOverallTopicsFromTranscript(transcriptText) {
-  const text = String(transcriptText || '');
-  const topics = [];
-  for (const rule of STAGED_TOPIC_RULES) {
-    if (rule.patterns.some((pattern) => pattern.test(text))) {
-      pushUniqueTopic(topics, rule.topic);
-    }
-  }
-
-  const candidateLines = text
-    .split(/\r?\n/)
-    .map(cleanTranscriptContentLine)
-    .filter((line) => line.length >= 22 && line.length <= 180)
-    .slice(0, 180);
-
-  for (const line of candidateLines) {
-    const matches = [
-      line.match(/\b(?:around|about|regarding|on|for|with|covering)\s+([A-Za-z][A-Za-z0-9 /&-]{5,54})(?:[,.]|$)/i),
-      line.match(/\b(?:the|this)\s+([A-Za-z][A-Za-z0-9 /&-]{5,54})\s+(?:piece|section|process|update|review|issue|risk)\b/i)
-    ].filter(Boolean);
-
-    for (const match of matches) {
-      const raw = String(match[1] || '')
-        .replace(/\b(?:and|or|the|this|that|with|from|into|then)\s*$/i, '')
-        .trim();
-      if (!raw || raw.split(/\s+/).length > 7) continue;
-      pushUniqueTopic(topics, raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase());
-    }
-    if (topics.length >= 8) break;
-  }
-
-  if (!topics.length) {
-    pushUniqueTopic(topics, 'Meeting context and decisions');
-    pushUniqueTopic(topics, 'Actions and ownership');
-  }
-
-  return topics.slice(0, 8);
-}
 
 function stringListFromAny(value, keys = []) {
   if (!value) return [];
@@ -2088,21 +2039,6 @@ function stagedDeadlineEvidenceWindows(transcriptText) {
   }));
 }
 
-function inferredDeadlineForStagedAction(action, transcriptText) {
-  const keywords = stagedActionKeywords(action);
-  if (keywords.length < 3) return '';
-  let best = { score: 0, deadline: '' };
-  for (const item of stagedDeadlineEvidenceWindows(transcriptText)) {
-    const deadline = deadlineFromActionEvidence(item.window);
-    if (!deadline) continue;
-    const lower = item.window.toLowerCase();
-    const overlap = keywords.filter((word) => lower.includes(word)).length;
-    const hasActionCue = /\b(?:will|i'll|i will|we will|can you|could you|please|need to|needs to|follow[- ]?up|action|deadline|by|before)\b/i.test(item.window);
-    const score = overlap + (hasActionCue ? 1 : 0);
-    if (score > best.score && overlap >= 3 && score >= 4) best = { score, deadline };
-  }
-  return best.deadline || '';
-}
 
 function normaliseDeadlineKey(value) {
   return cleanStagedGeneratedLine(value || '')
@@ -2501,58 +2437,6 @@ async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
   }
 }
 
-async function buildStagedMiniLMContext(transcript) {
-  if (!STAGED_MINILM_WORKER_URL) {
-    return {
-      ok: false,
-      output: {},
-      counts: {},
-      diagnostics: {
-        modelAvailable: false,
-        modelName: '',
-        modelReason: 'No embedding worker URL configured.'
-      }
-    };
-  }
-
-  try {
-    const result = await runPythonTranscriptScript(
-      'meeting_minutes_minilm_only.py',
-      transcript.text,
-      ['--skip-rewrite', '--skip-diagnostics'],
-      {
-        timeoutMs: STAGED_MINILM_TIMEOUT_MS,
-        env: {
-          MINUTES_MINILM_WORKER_URL: STAGED_MINILM_WORKER_URL
-        }
-      }
-    );
-    const output = result?.output && typeof result.output === 'object' ? result.output : {};
-    return {
-      ok: Boolean(result?.executed && result?.modelAvailable && Object.keys(output).length),
-      output,
-      counts: result?.counts || {},
-      diagnostics: {
-        modelAvailable: Boolean(result?.modelAvailable),
-        modelName: result?.modelName || '',
-        modelReason: result?.modelReason || '',
-        timingMs: result?.timingMs || {}
-      }
-    };
-  } catch (error) {
-    safeLogError('[Staged meeting minutes embedding context failed]', error);
-    return {
-      ok: false,
-      output: {},
-      counts: {},
-      diagnostics: {
-        modelAvailable: false,
-        modelName: '',
-        modelReason: error?.message || 'Embedding context failed.'
-      }
-    };
-  }
-}
 
 async function buildStagedEvidenceClassifierContext(transcript) {
   try {
@@ -2607,25 +2491,6 @@ async function buildStagedEvidenceClassifierContext(transcript) {
   }
 }
 
-function stagedFastContextIsUsable(stage, context) {
-  if (!context) return false;
-  if (stage === 'actions' && actionsFromEvidenceClassifier(context).length) return true;
-  if (!context.ok) return false;
-  if (stage === 'summary') {
-    const output = stagedMiniLMOutput(context);
-    return Boolean(
-      topicsFromStagedMiniLM(context).length ||
-      cleanStagedGeneratedLine(output.executiveSummary || output.meetingDescription || output.summary)
-    );
-  }
-  if (stage === 'discussion') {
-    return Boolean(discussionFromStagedMiniLM(context).length);
-  }
-  if (stage === 'actions') {
-    return Boolean(actionsFromStagedMiniLM(context).length || actionsFromEvidenceClassifier(context).length);
-  }
-  return false;
-}
 
 // buildStagedGenerationContext was the 60-line entry point of the pre-canonical staged path, deleted in the
 // Phase 5 consolidation when its last caller (runStagedSequenceForEvaluation) moved to
@@ -2706,16 +2571,13 @@ function parseStagedJsonArray(value) {
   }
 }
 
-function parseStagedReviewArray(value) {
-  return parseStagedJsonArray(value);
-}
 
 function stagedReviewContextFromRequest(req) {
   return {
-    objectives: parseStagedReviewArray(req.body?.reviewObjectives || req.query?.reviewObjectives)
+    objectives: parseStagedJsonArray(req.body?.reviewObjectives || req.query?.reviewObjectives)
       .map((item) => cleanStagedGeneratedLine(item))
       .filter(Boolean),
-    discussion: parseStagedReviewArray(req.body?.reviewDiscussion || req.query?.reviewDiscussion)
+    discussion: parseStagedJsonArray(req.body?.reviewDiscussion || req.query?.reviewDiscussion)
       .map((item) => {
         if (!item || typeof item !== 'object') return null;
         const points = uniqueCleanDiscussionItems(item.points || item.bullets || item.discussionPoints || []);
@@ -2723,7 +2585,7 @@ function stagedReviewContextFromRequest(req) {
         return topic && points.length ? { topic, points } : null;
       })
       .filter(Boolean),
-    actions: parseStagedReviewArray(req.body?.reviewActions || req.query?.reviewActions)
+    actions: parseStagedJsonArray(req.body?.reviewActions || req.query?.reviewActions)
       .map((item) => {
         if (!item || typeof item !== 'object') return null;
         return {
@@ -3373,59 +3235,6 @@ function filterDiscussionCardsByWorkstreamEvidence(cards = [], workstreamState =
   return filtered;
 }
 
-function repairDiscussionPointWorkstreamLeakage(cards = [], workstreamState = []) {
-  const states = Array.isArray(workstreamState) ? workstreamState.filter((state) => state?.workstream) : [];
-  const repaired = (Array.isArray(cards) ? cards : []).map((card) => ({ ...card, points: [] }));
-  const moved = [];
-  const dropped = [];
-  for (let cardIndex = 0; cardIndex < (Array.isArray(cards) ? cards : []).length; cardIndex += 1) {
-    const card = cards[cardIndex];
-    const currentState = findWorkstreamStateForTopic(states, card.topic);
-    for (const point of uniqueCleanDiscussionItems(card.points || card.bullets || [])) {
-      const headingRanked = repaired.map((candidate, index) => ({ index, topic: candidate.topic, score: stagedTokenSimilarity(point, candidate.topic) }))
-        .sort((left, right) => right.score - left.score);
-      const bestHeading = headingRanked[0] || { index: cardIndex, score: 0 };
-      const runnerHeading = headingRanked[1] || { score: 0 };
-      const currentHeadingScore = stagedTokenSimilarity(point, card.topic);
-      if (bestHeading.index !== cardIndex && bestHeading.score >= 0.28 && bestHeading.score - runnerHeading.score >= 0.1 && bestHeading.score >= currentHeadingScore + 0.12) {
-        repaired[bestHeading.index].points.push(point);
-        moved.push({ point, from: card.topic, to: repaired[bestHeading.index].topic });
-        continue;
-      }
-      if (currentHeadingScore < 0.12 && /\b(?:were|was)\s+(?:discussed|reviewed)\b/i.test(point) && point.split(/\s+/).length <= 12) {
-        const derivedTopic = cleanStagedGeneratedLine(point.replace(/\b(?:were|was)\s+(?:discussed|reviewed)\b.*$/i, '').replace(/[.!?]+$/, '').trim());
-        if (derivedTopic && isUsableStagedTopic(derivedTopic) && !repaired.some((candidate) => stagedTokenSimilarity(candidate.topic, derivedTopic) >= 0.45)) {
-          repaired.push({ topic: derivedTopic, points: [point], source: 'unassigned_evidence_review' });
-          moved.push({ point, from: card.topic, to: derivedTopic });
-          continue;
-        }
-      }
-      if (states.length < 2) {
-        repaired[cardIndex].points.push(point);
-        continue;
-      }
-      const ranked = states.map((state) => ({ state, score: discussionPointEvidenceFitScore(point, state) }))
-        .sort((left, right) => right.score - left.score);
-      const best = ranked[0] || { state: null, score: 0 };
-      const runnerUp = ranked[1] || { score: 0 };
-      const currentScore = currentState ? discussionPointEvidenceFitScore(point, currentState) : 0;
-      if (best.state && best.score >= 0.28 && best.score - runnerUp.score >= 0.12 && best.state !== currentState && best.score >= currentScore + 0.12) {
-        const targetIndex = repaired.findIndex((candidate) => findWorkstreamStateForTopic([best.state], candidate.topic));
-        if (targetIndex >= 0) {
-          repaired[targetIndex].points.push(point);
-          moved.push({ point, from: card.topic, to: repaired[targetIndex].topic });
-          continue;
-        }
-      }
-      if (currentScore < 0.1 && best.score >= 0.22) {
-        dropped.push({ point, from: card.topic, competingWorkstream: best.state?.workstream || '' });
-        continue;
-      }
-      repaired[cardIndex].points.push(point);
-    }
-  }
-  return { cards: repaired.filter((card) => card.points.length), moved, dropped };
-}
 
 function discussionFallbackForWorkstreamState(state, topic = '') {
   if (!state || typeof state !== 'object') return null;
@@ -3480,26 +3289,6 @@ function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetin
   return aligned.slice(0, 8);
 }
 
-function buildStagedWorkstreamCoverage(topics = [], discussion = [], workstreamState = []) {
-  return (Array.isArray(topics) ? topics : []).map((topic) => {
-    const classification = classifyStagedTopic(topic);
-    const state = findWorkstreamStateForTopic(workstreamState, topic);
-    const card = findDiscussionCardForTopic(discussion, topic);
-    const evidenceCount = Array.isArray(state?.evidence) ? state.evidence.length : 0;
-    const pointCount = Array.isArray(card?.points) ? card.points.length : 0;
-    let status = classification === 'administrative_only' ? 'administrative' : 'missing';
-    if (status !== 'administrative' && pointCount >= 2) status = 'covered';
-    else if (status !== 'administrative' && pointCount === 1) status = 'thin';
-    return {
-      topic,
-      classification,
-      evidenceCount,
-      discussionCardCount: card ? 1 : 0,
-      assignedTurnIds: Array.isArray(state?.sourceTurnIndices) ? state.sourceTurnIndices : [],
-      status
-    };
-  });
-}
 
 // buildStagedDiscussionResponse was the 134-line entry point of the pre-canonical staged path, deleted in the
 // Phase 5 consolidation when its last caller (runStagedSequenceForEvaluation) moved to
@@ -5992,19 +5781,7 @@ function withTestUpload(handler) {
   };
 }
 
-// Models on some AI Builder prompts wrap an otherwise valid JSON reply in a
-// Markdown fence. Accept that shape quietly; anything that is still not JSON
-// returns null and is rejected by the caller exactly as before.
-function parseJsonLenient(text) {
-  if (typeof text !== 'string') return null;
-  try { return JSON.parse(text); } catch { /* try the fenced form */ }
-  const cleaned = text.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  if (cleaned === text.trim() || !cleaned.startsWith('{')) return null;
-  try { return JSON.parse(cleaned); } catch { return null; }
-}
+
 
 function extractJsonFromText(text) {
   if (!text) return null;
@@ -8221,257 +7998,7 @@ function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candid
   ].join('\n\n');
 }
 
-const meetingAgentCallQueue = [];
-let meetingAgentActiveCalls = 0;
-let meetingAgentLastCallStartedAt = 0;
-let meetingAgentQueueTimer = null;
 
-// Defaults are unchanged (2 in flight, 6.5 s between starts). The clamps used
-// to pin both values regardless of the environment, so three "parallel"
-// referee batches always paid a 13 s stagger; they can now be tuned per
-// deployment and measured with the performance baseline harness.
-const MEETING_AGENT_MAX_ACTIVE_CALLS = Math.max(1, Math.min(4,
-  Number(process.env.MEETING_MINUTES_AGENT_MAX_ACTIVE_CALLS || 2)));
-const MEETING_AGENT_CALL_START_GAP_MS = Math.max(1000,
-  Number(process.env.MEETING_MINUTES_AGENT_CALL_START_GAP_MS || 6500));
-
-function drainMeetingAgentCallQueue() {
-  if (meetingAgentActiveCalls >= MEETING_AGENT_MAX_ACTIVE_CALLS || !meetingAgentCallQueue.length) return;
-  const waitMs = Math.max(0, MEETING_AGENT_CALL_START_GAP_MS - (Date.now() - meetingAgentLastCallStartedAt));
-  if (waitMs > 0) {
-    if (!meetingAgentQueueTimer) meetingAgentQueueTimer = setTimeout(() => {
-      meetingAgentQueueTimer = null;
-      drainMeetingAgentCallQueue();
-    }, waitMs);
-    return;
-  }
-  // Speculative work never delays a reviewer who is waiting on screen: a
-  // foreground request queues ahead of every background one.
-  const foregroundIndex = meetingAgentCallQueue.findIndex((entry) => !entry.background);
-  const { resolve } = meetingAgentCallQueue.splice(foregroundIndex >= 0 ? foregroundIndex : 0, 1)[0];
-  meetingAgentActiveCalls += 1;
-  meetingAgentLastCallStartedAt = Date.now();
-  resolve(() => {
-    meetingAgentActiveCalls = Math.max(0, meetingAgentActiveCalls - 1);
-    drainMeetingAgentCallQueue();
-  });
-  if (meetingAgentCallQueue.length) setTimeout(drainMeetingAgentCallQueue, MEETING_AGENT_CALL_START_GAP_MS);
-}
-
-const meetingAgentCallContext = new AsyncLocalStorage();
-
-function meetingAgentCallIsBackground() {
-  return Boolean(meetingAgentCallContext.getStore()?.background);
-}
-
-function acquireMeetingAgentCallSlot() {
-  return new Promise((resolve) => {
-    meetingAgentCallQueue.push({ resolve, background: meetingAgentCallIsBackground() });
-    drainMeetingAgentCallQueue();
-  });
-}
-
-// Which flow answers a prompt. Action discovery (prompt line 1 is the
-// ACTION_DISCOVERY marker) can go to a flow that calls the Meeting Action
-// Extractor child agent directly: traced on 2026-09-27, every flow non-answer
-// (ContentValidationError, Escalate topic, {"Done":true}, invalid_output) was
-// the parent orchestrator's own turn failing after the child had already
-// returned a full answer. Measured 2026-09-28, 5 transcripts x 5 runs per arm,
-// failures counted as empty: parent flow 75.7% of gold per call (4 of 25
-// calls non-answers, 36 s), child flow 89.4% (0 non-answers, 14 s), but two
-// child runs unioned reach only 90.4% where two parent runs reach 95.1% -
-// the parent's variance is worth keeping. One parent leg unioned with one
-// child leg: 93.2% with no retries. So by default only the second discovery
-// leg ('actions:primary-2') goes to the direct flow;
-// POWER_AUTOMATE_ACTION_DISCOVERY_ROUTE=all sends both. Everything else keeps
-// the main flow. An unset direct URL means no change.
-function meetingAgentFlowUrlFor(prompt = '', options = {}) {
-  const main = String(process.env.POWER_AUTOMATE_AGENT_WEBHOOK_URL || '').trim();
-  const direct = String(process.env.POWER_AUTOMATE_ACTION_DISCOVERY_WEBHOOK_URL || '').trim();
-  if (!direct) return main;
-  const marker = String(prompt || '').split('\n', 1)[0].trim();
-  if (marker !== 'ACTION_DISCOVERY') return main;
-  const route = String(process.env.POWER_AUTOMATE_ACTION_DISCOVERY_ROUTE || 'second-leg').trim().toLowerCase();
-  if (route === 'all') return direct;
-  return /:primary-2$/.test(String(options.pass || '')) ? direct : main;
-}
-
-// Typed upstream failures use their own envelope, independent of the requested
-// success schema. Recognising one never makes it a successful minutes result:
-// the retry wrapper still raises meetingAgentResultError before validation.
-function meetingAgentHasTypedError(value) {
-  const error = value && typeof value === 'object' && !Array.isArray(value) ? value.error : null;
-  return Boolean(error && typeof error === 'object' && !Array.isArray(error)
-    && typeof error.code === 'string' && error.code.trim()
-    && typeof error.message === 'string' && error.message.trim());
-}
-
-async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
-  const webhookUrl = meetingAgentFlowUrlFor(prompt, options);
-  if (!webhookUrl) {
-    const error = new Error('POWER_AUTOMATE_AGENT_WEBHOOK_URL is not configured.');
-    error.statusCode = 500;
-    throw error;
-  }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(webhookUrl);
-  } catch {
-    const error = new Error('POWER_AUTOMATE_AGENT_WEBHOOK_URL is invalid.');
-    error.statusCode = 500;
-    throw error;
-  }
-  if (parsedUrl.protocol !== 'https:') {
-    const error = new Error('The Power Automate agent endpoint must use HTTPS.');
-    error.statusCode = 500;
-    throw error;
-  }
-
-  const release = options.paced === true ? await acquireMeetingAgentCallSlot() : () => {};
-  const controller = new AbortController();
-  const timeoutMs = Math.max(10000, Number(options.timeoutMs || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000));
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let response, rawBody;
-  try {
-    response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: { prompt } }),
-      signal: controller.signal
-    });
-    // Headers alone are not a completed call. Keep the deadline and active
-    // slot until the full response body has arrived.
-    rawBody = await response.text();
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      const timeoutError = new Error('The meeting-minutes agent did not reply in time.');
-      timeoutError.statusCode = 504;
-      timeoutError.retryable = true;
-      timeoutError.code = 'power_automate_timeout';
-      throw timeoutError;
-    }
-    const requestError = new Error('Power Automate could not be reached.');
-    requestError.statusCode = 502;
-    requestError.retryable = true;
-    requestError.code = 'power_automate_unreachable';
-    throw requestError;
-  } finally {
-    clearTimeout(timeout);
-    release();
-  }
-
-  // Optional private diagnostics must see the wire body before parsing can
-  // reject it. Never attach source content to errors or public/log metadata.
-  if (typeof options.onRawResponse === 'function') {
-    try { await options.onRawResponse(rawBody); } catch { /* Diagnostics cannot change the provider outcome. */ }
-  }
-  if (!response.ok) {
-    const error = new Error(`Power Automate agent call failed with status ${response.status}.`);
-    error.statusCode = response.status === 429 || response.status >= 500 ? 503 : 502;
-    error.retryable = response.status === 429 || response.status >= 500;
-    error.upstreamStatus = response.status;
-    error.code = response.status === 429 ? 'power_automate_throttled' : `power_automate_http_${response.status}`;
-    throw error;
-  }
-  if (!rawBody.trim()) {
-    const error = new Error('Power Automate returned an empty agent response.');
-    error.statusCode = 502;
-    error.retryable = true;
-    error.code = 'power_automate_empty_response';
-    throw error;
-  }
-
-  const parsed = parseJsonLenient(rawBody);
-  const queue = [parsed];
-  const seen = new Set();
-  let structured = null;
-  while (queue.length && !structured) {
-    const candidate = queue.shift();
-    if (candidate == null || (typeof candidate !== 'object' && typeof candidate !== 'string')) continue;
-    if (typeof candidate === 'object' && seen.has(candidate)) continue;
-    if (typeof candidate === 'object') seen.add(candidate);
-    const isMinutesResult = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.discussion) && Array.isArray(candidate.actions);
-    const isRefereeResult = options.responseKind === 'referee'
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && (Array.isArray(candidate.candidateDispositions) || Boolean(candidate.error));
-    const isFlatDiscussionDiscoveryResult = options.responseKind === 'discussion_discovery'
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.discussionCandidates);
-    const isAnchoredDiscussionDiscoveryResult = options.responseKind === 'anchored_discussion_discovery'
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.anchorResults);
-    const isAnchoredActionDiscoveryResult = options.responseKind === 'anchored_action_discovery'
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.actionResults);
-    const isTopicArrangementResult = options.responseKind === 'topic_arrangement'
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.groups);
-    const isSemanticReconciliationResult = options.responseKind === 'semantic_reconciliation'
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.decisions);
-    const isTimingCheckResult = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind)
-      && candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      && Array.isArray(candidate.results);
-    if (meetingAgentHasTypedError(candidate) || isMinutesResult || isRefereeResult || isFlatDiscussionDiscoveryResult
-      || isAnchoredDiscussionDiscoveryResult || isAnchoredActionDiscoveryResult
-      || isTopicArrangementResult || isTimingCheckResult || isSemanticReconciliationResult) {
-      structured = candidate;
-      break;
-    }
-    if (typeof candidate === 'string') {
-      const nested = parseJsonLenient(candidate);
-      if (nested !== null) queue.push(nested); /* prose is rejected below */
-    } else if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-      for (const key of ['result', 'output', 'response', 'lastResponse', 'body', 'value']) {
-        if (Object.prototype.hasOwnProperty.call(candidate, key)) queue.push(candidate[key]);
-      }
-    }
-  }
-  if (!structured) {
-    const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
-    error.statusCode = 502;
-    error.retryable = true;
-    error.code = 'power_automate_invalid_structure';
-    throw error;
-  }
-  const parsedResult = structured;
-  // Direct generation/audit callers have no retry wrapper to raise this.
-  // Preserve the existing referee hand-off (including its decoded audit),
-  // but never let another caller normalise a provider failure as empty output.
-  if (options.responseKind !== 'referee' && meetingAgentHasTypedError(parsedResult)) {
-    throw meetingAgentResultError(parsedResult);
-  }
-  const flatDiscussionDiscovery = options.responseKind === 'discussion_discovery'
-    && Array.isArray(parsedResult?.discussionCandidates);
-  const anchoredDiscussionDiscovery = options.responseKind === 'anchored_discussion_discovery'
-    && Array.isArray(parsedResult?.anchorResults);
-  const anchoredActionDiscovery = options.responseKind === 'anchored_action_discovery'
-    && Array.isArray(parsedResult?.actionResults);
-  const topicArrangement = options.responseKind === 'topic_arrangement'
-    && Array.isArray(parsedResult?.groups);
-  const timingCheck = ['timing_check', 'decision_check', 'commitment_check', 'answered_check', 'correction_check'].includes(options.responseKind) && Array.isArray(parsedResult?.results);
-  const semanticReconciliation = options.responseKind === 'semantic_reconciliation'
-    && Array.isArray(parsedResult?.decisions);
-  if (!parsedResult || typeof parsedResult !== 'object'
-    || (options.responseKind !== 'referee'
-      && !meetingAgentHasTypedError(parsedResult)
-      && !timingCheck
-      && !flatDiscussionDiscovery
-      && !anchoredDiscussionDiscovery
-      && !anchoredActionDiscovery
-      && !topicArrangement
-      && !semanticReconciliation
-      && (!Array.isArray(parsedResult.discussion) || !Array.isArray(parsedResult.actions)))) {
-    const error = new Error('Power Automate returned an invalid meeting-minutes structure.');
-    error.statusCode = 502;
-    error.retryable = true;
-    error.code = 'power_automate_invalid_structure';
-    throw error;
-  }
-  return parsedResult;
-}
 
 function discussionRefereeSufficiency(discussion = [], baseline = []) {
   const visible = flattenHybridDiscussion(discussion);
@@ -8564,92 +8091,7 @@ function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline
       || !settled.has(candidate.candidateId) && !records.has(key(candidate.recordType, candidate.record))) };
 }
 
-async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}) {
-  const timings = [];
-  let lastError;
-  let accumulatedResult = null;
-  const maxAttempts = Math.max(1, Math.min(MEETING_AGENT_RETRY_MS.length + 1, Number(options.maxAttempts || MEETING_AGENT_RETRY_MS.length + 1)));
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (attempt > 0) {
-      const delay = MEETING_AGENT_RETRY_MS[attempt - 1];
-      const remaining = options.deadlineAt ? options.deadlineAt - Date.now() : Infinity;
-      if (remaining <= delay + 1000) break;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-    const remaining = options.deadlineAt ? options.deadlineAt - Date.now() : Infinity;
-    if (remaining <= 1000) break;
-    const attemptPrompt = attempt > 0 && accumulatedResult && typeof options.repairPrompt === 'function'
-      ? options.repairPrompt({ result: accumulatedResult, error: lastError, attempt: attempt + 1, originalPrompt: prompt })
-      : prompt;
-    const started = Date.now();
-    const attemptInfo = {
-      pass: options.pass || '', attempt: attempt + 1, maxAttempts,
-      promptChars: String(attemptPrompt || '').length, repair: attemptPrompt !== prompt,
-      startedAt: new Date().toISOString(),
-      requestId: meetingMinutesAgentText(options.requestId, 160)
-    };
-    if (options.onAttempt) await options.onAttempt(attemptInfo).catch(() => {});
-    let wireReply, rawReply, normalizedReply;
-    try {
-      const configuredAttemptTimeoutMs = Number(options.attemptTimeoutMs
-        || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000);
-      const attemptTimeoutMs = Number.isFinite(remaining)
-        ? Math.max(10000, Math.min(configuredAttemptTimeoutMs, remaining))
-        : configuredAttemptTimeoutMs;
-      const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
-        paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass,
-        ...(typeof options.onFailure === 'function' ? {
-          onRawResponse: (body) => { wireReply = refereeFailureSnapshot(body); }
-        } : {})
-      });
-      if (typeof options.onFailure === 'function') rawReply = refereeFailureSnapshot(freshResult);
-      if (typeof options.onResult === 'function') await options.onResult(freshResult, attemptInfo);
-      const transformedResult = typeof options.transformResult === 'function'
-        ? options.transformResult(freshResult) : freshResult;
-      const result = accumulatedResult && typeof options.combineResults === 'function'
-        ? options.combineResults(accumulatedResult, transformedResult)
-        : transformedResult;
-      if (typeof options.onFailure === 'function') normalizedReply = refereeFailureSnapshot(result);
-      const reportedError = meetingAgentResultError(result);
-      if (reportedError) throw reportedError;
-      const validationError = typeof options.validateResult === 'function' ? options.validateResult(result) : null;
-      if (validationError) {
-        if (typeof options.repairPrompt === 'function') accumulatedResult = result;
-        throw validationError;
-      }
-      timings.push({ ...attemptInfo, elapsedMs: Date.now() - started, ok: true });
-      return { result, timings };
-    } catch (error) {
-      lastError = error;
-      // Diagnostics are private and optional. Storage failure must never cause
-      // another provider request or replace the original validation outcome.
-      if (typeof options.onFailure === 'function') {
-        try { await options.onFailure({ prompt: refereeFailureSnapshot(attemptPrompt),
-          wireReply: wireReply || refereeFailureSnapshot(undefined),
-          rawReply: rawReply || refereeFailureSnapshot(undefined),
-          normalizedReply: normalizedReply || refereeFailureSnapshot(undefined), attemptInfo, error }); }
-        catch { console.warn(JSON.stringify({ event: 'meeting_agent_referee_audit_unavailable',
-          pass: options.pass || '', requestId: attemptInfo.requestId })); }
-      }
-      timings.push({
-        ...attemptInfo, elapsedMs: Date.now() - started, ok: false,
-        statusCode: Number(error.statusCode || 0) || undefined,
-        upstreamStatus: Number(error.upstreamStatus || 0) || undefined,
-        errorCode: meetingMinutesAgentText(error.code, 120) || undefined,
-        errorMessage: meetingMinutesAgentText(error.message, 300) || undefined,
-        failureClass: meetingAgentFailureClass(error) || undefined
-      });
-      if (!error.retryable || attempt === maxAttempts - 1) break;
-    }
-  }
-  if (!lastError) {
-    lastError = new Error('The meeting-minutes generation exceeded its stage time budget.');
-    lastError.statusCode = 504;
-    lastError.retryable = true;
-  }
-  if (lastError) lastError.callTimings = timings;
-  throw lastError;
-}
+
 
 function normaliseStagedCandidateResult(run, draft) {
   const stagedDiscussion = (run?.state?.discussion || []).map((topic) => ({
@@ -10789,8 +10231,6 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
 const originalMinutesStageServices = Object.freeze({
   acceptedVisitAssignmentActions,
   annotateActionProposalChains,
-  askPowerAutomateMeetingMinutesAgent,
-  askPowerAutomateMeetingMinutesAgentWithRetry,
   awaitPrivateStagedCandidateLedger,
   cachedStagedCandidatesForStage,
   commitmentThreadBackstopProposals,
@@ -11108,7 +10548,7 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
     : finishMeetingAgentGeneratedStage(result, draft, stage);
 }
 
-const MEETING_AGENT_RETRY_MS = [5000, 15000, 30000];
+
 
 // A suggested edit must change what the action says: its wording, owners or
 // timing. One that only re-cites lines (or nothing at all) is noise.

@@ -21,8 +21,8 @@ const { normaliseSourceUnits } = require('./meetingMinutesSource');
 const { reconcileGeneratedSemanticStage } = require('./meetingMinutesSemanticStage');
 
 function createOriginalFinalization(services) {
+  const { askPowerAutomateMeetingMinutesAgentWithRetry } = require('./meetingMinutesAgentTransport');
   const {
-    askPowerAutomateMeetingMinutesAgentWithRetry,
     reconcileFinalApprovedActions,
     semanticReceiptCoversActionProposal,
   } = services;

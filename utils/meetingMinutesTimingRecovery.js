@@ -1,5 +1,5 @@
 'use strict';
-const { VERSION, hash, copy, normal, frame, checks, packet, validateProposal, preserveUnchangedActions, validProof, bindingReader } = require('./meetingMinutesTimingRecoveryState');
+const { VERSION, hash, copy, checks, packet, validateProposal, preserveUnchangedActions, validProof, bindingReader } = require('./meetingMinutesTimingRecoveryState');
 
 
 

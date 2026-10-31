@@ -6,6 +6,7 @@
     "tests/meeting-minutes-original-execution.test.js",
     "tests/meeting-minutes-draft-context.test.js",
     "tests/meeting-minutes-response-contracts.test.js",
+    "tests/meeting-minutes-referee-failure-audit.test.js",
     "tests/meeting-minutes-result-aggregation.test.js",
     "tests/meeting-minutes-result-normalization.test.js",
     "tests/meeting-minutes-discovery-validation.test.js",
