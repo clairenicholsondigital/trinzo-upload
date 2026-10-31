@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const { createOriginalActionsStage } = require('../utils/meetingMinutesOriginalActions');
+const { hybridCandidateLedgerFromResult } = require('../utils/meetingMinutesCandidateLedger');
 const V = require('../utils/meetingMinutesAgentV2');
 
 Object.assign(process.env, {
@@ -54,7 +55,7 @@ function fixture() {
     rawAction('archive', 'Archive the signed results.', 'T0004')
   ] }, sourceUnits, 'actions', { meetingDate: '2026-10-30' });
   const ensemble = ['primary', 'staged'].flatMap(pass =>
-    services.hybridCandidateLedgerFromResult(primary, pass));
+    hybridCandidateLedgerFromResult(primary, pass));
   const draft = { draftId: 'direct-original-actions', sourceUnits,
     preparedTranscript: V.preparedTranscriptFromUnits(sourceUnits),
     details: { meetingType: 'Review', meetingDate: '2026-10-30', internalAttendees: ['Maya Patel'] },
