@@ -69,7 +69,7 @@ test('the grammar pass is fenced off from the prefix in the code that calls it',
   // The behavioural tests above run without the LLM (the polish is a network call), so
   // this pins the seam itself: the call site must split the purpose off before polishing
   // and reattach it verbatim.
-  const api = fs.readFileSync(path.resolve(__dirname, '../routes/api.js'), 'utf8');
+  const api = fs.readFileSync(path.resolve(__dirname, '../utils/stagedMinutesCanonicalResponse.js'), 'utf8');
   const site = api.slice(api.indexOf('const executiveSummaryIsConfirmed'), api.indexOf('return {', api.indexOf('const executiveSummaryIsConfirmed')));
   assert.match(site, /presentationSummary\.startsWith\(summaryPurpose\)/, 'the prefix is detected');
   assert.match(site, /presentationSummary\.slice\(summaryPurpose\.length\)/, 'only the remainder is polished');

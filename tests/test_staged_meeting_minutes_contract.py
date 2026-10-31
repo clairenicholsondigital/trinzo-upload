@@ -8,6 +8,8 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 class StagedMeetingMinutesContractTest(unittest.TestCase):
     def test_later_staged_steps_use_canonical_pipeline_and_confirmed_state(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
+        staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
         meeting_type = (REPO_DIR / "utils" / "meetingMinutesStageMeetingType.js").read_text(encoding="utf-8")
@@ -27,9 +29,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertNotIn("async function buildStagedGenerationContext", api)
         self.assertNotIn("async function buildStagedSummaryResponse", api)
         self.assertNotIn("async function buildStagedDiscussionResponse", api)
-        self.assertIn("function cleanStagedExecutiveSummary", api)
-        self.assertIn("the reviewer should check", api)
-        self.assertIn("filter((sentence) => !/\\bthe reviewer should check\\b/i.test(sentence))", api)
+        self.assertIn("function cleanStagedExecutiveSummary", staged_response)
+        self.assertIn("the reviewer should check", staged_response)
+        self.assertIn("filter((sentence) => !/\\bthe reviewer should check\\b/i.test(sentence))", staged_response)
         self.assertIn("buildTightStagedObjectives", api)
         # objectiveReducer existed only inside buildStagedSummaryResponse and died with it
         # in the Phase 5 consolidation; the objective machinery that outlived the dead
@@ -41,7 +43,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Software versioning changes", api)
         self.assertIn("Debug review", api)
         self.assertIn("Change request", api)
-        self.assertIn("function cleanStagedDiscussionText", api)
+        self.assertIn("function cleanStagedDiscussionText", staged_context)
         self.assertIn("reshapeStagedDiscussionCardsForHumanMinutes", api)
         self.assertIn("function polishStagedActions", api)
         self.assertIn("function stagedActionIntent", api)
@@ -58,12 +60,12 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Complete the risk assessment to develop the audit plan", api)
         self.assertIn("actionPreservation", api)
         self.assertIn("function isAuditableStagedAction", api)
-        self.assertIn("function cleanStagedActionText", api)
-        self.assertIn("function stripStagedTranscriptArtefacts", api)
-        self.assertIn("STAGED_PUBLIC_TIMESTAMP_PATTERN", api)
-        self.assertIn("STAGED_PUBLIC_SPEAKER_PATTERN", api)
-        self.assertIn("function capitaliseStagedDateMonths", api)
-        self.assertIn("function hasStagedSpeakerTurnPrefix", api)
+        self.assertIn("function cleanStagedActionText", staged_context)
+        self.assertIn("function stripStagedTranscriptArtefacts", staged_context)
+        self.assertIn("STAGED_PUBLIC_TIMESTAMP_PATTERN", staged_context)
+        self.assertIn("STAGED_PUBLIC_SPEAKER_PATTERN", staged_context)
+        self.assertIn("function capitaliseStagedDateMonths", staged_context)
+        self.assertIn("function hasStagedSpeakerTurnPrefix", staged_context)
         self.assertIn("misattributed_discussion_evidence", staged_editorial)
         self.assertIn("function stagedTextHasFutureCommitmentMarker", api)
         self.assertIn("future commitment", prompts)
@@ -72,7 +74,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("missingWorkstreamCount", api)
         self.assertIn("missingWorkstreams", api)
         self.assertIn("workstreamQualityFlags", api)
-        self.assertIn("Arrange a catch-up meeting", api)
+        self.assertIn("Arrange a catch-up meeting", staged_context)
         self.assertIn("const stagedActions = actionsFromStagedMiniLM", api)
         self.assertIn("const mergedActions = mergePreservedStagedActions", api)
         self.assertIn("normaliseAndValidateActionOwner", api)
@@ -83,19 +85,19 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         # buildStagedDiscussionResponse. The confirmed-topic discipline they policed is
         # asserted through the strings that survive in the living pipeline below.
         self.assertIn("evidencePackTopicCount", api)
-        self.assertIn("runCanonicalLiveStage", api)
-        self.assertIn("const semanticTranscript = transcriptForStagedAI(transcript, input);", api)
-        self.assertIn("runCanonicalLiveStage(semanticTranscript.text", api)
+        self.assertIn("runCanonicalLiveStage", staged_response)
+        self.assertIn("const semanticTranscript = transcriptForStagedAI(transcript, input);", staged_response)
+        self.assertIn("runCanonicalLiveStage(semanticTranscript.text", staged_response)
         self.assertIn("canonicalStagedResponse", api)
-        self.assertIn("grammarPolishStagedExecutiveSummary", api)
-        self.assertIn("executiveSummaryGrammar", api)
+        self.assertIn("grammarPolishStagedExecutiveSummary", staged_response)
+        self.assertIn("executiveSummaryGrammar", staged_response)
         # The grammar pass no longer receives the whole summary: the purpose sentence is
         # split off as an opaque prefix, only the remainder is polished, and the prefix is
         # reattached byte-identical. Sending the whole summary through let the LLM rewrite
         # the opening into "The session focused on..." while the purpose field above it
         # said something else - two renderings of one sentence on one screen.
-        self.assertIn("await grammarPolishStagedExecutiveSummary(polishable)", api)
-        self.assertIn("presentationSummary.startsWith(summaryPurpose)", api)
+        self.assertIn("await grammarPolishStagedExecutiveSummary(polishable)", staged_response)
+        self.assertIn("presentationSummary.startsWith(summaryPurpose)", staged_response)
         self.assertIn("humanConfirmedInputIsAuthoritative", api)
         self.assertIn("return null;", api)
         # These three call-shapes lived inside buildStagedDiscussionResponse, deleted in
@@ -104,7 +106,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         # them, and the reshaper assertion above covers the seam.
         self.assertIn("compactStagedDiscussionCards", api)
         self.assertIn(": [];", api)
-        self.assertIn("function isNoEvidenceDiscussionText", api)
+        self.assertIn("function isNoEvidenceDiscussionText", staged_context)
         self.assertIn("decisionOrAgreement", api)
         self.assertIn("nextStep", api)
         self.assertIn("additionalContext: firstString", api)
@@ -183,13 +185,14 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_eval_replays_real_stage_builders_and_keeps_raw_recovery_text(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
         runner = (REPO_DIR / "scripts" / "run_staged_meeting_minutes_eval.js").read_text(encoding="utf-8")
         scorer = (REPO_DIR / "scripts" / "run_meeting_minutes_final_golden_eval.py").read_text(encoding="utf-8")
 
         self.assertIn("async function runStagedSequenceForEvaluation", api)
         self.assertIn("stagedEvaluationVisibleOutput", api)
-        self.assertIn("runCanonicalLiveStage", api)
-        self.assertIn("canonicalConfirmedStages", api)
+        self.assertIn("runCanonicalLiveStage", staged_response)
+        self.assertIn("canonicalConfirmedStages", staged_response)
         self.assertIn("confirmedDiscussion", api)
         self.assertIn("runSequence(transcript", runner)
         self.assertIn("deterministicActionInventoryCount", runner)
@@ -214,6 +217,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
     def test_staged_actions_have_final_quality_gate(self):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
 
         self.assertIn("function normaliseFinalStagedActionCandidate", staged_editorial)
         self.assertIn("function stagedFinalActionQualityIssue", staged_editorial)
@@ -223,8 +227,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("missing_concrete_object", staged_editorial)
         self.assertIn("transcript_debris", staged_editorial)
         self.assertIn("Review electrical compliance testing outputs and update the final compliance documentation", staged_editorial)
-        self.assertIn("function canonicalKnownStagedPersonName", api)
-        self.assertIn("stagedPeopleRegistry().personByFirstName", api)
+        self.assertIn("function canonicalKnownStagedPersonName", staged_context)
+        self.assertIn("stagedPeopleRegistry().personByFirstName", staged_context)
         self.assertIn("normaliseDeadlineKey", api)
         self.assertIn("mute", api)
 
@@ -249,12 +253,13 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_attendee_known_name_mapping_is_wired(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 
         # The known people live on the Settings page; these are its starting values.
         people = (REPO_DIR / "utils" / "settingsDefaults.js").read_text(encoding="utf-8")
-        self.assertIn("function stagedPeopleRegistry", api)
-        self.assertIn("settingsStore.getPeople()", api)
+        self.assertIn("function stagedPeopleRegistry", staged_context)
+        self.assertIn("settingsStore.getPeople()", staged_context)
         self.assertIn("function bucketKnownStagedAttendees", api)
         for name in (
             "Colm O’Rourke", "Jacqui Fox", "David Didsbury", "Conor Flynn", "Claire Nicholson",
@@ -263,8 +268,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         ):
             self.assertIn(f"name: '{name}'", people)
         self.assertIn("Smith, Stuart M", people)
-        self.assertIn("function canonicalStagedAttendeeAlias", api)
-        self.assertIn("function normaliseStagedKnownAttendeeAliasesInText", api)
+        self.assertIn("function canonicalStagedAttendeeAlias", staged_context)
+        self.assertIn("function normaliseStagedKnownAttendeeAliasesInText", staged_context)
         self.assertNotIn("'Rebecca Cuckoo'", api)
         self.assertIn("possible_attendee_name_mismatch", api)
         self.assertIn("...explicitClientBuckets.internal", api)
@@ -373,17 +378,19 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
+        staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
 
-        self.assertIn("function buildPreparedTranscriptForStagedAI", api)
-        self.assertIn("deterministic_stage_1_prep", api)
-        self.assertIn("transcriptionEvent", api)
-        self.assertIn("timestampOnly", api)
-        self.assertIn("prepared.push(spoken ? `${speaker}: ${spoken}`", api)
-        self.assertIn("function transcriptForStagedAI", api)
+        self.assertIn("function buildPreparedTranscriptForStagedAI", staged_context)
+        self.assertIn("deterministic_stage_1_prep", staged_context)
+        self.assertIn("transcriptionEvent", staged_context)
+        self.assertIn("timestampOnly", staged_context)
+        self.assertIn("prepared.push(spoken ? `${speaker}: ${spoken}`", staged_context)
+        self.assertIn("function transcriptForStagedAI", staged_context)
         self.assertIn("sourceJob.preparedTranscript", api)
         self.assertIn("canonicalStagedResponse(stage, transcript, input)", api)
-        self.assertIn("runCanonicalLiveStage(semanticTranscript.text", api)
+        self.assertIn("runCanonicalLiveStage(semanticTranscript.text", staged_response)
         self.assertIn("rawTranscriptLength: transcript.text.length", api)
         self.assertIn("preparedTranscriptLength", api)
         self.assertIn("autosavePayload.preparedTranscript", db)
@@ -525,6 +532,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_reviewer_confirmed_purpose_and_key_facts_are_threaded_downstream(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
         canonical_state = (REPO_DIR / "utils" / "canonicalMinutes" / "state.js").read_text(encoding="utf-8")
         canonical_live = (REPO_DIR / "utils" / "canonicalMinutes" / "liveStages.js").read_text(encoding="utf-8")
         semantic_stages = (REPO_DIR / "utils" / "canonicalMinutes" / "semanticStages.js").read_text(encoding="utf-8")
@@ -535,7 +543,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("meetingPurpose: firstString(confirmedSummary.meetingPurpose", api)
         self.assertIn("keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text)", api)
         self.assertIn("confirmedUnderstanding,", api)
-        self.assertIn("reviewerConfirmedFactPreservation", api)
+        self.assertIn("reviewerConfirmedFactPreservation", staged_response)
         self.assertIn("meetingUnderstanding", canonical_state)
         self.assertIn("const meetingUnderstanding = buildConfirmedUnderstanding(summary)", canonical_live)
         self.assertIn("criticalFacts: meetingUnderstanding.criticalFacts.map((fact) => fact.text)", canonical_live)
@@ -561,19 +569,21 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_post_extraction_editorial_pass_is_wired_in(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
+        staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
         editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
 
         # The editorial helpers live in a dependency-free util so they can be unit
         # tested without the router/db, and are wired into the staged flow.
         self.assertIn("require('../utils/stagedEditorial')", api)
-        self.assertIn("isMalformedStagedLine", api)
+        self.assertIn("isMalformedStagedLine", staged_context)
         self.assertIn("hasStagedDecisionEvidence", api)
         self.assertIn("dedupeStagedDiscussionCards", api)
         self.assertIn("buildStagedValidationFlags", api)
 
         # Cross-section de-duplication runs after per-card polishing, and the
         # decision/agreement label is dropped without supporting evidence.
-        self.assertIn("if (isMalformedStagedLine(cleaned)) return true;", api)
+        self.assertIn("if (isMalformedStagedLine(cleaned)) return true;", staged_context)
 
         # Advisory flags are attached to the staged payloads (never auto-fixed away).
         self.assertIn("validationFlags,", api)
@@ -582,9 +592,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("reviewObjectives: input.reviewObjectives || ''", api)
         self.assertIn("reviewDiscussion: input.reviewDiscussion || ''", api)
         self.assertIn("reviewActions: input.reviewActions || ''", api)
-        self.assertIn("function serialiseActionReviewCandidate", api)
-        self.assertIn("action-candidate-${stableActionCandidateHash(candidate)}", api)
-        self.assertIn("resolutionKey: `action-review-candidates:", api)
+        self.assertIn("function serialiseActionReviewCandidate", staged_response)
+        self.assertIn("action-candidate-${stableActionCandidateHash(candidate)}", staged_response)
+        self.assertIn("resolutionKey: `action-review-candidates:", staged_response)
 
         # The util exposes the mechanical fixers and the advisory flag builder.
         for name in (
@@ -613,14 +623,14 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Editorial checks (review before moving on)", page)
 
     def test_transcript_health_is_raised_on_the_first_screen(self):
-        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
         health = (REPO_DIR / "utils" / "stagedTranscriptHealth.js").read_text(encoding="utf-8")
 
         # A partly read transcript makes every later stage thin, so the warning
         # belongs on details (screen 0) rather than summary (screen 1), where a
         # reviewer would already have spent time editing it.
-        self.assertIn("if (stage === 'details') {\n    const healthFlag = stagedTranscriptHealthFlag(transcriptHealth);", api)
-        self.assertNotIn("if (stage === 'summary') {\n    const healthFlag", api)
+        self.assertIn("if (stage === 'details') {\n    const healthFlag = stagedTranscriptHealthFlag(transcriptHealth);", staged_response)
+        self.assertNotIn("if (stage === 'summary') {\n    const healthFlag", staged_response)
         self.assertIn("transcript_partially_parsed", health)
         self.assertIn("isPartiallyParsed(parseCoverage)", health)
         self.assertIn("measureParseCoverage", health)
