@@ -1,3 +1,7 @@
+const { createMeetingMinutesCandidatePrewarm, privateStagedCandidateQueueState } = require('../utils/meetingMinutesCandidatePrewarm');
+const { hybridCandidateLedgerFromResult, stagedCandidateLedgerFromResult, cachedStagedCandidatesForStage, peekReadyPrivateStagedCandidateLedger } = require('../utils/meetingMinutesCandidateLedger');
+const { stagedGenerationMeetingType } = require('../utils/meetingMinutesStageMeetingType');
+const { actionCandidateInventory, actionCommitmentChainInventory, actionCommitmentThreadInventory } = require('../utils/meetingMinutesActionCandidateInventory');
 const { askPowerAutomateMeetingMinutesAgent, askPowerAutomateMeetingMinutesAgentWithRetry, meetingAgentFlowUrlFor, meetingAgentCallContext, parseJsonLenient, MEETING_AGENT_RETRY_MS } = require('../utils/meetingMinutesAgentTransport');
 const { registerMeetingMinutesReviewerParallelProposals, registerMeetingMinutesReviewerSave, registerMeetingMinutesReviewerSource, registerMeetingMinutesReviewerDecisionsHistory } = require('./meetingMinutesReviewer');
 const { meetingAgentDraftPayload, normaliseMeetingAgentQualityState, normaliseMeetingAgentGeneration, meetingAgentReviewSnapshot, meetingAgentReviewHistoryEntry, meetingAgentDerivedStaleStages, meetingAgentDiscussionUsesDateAnchor, meetingAgentStaleStagesAfterGeneration, assertMeetingAgentDateInput, reopenFlagsOfReAddedItems } = require('../utils/meetingMinutesReviewerState');
@@ -10,7 +14,7 @@ const {
 } = require('../utils/meetingMinutesCandidatePack');
 const { MEETING_AGENT_COMMITMENT_LANGUAGE, MEETING_AGENT_DISCUSSION_COVERAGE_RULE, MEETING_AGENT_SMALL_TALK_RULE, MEETING_AGENT_TIMING_RULE, MEETING_AGENT_UNSPOKEN_MONTH_RULE, meetingAgentSteerText, meetingMinutesAgentPrimaryPrompt, meetingMinutesAgentPrompt } = require('../utils/meetingMinutesAgentPrompts');
 const { MEETING_AGENT_STAGE_STEP, meetingAgentStageHasContent, meetingAgentStageInputFingerprint, meetingAgentUpstreamFingerprint, meetingMinutesAgentHybridEnabled, meetingMinutesAgentSpeculativePipelineEnabled } = require('../utils/meetingMinutesStageProtocol');
-const { MEETING_AGENT_BOOT_ID, meetingAgentActionsPrewarmState, meetingAgentGenerationState, meetingAgentNextSpeculativeStage, meetingAgentSpeculationFor, meetingAgentSpeculationState, privateActionPrimaryCache, privateStageSpeculations, privateStagedCandidateCache, privateStagedCandidateCacheKey, prunePrivateActionPrimaryCache, prunePrivateStagedCandidateCache, pruneStageSpeculations, publicMeetingAgentGeneration, speculationKey, meetingAgentActionPrimaryPromptForDraft } = require('../utils/meetingMinutesGenerationRuntime');
+const { MEETING_AGENT_BOOT_ID, meetingAgentActionsPrewarmState, meetingAgentGenerationState, meetingAgentNextSpeculativeStage, meetingAgentSpeculationFor, meetingAgentSpeculationState, privateActionPrimaryCache, privateStageSpeculations, privateStagedCandidateCache, privateStagedCandidateCacheKey, pruneStageSpeculations, publicMeetingAgentGeneration, speculationKey, meetingAgentActionPrimaryPromptForDraft } = require('../utils/meetingMinutesGenerationRuntime');
 const { buildMeetingInsights, completeActionSuggestionText, filterIncompleteProposalChanges, isVagueReconstructedAction, meetingAgentProposalFlagMatchesChange, meetingAgentReferencedFlagIds, publicMeetingAgentDraft, reconcileMeetingAgentOrphanFlags } = require('../utils/meetingMinutesDraftView');
 const {
   loadOwnedMeetingAgentDraft,
@@ -33,10 +37,10 @@ const {
   discussionStructureDiagnostics, finalisePromotedDiscussion, promoteAllDiscussionDetails
 } = require('../utils/meetingMinutesDiscussionFinalization');
 const {
-  meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash, groundedObjectives, groundedObjectiveRecords, mergeGroundedObjectiveRecords, groundedExecutiveSummary
+  meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash, groundedObjectives, mergeGroundedObjectiveRecords, groundedExecutiveSummary
 } = require('../utils/meetingMinutesSummaryPublication');
 const {
-  hybridCandidatePack, meetingAgentCandidateTimingSignature, meetingMinutesAgentRefereeContract,
+  hybridCandidatePack, meetingMinutesAgentRefereeContract,
   compactMeetingAgentRefereeCandidate, effectiveDiscussionRefereeDispositions,
   meetingAgentRefereeCandidates
 } = require('../utils/meetingMinutesRefereeCandidates');
@@ -254,7 +258,7 @@ const {
   isRoutineMeetingAdministrationText,
   removeRoutineMeetingAdministrationSentences
 } = require('../utils/meetingAdministration');
-const { generateMiniLmTrooperStage, generatePreparedTrooperStage, prepareMiniLmTranscript } = require('../utils/stagedMiniLmTrooper');
+const { generateMiniLmTrooperStage, prepareMiniLmTranscript } = require('../utils/stagedMiniLmTrooper');
 const { filterActionsForPresentation } = require('../utils/stagedActionPresentation');
 const {
   buildConfirmedUnderstanding,
@@ -295,9 +299,6 @@ const {
   query
 } = require('../utils/db');
 const {
-  actionCandidateInventory,
-  actionCommitmentThreadInventory,
-  actionCommitmentChainInventory,
   discussionCandidateInventory,
   discussionAnchorInventory,
   uncoveredCandidateInventory,
@@ -365,8 +366,7 @@ const {
 } = require('../utils/meetingMinutesText');
 const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
 const {
-  evidenceClauses, timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
-  TIMING_INFERENCE_POLICY_VERSION
+  evidenceClauses, timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled
 } = require('../utils/meetingMinutesActionTimingInference');
 const { correctnessChecksEnabled } = require('../utils/meetingMinutesEvidenceChecks');
 const { removeDiscussionActionDuplicates } = require('../utils/discussionShape');
@@ -385,8 +385,8 @@ const { createSummaryTimingVerifier } = require('../utils/meetingMinutesOriginal
 const { createOriginalFinalization } = require('../utils/meetingMinutesOriginalFinalization');
 const { createOriginalEditStage } = require('../utils/meetingMinutesOriginalEdits');
 const router = express.Router();
-const PRIVATE_STAGED_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
-const PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+
 
 
 
@@ -406,7 +406,6 @@ const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINA
 const MEETING_MINUTES_JOB_PIPELINE = process.env.MEETING_MINUTES_JOB_PIPELINE || 'chunked';
 const STAGED_MINILM_TIMEOUT_MS = Number(process.env.STAGED_MINILM_TIMEOUT_MS || 45000);
 const STAGED_MINILM_WORKER_URL = (process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767').trim();
-const STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS = Number(process.env.STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS || 45000);
 const TROOPER_STAGE_URL_DEFAULT = 'https://eu.router.trooper.ai/v1/chat/completions';
 const TROOPER_STAGE_MODEL_DEFAULT = 'eu_liv_000099';
 
@@ -1978,26 +1977,7 @@ function actionReviewCandidatesFromEvidence(context, transcriptText) {
   return candidates;
 }
 
-function attachStagedEvidenceClassifierContext(context, evidenceContext) {
-  const base = context && typeof context === 'object'
-    ? context
-    : {
-        ok: false,
-        output: {},
-        counts: {},
-        diagnostics: {}
-      };
-  const diagnostics = base.diagnostics && typeof base.diagnostics === 'object' ? base.diagnostics : {};
-  return {
-    ...base,
-    ok: Boolean(base.ok || evidenceContext?.ok),
-    evidenceClassifier: evidenceContext,
-    diagnostics: {
-      ...diagnostics,
-      evidenceClassifier: stagedEvidenceClassifierTelemetry({ evidenceClassifier: evidenceContext })
-    }
-  };
-}
+
 
 function ownerFromTeamsSpeakerLine(line) {
   const text = String(line || '').replace(/\s+/g, ' ').trim();
@@ -2049,22 +2029,7 @@ function normaliseDeadlineKey(value) {
     .trim();
 }
 
-function stagedDeadlineIsSupportedByActionEvidence(action, deadline, transcriptText) {
-  const cleanedDeadline = cleanStagedGeneratedLine(deadline || '');
-  if (!cleanedDeadline || /^not stated$/i.test(cleanedDeadline)) return true;
-  const keywords = stagedActionKeywords(action);
-  if (keywords.length < 3) return false;
-  const deadlineKey = normaliseDeadlineKey(cleanedDeadline);
-  for (const item of stagedDeadlineEvidenceWindows(transcriptText)) {
-    const found = deadlineFromActionEvidence(item.window);
-    if (!found || normaliseDeadlineKey(found) !== deadlineKey) continue;
-    const lower = item.window.toLowerCase();
-    const overlap = keywords.filter((word) => lower.includes(word)).length;
-    const hasActionCue = /\b(?:will|i'll|i will|we will|can you|could you|please|need to|needs to|follow[- ]?up|action|deadline|by|before|complete|review|send|share|update|sign)\b/i.test(item.window);
-    if (overlap >= 3 && hasActionCue) return true;
-  }
-  return false;
-}
+
 
 function enrichStagedActionDeadlinesFromTranscript(actions, transcriptText) {
   return polishStagedActions((Array.isArray(actions) ? actions : []).map((item) => {
@@ -2324,172 +2289,10 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
   ].join('\n');
 }
 
-async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
-  const apiKey = String(process.env.TROOPER_API_KEY || '').trim();
-  const model = String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT;
-  const url = String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT;
-  if (!apiKey) {
-    return {
-      ok: false,
-      output: {},
-      counts: {},
-      rewriterAvailable: false,
-      rewriterReason: 'TROOPER_API_KEY is not configured.',
-      diagnostics: {
-        provider: 'trooper_stage',
-        modelAvailable: false,
-        modelName: model,
-        modelReason: 'TROOPER_API_KEY is not configured.',
-        pipeline: `staged_${stage}_targeted`,
-        timingMs: {}
-      }
-    };
-  }
-
-  try {
-    const startedAt = Date.now();
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You generate one staged meeting-minutes section at a time. Return valid JSON only.'
-          },
-          {
-            role: 'user',
-            content: buildStagedTrooperPrompt(stage, transcript, req, options)
-          }
-        ],
-        temperature: Number(process.env.STAGED_TROOPER_TEMPERATURE || 0.15),
-        max_tokens: Number(process.env.STAGED_TROOPER_MAX_TOKENS || (stage === 'discussion' ? 2200 : 1400)),
-        response_format: { type: 'json_object' }
-      })
-    });
-    const rawBody = await response.text();
-    if (!response.ok) {
-      const error = new Error(`Trooper staged ${stage} request failed with status ${response.status}.`);
-      error.statusCode = response.status;
-      error.details = { responseBytes: Buffer.byteLength(rawBody || '', 'utf8') };
-      throw error;
-    }
-    let parsedBody;
-    try {
-      parsedBody = rawBody ? JSON.parse(rawBody) : {};
-    } catch (error) {
-      const wrapped = new Error(`Trooper staged ${stage} response was not valid JSON.`);
-      wrapped.details = { responseBytes: Buffer.byteLength(rawBody || '', 'utf8') };
-      throw wrapped;
-    }
-    const content = parsedBody?.choices?.[0]?.message?.content || '';
-    const output = typeof content === 'object' && content ? content : extractJsonFromText(content);
-    const outputContext = output && typeof output === 'object' ? { ok: true, output } : null;
-    const missingWorkstreams = stage === 'discussion'
-      ? missingStagedWorkstreamsFromOutput(outputContext, options.workstreamState)
-      : [];
-    return {
-      ok: Boolean(output && typeof output === 'object'),
-      output: output && typeof output === 'object' ? output : {},
-      counts: {},
-      workstreamState: stage === 'discussion' && Array.isArray(options.workstreamState) ? options.workstreamState : [],
-      rewriterAvailable: true,
-      rewriterReason: `Trooper targeted staged ${stage} generation used${options.strictTopicCoverage ? ' with strict topic coverage retry' : ''}.`,
-      diagnostics: {
-        provider: 'trooper_stage',
-        modelAvailable: true,
-        modelName: model,
-        modelReason: `Trooper targeted staged ${stage} generation used${options.strictTopicCoverage ? ' with strict topic coverage retry' : ''}.`,
-        pipeline: `staged_${stage}_targeted`,
-        timingMs: { total: Date.now() - startedAt },
-        strictTopicCoverage: Boolean(options.strictTopicCoverage),
-        evidencePackTopicCount: Array.isArray(options.evidencePack) ? options.evidencePack.length : 0,
-        workstreamStateCount: Array.isArray(options.workstreamState) ? options.workstreamState.length : 0,
-        missingWorkstreamCount: missingWorkstreams.length,
-        missingWorkstreams,
-        workstreamQualityFlags: Array.isArray(options.workstreamState)
-          ? [...new Set(options.workstreamState.flatMap((item) => Array.isArray(item.qualityFlags) ? item.qualityFlags : []))].slice(0, 12)
-          : [],
-        usage: parsedBody?.usage || null
-      }
-    };
-  } catch (error) {
-    safeLogError('[Staged meeting minutes targeted Trooper generation failed]', error, { stage });
-    return {
-      ok: false,
-      output: {},
-      counts: {},
-      rewriterAvailable: false,
-      rewriterReason: error?.message || 'Trooper targeted stage generation failed.',
-      diagnostics: {
-        provider: 'trooper_stage',
-        modelAvailable: false,
-        modelName: model,
-        modelReason: error?.message || 'Trooper targeted stage generation failed.',
-        pipeline: `staged_${stage}_targeted`,
-        timingMs: {}
-      }
-    };
-  }
-}
 
 
-async function buildStagedEvidenceClassifierContext(transcript) {
-  try {
-    const result = await runPythonTranscriptScript(
-      'meeting_minutes_evidence_classifier.py',
-      transcript.text,
-      ['--limit', '20'],
-      { timeoutMs: STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS }
-    );
-    return {
-      ok: Boolean(result?.executed && result?.modelAvailable),
-      executed: Boolean(result?.executed),
-      modelAvailable: Boolean(result?.modelAvailable),
-      modelName: result?.modelName || '',
-      modelReason: result?.modelReason || '',
-      counts: result?.counts || {},
-      segmentsConsidered: Number(result?.segmentsConsidered || 0),
-      segmentsScored: Number(result?.segmentsScored || 0),
-      actions: Array.isArray(result?.actions) ? result.actions : [],
-      items: Array.isArray(result?.items) ? result.items : [],
-      diagnostics: {
-        provider: 'meeting_minutes_evidence_classifier',
-        modelAvailable: Boolean(result?.modelAvailable),
-        modelName: result?.modelName || '',
-        modelPath: result?.modelPath || '',
-        modelReason: result?.modelReason || '',
-        timingMs: result?.timingMs || {}
-      }
-    };
-  } catch (error) {
-    safeLogError('[Staged meeting minutes evidence classifier failed]', error);
-    return {
-      ok: false,
-      executed: false,
-      modelAvailable: false,
-      modelName: '',
-      modelReason: error?.message || 'Evidence classifier failed.',
-      counts: {},
-      segmentsConsidered: 0,
-      segmentsScored: 0,
-      actions: [],
-      items: [],
-      diagnostics: {
-        provider: 'meeting_minutes_evidence_classifier',
-        modelAvailable: false,
-        modelName: '',
-        modelPath: '',
-        modelReason: error?.message || 'Evidence classifier failed.',
-        timingMs: {}
-      }
-    };
-  }
-}
+
+
 
 
 // buildStagedGenerationContext was the 60-line entry point of the pre-canonical staged path, deleted in the
@@ -2973,73 +2776,7 @@ function pushStagedRoleValue(target, key, value, limit = 5) {
   if (target[key].length > limit) target[key].length = limit;
 }
 
-function buildStagedWorkstreamState(evidencePack = [], minilmContext = null, confirmedTopics = []) {
-  const items = Array.isArray(evidencePack) && evidencePack.length
-    ? evidencePack
-    : buildStagedMiniLMEvidencePack(minilmContext, confirmedTopics);
-  const states = [];
 
-  for (const item of items) {
-    if (!item || typeof item !== 'object') continue;
-    const evidenceTexts = stagedEvidenceTextsForWorkstream(item);
-    if (!evidenceTexts.length) continue;
-    const workstream = stagedOperationalWorkstreamLabel(item, confirmedTopics);
-    if (!isUsableStagedTopic(workstream)) continue;
-    const state = {
-      workstream,
-      currentStatus: [],
-      changesSinceLastReview: [],
-      decisionsOrAgreements: [],
-      openPoints: [],
-      dependencies: [],
-      technicalDetails: [],
-      nextSteps: [],
-      explicitActions: [],
-      sourceTurnIndices: Array.isArray(item.sourceTurnIndices) ? item.sourceTurnIndices.slice(0, 12) : [],
-      evidence: evidenceTexts.slice(0, 8),
-      confidence: Number(item.confidence || 0),
-      roleCounts: {},
-      qualityFlags: Array.isArray(item.qualityFlags) ? item.qualityFlags.slice(0, 10) : []
-    };
-
-    if (stagedLooksLikeAbstractWorkstream(item.topic)) state.qualityFlags.push('abstract_workstream_heading');
-    if (stagedHeadingEvidenceScore(workstream, evidenceTexts) < 0.08) state.qualityFlags.push('low_heading_evidence_match');
-    if (item.attribution?.reassignedByWorkstreamFit) state.qualityFlags.push('workstream_evidence_reassigned');
-    if (item.attribution?.competingFitScore && item.attribution.competingFitScore >= Math.max(0.16, item.attribution.workstreamEvidenceFitScore - 0.08)) {
-      state.qualityFlags.push('competing_workstream_attribution_close');
-    }
-
-    const actionTexts = uniqueCleanDiscussionItems(Array.isArray(item.actions) ? item.actions : []);
-    for (const text of evidenceTexts) {
-      const roles = classifyStagedEvidenceRoles(text);
-      for (const role of roles) state.roleCounts[role] = Number(state.roleCounts[role] || 0) + 1;
-      if (roles.includes('current status')) pushStagedRoleValue(state, 'currentStatus', text);
-      if (roles.includes('completed/past activity')) pushStagedRoleValue(state, 'changesSinceLastReview', text);
-      if (roles.includes('decision/agreement')) pushStagedRoleValue(state, 'decisionsOrAgreements', text);
-      if (roles.includes('open point')) pushStagedRoleValue(state, 'openPoints', text);
-      if (roles.includes('dependency')) pushStagedRoleValue(state, 'dependencies', text);
-      if (roles.includes('technical detail')) pushStagedRoleValue(state, 'technicalDetails', text);
-      if (roles.includes('future commitment') && !stagedTextHasPastMarker(text)) pushStagedRoleValue(state, 'nextSteps', text);
-    }
-
-    for (const action of actionTexts) {
-      if (stagedTextHasPastMarker(action) && !stagedTextHasFutureCommitmentMarker(action)) {
-        state.qualityFlags.push('possible_past_activity_as_action');
-        pushStagedRoleValue(state, 'changesSinceLastReview', action);
-        continue;
-      }
-      pushStagedRoleValue(state, stagedTextHasFutureCommitmentMarker(action) ? 'explicitActions' : 'nextSteps', action, 4);
-    }
-
-    if (state.evidence.length && !state.currentStatus.length && !state.technicalDetails.length && !state.decisionsOrAgreements.length) {
-      state.qualityFlags.push('substantive_workstream_omission_risk');
-    }
-    state.qualityFlags = [...new Set(state.qualityFlags)];
-    states.push(state);
-  }
-
-  return states.slice(0, 8);
-}
 
 function evidenceForTopic(transcriptText, topic) {
   const keywords = topicKeywords(topic);
@@ -3072,29 +2809,7 @@ function topicEvidenceForStagedDiscussion(transcript, topics) {
     .filter((item) => item.topic && item.evidence.length);
 }
 
-function fillMissingStagedWorkstreamEvidence(evidencePack = [], transcript, confirmedTopics = []) {
-  const pack = Array.isArray(evidencePack) ? evidencePack : [];
-  const topics = (Array.isArray(confirmedTopics) ? confirmedTopics : [])
-    .map(cleanStagedGeneratedLine)
-    .filter(Boolean)
-    .slice(0, 8);
-  if (!topics.length) return pack;
-  const additions = [];
-  const presentTopics = new Set(pack.map((item) => normaliseTopicKey(item.topic)));
-  for (const topic of topics) {
-    const alreadyPresent = presentTopics.has(normaliseTopicKey(topic)) ||
-      pack.some((item) => stagedTokenSimilarity(item.topic, topic) >= 0.45 || workstreamEvidenceFitScore(topic, item) >= 0.35);
-    if (alreadyPresent) continue;
-    const fallback = topicEvidenceForStagedDiscussion(transcript, [topic])[0];
-    if (!fallback || !Array.isArray(fallback.evidence) || fallback.evidence.length < 1) continue;
-    additions.push({
-      ...fallback,
-      source: 'missing_workstream_keyword_backfill',
-      qualityFlags: ['missing_workstream_recovered']
-    });
-  }
-  return reassignStagedEvidencePackByWorkstream([...pack, ...additions], topics);
-}
+
 
 function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack = [], workstreamState = []) {
   const context = stagedContextFromRequest(req);
@@ -3111,10 +2826,7 @@ function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidence
   return cards.length < expectedMinimum;
 }
 
-function stagedDiscussionNeedsRetry(minilmContext, req, transcript, evidencePack = [], workstreamState = []) {
-  if (stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack, workstreamState)) return true;
-  return missingStagedWorkstreamsFromOutput(minilmContext, workstreamState).length > 0;
-}
+
 
 function missingStagedWorkstreamsFromOutput(minilmContext, workstreamState = []) {
   const cards = filterDiscussionCardsByWorkstreamEvidence(discussionFromStagedMiniLM(minilmContext), workstreamState);
@@ -3262,32 +2974,7 @@ function discussionFallbackForTopic(transcript, topic, meetingType, participants
   return discussionFallbackForWorkstreamState(findWorkstreamStateForTopic(workstreamState, topic), topic);
 }
 
-function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants, workstreamState = []) {
-  if (!topics.length) return cards;
-  const aligned = [];
-  const used = new Set();
-  for (const topic of topics.slice(0, 8)) {
-    const matched = findDiscussionCardForTopic(
-      (Array.isArray(cards) ? cards : []).filter((card) => !used.has(card)),
-      topic
-    );
-    if (matched && Array.isArray(matched.points) && matched.points.length) {
-      used.add(matched);
-      aligned.push({ ...matched, topic, points: uniqueCleanDiscussionItems(matched.points).slice(0, 5) });
-      continue;
-    }
-    const fallback = discussionFallbackForTopic(transcript, topic, meetingType, participants, workstreamState);
-    if (fallback) aligned.push(fallback);
-  }
-  if (!Array.isArray(workstreamState) || !workstreamState.length) {
-    for (const card of Array.isArray(cards) ? cards : []) {
-      if (used.has(card) || !Array.isArray(card?.points) || !card.points.length) continue;
-      aligned.push(card);
-      if (aligned.length >= 8) break;
-    }
-  }
-  return aligned.slice(0, 8);
-}
+
 
 
 // buildStagedDiscussionResponse was the 134-line entry point of the pre-canonical staged path, deleted in the
@@ -3591,18 +3278,7 @@ function stagedNoEditReviewExperience(trace = []) {
   };
 }
 
-// "Process / pipeline planning" was correctly removed from the reviewer-facing vocabulary in
-// favour of General. Retain its measured prompt profile internally when the meeting identity
-// itself clearly names that subject. Shared by the queued stage and the scorecard so the two
-// cannot drift apart again.
-function stagedGenerationMeetingType(selectedMeetingType, meetingIdentity) {
-  const selected = String(selectedMeetingType || '');
-  const identity = String(meetingIdentity || '');
-  if (selected === 'General' && /\bimporter[\s_-]*obligations?\b/i.test(identity)) return 'Importer obligations review';
-  if (selected === 'General' && /(?:lead[\s_-]*generation|generation[\s_-]*pipeline|pipeline[\s_-]*(?:planning|review))/i.test(identity)) return 'Process / pipeline planning';
-  if (selected === 'General' && /\b(?:project|consultancy|retainer)\b.*\b(?:check[\s_-]*in|weekly|status|review)\b/i.test(identity)) return 'Project / consultancy check-in';
-  return selected;
-}
+
 
 async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
   // The evaluation sequence runs the pipeline that ships, because it used to run a
@@ -7582,41 +7258,7 @@ function meetingMinutesAgentAnchoredActionPrompt({
   return `[ACTION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
 }
 
-function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
-  const rows = [];
-  for (const item of flattenHybridDiscussion(result.discussion)) {
-    const discoveryDisposition = meetingMinutesAgentText(item.record?.discoveryDisposition, 40).toLowerCase();
-    // Anchored discovery has already assessed every fixed evidence window. Keep
-    // that signal when building the ensemble: otherwise a material `core` row
-    // and secondary `supporting` context are both flattened to priority 5 and
-    // compete equally for the finite Referee batch.
-    const discoveryPriority = discoveryDisposition === 'core' ? 14
-      : discoveryDisposition === 'supporting' ? 3 : 5;
-    rows.push({
-      candidateId: crypto.createHash('sha256').update(`${sourcePass}|${item.recordType}|${item.topic}|${item.record?.text || ''}`).digest('hex').slice(0, 20),
-      sourcePass, recordType: item.recordType, topic: item.topic || 'Discussion',
-      text: item.record?.text || '', evidenceIds: [...(item.record?.evidenceIds || [])], priority: discoveryPriority,
-      ...(discoveryDisposition ? { dispositionHint: discoveryDisposition } : {}),
-      record: structuredClone(item.record)
-    });
-  }
-  for (const action of Array.isArray(result.actions) ? result.actions : []) {
-    rows.push({
-      candidateId: crypto.createHash('sha256').update(`${sourcePass}|action|${action.action || ''}|${(action.owners || []).join('|')}|${meetingAgentCandidateTimingSignature(action)}`).digest('hex').slice(0, 20),
-      sourcePass, recordType: 'action', text: action.action || '', evidenceIds: [...(action.evidenceIds || [])], priority: 6,
-      record: structuredClone(action)
-    });
-    actionDiagnostics.origin(sourcePass, [action], { kind: 'candidate_ledger', candidateId: rows.at(-1).candidateId });
-  }
-  for (const objective of Array.isArray(result.objectives) ? result.objectives : []) {
-    rows.push({
-      candidateId: crypto.createHash('sha256').update(`${sourcePass}|objective|${objective.text || objective}`).digest('hex').slice(0, 20),
-      sourcePass, recordType: 'objective', text: objective.text || objective, evidenceIds: objective.evidenceIds || [], priority: 5,
-      record: objective
-    });
-  }
-  return rows.filter((row) => row.text);
-}
+
 
 // Context warnings are durable review records even if a later lifecycle or
 // proposal filter withholds the candidate. Keeping the question is not adding
@@ -8093,246 +7735,33 @@ function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline
 
 
 
-function normaliseStagedCandidateResult(run, draft) {
-  const stagedDiscussion = (run?.state?.discussion || []).map((topic) => ({
-    topic: topic?.topic || 'Discussion',
-    points: (topic?.points || []).map((item) => typeof item === 'string' ? { text: item } : item),
-    decisions: (topic?.decisions || []).map((item) => typeof item === 'string' ? { text: item } : item),
-    openQuestions: (topic?.openQuestions || []).map((item) => typeof item === 'string' ? { text: item } : item)
-  }));
-  const stagedActions = (run?.state?.actions || []).map((action) => ({
-    action: action?.action || action?.meetingActionPoint || '',
-    owners: [action?.owner || action?.meetingActionPointOwner || ''].filter((owner) => owner && owner !== 'Not stated'),
-    timing: { kind: 'not_stated', wording: action?.deadline && action.deadline !== 'Not stated' ? action.deadline : '', exactDate: '' },
-    evidenceIds: action?.evidenceIds || []
-  }));
-  const discussion = normaliseAgentResult({ discussion: stagedDiscussion }, draft.sourceUnits, 'discussion', {
-    meetingDate: meetingAgentTimingAnchor(draft)
-  });
-  const actions = normaliseAgentResult({ actions: stagedActions }, draft.sourceUnits, 'actions', {
-    meetingDate: meetingAgentTimingAnchor(draft)
-  });
-  const objectives = groundedObjectiveRecords(run?.state?.summary?.objectives || [], draft.sourceUnits);
-  return { discussion: discussion.discussion, actions: actions.actions, objectives };
-}
 
-function stagedCandidateLedgerFromResult(result, draft) {
-  // Stamp only freshly normalised actions. A persisted ledger may already
-  // contain a date inferred under an older source-binding policy.
-  return hybridCandidateLedgerFromResult(result, 'staged').map((candidate) =>
-    candidate.recordType === 'action'
-      ? { ...candidate, timingInferenceVersion: TIMING_INFERENCE_POLICY_VERSION,
-        timingInferenceInputKey: privateStagedCandidateCacheKey(draft, 'actions') }
-      : candidate);
-}
 
-function cachedStagedCandidatesForStage(draft, stage) {
-  const types = stage === 'discussion'
-    ? new Set(['discussion_point', 'decision', 'open_question', 'objective'])
-    : new Set(['action']);
-  const candidates = (draft.candidateLedger || []).filter((candidate) =>
-    candidate.sourcePass === 'staged' && types.has(candidate.recordType));
-  // Regenerate the entire action stage if any row is stale. Reusing just the
-  // current subset would silently omit the remaining staged candidates.
-  if (stage !== 'discussion' && candidates.some((candidate) =>
-    candidate.timingInferenceVersion !== TIMING_INFERENCE_POLICY_VERSION
-      || candidate.timingInferenceInputKey !== privateStagedCandidateCacheKey(draft, 'actions'))) return [];
-  return candidates;
-}
 
-async function buildPrivateStagedCandidateLedger(draft, stage = '') {
-  const requestedStage = ['discussion', 'actions'].includes(stage) ? stage : '';
-  if (!requestedStage) {
-    const run = await runStagedSequenceForEvaluation(draft.preparedTranscript, { fileName: draft.fileName || 'transcript.txt' });
-    return stagedCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), draft);
-  }
-  const details = sanitiseMeetingAgentDetails(draft.details);
-  const meetingIdentity = `${details.meetingTitle || ''} ${draft.fileName || ''}`;
-  // The public staged parser expects Teams-style speaker/timestamp lines. The
-  // Agent's prepared transcript deliberately prefixes stable [Txxxx] IDs,
-  // which are useful to the Agent but make that parser report no speakers.
-  // Production drafts retain the original upload; the reconstruction keeps
-  // tests and migrated drafts functional without exposing it to the browser.
-  const stagedTranscript = normaliseSourceUnits(draft.sourceUnits)
-    .filter((unit) => unit.classification !== 'remove' || unit.restored)
-    .map((unit) => `${unit.speaker}   ${unit.timestamp || '0:00'} ${unit.text}`)
-    .join('\n\n');
-  const payload = await generatePreparedTrooperStage(requestedStage, stagedTranscript, {
-    meetingType: stagedGenerationMeetingType(details.meetingType, meetingIdentity),
-    shortRepairConcurrency: 3,
-    selectorBatchConcurrency: 2,
-    selectorProtocol: /^(?:1|true)$/i.test(process.env.MEETING_MINUTES_AGENT_SELECTOR_PROTOCOL_V1 || '0'),
-    selectorFailureSignal: true,
-    // Long transcripts routinely finish just beyond the previous 150-second
-    // boundary. This work is private and prewarmed, so allow it to finish and
-    // populate the cache instead of killing useful work near completion.
-    timeoutMs: Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_TIMEOUT_MS || 240000)
-  });
-  const run = { state: {
-    discussion: requestedStage === 'discussion' ? (payload?.screens?.discussion || []) : [],
-    actions: requestedStage === 'actions' ? (payload?.screens?.actions || []) : [],
-    summary: {}
-  } };
-  return stagedCandidateLedgerFromResult(normaliseStagedCandidateResult(run, draft), draft);
-}
 
-const PRIVATE_STAGED_MAX_CONCURRENCY = Math.max(1, Math.min(2,
-  // Two simultaneous staged/Trooper subprocesses compete for the same local
-  // worker and external allowance. Serial prewarming is faster in practice
-  // because it avoids both branches timing out together.
-  Number(process.env.MEETING_MINUTES_AGENT_STAGED_CANDIDATE_CONCURRENCY || 1)));
-let privateStagedActive = 0;
-const privateStagedQueue = [];
 
-function drainPrivateStagedQueue() {
-  while (privateStagedActive < PRIVATE_STAGED_MAX_CONCURRENCY && privateStagedQueue.length) {
-    // Discussion is the foreground stage immediately after upload. Do not let
-    // speculative action prewarming for an earlier draft starve discussion
-    // coverage for another user. Equal-priority jobs retain FIFO ordering.
-    privateStagedQueue.sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0)
-      || Number(left.queuedAt || 0) - Number(right.queuedAt || 0));
-    const job = privateStagedQueue.shift();
-    privateStagedActive += 1;
-    Promise.resolve().then(job.task).then(job.resolve, job.reject).finally(() => {
-      privateStagedActive -= 1;
-      drainPrivateStagedQueue();
-    });
-  }
-}
 
-function withPrivateStagedCandidateSlot(task, priority = 0) {
-  return new Promise((resolve, reject) => {
-    privateStagedQueue.push({ task, resolve, reject, priority, queuedAt: Date.now() });
-    drainPrivateStagedQueue();
-  });
-}
 
-function startPrivateStagedCandidateLedger(draft, stage) {
-  prunePrivateStagedCandidateCache();
-  const key = privateStagedCandidateCacheKey(draft, stage);
-  const existing = privateStagedCandidateCache.get(key);
-  if (existing) return existing.promise;
-  const entry = {
-    expiresAt: Date.now() + PRIVATE_STAGED_CACHE_TTL_MS,
-    sourceHash: crypto.createHash('sha256').update(JSON.stringify(normaliseSourceUnits(draft.sourceUnits))).digest('hex'),
-    status: 'preparing',
-    startedAt: new Date().toISOString(),
-    completedAt: '',
-    promise: null
-  };
-  entry.promise = withPrivateStagedCandidateSlot(
-    () => buildPrivateStagedCandidateLedger(draft, stage),
-    stage === 'discussion' ? 2 : 1
-  ).then((value) => {
-    entry.value = value;
-    entry.status = 'ready';
-    entry.completedAt = new Date().toISOString();
-    return value;
-  }).catch((error) => {
-    // Failed work is not cached: a later stage/rerun must be able to retry it.
-    if (privateStagedCandidateCache.get(key) === entry) privateStagedCandidateCache.delete(key);
-    throw error;
-  });
-  privateStagedCandidateCache.set(key, entry);
-  prunePrivateStagedCandidateCache();
-  return entry.promise;
-}
 
-async function awaitPrivateStagedCandidateLedger(draft, stage, maxWaitMs = 12000) {
-  const promise = startPrivateStagedCandidateLedger(draft, stage);
-  if (!Number.isFinite(maxWaitMs) || maxWaitMs <= 0) return [];
-  let timer;
-  try {
-    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), maxWaitMs); });
-    const value = await Promise.race([promise, timeout]);
-    return value === null ? null : value;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
-function peekReadyPrivateStagedCandidateLedger(draft, stage) {
-  prunePrivateStagedCandidateCache();
-  const entry = privateStagedCandidateCache.get(privateStagedCandidateCacheKey(draft, stage));
-  if (!entry) return { status: 'absent', rows: [] };
-  if (entry.status !== 'ready') return { status: 'pending', rows: [] };
-  if (!Array.isArray(entry.value)) return { status: 'unavailable', rows: [] };
-  if (entry.sourceHash !== crypto.createHash('sha256')
-    .update(JSON.stringify(normaliseSourceUnits(draft.sourceUnits))).digest('hex')) return { status: 'stale', rows: [] };
-  const rows = cachedStagedCandidatesForStage({ ...draft, candidateLedger: entry.value }, stage);
-  if (rows.length !== entry.value.filter(row => row.sourcePass === 'staged'
-    && (stage === 'actions' ? row.recordType === 'action'
-      : ['discussion_point', 'decision', 'open_question', 'objective'].includes(row.recordType))).length) {
-    return { status: 'stale', rows: [] };
-  }
-  // A completed extractor cannot mutate the ensemble after adjudication starts.
-  return { status: 'ready', rows: structuredClone(rows) };
-}
 
-function startPrivateActionPrimaryPrewarm(draft) {
-  prunePrivateActionPrimaryCache();
-  const prompt = meetingAgentActionPrimaryPromptForDraft(draft);
-  const promptSha256 = meetingAgentPassCacheKey(prompt);
-  const existing = privateActionPrimaryCache.get(promptSha256);
-  if (existing) return existing.promise;
-  const requestId = `actions:primary:${promptSha256.slice(0, 16)}`;
-  const deterministicCandidates = actionCandidateInventory(draft.sourceUnits);
-  const candidates = [
-    ...actionCommitmentChainInventory(draft.sourceUnits, deterministicCandidates),
-    ...actionCommitmentThreadInventory(draft.sourceUnits, deterministicCandidates),
-    ...deterministicCandidates
-  ];
-  const entry = {
-    expiresAt: Date.now() + PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS,
-    status: 'preparing',
-    startedAt: new Date().toISOString(),
-    completedAt: '',
-    promise: null
-  };
-  entry.promise = askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
-    pass: 'actions:primary', maxAttempts: 3, requestId,
-    validateResult: (result) => meetingAgentEmptyDiscoveryError(
-      result, 'actions', candidates, draft.sourceUnits,
-      { meetingDate: meetingAgentTimingAnchor(draft) }
-    )
-  }).then((response) => {
-    entry.status = 'ready';
-    entry.completedAt = new Date().toISOString();
-    return {
-      result: response.result,
-      timings: response.timings || [],
-      promptSha256,
-      requestId,
-      completedAt: entry.completedAt
-    };
-  }).catch((error) => {
-    if (privateActionPrimaryCache.get(promptSha256) === entry) privateActionPrimaryCache.delete(promptSha256);
-    throw error;
-  });
-  privateActionPrimaryCache.set(promptSha256, entry);
-  prunePrivateActionPrimaryCache();
-  return entry.promise;
-}
 
-async function usePrivateActionPrimaryPrewarm(draft, prompt) {
-  const promptSha256 = meetingAgentPassCacheKey(prompt);
-  const existing = privateActionPrimaryCache.get(promptSha256);
-  try {
-    return await (existing ? existing.promise : startPrivateActionPrimaryPrewarm(draft));
-  } catch (error) {
-    return null;
-  }
-}
 
-function prewarmPrivateStagedCandidateLedgers(draft) {
-  // Start only the stage the user is about to request. Action prewarming starts
-  // after the discussion draft is ready, when review time can hide its cost.
-  // Starting both here allowed speculative action work to block another
-  // transcript's foreground discussion on the deliberately serial worker.
-  startPrivateStagedCandidateLedger(draft, 'discussion').catch((error) => {
-    console.warn(JSON.stringify({ event: 'meeting_agent_staged_prewarm', stage: 'discussion', ok: false, message: error.message }));
-  });
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const speculationTimers = new Map();
 const SPECULATION_TTL_MS = 2 * 60 * 60 * 1000;
 const SPECULATION_IDLE_LIMIT_MS = 45 * 60 * 1000;
@@ -10062,8 +9491,7 @@ function meetingAgentMemoryCacheState() {
   return {
     stagedCandidates: privateStagedCandidateCache.size,
     stagedPreparing: [...privateStagedCandidateCache.values()].filter((entry) => entry.status !== 'ready').length,
-    stagedActive: privateStagedActive,
-    stagedQueued: privateStagedQueue.length,
+    ...privateStagedCandidateQueueState(),
     actionPrimary: privateActionPrimaryCache.size,
     actionPrimaryPreparing: [...privateActionPrimaryCache.values()].filter((entry) => entry.status !== 'ready').length,
     stageSpeculations: privateStageSpeculations.size,
@@ -10228,11 +9656,19 @@ async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   });
 }
 
+const {
+  buildPrivateStagedCandidateLedger,
+  startPrivateStagedCandidateLedger,
+  awaitPrivateStagedCandidateLedger,
+  startPrivateActionPrimaryPrewarm,
+  usePrivateActionPrimaryPrewarm,
+  prewarmPrivateStagedCandidateLedgers
+} = createMeetingMinutesCandidatePrewarm(runStagedSequenceForEvaluation);
+
 const originalMinutesStageServices = Object.freeze({
   acceptedVisitAssignmentActions,
   annotateActionProposalChains,
   awaitPrivateStagedCandidateLedger,
-  cachedStagedCandidatesForStage,
   commitmentThreadBackstopProposals,
   corroboratedOmittedActionProposals,
   corroboratedOmittedDiscussionRecords,
@@ -10251,7 +9687,6 @@ const originalMinutesStageServices = Object.freeze({
   hybridActionSourceInfo,
   hybridCandidateCoveredByRecord,
   hybridCandidateDispositions,
-  hybridCandidateLedgerFromResult,
   includeAllDiscussionDetailsExperiment,
   isReviewableActionProposal,
   meetingAgentActionAuditCandidates,
@@ -10284,7 +9719,6 @@ const originalMinutesStageServices = Object.freeze({
   meetingMinutesMinuteInstructionRuleEnabled,
   meetingMinutesPromoteNamedFactsEnabled,
   meetingMinutesProposalRecheckEnabled,
-  peekReadyPrivateStagedCandidateLedger,
   preselectActionProposal,
   publishedActionCoversProposal,
   reconcileAcceptedRefereeActions,

@@ -893,6 +893,37 @@ authenticated generation dispatch and summary timing remain Stage 6 work.
 Frontend assets, storage/schema, renderer implementations, provider prompts,
 configuration, dependencies and Python processing remain unchanged.
 
+## Candidate prewarm lifecycle and obsolete backend retirement
+
+The complete prewarm area now has actual owners: `meetingMinutesCandidatePrewarm`
+for extraction/queue/promise work, `meetingMinutesCandidateLedger` for candidate
+normalization/materialization/adoption, `meetingMinutesStageMeetingType` for shared
+type selection, and `meetingMinutesActionCandidateInventory` for action/chain/thread
+inventories. All 46 original declarations (699 declaration lines) retain their
+algorithms and canonical bindings. Three deterministic Original service properties
+become direct owner imports, reducing the supplied map from 76 to 73 entries.
+
+One module queue retains priority, concurrency and release semantics; existing
+Maps, boot identity and provider context stay canonical. Status/reset reads use
+its live queue selector. The API constructs the prewarm runtime once, passing
+only the real full staged-pipeline runner for the unchanged no-stage fallback.
+No deterministic candidate policy is supplied through a callback bag.
+
+Eight uncalled backend functions (320 lines), one unused timeout constant and
+12 newly unused import bindings are removed after whole-tree caller/source-reader
+review. Sixteen obsolete Python implementation-presence assertions retire with
+those functions; all test methods and remaining live contracts stay. Two bounded
+lifecycle cases cover the real queue and Primary cache/promise behavior. Existing
+ready-join and timing-inference cases also join the compact product profile.
+
+API falls from 11,913 to 11,347 lines; V2 from 4,128 to 3,686. These entrypoint
+figures include relocation; deleted code is identified separately above. Ten
+newly orphaned functions held by surviving contracts remain for explicit review.
+This implements prewarm ownership; frozen release/deployment acceptance is still
+required. Speculation/adoption, background writes/progress, generation dispatch,
+summary timing and the remaining Original policies are unfinished. Frontend,
+storage/schema, prompts, provider configuration and Python processing are unchanged.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

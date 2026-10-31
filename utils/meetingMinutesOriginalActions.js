@@ -1,5 +1,7 @@
 'use strict';
 
+const { hybridCandidateLedgerFromResult } = require('./meetingMinutesCandidateLedger');
+
 const { finaliseMeetingAgentTimingProposal, finaliseActionTimings, reconcileSiblingTimingDecisions } = require('./meetingMinutesProposalTiming');
 const { retainedDocumentReferenceReviewFlags } = require('./meetingMinutesProposalReview');
 
@@ -76,7 +78,6 @@ function createOriginalActionsStage(services) {
     hybridActionSourceInfo,
     hybridCandidateCoveredByRecord,
     hybridCandidateDispositions,
-    hybridCandidateLedgerFromResult,
     isReviewableActionProposal,
     meetingAgentActionAuditCandidates,
     meetingAgentCommitmentRecheckNeeded,
