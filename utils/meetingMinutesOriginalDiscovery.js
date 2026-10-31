@@ -1,5 +1,8 @@
 'use strict';
 
+const { meetingAgentTopicSegmentsEnabled, meetingMinutesAgentAnchoredActionEnabled, meetingMinutesAgentAnchoredDiscussionEnabled, meetingMinutesAgentDedupedCoverageEnabled, meetingMinutesAgentFastActionPathEnabled, meetingMinutesAgentGlobalDiscussionRefereeEnabled, meetingMinutesAgentPrimaryUnionEnabled, meetingMinutesDiscussionActionCandidatesEnabled } = require('./meetingMinutesOriginalFeatures');
+const { meetingMinutesAgentAnchoredActionPrompt, meetingMinutesAgentAnchoredDiscussionPrompt, meetingMinutesAgentRecoveryPrompt, meetingMinutesAgentRefereePrompt, meetingMinutesAgentRefereeRepairPrompt, meetingMinutesAgentTopicNamingPrompt } = require('./meetingMinutesAgentPrompts');
+
 const { cachedStagedCandidatesForStage, hybridCandidateLedgerFromResult, peekReadyPrivateStagedCandidateLedger } = require('./meetingMinutesCandidateLedger');
 
 const { meetingMinutesAgentPrimaryPrompt } = require('./meetingMinutesAgentPrompts');
@@ -58,20 +61,6 @@ function createOriginalDiscovery(services) {
     dedupeActionDiscoveryInventory,
     deterministicHybridLedger,
     enrichDiscussionEvidenceFromDispositions,
-    meetingAgentTopicSegmentsEnabled,
-    meetingMinutesAgentAnchoredActionEnabled,
-    meetingMinutesAgentAnchoredActionPrompt,
-    meetingMinutesAgentAnchoredDiscussionEnabled,
-    meetingMinutesAgentAnchoredDiscussionPrompt,
-    meetingMinutesAgentDedupedCoverageEnabled,
-    meetingMinutesAgentFastActionPathEnabled,
-    meetingMinutesAgentGlobalDiscussionRefereeEnabled,
-    meetingMinutesAgentPrimaryUnionEnabled,
-    meetingMinutesAgentRecoveryPrompt,
-    meetingMinutesAgentRefereePrompt,
-    meetingMinutesAgentRefereeRepairPrompt,
-    meetingMinutesAgentTopicNamingPrompt,
-    meetingMinutesDiscussionActionCandidatesEnabled,
     reconstructRefereeActions,
   } = services;
 

@@ -962,6 +962,40 @@ staged evaluation/ingestion ownership remain unfinished. Frontend assets, saved
 formats/schema, renderer implementations, provider configuration, dependencies
 and Python processing are unchanged.
 
+## Original prompt, settings and finalization ownership
+
+`meetingMinutesOriginalFeatures` owns the 23 existing environment-reading
+settings helpers. `meetingMinutesAgentPrompts` now owns the remaining 23 prompt
+and support declarations alongside its existing common/primary prompts. The two
+complete final action-preservation policies live in
+`meetingMinutesFinalActionPreservation`. Summary timing verification is exported
+by `meetingMinutesOriginalSummary` and imports the real publication authority
+and reviewer hash directly; its provider call remains a genuine per-run input.
+
+The 49 actual declarations (701 declaration lines, including the existing
+17-line Summary verifier) retain their algorithms. Original Summary, Edits and
+Finalization no longer receive deterministic callback bags. The shared services
+map falls from 71 to 38 entries: 33 policy/diagnostic helpers and five real
+execution dependencies. The larger Original generation and canonical staged
+processing/evaluation work remains unfinished.
+
+A separately reviewed closed group of 32 private functions and one unused
+constant is removed (667 declaration lines). Exactly 34 obsolete Python
+source-presence assertions retire; every test method remains. One live prompt
+assertion follows its new owner with its original literal and assertion. The
+existing Summary fixtures now construct real publication state instead of
+substituting policy callbacks. No new test cases are added. Twenty-two unneeded
+new API import bindings are omitted, and 31 original import bindings retire
+with their moved implementations and removed factory. Historical unused imports
+remain outside this batch. Every require initializer and its order remain.
+API falls from 9,760 to 8,282 lines; V2 stays at 3,615.
+Entrypoint reduction includes relocation and verified deletion.
+
+The 26 surviving prompt definitions, route and compatibility contracts,
+frontend assets, saved formats/schema, renderers, provider configuration,
+dependencies and Python processing are unchanged. Frozen release checks and
+before/after deployment comparisons certify the completed batch separately.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456
