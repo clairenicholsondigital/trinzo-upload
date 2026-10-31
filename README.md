@@ -92,8 +92,12 @@ rather than reporting skipped persistence tests as a successful release.
 `test:full` also runs integration if the explicit test configuration is present.
 
 Selection follows literal local imports, named source/fixture reads, Python source consumers
-and browser files for frontend edits. Unknown runtime mappings and changes to
-installation/test infrastructure select the full regressions. Missing Git bases
+and browser files for frontend edits. Parser-identified JavaScript statement-level
+comments do not create dependency links; executable strings, templates and regular
+expressions retain their original contents. Expression comments not reported by
+the parser, unavailable tooling and uncertain parses keep the original conservative
+matching. Unknown runtime mappings and changes
+to installation/test infrastructure select the full regressions. Missing Git bases
 fail with a request to fetch main or supply the correct revision. A fresh release
 without a usable deployment marker uses `test:release -- --all`, including real
 database checks. `deploy.sh` uses the marker rather than the current checkout as
