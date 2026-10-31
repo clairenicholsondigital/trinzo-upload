@@ -556,7 +556,12 @@ normalization/discovery checks. Existing assertion expressions and regression
 cases remain, including mixed generation, repair, reviewer-save, publication and
 persistence tests. The transport failure-audit fixture ends at its unchanged
 transport function instead of a helper that now has its own owner; its extracted
-transport bytes and all original assertions remain. Compact coverage and
+transport bytes and all original assertions remain. The legacy text compatibility
+check enumerates its actual public aliases: all four original text aliases and
+all timing assertions remain, with three already-public V2 wording helpers also
+checked against their new Text owner. V2 retains its unchanged public surface.
+The initial compact check exposed that test's broader old assumption; its
+failure is archived before the test-only correction. Compact coverage and
 persistence-sensitive selection updates require the full release profile.
 
 Stage 3 remains in progress. Referee-candidate projection/contract ownership,
